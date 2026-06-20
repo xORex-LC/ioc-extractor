@@ -1,0 +1,94 @@
+# ============================================================================
+#  ioc-extractor — default configuration
+#  All source/sink/policy specifics live here (and in external override files),
+#  never hard-coded in the domain. Override order:
+#     classpath:application.yml  <  ./configs/*.yml  <  CLI flags / env vars
+# ============================================================================
+spring:
+  main:
+    web-application-type: none      # CLI app, no web server
+    banner-mode: "off"
+  config:
+    # External, user-editable overrides (optional files).
+    import: "optional:file:./configs/application.yml"
+
+logging:
+  level:
+    root: INFO
+    com.iocextractor: INFO
+
+ioc:
+  # ---- Source profile: how to read & where indicators come from --------------
+  source:
+    type: auto                       # 'auto' = Tika detects format (.docx/.htm/.pdf/...)
+    charset: windows-1251            # charset hint for legacy HTML (Word export is cp1251)
+    # Section headers that set the `source` attribution for following indicators.
+    section-markers:
+      - "БИБ-\\d+"
+      - "Письмо ФСТЭК России[^№]*№\\s*[\\d/]+"
+
+  # ---- Deobfuscation (refang) rules: ordered, applied left-to-right -----------
+  refang:
+    rules:
+      - { from: "hxxps", to: "https" }
+      - { from: "hxxp",  to: "http"  }
+      - { from: "[.]",   to: "."     }
+      - { from: "[:]",   to: ":"     }
+      - { from: "(dot)", to: "."     }
+      - { from: "[at]",  to: "@"     }
+
+  # ---- Regex engine: 're2j' (linear-time, default) or 'jdk' (java.util.regex).
+  #  Patterns below use \b boundaries only, so they are valid in BOTH engines
+  #  (RE2 has no lookaround/backreferences).
+  engine: re2j
+
+  # ---- Indicator detection: type -> regex (applied to refanged text) ---------
+  #  Order = priority. URL/IP win over DOMAIN when spans overlap (the host of a
+  #  URL must not be re-emitted as a bare domain) — resolved by the extractor.
+  patterns:
+    SHA256: "\\b[0-9a-fA-F]{64}\\b"
+    SHA1:   "\\b[0-9a-fA-F]{40}\\b"
+    MD5:    "\\b[0-9a-fA-F]{32}\\b"
+    URL:    "https?://[^\\s;,<>\"']+"
+    IPV4:   "\\b(?:\\d{1,3}\\.){3}\\d{1,3}(?:[:/][^\\s;,<>\"']*)?"
+    DOMAIN: "\\b(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,}(?:/[^\\s;,<>\"']*)?"
+
+  # ---- Mask classification policy (url_match / host_match codes) --------------
+  #  Observed convention from the manual reference CSV. Tune here, not in code.
+  classify:
+    bare-host:   { url-match: "u:hAS",      host-match: "h:dAS" }   # host/domain/IP, no path/port
+    full-url:    { url-match: "u:hEX,dEX",  host-match: null    }   # has path and/or port
+
+  # ---- Output artifacts (sinks) ----------------------------------------------
+  #  Each artifact has its OWN schema, id-sequence and normalization.
+  #  Add a new artifact = add an entry here + a row-mapper bean (OCP),
+  #  the pipeline routes indicators to artifacts by `accepts` type.
+  sink:
+    csv:
+      delimiter: ";"
+      quote: "\""
+      null-literal: "NULL"
+    artifacts:
+      - name: masks                  # network IOC -> reputation-list masks
+        enabled: true
+        mapper: network-mask
+        path: "./dataframe/repListMasks_generated.csv"
+        accepts: [ IPV4, DOMAIN, URL ]
+        value-case: lower            # domains/urls stay lower-case
+        id: { strategy: descending, start: auto }   # 'auto' = continue from lookup max
+        header: "id;mask;url_match;host_match;score;time_last_seen;time_first_seen;threat_type;source;description"
+      - name: hashes                 # file IOC -> hash list (separate schema)
+        enabled: true
+        mapper: file-hash
+        path: "./dataframe/hashes_generated.csv"
+        accepts: [ MD5, SHA1, SHA256 ]
+        value-case: upper            # hashes stored UPPERCASE in the reference
+        id: { strategy: ascending, start: auto }
+        header: "id;hash_md5;hash_sha256;hash_sha1;score;time_last_seen;time_first_seen;threat_type;source;description"
+        source-strip-prefix: "Письмо "   # masks keep 'Письмо …', hashes drop it
+
+  # ---- Lookup repository (dedup / cross-checks against existing artifact) -----
+  lookup:
+    type: csv
+    path: "./dataframe/repListMasksManual_2026-06-19_08-26-44Z.csv"
+    deduplicate: true

@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.5</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.iocextractor</groupId>
+    <artifactId>ioc-extractor</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <name>ioc-extractor</name>
+    <description>Mini ETL for extracting, deobfuscating and normalizing IOCs into reputation-list masks</description>
+
+    <properties>
+        <java.version>21</java.version>
+        <picocli.version>4.7.6</picocli.version>
+        <re2j.version>1.7</re2j.version>
+        <tika.version>2.9.2</tika.version>
+        <commons-csv.version>1.12.0</commons-csv.version>
+    </properties>
+
+    <dependencies>
+        <!-- Core: DI, config binding, validation, logging (no web) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- Inbound adapter: CLI -->
+        <dependency>
+            <groupId>info.picocli</groupId>
+            <artifactId>picocli</artifactId>
+            <version>${picocli.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>info.picocli</groupId>
+            <artifactId>picocli-spring-boot-starter</artifactId>
+            <version>${picocli.version}</version>
+        </dependency>
+
+        <!-- Domain: linear-time regex engine (ReDoS-safe) for IOC extraction.
+             Default PatternEngine; java.util.regex is the swappable fallback. -->
+        <dependency>
+            <groupId>com.google.re2j</groupId>
+            <artifactId>re2j</artifactId>
+            <version>${re2j.version}</version>
+        </dependency>
+
+        <!-- Outbound adapter: format-agnostic text extraction
+             (.docx / .htm / .pdf / .xlsx ...) for the SourceReader port. -->
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-core</artifactId>
+            <version>${tika.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-parsers-standard-package</artifactId>
+            <version>${tika.version}</version>
+        </dependency>
+
+        <!-- Outbound adapter: CSV read/write (';' dialect, quoting, NULL) -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-csv</artifactId>
+            <version>${commons-csv.version}</version>
+        </dependency>
+        <!-- commons-csv 1.12 needs a recent commons-io; override the older
+             version managed by the Spring Boot BOM. -->
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.17.0</version>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

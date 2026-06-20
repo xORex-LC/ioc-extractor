@@ -1,3 +1,11 @@
+# Build output
+target/
+.idea/
+*.iml
+
+# Generated artifacts
+dataframe/*_generated.csv
+
 # Compiled class file
 *.class
 
@@ -22,3 +30,11 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+source/*
+!source/ioc-source.htm
+dataframe/*
+!dataframe/hashes_list.csv
+!dataframe/masks_list.csv
+
+CLAUDE.md
