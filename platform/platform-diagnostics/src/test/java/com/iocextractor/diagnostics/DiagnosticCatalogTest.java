@@ -30,7 +30,7 @@ class DiagnosticCatalogTest {
     void catalog_entries_are_stable_and_unique() {
         var entries = DiagnosticCatalogs.entries();
 
-        assertThat(entries).hasSize(14);
+        assertThat(entries).hasSize(17);
         assertThat(entries).extracting("id").doesNotHaveDuplicates();
         assertThat(entries).extracting("messageKey").doesNotHaveDuplicates();
         assertThat(entries).allSatisfy(entry -> {

@@ -4,6 +4,7 @@ import com.iocextractor.diagnostics.DiagnosticCode;
 import com.iocextractor.diagnostics.codes.ClassificationDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.ConfigDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.ExtractionDiagnosticCodes;
+import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.SourceDiagnosticCodes;
@@ -22,6 +23,7 @@ public final class DiagnosticCatalogs {
             ExtractionDiagnosticCodes.values(),
             ClassificationDiagnosticCodes.values(),
             SinkDiagnosticCodes.values(),
+            IngestDiagnosticCodes.values(),
             PipelineDiagnosticCodes.values()));
 
     private DiagnosticCatalogs() {

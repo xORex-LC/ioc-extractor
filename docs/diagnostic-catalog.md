@@ -16,5 +16,8 @@ Generated from `DiagnosticCatalogs`.
 | `CLASSIFY.UNSUPPORTED_INDICATOR_TYPE` | CLASSIFY | ERROR | `classify.unsupported-indicator-type` | Indicator type {type} is not supported by classifier {classifier} |
 | `SINK.WRITE_FAILED` | SINK | FATAL | `sink.write-failed` | Sink {sink} failed to write artifact {artifact}: {reason} |
 | `SINK.ROW_MAPPING_FAILED` | SINK | ERROR | `sink.row-mapping-failed` | Sink {sink} failed to map row for indicator {indicator}: {reason} |
+| `INGEST.CLAIM_FAILED` | INGEST | FATAL | `ingest.claim-failed` | Source {source} could not be claimed for ingestion: {reason} |
+| `INGEST.LEDGER_WRITE_FAILED` | INGEST | FATAL | `ingest.ledger-write-failed` | Ingestion ledger update failed for source {source}: {reason} |
+| `INGEST.RECOVERY_FAILED` | INGEST | ERROR | `ingest.recovery-failed` | Ingestion recovery failed for source {source}: {reason} |
 | `PIPELINE.STAGE_FAILED` | PIPELINE | ERROR | `pipeline.stage-failed` | Pipeline stage {stage} failed: {reason} |
 | `PIPELINE.ITEM_SKIPPED` | PIPELINE | WARN | `pipeline.item-skipped` | Pipeline item {item} was skipped at stage {stage}: {reason} |

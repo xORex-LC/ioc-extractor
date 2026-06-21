@@ -2,6 +2,7 @@ package com.iocextractor.adapter.in.cli;
 
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.ExitCodeGenerator;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import picocli.CommandLine;
 import picocli.CommandLine.IFactory;
@@ -12,6 +13,7 @@ import picocli.CommandLine.IFactory;
  * propagates picocli's exit code to the process.
  */
 @Component
+@ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "oneshot", matchIfMissing = true)
 public final class CliRunner implements CommandLineRunner, ExitCodeGenerator {
 
     private final IocRootCommand command;

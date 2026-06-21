@@ -9,5 +9,6 @@ public enum DiagnosticCategory {
     EXTRACTION,
     CLASSIFY,
     SINK,
+    INGEST,
     PIPELINE
 }

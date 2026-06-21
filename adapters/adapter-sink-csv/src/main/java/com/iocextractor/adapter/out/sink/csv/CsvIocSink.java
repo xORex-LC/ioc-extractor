@@ -15,9 +15,11 @@ import org.slf4j.LoggerFactory;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Set;
 
@@ -66,13 +68,15 @@ public final class CsvIocSink implements IocSink {
             if (path.getParent() != null) {
                 Files.createDirectories(path.getParent());
             }
-            try (BufferedWriter writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8);
+            Path temp = tempPath();
+            try (BufferedWriter writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8);
                  CSVPrinter printer = new CSVPrinter(writer, format)) {
                 printer.printRecord(mapper.header());
                 for (Indicator indicator : accepted) {
                     printer.printRecord(mapper.toRow(ids.next(), indicator));
                 }
             }
+            moveIntoPlace(temp);
             LogEvents.info(log)
                     .action(EventAction.ARTIFACT_WRITE)
                     .outcome(EventOutcome.SUCCESS)
@@ -92,6 +96,22 @@ public final class CsvIocSink implements IocSink {
                     .message("artifact write failed")
                     .log(e);
             throw new IocExtractorException("Failed to write artifact '" + name + "' to " + path, e);
+        }
+    }
+
+    private Path tempPath() throws IOException {
+        Path parent = path.getParent();
+        if (parent == null) {
+            parent = Path.of(".");
+        }
+        return Files.createTempFile(parent, path.getFileName().toString(), ".tmp");
+    }
+
+    private void moveIntoPlace(Path temp) throws IOException {
+        try {
+            Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException ignored) {
+            Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 }

@@ -20,6 +20,9 @@ logging:
     path: var/logs
 
 ioc:
+  runtime:
+    mode: oneshot
+
   observability:
     mode: oneshot
     per-item-trace-enabled: false
@@ -117,3 +120,29 @@ ioc:
     type: csv
     path: "./dataframe/repListMasksManual_2026-06-19_08-26-44Z.csv"
     deduplicate: true
+
+  # ---- Daemon ingestion (disabled unless ioc.runtime.mode=daemon) ------------
+  ingestion:
+    dirs:
+      inbox: "./var/inbox"
+      processing: "./var/processing"
+      done: "./var/done"
+      failed: "./var/failed"
+    patterns:
+      include: [ "*.htm", "*.html", "*.docx" ]
+      exclude: [ "*.tmp", "*.part", ".*" ]
+    detect:
+      use-watch-service: true
+      reconcile-interval: 30s
+      max-messages-per-poll: 50
+    stability:
+      quiet-period: 10s
+    output:
+      partitions-dir: "./dataframe/partitions"
+    retry:
+      max-attempts: 3
+      backoff: 5s
+    ledger:
+      type: file
+      path: "./var/ledger"
+    concurrency: 1

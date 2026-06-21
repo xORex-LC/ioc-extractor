@@ -14,6 +14,10 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 public class IocExtractorApplication {
 
     public static void main(String[] args) {
-        System.exit(SpringApplication.exit(SpringApplication.run(IocExtractorApplication.class, args)));
+        var context = SpringApplication.run(IocExtractorApplication.class, args);
+        String mode = context.getEnvironment().getProperty("ioc.runtime.mode", "oneshot");
+        if (!"daemon".equalsIgnoreCase(mode)) {
+            System.exit(SpringApplication.exit(context));
+        }
     }
 }

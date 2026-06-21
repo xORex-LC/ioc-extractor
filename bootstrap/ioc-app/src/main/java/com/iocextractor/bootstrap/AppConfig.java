@@ -5,6 +5,7 @@ import com.iocextractor.adapter.out.regex.JdkRegexPatternEngine;
 import com.iocextractor.adapter.out.regex.Re2jPatternEngine;
 import com.iocextractor.adapter.out.sink.csv.ColumnSpec;
 import com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper;
+import com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition;
 import com.iocextractor.adapter.out.sink.csv.CsvIocSink;
 import com.iocextractor.adapter.out.sink.csv.IdGenerator;
 import com.iocextractor.adapter.out.sink.csv.IdValueProvider;
@@ -13,6 +14,7 @@ import com.iocextractor.adapter.out.sink.csv.LowerHostTransform;
 import com.iocextractor.adapter.out.sink.csv.LowercaseTransform;
 import com.iocextractor.adapter.out.sink.csv.MatchHostValueProvider;
 import com.iocextractor.adapter.out.sink.csv.MatchUrlValueProvider;
+import com.iocextractor.adapter.out.sink.csv.PartitionedCsvSinkFactory;
 import com.iocextractor.adapter.out.sink.csv.RowMapper;
 import com.iocextractor.adapter.out.sink.csv.SourceLabelValueProvider;
 import com.iocextractor.adapter.out.sink.csv.StripPrefixTransform;
@@ -20,11 +22,15 @@ import com.iocextractor.adapter.out.sink.csv.Transform;
 import com.iocextractor.adapter.out.sink.csv.UppercaseTransform;
 import com.iocextractor.adapter.out.sink.csv.ValueProvider;
 import com.iocextractor.adapter.out.source.TikaSourceReader;
+import com.iocextractor.application.ingest.IngestionService;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.application.port.out.LookupRepository;
 import com.iocextractor.application.port.out.SourceReader;
-import com.iocextractor.application.service.IocExtractionService;
+import com.iocextractor.application.port.out.ingest.IngestionLedger;
+import com.iocextractor.application.port.out.ingest.PartitionSinkFactory;
+import com.iocextractor.application.port.out.ingest.SourceLifecycle;
+import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.diagnostics.render.DiagnosticRenderer;
 import com.iocextractor.diagnostics.render.TemplateDiagnosticRenderer;
@@ -55,6 +61,7 @@ import com.iocextractor.observability.logging.LoggingPipelineObserver;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.QuoteMode;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -171,42 +178,88 @@ public class AppConfig {
     }
 
     @Bean
-    public ExtractIocsUseCase extractIocsUseCase(SourceReader reader,
-                                                 Refanger refanger,
-                                                 IndicatorExtractor extractor,
-                                                 SourceAttributor attributor,
-                                                 LookupRepository lookup,
+    public IocExtractionServiceFactory iocExtractionServiceFactory(SourceReader reader,
+                                                                   Refanger refanger,
+                                                                   IndicatorExtractor extractor,
+                                                                   SourceAttributor attributor,
+                                                                   LookupRepository lookup,
+                                                                   DiagnosticSink diagnosticSink,
+                                                                   IocProperties props) {
+        return new IocExtractionServiceFactory(reader, refanger, extractor, attributor,
+                lookup, props.lookup().deduplicate(), props.observability().mode(),
+                new LoggingPipelineObserver(), diagnosticSink);
+    }
+
+    @Bean
+    public ExtractIocsUseCase extractIocsUseCase(IocExtractionServiceFactory factory,
                                                  MatchPolicy matchPolicy,
-                                                 DiagnosticSink diagnosticSink,
+                                                 LookupRepository lookup,
                                                  IocProperties props) {
         List<IocSink> sinks = buildSinks(props, matchPolicy, lookup.maxId());
-        return new IocExtractionService(reader, refanger, extractor, attributor,
-                lookup, sinks, props.lookup().deduplicate(), props.observability().mode(),
-                new LoggingPipelineObserver(), diagnosticSink);
+        return factory.create(sinks);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    public PartitionSinkFactory partitionSinkFactory(IocProperties props,
+                                                     MatchPolicy matchPolicy,
+                                                     LookupRepository lookup) {
+        return new PartitionedCsvSinkFactory(
+                Path.of(props.ingestion().output().partitionsDir()),
+                artifactDefinitions(props, matchPolicy, lookup.maxId()),
+                writeFormat(props.sink().csv()));
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    public IngestionService ingestionService(IngestionLedger ledger,
+                                             SourceLifecycle sourceLifecycle,
+                                             PartitionSinkFactory partitionSinkFactory,
+                                             IocExtractionServiceFactory extractionFactory) {
+        return new IngestionService(ledger, sourceLifecycle, partitionSinkFactory, extractionFactory);
     }
 
     // ---- artifact assembly -------------------------------------------------
 
     private List<IocSink> buildSinks(IocProperties props, MatchPolicy matchPolicy, long autoBase) {
         CSVFormat writeFormat = writeFormat(props.sink().csv());
+        return artifactDefinitions(props, matchPolicy, autoBase).stream()
+                .map(artifact -> new CsvIocSink(
+                        artifact.name(),
+                        Path.of(findArtifactPath(props, artifact.name())),
+                        artifact.accepts(),
+                        artifact.mapper(),
+                        new IdGenerator(artifact.idStrategy(), artifact.idStart()),
+                        writeFormat))
+                .map(IocSink.class::cast)
+                .toList();
+    }
+
+    private List<CsvArtifactDefinition> artifactDefinitions(IocProperties props, MatchPolicy matchPolicy, long autoBase) {
         Map<String, ValueProvider> providers = valueProviders(matchPolicy);
         Map<String, Transform> transforms = transforms();
-        List<IocSink> sinks = new ArrayList<>();
+        List<CsvArtifactDefinition> artifacts = new ArrayList<>();
         for (IocProperties.Sink.Artifact artifact : props.sink().artifacts()) {
             if (!artifact.enabled()) {
                 continue;
             }
             RowMapper mapper = new ConfigurableRowMapper(columnSpecs(artifact), providers, transforms);
-            IdGenerator ids = new IdGenerator(strategyOf(artifact.id()), startOf(artifact.id(), autoBase));
-            sinks.add(new CsvIocSink(
+            artifacts.add(new CsvArtifactDefinition(
                     artifact.name(),
-                    Path.of(artifact.path()),
                     EnumSet.copyOf(artifact.accepts()),
                     mapper,
-                    ids,
-                    writeFormat));
+                    strategyOf(artifact.id()),
+                    startOf(artifact.id(), autoBase)));
         }
-        return sinks;
+        return artifacts;
+    }
+
+    private String findArtifactPath(IocProperties props, String name) {
+        return props.sink().artifacts().stream()
+                .filter(artifact -> artifact.name().equals(name))
+                .findFirst()
+                .map(IocProperties.Sink.Artifact::path)
+                .orElseThrow(() -> new IocExtractorException("Unknown artifact: " + name));
     }
 
     private Map<String, ValueProvider> valueProviders(MatchPolicy matchPolicy) {

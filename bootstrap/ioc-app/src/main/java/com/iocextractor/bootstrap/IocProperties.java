@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -22,13 +23,18 @@ import java.util.Map;
 @ConfigurationProperties(prefix = "ioc")
 public record IocProperties(
         String engine,
+        @NotNull @Valid Runtime runtime,
         @NotNull @Valid Source source,
         @NotNull @Valid Refang refang,
         @NotEmpty Map<IndicatorType, String> patterns,
         @NotNull @Valid Classify classify,
         @NotNull @Valid Sink sink,
         @NotNull @Valid Lookup lookup,
+        @NotNull @Valid Ingestion ingestion,
         @NotNull @Valid Observability observability) {
+
+    public record Runtime(@NotBlank String mode) {
+    }
 
     public record Source(@NotBlank String type, String charset, @NotNull List<String> sectionMarkers) {
     }
@@ -70,6 +76,42 @@ public record IocProperties(
     }
 
     public record Lookup(String type, @NotBlank String path, boolean deduplicate) {
+    }
+
+    public record Ingestion(
+            @NotNull @Valid Dirs dirs,
+            @NotNull @Valid Patterns patterns,
+            @NotNull @Valid Detect detect,
+            @NotNull @Valid Stability stability,
+            @NotNull @Valid Output output,
+            @NotNull @Valid Retry retry,
+            @NotNull @Valid Ledger ledger,
+            int concurrency) {
+
+        public record Dirs(
+                @NotBlank String inbox,
+                @NotBlank String processing,
+                @NotBlank String done,
+                @NotBlank String failed) {
+        }
+
+        public record Patterns(@NotEmpty List<String> include, @NotNull List<String> exclude) {
+        }
+
+        public record Detect(boolean useWatchService, @NotNull Duration reconcileInterval, int maxMessagesPerPoll) {
+        }
+
+        public record Stability(@NotNull Duration quietPeriod) {
+        }
+
+        public record Output(@NotBlank String partitionsDir) {
+        }
+
+        public record Retry(int maxAttempts, @NotNull Duration backoff) {
+        }
+
+        public record Ledger(@NotBlank String type, @NotBlank String path) {
+        }
     }
 
     public record Observability(@NotBlank String mode, boolean perItemTraceEnabled) {
