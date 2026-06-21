@@ -18,7 +18,7 @@
 | `ConfigurableRowMapper.java` | Generic-маппер по `ColumnSpec` + реестры провайдеров/трансформаций |
 | `ColumnSpec.java` | Декларативная спека колонки (`name/from/value/when-type/transform`) |
 | `ValueProvider.java` + `*ValueProvider` | Источники значений: `id`, `value`, `source.label`, `match.url`, `match.host` |
-| `Transform.java` + `*Transform` | Трансформации: `lower`, `upper`, `strip-prefix` |
+| `Transform.java` + `*Transform` | Трансформации: `lower`, `lower-host` (только хост), `upper`, `strip-prefix` |
 | `IdGenerator.java` | Последовательность id артефакта (ascending/descending) |
 
 ## Заметки

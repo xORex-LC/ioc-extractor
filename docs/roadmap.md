@@ -44,6 +44,7 @@
 | 2 нормализация + признаки + `HostClassifier`/PSL | `done` |
 | 3 4-вариантный rule-based `MatchPolicy` | `done` |
 | 4 конфигурируемое заполнение артефактов | `done` |
-| 5–10 | `todo` |
+| 5 host-only lowercase (`lower-host`) + golden e2e | `done` |
+| 6–10 | `todo` |
 
 (обновляется по мере выполнения: `todo` → `in progress` → `done`)

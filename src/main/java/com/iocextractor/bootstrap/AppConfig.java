@@ -9,6 +9,7 @@ import com.iocextractor.adapter.out.sink.csv.CsvIocSink;
 import com.iocextractor.adapter.out.sink.csv.IdGenerator;
 import com.iocextractor.adapter.out.sink.csv.IdValueProvider;
 import com.iocextractor.adapter.out.sink.csv.IndicatorValueProvider;
+import com.iocextractor.adapter.out.sink.csv.LowerHostTransform;
 import com.iocextractor.adapter.out.sink.csv.LowercaseTransform;
 import com.iocextractor.adapter.out.sink.csv.MatchHostValueProvider;
 import com.iocextractor.adapter.out.sink.csv.MatchUrlValueProvider;
@@ -203,6 +204,7 @@ public class AppConfig {
     private Map<String, Transform> transforms() {
         Map<String, Transform> transforms = new HashMap<>();
         transforms.put("lower", new LowercaseTransform());
+        transforms.put("lower-host", new LowerHostTransform());
         transforms.put("upper", new UppercaseTransform());
         transforms.put("strip-prefix", new StripPrefixTransform());
         return transforms;

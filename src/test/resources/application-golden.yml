@@ -1,0 +1,44 @@
+# Test profile for GoldenPipelineTest: redirects sinks to target/golden and uses
+# no lookup. Only ioc.sink + ioc.lookup are overridden; everything else (source,
+# refang, patterns, classify rules) is inherited from the main application.yml.
+ioc:
+  lookup:
+    path: "target/golden/none.csv"
+  sink:
+    csv:
+      delimiter: ";"
+      quote: "\""
+      null-literal: "NULL"
+    artifacts:
+      - name: masks
+        enabled: true
+        path: "target/golden/masks.csv"
+        accepts: [ IPV4, DOMAIN, URL ]
+        id: { strategy: ascending, start: auto }
+        columns:
+          - { name: id,              from: id }
+          - { name: mask,            from: value, transform: [ lower-host ] }
+          - { name: url_match,       from: match.url }
+          - { name: host_match,      from: match.host }
+          - { name: score,           from: const }
+          - { name: time_last_seen,  from: const }
+          - { name: time_first_seen, from: const }
+          - { name: threat_type,     from: const }
+          - { name: source,          from: source.label }
+          - { name: description,     from: const }
+      - name: hashes
+        enabled: true
+        path: "target/golden/hashes.csv"
+        accepts: [ MD5, SHA1, SHA256 ]
+        id: { strategy: ascending, start: 10024 }
+        columns:
+          - { name: id,              from: id }
+          - { name: hash_md5,        from: value, when-type: MD5,    transform: [ upper ] }
+          - { name: hash_sha256,     from: value, when-type: SHA256, transform: [ upper ] }
+          - { name: hash_sha1,       from: value, when-type: SHA1,   transform: [ upper ] }
+          - { name: score,           from: const }
+          - { name: time_last_seen,  from: const }
+          - { name: time_first_seen, from: const }
+          - { name: threat_type,     from: const }
+          - { name: source,          from: source.label, transform: [ "strip-prefix:Письмо " ] }
+          - { name: description,     from: const }

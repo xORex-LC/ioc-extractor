@@ -80,7 +80,7 @@ ioc:
         id: { strategy: ascending, start: auto }   # ascending; 'auto' = lookup max + 1
         columns:
           - { name: id,              from: id }
-          - { name: mask,            from: value, transform: [ lower ] }
+          - { name: mask,            from: value, transform: [ lower-host ] }
           - { name: url_match,       from: match.url }
           - { name: host_match,      from: match.host }
           - { name: score,           from: const }

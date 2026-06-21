@@ -52,7 +52,8 @@ ConfigurableRowMapper ──uses──▶ Map<key, ValueProvider>
 
 | Ключ | Действие |
 |---|---|
-| `lower` | в нижний регистр |
+| `lower` | в нижний регистр (всё значение) |
+| `lower-host` | в нижний регистр только host/scheme (путь/токен сохраняются) |
 | `upper` | в верхний регистр |
 | `strip-prefix:<arg>` | убрать префикс `<arg>` (напр. `strip-prefix:Письмо `) |
 
@@ -120,7 +121,7 @@ artifacts:
     id: { strategy: ascending, start: auto }
     columns:
       - { name: id,              from: id }
-      - { name: mask,            from: value, transform: [ lower ] }
+      - { name: mask,            from: value, transform: [ lower-host ] }
       - { name: url_match,       from: match.url }
       - { name: host_match,      from: match.host }
       - { name: score,           from: const }
