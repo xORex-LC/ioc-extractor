@@ -14,4 +14,50 @@
     <artifactId>ioc-domain</artifactId>
     <name>ioc-domain</name>
     <description>IOC bounded context: kernel language + refang/extract/feature/classify/attribute capabilities (framework-free, no ETL kernel)</description>
+
+    <dependencies>
+        <!-- Module-local ArchUnit guard for the intra-domain capability DAG. -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Hard compile-time guard: the domain stays free of frameworks/IO libs. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>ban-frameworks-in-domain</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <!-- Heavy frameworks/IO libs must never enter the domain.
+                                     slf4j/logback are guarded in main by ArchUnit (they leak
+                                     only via ArchUnit's own test tooling). -->
+                                <bannedDependencies>
+                                    <excludes>
+                                        <exclude>org.springframework:*</exclude>
+                                        <exclude>org.springframework.boot:*</exclude>
+                                        <exclude>org.apache.tika:*</exclude>
+                                        <exclude>org.apache.commons:commons-csv</exclude>
+                                        <exclude>commons-io:commons-io</exclude>
+                                        <exclude>com.google.guava:guava</exclude>
+                                        <exclude>com.google.re2j:re2j</exclude>
+                                        <exclude>info.picocli:*</exclude>
+                                    </excludes>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

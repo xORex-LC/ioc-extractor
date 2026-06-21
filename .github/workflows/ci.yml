@@ -5,6 +5,11 @@ on:
     branches: [ main ]
   pull_request:
 
+# A new push to the same ref cancels the in-progress run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,5 +23,7 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Build & test
-        run: ./mvnw -B -ntp verify
+      # Single gate: the reactor build runs ArchUnit + Enforcer + golden e2e.
+      # Module boundaries are enforced inside the build, not by extra CI steps.
+      - name: Build, test & verify boundaries
+        run: ./mvnw -B -ntp -T 1C verify
