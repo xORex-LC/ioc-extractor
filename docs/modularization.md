@@ -27,8 +27,8 @@
 ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <modules>)
 ├── platform/                      ← агностичные, переиспользуемые подсистемы
 │   ├── platform-bom               (BOM: управление версиями зависимостей)
-│   ├── platform-errors            (модель ошибок + порты их трансляции)
-│   ├── platform-diagnostics       (диагностика: каталог, порты, sinks/renderer)
+│   ├── platform-errors            (базовые ошибки/common-типы + порты трансляции)
+│   ├── platform-diagnostics       (диагностика: каталог, порты, sinks/renderer; зависит на platform-errors при DiagnosticException)
 │   ├── platform-observability     (логирование: MdcScope, LogEvent, ECS-конфиг)
 │   ├── platform-diagnostics-logging (bridge: DiagnosticSink → LogEvent)
 │   └── platform-regex             (PatternEngine SPI + re2j/jdk адаптеры)
@@ -81,10 +81,10 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain ─▶ platfo
 | Модуль | Сервисы |
 |---|---|
 | `platform-regex` | PatternEngine (SPI + RE2J/JDK) |
-| `platform-diagnostics` | Diagnostics (модель, каталог, порты, sinks/renderer) |
+| `platform-diagnostics` | Diagnostics (модель, каталог, порты, sinks/renderer); может зависеть на `platform-errors` для `DiagnosticException` |
 | `platform-observability` | Observability/logging: MdcScope, LogEvent, ECS-конфиг |
 | `platform-diagnostics-logging` | Bridge `DiagnosticSink` → LogEvent/SLF4J (`LoggingDiagnosticSink`); зависит на `platform-diagnostics` + `platform-observability` |
-| `platform-errors` | модель ошибок/трансляция (общие типы) |
+| `platform-errors` | базовые ошибки/common-типы и трансляция; нижний слой для `DiagnosticException` |
 | `ioc-domain` | Refanger, IndicatorExtractor, SourceAttributor, MatchClassifier, Deduplicator, модели |
 | `ioc-application` | Pipeline orchestrator (`ExtractIocsUseCase`), стадии, `Envelope`/`Result`, Aggregator/Retention (future) |
 | `adapter-source-tika` | SourceReader (Tika) |

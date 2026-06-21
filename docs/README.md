@@ -18,11 +18,13 @@
 | [modularization.md](modularization.md) | Дорожная карта многомодульности: Maven-реактор, выделение агностичной логики в модули (аналог uv-workspace) |
 | [cross-cutting.md](cross-cutting.md) | Сквозные подсистемы (логирование, диагностика, ошибки) как самостоятельные модули за портами |
 | [diagnostics.md](diagnostics.md) | Диагностика обработки данных: каталог кодов в коде, данные→сообщение, Result/Notification, bridge в logging |
+| [diagnostic-catalog.md](diagnostic-catalog.md) | Генерируемая карта диагностических кодов из `DiagnosticCatalogs` |
 | [logging.md](logging.md) | Operational logging и трассировка фонового сервиса: ECS JSON, rolling file, MDC, daemon/oneshot профили |
 | [logging-taxonomy.md](logging-taxonomy.md) | Таксономия логов: ECS mapping, `event.*`, project-specific поля `ioc.*`, связь с diagnostics |
 | [boundaries.md](boundaries.md) | Защита архитектурных границ: ArchUnit, Maven Enforcer, JPMS (дорожная карта) |
 | [conventions.md](conventions.md) | Стандарт Javadoc, конвенция «README в каждом каталоге» (+ шаблон), правила кода |
 | [roadmap.md](roadmap.md) | Живой план реализации по этапам: зависимости, критерии приёмки, проверка, статус |
+| [plan/](plan/) | Детальные планы реализации нетривиальных этапов roadmap |
 | [notes/](notes/) | Журнал решений/обсуждений (ADR-lite): почему выбрали так, какие альтернативы отклонили |
 
 ## Статус

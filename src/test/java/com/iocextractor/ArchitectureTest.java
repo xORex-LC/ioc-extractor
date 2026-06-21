@@ -43,6 +43,23 @@ class ArchitectureTest {
                     "..adapter..", "..bootstrap..", "org.springframework..");
 
     @ArchTest
+    static final ArchRule diagnostics_core_is_framework_and_adapter_free = noClasses()
+            .that().resideInAPackage("..diagnostics..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "org.springframework..", "org.slf4j..", "ch.qos.logback..",
+                    "..adapter..", "..bootstrap..", "..application.service..");
+
+    @ArchTest
+    static final ArchRule domain_does_not_depend_on_diagnostics_delivery = noClasses()
+            .that().resideInAPackage("..domain..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "..diagnostics.sink..", "..diagnostics.render..");
+
+    @ArchTest
+    static final ArchRule logging_diagnostic_sink_is_not_part_of_stage_6 = noClasses()
+            .should().haveSimpleName("LoggingDiagnosticSink");
+
+    @ArchTest
     static final ArchRule ports_are_interfaces = classes()
             .that().resideInAPackage("..application.port..")
             .and().haveSimpleNameNotEndingWith("Command")
