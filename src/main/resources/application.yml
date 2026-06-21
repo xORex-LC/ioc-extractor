@@ -75,7 +75,7 @@ ioc:
         path: "./dataframe/repListMasks_generated.csv"
         accepts: [ IPV4, DOMAIN, URL ]
         value-case: lower            # domains/urls stay lower-case
-        id: { strategy: descending, start: auto }   # 'auto' = continue from lookup max
+        id: { strategy: ascending, start: auto }   # ids are ascending; 'auto' = lookup max + 1
         header: "id;mask;url_match;host_match;score;time_last_seen;time_first_seen;threat_type;source;description"
       - name: hashes                 # file IOC -> hash list (separate schema)
         enabled: true
@@ -83,7 +83,7 @@ ioc:
         path: "./dataframe/hashes_generated.csv"
         accepts: [ MD5, SHA1, SHA256 ]
         value-case: upper            # hashes stored UPPERCASE in the reference
-        id: { strategy: ascending, start: auto }
+        id: { strategy: ascending, start: 10024 }   # explicit until a hash-aware lookup exists
         header: "id;hash_md5;hash_sha256;hash_sha1;score;time_last_seen;time_first_seen;threat_type;source;description"
         source-strip-prefix: "Письмо "   # masks keep 'Письмо …', hashes drop it
 

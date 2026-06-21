@@ -111,14 +111,14 @@ public class AppConfig {
                                                  LookupRepository lookup,
                                                  MatchPolicy matchPolicy,
                                                  IocProperties props) {
-        List<IocSink> sinks = buildSinks(props, matchPolicy);
+        List<IocSink> sinks = buildSinks(props, matchPolicy, lookup.maxId());
         return new IocExtractionService(reader, refanger, extractor, attributor,
                 lookup, sinks, props.lookup().deduplicate());
     }
 
     // ---- artifact assembly -------------------------------------------------
 
-    private List<IocSink> buildSinks(IocProperties props, MatchPolicy matchPolicy) {
+    private List<IocSink> buildSinks(IocProperties props, MatchPolicy matchPolicy, long autoBase) {
         CSVFormat writeFormat = writeFormat(props.sink().csv());
         List<IocSink> sinks = new ArrayList<>();
         for (IocProperties.Sink.Artifact artifact : props.sink().artifacts()) {
@@ -126,7 +126,7 @@ public class AppConfig {
                 continue;
             }
             RowMapper mapper = mapperFor(artifact, matchPolicy);
-            IdGenerator ids = new IdGenerator(strategyOf(artifact.id()), startOf(artifact.id()));
+            IdGenerator ids = new IdGenerator(strategyOf(artifact.id()), startOf(artifact.id(), autoBase));
             sinks.add(new CsvIocSink(
                     artifact.name(),
                     Path.of(artifact.path()),
@@ -154,15 +154,22 @@ public class AppConfig {
                 : IdGenerator.Strategy.ASCENDING;
     }
 
-    /** TODO: 'auto' should continue from the lookup's current max id. */
-    private long startOf(IocProperties.Sink.Artifact.Id id) {
+    /**
+     * Resolve the starting id. {@code auto} continues the ascending sequence from
+     * the lookup's current max id (+1); a numeric value is used verbatim.
+     */
+    private long startOf(IocProperties.Sink.Artifact.Id id, long autoBase) {
         if (id == null || id.start() == null) {
-            return 1L;
+            return autoBase + 1;
+        }
+        String start = id.start().trim();
+        if (start.equalsIgnoreCase("auto")) {
+            return autoBase + 1;
         }
         try {
-            return Long.parseLong(id.start().trim());
+            return Long.parseLong(start);
         } catch (NumberFormatException ignored) {
-            return 1L;
+            return autoBase + 1;
         }
     }
 

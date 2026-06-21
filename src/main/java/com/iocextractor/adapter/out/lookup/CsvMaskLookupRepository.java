@@ -20,7 +20,8 @@ import java.util.Set;
 
 /**
  * {@link LookupRepository} backed by the existing mask CSV artifact (the current
- * "storage"). Loads the {@code mask} column once for O(1) existence checks.
+ * "storage"). Loads the {@code mask} column once for O(1) existence checks and
+ * the highest {@code id} so a sink can continue the ascending id sequence.
  * A missing file is treated as empty storage (no cross-run dedup yet).
  *
  * <p>NOTE: mask-schema specific by design; a hash-aware lookup would be a
@@ -30,10 +31,11 @@ public final class CsvMaskLookupRepository implements LookupRepository {
 
     private static final Logger log = LoggerFactory.getLogger(CsvMaskLookupRepository.class);
 
-    private final Set<String> masks;
+    private final Set<String> masks = new HashSet<>();
+    private long maxId;
 
     public CsvMaskLookupRepository(Path path) {
-        this.masks = load(path);
+        load(path);
     }
 
     @Override
@@ -41,11 +43,15 @@ public final class CsvMaskLookupRepository implements LookupRepository {
         return masks.contains(indicator.value().toLowerCase(Locale.ROOT));
     }
 
-    private Set<String> load(Path path) {
-        Set<String> result = new HashSet<>();
+    @Override
+    public long maxId() {
+        return maxId;
+    }
+
+    private void load(Path path) {
         if (path == null || !Files.exists(path)) {
             log.info("Lookup artifact {} not found; starting with empty storage", path);
-            return result;
+            return;
         }
         CSVFormat format = CSVFormat.Builder.create()
                 .setDelimiter(';')
@@ -59,13 +65,24 @@ public final class CsvMaskLookupRepository implements LookupRepository {
             for (CSVRecord record : parser) {
                 String mask = record.isMapped("mask") ? record.get("mask") : null;
                 if (mask != null) {
-                    result.add(mask.toLowerCase(Locale.ROOT));
+                    masks.add(mask.toLowerCase(Locale.ROOT));
                 }
+                maxId = Math.max(maxId, parseId(record));
             }
         } catch (IOException e) {
             throw new IocExtractorException("Failed to load lookup artifact: " + path, e);
         }
-        log.info("Loaded {} existing masks for de-duplication", result.size());
-        return result;
+        log.info("Loaded {} existing masks (max id {}) for de-duplication", masks.size(), maxId);
+    }
+
+    private long parseId(CSVRecord record) {
+        if (!record.isMapped("id")) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(record.get("id").trim());
+        } catch (NumberFormatException | NullPointerException e) {
+            return 0L;
+        }
     }
 }
