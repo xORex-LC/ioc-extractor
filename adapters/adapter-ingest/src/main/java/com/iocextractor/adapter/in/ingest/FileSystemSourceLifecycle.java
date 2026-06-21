@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -66,9 +67,34 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
         return target;
     }
 
+    @Override
+    public Path fail(ArchivedSourceUnit source, String reason) {
+        Path target = failedDir.resolve(fileName(source.key(), source.processingPath()));
+        move(source.processingPath(), target);
+        writeErrorSidecar(target, reason);
+        return target;
+    }
+
+    @Override
+    public List<ArchivedSourceUnit> findProcessingSources() {
+        if (!Files.exists(processingDir)) {
+            return List.of();
+        }
+        try (var files = Files.list(processingDir)) {
+            return files
+                    .filter(Files::isRegularFile)
+                    .map(this::toArchivedSource)
+                    .filter(Objects::nonNull)
+                    .toList();
+        } catch (IOException e) {
+            throw new IocExtractorException("Failed to scan processing sources: " + processingDir, e);
+        }
+    }
+
     private String fileName(SourceKey key, Path source) {
         String original = source.getFileName() == null ? "source" : source.getFileName().toString();
-        return key.value() + "-" + original;
+        String prefix = key.value() + "-";
+        return original.startsWith(prefix) ? original : prefix + original;
     }
 
     private void move(Path source, Path target) {
@@ -90,6 +116,20 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
             Files.writeString(sidecar, reason == null ? "" : reason);
         } catch (IOException e) {
             throw new IocExtractorException("Failed to write ingest error sidecar: " + sidecar, e);
+        }
+    }
+
+    private ArchivedSourceUnit toArchivedSource(Path source) {
+        String filename = source.getFileName().toString();
+        int separator = filename.indexOf('-');
+        if (separator <= 0) {
+            return null;
+        }
+        try {
+            var detectedAt = Files.getLastModifiedTime(source).toInstant();
+            return new ArchivedSourceUnit(new SourceKey(filename.substring(0, separator)), source, detectedAt);
+        } catch (IOException e) {
+            throw new IocExtractorException("Failed to inspect processing source: " + source, e);
         }
     }
 }

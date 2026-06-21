@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.in.ingest;
 
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
+import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
 import com.iocextractor.application.port.in.ingest.RecoverIngestionUseCase;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
@@ -55,9 +56,10 @@ public class IngestFlowConfiguration {
     @Bean
     public FileSourceMessageHandler fileSourceMessageHandler(FileSourceHasher hasher,
                                                              IngestSourceUseCase useCase,
+                                                             RejectIngestionUseCase rejectUseCase,
                                                              IngestAdapterProperties properties,
                                                              Clock ingestClock) {
-        return new FileSourceMessageHandler(hasher, useCase, ingestClock,
+        return new FileSourceMessageHandler(hasher, useCase, rejectUseCase, ingestClock,
                 properties.retry().maxAttempts(), properties.retry().backoff());
     }
 

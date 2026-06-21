@@ -5,6 +5,7 @@ import com.iocextractor.application.port.in.ExtractionResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
 import com.iocextractor.application.port.in.ingest.IngestSourceResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
+import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
 import com.iocextractor.application.port.in.ingest.RecoverIngestionUseCase;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.PartitionSinkFactory;
@@ -22,7 +23,7 @@ import java.util.Objects;
  * ownership, durable status updates and the existing IOC extraction pipeline;
  * adapters remain responsible for file discovery, hashing and physical storage.
  */
-public final class IngestionService implements IngestSourceUseCase, RecoverIngestionUseCase {
+public final class IngestionService implements IngestSourceUseCase, RecoverIngestionUseCase, RejectIngestionUseCase {
 
     private final IngestionLedger ledger;
     private final SourceLifecycle sourceLifecycle;
@@ -43,24 +44,19 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     public IngestSourceResult ingest(IngestSourceCommand command) {
         Objects.requireNonNull(command, "command");
         var existing = ledger.find(command.key());
-        if (existing.isPresent() && existing.get().status() == IngestionStatus.SOURCE_ARCHIVED) {
-            sourceLifecycle.archiveDuplicate(command.source(), command.key());
-            return new IngestSourceResult(command.key(), IngestionStatus.SOURCE_ARCHIVED,
-                    true, existing.get().partitions(), null);
+        if (existing.isPresent()) {
+            return handleExisting(command, existing.get());
         }
 
-        SourceUnit unit = null;
+        SourceUnit unit = sourceLifecycle.claim(command.source(), command.key(), command.detectedAt());
         try {
-            unit = sourceLifecycle.claim(command.source(), command.key(), command.detectedAt());
             ledger.markClaimed(unit);
-            return processClaimed(unit);
         } catch (RuntimeException e) {
-            if (unit != null) {
-                sourceLifecycle.fail(unit, e.getMessage());
-            }
+            sourceLifecycle.fail(unit, e.getMessage());
             ledger.markFailed(command.key(), e.getMessage());
             throw e;
         }
+        return processClaimed(unit);
     }
 
     @Override
@@ -69,7 +65,37 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         for (IngestionRecord record : ledger.findIncomplete()) {
             results.add(recover(record));
         }
+        for (ArchivedSourceUnit orphan : sourceLifecycle.findProcessingSources()) {
+            if (ledger.find(orphan.key()).isEmpty()) {
+                sourceLifecycle.fail(orphan, "orphan processing source without ledger record");
+                ledger.markFailed(orphan.key(), "orphan processing source without ledger record");
+                results.add(new IngestSourceResult(orphan.key(), IngestionStatus.FAILED, false, List.of(), null));
+            }
+        }
         return results;
+    }
+
+    @Override
+    public void reject(SourceKey key, String reason) {
+        Objects.requireNonNull(key, "key");
+        var record = ledger.find(key);
+        if (record.isPresent()) {
+            failRecord(record.get(), reason);
+        }
+        ledger.markFailed(key, reason);
+    }
+
+    private IngestSourceResult handleExisting(IngestSourceCommand command, IngestionRecord record) {
+        if (record.status() == IngestionStatus.SOURCE_ARCHIVED) {
+            sourceLifecycle.archiveDuplicate(command.source(), command.key());
+            return new IngestSourceResult(command.key(), IngestionStatus.SOURCE_ARCHIVED,
+                    true, record.partitions(), null);
+        }
+        if (record.status() == IngestionStatus.FAILED) {
+            return new IngestSourceResult(command.key(), IngestionStatus.FAILED,
+                    false, record.partitions(), null);
+        }
+        return recover(record);
     }
 
     private IngestSourceResult recover(IngestionRecord record) {
@@ -110,5 +136,13 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         ledger.markSourceArchived(record.key(), archived);
         return new IngestSourceResult(record.key(), IngestionStatus.SOURCE_ARCHIVED,
                 false, record.partitions(), null);
+    }
+
+    private void failRecord(IngestionRecord record, String reason) {
+        if (record.processingPath() == null) {
+            return;
+        }
+        var source = new ArchivedSourceUnit(record.key(), record.processingPath(), record.detectedAt());
+        sourceLifecycle.fail(source, reason);
     }
 }

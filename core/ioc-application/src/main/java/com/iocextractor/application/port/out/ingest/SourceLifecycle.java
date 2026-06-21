@@ -6,6 +6,7 @@ import com.iocextractor.application.ingest.SourceUnit;
 
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Filesystem-agnostic source ownership lifecycle.
@@ -21,4 +22,8 @@ public interface SourceLifecycle {
     Path archiveDuplicate(Path source, SourceKey key);
 
     Path fail(SourceUnit unit, String reason);
+
+    Path fail(ArchivedSourceUnit source, String reason);
+
+    List<ArchivedSourceUnit> findProcessingSources();
 }

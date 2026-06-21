@@ -1,6 +1,7 @@
 package com.iocextractor.application.ingest;
 
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
+import com.iocextractor.application.port.in.ingest.IngestSourceResult;
 import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.application.port.out.LookupRepository;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class IngestionServiceTest {
 
@@ -69,6 +71,53 @@ class IngestionServiceTest {
         assertThat(lifecycle.events).containsExactly("archiveDuplicate");
     }
 
+    @Test
+    void leaves_claimed_source_for_retry_and_rejects_only_after_final_failure() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        var service = new IngestionService(ledger, lifecycle, source -> {
+            throw new IllegalStateException("partition unavailable");
+        }, extractionFactory());
+
+        assertThatThrownBy(() -> service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source.html"), key, Instant.parse("2026-06-22T00:00:00Z"))))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(ledger.find(key)).get()
+                .extracting(IngestionRecord::status)
+                .isEqualTo(IngestionStatus.CLAIMED);
+        assertThat(lifecycle.events).containsExactly("claim");
+
+        service.reject(key, "partition unavailable");
+
+        assertThat(ledger.find(key)).get()
+                .extracting(IngestionRecord::status)
+                .isEqualTo(IngestionStatus.FAILED);
+        assertThat(lifecycle.events).containsExactly("claim", "failRecovered");
+    }
+
+    @Test
+    void recovery_marks_processing_orphans_as_failed() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        lifecycle.processingSources = List.of(new ArchivedSourceUnit(
+                key, Path.of("processing/abc123-source.html"), Instant.parse("2026-06-22T00:00:00Z")));
+        var service = new IngestionService(ledger, lifecycle, source -> new PartitionSinks(List.of(), List.of()),
+                extractionFactory());
+
+        var results = service.recoverIncomplete();
+
+        assertThat(results).singleElement()
+                .extracting(IngestSourceResult::status)
+                .isEqualTo(IngestionStatus.FAILED);
+        assertThat(ledger.find(key)).get()
+                .extracting(IngestionRecord::status)
+                .isEqualTo(IngestionStatus.FAILED);
+        assertThat(lifecycle.events).containsExactly("failRecovered");
+    }
+
     private IocExtractionServiceFactory extractionFactory() {
         return new IocExtractionServiceFactory(
                 source -> "example.com",
@@ -109,6 +158,7 @@ class IngestionServiceTest {
 
     private static final class MemoryLifecycle implements SourceLifecycle {
         private final List<String> events = new ArrayList<>();
+        private List<ArchivedSourceUnit> processingSources = List.of();
 
         @Override
         public SourceUnit claim(Path source, SourceKey key, Instant detectedAt) {
@@ -138,6 +188,17 @@ class IngestionServiceTest {
         public Path fail(SourceUnit unit, String reason) {
             events.add("fail");
             return Path.of("failed/" + unit.processingPath().getFileName());
+        }
+
+        @Override
+        public Path fail(ArchivedSourceUnit source, String reason) {
+            events.add("failRecovered");
+            return Path.of("failed/" + source.processingPath().getFileName());
+        }
+
+        @Override
+        public List<ArchivedSourceUnit> findProcessingSources() {
+            return processingSources;
         }
     }
 

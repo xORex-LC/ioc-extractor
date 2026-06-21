@@ -2,6 +2,7 @@ package com.iocextractor.adapter.in.ingest;
 
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
+import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
@@ -27,17 +28,20 @@ public final class FileSourceMessageHandler {
 
     private final FileSourceHasher hasher;
     private final IngestSourceUseCase useCase;
+    private final RejectIngestionUseCase rejectUseCase;
     private final Clock clock;
     private final int maxAttempts;
     private final Duration backoff;
 
     public FileSourceMessageHandler(FileSourceHasher hasher,
                                     IngestSourceUseCase useCase,
+                                    RejectIngestionUseCase rejectUseCase,
                                     Clock clock,
                                     int maxAttempts,
                                     Duration backoff) {
         this.hasher = Objects.requireNonNull(hasher, "hasher");
         this.useCase = Objects.requireNonNull(useCase, "useCase");
+        this.rejectUseCase = Objects.requireNonNull(rejectUseCase, "rejectUseCase");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.maxAttempts = Math.max(1, maxAttempts);
         this.backoff = backoff == null ? Duration.ZERO : backoff;
@@ -72,6 +76,7 @@ public final class FileSourceMessageHandler {
                 .field(LogField.IOC_SOURCE_CONTENT_HASH, key.value())
                 .message("source ingestion failed")
                 .log(last);
+        rejectUseCase.reject(key, last == null ? "source ingestion failed" : last.getMessage());
         throw new IocExtractorException("Source ingestion failed after retries: " + source, last);
     }
 
