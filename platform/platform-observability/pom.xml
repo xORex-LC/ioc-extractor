@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.iocextractor</groupId>
+        <artifactId>ioc-extractor-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>ioc-platform-observability</artifactId>
+    <name>ioc-platform-observability</name>
+    <description>Operational logging helpers: MdcScope, LogEvent, taxonomy constants, pipeline log observer</description>
+
+    <dependencies>
+        <!-- Pipeline observer bridges the ETL kernel's PipelineObserver port to logging. -->
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-etl</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <!-- Test: a real MDC implementation is needed to assert scope behavior. -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

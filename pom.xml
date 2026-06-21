@@ -31,12 +31,56 @@
     </properties>
 
     <modules>
+        <module>platform/platform-errors</module>
+        <module>platform/platform-diagnostics</module>
+        <module>platform/platform-etl</module>
+        <module>platform/platform-observability</module>
+        <module>platform/platform-diagnostics-logging</module>
         <module>bootstrap/ioc-app</module>
     </modules>
+
+    <!-- Test stack shared by every module. -->
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 
     <dependencyManagement>
         <dependencies>
             <!-- Internal modules: version aligned with the reactor. -->
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-platform-errors</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-platform-diagnostics</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-platform-etl</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-platform-observability</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-platform-diagnostics-logging</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>com.iocextractor</groupId>
                 <artifactId>ioc-app</artifactId>

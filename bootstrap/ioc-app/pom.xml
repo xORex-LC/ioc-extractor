@@ -16,6 +16,28 @@
     <description>Spring Boot executable application and composition root</description>
 
     <dependencies>
+        <!-- Internal platform modules -->
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-errors</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-diagnostics</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-etl</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-observability</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-diagnostics-logging</artifactId>
+        </dependency>
+
         <!-- Core: DI, config binding, validation, logging (no web) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
