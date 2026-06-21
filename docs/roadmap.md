@@ -43,6 +43,7 @@
 | 1 ArchUnit-границы | `done` |
 | 2 нормализация + признаки + `HostClassifier`/PSL | `done` |
 | 3 4-вариантный rule-based `MatchPolicy` | `done` |
-| 4–10 | `todo` |
+| 4 конфигурируемое заполнение артефактов | `done` |
+| 5–10 | `todo` |
 
 (обновляется по мере выполнения: `todo` → `in progress` → `done`)

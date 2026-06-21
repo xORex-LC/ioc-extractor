@@ -37,5 +37,7 @@ dataframe/*
 !dataframe/hashes_list.csv
 !dataframe/masks_list.csv
 
+.vscode
+
 CLAUDE.md
 AGENTS.md

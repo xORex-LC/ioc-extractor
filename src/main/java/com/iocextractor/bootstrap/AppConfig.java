@@ -3,11 +3,21 @@ package com.iocextractor.bootstrap;
 import com.iocextractor.adapter.out.lookup.CsvMaskLookupRepository;
 import com.iocextractor.adapter.out.regex.JdkRegexPatternEngine;
 import com.iocextractor.adapter.out.regex.Re2jPatternEngine;
+import com.iocextractor.adapter.out.sink.csv.ColumnSpec;
+import com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper;
 import com.iocextractor.adapter.out.sink.csv.CsvIocSink;
-import com.iocextractor.adapter.out.sink.csv.FileHashRowMapper;
 import com.iocextractor.adapter.out.sink.csv.IdGenerator;
-import com.iocextractor.adapter.out.sink.csv.NetworkMaskRowMapper;
+import com.iocextractor.adapter.out.sink.csv.IdValueProvider;
+import com.iocextractor.adapter.out.sink.csv.IndicatorValueProvider;
+import com.iocextractor.adapter.out.sink.csv.LowercaseTransform;
+import com.iocextractor.adapter.out.sink.csv.MatchHostValueProvider;
+import com.iocextractor.adapter.out.sink.csv.MatchUrlValueProvider;
 import com.iocextractor.adapter.out.sink.csv.RowMapper;
+import com.iocextractor.adapter.out.sink.csv.SourceLabelValueProvider;
+import com.iocextractor.adapter.out.sink.csv.StripPrefixTransform;
+import com.iocextractor.adapter.out.sink.csv.Transform;
+import com.iocextractor.adapter.out.sink.csv.UppercaseTransform;
+import com.iocextractor.adapter.out.sink.csv.ValueProvider;
 import com.iocextractor.adapter.out.source.TikaSourceReader;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.out.IocSink;
@@ -44,6 +54,7 @@ import org.springframework.context.annotation.Configuration;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -159,12 +170,14 @@ public class AppConfig {
 
     private List<IocSink> buildSinks(IocProperties props, MatchPolicy matchPolicy, long autoBase) {
         CSVFormat writeFormat = writeFormat(props.sink().csv());
+        Map<String, ValueProvider> providers = valueProviders(matchPolicy);
+        Map<String, Transform> transforms = transforms();
         List<IocSink> sinks = new ArrayList<>();
         for (IocProperties.Sink.Artifact artifact : props.sink().artifacts()) {
             if (!artifact.enabled()) {
                 continue;
             }
-            RowMapper mapper = mapperFor(artifact, matchPolicy);
+            RowMapper mapper = new ConfigurableRowMapper(columnSpecs(artifact), providers, transforms);
             IdGenerator ids = new IdGenerator(strategyOf(artifact.id()), startOf(artifact.id(), autoBase));
             sinks.add(new CsvIocSink(
                     artifact.name(),
@@ -177,14 +190,29 @@ public class AppConfig {
         return sinks;
     }
 
-    private RowMapper mapperFor(IocProperties.Sink.Artifact artifact, MatchPolicy matchPolicy) {
-        boolean lower = "lower".equalsIgnoreCase(artifact.valueCase());
-        boolean upper = "upper".equalsIgnoreCase(artifact.valueCase());
-        return switch (artifact.mapper()) {
-            case "network-mask" -> new NetworkMaskRowMapper(matchPolicy, lower);
-            case "file-hash" -> new FileHashRowMapper(upper, artifact.sourceStripPrefix());
-            default -> throw new IocExtractorException("Unknown row mapper: " + artifact.mapper());
-        };
+    private Map<String, ValueProvider> valueProviders(MatchPolicy matchPolicy) {
+        Map<String, ValueProvider> providers = new HashMap<>();
+        providers.put("id", new IdValueProvider());
+        providers.put("value", new IndicatorValueProvider());
+        providers.put("source.label", new SourceLabelValueProvider());
+        providers.put("match.url", new MatchUrlValueProvider(matchPolicy));
+        providers.put("match.host", new MatchHostValueProvider(matchPolicy));
+        return providers;
+    }
+
+    private Map<String, Transform> transforms() {
+        Map<String, Transform> transforms = new HashMap<>();
+        transforms.put("lower", new LowercaseTransform());
+        transforms.put("upper", new UppercaseTransform());
+        transforms.put("strip-prefix", new StripPrefixTransform());
+        return transforms;
+    }
+
+    private List<ColumnSpec> columnSpecs(IocProperties.Sink.Artifact artifact) {
+        return artifact.columns().stream()
+                .map(column -> new ColumnSpec(column.name(), column.from(),
+                        column.value(), column.whenType(), column.transform()))
+                .toList();
     }
 
     private IdGenerator.Strategy strategyOf(IocProperties.Sink.Artifact.Id id) {

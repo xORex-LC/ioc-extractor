@@ -64,9 +64,9 @@ ioc:
       - { when: [],                   url-match: "u:hAS",     host-match: "h:dAS" } # variant 1: registrable/IP/onion
 
   # ---- Output artifacts (sinks) ----------------------------------------------
-  #  Each artifact has its OWN schema, id-sequence and normalization.
-  #  Add a new artifact = add an entry here + a row-mapper bean (OCP),
-  #  the pipeline routes indicators to artifacts by `accepts` type.
+  #  Each artifact has its OWN schema (columns), id-sequence and normalization.
+  #  Filling is declarative: `columns` use named value providers + transforms.
+  #  Add a new artifact = add an entry here (no code); routed by `accepts` type.
   sink:
     csv:
       delimiter: ";"
@@ -75,21 +75,36 @@ ioc:
     artifacts:
       - name: masks                  # network IOC -> reputation-list masks
         enabled: true
-        mapper: network-mask
         path: "./dataframe/repListMasks_generated.csv"
         accepts: [ IPV4, DOMAIN, URL ]
-        value-case: lower            # domains/urls stay lower-case
-        id: { strategy: ascending, start: auto }   # ids are ascending; 'auto' = lookup max + 1
-        header: "id;mask;url_match;host_match;score;time_last_seen;time_first_seen;threat_type;source;description"
+        id: { strategy: ascending, start: auto }   # ascending; 'auto' = lookup max + 1
+        columns:
+          - { name: id,              from: id }
+          - { name: mask,            from: value, transform: [ lower ] }
+          - { name: url_match,       from: match.url }
+          - { name: host_match,      from: match.host }
+          - { name: score,           from: const }
+          - { name: time_last_seen,  from: const }
+          - { name: time_first_seen, from: const }
+          - { name: threat_type,     from: const }
+          - { name: source,          from: source.label }
+          - { name: description,     from: const }
       - name: hashes                 # file IOC -> hash list (separate schema)
         enabled: true
-        mapper: file-hash
         path: "./dataframe/hashes_generated.csv"
         accepts: [ MD5, SHA1, SHA256 ]
-        value-case: upper            # hashes stored UPPERCASE in the reference
         id: { strategy: ascending, start: 10024 }   # explicit until a hash-aware lookup exists
-        header: "id;hash_md5;hash_sha256;hash_sha1;score;time_last_seen;time_first_seen;threat_type;source;description"
-        source-strip-prefix: "Письмо "   # masks keep 'Письмо …', hashes drop it
+        columns:
+          - { name: id,              from: id }
+          - { name: hash_md5,        from: value, when-type: MD5,    transform: [ upper ] }
+          - { name: hash_sha256,     from: value, when-type: SHA256, transform: [ upper ] }
+          - { name: hash_sha1,       from: value, when-type: SHA1,   transform: [ upper ] }
+          - { name: score,           from: const }
+          - { name: time_last_seen,  from: const }
+          - { name: time_first_seen, from: const }
+          - { name: threat_type,     from: const }
+          - { name: source,          from: source.label, transform: [ "strip-prefix:Письмо " ] }
+          - { name: description,     from: const }
 
   # ---- Lookup repository (dedup / cross-checks against existing artifact) -----
   lookup:

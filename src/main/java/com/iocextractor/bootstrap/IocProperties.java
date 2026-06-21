@@ -50,15 +50,20 @@ public record IocProperties(
         public record Artifact(
                 @NotBlank String name,
                 boolean enabled,
-                @NotBlank String mapper,
                 @NotBlank String path,
                 @NotEmpty List<IndicatorType> accepts,
-                String valueCase,
                 Id id,
-                String header,
-                String sourceStripPrefix) {
+                @NotEmpty @Valid List<Column> columns) {
 
             public record Id(String strategy, String start) {
+            }
+
+            public record Column(
+                    @NotBlank String name,
+                    @NotBlank String from,
+                    String value,
+                    IndicatorType whenType,
+                    List<String> transform) {
             }
         }
     }
