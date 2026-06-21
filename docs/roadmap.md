@@ -29,7 +29,7 @@
 | 7 | Конвейер Pipes-and-Filters (`Stage`/`Envelope`/`Result`); эволюция `IocExtractionService` | 6 | стадии за `Stage`; вывод не меняется; collect-and-continue работает | mvn test + прогон | да |
 | 8 | Observability/logging ([logging.md](logging.md), [logging-taxonomy.md](logging-taxonomy.md)): ECS, `MdcScope` из `Envelope.meta`, seed-таксономия, stage-события, bridge `LoggingDiagnosticSink`, daemon ECS-file | 6,7 | MDC без протечек (изолир. тест); ECS-ключи стабильны; diagnostics→`ioc.diagnostic.*` через bridge; daemon rolling ECS-file | mvn test + прогон | да |
 | 9 | Многомодульность ([modularization.md](modularization.md)) | 1,7,8 | Maven reactor; вынос platform/core/adapters/bootstrap; границы держатся компиляцией, Enforcer и ArchUnit | `./mvnw -B -ntp -T 1C verify` | да |
-| 10 | Инжест-демон ([ingestion.md](ingestion.md)): `IngestSourceUseCase`, watch (SI), автомат каталогов, `IngestionLedger` (статусы), партиции | 6,7,8 | whole-file поток; статус-машина + компенсации; идемпотентность | mvn test + e2e | да |
+| 10 | Инжест-демон ([ingestion.md](ingestion.md)): `ioc.runtime.mode`, `IngestSourceUseCase`, watch/poll (SI), автомат каталогов, `IngestionLedger`, partition output | 6,7,8,9 | daemon whole-file поток; CLI остаётся `oneshot`; статус-машина + компенсации; идемпотентность; канон. агрегатор не входит | mvn test + daemon e2e | да |
 | 11 | Агрегатор (партиции→канон, стабильный `dedupKey→id`) + (опц.) retention | 10 | стабильные id при повторной агрегации; retention off по умолчанию | mvn test + e2e | да |
 
 Порядок гибкий — этапы 0–1 дешёвые и включают остальное; 2→3→4 — трек «доменной

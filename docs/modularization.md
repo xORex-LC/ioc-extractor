@@ -96,7 +96,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `adapter-sink-csv` | IocSink + ArtifactFiller (provider/transform) |
 | `adapter-lookup-csv` | LookupRepository |
 | `adapter-psl` | HostClassifier (PSL/Guava) |
-| `adapter-ingest` | Watch ingest: `IngestSourceUseCase`(in), `IngestionLedger`; SourceFeed adapter-local (Spring Integration) — future |
+| `adapter-ingest` | Watch ingest: `IngestSourceUseCase`(in), `SourceLifecycle`, `IngestionLedger`; SourceFeed adapter-local (Spring Integration) — stage 10 |
 | `adapter-cli-picocli` | входной CLI |
 | `ioc-app` (bootstrap) | composition root, исполняемый jar |
 
