@@ -18,6 +18,7 @@
 | `0006-diagnostics-implementation-plan.md` | План реализации этапа 6: diagnostics |
 | `0007-pipeline-envelope-implementation-plan.md` | План реализации этапа 7: Pipeline / Envelope |
 | `0008-logging-observability-implementation-plan.md` | План реализации этапа 8: logging / observability |
+| `0009-modularization-implementation-plan.md` | План реализации этапа 9: многомодульность |
 | `README.md` | Назначение каталога и правила ведения планов |
 
 ## Зависимости

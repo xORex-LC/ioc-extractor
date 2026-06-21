@@ -21,23 +21,32 @@
 ## Модель
 
 ```java
-// design sketch — тонкое, framework-free ядро
-record Envelope<T>(T payload, Meta meta, List<Diagnostic> diagnostics) {}
-record Meta(String runId, String source, String stage, Instant ts, Map<String,Object> attrs) {}
+// реализованное тонкое, framework-free ядро (application.pipeline)
+record Envelope<T>(T payload, EnvelopeMeta meta, List<Diagnostic> diagnostics) {}
+record EnvelopeMeta(String runId, String sourceId, Path sourcePath,
+                    StageName stage, Instant createdAt, Map<String,Object> attributes) {}
 
 interface Stage<I, O> {                 // Filter
+    StageName name();
     Envelope<O> process(Envelope<I> in);
 }
 
-sealed interface Result<T> permits Ok, Err {}   // per-item исход (значение | диагностики)
+record Result<T>(T value, List<Diagnostic> diagnostics) {}   // per-item/стадийный исход
 ```
 
 - **Envelope** неизменяем; стадия возвращает новый Envelope, обогащая `meta`/
-  `diagnostics`. Payload — доменные данные (text → RawIndicator[] → Indicator[] → rows).
-- **Stage** — чистый Filter; композиция `s1.andThen(s2)…` собирает Pipeline.
-- **Result** — для пер-элементных исходов внутри стадии (один «битый» индикатор
-  не роняет батч); диагностики копятся в Envelope.
+  `diagnostics`. Payload — доменные данные (text → RawIndicator[] → Indicator[] → rows),
+  типизирован payload-record-ами (`SourceText`, `RefangedText`, … `ArtifactWriteSummary`).
+- **Stage** — чистый Filter; порядок собирает `Pipeline.start().then(s1).then(s2)…`,
+  исполняет `PipelineRunner` и применяет `FailurePolicy` после каждой стадии
+  (`Notification.throwIfRejected` бросает `DiagnosticException` при stop).
+- **Result** — тонкий `record` (value + diagnostics) для пер-элементных исходов
+  внутри стадии; накопленные диагностики живут в Envelope (один источник истины).
 - **FailurePolicy** (Strategy): `fail-fast | collect-and-continue` — между стадиями.
+- **PipelineObserver** (port) — framework-free seam наблюдаемости: `PipelineRunner`
+  открывает stage-scope и шлёт `stageStarted/Completed/Failed` через порт. ECS/MDC
+  реализация (`LoggingPipelineObserver`) живёт в `observability`; ядро конвейера
+  остаётся без logging-зависимостей (default — `NoopPipelineObserver`).
 
 ## Стадии конвейера
 
@@ -64,10 +73,13 @@ read → refang → extract → attribute → deduplicate → fill → sink
 
 ## Эволюция
 
-Текущий `IocExtractionService` — упрощённый оркестратор (вызовы по шагам). Он
-эволюционирует в явный `Pipeline` из `Stage`-ов с `Envelope`/`Result`, не меняя
-доменные сервисы (они уже за портами). Шаг по [modularization.md](modularization.md):
-стадии живут в `ioc-application`, носитель/`Result` — кандидаты в `platform-*`.
+**Реализовано (этап 7):** `IocExtractionService` стал тонким orchestrator-ом —
+строит initial `Envelope`, запускает `PipelineRunner`, маппит финальный payload в
+`ExtractionResult`. Шаги вынесены в `Stage`-ы (`application.pipeline.stage`), порядок
+— в `Pipeline`, диагностики копятся в `Envelope`. Output не изменился
+(`GoldenPipelineTest`). Доменные сервисы не тронуты (они уже за портами). Шаг по
+[modularization.md](modularization.md): стадии живут в `ioc-application`,
+носитель/`Result` — кандидаты в `platform-*`.
 
 ## Референсы
 

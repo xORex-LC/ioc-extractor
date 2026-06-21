@@ -18,8 +18,15 @@ public class DiagnosticException extends IocExtractorException {
      * @param diagnostic fatal diagnostic
      */
     public DiagnosticException(Diagnostic diagnostic) {
-        super(diagnostic.code().id(), diagnostic.cause().orElse(null));
+        super(message(diagnostic), diagnostic.cause().orElse(null));
         this.diagnostic = Objects.requireNonNull(diagnostic, "diagnostic");
+    }
+
+    private static String message(Diagnostic diagnostic) {
+        Objects.requireNonNull(diagnostic, "diagnostic");
+        return diagnostic.context().isEmpty()
+                ? diagnostic.code().id()
+                : diagnostic.code().id() + " " + diagnostic.context();
     }
 
     /**

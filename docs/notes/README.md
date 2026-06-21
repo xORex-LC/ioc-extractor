@@ -18,11 +18,12 @@
 | `0000-foundations.md` | Фундамент: гексагон+onion, Maven, Spring Boot (CLI), RE2/J+JDK, Tika, артефакты masks+hashes |
 | `0001-streaming-ingestion.md` | Стриминговый демон-инжест: детект, автомат каталогов, идемпотентность, retention, параллелизм |
 | `0002-output-mapping-and-matching.md` | Конфигурируемое заполнение артефактов + 4-вариантная классификация (PSL), id-фикс |
-| `0003-diagnostics.md` | Подсистема диагностики и логирования: каталог, шаблоны, JSON-схема |
+| `0003-diagnostics.md` | Подсистема диагностики: каталог, шаблоны (JSON-схема №8 отменена в пользу ECS — см. 0007) |
 | `0004-extraction-and-test-corpus.md` | Типы/нормализация (.onion, telegram), тест-корпус и изоляция тестов |
 | `0005-services-and-pipeline.md` | DDD-сервисы, ETL-конвейер (P&F+Envelope+Result), границы, модульность |
 | `0006-design-review-refinements.md` | Уточнения по итогам ревью: SourceFeed/driving-порт, PSL в адаптере, статусы инжеста, стабильные id, лимит DSL |
 | `0007-logging-observability.md` | Логирование/observability как отдельная подсистема: ECS, MDC←Envelope, отмена 0003 №8 |
+| `0008-stage-6-8-implementation-followups.md` | Ревью реализации этапов 6–8: устранённые находки + отложенный техдолг (D1 интеграция diagnostics, D2 слой observability, D3 ECS-типы) |
 
 ## Формат заметки
 

@@ -171,11 +171,12 @@ run id.
 (`ioc.indicator.*`, `ioc.dedup.key`) — только в коротком scope и преимущественно
 на `DEBUG`/`TRACE`.
 
-Нужен helper, наполняемый из `Envelope.meta`:
+Helper `MdcScope`, наполняемый из `Envelope.meta` (реализовано, этап 8):
 
 ```java
-try (MdcScope ignored = MdcScope.of("ioc.run.id", runId)
-        .put("ioc.stage", "extract")) {
+try (MdcScope ignored = MdcScope.open()
+        .put(LogField.IOC_RUN_ID, runId)
+        .put(LogField.IOC_STAGE, "extract")) {
     // stage work
 }
 ```

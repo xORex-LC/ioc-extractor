@@ -64,8 +64,11 @@ public final class PipelineRunner {
                     throw ex;
                 }
             } catch (RuntimeException ex) {
+                // Stage/policy failures (already reported above) and any unchecked
+                // failure from closing the observer scope propagate unchanged.
                 throw ex;
             } catch (Exception ex) {
+                // Only a checked exception from AutoCloseable.close() reaches here.
                 throw new StageExecutionException("Failed to close stage scope: " + stage.name(), ex);
             }
         }

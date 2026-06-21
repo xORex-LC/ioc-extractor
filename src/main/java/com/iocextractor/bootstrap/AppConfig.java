@@ -177,11 +177,12 @@ public class AppConfig {
                                                  SourceAttributor attributor,
                                                  LookupRepository lookup,
                                                  MatchPolicy matchPolicy,
+                                                 DiagnosticSink diagnosticSink,
                                                  IocProperties props) {
         List<IocSink> sinks = buildSinks(props, matchPolicy, lookup.maxId());
         return new IocExtractionService(reader, refanger, extractor, attributor,
                 lookup, sinks, props.lookup().deduplicate(), props.observability().mode(),
-                new LoggingPipelineObserver());
+                new LoggingPipelineObserver(), diagnosticSink);
     }
 
     // ---- artifact assembly -------------------------------------------------

@@ -6,10 +6,10 @@ import com.iocextractor.application.port.in.ExtractionResult;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
-import com.iocextractor.observability.ObservabilityMode;
 import com.iocextractor.observability.logging.LogEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -31,6 +31,7 @@ public final class ExtractCommand implements Callable<Integer> {
     private static final Logger log = LoggerFactory.getLogger(ExtractCommand.class);
 
     private final ExtractIocsUseCase useCase;
+    private final String observabilityMode;
 
     @Option(names = {"-s", "--source"}, required = true,
             description = "Path to the source document (.htm/.docx/.pdf/...).")
@@ -40,8 +41,10 @@ public final class ExtractCommand implements Callable<Integer> {
             description = "Extract and report, but do not write any artifact.")
     private boolean dryRun;
 
-    public ExtractCommand(ExtractIocsUseCase useCase) {
+    public ExtractCommand(ExtractIocsUseCase useCase,
+                          @Value("${ioc.observability.mode:oneshot}") String observabilityMode) {
         this.useCase = useCase;
+        this.observabilityMode = observabilityMode;
     }
 
     @Override
@@ -49,7 +52,7 @@ public final class ExtractCommand implements Callable<Integer> {
         LogEvents.info(log)
                 .action(EventAction.COMMAND_START)
                 .outcome(EventOutcome.UNKNOWN)
-                .field(LogField.IOC_MODE, ObservabilityMode.ONESHOT.value())
+                .field(LogField.IOC_MODE, observabilityMode)
                 .field(LogField.IOC_SOURCE_PATH, source)
                 .message("command started")
                 .log();
@@ -61,7 +64,7 @@ public final class ExtractCommand implements Callable<Integer> {
             LogEvents.info(log)
                     .action(EventAction.COMMAND_COMPLETE)
                     .outcome(EventOutcome.SUCCESS)
-                    .field(LogField.IOC_MODE, ObservabilityMode.ONESHOT.value())
+                    .field(LogField.IOC_MODE, observabilityMode)
                     .field(LogField.IOC_SOURCE_PATH, source)
                     .message("command completed")
                     .log();
@@ -70,7 +73,7 @@ public final class ExtractCommand implements Callable<Integer> {
             LogEvents.error(log)
                     .action(EventAction.COMMAND_COMPLETE)
                     .outcome(EventOutcome.FAILURE)
-                    .field(LogField.IOC_MODE, ObservabilityMode.ONESHOT.value())
+                    .field(LogField.IOC_MODE, observabilityMode)
                     .field(LogField.IOC_SOURCE_PATH, source)
                     .message("command failed")
                     .log(ex);
