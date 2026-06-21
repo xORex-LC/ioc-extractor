@@ -1,7 +1,12 @@
 package com.iocextractor.bootstrap;
 
 import com.iocextractor.domain.model.IndicatorType;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
 import java.util.List;
 import java.util.Map;
@@ -9,41 +14,45 @@ import java.util.Map;
 /**
  * Type-safe binding of the {@code ioc.*} configuration tree. This is the only
  * place the external configuration shape is known; the domain stays config-free.
+ *
+ * <p>{@link Validated} makes an incomplete configuration fail fast at startup
+ * with a clear message, rather than surfacing as an obscure NPE later.
  */
+@Validated
 @ConfigurationProperties(prefix = "ioc")
 public record IocProperties(
         String engine,
-        Source source,
-        Refang refang,
-        Map<IndicatorType, String> patterns,
-        Classify classify,
-        Sink sink,
-        Lookup lookup) {
+        @NotNull @Valid Source source,
+        @NotNull @Valid Refang refang,
+        @NotEmpty Map<IndicatorType, String> patterns,
+        @NotNull @Valid Classify classify,
+        @NotNull @Valid Sink sink,
+        @NotNull @Valid Lookup lookup) {
 
-    public record Source(String type, String charset, List<String> sectionMarkers) {
+    public record Source(@NotBlank String type, String charset, @NotNull List<String> sectionMarkers) {
     }
 
-    public record Refang(List<Rule> rules) {
-        public record Rule(String from, String to) {
+    public record Refang(@NotNull @Valid List<Rule> rules) {
+        public record Rule(@NotNull String from, @NotNull String to) {
         }
     }
 
-    public record Classify(Codes bareHost, Codes fullUrl) {
-        public record Codes(String urlMatch, String hostMatch) {
+    public record Classify(@NotNull @Valid Codes bareHost, @NotNull @Valid Codes fullUrl) {
+        public record Codes(@NotBlank String urlMatch, String hostMatch) {
         }
     }
 
-    public record Sink(Csv csv, List<Artifact> artifacts) {
+    public record Sink(@NotNull @Valid Csv csv, @NotEmpty @Valid List<Artifact> artifacts) {
 
-        public record Csv(String delimiter, String quote, String nullLiteral) {
+        public record Csv(@NotBlank String delimiter, @NotBlank String quote, @NotBlank String nullLiteral) {
         }
 
         public record Artifact(
-                String name,
+                @NotBlank String name,
                 boolean enabled,
-                String mapper,
-                String path,
-                List<IndicatorType> accepts,
+                @NotBlank String mapper,
+                @NotBlank String path,
+                @NotEmpty List<IndicatorType> accepts,
                 String valueCase,
                 Id id,
                 String header,
@@ -54,6 +63,6 @@ public record IocProperties(
         }
     }
 
-    public record Lookup(String type, String path, boolean deduplicate) {
+    public record Lookup(String type, @NotBlank String path, boolean deduplicate) {
     }
 }
