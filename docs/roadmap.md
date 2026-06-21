@@ -41,6 +41,7 @@
 |---|---|
 | 0 dev-infra (`mvnw`, CI, валидация конфига, context-тест) | `done` |
 | 1 ArchUnit-границы | `done` |
-| 2–10 | `todo` |
+| 2 нормализация + признаки + `HostClassifier`/PSL | `done` |
+| 3–10 | `todo` |
 
 (обновляется по мере выполнения: `todo` → `in progress` → `done`)
