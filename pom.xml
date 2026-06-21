@@ -38,6 +38,12 @@
         <module>platform/platform-diagnostics-logging</module>
         <module>core/ioc-domain</module>
         <module>core/ioc-application</module>
+        <module>adapters/adapter-regex-re2j</module>
+        <module>adapters/adapter-psl</module>
+        <module>adapters/adapter-source-tika</module>
+        <module>adapters/adapter-lookup-csv</module>
+        <module>adapters/adapter-sink-csv</module>
+        <module>adapters/adapter-cli-picocli</module>
         <module>bootstrap/ioc-app</module>
     </modules>
 
@@ -91,6 +97,36 @@
             <dependency>
                 <groupId>com.iocextractor</groupId>
                 <artifactId>ioc-application</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-adapter-regex-re2j</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-adapter-psl</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-adapter-source-tika</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-adapter-lookup-csv</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-adapter-sink-csv</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-adapter-cli-picocli</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
