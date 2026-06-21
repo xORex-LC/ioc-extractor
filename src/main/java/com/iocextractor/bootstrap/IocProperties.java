@@ -37,8 +37,8 @@ public record IocProperties(
         }
     }
 
-    public record Classify(@NotNull @Valid Codes bareHost, @NotNull @Valid Codes fullUrl) {
-        public record Codes(@NotBlank String urlMatch, String hostMatch) {
+    public record Classify(@NotEmpty @Valid List<Rule> rules) {
+        public record Rule(@NotNull List<String> when, @NotBlank String urlMatch, String hostMatch) {
         }
     }
 

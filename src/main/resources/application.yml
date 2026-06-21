@@ -53,11 +53,15 @@ ioc:
     IPV4:   "\\b(?:\\d{1,3}\\.){3}\\d{1,3}(?:[:/][^\\s;,<>\"']*)?"
     DOMAIN: "\\b(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,}(?:/[^\\s;,<>\"']*)?"
 
-  # ---- Mask classification policy (url_match / host_match codes) --------------
-  #  Observed convention from the manual reference CSV. Tune here, not in code.
+  # ---- Mask classification: declarative rules over indicator features --------
+  #  First-match-wins. Authoritative 4-variant scheme; tune rules/codes here,
+  #  not in code. Predicate keys come from the domain FeaturePredicates registry.
   classify:
-    bare-host:   { url-match: "u:hAS",      host-match: "h:dAS" }   # host/domain/IP, no path/port
-    full-url:    { url-match: "u:hEX,dEX",  host-match: null    }   # has path and/or port
+    rules:
+      - { when: [ has-query ],        url-match: "u:hAS,pEX", host-match: null }   # variant 4: URL with params
+      - { when: [ has-path-or-port ], url-match: "u:hEX,dEX", host-match: null }   # variant 3: host with path/port
+      - { when: [ is-subdomain ],     url-match: "u:hEX",     host-match: "h:dEX" } # variant 2: exact subdomain
+      - { when: [],                   url-match: "u:hAS",     host-match: "h:dAS" } # variant 1: registrable/IP/onion
 
   # ---- Output artifacts (sinks) ----------------------------------------------
   #  Each artifact has its OWN schema, id-sequence and normalization.

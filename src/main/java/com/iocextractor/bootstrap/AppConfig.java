@@ -17,8 +17,17 @@ import com.iocextractor.application.service.IocExtractionService;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.domain.attribute.MarkerSourceAttributor;
 import com.iocextractor.domain.attribute.SourceAttributor;
-import com.iocextractor.domain.classify.DefaultMatchPolicy;
+import com.iocextractor.adapter.out.psl.PslHostClassifier;
+import com.iocextractor.domain.classify.FeaturePredicate;
+import com.iocextractor.domain.classify.FeaturePredicates;
 import com.iocextractor.domain.classify.MatchPolicy;
+import com.iocextractor.domain.classify.MatchRule;
+import com.iocextractor.domain.classify.RuleBasedMatchPolicy;
+import com.iocextractor.domain.feature.DefaultIndicatorFeatureExtractor;
+import com.iocextractor.domain.feature.DefaultIndicatorNormalizer;
+import com.iocextractor.domain.feature.HostClassifier;
+import com.iocextractor.domain.feature.IndicatorFeatureExtractor;
+import com.iocextractor.domain.feature.IndicatorNormalizer;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.extract.PatternEngine;
 import com.iocextractor.domain.extract.RegexIndicatorExtractor;
@@ -68,12 +77,42 @@ public class AppConfig {
     }
 
     @Bean
-    public MatchPolicy matchPolicy(IocProperties props) {
-        IocProperties.Classify.Codes bare = props.classify().bareHost();
-        IocProperties.Classify.Codes full = props.classify().fullUrl();
-        return new DefaultMatchPolicy(
-                new MaskMatch(blankToNull(bare.urlMatch()), blankToNull(bare.hostMatch())),
-                new MaskMatch(blankToNull(full.urlMatch()), blankToNull(full.hostMatch())));
+    public IndicatorNormalizer indicatorNormalizer() {
+        return new DefaultIndicatorNormalizer();
+    }
+
+    @Bean
+    public HostClassifier hostClassifier() {
+        return new PslHostClassifier();
+    }
+
+    @Bean
+    public IndicatorFeatureExtractor indicatorFeatureExtractor(IndicatorNormalizer normalizer,
+                                                               HostClassifier hostClassifier) {
+        return new DefaultIndicatorFeatureExtractor(normalizer, hostClassifier);
+    }
+
+    @Bean
+    public MatchPolicy matchPolicy(IocProperties props, IndicatorFeatureExtractor featureExtractor) {
+        Map<String, FeaturePredicate> registry = FeaturePredicates.defaults();
+        List<MatchRule> rules = props.classify().rules().stream()
+                .map(rule -> new MatchRule(
+                        resolvePredicates(rule.when(), registry),
+                        new MaskMatch(blankToNull(rule.urlMatch()), blankToNull(rule.hostMatch()))))
+                .toList();
+        return new RuleBasedMatchPolicy(featureExtractor, rules);
+    }
+
+    private List<FeaturePredicate> resolvePredicates(List<String> keys, Map<String, FeaturePredicate> registry) {
+        List<FeaturePredicate> predicates = new ArrayList<>();
+        for (String key : keys) {
+            FeaturePredicate predicate = registry.get(key);
+            if (predicate == null) {
+                throw new IocExtractorException("Unknown classify predicate: " + key);
+            }
+            predicates.add(predicate);
+        }
+        return predicates;
     }
 
     @Bean
