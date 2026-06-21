@@ -1,4 +1,4 @@
-package com.iocextractor.application.pipeline;
+package com.iocextractor.platform.etl;
 
 /**
  * Observer port for pipeline operational events.

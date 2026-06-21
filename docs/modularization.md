@@ -1,14 +1,12 @@
 # Многомодульность
 
-Дорожная карта перехода от единого модуля к **Maven-реактору**: вся агностичная,
-выделяемая бизнес-логика, сервисы, подсистемы и инфраструктура — в отдельных
-модулях, оркестрируемых Maven. Аналогия — workspace-модель `uv` в Python:
-один корень управляет набором независимо собираемых пакетов с явными
+Проект переведён в **Maven-реактор**: агностичные platform-подсистемы, core,
+adapters и bootstrap собираются как отдельные Maven-модули с явными
 зависимостями.
 
-> Статус: **план**. Сейчас проект — один модуль. Ниже — целевая структура и
-> поэтапный переход. Границы модулей подкрепляются проверками из
-> [boundaries.md](boundaries.md).
+> Статус: **реализовано на этапе 9**. Фактическая структура ниже. Границы
+> модулей подкрепляются Maven-зависимостями, Maven Enforcer и ArchUnit
+> ([boundaries.md](boundaries.md)).
 
 ## Зачем
 
@@ -26,16 +24,16 @@
 ```
 ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <modules>)
 ├── platform/                      ← агностичные, переиспользуемые подсистемы
-│   ├── platform-bom               (BOM: управление версиями зависимостей)
-│   ├── platform-errors            (базовые ошибки/common-типы + порты трансляции)
-│   ├── platform-diagnostics       (диагностика: каталог, порты, sinks/renderer; зависит на platform-errors при DiagnosticException)
-│   ├── platform-observability     (логирование: MdcScope, LogEvent, ECS-конфиг)
-│   ├── platform-diagnostics-logging (bridge: DiagnosticSink → LogEvent)
-│   └── platform-regex             (PatternEngine SPI + re2j/jdk адаптеры)
+│   ├── platform-errors            (базовые ошибки/common-типы)
+│   ├── platform-diagnostics       (диагностика: catalog, result/policy, sinks/renderer)
+│   ├── platform-etl               (generic Envelope/Stage/Pipeline/PipelineRunner)
+│   ├── platform-observability     (MdcScope, LogEvent, taxonomy, PipelineObserver impl)
+│   └── platform-diagnostics-logging (bridge: DiagnosticSink → LogEvent)
 ├── core/
-│   ├── ioc-domain                 (чистый домен; зависит только на platform-*)
-│   └── ioc-application            (порты in/out + use cases; зависит на ioc-domain)
+│   ├── ioc-domain                 (единый IOC bounded context; capability = пакеты + ArchUnit-DAG)
+│   └── ioc-application            (порты in/out + use cases + IOC ETL stages)
 ├── adapters/
+│   ├── adapter-regex-re2j         (PatternEngine → RE2J/JDK fallback)
 │   ├── adapter-source-tika        (SourceReader → Tika)
 │   ├── adapter-sink-csv           (IocSink + ArtifactFiller → commons-csv)
 │   ├── adapter-lookup-csv         (LookupRepository → CSV)
@@ -45,22 +43,27 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
     └── ioc-app                    (Spring Boot, composition root, исполняемый jar)
 ```
 
-> Имена выше — артефакты Maven; в реальных `artifactId` несут общий префикс
-> (`ioc-…`). Карта «сервис → модуль» — ниже.
+> ArtifactId имеют префикс `ioc-*`, например `ioc-platform-etl`,
+> `ioc-application`, `ioc-adapter-sink-csv`, `ioc-app`.
 
 ### Направление зависимостей между модулями
 
 ```
-ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain ─▶ platform/*
-                     └────────────────────────────────────▶ platform/*
+ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
+   │              │             │              └────────────▶ platform/*
+   │              │             └───────────────────────────▶ platform/*
+   │              └─────────────────────────────────────────▶ platform/*
+   └────────────────────────────────────────────────────────▶ platform/*
 ```
 
 - Базовые `platform/*` ни от кого внутри проекта не зависят. Интеграционные
   platform-модули с явным названием bridge (например,
   `platform-diagnostics-logging`) могут зависеть только на те platform-модули,
   которые они связывают, и не должны тянуть application/domain/adapter.
-- `ioc-domain` зависит максимум на `platform/*` (errors/regex SPI) — без фреймворков.
-- `ioc-application` зависит на `ioc-domain`.
+- `platform-etl` зависит только на diagnostics/errors и не знает про IOC domain.
+- `ioc-domain` не зависит на application/adapters/bootstrap/platform-etl и
+  остаётся framework-free.
+- `ioc-application` зависит на `ioc-domain`, `platform-etl` и diagnostics.
 - `adapters/*` зависят на `ioc-application` (+ свои библиотеки).
 - `ioc-app` (bootstrap) зависит на всё и собирает исполняемый артефакт.
 
@@ -72,7 +75,8 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain ─▶ platfo
    меньше у него зависимостей; технологическая специфика — наружу, в адаптеры.
 3. **Зависимости только вниз/внутрь.** Реактор + проверки запрещают обратные и
    циклические связи.
-4. **Версии — централизованно** через `platform-bom`; модули не дублируют версии.
+4. **Версии — централизованно** через root parent `dependencyManagement`; модули
+   не дублируют версии.
 
 ## Карта «сервис → модуль»
 
@@ -80,13 +84,14 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain ─▶ platfo
 
 | Модуль | Сервисы |
 |---|---|
-| `platform-regex` | PatternEngine (SPI + RE2J/JDK) |
 | `platform-diagnostics` | Diagnostics (модель, каталог, порты, sinks/renderer); может зависеть на `platform-errors` для `DiagnosticException` |
-| `platform-observability` | Observability/logging: MdcScope, LogEvent, ECS-конфиг |
+| `platform-etl` | Generic ETL kernel: `Envelope`, `Stage`, `Pipeline`, `PipelineRunner`, `PipelineObserver` |
+| `platform-observability` | Observability/logging: MdcScope, LogEvent, logging taxonomy, `LoggingPipelineObserver` |
 | `platform-diagnostics-logging` | Bridge `DiagnosticSink` → LogEvent/SLF4J (`LoggingDiagnosticSink`); зависит на `platform-diagnostics` + `platform-observability` |
 | `platform-errors` | базовые ошибки/common-типы и трансляция; нижний слой для `DiagnosticException` |
-| `ioc-domain` | Refanger, IndicatorExtractor, SourceAttributor, MatchClassifier, Deduplicator, модели |
-| `ioc-application` | Pipeline orchestrator (`ExtractIocsUseCase`), стадии, `Envelope`/`Result`, Aggregator/Retention (future) |
+| `ioc-domain` | Refanger, IndicatorExtractor, SourceAttributor, MatchPolicy, модели, feature extraction |
+| `ioc-application` | Pipeline orchestrator (`ExtractIocsUseCase`), ports, IOC stage implementations, payload records |
+| `adapter-regex-re2j` | PatternEngine implementation (RE2J + JDK fallback) |
 | `adapter-source-tika` | SourceReader (Tika) |
 | `adapter-sink-csv` | IocSink + ArtifactFiller (provider/transform) |
 | `adapter-lookup-csv` | LookupRepository |
@@ -97,26 +102,39 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain ─▶ platfo
 
 ## Гранулярность
 
-Решение: **сервисы — это уже изолированные единицы за портами** (готовы к выносу),
-но физически нарезаем модули **поэтапно и укрупнённо**, а не «модуль на каждый
-сервис» сразу:
-- сначала границы по слоям (`platform-*`, `ioc-domain`, `ioc-application`, `adapters`),
-- более тонкое дробление (отдельные `platform-*`/`adapter-*`) — по мере роста и
-  потребности в параллельной разработке.
+Решение: **средняя гранулярность**.
 
-Параллельная разработка возможна **уже до** физического дробления: сервис изолирован
-портом, и его границу стережёт ArchUnit ([boundaries.md](boundaries.md)). Это даёт
-выгоды модульности без преждевременной сложности реактора (KISS).
+- `platform-*` и `adapter-*` вынесены в отдельные артефакты, потому что у них
+  независимые роли и/или внешние зависимости.
+- `ioc-domain` оставлен единым Maven-модулем: это один bounded context с общим
+  языком IOC. Capability (`model/refang/extract/feature/classify/attribute`)
+  разделены пакетами и защищены внутридоменным ArchUnit-DAG.
+- Первым кандидатом на будущий вынос из domain остаётся `refang`, если появится
+  реальное переиспользование вне этого приложения.
+
+Подробное решение: [notes/0009](notes/0009-modularization-granularity.md).
 
 ## Поэтапный переход
 
-1. **Этап 0 (сейчас):** один модуль, слои разнесены по пакетам, границы — на
-   дисциплине.
-2. **Этап 1:** выделить parent-pom (`packaging=pom`) и BOM; ввести ArchUnit для
-   фиксации правил зависимостей пакетов (см. [boundaries.md](boundaries.md)).
-3. **Этап 2:** вынести `ioc-domain` и `ioc-application` в отдельные модули
-   (главный выигрыш — компиляционная гарантия чистоты домена).
-4. **Этап 3:** вынести адаптеры и сквозные подсистемы (`platform/*`) в свои модули.
-5. **Этап 4:** `bootstrap` как тонкий исполняемый модуль-сборщик.
+Этап 9 выполнен инкрементально:
 
-Переход — инкрементальный: на каждом этапе сборка и тесты остаются зелёными.
+1. parent reactor + `platform-etl`/`StageId`;
+2. platform modules;
+3. core modules;
+4. adapter modules;
+5. Enforcer + ArchUnit guardrails + CI reactor build.
+
+Дальнейшее дробление domain capability — только по критерию независимого
+жизненного цикла/переиспользования.
+
+## Отложенный долг
+
+Не входит в реализацию этапа 9:
+
+- Spring Modulith/canvas для дополнительной верхнеуровневой визуализации модулей;
+- `dependencyConvergence` и более жёсткие Maven Enforcer build-hygiene правила;
+- JPMS `module-info.java`.
+
+Эти проверки можно добавить отдельным техническим шагом после стабилизации
+reactor-структуры. Базовая защита границ уже обеспечена Maven module graph,
+текущими Enforcer rules и ArchUnit.

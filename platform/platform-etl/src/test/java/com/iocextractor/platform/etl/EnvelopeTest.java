@@ -1,10 +1,9 @@
-package com.iocextractor.application.pipeline;
+package com.iocextractor.platform.etl;
 
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -20,14 +19,15 @@ class EnvelopeTest {
 
     @Test
     void meta_is_clock_controlled_and_carries_source_identity() {
-        var meta = EnvelopeMeta.initial("run-1", Path.of("src/test/resources/source.html"), true, CLOCK);
+        var meta = EnvelopeMeta.initial("run-1", "source-1", CLOCK)
+                .withAttribute("dryRun", true);
 
         assertThat(meta.runId()).isEqualTo("run-1");
-        assertThat(meta.sourcePath()).isAbsolute();
-        assertThat(meta.sourceId()).isEqualTo(meta.sourcePath().toString());
+        assertThat(meta.sourceId()).isEqualTo("source-1");
         assertThat(meta.stage()).isEqualTo(StageId.INITIAL);
         assertThat(meta.createdAt()).isEqualTo(CLOCK.instant());
-        assertThat(meta.booleanAttribute(EnvelopeMeta.DRY_RUN, false)).isTrue();
+        assertThat(meta.booleanAttribute("dryRun", false)).isTrue();
+        assertThat(meta.stringAttribute("dryRun")).isEqualTo("true");
     }
 
     @Test
@@ -58,7 +58,7 @@ class EnvelopeTest {
     }
 
     private EnvelopeMeta meta() {
-        return EnvelopeMeta.initial("run-1", Path.of("source.html"), false, CLOCK);
+        return EnvelopeMeta.initial("run-1", "source.html", CLOCK);
     }
 
     private Diagnostic diagnostic() {

@@ -25,13 +25,13 @@ observability подключён через порт `PipelineObserver`, три 
 | F3 | `DiagnosticException` нёс как message только `code.id()` | message = `id + context` |
 | F4 | Спекулятивный `DiagnosticCategory.VALIDATION` без кодов | удалён (YAGNI) |
 | F5 | `PipelineRunner` redundant-catch читался как dead code | прокомментировано: внешние `catch` относятся только к `close()` |
+| F6 | `platform-observability` зависел на `application.pipeline` через `LoggingPipelineObserver` | на этапе 9 reusable ETL-контракты вынесены в `platform-etl` (`com.iocextractor.platform.etl`); observability больше не зависит на `ioc-application` |
 
 ## Отложенный долг (открыто)
 
 | # | Долг | Почему отложено | Куда |
 |---|---|---|---|
 | D1 | **Диагностика не интегрирована в реальный поток.** Нет ни одного producer-а `Diagnostic`: адаптеры/стадии бросают `IocExtractorException`. Следствие — `FailurePolicy` отрабатывает вхолостую, `DiagnosticSink` дренируется пустым. | Планы 6/7 явно отложили «массовую замену исключений на `Result`»; producer-ы вводятся «по мере появления реальных ошибок». Seam уже живой (F1). | следующий под-этап: первые producer-ы (`SOURCE.READ_FAILED`, `SINK.WRITE_FAILED`, `PIPELINE.ITEM_SKIPPED`/dedup) |
-| D2 | **`observability` → `application.pipeline`.** `LoggingPipelineObserver` зависит на `application.pipeline` (адаптер порта). Для `platform-observability` это инверсия слоя — базовый платформенный модуль не должен зависеть на `ioc-application`. | Сегодня легитимный port-adapter; перенос противоречит закоммиченной раскладке плана 0008 и является структурным решением. | этап 9 (модуляризация): bridge переезжает в `adapter`/`bootstrap` seam либо порт инвертируется |
 | D3 | **ECS-типы `event.duration` / `ioc.rows` — строки.** Идут через MDC, а SLF4J MDC хранит только `String`; `logback-ecs-encoder` сериализует их как строки, тогда как ECS типизирует `event.duration` как `long`. Риск mapping-конфликта в Elasticsearch. | Числовые per-event поля через MDC чисто не сделать; форсить костыль не стали. | при подключении внешнего collector / строгого ECS-маппинга |
 | D4 | `DiagnosticCatalogTest` сканирует `codes/` и ассертит protocol `file` — сломается, если тесты однажды поедут из jar. | Сейчас не воспроизводится (тесты гоняются из `target/classes`). | при упаковке тестов в jar |
 
@@ -49,5 +49,3 @@ observability подключён через порт `PipelineObserver`, три 
 
 - Когда вводить D1: отдельным малым под-этапом до модуляризации или вместе с
   первым реальным источником ошибок (инжест, этап 10)?
-- D2 решать перепиской в адаптер или инверсией порта (callback-интерфейс в
-  observability, который реализует application) — определить на этапе 9.

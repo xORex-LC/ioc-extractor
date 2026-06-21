@@ -1,7 +1,7 @@
 package com.iocextractor.observability.logging;
 
-import com.iocextractor.application.pipeline.EnvelopeMeta;
-import com.iocextractor.application.pipeline.PipelineObserver;
+import com.iocextractor.platform.etl.EnvelopeMeta;
+import com.iocextractor.platform.etl.PipelineObserver;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
@@ -21,9 +21,9 @@ public final class LoggingPipelineObserver implements PipelineObserver {
         return MdcScope.open()
                 .put(LogField.IOC_RUN_ID, meta.runId())
                 .put(LogField.IOC_SOURCE_ID, meta.sourceId())
-                .put(LogField.IOC_SOURCE_PATH, meta.sourcePath())
+                .put(LogField.IOC_SOURCE_PATH, meta.attributes().get(LogField.IOC_SOURCE_PATH.key()))
                 .put(LogField.IOC_STAGE, meta.stage().value())
-                .put(LogField.IOC_MODE, meta.attributes().get(EnvelopeMeta.MODE));
+                .put(LogField.IOC_MODE, meta.attributes().get(LogField.IOC_MODE.key()));
     }
 
     @Override

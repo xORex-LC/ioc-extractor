@@ -1,33 +1,32 @@
-# com.iocextractor.application.pipeline
+# com.iocextractor.platform.etl
 
 ## Назначение
 
 Framework-free ядро ETL-конвейера: `Envelope`, `EnvelopeMeta`, `Stage`,
-`Pipeline` и runner. Пакет задаёт модель Pipes-and-Filters для application
-слоя, не зная о Spring, CLI, Tika, CSV или logging/MDC.
+`StageId`, `Pipeline`, `PipelineRunner` и `PipelineObserver`. Пакет задаёт
+универсальную модель Pipes-and-Filters и не знает о IOC-предметке, Spring, CLI,
+Tika, CSV или logging/MDC.
 
-**Правило слоя:** pipeline core зависит только на application/domain contracts и
-diagnostics. Порядок стадий задаётся в `Pipeline`, а не внутри stage-классов.
+**Правило слоя:** ETL core зависит только на diagnostics/errors. Порядок стадий
+задаётся в `Pipeline`, а не внутри stage-классов.
 
 ## Структура
 
 | Подпапка / файл | Назначение |
 |---|---|
 | `Envelope.java` | Immutable payload + metadata + diagnostics |
-| `EnvelopeMeta.java` | Run/source/stage metadata для pipeline и будущей observability |
+| `EnvelopeMeta.java` | Generic run/source/stage metadata + extension attributes |
 | `Stage.java` | Контракт одного filter-шагa |
 | `Pipeline.java` | Type-safe список стадий |
 | `PipelineRunner.java` | Последовательное исполнение стадий + `FailurePolicy` |
 | `PipelineObserver.java` | Порт operational events для runner |
 | `NoopPipelineObserver.java` | No-op observer для тестов/простых конструкторов |
-| `StageName.java` | Stable stage identifiers |
+| `StageId.java` | Generic stable stage identifier |
 | `StageExecutionException.java` | Ошибка неверного исполнения pipeline |
-| `payload/` | Типизированные payload records между стадиями |
-| `stage/` | Concrete stages текущего ETL |
 
 ## Зависимости
 
-**Зависит от:** `application.port.*`, `domain`, `diagnostics`.
+**Зависит от:** `ioc-platform-diagnostics`, `ioc-platform-errors`.
 
 **Не импортируется:** `adapter`, `bootstrap`, Spring, Logback/MDC, Tika,
-commons-csv, picocli.
+commons-csv, picocli, `ioc-domain`, `ioc-application`.

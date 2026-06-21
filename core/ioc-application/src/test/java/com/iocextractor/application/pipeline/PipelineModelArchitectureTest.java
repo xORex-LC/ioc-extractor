@@ -6,6 +6,8 @@ import com.iocextractor.application.pipeline.stage.ExtractIndicatorsStage;
 import com.iocextractor.application.pipeline.stage.ReadSourceStage;
 import com.iocextractor.application.pipeline.stage.RefangStage;
 import com.iocextractor.application.pipeline.stage.WriteArtifactsStage;
+import com.iocextractor.platform.etl.Stage;
+import com.iocextractor.platform.etl.StageId;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;

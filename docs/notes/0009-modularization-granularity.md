@@ -58,8 +58,7 @@ platform (5) + core (`ioc-domain` + `ioc-application` = 2) + adapters (6) + `ioc
 Доменный разрез на 6 артефактов **не уменьшает coupling** (он уже низкий через
 контракты+ArchUnit), а лишь добавляет релизную церемонию (6 версий/PR) к
 изменению, которое по природе кросс-секущее. Артефакт окупается при
-**независимой компиляции/релизе/переиспользовании**, а не ради наглядности —
-наглядность даёт пакет + Spring Modulith canvas.
+**независимой компиляции/релизе/переиспользовании**, а не ради наглядности.
 
 ### 4. Критерий выноса доменной capability в свой артефакт
 
@@ -76,29 +75,26 @@ platform (5) + core (`ioc-domain` + `ioc-application` = 2) + adapters (6) + `ioc
 ### 5. Защита границ — слоями
 
 - **Maven reactor deps** — базовый compile-time барьер;
-- **Maven Enforcer** (`bannedDependencies`, `dependencyConvergence`) — нет
+- **Maven Enforcer** (`bannedDependencies`, toolchain/plugin guards) — нет
   Spring/Tika/CSV/Guava/RE2J в core/platform;
 - **ArchUnit** — внутридоменный DAG capability (`refang` ни на кого; `classify` →
   `feature`+`model`; `extract`/`attribute` → `model`; без циклов);
-- **Spring Modulith** — верификация **верхнего слоя** (`platform/domain/
-  application/adapter/bootstrap`) + генерация C4/canvas для наглядности.
-  Нюанс: модуль Modulith по умолчанию = прямой подпакет пакета приложения,
-  поэтому capability домена он как отдельные модули не видит — это зона ArchUnit.
+- **Отложено как долг:** `dependencyConvergence`, Spring Modulith/canvas и JPMS.
+  Для этапа 9 достаточно Maven reactor + Enforcer + ArchUnit.
 
 ## Следствия
 
-- План 0009 правится: единый `ioc-domain` вместо 6 доменных модулей; добавлены
-  Spring Modulith и внутридоменный ArchUnit-DAG; зафиксирован критерий выноса и
-  `refang` как кандидат №1.
+- План 0009 правится: единый `ioc-domain` вместо 6 доменных модулей; добавлен
+  внутридоменный ArchUnit-DAG; зафиксирован критерий выноса и `refang` как
+  кандидат №1. Spring Modulith/canvas и `dependencyConvergence` не входят в
+  реализацию этапа 9 и остаются отдельным долгом.
 - Горизонтальная нарезка (по шагам) принята осознанно; вертикальная (по типу IOC)
   не нужна, т.к. ось типов вынесена в конфиг.
 
 ## Открытые вопросы
 
-- `StageName`: generic `StageId` в `platform-etl` или IOC-enum в `ioc-application`
-  (план по умолчанию — platform-contract без IOC-enum).
+- `StageName` решён: generic `StageId` живёт в `platform-etl`, IOC-specific stage
+  implementations/payloads остаются в `ioc-application`.
 - Regex SPI: `PatternEngine` в `ioc-domain` (внутри extract) vs отдельный
   `platform-regex-api` (по умолчанию — порт в extract, impl в adapter).
-- Подтвердить, что Modulith корректно распознаёт верхние слои под пакетом
-  `com.iocextractor` (`domain`/`application`/`adapter`/`diagnostics`/
-  `observability`/`bootstrap`).
+- Spring Modulith/canvas — отдельный долг после стабилизации reactor-структуры.

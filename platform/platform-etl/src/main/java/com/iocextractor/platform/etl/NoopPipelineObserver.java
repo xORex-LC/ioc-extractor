@@ -1,4 +1,4 @@
-package com.iocextractor.application.pipeline;
+package com.iocextractor.platform.etl;
 
 /**
  * Pipeline observer that intentionally does nothing.

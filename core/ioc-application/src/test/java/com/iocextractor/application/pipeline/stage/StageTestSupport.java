@@ -1,7 +1,8 @@
 package com.iocextractor.application.pipeline.stage;
 
-import com.iocextractor.application.pipeline.Envelope;
-import com.iocextractor.application.pipeline.EnvelopeMeta;
+import com.iocextractor.application.pipeline.PipelineMetaAttributes;
+import com.iocextractor.platform.etl.Envelope;
+import com.iocextractor.platform.etl.EnvelopeMeta;
 import com.iocextractor.application.port.in.ExtractionCommand;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
@@ -21,11 +22,18 @@ final class StageTestSupport {
 
     static Envelope<ExtractionCommand> commandEnvelope(boolean dryRun) {
         var command = new ExtractionCommand(Path.of("input.html"), dryRun);
-        return Envelope.of(command, EnvelopeMeta.initial("run-1", command.source(), dryRun, CLOCK));
+        return Envelope.of(command, meta(command.source(), dryRun));
     }
 
     static <T> Envelope<T> envelope(T payload, boolean dryRun) {
-        return Envelope.of(payload, EnvelopeMeta.initial("run-1", Path.of("input.html"), dryRun, CLOCK));
+        return Envelope.of(payload, meta(Path.of("input.html"), dryRun));
+    }
+
+    private static EnvelopeMeta meta(Path source, boolean dryRun) {
+        var normalized = source.toAbsolutePath().normalize();
+        return EnvelopeMeta.initial("run-1", normalized.toString(), CLOCK)
+                .withAttribute(PipelineMetaAttributes.SOURCE_PATH, normalized)
+                .withAttribute(PipelineMetaAttributes.DRY_RUN, dryRun);
     }
 
     static Indicator indicator(String value) {

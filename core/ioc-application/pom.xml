@@ -29,17 +29,5 @@
             <artifactId>ioc-platform-diagnostics</artifactId>
         </dependency>
 
-        <!-- Test: PipelineRunnerTest asserts MDC scoping via the observability helper,
-             which needs a real MDC implementation (logback) on the test classpath. -->
-        <dependency>
-            <groupId>com.iocextractor</groupId>
-            <artifactId>ioc-platform-observability</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>ch.qos.logback</groupId>
-            <artifactId>logback-classic</artifactId>
-            <scope>test</scope>
-        </dependency>
     </dependencies>
 </project>

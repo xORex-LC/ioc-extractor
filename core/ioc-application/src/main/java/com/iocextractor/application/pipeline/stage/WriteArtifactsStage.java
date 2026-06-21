@@ -1,12 +1,12 @@
 package com.iocextractor.application.pipeline.stage;
 
-import com.iocextractor.application.pipeline.Envelope;
-import com.iocextractor.application.pipeline.EnvelopeMeta;
-import com.iocextractor.application.pipeline.Stage;
-import com.iocextractor.application.pipeline.StageId;
 import com.iocextractor.application.pipeline.payload.ArtifactWriteSummary;
 import com.iocextractor.application.pipeline.payload.RetainedIndicators;
+import com.iocextractor.application.pipeline.PipelineMetaAttributes;
 import com.iocextractor.application.port.out.IocSink;
+import com.iocextractor.platform.etl.Envelope;
+import com.iocextractor.platform.etl.Stage;
+import com.iocextractor.platform.etl.StageId;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,7 +37,7 @@ public final class WriteArtifactsStage implements Stage<RetainedIndicators, Arti
     public Envelope<ArtifactWriteSummary> process(Envelope<RetainedIndicators> input) {
         var payload = input.payload();
         var written = new LinkedHashMap<String, Integer>();
-        if (!input.meta().booleanAttribute(EnvelopeMeta.DRY_RUN, false)) {
+        if (!input.meta().booleanAttribute(PipelineMetaAttributes.DRY_RUN, false)) {
             for (IocSink sink : sinks) {
                 written.put(sink.name(), sink.write(payload.retained()));
             }

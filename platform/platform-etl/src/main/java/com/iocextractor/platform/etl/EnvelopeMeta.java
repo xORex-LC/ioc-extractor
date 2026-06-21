@@ -1,6 +1,5 @@
-package com.iocextractor.application.pipeline;
+package com.iocextractor.platform.etl;
 
-import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -10,27 +9,22 @@ import java.util.Objects;
 /**
  * Immutable metadata that travels with a pipeline envelope.
  *
- * @param runId one extraction run id
+ * <p>The ETL kernel owns only generic correlation and stage metadata. Concrete
+ * pipelines add application-specific values through {@code attributes}.
+ *
+ * @param runId one pipeline run id
  * @param sourceId stable source id within the run
- * @param sourcePath source path
  * @param stage current stage
  * @param createdAt metadata creation timestamp
- * @param attributes extension attributes for technical metadata
+ * @param attributes extension attributes for pipeline-specific metadata
  */
 public record EnvelopeMeta(
         String runId,
         String sourceId,
-        Path sourcePath,
         StageId stage,
         Instant createdAt,
         Map<String, Object> attributes
 ) {
-
-    /** Attribute key carrying the inbound dry-run flag. */
-    public static final String DRY_RUN = "dryRun";
-
-    /** Attribute key carrying the observability mode. */
-    public static final String MODE = "mode";
 
     /**
      * Creates metadata with defensive attribute copying.
@@ -38,7 +32,6 @@ public record EnvelopeMeta(
     public EnvelopeMeta {
         Objects.requireNonNull(runId, "runId");
         Objects.requireNonNull(sourceId, "sourceId");
-        sourcePath = Objects.requireNonNull(sourcePath, "sourcePath").toAbsolutePath().normalize();
         Objects.requireNonNull(stage, "stage");
         Objects.requireNonNull(createdAt, "createdAt");
         attributes = Map.copyOf(Objects.requireNonNull(attributes, "attributes"));
@@ -48,21 +41,18 @@ public record EnvelopeMeta(
      * Creates initial metadata for one source.
      *
      * @param runId run id
-     * @param sourcePath source path
-     * @param dryRun dry-run flag
+     * @param sourceId stable source id
      * @param clock timestamp clock
      * @return initial metadata
      */
-    public static EnvelopeMeta initial(String runId, Path sourcePath, boolean dryRun, Clock clock) {
+    public static EnvelopeMeta initial(String runId, String sourceId, Clock clock) {
         Objects.requireNonNull(clock, "clock");
-        var normalized = Objects.requireNonNull(sourcePath, "sourcePath").toAbsolutePath().normalize();
         return new EnvelopeMeta(
                 runId,
-                normalized.toString(),
-                normalized,
+                sourceId,
                 StageId.INITIAL,
                 clock.instant(),
-                Map.of(DRY_RUN, dryRun));
+                Map.of());
     }
 
     /**
@@ -72,7 +62,7 @@ public record EnvelopeMeta(
      * @return updated metadata
      */
     public EnvelopeMeta atStage(StageId nextStage) {
-        return new EnvelopeMeta(runId, sourceId, sourcePath, nextStage, createdAt, attributes);
+        return new EnvelopeMeta(runId, sourceId, nextStage, createdAt, attributes);
     }
 
     /**
@@ -85,7 +75,19 @@ public record EnvelopeMeta(
     public EnvelopeMeta withAttribute(String key, Object value) {
         var next = new LinkedHashMap<>(attributes);
         next.put(Objects.requireNonNull(key, "key"), Objects.requireNonNull(value, "value"));
-        return new EnvelopeMeta(runId, sourceId, sourcePath, stage, createdAt, next);
+        return new EnvelopeMeta(runId, sourceId, stage, createdAt, next);
+    }
+
+    /**
+     * Returns metadata with additional attributes.
+     *
+     * @param additional attributes to merge
+     * @return updated metadata
+     */
+    public EnvelopeMeta withAttributes(Map<String, ?> additional) {
+        var next = new LinkedHashMap<>(attributes);
+        next.putAll(Objects.requireNonNull(additional, "additional"));
+        return new EnvelopeMeta(runId, sourceId, stage, createdAt, next);
     }
 
     /**
@@ -98,5 +100,16 @@ public record EnvelopeMeta(
     public boolean booleanAttribute(String key, boolean defaultValue) {
         Object value = attributes.get(key);
         return value instanceof Boolean bool ? bool : defaultValue;
+    }
+
+    /**
+     * Returns a string attribute value, or {@code null} when absent.
+     *
+     * @param key attribute key
+     * @return string value or {@code null}
+     */
+    public String stringAttribute(String key) {
+        Object value = attributes.get(key);
+        return value == null ? null : String.valueOf(value);
     }
 }

@@ -1,4 +1,4 @@
-package com.iocextractor.application.pipeline;
+package com.iocextractor.platform.etl;
 
 import com.iocextractor.diagnostics.result.FailurePolicy;
 import com.iocextractor.diagnostics.result.Notification;

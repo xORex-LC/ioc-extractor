@@ -30,7 +30,7 @@
 - выделение IOC domain shared kernel и доменных capability-модулей;
 - централизованное управление версиями зависимостей и plugin management;
 - перенос текущих packages в модули без изменения публичного поведения;
-- минимальный рефакторинг `application.pipeline`, если он нужен для отделения
+- минимальный рефакторинг pipeline-пакетов, если он нужен для отделения
   generic pipe-and-flow contracts от IOC-specific stage names/payloads;
 - Maven Enforcer guardrails;
 - перенос и адаптация unit/golden/architecture tests;
@@ -46,9 +46,10 @@
 - переименование Java packages ради новой структуры;
 - крупный рефакторинг доменной логики, output mapping или logging taxonomy.
 
-## Текущая точка старта
+## Историческая точка старта
 
-Сейчас проект физически один Maven-модуль, но код уже разложен по пакетам:
+До реализации этапа 9 проект был физически одним Maven-модулем, но код уже был
+разложен по пакетам:
 
 - `common`;
 - `diagnostics`;
@@ -64,8 +65,8 @@
 
 ## Принципиальная нарезка
 
-В этапе 9 разделяем две разные ответственности, которые сейчас находятся рядом
-из-за одномодульной структуры:
+В этапе 9 разделяем две разные ответственности, которые находились рядом из-за
+одномодульной структуры:
 
 1. **ETL/Pipeline kernel** — универсальная pipe-and-flow механика:
    `Envelope`, stage contract, runner, observer, failure-policy integration.
@@ -125,9 +126,8 @@ ioc-extractor/
     └── ioc-app/
 ```
 
-`platform-regex` из опубликованной `modularization.md` требует уточнения перед
-реализацией: SPI не должен тащить RE2J/JDK implementations во внутренние слои.
-На этапе 9 базовое решение такое:
+Отдельный `platform-regex` не вводится: SPI не должен тащить RE2J/JDK
+implementations во внутренние слои. На этапе 9 базовое решение такое:
 
 - `PatternEngine` остаётся в `ioc-domain` (пакет `extract`), как порт extraction
   capability;
@@ -186,7 +186,7 @@ metadata/control contract. Это нужно отразить в `modularization
 |---|---|
 | `com.iocextractor.common` | `platform/platform-errors` |
 | `com.iocextractor.diagnostics` | `platform/platform-diagnostics` |
-| generic часть `com.iocextractor.application.pipeline` | `platform/platform-etl` |
+| generic ETL contracts (`Envelope`, `Stage`, `Pipeline`, runner/observer) | `platform/platform-etl` (`com.iocextractor.platform.etl`) |
 | `com.iocextractor.observability` без diagnostics bridge | `platform/platform-observability` |
 | `com.iocextractor.observability.diagnostics` | `platform/platform-diagnostics-logging` |
 | `com.iocextractor.domain.*` (model/refang/extract/feature/classify/attribute) | `core/ioc-domain` (пакеты сохраняются, границы — ArchUnit-DAG) |
@@ -272,14 +272,13 @@ metadata/control contract. Это нужно отразить в `modularization
 При выносе `platform-etl` нужно отделить generic contracts от IOC-specific
 имен стадий и payloads:
 
-- generic: `Envelope`, metadata contract, `Stage`, `Pipeline`,
-  `PipelineRunner`, `PipelineObserver`;
-- IOC-specific: `StageName` values вроде `READ_SOURCE`/`REFANG`, payload records
-  и concrete stage classes.
+- generic: `Envelope`, metadata contract, `StageId`, `Stage`, `Pipeline`,
+  `PipelineRunner`, `PipelineObserver` в `com.iocextractor.platform.etl`;
+- IOC-specific: payload records, application stage metadata keys and concrete
+  stage classes.
 
-Если текущий `StageName` enum мешает выделению reusable kernel, заменить его на
-generic stage identifier (`StageId`/string value object) или оставить enum в
-`ioc-application`, а platform contract сделать независимым от конкретного enum.
+`StageName` заменён на generic `StageId` в `platform-etl`; IOC-specific stage
+implementations и payloads остаются в `ioc-application`.
 
 ### Шаг 4. Core modules
 
@@ -302,9 +301,9 @@ generic stage identifier (`StageId`/string value object) или оставить
 
 `refang` остаётся **кандидатом №1** на вынос в отдельный артефакт при появлении
 переиспользования (он coupling-остров). До тех пор capability живут пакетами —
-дробить на артефакты ради наглядности не нужно (наглядность даёт Modulith canvas,
-границы — ArchUnit). Если capability-пакет начинает требовать слишком много
-соседей — это сигнал пересмотреть `model`/kernel-границу, а не плодить артефакты.
+дробить на артефакты ради наглядности не нужно (границы держит ArchUnit). Если
+capability-пакет начинает требовать слишком много соседей — это сигнал
+пересмотреть `model`/kernel-границу, а не плодить артефакты.
 
 ### Шаг 5. Adapter modules
 
@@ -362,26 +361,20 @@ output.
 - root/bootstrap architecture tests для cross-module/package rules, если
   остаются проверки, которые Maven dependency graph не покрывает.
 
-Добавить **Spring Modulith** (решение [notes/0009](../notes/0009-modularization-granularity.md))
-для верификации и документирования **верхнего слоя**:
-
-- `ApplicationModules.of(...).verify()` на границы `platform`/`domain`/
-  `application`/`adapter`/`bootstrap` (top-level slices под `com.iocextractor`);
-- генерация C4/PlantUML + module canvas как «наглядность» вместо дробления на
-  артефакты;
-- нюанс: Modulith-модуль по умолчанию = прямой подпакет пакета приложения,
-  поэтому **capability домена он как отдельные модули не видит** — это зона
-  внутридоменного ArchUnit-DAG, не Modulith. Подтвердить распознавание верхних
-  слоёв на текущей пакетной раскладке.
+Spring Modulith/canvas на этапе 9 **не вводим**. Оставляем как отдельный долг
+после стабилизации reactor-структуры: он может дать верхнеуровневую визуализацию,
+но базовые границы уже закрыты Maven reactor + ArchUnit.
 
 Добавить Maven Enforcer:
 
 - `requireMavenVersion`;
 - `requireJavaVersion`;
-- `dependencyConvergence`;
 - `banDuplicatePomDependencyVersions`;
 - при необходимости `bannedDependencies` для запрета Spring/Tika/CSV/Guava/RE2J
   в core/platform modules.
+
+`dependencyConvergence` на этапе 9 **не включаем**; это отдельный build-hygiene
+долг, чтобы не смешивать миграцию модулей с выравниванием транзитивных версий.
 
 ## CI и проверочный контур
 
@@ -424,8 +417,8 @@ java -jar bootstrap/ioc-app/target/ioc-app-0.1.0-SNAPSHOT.jar extract --source s
   adapters и bootstrap.
 - `ioc-domain` физически не зависит на `Envelope`, `Stage`, pipeline runner или
   observability; внутридоменный capability-DAG зелёный (ArchUnit).
-- Spring Modulith `verify()` на верхний слой зелёный; canvas/диаграммы
-  генерируются.
+- Spring Modulith/canvas и `dependencyConvergence` явно отложены в технический
+  долг, не являются критерием приёмки этапа 9.
 - IOC stage implementations находятся в application layer и остаются
   независимыми filters: один stage не вызывает другой stage и не владеет order.
 - External dependencies находятся только в нужных modules.
@@ -439,26 +432,20 @@ java -jar bootstrap/ioc-app/target/ioc-app-0.1.0-SNAPSHOT.jar extract --source s
 > **Решено** ([notes/0009](../notes/0009-modularization-granularity.md)):
 > гранулярность — средняя (14 модулей + parent: platform 5 / core 2 / adapters 6
 > / bootstrap 1), домен — **единый `ioc-domain`** с
-> внутренним ArchUnit-DAG; защита границ — Maven + Enforcer + ArchUnit + Spring
-> Modulith (верхний слой). Ниже — оставшиеся вопросы.
+> внутренним ArchUnit-DAG; generic ETL identifier — `StageId` в
+> `platform-etl`; защита границ — Maven reactor + Enforcer + ArchUnit.
 
-0. **Modulith top-level:** подтвердить, что Spring Modulith распознаёт верхние
-   слои на текущей раскладке `com.iocextractor.{domain,application,adapter,
-   diagnostics,observability,bootstrap}` без переименования пакетов.
-1. **ETL stage identifier:** переносим ли `StageName` в `ioc-application` или
-   заменяем его в `platform-etl` на generic `StageId`/string value object.
-   План по умолчанию: platform contract не должен зависеть от IOC-specific enum.
-2. **Regex boundary:** оставляем `PatternEngine` в `ioc-domain` (пакет `extract`)
+0. **Regex boundary:** оставляем `PatternEngine` в `ioc-domain` (пакет `extract`)
    или выделяем `platform-regex-api`? План по умолчанию оставляет порт в
    extraction-пакете и выносит RE2J/JDK implementation в adapter.
-3. **Observability config:** `platform-observability` содержит только API/helper,
+1. **Observability config:** `platform-observability` содержит только API/helper,
    а `logback-spring.xml` живёт в `ioc-app`. Нужно подтвердить это как правило.
-4. **ArtifactId convention:** принять предложенные `ioc-*` имена или выбрать
+2. **ArtifactId convention:** принять предложенные `ioc-*` имена или выбрать
    другую схему до создания POM-ов.
-5. **Spring Boot parent:** оставить Spring Boot parent у root POM на первом
+3. **Spring Boot parent:** оставить Spring Boot parent у root POM на первом
    этапе или перейти на явный import `spring-boot-dependencies` в
    dependencyManagement.
-6. **README debt:** достаточно ли README на module root или нужно закрывать
+4. **README debt:** достаточно ли README на module root или нужно закрывать
    package-level README/package-info debt в `adapter/*` и `application/port/*`
    тем же коммитом.
 

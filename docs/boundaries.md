@@ -5,8 +5,9 @@
 в домен, обращение внутреннего слоя к внешнему, цикл зависимостей) failing-сборкой,
 а не замечанием на ревью.
 
-> Статус: **дорожная карта**. Прорабатывается на этапе архитектуры; внедряется
-> вместе с многомодульностью ([modularization.md](modularization.md)).
+> Статус: **реализовано**. Базовые границы защищены Maven reactor, Maven
+> Enforcer и ArchUnit. Расширенные проверки вроде Spring Modulith/canvas
+> отложены как технический долг.
 
 ## Уровни защиты (от мягкого к жёсткому)
 
@@ -16,7 +17,11 @@
 - `domain` не зависит на `application`, `adapter`, `bootstrap` и на фреймворки
   (`org.springframework..`, `org.apache.tika..`, `picocli..`, `com.google.re2j..`,
   `org.apache.commons..`).
-- `application` зависит только на `domain` (+ свои порты), не на адаптеры.
+- `platform-etl` не зависит на IOC domain/application/adapters/bootstrap и
+  остаётся framework-free.
+- `application` зависит на `domain` и platform contracts, не на адаптеры/Spring.
+- Внутри `ioc-domain` capability-пакеты держат DAG (`model/refang/extract/
+  feature/classify/attribute`) через module-local ArchUnit.
 - Onion/hexagonal-правило слоёв: доступ только «внутрь».
 - Отсутствие циклов между пакетами.
 - Конвенции именования/размещения (порты в `port/**`, адаптеры в `adapter/**`).
@@ -29,8 +34,8 @@
 ### 3. maven-enforcer-plugin
 - `banned-dependencies` — запрет нежелательных зависимостей в конкретных модулях
   (напр. Spring в `ioc-domain`).
-- `dependencyConvergence` — единые версии транзитивных зависимостей.
-- Запрет циклов на уровне реактора.
+- `dependencyConvergence` — отложено до отдельного build-hygiene шага.
+- Циклы между Maven-модулями невозможны при успешной reactor-сборке.
 
 ### 4. JPMS `module-info.java` (опционально)
 Сильная инкапсуляция: модуль экспортирует только порты и публичный API, прячет
@@ -65,6 +70,12 @@ noClasses().that().resideInAPackage("..domain..")
 noClasses().that().resideInAPackage("..application..")
     .should().dependOnClassesThat().resideInAnyPackage("..adapter..", "org.springframework..");
 
+// 3a) Generic ETL kernel — без IOC/application/adapters/frameworks
+noClasses().that().resideInAPackage("..platform.etl..")
+    .should().dependOnClassesThat().resideInAnyPackage(
+        "..domain..", "..application..", "..adapter..", "..bootstrap..",
+        "org.springframework..", "org.slf4j..", "ch.qos.logback..");
+
 // 4) Порты — интерфейсы; driving в port.in, driven в port.out
 classes().that().resideInAPackage("..application.port..").should().beInterfaces();
 
@@ -73,7 +84,8 @@ slices().matching("com.iocextractor.(*)..").should().beFreeOfCycles();
 ```
 
 Правила оформляются как обычные тесты (`@AnalyzeClasses(packages = "com.iocextractor")`)
-и **краснеют сборку** при нарушении — работают уже в одномодульном проекте.
+и **краснеют сборку** при нарушении. Часть правил живёт module-local, часть
+остаётся в bootstrap/root architecture tests для cross-module/package checks.
 
 ## Конкретные правила Maven Enforcer
 
@@ -87,17 +99,18 @@ slices().matching("com.iocextractor.(*)..").should().beFreeOfCycles();
     <exclude>org.apache.commons:commons-csv</exclude>
   </excludes>
 </bannedDependencies>
-<dependencyConvergence/>   <!-- единые версии транзитивов -->
-<banCircularDependencies/>  <!-- циклы между модулями -->
 ```
+
+Сейчас реализованы `requireJavaVersion`, `requireMavenVersion`,
+`banDuplicatePomDependencyVersions` и domain-local `bannedDependencies`.
+`dependencyConvergence` оставлен как явный долг.
 
 ## Порядок внедрения
 
-1. Подключить ArchUnit и закрепить текущие правила слоёв (даёт защиту уже в
-   одномодульном проекте).
-2. Ввести parent-pom и enforcer (`banned-dependencies`, convergence).
-3. По мере выноса модулей — переложить часть гарантий на границы реактора.
-4. При необходимости — JPMS для жёсткой инкапсуляции.
+1. ArchUnit подключён и закрепляет layer/package rules.
+2. Parent reactor и Enforcer введены на этапе 9.
+3. Часть гарантий переложена на Maven module dependencies.
+4. Отложено: `dependencyConvergence`, Spring Modulith/canvas, JPMS.
 
 ## Definition of Done для границы
 

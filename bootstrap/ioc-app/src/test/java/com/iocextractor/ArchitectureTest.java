@@ -1,6 +1,6 @@
 package com.iocextractor;
 
-import com.iocextractor.application.pipeline.Stage;
+import com.iocextractor.platform.etl.Stage;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
@@ -59,7 +59,16 @@ class ArchitectureTest {
                     "..diagnostics.sink..", "..diagnostics.render..");
 
     @ArchTest
-    static final ArchRule pipeline_core_is_framework_and_adapter_free = noClasses()
+    static final ArchRule platform_etl_is_generic_and_framework_free = noClasses()
+            .that().resideInAPackage("..platform.etl..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "..domain..", "..application..", "..adapter..", "..bootstrap..",
+                    "..observability..", "org.springframework..", "org.slf4j..",
+                    "ch.qos.logback..", "info.picocli..", "org.apache.tika..",
+                    "org.apache.commons.csv..");
+
+    @ArchTest
+    static final ArchRule application_pipeline_is_framework_and_adapter_free = noClasses()
             .that().resideInAPackage("..application.pipeline..")
             .should().dependOnClassesThat().resideInAnyPackage(
                     "org.springframework..", "org.slf4j..", "ch.qos.logback..",
@@ -80,8 +89,8 @@ class ArchitectureTest {
     static final ArchRule concrete_pipeline_stages_do_not_own_pipeline_order = noClasses()
             .that().resideInAPackage("..application.pipeline.stage..")
             .should().dependOnClassesThat().resideInAnyPackage(
-                    "..application.pipeline.Pipeline",
-                    "..application.pipeline.PipelineRunner");
+                    "..platform.etl.Pipeline",
+                    "..platform.etl.PipelineRunner");
 
     @ArchTest
     static final ArchRule concrete_pipeline_stages_implement_stage = classes()

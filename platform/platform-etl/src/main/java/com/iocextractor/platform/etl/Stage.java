@@ -1,4 +1,4 @@
-package com.iocextractor.application.pipeline;
+package com.iocextractor.platform.etl;
 
 /**
  * One Pipes-and-Filters processing stage.

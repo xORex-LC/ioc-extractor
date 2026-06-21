@@ -11,12 +11,18 @@
 Зависимости направлены **внутрь**:
 
 ```
-adapter ─▶ application ─▶ domain
-   └────────▶ bootstrap (composition root) собирает всё вместе
+bootstrap ─▶ adapters ─▶ application ─▶ domain
+    │           │             │              └────▶ platform/*
+    │           │             └───────────────────▶ platform/*
+    │           └─────────────────────────────────▶ platform/*
+    └─────────────────────────────────────────────▶ platform/*
 ```
 
-- `domain` не зависит ни от чего (чистый Java + JDK).
-- `application` зависит только от `domain`.
+- `platform` содержит переиспользуемые подсистемы: errors, diagnostics,
+  generic ETL kernel, observability and diagnostics-logging bridge.
+- `domain` не зависит от application/adapters/bootstrap/platform-etl и не тянет
+  фреймворки или IO-библиотеки.
+- `application` зависит от `domain`, `platform-etl` and diagnostics contracts.
 - `adapter` и `bootstrap` зависят внутрь; здесь — и только здесь — живут
   фреймворки и внешние библиотеки (Spring, Tika, RE2/J, commons-csv, picocli).
 - Внутренние слои **никогда** не импортируют из внешних.
@@ -28,22 +34,29 @@ adapter ─▶ application ─▶ domain
 | Domain | `domain/model` | `Indicator`, `IndicatorType`, `IndicatorCategory`, `SourceContext`, `MaskMatch` |
 | Domain | `domain/refang` | `Refanger` (порт) + `ReplacementRefanger`, `RefangRule` |
 | Domain | `domain/extract` | `PatternEngine` (порт), `IndicatorExtractor` (порт) + `RegexIndicatorExtractor`, `Span`, `RawIndicator` |
-| Domain | `domain/classify` | `MatchPolicy` (порт) + `DefaultMatchPolicy` |
+| Domain | `domain/feature` | Normalization and feature extraction (`IndicatorFeatures`, `HostClassifier`) |
+| Domain | `domain/classify` | `MatchPolicy`, rule-based classification |
 | Domain | `domain/attribute` | `SourceAttributor` (порт) + `MarkerSourceAttributor` |
+| Platform | `platform/etl` | `Envelope`, `EnvelopeMeta`, `Stage`, `StageId`, `Pipeline`, `PipelineRunner` |
+| Platform | `diagnostics` | Diagnostic model, catalog, `Result`/`Notification`, `FailurePolicy`, sink ports |
+| Platform | `observability` | MDC/log event helpers and logging taxonomy |
 | Application | `application/port/in` | `ExtractIocsUseCase`, `ExtractionCommand`, `ExtractionResult` (driving) |
 | Application | `application/port/out` | `SourceReader`, `IocSink`, `LookupRepository` (driven) |
-| Application | `application/service` | `IocExtractionService` — оркестратор конвейера |
+| Application | `application/pipeline/payload` | IOC-specific payload records between stages |
+| Application | `application/pipeline/stage` | IOC ETL stage implementations |
+| Application | `application/service` | `IocExtractionService` — use-case orchestrator |
 | Adapter (in) | `adapter/in/cli` | `IocRootCommand`, `ExtractCommand`, `CliRunner` (picocli) |
 | Adapter (out) | `adapter/out/regex` | `Re2jPatternEngine` (default), `JdkRegexPatternEngine` |
 | Adapter (out) | `adapter/out/source` | `TikaSourceReader` |
 | Adapter (out) | `adapter/out/sink/csv` | `CsvIocSink`, `RowMapper` + мапперы, `IdGenerator` |
 | Adapter (out) | `adapter/out/lookup` | `CsvMaskLookupRepository` |
 | Bootstrap | `bootstrap` | `IocProperties` (конфиг), `AppConfig` (composition root) |
-| Shared | `common` | `IocExtractorException` |
+| Platform | `common` | `IocExtractorException` (`ioc-platform-errors`) |
 
 ## Конвейер обработки
 
-Выражен в `IocExtractionService` исключительно через порты:
+Выражен через generic `platform-etl` contracts и IOC-specific application
+stages:
 
 ```
 read (SourceReader)
@@ -51,11 +64,10 @@ read (SourceReader)
   → extract (IndicatorExtractor / PatternEngine)
   → attribute source (SourceAttributor)
   → de-duplicate (LookupRepository)
-  → fill (ArtifactFiller: классификация + колонки)
   → write (IocSink на каждый артефакт, маршрутизация по IndicatorType)
 ```
 
-Подход к конвейеру (Pipes-and-Filters + `Envelope`/`Result`) — [pipeline.md](pipeline.md);
+Подход к конвейеру (Pipes-and-Filters + `Envelope`/diagnostics) — [pipeline.md](pipeline.md);
 каталог и карта сервисов стадий — [services.md](services.md).
 
 Конвейер — цепочка независимых стадий: новую стадию/реализацию добавляем, не

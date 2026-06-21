@@ -1,6 +1,6 @@
 package com.iocextractor.application.pipeline.stage;
 
-import com.iocextractor.application.pipeline.StageId;
+import com.iocextractor.platform.etl.StageId;
 
 /**
  * Stable {@link StageId} constants for the IOC extraction pipeline.

@@ -3,12 +3,13 @@ package com.iocextractor.application.service;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.in.ExtractionCommand;
 import com.iocextractor.application.port.in.ExtractionResult;
-import com.iocextractor.application.pipeline.Envelope;
-import com.iocextractor.application.pipeline.EnvelopeMeta;
-import com.iocextractor.application.pipeline.NoopPipelineObserver;
-import com.iocextractor.application.pipeline.Pipeline;
-import com.iocextractor.application.pipeline.PipelineObserver;
-import com.iocextractor.application.pipeline.PipelineRunner;
+import com.iocextractor.application.pipeline.PipelineMetaAttributes;
+import com.iocextractor.platform.etl.Envelope;
+import com.iocextractor.platform.etl.EnvelopeMeta;
+import com.iocextractor.platform.etl.NoopPipelineObserver;
+import com.iocextractor.platform.etl.Pipeline;
+import com.iocextractor.platform.etl.PipelineObserver;
+import com.iocextractor.platform.etl.PipelineRunner;
 import com.iocextractor.application.pipeline.payload.ArtifactWriteSummary;
 import com.iocextractor.application.pipeline.stage.AttributeSourceStage;
 import com.iocextractor.application.pipeline.stage.DeduplicateIndicatorsStage;
@@ -158,8 +159,11 @@ public final class IocExtractionService implements ExtractIocsUseCase {
 
     @Override
     public ExtractionResult extract(ExtractionCommand command) {
-        var meta = EnvelopeMeta.initial(UUID.randomUUID().toString(), command.source(), command.dryRun(), clock)
-                .withAttribute(EnvelopeMeta.MODE, observabilityMode);
+        var normalizedSource = command.source().toAbsolutePath().normalize();
+        var meta = EnvelopeMeta.initial(UUID.randomUUID().toString(), normalizedSource.toString(), clock)
+                .withAttribute(PipelineMetaAttributes.SOURCE_PATH, normalizedSource)
+                .withAttribute(PipelineMetaAttributes.DRY_RUN, command.dryRun())
+                .withAttribute(PipelineMetaAttributes.MODE, observabilityMode);
         var output = runner.run(Envelope.of(command, meta), pipeline);
         output.diagnostics().forEach(diagnosticSink::emit);
         var summary = output.payload();

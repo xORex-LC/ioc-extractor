@@ -1,5 +1,14 @@
 # План реализации этапа 7: Pipeline / Envelope
 
+> Актуализация после этапа 9: reusable ETL-контракты вынесены из
+> `application.pipeline` в `platform/platform-etl`
+> (`com.iocextractor.platform.etl`). `StageName` заменён на generic `StageId`;
+> `EnvelopeMeta` хранит `runId`, `sourceId`, `stage`, `createdAt` и
+> `attributes`, а IOC-specific поля (`ioc.source.path`, `ioc.mode`,
+> `ioc.dry_run`) задаются application metadata keys. Исторические упоминания
+> `StageName`, `sourcePath` и `application.pipeline core` ниже относятся к
+> реализации этапа 7 до модульного рефакторинга.
+
 ## Цель
 
 Эволюционировать текущий линейный `IocExtractionService` в явный ETL-конвейер

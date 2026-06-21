@@ -23,8 +23,8 @@
 | `0005-services-and-pipeline.md` | DDD-сервисы, ETL-конвейер (P&F+Envelope+Result), границы, модульность |
 | `0006-design-review-refinements.md` | Уточнения по итогам ревью: SourceFeed/driving-порт, PSL в адаптере, статусы инжеста, стабильные id, лимит DSL |
 | `0007-logging-observability.md` | Логирование/observability как отдельная подсистема: ECS, MDC←Envelope, отмена 0003 №8 |
-| `0008-stage-6-8-implementation-followups.md` | Ревью реализации этапов 6–8: устранённые находки + отложенный техдолг (D1 интеграция diagnostics, D2 слой observability, D3 ECS-типы) |
-| `0009-modularization-granularity.md` | Гранулярность реактора (14 модулей, единый `ioc-domain`); coupling vs cross-cut; критерий выноса capability; `refang` — кандидат №1; защита границ слоями (Maven/Enforcer/ArchUnit/Modulith) |
+| `0008-stage-6-8-implementation-followups.md` | Ревью реализации этапов 6–8: устранённые находки + отложенный техдолг (D1 интеграция diagnostics, D3 ECS-типы; D2 закрыт этапом 9) |
+| `0009-modularization-granularity.md` | Гранулярность реактора (14 модулей, единый `ioc-domain`); coupling vs cross-cut; критерий выноса capability; `refang` — кандидат №1; защита границ слоями (Maven/Enforcer/ArchUnit), Modulith отложен |
 
 ## Формат заметки
 

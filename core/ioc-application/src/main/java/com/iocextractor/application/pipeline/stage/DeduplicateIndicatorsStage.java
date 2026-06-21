@@ -1,8 +1,8 @@
 package com.iocextractor.application.pipeline.stage;
 
-import com.iocextractor.application.pipeline.Envelope;
-import com.iocextractor.application.pipeline.Stage;
-import com.iocextractor.application.pipeline.StageId;
+import com.iocextractor.platform.etl.Envelope;
+import com.iocextractor.platform.etl.Stage;
+import com.iocextractor.platform.etl.StageId;
 import com.iocextractor.application.pipeline.payload.AttributedIndicators;
 import com.iocextractor.application.pipeline.payload.RetainedIndicators;
 import com.iocextractor.application.port.out.LookupRepository;

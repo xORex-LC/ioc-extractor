@@ -1,16 +1,12 @@
-package com.iocextractor.application.pipeline;
+package com.iocextractor.platform.etl;
 
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.diagnostics.result.FailurePolicy;
-import com.iocextractor.observability.LogField;
-import com.iocextractor.observability.MdcScope;
 import org.junit.jupiter.api.Test;
-import org.slf4j.MDC;
 
-import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -67,23 +63,21 @@ class PipelineRunnerTest {
     }
 
     @Test
-    void exposes_envelope_metadata_as_scoped_mdc_during_stage_execution() {
-        MDC.clear();
+    void opens_and_closes_observer_scope_around_stage_execution() {
         var seen = new ArrayList<String>();
+        var events = new ArrayList<String>();
         var pipeline = Pipeline.<String>start()
-                .then(new MdcRecordingStage(seen));
+                .then(new ObserverRecordingStage(seen));
 
-        new PipelineRunner(FailurePolicy.failFast(), new MdcTestObserver())
-                .run(Envelope.of("start", meta().withAttribute(EnvelopeMeta.MODE, "daemon")), pipeline);
+        new PipelineRunner(FailurePolicy.failFast(), new RecordingObserver(events))
+                .run(Envelope.of("start", meta().withAttribute("mode", "daemon")), pipeline);
 
-        assertThat(seen).containsExactly("run-1|READ_SOURCE|daemon");
-        assertThat(MDC.get(LogField.IOC_RUN_ID.key())).isNull();
-        assertThat(MDC.get(LogField.IOC_STAGE.key())).isNull();
-        assertThat(MDC.get(LogField.IOC_MODE.key())).isNull();
+        assertThat(seen).containsExactly("READ_SOURCE");
+        assertThat(events).containsExactly("open:READ_SOURCE", "started:READ_SOURCE", "completed:READ_SOURCE", "close");
     }
 
     private EnvelopeMeta meta() {
-        return EnvelopeMeta.initial("run-1", Path.of("source.html"), false, CLOCK);
+        return EnvelopeMeta.initial("run-1", "source.html", CLOCK);
     }
 
     private Diagnostic diagnostic(DiagnosticSeverity severity) {
@@ -117,7 +111,7 @@ class PipelineRunnerTest {
         }
     }
 
-    private record MdcRecordingStage(List<String> seen) implements Stage<String, String> {
+    private record ObserverRecordingStage(List<String> seen) implements Stage<String, String> {
 
         @Override
         public StageId name() {
@@ -126,33 +120,32 @@ class PipelineRunnerTest {
 
         @Override
         public Envelope<String> process(Envelope<String> input) {
-            seen.add(MDC.get(LogField.IOC_RUN_ID.key())
-                    + "|" + MDC.get(LogField.IOC_STAGE.key())
-                    + "|" + MDC.get(LogField.IOC_MODE.key()));
+            seen.add(input.meta().stage().value());
             return input;
         }
     }
 
-    private static final class MdcTestObserver implements PipelineObserver {
+    private record RecordingObserver(List<String> events) implements PipelineObserver {
 
         @Override
         public AutoCloseable openStage(EnvelopeMeta meta) {
-            return MdcScope.open()
-                    .put(LogField.IOC_RUN_ID, meta.runId())
-                    .put(LogField.IOC_STAGE, meta.stage().value())
-                    .put(LogField.IOC_MODE, meta.attributes().get(EnvelopeMeta.MODE));
+            events.add("open:" + meta.stage().value());
+            return () -> events.add("close");
         }
 
         @Override
         public void stageStarted(EnvelopeMeta meta) {
+            events.add("started:" + meta.stage().value());
         }
 
         @Override
         public void stageCompleted(EnvelopeMeta meta, long durationNanos) {
+            events.add("completed:" + meta.stage().value());
         }
 
         @Override
         public void stageFailed(EnvelopeMeta meta, long durationNanos, RuntimeException failure) {
+            events.add("failed:" + meta.stage().value());
         }
     }
 }
