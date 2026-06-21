@@ -38,3 +38,4 @@ dataframe/*
 !dataframe/masks_list.csv
 
 CLAUDE.md
+AGENTS.md

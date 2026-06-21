@@ -22,24 +22,28 @@
 
 ```
 [inbox dir] ─▶ adapter/in/watch (Spring Integration)
-                   │  detect → stabilize → claim → read(SourceFeed)
+                   │  detect → stabilize → claim
+                   │  (SourceFeed — adapter-local над SI: whole-file / tail)
                    ▼
-              ExtractIocsUseCase  (ядро, без изменений)
+              IngestSourceUseCase (driving) ─▶ ExtractIocsUseCase (ядро, без изменений)
                    │  refang → extract → attribute → dedup
                    ▼
-              IocSink → partitions/  ──▶ Aggregator ──▶ dataframe/ (канон. артефакты)
-   out-порты:  SourceFeed | IngestionLedger | IocSink | LookupRepository
+              IocSink → partitions/ ──▶ Aggregator ──▶ dataframe/ (канон. артефакты)
+   driving:  IngestSourceUseCase, ExtractIocsUseCase
+   driven:   IngestionLedger | IocSink | LookupRepository
 ```
 
 **Новые порты**
 
 | Порт | Тип | Назначение |
 |---|---|---|
-| `SourceFeed` | in (driving) | Поток единиц-источников: whole-file и tail-записи |
-| `IngestionLedger` | out (driven) | Durable-журнал обработанного (идемпотентность, восстановление) |
+| `IngestSourceUseCase` | in (driving) | Приём одной единицы-источника на обработку (вызывается watch-адаптером) |
+| `IngestionLedger` | out (driven) | Durable-журнал **статусов** обработки (идемпотентность, восстановление) |
 
-Spring Integration живёт **только** внутри `adapter/in/watch`, за портом
-`SourceFeed` — ядро остаётся framework-free, SI заменяем.
+`SourceFeed` — **не порт ядра**, а adapter-local абстракция внутри
+`adapter/in/watch` над Spring Integration (whole-file/tail). Наружу единицы
+отдаются через driving-порт `IngestSourceUseCase`; ядро остаётся framework-free,
+SI заменяем без влияния на ядро.
 
 ## 3. Детект появления (гибрид)
 
@@ -52,15 +56,20 @@ Spring Integration живёт **только** внутри `adapter/in/watch`, 
 - На сетевых/overlay-ФС WatchService может молчать — реконсиляция гарантирует
   обнаружение.
 
-## 4. Два типа источников за `SourceFeed`
+## 4. Два типа источников
 
 | Тип | Механизм SI | Случай |
 |---|---|---|
 | **Whole-file** | `FileReadingMessageSource` (+ фильтры) | Дискретный документ целиком (как `ioc-source.htm`) |
 | **Tail** | `FileTailingMessageProducer` (Apache Commons `Tailer`) | Дозапись новых строк/записей в растущий фид; обработка ротации, трекинг смещения |
 
-Обе реализации отдают наружу единицы `SourceFeed` единообразно; обработчик
-(service-activator) вызывает use case. `commons-io` (Tailer) уже в проекте.
+Обе реализации (adapter-local) отдают единицы единообразно; service-activator
+вызывает `IngestSourceUseCase`. `commons-io` (Tailer) уже в проекте.
+
+> **Идемпотентность у режимов разная** (см. §7): whole-file — по **content-hash**;
+> tail — по **checkpoint** (идентичность файла + смещение + маркер ротации +
+> id/hash записи). Единая «переобработка того же content-hash» для растущего
+> файла **не работает** — у tail свой ключ.
 
 ## 5. Автопоиск источников
 
@@ -85,30 +94,47 @@ inbox/  ──claim──▶  processing/  ──success──▶  done/ (archiv
    └── реконсиляция при старте: всё из processing/ → обратно в inbox/
 ```
 
-- Перемещение в `processing/` = эксклюзивный «клейм» источника.
-- При старте сервиса всё, зависшее в `processing/` (признак падения), возвращается
-  на переобработку.
+- Перемещение в `processing/` = эксклюзивный «клейм» источника (статус `CLAIMED`).
+- При старте — **status-driven реконсиляция** (см. §7): каждый незавершённый юнит
+  из `processing/` доводится/откатывается по записанному статусу, а не слепо
+  возвращается в `inbox/`.
 - Каталоги — конфигурируемы; по умолчанию под общим рабочим корнем.
 
-## 7. Идемпотентность и защита от потери данных
+## 7. Идемпотентность, статусы и восстановление
 
-**Двухслойный дедуп:**
-1. SI `FileSystemPersistentAcceptOnceFileListFilter` + persistent `MetadataStore`
-   — дёшево, по `имя+mtime`.
-2. Наш `IngestionLedger` по **content-hash (sha256 файла)** — ловит
-   переименования и повторные дропы того же содержимого.
+**Модель идемпотентности — по режиму:**
+- **Whole-file:** ключ = **content-hash (sha256 файла)** — ловит переименования и
+  повторные дропы того же содержимого.
+- **Tail:** ключ = **checkpoint** = идентичность файла (path + inode/маркер
+  создания) + байтовое смещение + маркер ротации + id/hash записи. У растущего
+  файла нет единого content-hash — прогресс трекается смещением/чекпоинтом.
 
-**Порядок коммита (критично):**
+**Двухслойный дедуп (whole-file):** SI `FileSystemPersistentAcceptOnceFileListFilter`
+(дёшево, имя+mtime) + `IngestionLedger` по content-hash (надёжно).
+
+**Явные статусы юнита в `IngestionLedger`** (не булево «обработано»):
 ```
-read → process → write partition (temp → ATOMIC_MOVE) → record ledger → move source → done/
+CLAIMED ─▶ PARTITION_WRITTEN ─▶ LEDGER_RECORDED ─▶ SOURCE_ARCHIVED ─▶ (AGGREGATED)
 ```
-Падение на любом шаге безопасно: источник остаётся в `inbox/`/`processing/` →
-переобработка → тот же content-hash → та же партиция (перезапись) + дедуп ledger
-→ **дублей на выходе нет**. Это «at-least-once доставка + идемпотентная
-обработка = effectively-once на выходе».
+Каждый переход фиксируется durable **до** выполнения следующего шага.
 
-**Атомарность записи:** любой файл (партиция, ledger) пишется в `*.tmp` и
-переименовывается `ATOMIC_MOVE` — частичных файлов при падении не возникает.
+**Восстановление (компенсации) при старте — по последнему статусу:**
+
+| Последний статус | Состояние | Компенсация |
+|---|---|---|
+| `CLAIMED` | в `processing/`, партиция не записана | переобработать (write → …) |
+| `PARTITION_WRITTEN` | партиция есть, в ledger не зафиксировано | дозаписать запись ledger (идемпотентно по ключу) |
+| `LEDGER_RECORDED` | зафиксировано, источник не перемещён | **довести до `SOURCE_ARCHIVED`** (move в `done/`) |
+| `SOURCE_ARCHIVED` | завершено | ничего |
+
+Все шаги **идемпотентны**: партиция перезаписывается по ключу, запись ledger —
+upsert по ключу, перемещение — `ATOMIC_MOVE` (уже перемещён → no-op). Поэтому
+случай «ledger сказал обработано, а источник ещё в `processing/`» не теряется:
+компенсация доводит до `SOURCE_ARCHIVED`. Итог — at-least-once доставка +
+идемпотентные шаги = effectively-once на выходе.
+
+**Атомарность записи:** партиция и записи ledger пишутся `*.tmp` → `ATOMIC_MOVE` —
+частичных файлов при падении не возникает.
 
 ## 8. Выход: партиции + агрегация
 
@@ -125,13 +151,17 @@ dataframe/
 └── hashes.csv
 ```
 
-- **Запись:** обработанный источник → партиция с ключом `content-hash`.
-  Переобработка перезаписывает ту же партицию → идемпотентно, без гонок на
-  дозапись.
+- **Запись:** обработанный источник → партиция. Ключ партиции зависит от режима:
+  whole-file — `content-hash`; tail — checkpoint-id (см. §7). Переобработка
+  перезаписывает ту же партицию → идемпотентно, без гонок на дозапись.
 - **Агрегация:** отдельный процесс (`Aggregator`, по расписанию или по событию)
-  сводит партиции в канонический артефакт с **глобальной дедупликацией и
-  назначением id единым писателем** — это закрывает TODO про `id auto` (нет
-  отрицательных/конкурентных id).
+  сводит партиции в канонический артефакт **единым писателем** с глобальной
+  дедупликацией.
+- **Стабильные id:** агрегатор держит устойчивый индекс `dedupKey → id` (часть
+  канонического артефакта или отдельный индекс агрегатора). Известный `dedupKey`
+  сохраняет свой id при повторной агрегации, смене порядка партиций,
+  удалении/архивации партиций и дедупе; новый `dedupKey` получает `max+1`. Так
+  `id auto` закрывается **устойчиво**, а не только бесконфликтно.
 - Канонические артефакты в `dataframe/` остаются совместимыми с текущим форматом
   и используются как lookup.
 
@@ -267,7 +297,8 @@ ioc:
 
 ## 14. Поэтапное внедрение
 
-1. Порты `SourceFeed` + `IngestionLedger`; адаптер `adapter/in/watch` (whole-file,
+1. Порты `IngestSourceUseCase` + `IngestionLedger` (`SourceFeed` — adapter-local);
+   адаптер `adapter/in/watch` (whole-file,
    гибрид-детект, автомат каталогов, content-hash ledger). Профиль `daemon`.
 2. Партиционная запись `IocSink` в `dataframe/partitions/` + `Aggregator` →
    канонический артефакт с глобальными id.

@@ -5,6 +5,11 @@
 - **Связано:** [../ingestion.md](../ingestion.md), [../architecture.md](../architecture.md),
   [../cross-cutting.md](../cross-cutting.md), [../modularization.md](../modularization.md)
 
+> **Поправка ([0006](0006-design-review-refinements.md)):** `SourceFeed` — не порт
+> ядра, а adapter-local абстракция над SI; driving-порт — `IngestSourceUseCase`.
+> Идемпотентность — статус-машина в `IngestionLedger`; whole-file/tail имеют разные
+> ключи. Формулировки ниже читать с этой поправкой.
+
 ## Контекст
 
 CLI-запуск «один прогон → выход» остаётся поддерживаемым, но **не основным**

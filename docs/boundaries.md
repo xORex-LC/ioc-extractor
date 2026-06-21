@@ -41,6 +41,56 @@
 - Реализации адаптеров не «торчат» наружу мимо порта.
 - Внедрение через конструктор; никакого доступа к composition root из ядра.
 
+## Конкретные правила ArchUnit
+
+```java
+// 1) Слои: зависимости только внутрь
+layeredArchitecture().consideringOnlyDependenciesInLayers()
+    .layer("domain").definedBy("..domain..")
+    .layer("application").definedBy("..application..")
+    .layer("adapter").definedBy("..adapter..")
+    .layer("bootstrap").definedBy("..bootstrap..")
+    .whereLayer("bootstrap").mayNotBeAccessedByAnyLayer()
+    .whereLayer("adapter").mayOnlyBeAccessedByLayers("bootstrap")
+    .whereLayer("application").mayOnlyBeAccessedByLayers("adapter", "bootstrap")
+    .whereLayer("domain").mayOnlyBeAccessedByLayers("application", "adapter", "bootstrap");
+
+// 2) Домен — без фреймворков и внешних библиотек
+noClasses().that().resideInAPackage("..domain..")
+    .should().dependOnClassesThat().resideInAnyPackage(
+        "org.springframework..", "org.apache.tika..", "com.google.re2j..",
+        "org.apache.commons..", "picocli..", "com.google.common..");
+
+// 3) Application — только на domain (+ свои порты), не на адаптеры/Spring
+noClasses().that().resideInAPackage("..application..")
+    .should().dependOnClassesThat().resideInAnyPackage("..adapter..", "org.springframework..");
+
+// 4) Порты — интерфейсы; driving в port.in, driven в port.out
+classes().that().resideInAPackage("..application.port..").should().beInterfaces();
+
+// 5) Без циклов между срезами
+slices().matching("com.iocextractor.(*)..").should().beFreeOfCycles();
+```
+
+Правила оформляются как обычные тесты (`@AnalyzeClasses(packages = "com.iocextractor")`)
+и **краснеют сборку** при нарушении — работают уже в одномодульном проекте.
+
+## Конкретные правила Maven Enforcer
+
+```xml
+<!-- в pom модуля ioc-domain: запрет фреймворков/тяжёлых либ -->
+<bannedDependencies>
+  <excludes>
+    <exclude>org.springframework*:*</exclude>
+    <exclude>org.apache.tika:*</exclude>
+    <exclude>info.picocli:*</exclude>
+    <exclude>org.apache.commons:commons-csv</exclude>
+  </excludes>
+</bannedDependencies>
+<dependencyConvergence/>   <!-- единые версии транзитивов -->
+<banCircularDependencies/>  <!-- циклы между модулями -->
+```
+
 ## Порядок внедрения
 
 1. Подключить ArchUnit и закрепить текущие правила слоёв (даёт защиту уже в

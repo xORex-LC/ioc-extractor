@@ -15,7 +15,13 @@
 
 | Файл | О чём |
 |---|---|
-| `0001-streaming-ingestion.md` | Переход на стриминговый демон-инжест: развилки и принятые решения |
+| `0000-foundations.md` | Фундамент: гексагон+onion, Maven, Spring Boot (CLI), RE2/J+JDK, Tika, артефакты masks+hashes |
+| `0001-streaming-ingestion.md` | Стриминговый демон-инжест: детект, автомат каталогов, идемпотентность, retention, параллелизм |
+| `0002-output-mapping-and-matching.md` | Конфигурируемое заполнение артефактов + 4-вариантная классификация (PSL), id-фикс |
+| `0003-diagnostics.md` | Подсистема диагностики и логирования: каталог, шаблоны, JSON-схема |
+| `0004-extraction-and-test-corpus.md` | Типы/нормализация (.onion, telegram), тест-корпус и изоляция тестов |
+| `0005-services-and-pipeline.md` | DDD-сервисы, ETL-конвейер (P&F+Envelope+Result), границы, модульность |
+| `0006-design-review-refinements.md` | Уточнения по итогам ревью: SourceFeed/driving-порт, PSL в адаптере, статусы инжеста, стабильные id, лимит DSL |
 
 ## Формат заметки
 

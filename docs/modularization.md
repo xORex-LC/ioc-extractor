@@ -26,21 +26,25 @@
 ```
 ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <modules>)
 ├── platform/                      ← агностичные, переиспользуемые подсистемы
-│   ├── ioc-platform-bom           (BOM: управление версиями зависимостей)
-│   ├── ioc-platform-errors        (модель ошибок + порты их трансляции)
-│   ├── ioc-platform-logging       (порты диагностики/телеметрии + адаптеры)
-│   └── ioc-platform-regex         (PatternEngine SPI + re2j/jdk адаптеры)
+│   ├── platform-bom               (BOM: управление версиями зависимостей)
+│   ├── platform-errors            (модель ошибок + порты их трансляции)
+│   ├── platform-diagnostics       (диагностика: каталог, порты, sinks/renderer)
+│   └── platform-regex             (PatternEngine SPI + re2j/jdk адаптеры)
 ├── core/
 │   ├── ioc-domain                 (чистый домен; зависит только на platform-*)
 │   └── ioc-application            (порты in/out + use cases; зависит на ioc-domain)
 ├── adapters/
-│   ├── ioc-adapter-source-tika    (SourceReader → Tika)
-│   ├── ioc-adapter-sink-csv       (IocSink → commons-csv)
-│   ├── ioc-adapter-lookup-csv     (LookupRepository → CSV)
-│   └── ioc-adapter-cli-picocli    (входной адаптер CLI)
+│   ├── adapter-source-tika        (SourceReader → Tika)
+│   ├── adapter-sink-csv           (IocSink + ArtifactFiller → commons-csv)
+│   ├── adapter-lookup-csv         (LookupRepository → CSV)
+│   ├── adapter-psl                (HostClassifier → Guava PSL)
+│   └── adapter-cli-picocli        (входной адаптер CLI)
 └── bootstrap/
     └── ioc-app                    (Spring Boot, composition root, исполняемый jar)
 ```
+
+> Имена выше — артефакты Maven; в реальных `artifactId` несут общий префикс
+> (`ioc-…`). Карта «сервис → модуль» — ниже.
 
 ### Направление зависимостей между модулями
 
@@ -63,8 +67,39 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain ─▶ platfo
    меньше у него зависимостей; технологическая специфика — наружу, в адаптеры.
 3. **Зависимости только вниз/внутрь.** Реактор + проверки запрещают обратные и
    циклические связи.
-4. **Версии — централизованно** через `ioc-platform-bom`; модули не дублируют
-   версии.
+4. **Версии — централизованно** через `platform-bom`; модули не дублируют версии.
+
+## Карта «сервис → модуль»
+
+Сервисы из [services.md](services.md) ложатся в модули так:
+
+| Модуль | Сервисы |
+|---|---|
+| `platform-regex` | PatternEngine (SPI + RE2J/JDK) |
+| `platform-diagnostics` | Diagnostics (модель, каталог, порты, sinks/renderer) |
+| `platform-errors` | модель ошибок/трансляция (общие типы) |
+| `ioc-domain` | Refanger, IndicatorExtractor, SourceAttributor, MatchClassifier, Deduplicator, модели |
+| `ioc-application` | Pipeline orchestrator (`ExtractIocsUseCase`), стадии, `Envelope`/`Result`, Aggregator/Retention (future) |
+| `adapter-source-tika` | SourceReader (Tika) |
+| `adapter-sink-csv` | IocSink + ArtifactFiller (provider/transform) |
+| `adapter-lookup-csv` | LookupRepository |
+| `adapter-psl` | HostClassifier (PSL/Guava) |
+| `adapter-ingest` | Watch ingest: `IngestSourceUseCase`(in), `IngestionLedger`; SourceFeed adapter-local (Spring Integration) — future |
+| `adapter-cli-picocli` | входной CLI |
+| `ioc-app` (bootstrap) | composition root, исполняемый jar |
+
+## Гранулярность
+
+Решение: **сервисы — это уже изолированные единицы за портами** (готовы к выносу),
+но физически нарезаем модули **поэтапно и укрупнённо**, а не «модуль на каждый
+сервис» сразу:
+- сначала границы по слоям (`platform-*`, `ioc-domain`, `ioc-application`, `adapters`),
+- более тонкое дробление (отдельные `platform-*`/`adapter-*`) — по мере роста и
+  потребности в параллельной разработке.
+
+Параллельная разработка возможна **уже до** физического дробления: сервис изолирован
+портом, и его границу стережёт ArchUnit ([boundaries.md](boundaries.md)). Это даёт
+выгоды модульности без преждевременной сложности реактора (KISS).
 
 ## Поэтапный переход
 
