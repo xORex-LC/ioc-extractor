@@ -1,6 +1,5 @@
 package com.iocextractor.diagnostics.result;
 
-import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
 
 /**

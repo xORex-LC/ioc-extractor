@@ -2,11 +2,13 @@
 
 ## Назначение
 
-Прикладной слой: порты (driving/driven) и use-case, оркестрирующий конвейер
-извлечения. Описывает *что* делает приложение, не зная *как* (через порты).
+Прикладной слой: порты (driving/driven), модель ETL-конвейера и use-case,
+оркестрирующий извлечение. Описывает *что* делает приложение, не зная *как*
+(через порты).
 
-**Правило слоя:** зависит только на `domain`. Не зависит на адаптеры, фреймворки
-и `bootstrap`. Реализации портов внедряются снаружи (composition root).
+**Правило слоя:** зависит на `domain` и framework-free platform contracts
+(`diagnostics`). Не зависит на адаптеры, Spring и `bootstrap`. Реализации портов
+внедряются снаружи (composition root).
 
 ## Структура
 
@@ -14,8 +16,10 @@
 |---|---|
 | `port/in/` | Driving-порты: `ExtractIocsUseCase`, команда и результат |
 | `port/out/` | Driven-порты: `SourceReader`, `IocSink`, `LookupRepository` |
-| `service/` | `IocExtractionService` — оркестратор конвейера |
+| `pipeline/` | `Envelope`/`Stage`/`PipelineRunner` и concrete stages текущего ETL |
+| `service/` | `IocExtractionService` — use-case boundary и запуск pipeline |
 
 ## Зависимости
 
-**Зависит от:** `domain`. **Не импортируется** адаптерами иначе как через порты.
+**Зависит от:** `domain`, `diagnostics`. **Не импортируется** адаптерами иначе
+как через порты и use-case boundary.

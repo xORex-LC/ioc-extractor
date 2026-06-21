@@ -1,0 +1,71 @@
+package com.iocextractor.application.pipeline;
+
+import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
+import org.junit.jupiter.api.Test;
+
+import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class EnvelopeTest {
+
+    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-06-21T00:00:00Z"), ZoneOffset.UTC);
+
+    @Test
+    void meta_is_clock_controlled_and_carries_source_identity() {
+        var meta = EnvelopeMeta.initial("run-1", Path.of("src/test/resources/source.html"), true, CLOCK);
+
+        assertThat(meta.runId()).isEqualTo("run-1");
+        assertThat(meta.sourcePath()).isAbsolute();
+        assertThat(meta.sourceId()).isEqualTo(meta.sourcePath().toString());
+        assertThat(meta.stage()).isEqualTo(StageName.INITIAL);
+        assertThat(meta.createdAt()).isEqualTo(CLOCK.instant());
+        assertThat(meta.booleanAttribute(EnvelopeMeta.DRY_RUN, false)).isTrue();
+    }
+
+    @Test
+    void envelope_copies_diagnostics_and_returns_new_instances_for_changes() {
+        var diagnostics = new ArrayList<Diagnostic>();
+        diagnostics.add(diagnostic());
+        var envelope = new Envelope<>("payload", meta(), diagnostics);
+        diagnostics.clear();
+
+        var next = envelope.withPayload(42)
+                .atStage(StageName.EXTRACT)
+                .withMetaAttribute("rows", 5);
+
+        assertThat(envelope.payload()).isEqualTo("payload");
+        assertThat(envelope.meta().stage()).isEqualTo(StageName.INITIAL);
+        assertThat(envelope.diagnostics()).containsExactly(diagnostic());
+        assertThat(next.payload()).isEqualTo(42);
+        assertThat(next.meta().stage()).isEqualTo(StageName.EXTRACT);
+        assertThat(next.meta().attributes()).containsEntry("rows", 5);
+    }
+
+    @Test
+    void diagnostics_snapshot_is_immutable() {
+        var envelope = new Envelope<>("payload", meta(), List.of(diagnostic()));
+
+        assertThatThrownBy(() -> envelope.diagnostics().clear())
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    private EnvelopeMeta meta() {
+        return EnvelopeMeta.initial("run-1", Path.of("source.html"), false, CLOCK);
+    }
+
+    private Diagnostic diagnostic() {
+        return Diagnostic.builder(PipelineDiagnosticCodes.ITEM_SKIPPED, CLOCK)
+                .with("item", "x")
+                .with("stage", "test")
+                .with("reason", "test")
+                .build();
+    }
+}

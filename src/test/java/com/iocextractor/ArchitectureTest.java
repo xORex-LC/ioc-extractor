@@ -1,5 +1,6 @@
 package com.iocextractor;
 
+import com.iocextractor.application.pipeline.Stage;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
@@ -54,6 +55,37 @@ class ArchitectureTest {
             .that().resideInAPackage("..domain..")
             .should().dependOnClassesThat().resideInAnyPackage(
                     "..diagnostics.sink..", "..diagnostics.render..");
+
+    @ArchTest
+    static final ArchRule pipeline_core_is_framework_and_adapter_free = noClasses()
+            .that().resideInAPackage("..application.pipeline..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "org.springframework..", "org.slf4j..", "ch.qos.logback..",
+                    "info.picocli..", "org.apache.tika..", "org.apache.commons.csv..",
+                    "..adapter..", "..bootstrap..");
+
+    @ArchTest
+    static final ArchRule domain_does_not_depend_on_application_pipeline = noClasses()
+            .that().resideInAPackage("..domain..")
+            .should().dependOnClassesThat().resideInAnyPackage("..application.pipeline..");
+
+    @ArchTest
+    static final ArchRule adapters_do_not_depend_on_concrete_pipeline_stages = noClasses()
+            .that().resideInAPackage("..adapter..")
+            .should().dependOnClassesThat().resideInAnyPackage("..application.pipeline.stage..");
+
+    @ArchTest
+    static final ArchRule concrete_pipeline_stages_do_not_own_pipeline_order = noClasses()
+            .that().resideInAPackage("..application.pipeline.stage..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "..application.pipeline.Pipeline",
+                    "..application.pipeline.PipelineRunner");
+
+    @ArchTest
+    static final ArchRule concrete_pipeline_stages_implement_stage = classes()
+            .that().resideInAPackage("..application.pipeline.stage..")
+            .and().haveSimpleNameEndingWith("Stage")
+            .should().implement(Stage.class);
 
     @ArchTest
     static final ArchRule logging_diagnostic_sink_is_not_part_of_stage_6 = noClasses()
