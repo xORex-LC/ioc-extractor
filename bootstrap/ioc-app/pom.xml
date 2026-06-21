@@ -16,6 +16,16 @@
     <description>Spring Boot executable application and composition root</description>
 
     <dependencies>
+        <!-- Internal core modules -->
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-domain</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-application</artifactId>
+        </dependency>
+
         <!-- Internal platform modules -->
         <dependency>
             <groupId>com.iocextractor</groupId>

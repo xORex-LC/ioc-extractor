@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.iocextractor</groupId>
+        <artifactId>ioc-extractor-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>ioc-application</artifactId>
+    <name>ioc-application</name>
+    <description>Use cases, ports and IOC ETL stage services that assemble the pipeline</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-domain</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-etl</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-diagnostics</artifactId>
+        </dependency>
+
+        <!-- Test: PipelineRunnerTest asserts MDC scoping via the observability helper,
+             which needs a real MDC implementation (logback) on the test classpath. -->
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-observability</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

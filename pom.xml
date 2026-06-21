@@ -36,6 +36,8 @@
         <module>platform/platform-etl</module>
         <module>platform/platform-observability</module>
         <module>platform/platform-diagnostics-logging</module>
+        <module>core/ioc-domain</module>
+        <module>core/ioc-application</module>
         <module>bootstrap/ioc-app</module>
     </modules>
 
@@ -79,6 +81,16 @@
             <dependency>
                 <groupId>com.iocextractor</groupId>
                 <artifactId>ioc-platform-diagnostics-logging</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-application</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
