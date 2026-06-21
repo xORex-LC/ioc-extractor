@@ -4,8 +4,14 @@ import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
+import com.iocextractor.observability.EventAction;
+import com.iocextractor.observability.EventOutcome;
+import com.iocextractor.observability.LogField;
+import com.iocextractor.observability.logging.LogEvents;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -22,6 +28,8 @@ import java.util.Set;
  * matches the reference dialect.
  */
 public final class CsvIocSink implements IocSink {
+
+    private static final Logger log = LoggerFactory.getLogger(CsvIocSink.class);
 
     private final String name;
     private final Path path;
@@ -65,8 +73,24 @@ public final class CsvIocSink implements IocSink {
                     printer.printRecord(mapper.toRow(ids.next(), indicator));
                 }
             }
+            LogEvents.info(log)
+                    .action(EventAction.ARTIFACT_WRITE)
+                    .outcome(EventOutcome.SUCCESS)
+                    .field(LogField.IOC_ARTIFACT_NAME, name)
+                    .field(LogField.FILE_PATH, path)
+                    .field(LogField.IOC_ROWS, accepted.size())
+                    .message("artifact written")
+                    .log();
             return accepted.size();
         } catch (IOException e) {
+            LogEvents.error(log)
+                    .action(EventAction.ARTIFACT_WRITE)
+                    .outcome(EventOutcome.FAILURE)
+                    .field(LogField.IOC_ARTIFACT_NAME, name)
+                    .field(LogField.FILE_PATH, path)
+                    .field(LogField.IOC_ROWS, accepted.size())
+                    .message("artifact write failed")
+                    .log(e);
             throw new IocExtractorException("Failed to write artifact '" + name + "' to " + path, e);
         }
     }

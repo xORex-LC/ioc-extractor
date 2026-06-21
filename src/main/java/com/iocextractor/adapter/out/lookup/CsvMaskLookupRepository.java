@@ -3,6 +3,10 @@ package com.iocextractor.adapter.out.lookup;
 import com.iocextractor.application.port.out.LookupRepository;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.domain.model.Indicator;
+import com.iocextractor.observability.EventAction;
+import com.iocextractor.observability.EventOutcome;
+import com.iocextractor.observability.LogField;
+import com.iocextractor.observability.logging.LogEvents;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
@@ -50,7 +54,13 @@ public final class CsvMaskLookupRepository implements LookupRepository {
 
     private void load(Path path) {
         if (path == null || !Files.exists(path)) {
-            log.info("Lookup artifact {} not found; starting with empty storage", path);
+            LogEvents.info(log)
+                    .action(EventAction.LOOKUP_LOAD)
+                    .outcome(EventOutcome.SUCCESS)
+                    .field(LogField.FILE_PATH, path)
+                    .field(LogField.IOC_ROWS, 0)
+                    .message("lookup artifact not found; starting with empty storage")
+                    .log();
             return;
         }
         CSVFormat format = CSVFormat.Builder.create()
@@ -70,9 +80,21 @@ public final class CsvMaskLookupRepository implements LookupRepository {
                 maxId = Math.max(maxId, parseId(record));
             }
         } catch (IOException e) {
+            LogEvents.error(log)
+                    .action(EventAction.LOOKUP_LOAD)
+                    .outcome(EventOutcome.FAILURE)
+                    .field(LogField.FILE_PATH, path)
+                    .message("lookup load failed")
+                    .log(e);
             throw new IocExtractorException("Failed to load lookup artifact: " + path, e);
         }
-        log.info("Loaded {} existing masks (max id {}) for de-duplication", masks.size(), maxId);
+        LogEvents.info(log)
+                .action(EventAction.LOOKUP_LOAD)
+                .outcome(EventOutcome.SUCCESS)
+                .field(LogField.FILE_PATH, path)
+                .field(LogField.IOC_ROWS, masks.size())
+                .message("lookup loaded")
+                .log();
     }
 
     private long parseId(CSVRecord record) {

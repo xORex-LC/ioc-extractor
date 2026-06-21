@@ -4,14 +4,17 @@
 все будущие случаи, а **правила именования и маленькое ядро**, чтобы проект мог
 легко добавлять новые поля и `event.action` без ломки схемы.
 
-> Статус: **дизайн**. Документ намеренно компактный: расширяемость важнее
-> преждевременного полного словаря.
+> Статус: **реализованный seed-контракт этапа 8**. Документ намеренно компактный:
+> расширяемость важнее преждевременного полного словаря.
 
 ## Принцип
 
 - ECS-поля используем без переименования.
 - Проектные поля кладём только в namespace `ioc.*`.
 - `event.action` — стабильный machine-readable глагол.
+- `event.dataset` в seed-реализации задаётся Logback/ECS encoder-ом как
+  статическое `ioc-extractor`; per-event dataset через MDC не используется,
+  потому что официальный encoder фильтрует reserved ECS keys из MDC.
 - `message` — человекочитаемый текст, не контракт.
 - Новое поле или action добавляется там, где появляется реальная потребность.
 - Diagnostic-поля добавляются только к событиям, связанным с диагностикой
@@ -28,13 +31,13 @@
 | `message` | человекочитаемый текст |
 | `service.name` | `ioc-extractor` |
 | `service.version` | версия приложения, когда доступна |
-| `event.dataset` | зона события (`ioc-extractor.pipeline`, `ioc-extractor.sink`, ...) |
+| `event.dataset` | статическое значение encoder-а: `ioc-extractor` |
 | `event.action` | действие |
 | `event.outcome` | `success`, `failure`, `unknown` |
 
 Дополнительные ECS-поля (`event.category`, `event.type`, `error.*`, `trace.*`,
-`process.*`) добавляются по мере необходимости и не обязательны для каждого
-события.
+`process.*`, `file.*`) добавляются по мере необходимости и не обязательны для
+каждого события.
 
 ## Project fields
 
@@ -54,6 +57,12 @@
 | `ioc.diagnostic.category` | если событие связано с Diagnostic |
 | `ioc.diagnostic.severity` | если событие связано с Diagnostic |
 
+Используемые стартовые ECS-поля сверх базового минимума:
+
+| Поле | Когда |
+|---|---|
+| `file.path` | путь lookup/output файла, если событие связано с файловым IO |
+
 **Корреляция** run/source — каноничные project fields `ioc.run.id` /
 `ioc.source.id`. ECS `trace.id` / `transaction.id` используем только при наличии
 совместимого внешнего tracing/APM-контекста, чтобы не подменять семантику ECS.
@@ -64,18 +73,20 @@ Per-item поля (`ioc.indicator.*`, `ioc.dedup.key`) не входят в ба
 
 ## Seed actions
 
-Стартовый набор `event.action`, достаточный для этапа 6:
+Стартовый набор `event.action`, достаточный для этапа 8:
 
-| Action | Dataset | Когда |
+| Action | Area | Когда |
 |---|---|---|
-| `app_start` | `ioc-extractor.app` | приложение стартует |
-| `app_stop` | `ioc-extractor.app` | graceful shutdown |
-| `command_start` | `ioc-extractor.cli` | CLI command началась |
-| `command_complete` | `ioc-extractor.cli` | CLI command завершилась |
-| `stage_start` | `ioc-extractor.pipeline` | стадия началась |
-| `stage_complete` | `ioc-extractor.pipeline` | стадия завершилась |
-| `lookup_load` | `ioc-extractor.lookup` | lookup artifact загружен |
-| `artifact_write` | `ioc-extractor.sink` | CSV artifact записан |
+| `app_start` | app | приложение стартует |
+| `app_stop` | app | graceful shutdown |
+| `command_start` | cli | CLI command началась |
+| `command_complete` | cli | CLI command завершилась |
+| `stage_start` | pipeline | стадия началась |
+| `stage_complete` | pipeline | стадия завершилась |
+| `lookup_load` | lookup | lookup artifact загружен |
+| `source_read` | source | source document прочитан |
+| `artifact_write` | sink | CSV artifact записан |
+| `diagnostic_emit` | diagnostics | Diagnostic опубликован в log stream |
 
 Для daemon-этапа добавятся ingest/partition/aggregation actions рядом с кодом,
 который их реально вводит.

@@ -11,6 +11,8 @@ dataframe/*_generated.csv
 
 # Log file
 *.log
+*.ecs.json
+var/logs/
 
 # BlueJ files
 *.ctxt

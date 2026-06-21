@@ -17,6 +17,8 @@
 | `adapter/` | Входные/выходные адаптеры (CLI, Tika, CSV, regex-движки) |
 | `bootstrap/` | Конфигурация и composition root (Spring) |
 | `common/` | Общие типы (исключения) |
+| `diagnostics/` | Диагностика обработки данных в pipeline |
+| `observability/` | Operational logging taxonomy, MDC scope и bridge diagnostics→logs |
 | `IocExtractorApplication.java` | Точка входа (Spring Boot, CLI, без web) |
 
 ## Точка входа

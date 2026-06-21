@@ -35,17 +35,19 @@ class ArchitectureTest {
             .that().resideInAPackage("..domain..")
             .should().dependOnClassesThat().resideInAnyPackage(
                     "org.springframework..", "org.apache..", "com.google.re2j..",
-                    "info.picocli..", "com.google.common..");
+                    "info.picocli..", "com.google.common..", "org.slf4j..",
+                    "ch.qos.logback..");
 
     @ArchTest
     static final ArchRule application_depends_only_inward = noClasses()
             .that().resideInAPackage("..application..")
             .should().dependOnClassesThat().resideInAnyPackage(
-                    "..adapter..", "..bootstrap..", "org.springframework..");
+                    "..adapter..", "..bootstrap..", "org.springframework..",
+                    "org.slf4j..", "ch.qos.logback..");
 
     @ArchTest
     static final ArchRule diagnostics_core_is_framework_and_adapter_free = noClasses()
-            .that().resideInAPackage("..diagnostics..")
+            .that().resideInAPackage("com.iocextractor.diagnostics..")
             .should().dependOnClassesThat().resideInAnyPackage(
                     "org.springframework..", "org.slf4j..", "ch.qos.logback..",
                     "..adapter..", "..bootstrap..", "..application.service..");
@@ -88,8 +90,15 @@ class ArchitectureTest {
             .should().implement(Stage.class);
 
     @ArchTest
-    static final ArchRule logging_diagnostic_sink_is_not_part_of_stage_6 = noClasses()
+    static final ArchRule logging_diagnostic_sink_is_outside_diagnostics_core = noClasses()
+            .that().resideInAPackage("com.iocextractor.diagnostics..")
             .should().haveSimpleName("LoggingDiagnosticSink");
+
+    @ArchTest
+    static final ArchRule observability_does_not_depend_on_business_or_adapters = noClasses()
+            .that().resideInAPackage("..observability..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "..domain..", "..adapter..", "..bootstrap..");
 
     @ArchTest
     static final ArchRule ports_are_interfaces = classes()

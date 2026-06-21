@@ -18,6 +18,8 @@ diagnostics. Порядок стадий задаётся в `Pipeline`, а не
 | `Stage.java` | Контракт одного filter-шагa |
 | `Pipeline.java` | Type-safe список стадий |
 | `PipelineRunner.java` | Последовательное исполнение стадий + `FailurePolicy` |
+| `PipelineObserver.java` | Порт operational events для runner |
+| `NoopPipelineObserver.java` | No-op observer для тестов/простых конструкторов |
 | `StageName.java` | Stable stage identifiers |
 | `StageExecutionException.java` | Ошибка неверного исполнения pipeline |
 | `payload/` | Типизированные payload records между стадиями |

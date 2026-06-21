@@ -29,6 +29,9 @@ public record EnvelopeMeta(
     /** Attribute key carrying the inbound dry-run flag. */
     public static final String DRY_RUN = "dryRun";
 
+    /** Attribute key carrying the observability mode. */
+    public static final String MODE = "mode";
+
     /**
      * Creates metadata with defensive attribute copying.
      */

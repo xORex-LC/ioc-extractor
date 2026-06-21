@@ -16,8 +16,14 @@ logging:
   level:
     root: INFO
     com.iocextractor: INFO
+  file:
+    path: var/logs
 
 ioc:
+  observability:
+    mode: oneshot
+    per-item-trace-enabled: false
+
   # ---- Source profile: how to read & where indicators come from --------------
   source:
     type: auto                       # 'auto' = Tika detects format (.docx/.htm/.pdf/...)

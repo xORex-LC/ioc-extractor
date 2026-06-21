@@ -11,6 +11,7 @@ import java.util.Objects;
 public final class PipelineRunner {
 
     private final FailurePolicy failurePolicy;
+    private final PipelineObserver observer;
 
     /**
      * Creates a runner using the supplied failure policy.
@@ -19,6 +20,18 @@ public final class PipelineRunner {
      */
     public PipelineRunner(FailurePolicy failurePolicy) {
         this.failurePolicy = Objects.requireNonNull(failurePolicy, "failurePolicy");
+        this.observer = new NoopPipelineObserver();
+    }
+
+    /**
+     * Creates a runner using the supplied failure policy and observer.
+     *
+     * @param failurePolicy policy evaluated after each stage
+     * @param observer operational observer
+     */
+    public PipelineRunner(FailurePolicy failurePolicy, PipelineObserver observer) {
+        this.failurePolicy = Objects.requireNonNull(failurePolicy, "failurePolicy");
+        this.observer = Objects.requireNonNull(observer, "observer");
     }
 
     /**
@@ -36,17 +49,32 @@ public final class PipelineRunner {
 
         Envelope<?> current = input;
         for (Stage<?, ?> stage : pipeline.stages()) {
-            current = apply(stage, current);
-            new Notification()
-                    .addAll(current.diagnostics())
-                    .throwIfRejected(failurePolicy);
+            var stageInput = current.atStage(stage.name());
+            try (var ignored = observer.openStage(stageInput.meta())) {
+                observer.stageStarted(stageInput.meta());
+                long startedAt = System.nanoTime();
+                try {
+                    current = apply(stage, stageInput);
+                    new Notification()
+                            .addAll(current.diagnostics())
+                            .throwIfRejected(failurePolicy);
+                    observer.stageCompleted(stageInput.meta(), System.nanoTime() - startedAt);
+                } catch (RuntimeException ex) {
+                    observer.stageFailed(stageInput.meta(), System.nanoTime() - startedAt, ex);
+                    throw ex;
+                }
+            } catch (RuntimeException ex) {
+                throw ex;
+            } catch (Exception ex) {
+                throw new StageExecutionException("Failed to close stage scope: " + stage.name(), ex);
+            }
         }
         return cast(current);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private Envelope<?> apply(Stage stage, Envelope<?> input) {
-        return stage.process(input.atStage(stage.name()));
+        return stage.process(input);
     }
 
     @SuppressWarnings("unchecked")

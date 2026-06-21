@@ -27,7 +27,8 @@ public record IocProperties(
         @NotEmpty Map<IndicatorType, String> patterns,
         @NotNull @Valid Classify classify,
         @NotNull @Valid Sink sink,
-        @NotNull @Valid Lookup lookup) {
+        @NotNull @Valid Lookup lookup,
+        @NotNull @Valid Observability observability) {
 
     public record Source(@NotBlank String type, String charset, @NotNull List<String> sectionMarkers) {
     }
@@ -69,5 +70,8 @@ public record IocProperties(
     }
 
     public record Lookup(String type, @NotBlank String path, boolean deduplicate) {
+    }
+
+    public record Observability(@NotBlank String mode, boolean perItemTraceEnabled) {
     }
 }

@@ -26,6 +26,9 @@ import com.iocextractor.application.port.out.LookupRepository;
 import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.application.service.IocExtractionService;
 import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.diagnostics.render.DiagnosticRenderer;
+import com.iocextractor.diagnostics.render.TemplateDiagnosticRenderer;
+import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.domain.attribute.MarkerSourceAttributor;
 import com.iocextractor.domain.attribute.SourceAttributor;
 import com.iocextractor.adapter.out.psl.PslHostClassifier;
@@ -47,8 +50,11 @@ import com.iocextractor.domain.model.MaskMatch;
 import com.iocextractor.domain.refang.RefangRule;
 import com.iocextractor.domain.refang.ReplacementRefanger;
 import com.iocextractor.domain.refang.Refanger;
+import com.iocextractor.observability.diagnostics.LoggingDiagnosticSink;
+import com.iocextractor.observability.logging.LoggingPipelineObserver;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.QuoteMode;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -155,6 +161,16 @@ public class AppConfig {
     }
 
     @Bean
+    public DiagnosticRenderer diagnosticRenderer() {
+        return new TemplateDiagnosticRenderer();
+    }
+
+    @Bean
+    public DiagnosticSink diagnosticSink(DiagnosticRenderer renderer) {
+        return new LoggingDiagnosticSink(LoggerFactory.getLogger(LoggingDiagnosticSink.class), renderer);
+    }
+
+    @Bean
     public ExtractIocsUseCase extractIocsUseCase(SourceReader reader,
                                                  Refanger refanger,
                                                  IndicatorExtractor extractor,
@@ -164,7 +180,8 @@ public class AppConfig {
                                                  IocProperties props) {
         List<IocSink> sinks = buildSinks(props, matchPolicy, lookup.maxId());
         return new IocExtractionService(reader, refanger, extractor, attributor,
-                lookup, sinks, props.lookup().deduplicate());
+                lookup, sinks, props.lookup().deduplicate(), props.observability().mode(),
+                new LoggingPipelineObserver());
     }
 
     // ---- artifact assembly -------------------------------------------------

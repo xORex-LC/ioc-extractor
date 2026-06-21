@@ -46,9 +46,9 @@ ingestion.
 - зависимость `ecs-logging-java` / `logback-ecs-encoder` для Spring Boot 3.3.x;
 - `logback-spring.xml` с console и daemon ECS rolling file;
 - `MdcScope`, который ставит и восстанавливает только свои MDC keys;
-- whitelist/const для стартовых `event.action`, `event.dataset`, `ioc.*` fields;
-- helper для scoped log events (`event.action`, `event.dataset`,
-  `event.outcome`, `event.duration`);
+- whitelist/const для стартовых `event.action`, `event.outcome`, `ioc.*` fields;
+- helper для scoped log events (`event.action`, `event.outcome`,
+  `event.duration`);
 - stage log events на application pipeline boundary;
 - IO log events в adapters (`lookup_load`, `artifact_write`, source read);
 - `LoggingDiagnosticSink` как bridge из diagnostics в operational log stream;
@@ -91,7 +91,6 @@ src/main/java/com/iocextractor/observability/
 ├── README.md
 ├── package-info.java
 ├── EventAction.java
-├── EventDataset.java
 ├── EventOutcome.java
 ├── LogField.java
 ├── MdcScope.java
@@ -102,7 +101,7 @@ src/main/java/com/iocextractor/observability/logging/
 ├── package-info.java
 ├── LogEvent.java
 ├── LogEvents.java
-└── StageTimer.java
+└── LoggingPipelineObserver.java
 
 src/main/java/com/iocextractor/observability/diagnostics/
 ├── README.md
@@ -156,8 +155,7 @@ try (var ignored = MdcScope.open()
 
 `LogField` фиксирует только stable field names:
 
-- ECS-ish keys: `event.action`, `event.dataset`, `event.outcome`,
-  `event.duration`;
+- ECS-ish keys: `event.action`, `event.outcome`, `event.duration`;
 - project keys: `ioc.run.id`, `ioc.source.id`, `ioc.mode`, `ioc.stage`,
   `ioc.source.path`, `ioc.source.content_hash`, `ioc.artifact.name`, `ioc.rows`;
 - diagnostic keys: `ioc.diagnostic.code`, `ioc.diagnostic.category`,
@@ -166,15 +164,18 @@ try (var ignored = MdcScope.open()
 Не добавлять per-item fields (`ioc.indicator.*`, `ioc.dedup.key`) на старте.
 Они вводятся отдельным решением и только для `DEBUG`/`TRACE`.
 
-### `EventAction` / `EventDataset` / `EventOutcome`
+### `EventAction` / `EventOutcome`
 
 Стартовый набор соответствует [logging-taxonomy.md](../logging-taxonomy.md):
 
 - actions: `app_start`, `app_stop`, `command_start`, `command_complete`,
-  `stage_start`, `stage_complete`, `lookup_load`, `artifact_write`;
-- datasets: `ioc-extractor.app`, `ioc-extractor.cli`,
-  `ioc-extractor.pipeline`, `ioc-extractor.lookup`, `ioc-extractor.sink`;
+  `stage_start`, `stage_complete`, `lookup_load`, `source_read`,
+  `artifact_write`, `diagnostic_emit`;
 - outcomes: `success`, `failure`, `unknown`.
+
+`event.dataset` задаётся `logback-ecs-encoder` статически как `ioc-extractor`.
+Per-event dataset через MDC не использовать: официальный encoder фильтрует
+reserved ECS keys из MDC.
 
 Новый action добавляется вместе с первым producer-ом события и тестом
 стабильности taxonomy.
@@ -185,7 +186,6 @@ try (var ignored = MdcScope.open()
 
 ```java
 LogEvents.info(logger)
-        .dataset(EventDataset.PIPELINE)
         .action(EventAction.STAGE_COMPLETE)
         .outcome(EventOutcome.SUCCESS)
         .durationNanos(duration)
@@ -203,14 +203,6 @@ LogEvents.info(logger)
 
 Если helper окажется избыточным, допустима более простая реализация:
 `try (MdcScope event = MdcScope.open()...) { logger.info(...) }`.
-
-### `StageTimer`
-
-Маленький helper вокруг `System.nanoTime()` для `event.duration`:
-
-- start на входе стадии;
-- duration в наносекундах;
-- используется только для логов, не для бизнес-логики.
 
 ### `LoggingDiagnosticSink`
 
@@ -384,7 +376,7 @@ git diff --check
 1. Обновить `.gitignore`: `var/logs/`.
 2. Добавить `ecs-logging-java` dependency и `logback-spring.xml`.
 3. Создать `observability` root package + README/package-info.
-4. Реализовать `LogField`, `EventAction`, `EventDataset`, `EventOutcome`.
+4. Реализовать `LogField`, `EventAction`, `EventOutcome`.
 5. Реализовать `MdcScope` с тестами nested/restore/no leak.
 6. Реализовать минимальный event helper (`LogEvents`) или зафиксировать прямой
    паттерн `MdcScope + logger`.

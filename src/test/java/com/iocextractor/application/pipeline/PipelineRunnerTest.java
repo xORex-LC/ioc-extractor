@@ -5,7 +5,10 @@ import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.diagnostics.result.FailurePolicy;
+import com.iocextractor.observability.LogField;
+import com.iocextractor.observability.MdcScope;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 
 import java.nio.file.Path;
 import java.time.Clock;
@@ -63,6 +66,22 @@ class PipelineRunnerTest {
         assertThat(output.diagnostics()).contains(diagnostic);
     }
 
+    @Test
+    void exposes_envelope_metadata_as_scoped_mdc_during_stage_execution() {
+        MDC.clear();
+        var seen = new ArrayList<String>();
+        var pipeline = Pipeline.<String>start()
+                .then(new MdcRecordingStage(seen));
+
+        new PipelineRunner(FailurePolicy.failFast(), new MdcTestObserver())
+                .run(Envelope.of("start", meta().withAttribute(EnvelopeMeta.MODE, "daemon")), pipeline);
+
+        assertThat(seen).containsExactly("run-1|READ_SOURCE|daemon");
+        assertThat(MDC.get(LogField.IOC_RUN_ID.key())).isNull();
+        assertThat(MDC.get(LogField.IOC_STAGE.key())).isNull();
+        assertThat(MDC.get(LogField.IOC_MODE.key())).isNull();
+    }
+
     private EnvelopeMeta meta() {
         return EnvelopeMeta.initial("run-1", Path.of("source.html"), false, CLOCK);
     }
@@ -95,6 +114,45 @@ class PipelineRunnerTest {
         @Override
         public Envelope<String> process(Envelope<String> input) {
             return input.withDiagnostic(diagnostic);
+        }
+    }
+
+    private record MdcRecordingStage(List<String> seen) implements Stage<String, String> {
+
+        @Override
+        public StageName name() {
+            return StageName.READ_SOURCE;
+        }
+
+        @Override
+        public Envelope<String> process(Envelope<String> input) {
+            seen.add(MDC.get(LogField.IOC_RUN_ID.key())
+                    + "|" + MDC.get(LogField.IOC_STAGE.key())
+                    + "|" + MDC.get(LogField.IOC_MODE.key()));
+            return input;
+        }
+    }
+
+    private static final class MdcTestObserver implements PipelineObserver {
+
+        @Override
+        public AutoCloseable openStage(EnvelopeMeta meta) {
+            return MdcScope.open()
+                    .put(LogField.IOC_RUN_ID, meta.runId())
+                    .put(LogField.IOC_STAGE, meta.stage().name())
+                    .put(LogField.IOC_MODE, meta.attributes().get(EnvelopeMeta.MODE));
+        }
+
+        @Override
+        public void stageStarted(EnvelopeMeta meta) {
+        }
+
+        @Override
+        public void stageCompleted(EnvelopeMeta meta, long durationNanos) {
+        }
+
+        @Override
+        public void stageFailed(EnvelopeMeta meta, long durationNanos, RuntimeException failure) {
         }
     }
 }

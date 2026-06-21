@@ -5,9 +5,12 @@
 записи артефактов, retry, latency, ошибки и технический контекст. Диагностика
 конвейера может попадать в этот поток, но не является его центром.
 
-> Статус: **дизайн**. Реализация относится к этапу 8
-> ([roadmap.md](roadmap.md#этапы)): MDC, log taxonomy, rolling file, ECS JSON
-> для daemon-профиля и мост диагностик в общий logging pipeline.
+> Статус: **реализовано базовое ядро этапа 8**: MDC scope, code taxonomy,
+> LogEvent helper, stage/adapters events, ECS JSON rolling file для
+> `daemon`-профиля и `LoggingDiagnosticSink`. `event.dataset` на этом этапе
+> задаётся encoder-ом статически как `ioc-extractor`; детализация событий идёт
+> через `event.action` и `ioc.*`. Дальнейшее расширение событий добавляется
+> рядом с новыми producer-ами.
 
 ## Разделение моделей
 
@@ -160,9 +163,13 @@ run id.
 | `ioc.artifact.name` | custom | запись sink/aggregation |
 | `ioc.partition.path` | custom | stream partition |
 
-`event.dataset` — **поле события** (меняется по области/стадии), проставляется
-per-event, а не корреляционный ключ. Per-item поля (`ioc.indicator.*`,
-`ioc.dedup.key`) — только в коротком scope и преимущественно на `DEBUG`/`TRACE`.
+`event.dataset` — ECS-поле encoder-а. В официальном `logback-ecs-encoder` оно
+сериализуется до MDC, а одноимённый MDC-key фильтруется как reserved ECS key.
+Поэтому seed-реализация задаёт его статически (`ioc-extractor`) в
+`logback-spring.xml`; per-event детализация идёт через `event.action`,
+`ioc.stage`, `ioc.artifact.name`, `ioc.diagnostic.*` и другие поля. Per-item поля
+(`ioc.indicator.*`, `ioc.dedup.key`) — только в коротком scope и преимущественно
+на `DEBUG`/`TRACE`.
 
 Нужен helper, наполняемый из `Envelope.meta`:
 
@@ -207,7 +214,7 @@ ECS JSON:
   "message": "artifact written",
   "service.name": "ioc-extractor",
   "service.version": "0.1.0",
-  "event.dataset": "ioc-extractor.sink",
+  "event.dataset": "ioc-extractor",
   "event.action": "artifact_write",
   "event.category": ["file"],
   "event.type": ["creation"],
