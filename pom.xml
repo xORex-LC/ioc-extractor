@@ -12,10 +12,11 @@
     </parent>
 
     <groupId>com.iocextractor</groupId>
-    <artifactId>ioc-extractor</artifactId>
+    <artifactId>ioc-extractor-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
-    <name>ioc-extractor</name>
-    <description>Mini ETL for extracting, deobfuscating and normalizing IOCs into reputation-list masks</description>
+    <packaging>pom</packaging>
+    <name>ioc-extractor-parent</name>
+    <description>Parent reactor for the IOC extractor: dependency/plugin management and module aggregation</description>
 
     <properties>
         <java.version>21</java.version>
@@ -23,104 +24,76 @@
         <re2j.version>1.7</re2j.version>
         <tika.version>2.9.2</tika.version>
         <commons-csv.version>1.12.0</commons-csv.version>
+        <commons-io.version>2.17.0</commons-io.version>
         <guava.version>33.3.1-jre</guava.version>
         <ecs-logging-java.version>1.8.0</ecs-logging-java.version>
+        <archunit.version>1.3.0</archunit.version>
     </properties>
 
-    <dependencies>
-        <!-- Core: DI, config binding, validation, logging (no web) -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
-        </dependency>
+    <modules>
+        <module>bootstrap/ioc-app</module>
+    </modules>
 
-        <!-- Inbound adapter: CLI -->
-        <dependency>
-            <groupId>info.picocli</groupId>
-            <artifactId>picocli</artifactId>
-            <version>${picocli.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>info.picocli</groupId>
-            <artifactId>picocli-spring-boot-starter</artifactId>
-            <version>${picocli.version}</version>
-        </dependency>
+    <dependencyManagement>
+        <dependencies>
+            <!-- Internal modules: version aligned with the reactor. -->
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-app</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
-        <!-- Domain: linear-time regex engine (ReDoS-safe) for IOC extraction.
-             Default PatternEngine; java.util.regex is the swappable fallback. -->
-        <dependency>
-            <groupId>com.google.re2j</groupId>
-            <artifactId>re2j</artifactId>
-            <version>${re2j.version}</version>
-        </dependency>
-
-        <!-- Outbound adapter: format-agnostic text extraction
-             (.docx / .htm / .pdf / .xlsx ...) for the SourceReader port. -->
-        <dependency>
-            <groupId>org.apache.tika</groupId>
-            <artifactId>tika-core</artifactId>
-            <version>${tika.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.tika</groupId>
-            <artifactId>tika-parsers-standard-package</artifactId>
-            <version>${tika.version}</version>
-        </dependency>
-
-        <!-- Outbound adapter: CSV read/write (';' dialect, quoting, NULL) -->
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-csv</artifactId>
-            <version>${commons-csv.version}</version>
-        </dependency>
-        <!-- commons-csv 1.12 needs a recent commons-io; override the older
-             version managed by the Spring Boot BOM. -->
-        <dependency>
-            <groupId>commons-io</groupId>
-            <artifactId>commons-io</artifactId>
-            <version>2.17.0</version>
-        </dependency>
-
-        <!-- Outbound adapter: Public Suffix List host classification (adapter.out.psl).
-             Used only behind the HostClassifier port; kept out of the domain. -->
-        <dependency>
-            <groupId>com.google.guava</groupId>
-            <artifactId>guava</artifactId>
-            <version>${guava.version}</version>
-        </dependency>
-
-        <!-- Observability: ECS-compatible JSON encoding for Logback/Spring Boot. -->
-        <dependency>
-            <groupId>co.elastic.logging</groupId>
-            <artifactId>logback-ecs-encoder</artifactId>
-            <version>${ecs-logging-java.version}</version>
-        </dependency>
-
-        <!-- Test -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <!-- Architecture boundary tests (layer/dependency rules) -->
-        <dependency>
-            <groupId>com.tngtech.archunit</groupId>
-            <artifactId>archunit-junit5</artifactId>
-            <version>1.3.0</version>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
+            <!-- External libraries: versions centralized here, used without version in modules. -->
+            <dependency>
+                <groupId>info.picocli</groupId>
+                <artifactId>picocli</artifactId>
+                <version>${picocli.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>info.picocli</groupId>
+                <artifactId>picocli-spring-boot-starter</artifactId>
+                <version>${picocli.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.re2j</groupId>
+                <artifactId>re2j</artifactId>
+                <version>${re2j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tika</groupId>
+                <artifactId>tika-core</artifactId>
+                <version>${tika.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tika</groupId>
+                <artifactId>tika-parsers-standard-package</artifactId>
+                <version>${tika.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-csv</artifactId>
+                <version>${commons-csv.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-io</groupId>
+                <artifactId>commons-io</artifactId>
+                <version>${commons-io.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>${guava.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>co.elastic.logging</groupId>
+                <artifactId>logback-ecs-encoder</artifactId>
+                <version>${ecs-logging-java.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.tngtech.archunit</groupId>
+                <artifactId>archunit-junit5</artifactId>
+                <version>${archunit.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 </project>

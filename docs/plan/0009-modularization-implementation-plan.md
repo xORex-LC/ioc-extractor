@@ -77,6 +77,25 @@
 не содержит тяжёлую бизнес-логику. Stage адаптирует один domain service или
 application port к ETL contract и не знает, какая стадия стоит до или после него.
 
+### Гранулярность домена — единый `ioc-domain` (решение [notes/0009](../notes/0009-modularization-granularity.md))
+
+IOC domain — это **один bounded context с одним общим языком**, поэтому это
+**один Maven-артефакт `ioc-domain`**, а не 6 отдельных capability-модулей.
+Capability (`refang/extract/feature/classify/attribute/model`) остаются
+**пакетами** внутри `ioc-domain`, а их границы держит **ArchUnit-DAG**, не Maven.
+
+Обоснование: стадии/сервисы общаются через стабильные контракты (низкий coupling),
+а «новая фича задевает несколько шагов» — это свойство горизонтальной нарезки
+(cross-cutting feature), не связанность. К тому же ось «новый тип IOC» вынесена в
+конфиг (`patterns`/`classify.rules`/`columns`), поэтому типичное изменение не
+рябит по коду. Разрез домена на отдельные артефакты не уменьшил бы coupling
+(он уже низкий), а лишь добавил релизной церемонии.
+
+**Критерий выноса capability в свой артефакт:** только реальная сила —
+независимый релизный темп, отдельная команда или переиспользование в другом
+продукте. `refang` — первый кандидат (coupling-остров `text→text`, переиспользуем
+как библиотека); остальные сидят на общем `kernel` и держатся вместе.
+
 ## Целевая структура реактора
 
 Рабочая структура этапа 9:
@@ -91,12 +110,9 @@ ioc-extractor/
 │   ├── platform-observability/
 │   └── platform-diagnostics-logging/
 ├── core/
-│   ├── ioc-domain-kernel/
-│   ├── ioc-domain-refang/
-│   ├── ioc-domain-extraction/
-│   ├── ioc-domain-features/
-│   ├── ioc-domain-classification/
-│   ├── ioc-domain-attribution/
+│   ├── ioc-domain/                 # один bounded context; capability = пакеты + ArchUnit-DAG
+│   │                               #   model(kernel) / refang / extract / feature / classify / attribute
+│   │                               #   (refang — кандидат №1 на вынос при появлении переиспользования)
 │   └── ioc-application/
 ├── adapters/
 │   ├── adapter-regex-re2j/
@@ -113,8 +129,8 @@ ioc-extractor/
 реализацией: SPI не должен тащить RE2J/JDK implementations во внутренние слои.
 На этапе 9 базовое решение такое:
 
-- `PatternEngine` остаётся в `ioc-domain-extraction`, если он является портом
-  extraction capability;
+- `PatternEngine` остаётся в `ioc-domain` (пакет `extract`), как порт extraction
+  capability;
 - `adapter-regex-re2j` содержит RE2J implementation;
 - JDK fallback остаётся в том же adapter-модуле или выделяется позже, если
   появится реальная причина для отдельного артефакта.
@@ -134,12 +150,7 @@ ioc-extractor/
 | `platform/platform-diagnostics` | `ioc-platform-diagnostics` | diagnostics model, catalog, result, sink ports |
 | `platform/platform-observability` | `ioc-platform-observability` | `MdcScope`, `LogEvent`, taxonomy constants |
 | `platform/platform-diagnostics-logging` | `ioc-platform-diagnostics-logging` | bridge `DiagnosticSink` -> operational logs |
-| `core/ioc-domain-kernel` | `ioc-domain-kernel` | shared kernel: общий язык IOC |
-| `core/ioc-domain-refang` | `ioc-domain-refang` | восстановление дефангнутого текста |
-| `core/ioc-domain-extraction` | `ioc-domain-extraction` | обнаружение IOC-кандидатов |
-| `core/ioc-domain-features` | `ioc-domain-features` | нормализация и признаки IOC |
-| `core/ioc-domain-classification` | `ioc-domain-classification` | match-policy/classification rules |
-| `core/ioc-domain-attribution` | `ioc-domain-attribution` | привязка IOC к source context |
+| `core/ioc-domain` | `ioc-domain` | один bounded context: kernel + refang/extract/feature/classify/attribute (capability — пакеты + ArchUnit-DAG) |
 | `core/ioc-application` | `ioc-application` | ports, use cases, IOC ETL stage services |
 | `adapters/adapter-regex-re2j` | `ioc-adapter-regex-re2j` | `PatternEngine` implementation on RE2J/JDK fallback |
 | `adapters/adapter-source-tika` | `ioc-adapter-source-tika` | `SourceReader` через Tika |
@@ -158,9 +169,9 @@ ioc-extractor/
 | `ioc-platform-diagnostics` | `ioc-platform-errors` | Spring, SLF4J, Logback, application/domain/adapters |
 | `ioc-platform-observability` | SLF4J API, возможно `ioc-platform-errors` | domain/application/adapters/bootstrap, Logback-specific appenders |
 | `ioc-platform-diagnostics-logging` | diagnostics + observability | domain/application/adapters/bootstrap |
-| `ioc-domain-kernel` | errors only if needed | Spring, Tika, CSV, Guava, RE2J, SLF4J, application/adapters/bootstrap, feature modules |
-| `ioc-domain-*` capability | `ioc-domain-kernel`, errors, sibling domain modules only by explicit design | Spring, Tika, CSV, picocli, Logback, adapters/bootstrap |
-| `ioc-application` | platform-etl, diagnostics, errors, needed IOC domain capabilities | Spring, Tika, CSV, picocli, Logback, concrete adapters/bootstrap |
+| `ioc-domain` | errors only if needed | Spring, Tika, CSV, Guava, RE2J, SLF4J, `platform-etl`/`Envelope`, application/adapters/bootstrap |
+| `ioc-domain` (внутри, ArchUnit-DAG) | `refang`→∅; `classify`→`feature`+`model`; `extract`/`attribute`→`model`; без циклов | capability не лезет во внутренности соседа; только через `model` |
+| `ioc-application` | platform-etl, diagnostics, errors, `ioc-domain` | Spring, Tika, CSV, picocli, Logback, concrete adapters/bootstrap |
 | `ioc-adapter-*` | `ioc-application`, needed IOC domain modules, needed platform modules, own external lib | bootstrap, соседние adapters без явной причины |
 | `ioc-app` | все нужные modules | бизнес-правила и IO-алгоритмы вне composition/wiring |
 
@@ -178,12 +189,7 @@ metadata/control contract. Это нужно отразить в `modularization
 | generic часть `com.iocextractor.application.pipeline` | `platform/platform-etl` |
 | `com.iocextractor.observability` без diagnostics bridge | `platform/platform-observability` |
 | `com.iocextractor.observability.diagnostics` | `platform/platform-diagnostics-logging` |
-| `com.iocextractor.domain.model` | `core/ioc-domain-kernel` |
-| `com.iocextractor.domain.refang` | `core/ioc-domain-refang` |
-| `com.iocextractor.domain.extract` | `core/ioc-domain-extraction` |
-| `com.iocextractor.domain.feature` | `core/ioc-domain-features` |
-| `com.iocextractor.domain.classify` | `core/ioc-domain-classification` |
-| `com.iocextractor.domain.attribute` | `core/ioc-domain-attribution` |
+| `com.iocextractor.domain.*` (model/refang/extract/feature/classify/attribute) | `core/ioc-domain` (пакеты сохраняются, границы — ArchUnit-DAG) |
 | `com.iocextractor.application.port`, `application.service` | `core/ioc-application` |
 | IOC payload/stage часть `com.iocextractor.application.pipeline` | `core/ioc-application` |
 | `com.iocextractor.adapter.out.regex` | `adapters/adapter-regex-re2j` |
@@ -204,8 +210,7 @@ metadata/control contract. Это нужно отразить в `modularization
 | `platform-diagnostics` | diagnostic codes/model/result/notification/sink ports/rendering | пишет в SLF4J, знает про pipeline stages |
 | `platform-observability` | MDC scope, log event helper, field/action constants | настраивает конкретный rolling file для приложения |
 | `platform-diagnostics-logging` | маппит diagnostics в operational log events | становится источником diagnostics truth |
-| `ioc-domain-kernel` | стабильный язык IOC: indicators, types, source context, raw spans/features if shared | feature algorithms, orchestration, adapters |
-| `ioc-domain-*` capability | один доменный шаг: refang/extract/features/classify/attribute | знать про `Envelope`, IO, Spring, logging, соседние стадии |
+| `ioc-domain` | один bounded context: язык IOC (`model`) + capability-пакеты refang/extract/feature/classify/attribute, внутренний DAG держит ArchUnit | знать про `Envelope`, IO, Spring, Tika/CSV/Guava/RE2J, logging; capability не лезет в соседа |
 | `ioc-application` | use cases, ports, IOC ETL stages, composition of pipeline | concrete file/CSV/Tika/picocli implementations, доменные алгоритмы внутри stage |
 | `adapter-*` | реализует один technical boundary | управляет use-case flow или доменной политикой |
 | `ioc-app` | Spring Boot wiring, config binding, executable jar | реализует бизнес-алгоритмы |
@@ -280,29 +285,26 @@ generic stage identifier (`StageId`/string value object) или оставить
 
 Вынести:
 
-- `core/ioc-domain-kernel`;
-- `core/ioc-domain-refang`;
-- `core/ioc-domain-extraction`;
-- `core/ioc-domain-features`;
-- `core/ioc-domain-classification`;
-- `core/ioc-domain-attribution`;
+- `core/ioc-domain` (единый артефакт; capability — пакеты внутри);
 - `core/ioc-application`.
 
 Проверки:
 
-- `ioc-domain-kernel` не зависит на capability modules;
-- domain capability modules не зависят на `platform-etl` и не знают про
-  `Envelope`;
-- каждый domain module компилируется без Spring/Tika/CSV/Guava/RE2J/SLF4J;
+- `ioc-domain` компилируется без Spring/Tika/CSV/Guava/RE2J/SLF4J и без
+  `platform-etl`/`Envelope`;
+- **внутридоменный ArchUnit-DAG** (module-local, в `ioc-domain`): `refang` ни на
+  кого; `classify` → `feature`+`model`; `extract`/`attribute` → `model`; без
+  циклов; capability не лезет во внутренности соседа;
 - `ioc-application` компилируется без concrete adapters and Spring;
-- application stages зависят на `platform-etl`, ports, diagnostics и нужные
-  domain capabilities;
+- application stages зависят на `platform-etl`, ports, diagnostics и `ioc-domain`;
 - stage не содержит доменный алгоритм, а только вызывает один service/port и
   возвращает новый envelope.
 
-Если при переносе отдельный capability module начинает требовать слишком много
-соседних domain modules, это считается сигналом пересмотреть shared-kernel
-границу, а не поводом складывать всё обратно в общий `common`.
+`refang` остаётся **кандидатом №1** на вынос в отдельный артефакт при появлении
+переиспользования (он coupling-остров). До тех пор capability живут пакетами —
+дробить на артефакты ради наглядности не нужно (наглядность даёт Modulith canvas,
+границы — ArchUnit). Если capability-пакет начинает требовать слишком много
+соседей — это сигнал пересмотреть `model`/kernel-границу, а не плодить артефакты.
 
 ### Шаг 5. Adapter modules
 
@@ -337,8 +339,8 @@ generic stage identifier (`StageId`/string value object) или оставить
 Распределение:
 
 - ETL kernel tests -> `platform/platform-etl`;
-- IOC domain kernel tests -> `core/ioc-domain-kernel`;
-- domain capability tests -> соответствующий `core/ioc-domain-*`;
+- IOC domain tests (kernel + все capability) -> `core/ioc-domain` (раскладка по
+  пакетам сохраняется);
 - diagnostics tests -> `platform/platform-diagnostics`;
 - observability tests -> `platform/platform-observability` или bridge module;
 - pipeline/stage tests -> `core/ioc-application`;
@@ -354,9 +356,23 @@ output.
 Сохранить текущий `ArchitectureTest`, но после физической нарезки разделить его
 на два уровня:
 
-- module-local ArchUnit tests для package rules внутри модуля;
+- module-local ArchUnit tests для package rules внутри модуля — в частности
+  **внутридоменный capability-DAG в `ioc-domain`** (`refang`/`extract`/`feature`/
+  `classify`/`attribute`/`model`);
 - root/bootstrap architecture tests для cross-module/package rules, если
   остаются проверки, которые Maven dependency graph не покрывает.
+
+Добавить **Spring Modulith** (решение [notes/0009](../notes/0009-modularization-granularity.md))
+для верификации и документирования **верхнего слоя**:
+
+- `ApplicationModules.of(...).verify()` на границы `platform`/`domain`/
+  `application`/`adapter`/`bootstrap` (top-level slices под `com.iocextractor`);
+- генерация C4/PlantUML + module canvas как «наглядность» вместо дробления на
+  артефакты;
+- нюанс: Modulith-модуль по умолчанию = прямой подпакет пакета приложения,
+  поэтому **capability домена он как отдельные модули не видит** — это зона
+  внутридоменного ArchUnit-DAG, не Modulith. Подтвердить распознавание верхних
+  слоёв на текущей пакетной раскладке.
 
 Добавить Maven Enforcer:
 
@@ -380,7 +396,7 @@ output.
 ```bash
 ./mvnw -B -ntp verify
 ./mvnw -B -ntp -pl platform/platform-etl -am test
-./mvnw -B -ntp -pl core/ioc-domain-classification -am test
+./mvnw -B -ntp -pl core/ioc-domain -am test
 ./mvnw -B -ntp -pl core/ioc-application -am test
 ./mvnw -B -ntp -pl bootstrap/ioc-app -am verify
 ./mvnw -B -ntp -DskipTests package
@@ -406,8 +422,10 @@ java -jar bootstrap/ioc-app/target/ioc-app-0.1.0-SNAPSHOT.jar extract --source s
 - Core modules физически не имеют зависимостей на Spring/Tika/CSV/picocli/Logback.
 - `platform-etl` физически не имеет зависимостей на IOC domain/application,
   adapters и bootstrap.
-- IOC domain modules физически не имеют зависимостей на `Envelope`, `Stage`,
-  pipeline runner или observability.
+- `ioc-domain` физически не зависит на `Envelope`, `Stage`, pipeline runner или
+  observability; внутридоменный capability-DAG зелёный (ArchUnit).
+- Spring Modulith `verify()` на верхний слой зелёный; canvas/диаграммы
+  генерируются.
 - IOC stage implementations находятся в application layer и остаются
   независимыми filters: один stage не вызывает другой stage и не владеет order.
 - External dependencies находятся только в нужных modules.
@@ -418,12 +436,21 @@ java -jar bootstrap/ioc-app/target/ioc-app-0.1.0-SNAPSHOT.jar extract --source s
 
 ## Открытые вопросы перед реализацией
 
+> **Решено** ([notes/0009](../notes/0009-modularization-granularity.md)):
+> гранулярность — средняя (14 модулей + parent: platform 5 / core 2 / adapters 6
+> / bootstrap 1), домен — **единый `ioc-domain`** с
+> внутренним ArchUnit-DAG; защита границ — Maven + Enforcer + ArchUnit + Spring
+> Modulith (верхний слой). Ниже — оставшиеся вопросы.
+
+0. **Modulith top-level:** подтвердить, что Spring Modulith распознаёт верхние
+   слои на текущей раскладке `com.iocextractor.{domain,application,adapter,
+   diagnostics,observability,bootstrap}` без переименования пакетов.
 1. **ETL stage identifier:** переносим ли `StageName` в `ioc-application` или
    заменяем его в `platform-etl` на generic `StageId`/string value object.
    План по умолчанию: platform contract не должен зависеть от IOC-specific enum.
-2. **Regex boundary:** оставляем `PatternEngine` в `ioc-domain-extraction` или
-   выделяем `platform-regex-api`? План по умолчанию оставляет порт в extraction
-   capability и выносит RE2J/JDK implementation в adapter.
+2. **Regex boundary:** оставляем `PatternEngine` в `ioc-domain` (пакет `extract`)
+   или выделяем `platform-regex-api`? План по умолчанию оставляет порт в
+   extraction-пакете и выносит RE2J/JDK implementation в adapter.
 3. **Observability config:** `platform-observability` содержит только API/helper,
    а `logback-spring.xml` живёт в `ioc-app`. Нужно подтвердить это как правило.
 4. **ArtifactId convention:** принять предложенные `ioc-*` имена или выбрать
@@ -441,7 +468,7 @@ java -jar bootstrap/ioc-app/target/ioc-app-0.1.0-SNAPSHOT.jar extract --source s
 |---|---|
 | Случайно протащить Spring или CSV в core | Maven module deps + Enforcer + ArchUnit |
 | Смешать ETL kernel и IOC domain | отдельный `platform-etl`, запрет domain -> pipeline deps |
-| Превратить `ioc-domain-kernel` в новый `common` | kernel содержит только стабильный язык IOC, не algorithms/utilities |
+| Превратить kernel-пакет (`domain.model`) в новый `common` | kernel содержит только стабильный язык IOC, не algorithms/utilities |
 | Большой diff из-за переносов файлов | переносить modules по шагам, проверять сборку после каждого крупного шага |
 | Потерять golden fixtures или test resources | сначала описать test ownership, затем переносить fixtures |
 | Bridge diagnostics/logging создаст цикл | держать отдельный `platform-diagnostics-logging` без зависимости на application |
