@@ -25,15 +25,17 @@
 | 3 | 4-вариантный rule-based `MatchPolicy` над `IndicatorFeatures` + `classify.rules` | 2 | case-table по бакетам (вар. 1–4, onion, не-PSL провайдер); прогон показывает варианты 2/4 | mvn test + прогон | да |
 | 4 | Конфигурируемый маппинг (`ConfigurableRowMapper` + `ValueProvider`/`Transform` + `columns`); удаление хардкод-мапперов; правка устаревших комментариев конфига | 3 | вывод воспроизводится 1:1 до/после; case-table маппера; DSL ограничен | mvn test + diff прогона | да |
 | 5 | Паттерны `.onion`/telegram + нормализация (authority-port, trailing punct, host-extract) + golden e2e (синтетика) | 2 | корпус + golden зелёные; прогон на полном источнике вменяемый | mvn test + прогон | да |
-| 6 | Диагностика: ядро (`Diagnostic`, каталог, `Result`/`Notification`) + `LoggingDiagnosticSink` + MDC + богатый DEBUG + `FailurePolicy` | 1 | юнит-тесты ядра; диагностики в логе по severity; DEBUG-трассировка стадий | mvn test + прогон | да |
+| 6 | Диагностика: `Diagnostic` ядро + каталог кодов + `Result`/`Notification` + `FailurePolicy` + порт `DiagnosticSink` ([diagnostics.md](diagnostics.md)) | 1 | юнит-тесты ядра; collect-and-continue; карта ошибок генерится из каталога | mvn test | да |
 | 7 | Конвейер Pipes-and-Filters (`Stage`/`Envelope`/`Result`); эволюция `IocExtractionService` | 6 | стадии за `Stage`; вывод не меняется; collect-and-continue работает | mvn test + прогон | да |
-| 8 | Многомодульность (этапы 1→4 из [modularization.md](modularization.md)) | 1,7 | parent-pom+BOM; вынос `ioc-domain`/`ioc-application`; границы держатся компиляцией | mvn -T build | да |
-| 9 | Инжест-демон ([ingestion.md](ingestion.md)): `IngestSourceUseCase`, watch (SI), автомат каталогов, `IngestionLedger` (статусы), партиции | 6,7 | whole-file поток; статус-машина + компенсации; идемпотентность | mvn test + e2e | да |
-| 10 | Агрегатор (партиции→канон, стабильный `dedupKey→id`) + (опц.) retention | 9 | стабильные id при повторной агрегации; retention off по умолчанию | mvn test + e2e | да |
+| 8 | Observability/logging ([logging.md](logging.md), [logging-taxonomy.md](logging-taxonomy.md)): ECS, `MdcScope` из `Envelope.meta`, seed-таксономия, stage-события, bridge `LoggingDiagnosticSink`, daemon ECS-file | 6,7 | MDC без протечек (изолир. тест); ECS-ключи стабильны; diagnostics→`ioc.diagnostic.*` через bridge; daemon rolling ECS-file | mvn test + прогон | да |
+| 9 | Многомодульность (этапы 1→4 из [modularization.md](modularization.md)) | 1,7 | parent-pom+BOM; вынос `ioc-domain`/`ioc-application`; границы держатся компиляцией | mvn -T build | да |
+| 10 | Инжест-демон ([ingestion.md](ingestion.md)): `IngestSourceUseCase`, watch (SI), автомат каталогов, `IngestionLedger` (статусы), партиции | 6,7,8 | whole-file поток; статус-машина + компенсации; идемпотентность | mvn test + e2e | да |
+| 11 | Агрегатор (партиции→канон, стабильный `dedupKey→id`) + (опц.) retention | 10 | стабильные id при повторной агрегации; retention off по умолчанию | mvn test + e2e | да |
 
 Порядок гибкий — этапы 0–1 дешёвые и включают остальное; 2→3→4 — трек «доменной
-корректности»; 5 параллелен; 6 — фундамент для 7/9. Заказчик выдаёт этапы в
-удобном порядке.
+корректности»; 5 параллелен; **6 диагностика → 7 pipeline (`Envelope`) → 8
+observability** (логирование читает `Envelope.meta`); далее 9 модули, 10 инжест,
+11 агрегатор. Заказчик выдаёт этапы в удобном порядке.
 
 ## Статус
 
@@ -45,6 +47,7 @@
 | 3 4-вариантный rule-based `MatchPolicy` | `done` |
 | 4 конфигурируемое заполнение артефактов | `done` |
 | 5 host-only lowercase (`lower-host`) + golden e2e | `done` |
-| 6–10 | `todo` |
+| 6 диагностика · 7 pipeline (Envelope) · 8 observability/logging | `todo` |
+| 9 модули · 10 инжест-демон · 11 агрегатор | `todo` |
 
 (обновляется по мере выполнения: `todo` → `in progress` → `done`)

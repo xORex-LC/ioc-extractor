@@ -22,6 +22,7 @@
 | `0004-extraction-and-test-corpus.md` | Типы/нормализация (.onion, telegram), тест-корпус и изоляция тестов |
 | `0005-services-and-pipeline.md` | DDD-сервисы, ETL-конвейер (P&F+Envelope+Result), границы, модульность |
 | `0006-design-review-refinements.md` | Уточнения по итогам ревью: SourceFeed/driving-порт, PSL в адаптере, статусы инжеста, стабильные id, лимит DSL |
+| `0007-logging-observability.md` | Логирование/observability как отдельная подсистема: ECS, MDC←Envelope, отмена 0003 №8 |
 
 ## Формат заметки
 

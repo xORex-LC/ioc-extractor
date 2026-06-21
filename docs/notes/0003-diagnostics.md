@@ -3,7 +3,13 @@
 - **Статус:** принято (дизайн); реализация ждёт
 - **Дата:** 2026-06-21
 - **Связано:** [../diagnostics.md](../diagnostics.md), [../cross-cutting.md](../cross-cutting.md),
-  [../principles.md](../principles.md)
+  [../principles.md](../principles.md), [0007-logging-observability.md](0007-logging-observability.md)
+
+> **Поправка ([0007](0007-logging-observability.md)):** решение №8 (собственная
+> версионируемая JSON-схема лога) **отменено** — структурный лог принят как
+> **ECS** ([../logging.md](../logging.md)). Логирование выделено в отдельную
+> подсистему **observability** (отдельный модуль `platform-observability`),
+> отдельную от диагностики. Формулировки про логи ниже читать с этой поправкой.
 
 ## Контекст
 

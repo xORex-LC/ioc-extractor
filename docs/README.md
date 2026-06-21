@@ -17,7 +17,9 @@
 | [ingestion.md](ingestion.md) | Стриминговый демон-инжест: детект, конечный автомат каталогов, идемпотентность, партиции+агрегация, жизненный цикл |
 | [modularization.md](modularization.md) | Дорожная карта многомодульности: Maven-реактор, выделение агностичной логики в модули (аналог uv-workspace) |
 | [cross-cutting.md](cross-cutting.md) | Сквозные подсистемы (логирование, диагностика, ошибки) как самостоятельные модули за портами |
-| [diagnostics.md](diagnostics.md) | Подсистема диагностики и логирования: каталог ошибок в коде, данные→сообщение, паттерны, богатый DEBUG |
+| [diagnostics.md](diagnostics.md) | Диагностика обработки данных: каталог кодов в коде, данные→сообщение, Result/Notification, bridge в logging |
+| [logging.md](logging.md) | Operational logging и трассировка фонового сервиса: ECS JSON, rolling file, MDC, daemon/oneshot профили |
+| [logging-taxonomy.md](logging-taxonomy.md) | Таксономия логов: ECS mapping, `event.*`, project-specific поля `ioc.*`, связь с diagnostics |
 | [boundaries.md](boundaries.md) | Защита архитектурных границ: ArchUnit, Maven Enforcer, JPMS (дорожная карта) |
 | [conventions.md](conventions.md) | Стандарт Javadoc, конвенция «README в каждом каталоге» (+ шаблон), правила кода |
 | [roadmap.md](roadmap.md) | Живой план реализации по этапам: зависимости, критерии приёмки, проверка, статус |

@@ -29,6 +29,8 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 │   ├── platform-bom               (BOM: управление версиями зависимостей)
 │   ├── platform-errors            (модель ошибок + порты их трансляции)
 │   ├── platform-diagnostics       (диагностика: каталог, порты, sinks/renderer)
+│   ├── platform-observability     (логирование: MdcScope, LogEvent, ECS-конфиг)
+│   ├── platform-diagnostics-logging (bridge: DiagnosticSink → LogEvent)
 │   └── platform-regex             (PatternEngine SPI + re2j/jdk адаптеры)
 ├── core/
 │   ├── ioc-domain                 (чистый домен; зависит только на platform-*)
@@ -53,7 +55,10 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain ─▶ platfo
                      └────────────────────────────────────▶ platform/*
 ```
 
-- `platform/*` ни от кого внутри проекта не зависит (самый внутренний слой).
+- Базовые `platform/*` ни от кого внутри проекта не зависят. Интеграционные
+  platform-модули с явным названием bridge (например,
+  `platform-diagnostics-logging`) могут зависеть только на те platform-модули,
+  которые они связывают, и не должны тянуть application/domain/adapter.
 - `ioc-domain` зависит максимум на `platform/*` (errors/regex SPI) — без фреймворков.
 - `ioc-application` зависит на `ioc-domain`.
 - `adapters/*` зависят на `ioc-application` (+ свои библиотеки).
@@ -77,6 +82,8 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain ─▶ platfo
 |---|---|
 | `platform-regex` | PatternEngine (SPI + RE2J/JDK) |
 | `platform-diagnostics` | Diagnostics (модель, каталог, порты, sinks/renderer) |
+| `platform-observability` | Observability/logging: MdcScope, LogEvent, ECS-конфиг |
+| `platform-diagnostics-logging` | Bridge `DiagnosticSink` → LogEvent/SLF4J (`LoggingDiagnosticSink`); зависит на `platform-diagnostics` + `platform-observability` |
 | `platform-errors` | модель ошибок/трансляция (общие типы) |
 | `ioc-domain` | Refanger, IndicatorExtractor, SourceAttributor, MatchClassifier, Deduplicator, модели |
 | `ioc-application` | Pipeline orchestrator (`ExtractIocsUseCase`), стадии, `Envelope`/`Result`, Aggregator/Retention (future) |
