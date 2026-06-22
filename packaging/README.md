@@ -43,6 +43,30 @@ self-contained:
 The service `WorkingDirectory` is `<prefix>`, so the application's relative paths
 (`./var/...`, `./dataframe/...`) resolve inside the install directory.
 
+## Systemd hardening
+
+The unit runs the daemon as a dedicated non-root user with no Linux capabilities
+(`CapabilityBoundingSet=` and `AmbientCapabilities=` are empty). The filesystem is
+read-only except `<prefix>/var` and `<prefix>/dataframe`; private `/tmp` and
+private device visibility are enabled; kernel module/log/tunable, clock, hostname,
+namespace, keyring, IPC, realtime scheduling, process personality and
+foreign-architecture syscall surfaces are restricted. `StartLimitIntervalSec=5min`
+and `StartLimitBurst=10` prevent a tight restart loop when configuration,
+permissions or paths are broken.
+
+Core dumps are disabled (`LimitCORE=0`) because source documents and extracted IOCs
+may be sensitive. `LimitNOFILE=65536` leaves room for file-polling and logging
+handles, while `TasksMax=512` caps runaway JVM thread growth without constraining
+the current daemon workload.
+
+Resource controls are intentionally conservative: `MemoryHigh=768M` and
+`MemoryMax=1G` sit above the default `-Xmx512m` heap from `ioc-extractor.env`,
+leaving room for JVM native memory while still bounding the process. If operators
+raise `-Xmx`, they must raise these cgroup limits together. `CPUQuota=200%` limits
+the daemon to roughly two CPU cores. `IOAccounting=true` and `IOWeight=100` enable
+I/O accounting and a neutral best-effort weight; hard I/O bandwidth caps are left
+unset until there are production measurements.
+
 ## Install
 
 ```bash

@@ -3,6 +3,9 @@ Description=ioc-extractor — IOC ETL ingest daemon
 Documentation=file:@PREFIX@/README.md
 # Local file-poll ingest; no network dependency, but order after fs/network is mounted.
 After=network.target local-fs.target
+# Avoid a tight restart loop when configuration, permissions or paths are broken.
+StartLimitIntervalSec=5min
+StartLimitBurst=10
 
 [Service]
 Type=exec
@@ -29,10 +32,42 @@ PrivateTmp=true
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
+
+# The daemon runs as a dedicated non-root user and does not need Linux capabilities.
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# JVM file ingestion does not need device access or host/kernel mutation APIs.
+PrivateDevices=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+KeyringMode=private
+RemoveIPC=true
+
+# Keep generated files readable by the service user/group only.
+UMask=0027
+
 # Writable runtime state: inbox/processing/done/failed/ledger/logs + generated artifacts.
 # (Note: keep the install prefix OUTSIDE /home so ProtectHome does not hide it; /opt is correct.)
 ReadWritePaths=@PREFIX@/var @PREFIX@/dataframe
+
+# ---- Resource controls ------------------------------------------------------
 LimitNOFILE=65536
+LimitCORE=0
+TasksMax=512
+
+# Keep cgroup memory limits above the default -Xmx512m heap to leave room for JVM native memory.
+MemoryHigh=768M
+MemoryMax=1G
+CPUQuota=200%
+IOAccounting=true
+IOWeight=100
 
 [Install]
 WantedBy=multi-user.target
