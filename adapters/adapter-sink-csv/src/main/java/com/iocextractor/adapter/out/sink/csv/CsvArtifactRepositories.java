@@ -7,11 +7,16 @@ import com.iocextractor.application.ingest.IngestionRecord;
 import com.iocextractor.application.port.out.aggregation.CanonicalArtifactRepository;
 import com.iocextractor.application.port.out.aggregation.PartitionArtifactRepository;
 import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.observability.EventAction;
+import com.iocextractor.observability.EventOutcome;
+import com.iocextractor.observability.LogField;
+import com.iocextractor.observability.logging.LogEvents;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVPrinter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.Charset;
@@ -32,6 +37,8 @@ import java.util.Objects;
  * and artifact names.
  */
 public final class CsvArtifactRepositories implements PartitionArtifactRepository, CanonicalArtifactRepository {
+
+    private static final Logger log = LoggerFactory.getLogger(CsvArtifactRepositories.class);
 
     private final Map<String, CsvArtifactDefinition> definitions;
     private final Map<String, Path> canonicalPaths;
@@ -88,8 +95,8 @@ public final class CsvArtifactRepositories implements PartitionArtifactRepositor
                 Files.createDirectories(path.getParent());
             }
             Path temp = tempPath(path);
-            try (BufferedWriter writer = CsvIo.newWriter(temp, charset);
-                 CSVPrinter printer = new CSVPrinter(writer, writeFormat)) {
+            CountingCharsetWriter writer = CsvIo.newCountingWriter(temp, charset);
+            try (CSVPrinter printer = new CSVPrinter(writer, writeFormat)) {
                 printer.printRecord(artifact.header());
                 for (ArtifactRow row : artifact.rows()) {
                     List<String> values = artifact.header().stream()
@@ -97,6 +104,16 @@ public final class CsvArtifactRepositories implements PartitionArtifactRepositor
                             .toList();
                     printer.printRecord(values);
                 }
+            }
+            if (writer.unmappable() > 0) {
+                LogEvents.warn(log)
+                        .action(EventAction.ARTIFACT_WRITE)
+                        .outcome(EventOutcome.SUCCESS)
+                        .field(LogField.IOC_ARTIFACT_NAME, artifactName)
+                        .field(LogField.FILE_PATH, path)
+                        .message("canonical artifact has values not representable in charset " + charset
+                                + "; replaced in " + writer.unmappable() + " field(s)")
+                        .log();
             }
             moveIntoPlace(temp, path);
         } catch (IOException e) {

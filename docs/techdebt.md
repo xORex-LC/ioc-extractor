@@ -24,7 +24,7 @@
 | ING-5 | **Триггер агрегации** — `ioc.aggregation.trigger: interval｜on-partition｜both`; `AggregationTrigger` port, событийный kick из `IngestionService` с коалесингом, интервал-страховка. | закрыт | M | dev/0001 |
 | ING-6 | **Partition-wrapper boundary** — инвариант зафиксирован ArchUnit: `..domain..` и `..application.pipeline..` не зависят от `..ingest..` (source-key доходит до ядра только как Envelope-metadata). | закрыт | S | dev/0001 |
 | ING-7 | **Инкрементальная запись датафреймов** — сейчас полный rewrite+atomic-move на каждый прогон. Append корректен при keep-first (строки иммутабельны), но экономит только запись, не чтение, и теряет атомарность. Решать вместе со стораджем (ING-4): CSV как проекция из БД, кэш, дельта-запись. | seam | M | review |
-| ING-8 | **Web driving-adapter** — HTTP как третья точка входа рядом с CLI/file-poll: ops (ING-3) → REST-ингест/запросы → TAXII/STIX-сервер (синергия с EXP-1) + BFF под фронтенд. Эндпоинты живут в отдельном `adapter-web`. | seam | L | review |
+| ING-8 | **Web driving-adapter** — HTTP как третья точка входа рядом с CLI/file-poll: ops (ING-3) → REST-ингест/запросы → TAXII/STIX-сервер (синергия с EXP-1) + BFF под фронтенд. Эндпоинты живут в отдельном `adapter-web`. **Требование:** REST-эндпоинты, дёргающие use-cases, обязаны открывать `MdcScope` (run-id), как CLI/демон, иначе прогоны теряют корреляцию в логах. | seam | L | review |
 
 ## 2. Обогащение вывода (`OUT`)
 
@@ -47,6 +47,7 @@
 | OBS-D1 | **Продьюсеры диагностик.** Первый реальный код добавлен (`SOURCE.MARKERS_UNMATCHED`); остальные стадии/адаптеры всё ещё бросают `IocExtractorException` — мигрировать на `Diagnostic` и реально задействовать collect-and-continue. | частично | M | dev/0008 |
 | OBS-D3 | **ECS-типы строками** — `event.duration` / `ioc.rows` идут через MDC (только `String`); ECS типизирует `event.duration` как `long` → риск mapping-конфликта в Elasticsearch. | открыт | M | dev/0008 |
 | OBS-1 | **Таблица `Severity → log.level`** — финализировать теперь, когда появились первые коды каталога. | открыт | S | dev/0007 |
+| OBS-2 | **`SINK.CHARSET_UNMAPPABLE` — полноценная диагностика непредставимых символов на выходе.** Сейчас — только WARN-лог на артефакт (`CsvIocSink`/`CsvArtifactRepositories` через `CountingCharsetWriter`); коды диагностики нет, т.к. запись в адаптере не держит `DiagnosticSink`. Протащить через `WriteArtifactsStage` для collect-and-continue + точный счёт по значению. | частично | M | review |
 
 ## 5. Надёжность конфига (`CFG`)
 

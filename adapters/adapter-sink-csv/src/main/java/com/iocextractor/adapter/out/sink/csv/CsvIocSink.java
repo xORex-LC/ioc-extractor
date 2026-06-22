@@ -13,7 +13,6 @@ import org.apache.commons.csv.CSVPrinter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -96,13 +95,14 @@ public final class CsvIocSink implements IocSink {
                 Files.createDirectories(path.getParent());
             }
             Path temp = tempPath();
-            try (BufferedWriter writer = CsvIo.newWriter(temp, charset);
-                 CSVPrinter printer = new CSVPrinter(writer, format)) {
+            CountingCharsetWriter writer = CsvIo.newCountingWriter(temp, charset);
+            try (CSVPrinter printer = new CSVPrinter(writer, format)) {
                 printer.printRecord(mapper.header());
                 for (Indicator indicator : accepted) {
                     printer.printRecord(mapper.toRow(ids.next(), indicator));
                 }
             }
+            warnIfLossy(writer.unmappable());
             moveIntoPlace(temp);
             LogEvents.info(log)
                     .action(EventAction.ARTIFACT_WRITE)
@@ -123,6 +123,25 @@ public final class CsvIocSink implements IocSink {
                     .message("artifact write failed")
                     .log(e);
             throw new IocExtractorException("Failed to write artifact '" + name + "' to " + path, e);
+        }
+    }
+
+    /**
+     * Surface the otherwise silent lossy charset replacement (e.g. an emoji or CJK
+     * value written to cp1251). Still a successful write — operators just need to
+     * know the artifact lost characters. Full per-value diagnostics are tracked as
+     * tech debt ({@code SINK.CHARSET_UNMAPPABLE}).
+     */
+    private void warnIfLossy(long unmappable) {
+        if (unmappable > 0) {
+            LogEvents.warn(log)
+                    .action(EventAction.ARTIFACT_WRITE)
+                    .outcome(EventOutcome.SUCCESS)
+                    .field(LogField.IOC_ARTIFACT_NAME, name)
+                    .field(LogField.FILE_PATH, path)
+                    .message("artifact has values not representable in charset " + charset
+                            + "; replaced in " + unmappable + " field(s)")
+                    .log();
         }
     }
 

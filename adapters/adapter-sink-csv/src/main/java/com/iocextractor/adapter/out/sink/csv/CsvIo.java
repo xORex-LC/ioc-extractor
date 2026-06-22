@@ -35,6 +35,14 @@ final class CsvIo {
         return new BufferedWriter(new OutputStreamWriter(Files.newOutputStream(path), encoder));
     }
 
+    /**
+     * Like {@link #newWriter} but counts chunks with characters the charset cannot
+     * represent, so the caller can warn instead of losing them silently.
+     */
+    static CountingCharsetWriter newCountingWriter(Path path, Charset charset) throws IOException {
+        return new CountingCharsetWriter(newWriter(path, charset), charset);
+    }
+
     /** Buffered reader in {@code charset}, replacing malformed/unmappable input. */
     static Reader newReader(Path path, Charset charset) throws IOException {
         CharsetDecoder decoder = charset.newDecoder()
