@@ -46,7 +46,6 @@ ioc:
         enabled: true
         path: "target/golden/address-blacklist.csv"
         accepts: [ IPV4, DOMAIN, URL ]
-        exclude: [ is-bare-ip ]
         columns:
           - { name: forbidden_url,   from: address.url, transform: [ lower-host ] }
           - { name: forbidden_ip,    from: address.ip,  transform: [ lower-host ] }

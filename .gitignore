@@ -38,6 +38,8 @@ source/*
 dataframe/*
 !dataframe/hashes_list.csv
 !dataframe/masks_list.csv
+!dataframe/ip_list.csv
+!dataframe/address_blacklist.csv
 
 .vscode
 

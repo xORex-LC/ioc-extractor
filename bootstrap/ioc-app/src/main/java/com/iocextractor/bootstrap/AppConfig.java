@@ -63,6 +63,7 @@ import com.iocextractor.domain.feature.DefaultIndicatorNormalizer;
 import com.iocextractor.domain.feature.HostClassifier;
 import com.iocextractor.domain.feature.IndicatorFeatureExtractor;
 import com.iocextractor.domain.feature.IndicatorNormalizer;
+import com.iocextractor.domain.feature.NetworkAddressClassifier;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.extract.PatternEngine;
 import com.iocextractor.domain.extract.RegexIndicatorExtractor;
@@ -444,14 +445,8 @@ public class AppConfig {
         Map<String, Predicate<Indicator>> filters = new HashMap<>();
         FeaturePredicates.defaults().forEach((key, predicate) ->
                 filters.put(key, indicator -> predicate.test(featureExtractor.extract(indicator))));
-        filters.put("is-bare-ip", indicator -> {
-            var features = featureExtractor.extract(indicator);
-            return indicator.type() == IndicatorType.IPV4
-                    && features.isIp()
-                    && !features.hasPath()
-                    && !features.hasPort()
-                    && !features.hasQuery();
-        });
+        filters.put("is-bare-ip", indicator ->
+                NetworkAddressClassifier.isBareIp(indicator, featureExtractor.extract(indicator)));
         return filters;
     }
 

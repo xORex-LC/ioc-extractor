@@ -49,8 +49,8 @@ ConfigurableRowMapper ──uses──▶ Map<key, ValueProvider>
 | `source.label` | метка провенанса (`source`) |
 | `match.url` | код `url_match` от доменной `MatchPolicy` |
 | `match.host` | код `host_match` от доменной `MatchPolicy` |
-| `address.url` | значение для blacklist-колонки URL/domain-host; IP-host → `NULL` |
-| `address.ip` | значение для blacklist-колонки IP-host; domain-host → `NULL` |
+| `address.url` | значение для blacklist-колонки: всё, кроме голого IP (домены, URL, IP-URL); голый IP → `NULL` |
+| `address.ip` | значение для blacklist-колонки: только голый IP (`IPV4` без port/path/query); остальное → `NULL` |
 | `type` | тип индикатора (на будущее) |
 | `const` | литерал из `value` (спец-случай, не провайдер) |
 
@@ -115,7 +115,9 @@ ioc:
 - Реестр **предикатов** над признаками: `has-query`, `has-path`, `has-port`,
   `has-path-or-port`, `is-ip`, `is-subdomain`, `is-registrable`, `is-onion`.
   Артефактные фильтры используют тот же реестр плюс специализированный
-  `is-bare-ip` (тип `IPV4`, IP-host, без path/port/query).
+  `is-bare-ip` (тип `IPV4`, IP-host, без port/path/query). Единственный источник
+  истины — `domain.feature.NetworkAddressClassifier.isBareIp(...)`; его же
+  используют провайдеры `address.url`/`address.ip` (никакого дублирования формул).
 - `RuleBasedMatchPolicy` — берёт первое правило, все предикаты `when` которого
   истинны (AND), и отдаёт его коды.
 
@@ -176,9 +178,8 @@ artifacts:
       - { name: threat_type,     from: const }
       - { name: source,          from: source.label, transform: [ "strip-prefix:Письмо " ] }
       - { name: description,     from: const }
-  - name: address_blacklist
+  - name: address_blacklist        # bare IP -> forbidden_ip; остальное -> forbidden_url
     accepts: [ IPV4, DOMAIN, URL ]
-    exclude: [ is-bare-ip ]
     columns:
       - { name: forbidden_url, from: address.url, transform: [ lower-host ] }
       - { name: forbidden_ip,  from: address.ip,  transform: [ lower-host ] }

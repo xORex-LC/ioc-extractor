@@ -118,7 +118,7 @@ ioc:
         enabled: true
         path: "./dataframe/address_blacklist_generated.csv"
         accepts: [ IPV4, DOMAIN, URL ]
-        exclude: [ is-bare-ip ]
+        # bare IP -> forbidden_ip; everything else (domains, URLs, IP-URLs) -> forbidden_url
         columns:
           - { name: forbidden_url,   from: address.url, transform: [ lower-host ] }
           - { name: forbidden_ip,    from: address.ip,  transform: [ lower-host ] }

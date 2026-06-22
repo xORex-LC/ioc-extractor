@@ -20,24 +20,35 @@ class AddressValueProviderTest {
             new DefaultIndicatorNormalizer(),
             host -> IPV4.matcher(host).matches() ? HostKind.IP : HostKind.REGISTRABLE);
 
-    @Test
-    void address_url_provider_emits_domain_host_addresses_only() {
-        var provider = new AddressUrlValueProvider(featureExtractor);
+    private final AddressUrlValueProvider url = new AddressUrlValueProvider(featureExtractor);
+    private final AddressIpValueProvider ip = new AddressIpValueProvider(featureExtractor);
 
-        assertThat(provider.provide(1, indicator("example.com/path", IndicatorType.DOMAIN)))
-                .isEqualTo("example.com/path");
-        assertThat(provider.provide(1, indicator("https://1.2.3.4/payload.exe", IndicatorType.URL)))
-                .isNull();
+    @Test
+    void bare_ip_goes_to_ip_column_only() {
+        var bareIp = indicator("1.2.3.4", IndicatorType.IPV4);
+
+        assertThat(ip.provide(1, bareIp)).isEqualTo("1.2.3.4");
+        assertThat(url.provide(1, bareIp)).isNull();
     }
 
     @Test
-    void address_ip_provider_emits_ip_host_addresses_only() {
-        var provider = new AddressIpValueProvider(featureExtractor);
+    void ip_url_stays_in_url_column() {
+        // IP-URL: an IPv4 host carrying a port/path is NOT bare -> forbidden_url.
+        var ipWithPort = indicator("5.6.7.8:8080/Payload.exe", IndicatorType.IPV4);
+        var schemeIpUrl = indicator("https://1.2.3.4/payload.exe", IndicatorType.URL);
 
-        assertThat(provider.provide(1, indicator("example.com/path", IndicatorType.DOMAIN)))
-                .isNull();
-        assertThat(provider.provide(1, indicator("https://1.2.3.4/payload.exe", IndicatorType.URL)))
-                .isEqualTo("https://1.2.3.4/payload.exe");
+        assertThat(url.provide(1, ipWithPort)).isEqualTo("5.6.7.8:8080/Payload.exe");
+        assertThat(ip.provide(1, ipWithPort)).isNull();
+        assertThat(url.provide(1, schemeIpUrl)).isEqualTo("https://1.2.3.4/payload.exe");
+        assertThat(ip.provide(1, schemeIpUrl)).isNull();
+    }
+
+    @Test
+    void domain_addresses_go_to_url_column_only() {
+        var domain = indicator("example.com/path", IndicatorType.DOMAIN);
+
+        assertThat(url.provide(1, domain)).isEqualTo("example.com/path");
+        assertThat(ip.provide(1, domain)).isNull();
     }
 
     private Indicator indicator(String value, IndicatorType type) {
