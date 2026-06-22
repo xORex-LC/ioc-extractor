@@ -91,11 +91,14 @@ containing `pom.xml`/`.git` (a source tree) without `--force`.
 systemctl status ioc-extractor
 journalctl -u ioc-extractor -f                 # ECS-JSON logs (+ <prefix>/var/logs/)
 cp report.htm /opt/ioc-extractor/var/inbox/    # submit a source for processing
-curl -s http://127.0.0.1:8081/actuator/health  # daemon health (loopback only)
+ioc health                                     # daemon health as a table (exit 0/1/2)
+ioc health --json                              # raw JSON for scripts
 ```
 
 The daemon exposes `/actuator/health` and `/actuator/info` on `127.0.0.1:8081`
-(loopback only; `server.port`/`server.address` to change). Details:
+(loopback only; `server.port`/`server.address` to change). `ioc health` queries it
+and exits `0` UP / `1` DOWN / `2` unreachable (usable as a probe); raw
+`curl -s http://127.0.0.1:8081/actuator/health` also works. Details:
 [docs/dev/0010-health-actuator.md](../docs/dev/0010-health-actuator.md).
 
 Flow: `var/inbox` → (quiet-period) → `var/processing` → `var/done` (or `var/failed`),

@@ -7,7 +7,7 @@ import picocli.CommandLine.Spec;
 
 /**
  * Root CLI command. Holds sub-commands so the tool can grow (e.g. {@code extract},
- * future {@code verify}, {@code export}) without changing existing ones. With no
+ * {@code health}, future {@code export}) without changing existing ones. With no
  * sub-command it prints usage.
  */
 @Component
@@ -15,7 +15,7 @@ import picocli.CommandLine.Spec;
         name = "ioc",
         mixinStandardHelpOptions = true,
         description = "IOC extraction toolkit.",
-        subcommands = {ExtractCommand.class})
+        subcommands = {ExtractCommand.class, HealthCommand.class})
 public final class IocRootCommand implements Runnable {
 
     @Spec

@@ -38,5 +38,11 @@
             <groupId>info.picocli</groupId>
             <artifactId>picocli-spring-boot-starter</artifactId>
         </dependency>
+        <!-- Parse the daemon's actuator/health JSON for the `health` command.
+             HTTP is JDK java.net.http; only JSON parsing needs a library. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
     </dependencies>
 </project>

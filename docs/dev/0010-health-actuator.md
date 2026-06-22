@@ -77,7 +77,18 @@ management-порт — отдельный всё равно потянул бы
 Сервер слушает **только loopback**, поэтому смотреть с того же хоста (или через
 SSH-туннель). Порт по умолчанию `8081` (`server.port`).
 
-**Сводный health** (с деталями — `show-details: always`):
+**Через CLI (рекомендуется)** — подкоманда `health` того же бинаря рисует таблицу
+и берёт адрес из конфига (`server.*`); exit code = состоянию (`0` UP, `1` DOWN,
+`2` демон недоступен), т.е. годится и как probe:
+```bash
+ioc health                 # цветная таблица компонентов
+ioc health --json          # сырой JSON для скриптов
+ioc health --host h --port 9090   # или --url http://…/actuator/health
+```
+Реализация — `HealthCommand` (picocli), HTTP через JDK `HttpClient`, без веб-стека
+на стороне CLI. Подробности рендера — Javadoc команды.
+
+**Через curl** (если CLI недоступен), сводный health (детали — `show-details: always`):
 ```bash
 curl -s http://127.0.0.1:8081/actuator/health | jq
 ```
