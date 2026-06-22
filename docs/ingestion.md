@@ -313,10 +313,13 @@ service-activator + `concurrency > N` — без изменения доменн
 - **Graceful shutdown:** SI-компоненты — `SmartLifecycle`; остановка контекста
   останавливает поллеры, даёт дообработать in-flight, фиксирует ledger. SIGTERM
   от контейнера/systemd → shutdown hook Spring.
-- **Health:** этап 11 добавляет `spring-boot-starter-actuator` и health
-  contributors для ledger, artifact storage и последней aggregation state.
-  HTTP-exposure остаётся deployment/config решением: приложение по умолчанию
-  остаётся non-web.
+- **Health:** health contributors для ledger, artifact storage и последней
+  aggregation state экспонируются по HTTP (`/actuator/health`, `/actuator/info`).
+  Web-сервер поднимается **только в daemon-режиме**: `DaemonWebEnvironmentPostProcessor`
+  флипает `spring.main.web-application-type` в `servlet` по `ioc.runtime.mode=daemon`
+  (oneshot/CLI остаётся non-web — one-shot не должен поднимать сервер). По умолчанию
+  bind на `127.0.0.1:8081` (`server.address`/`server.port`), expose `health,info`,
+  без `shutdown`. Это же — первая точка входа будущего web driving-adapter (ING-8).
 - **Деплой:** контейнер (long-running, restart policy) или `systemd`
   (`Restart=always`). Рабочие каталоги монтируются как том.
 

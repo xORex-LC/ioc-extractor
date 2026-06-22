@@ -6,7 +6,9 @@
 # ============================================================================
 spring:
   main:
-    web-application-type: none      # CLI app, no web server
+    # Non-web by default (CLI/oneshot). In daemon mode this is flipped to 'servlet'
+    # by DaemonWebEnvironmentPostProcessor to expose the actuator/health surface.
+    web-application-type: none
     banner-mode: "off"
   profiles:
     # Logback appenders are selected by Spring profile. Keep that profile aligned
@@ -23,6 +25,21 @@ logging:
     com.iocextractor: INFO
   file:
     path: var/logs
+
+# HTTP surface — only active in daemon mode (web is non-web otherwise). Bound to
+# loopback by default; exposes health/info for ops. No 'shutdown' endpoint. This
+# is also the seam for future REST endpoints (ING-8).
+server:
+  address: 127.0.0.1
+  port: 8081
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
 
 ioc:
   runtime:

@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * overridden to a non-existent file (handled as empty storage), so the test
  * does not depend on {@code dataframe/} contents.
  */
-@SpringBootTest(properties = {
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
         "ioc.lookup.path=target/test-no-such-lookup.csv",
         "spring.main.banner-mode=off"
 })

@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Runtime-mode smoke test: daemon wiring must start without activating the CLI
  * runner that exits oneshot processes.
  */
-@SpringBootTest(properties = {
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
         "ioc.runtime.mode=daemon",
         "ioc.lookup.path=target/test-daemon/no-lookup.csv",
         "ioc.ingestion.dirs.inbox=target/test-daemon/inbox",

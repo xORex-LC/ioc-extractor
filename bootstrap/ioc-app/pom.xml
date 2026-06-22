@@ -87,6 +87,13 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- HTTP surface for the daemon: actuator/health over a loopback server.
+             Web is enabled only in daemon mode (DaemonWebEnvironmentPostProcessor);
+             oneshot/CLI stays non-web. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
 
         <!-- AppConfig assembles the CSV write format -->
         <dependency>

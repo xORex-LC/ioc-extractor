@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Isolated: the fixture is a test resource, output is redirected to {@code target/}
  * (not {@code dataframe/}), and the lookup points at a non-existent file.
  */
-@SpringBootTest(properties = "spring.main.banner-mode=off")
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = "spring.main.banner-mode=off")
 @ActiveProfiles("golden")
 class GoldenPipelineTest {
 
