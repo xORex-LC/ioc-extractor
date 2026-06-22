@@ -40,19 +40,21 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Platform | `diagnostics` | Diagnostic model, catalog, `Result`/`Notification`, `FailurePolicy`, sink ports |
 | Platform | `observability` | MDC/log event helpers and logging taxonomy |
 | Application | `application/port/in` | `ExtractIocsUseCase`, `ExtractionCommand`, `ExtractionResult` (driving) |
-| Application | `application/port/out` | `SourceReader`, `IocSink`, `LookupRepository`, ingestion/aggregation ports (driven) |
+| Application | `application/port/out` | `SourceReader`, `IocSink`, `LookupRepository`, ingestion/aggregation ports, `AggregationTrigger`, `RetentionStore` (driven) |
 | Application | `application/pipeline/payload` | IOC-specific payload records between stages |
 | Application | `application/pipeline/stage` | IOC ETL stage implementations |
 | Application | `application/service` | `IocExtractionService` — use-case orchestrator |
 | Application | `application/ingest` | daemon ingestion orchestration (`IngestionService`) |
 | Application | `application/aggregation` | partition aggregation, stable id assignment, merge policy |
+| Application | `application/maintenance` | retention reaper: `RetentionPolicy` (pure) + `RetentionService` |
 | Adapter (in) | `adapter/in/cli` | `IocRootCommand`, `ExtractCommand`, `CliRunner` (picocli) |
 | Adapter (out) | `adapter/out/regex` | `Re2jPatternEngine` (default), `JdkRegexPatternEngine` |
 | Adapter (out) | `adapter/out/source` | `TikaSourceReader` |
 | Adapter (out) | `adapter/out/sink/csv` | `CsvIocSink`, `RowMapper` + мапперы, `IdGenerator` |
-| Adapter (out) | `adapter/out/lookup` | `CsvMaskLookupRepository` |
+| Adapter (out) | `adapter/out/lookup` | `CsvMaskLookupRepository`, `CsvArtifactLookupRepository` |
 | Adapter (in) | `adapter/in/ingest` | Spring Integration file-poll daemon, filesystem lifecycle, file ledger |
-| Bootstrap | `bootstrap` | `IocProperties` (конфиг), `AppConfig` (composition root) |
+| Adapter (out) | `adapter/out/maintenance` | `FileSystemRetentionStore` (reaper IO; в модуле `adapter-ingest`) |
+| Bootstrap | `bootstrap` | `IocProperties` (конфиг), `AppConfig` (composition root), daemon schedulers, `DaemonWebEnvironmentPostProcessor` (web only in daemon), health indicators |
 | Platform | `common` | `IocExtractorException` (`ioc-platform-errors`) |
 
 ## Конвейер обработки
@@ -88,6 +90,8 @@ read (SourceReader)
 | `PatternEngine` | domain SPI | Движок regex (RE2/J по умолчанию, JDK — замена) |
 | `IngestSourceUseCase` | driving (in) | Обработка одного daemon source unit |
 | `AggregatePartitionsUseCase` | driving (in) | Сведение готовых daemon-партиций в canonical CSV |
+| `AggregationTrigger` | driven (out) | Событийный kick агрегации «партиция готова» (коалесинг); `interval｜on-partition｜both` |
+| `RunRetentionUseCase` / `RetentionStore` | driving (in) / driven (out) | Reaper растущих каталогов по возрасту/количеству (delete/archive) |
 
 ## Классификация сетевых масок
 
@@ -147,6 +151,13 @@ read (SourceReader)
 
 В текущих эталонах `score`/`time_*`/`threat_type`/`description` всегда `NULL`
 (обогащение — опционально, на будущее).
+
+**Кодировки I/O.** Вход декодируется по `ioc.source.charset` (`auto` = детект Tika/ICU;
+явное имя форсит text/HTML, docx/pdf — по дизайну нет); внутри — Unicode `String`.
+Выход всех CSV и чтение существующих артефактов в lookup/агрегации — в
+`ioc.sink.csv.charset` (read=write); непредставимые символы заменяются с WARN-сигналом,
+неизвестное имя кодировки — fail-fast. Детали — [extraction.md](extraction.md) и
+[output-mapping.md](output-mapping.md).
 
 ## Composition root
 

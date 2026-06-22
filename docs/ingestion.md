@@ -80,6 +80,8 @@ wiring.
 | `CanonicalArtifactRepository` | out (driven) | Чтение/атомарная запись канонических артефактов |
 | `StableIdIndex` | out (driven) | Stable id per artifact-key; текущая реализация — sidecar CSV |
 | `ArtifactIdentityResolver` | out (driven) | Artifact-specific key extraction; живёт в adapter layer, потому что зависит от схемы артефакта |
+| `AggregationTrigger` | out (driven) | Событийный kick «партиция готова» из ингеста; impl — `DaemonAggregationScheduler` (коалесинг) |
+| `RunRetentionUseCase` / `RetentionStore` | in / out | Reaper растущих каталогов (возраст/количество → delete/archive); IO — `FileSystemRetentionStore` |
 | Partition sink wrapper | adapter wrapper | Daemon-only обёртка над CSV sink/path resolver; пишет партиции без расширения core `IocSink` API |
 
 `SourceFeed` — **не порт ядра**, а adapter-local абстракция внутри
@@ -403,13 +405,10 @@ ioc:
 |---|---|---|
 | Инжест-каркас | `spring-boot-starter-integration` + `spring-integration-file` | только `adapter-ingest`/`ioc-app`; poller/watch, фильтры, error-channel |
 | Ретраи/backoff | `spring-retry` (+ `spring-aspects`, если нужен AOP advice) | только `adapter-ingest` |
-| Health/метрики | `spring-boot-starter-actuator` | health contributors есть с этапа 11; для HTTP endpoint нужен management web server/deployment config |
+| Health/метрики | `spring-boot-starter-actuator` + `spring-boot-starter-web` | health contributors + HTTP `/actuator/health`; web включается **только в daemon** (`DaemonWebEnvironmentPostProcessor`), loopback-bind. См. [dev/0010](dev/0010-health-actuator.md) |
 | Хэш содержимого | JDK `MessageDigest` (`SHA-256`) | новой зависимости не требуется |
 | Durable ledger (later) | `org.xerial:sqlite-jdbc` + `spring-integration-jdbc` | если файлового metadata-store станет мало |
-| Tail (later) | Apache Commons `Tailer` / SI tail producer | не входит в baseline 0.1.0 |
-
-> Actuator поверх non-web приложения для HTTP-health требует management
-> веб-сервера — отдельное решение по деплою (см. dev-документы, открытые вопросы).
+| Tail (later) | Apache Commons `Tailer` / SI tail producer | descoped для источников (вне домена document-ingest), см. техдолг ING-2 |
 
 ## 14. Реализованный контур и расширения
 
@@ -430,16 +429,18 @@ ioc:
 Также реализовано:
 
 - `AggregationService` / `AggregatePartitionsUseCase` → канонические артефакты
-  с stable id sidecar;
+  с stable id sidecar; триггер `ioc.aggregation.trigger` (`interval｜on-partition｜both`)
+  с событийным kick'ом из ингеста (см. §8);
 - artifact-aware `LookupRepository` для masks, `ip_list` и hashes;
-- health contributors для daemon runtime.
+- health contributors + HTTP `/actuator/health` (daemon-only, см. [dev/0010](dev/0010-health-actuator.md));
+- **retention reaper** (`RetentionService`/`RetentionStore`/`DaemonMaintenanceScheduler`):
+  возраст/количество → delete/archive для `partitions`/`done`/`failed` (§8.1).
 
 Позже:
 
-- tail-источники (`FileTailingMessageProducer`);
 - SQLite/JDBC ledger и stable id index; параллелизм пулом;
-- `PartitionReaper` за портом `RetentionPolicy` — очистка/архив подтверждённо
-  сагрегированных партиций.
+- web driving-adapter (REST-ингест/запросы, TAXII/STIX) — ING-8.
+- tail-источники — **descoped** (вне домена document-ingest, ING-2).
 
 На каждом этапе сборка и тесты остаются зелёными; ядро не меняется.
 
