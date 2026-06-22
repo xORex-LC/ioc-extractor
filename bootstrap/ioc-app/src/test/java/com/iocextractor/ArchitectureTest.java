@@ -116,6 +116,19 @@ class ArchitectureTest {
             .and().haveSimpleNameNotEndingWith("Result")
             .should().beInterfaces();
 
+    // ING-6: source-key / partition-wrapper concerns stay inside ingest. Neither the
+    // domain nor the generic extraction pipeline may depend on ingest packages, so a
+    // SourceKey can only reach the core as opaque Envelope metadata.
+    @ArchTest
+    static final ArchRule domain_does_not_depend_on_ingest = noClasses()
+            .that().resideInAPackage("..domain..")
+            .should().dependOnClassesThat().resideInAnyPackage("..ingest..");
+
+    @ArchTest
+    static final ArchRule extraction_pipeline_does_not_depend_on_ingest = noClasses()
+            .that().resideInAPackage("..application.pipeline..")
+            .should().dependOnClassesThat().resideInAnyPackage("..ingest..");
+
     @ArchTest
     static final ArchRule no_package_cycles = slices()
             .matching("com.iocextractor.(*)..")

@@ -51,6 +51,42 @@ class IngestionServiceTest {
     }
 
     @Test
+    void fires_aggregation_trigger_after_a_partition_is_archived() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        var partitionPath = Path.of("partitions/masks/2026-06-22/abc123.csv");
+        PartitionSinkFactory partitionFactory =
+                source -> new PartitionSinks(List.of(new CountingSink()), List.of(partitionPath));
+        var trigger = new CountingTrigger();
+        var service = new IngestionService(ledger, lifecycle, partitionFactory, extractionFactory(), trigger);
+
+        service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source.html"), key, Instant.parse("2026-06-22T00:00:00Z")));
+
+        assertThat(trigger.requests).isEqualTo(1);
+    }
+
+    @Test
+    void does_not_fire_aggregation_trigger_for_a_duplicate_source() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.record = new IngestionRecord(key, IngestionStatus.SOURCE_ARCHIVED,
+                Path.of("old/source.html"), Path.of("processing/source.html"),
+                Path.of("done/source.html"), List.of(Path.of("partition.csv")),
+                Instant.parse("2026-06-22T00:00:00Z"), Instant.parse("2026-06-22T00:00:01Z"), null);
+        var trigger = new CountingTrigger();
+        var service = new IngestionService(ledger, new MemoryLifecycle(), source -> {
+            throw new AssertionError("partition factory must not be called for duplicate");
+        }, extractionFactory(), trigger);
+
+        service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source-copy.html"), key, Instant.parse("2026-06-22T00:01:00Z")));
+
+        assertThat(trigger.requests).isZero();
+    }
+
+    @Test
     void skips_source_when_same_key_was_already_archived() {
         var key = new SourceKey("ABC123");
         var ledger = new MemoryLedger();
@@ -161,6 +197,15 @@ class IngestionServiceTest {
                 "daemon",
                 new NoopPipelineObserver(),
                 NoopDiagnosticSink.INSTANCE);
+    }
+
+    private static final class CountingTrigger implements com.iocextractor.application.port.out.aggregation.AggregationTrigger {
+        private int requests;
+
+        @Override
+        public void request() {
+            requests++;
+        }
     }
 
     private static final class CountingSink implements IocSink {

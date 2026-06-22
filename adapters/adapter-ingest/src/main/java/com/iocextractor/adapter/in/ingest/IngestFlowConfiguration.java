@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Objects;
 
 /**
  * Spring Integration wiring for daemon-mode file discovery.
@@ -82,10 +83,11 @@ public class IngestFlowConfiguration {
                 ingestClock));
 
         Duration interval = properties.detect().reconcileInterval();
+        FileSourceMessageHandler messageHandler = Objects.requireNonNull(handler, "handler");
         return IntegrationFlow.from(source, spec -> spec.poller(Pollers
-                        .fixedDelay(interval)
+                        .fixedDelay(interval.toMillis())
                         .maxMessagesPerPoll(properties.detect().maxMessagesPerPoll())))
-                .handle(handler, "handle")
+                .handle(messageHandler, "handle")
                 .get();
     }
 

@@ -87,6 +87,7 @@ public record IocProperties(
 
     public record Aggregation(
             boolean enabled,
+            String trigger,
             @NotNull Duration interval,
             @NotNull Duration initialDelay,
             @NotNull @Valid IdIndex idIndex,

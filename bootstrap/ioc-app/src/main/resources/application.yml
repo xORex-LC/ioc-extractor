@@ -164,6 +164,11 @@ ioc:
   # ---- Daemon aggregation (stage 11; active in daemon mode when enabled) ----
   aggregation:
     enabled: true
+    # When to aggregate partitions into canonical artifacts:
+    #   interval     — periodic timer only
+    #   on-partition — event-driven: aggregate right after each ingest produces a partition
+    #   both         — event kick + timer as a safety net (default)
+    trigger: both
     interval: 1m
     initial-delay: 10s
     id-index:

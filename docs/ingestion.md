@@ -214,10 +214,16 @@ dataframe/
 - **Запись:** обработанный источник → партиция. Ключ партиции зависит от режима:
   whole-file — `content-hash`; tail — checkpoint-id (см. §7). Переобработка
   перезаписывает ту же партицию → идемпотентно, без гонок на дозапись.
-- Daemon пишет source-scoped партиции, а `AggregationService` по расписанию
-  вызывает application use case `AggregatePartitionsUseCase`, читает готовые
-  `SOURCE_ARCHIVED` записи из ledger и сводит партиции в канонические артефакты
-  **единым писателем**.
+- Daemon пишет source-scoped партиции, а `AggregationService` вызывает application
+  use case `AggregatePartitionsUseCase`, читает готовые `SOURCE_ARCHIVED` записи из
+  ledger и сводит партиции в канонические артефакты **единым писателем**.
+- **Когда запускается агрегация** (`ioc.aggregation.trigger`): `interval` — только
+  по таймеру; `on-partition` — событийно, сразу после того как ингест архивировал
+  партицию (`AggregationTrigger.request()` из `IngestionService`); `both` (дефолт)
+  — событийный kick + таймер-страховка. Kick неблокирующий и коалесится (флаг
+  `pending` + single-thread executor + `running`-guard), прогоны не пересекаются;
+  агрегация идемпотентна (keep-first), так что коалесинг/потеря kick'а влияет лишь
+  на латентность, не на корректность.
 - **Граница ответственности:** агрегатор — process manager, а не дедупликатор.
   Identity/upsert вынесены за отдельные контракты:
   `ArtifactIdentityResolver`, `StableIdIndex`, `CanonicalArtifactRepository`,
@@ -351,6 +357,7 @@ ioc:
 
   aggregation:
     enabled: true
+    trigger: both                 # interval | on-partition | both
     interval: 1m
     initial-delay: 10s
     id-index:

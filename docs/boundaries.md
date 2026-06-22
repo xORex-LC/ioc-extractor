@@ -81,6 +81,14 @@ classes().that().resideInAPackage("..application.port..").should().beInterfaces(
 
 // 5) Без циклов между срезами
 slices().matching("com.iocextractor.(*)..").should().beFreeOfCycles();
+
+// 6) Partition-wrapper boundary (ING-6): ингест-концерны (source-key/партиции)
+//    не протекают ни в домен, ни в generic extraction pipeline — source-key
+//    доходит до ядра только как непрозрачная Envelope-metadata.
+noClasses().that().resideInAPackage("..domain..")
+    .should().dependOnClassesThat().resideInAnyPackage("..ingest..");
+noClasses().that().resideInAPackage("..application.pipeline..")
+    .should().dependOnClassesThat().resideInAnyPackage("..ingest..");
 ```
 
 Правила оформляются как обычные тесты (`@AnalyzeClasses(packages = "com.iocextractor")`)

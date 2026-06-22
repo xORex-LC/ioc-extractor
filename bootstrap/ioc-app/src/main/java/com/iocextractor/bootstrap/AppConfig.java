@@ -39,6 +39,7 @@ import com.iocextractor.application.maintenance.RetentionService;
 import com.iocextractor.application.maintenance.RetentionTarget;
 import com.iocextractor.application.port.in.aggregation.AggregatePartitionsUseCase;
 import com.iocextractor.application.port.in.maintenance.RunRetentionUseCase;
+import com.iocextractor.application.port.out.aggregation.AggregationTrigger;
 import com.iocextractor.application.port.out.maintenance.RetentionStore;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.out.IocSink;
@@ -84,6 +85,7 @@ import com.iocextractor.observability.logging.LoggingPipelineObserver;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.QuoteMode;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -100,7 +102,9 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 
 /**
@@ -259,8 +263,26 @@ public class AppConfig {
     public IngestionService ingestionService(IngestionLedger ledger,
                                              SourceLifecycle sourceLifecycle,
                                              PartitionSinkFactory partitionSinkFactory,
-                                             IocExtractionServiceFactory extractionFactory) {
-        return new IngestionService(ledger, sourceLifecycle, partitionSinkFactory, extractionFactory);
+                                             IocExtractionServiceFactory extractionFactory,
+                                             AggregationTrigger aggregationTrigger) {
+        return new IngestionService(ledger, sourceLifecycle, partitionSinkFactory, extractionFactory,
+                aggregationTrigger);
+    }
+
+    /**
+     * Trigger the ingest use case calls after a partition is ready. With
+     * {@code ioc.aggregation.trigger=on-partition|both} this is the scheduler
+     * (event-driven kick); with {@code interval} it is a no-op (timer only).
+     */
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    public AggregationTrigger aggregationTrigger(ObjectProvider<DaemonAggregationScheduler> schedulerProvider,
+                                                 IocProperties props) {
+        DaemonAggregationScheduler scheduler = schedulerProvider.getIfAvailable();
+        if (scheduler != null && !"interval".equals(aggregationTriggerMode(props))) {
+            return scheduler;
+        }
+        return AggregationTrigger.noop();
     }
 
     @Bean
@@ -325,7 +347,19 @@ public class AppConfig {
                                                                  AggregationState state,
                                                                  IocProperties props) {
         return new DaemonAggregationScheduler(useCase, state,
-                props.aggregation().interval(), props.aggregation().initialDelay());
+                props.aggregation().interval(), props.aggregation().initialDelay(),
+                !"on-partition".equals(aggregationTriggerMode(props)));
+    }
+
+    /** Normalize + validate {@code ioc.aggregation.trigger} (default {@code both}). */
+    private String aggregationTriggerMode(IocProperties props) {
+        String value = props.aggregation().trigger();
+        String mode = (value == null || value.isBlank()) ? "both" : value.trim().toLowerCase(Locale.ROOT);
+        if (!Set.of("interval", "on-partition", "both").contains(mode)) {
+            throw new IocExtractorException("Unknown ioc.aggregation.trigger: '" + value
+                    + "' (use interval | on-partition | both)");
+        }
+        return mode;
     }
 
     @Bean

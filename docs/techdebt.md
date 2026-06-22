@@ -8,7 +8,7 @@
 с ссылкой на коммит/этап, не удаляем. Новый долг → строка в нужную секцию.
 
 **Статус:** `открыт` · `частично` · `seam` (сознательно отложенный задел,
-интерфейс/инвариант уже заложен) · `закрыт`.
+интерфейс/инвариант уже заложен) · `закрыт` · `descoped` (осознанно won't-do).
 **Эффорт:** `S` (≤ полдня) · `M` (день-два) · `L` (итерация).
 
 ---
@@ -18,11 +18,13 @@
 | ID | Долг | Статус | Эфф. | Источник |
 |---|---|---|---|---|
 | ING-1 | **Retention reaper** — единый декларативный reaper (`ioc.maintenance.retention`) чистит `partitions` + `done` + `failed` по возрасту/количеству (delete/archive); пул-политика `RetentionPolicy`, порт `RetentionStore`, `DaemonMaintenanceScheduler`. | закрыт | M | dev/0001 #6 |
-| ING-2 | **Tail-режим** для растущих фидов (offset/rotation/checkpoint; inode vs file-id). Сейчас только whole-file. | seam | L | dev/0001 #1, dev/0006 |
-| ING-3 | **Health-транспорт демона** — health-indicators зарегистрированы, но не экспонированы (`web-application-type: none`); нужен Actuator/heartbeat-контур. | открыт | M | dev/0001 |
-| ING-4 | **Durability ledger** — файловый стор → SQLite (`spring-integration-jdbc`) при росте требований. | seam | M | dev/0001 |
-| ING-5 | **Триггер агрегации** — по расписанию (сейчас, интервал) vs событие «партиция готова». | открыт | M | dev/0001 |
-| ING-6 | **Partition-wrapper boundary** — не протаскивать source-key в domain/application API сверх envelope-metadata. | наблюдение | S | dev/0001 |
+| ING-2 | **Tail-режим для источников** (растущие append-фиды: offset/rotation/checkpoint). **Descoped:** вне домена document-ingest — источники дискретны (Word/HTML, скрейпинг даёт целые документы). При появлении стриминг-источника — новый режим/`SourceReader` тогда. | descoped | L | dev/0001 #1, dev/0006 |
+| ING-3 | **Health-транспорт демона** — health-indicators зарегистрированы, но не экспонированы (`web-application-type: none`). Решение: HTTP-actuator (daemon-only management-сервер) — заодно задел под web driving-adapter (см. ING-8). | открыт | M | dev/0001 |
+| ING-4 | **Durability ledger** — файловый стор → SQLite (`spring-integration-jdbc`) при росте требований. Тянет за собой схему/кэш/проекцию CSV из БД — отдельная итерация (см. ING-7). | seam | M | dev/0001 |
+| ING-5 | **Триггер агрегации** — `ioc.aggregation.trigger: interval｜on-partition｜both`; `AggregationTrigger` port, событийный kick из `IngestionService` с коалесингом, интервал-страховка. | закрыт | M | dev/0001 |
+| ING-6 | **Partition-wrapper boundary** — инвариант зафиксирован ArchUnit: `..domain..` и `..application.pipeline..` не зависят от `..ingest..` (source-key доходит до ядра только как Envelope-metadata). | закрыт | S | dev/0001 |
+| ING-7 | **Инкрементальная запись датафреймов** — сейчас полный rewrite+atomic-move на каждый прогон. Append корректен при keep-first (строки иммутабельны), но экономит только запись, не чтение, и теряет атомарность. Решать вместе со стораджем (ING-4): CSV как проекция из БД, кэш, дельта-запись. | seam | M | review |
+| ING-8 | **Web driving-adapter** — HTTP как третья точка входа рядом с CLI/file-poll: ops (ING-3) → REST-ингест/запросы → TAXII/STIX-сервер (синергия с EXP-1) + BFF под фронтенд. Эндпоинты живут в отдельном `adapter-web`. | seam | L | review |
 
 ## 2. Обогащение вывода (`OUT`)
 
@@ -94,6 +96,8 @@
 
 - **Hash-aware lookup** — `CsvArtifactLookupRepository` грузит и дедуплицирует хэши + per-artifact `maxId`.
 - **D2** (зависимость `platform-observability` на `application.pipeline`) — снят выносом generic ETL-контрактов в `platform-etl` (этап 9).
+- **ING-5** — триггер агрегации стал конфигурируемым (`ioc.aggregation.trigger: interval｜on-partition｜both`): `AggregationTrigger` port, событийный kick из `IngestionService` после архивации партиции (коалесинг через `pending`-флаг + single-thread executor), интервал остаётся страховкой.
+- **ING-6** — инвариант partition-wrapper зафиксирован ArchUnit (`..domain..` и `..application.pipeline..` ⊥ `..ingest..`); код уже был чист, теперь протечка краснит сборку.
 - **ING-1** — retention reaper реализован: один `RetentionPolicy` + порт `RetentionStore` (`FileSystemRetentionStore`, реап листовых файлов рекурсивно) + `DaemonMaintenanceScheduler`; конфиг `ioc.maintenance.retention` (targets: partitions/done/failed, max-age/max-count, delete|archive). Заглушка `ioc.aggregation.retention` удалена.
 - **Кодировки I/O** — задекларированный `ioc.source.charset` теперь реально соблюдается (форс text/HTML через Tika `EncodingDetector`; docx/pdf — по дизайну нет), добавлен `ioc.sink.csv.charset` для всех писателей **и** чтения артефактов в lookup/агрегации (read=write), непредставимые символы заменяются (не падаем), fail-fast на неизвестном имени кодировки.
 - **Атрибуция:** пустой `source` вместо `UNKNOWN` + первый реальный продьюсер диагностик (`SOURCE.MARKERS_UNMATCHED`), частично закрывает OBS-D1.

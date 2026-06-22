@@ -3,6 +3,7 @@ package com.iocextractor.bootstrap;
 import com.iocextractor.application.port.in.aggregation.AggregatePartitionsUseCase;
 import com.iocextractor.application.port.in.aggregation.AggregationCommand;
 import com.iocextractor.application.port.in.aggregation.AggregationResult;
+import com.iocextractor.application.port.out.aggregation.AggregationTrigger;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
@@ -18,10 +19,17 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Scheduled daemon trigger for partition aggregation. The trigger is framework
- * boundary code; aggregation behavior remains in the application use case.
+ * Scheduled daemon trigger for partition aggregation, also the
+ * {@link AggregationTrigger} implementation. The trigger is framework boundary
+ * code; aggregation behavior remains in the application use case.
+ *
+ * <p>Runs are driven by {@code ioc.aggregation.trigger}: a periodic timer (when
+ * {@code intervalEnabled}) and/or event-driven {@link #request()} kicks from the
+ * ingest use case. A single-thread executor plus the {@code running} guard and the
+ * {@code pending} coalescing flag ensure runs never overlap and bursts collapse
+ * into at most one queued run.
  */
-public final class DaemonAggregationScheduler implements SmartLifecycle {
+public final class DaemonAggregationScheduler implements SmartLifecycle, AggregationTrigger {
 
     private static final Logger log = LoggerFactory.getLogger(DaemonAggregationScheduler.class);
 
@@ -29,7 +37,9 @@ public final class DaemonAggregationScheduler implements SmartLifecycle {
     private final AggregationState state;
     private final Duration interval;
     private final Duration initialDelay;
+    private final boolean intervalEnabled;
     private final AtomicBoolean running = new AtomicBoolean();
+    private final AtomicBoolean pending = new AtomicBoolean();
     private ScheduledExecutorService executor;
     private volatile boolean active;
 
@@ -37,10 +47,19 @@ public final class DaemonAggregationScheduler implements SmartLifecycle {
                                       AggregationState state,
                                       Duration interval,
                                       Duration initialDelay) {
+        this(useCase, state, interval, initialDelay, true);
+    }
+
+    public DaemonAggregationScheduler(AggregatePartitionsUseCase useCase,
+                                      AggregationState state,
+                                      Duration interval,
+                                      Duration initialDelay,
+                                      boolean intervalEnabled) {
         this.useCase = useCase;
         this.state = state;
         this.interval = interval;
         this.initialDelay = initialDelay;
+        this.intervalEnabled = intervalEnabled;
     }
 
     @Override
@@ -53,11 +72,34 @@ public final class DaemonAggregationScheduler implements SmartLifecycle {
             thread.setDaemon(false);
             return thread;
         });
-        executor.scheduleWithFixedDelay(this::runOnce,
-                initialDelay.toMillis(),
-                interval.toMillis(),
-                TimeUnit.MILLISECONDS);
+        if (intervalEnabled) {
+            executor.scheduleWithFixedDelay(this::runOnce,
+                    initialDelay.toMillis(),
+                    interval.toMillis(),
+                    TimeUnit.MILLISECONDS);
+        }
         active = true;
+    }
+
+    /**
+     * Event-driven kick: request an aggregation soon without blocking the caller.
+     * Coalesces a burst into at most one queued run (idempotent aggregation makes
+     * a coalesced request only a latency concern). Falls back to a synchronous run
+     * if the executor is not started.
+     */
+    @Override
+    public void request() {
+        ScheduledExecutorService ex = this.executor;
+        if (ex == null) {
+            runOnce();
+            return;
+        }
+        if (pending.compareAndSet(false, true)) {
+            ex.execute(() -> {
+                pending.set(false);
+                runOnce();
+            });
+        }
     }
 
     @Override
