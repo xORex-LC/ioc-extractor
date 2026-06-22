@@ -1,0 +1,36 @@
+# ============================================================================
+#  ioc-extractor — operator override (production daemon)
+#
+#  Loaded via:  --spring.config.additional-location=optional:file:./etc/application.yml
+#  WorkingDirectory is the install prefix, so all relative paths below resolve
+#  under it (e.g. ./var/inbox -> <prefix>/var/inbox).
+#
+#  This file only OVERRIDES the packaged defaults (in the jar). Everything not
+#  set here keeps its built-in value. Edit and `systemctl restart ioc-extractor`.
+# ============================================================================
+ioc:
+  runtime:
+    mode: daemon            # also forced on the command line by the systemd unit
+  observability:
+    mode: daemon            # ECS logging tuned for a long-running process
+
+logging:
+  file:
+    path: var/logs          # rolling ECS-JSON log under <prefix>/var/logs
+
+# ---- Common operator knobs (uncomment & adjust as needed) ------------------
+#ioc:
+#  ingestion:
+#    patterns:
+#      include: [ "*.htm", "*.html", "*.docx", "*.pdf" ]
+#    stability:
+#      quiet-period: 10s     # wait for a file to stop changing before ingest
+#    detect:
+#      reconcile-interval: 30s
+#  aggregation:
+#    interval: 1m            # how often partitions are merged into canonical artifacts
+#  source:
+#    charset: windows-1251   # charset hint for legacy Word-exported HTML
+#    section-markers:
+#      - "БИБ-\\d+"
+#      - "Письмо ФСТЭК России[^№]*№\\s*[\\d/]+"

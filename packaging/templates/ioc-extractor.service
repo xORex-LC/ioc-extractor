@@ -1,0 +1,38 @@
+[Unit]
+Description=ioc-extractor — IOC ETL ingest daemon
+Documentation=file:@PREFIX@/README.md
+# Local file-poll ingest; no network dependency, but order after fs/network is mounted.
+After=network.target local-fs.target
+
+[Service]
+Type=exec
+User=@USER@
+Group=@USER@
+WorkingDirectory=@PREFIX@
+EnvironmentFile=@PREFIX@/etc/ioc-extractor.env
+# $JAVA_OPTS is expanded (and word-split) from the EnvironmentFile.
+# Daemon mode is forced on the command line; ./etc/application.yml is an optional operator override.
+ExecStart=@JAVA_BIN@ $JAVA_OPTS -jar @PREFIX@/lib/ioc-app-@VERSION@.jar --spring.config.additional-location=optional:file:./etc/application.yml --ioc.runtime.mode=daemon
+
+Restart=on-failure
+RestartSec=5s
+# Spring Boot / JVM SIGTERM shutdown returns 143 (128+15); treat as clean stop.
+SuccessExitStatus=143
+TimeoutStopSec=30s
+
+# ---- Sandboxing / hardening -------------------------------------------------
+# The whole filesystem is read-only except the explicitly listed writable paths.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# Writable runtime state: inbox/processing/done/failed/ledger/logs + generated artifacts.
+# (Note: keep the install prefix OUTSIDE /home so ProtectHome does not hide it; /opt is correct.)
+ReadWritePaths=@PREFIX@/var @PREFIX@/dataframe
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
