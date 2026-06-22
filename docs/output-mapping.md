@@ -26,6 +26,10 @@ ConfigurableRowMapper ──uses──▶ Map<key, ValueProvider>
                        └─uses──▶ Map<key, Transform>
 ```
 
+Перед маппингом артефакт также может применить **маршрутизирующий фильтр**
+поверх `accepts`: тип индикатора остаётся грубым маршрутом, а `include`/`exclude`
+уточняют его по признакам (`is-bare-ip`, `has-path-or-port`, `is-ip` и т.п.).
+
 ## Модель колонки
 
 | Поле | Назначение |
@@ -45,6 +49,8 @@ ConfigurableRowMapper ──uses──▶ Map<key, ValueProvider>
 | `source.label` | метка провенанса (`source`) |
 | `match.url` | код `url_match` от доменной `MatchPolicy` |
 | `match.host` | код `host_match` от доменной `MatchPolicy` |
+| `address.url` | значение для blacklist-колонки URL/domain-host; IP-host → `NULL` |
+| `address.ip` | значение для blacklist-колонки IP-host; domain-host → `NULL` |
 | `type` | тип индикатора (на будущее) |
 | `const` | литерал из `value` (спец-случай, не провайдер) |
 
@@ -64,10 +70,16 @@ ConfigurableRowMapper ──uses──▶ Map<key, ValueProvider>
 
 - колонка = `from` (провайдер) **или** `const`, опц. `when-type`, опц.
   упорядоченный список `transform`;
+- артефакт = `accepts` + опц. `include`/`exclude` — списки именованных
+  предикатов над уже вычисляемыми признаками индикатора;
 - **нет** вложенных выражений, арифметики/строковых операций в YAML;
-- **нет** условий сложнее `when-type` (одно равенство типа);
+- на уровне колонки **нет** условий сложнее `when-type` (одно равенство типа);
 - любая логика сложнее — это новый тонкий `ValueProvider`/`Transform` (код), а не
   выражение в конфиге.
+
+`include` работает как AND: все перечисленные предикаты должны выполниться.
+`exclude` отбрасывает индикатор, если сработал хотя бы один предикат. Пустые
+списки означают «без дополнительного фильтра».
 
 ## Декларативная классификация масок (match.url / match.host)
 
@@ -83,7 +95,9 @@ ConfigurableRowMapper ──uses──▶ Map<key, ValueProvider>
   PSL, `adapter-psl`), чтобы домен оставался без Guava (см.
   [boundaries.md](boundaries.md), [services.md](services.md)).
 - Реестр **предикатов** над признаками: `has-query`, `has-path`, `has-port`,
-  `has-path-or-port`, `is-ip`, `is-subdomain`, `is-registrable`.
+  `has-path-or-port`, `is-ip`, `is-subdomain`, `is-registrable`, `is-onion`.
+  Артефактные фильтры используют тот же реестр плюс специализированный
+  `is-bare-ip` (тип `IPV4`, IP-host, без path/port/query).
 - `RuleBasedMatchPolicy` — берёт первое правило, все предикаты `when` которого
   истинны (AND), и отдаёт его коды.
 
@@ -118,6 +132,7 @@ ioc:
 artifacts:
   - name: masks
     accepts: [ IPV4, DOMAIN, URL ]
+    exclude: [ is-bare-ip ]
     id: { strategy: ascending, start: auto }
     columns:
       - { name: id,              from: id }
@@ -130,6 +145,25 @@ artifacts:
       - { name: threat_type,     from: const }
       - { name: source,          from: source.label }
       - { name: description,     from: const }
+  - name: ip_list
+    accepts: [ IPV4 ]
+    include: [ is-bare-ip ]
+    id: { strategy: ascending, start: auto }
+    columns:
+      - { name: id,              from: id }
+      - { name: ip,              from: value }
+      - { name: score,           from: const }
+      - { name: time_last_seen,  from: const }
+      - { name: time_first_seen, from: const }
+      - { name: threat_type,     from: const }
+      - { name: source,          from: source.label, transform: [ "strip-prefix:Письмо " ] }
+      - { name: description,     from: const }
+  - name: address_blacklist
+    accepts: [ IPV4, DOMAIN, URL ]
+    exclude: [ is-bare-ip ]
+    columns:
+      - { name: forbidden_url, from: address.url, transform: [ lower-host ] }
+      - { name: forbidden_ip,  from: address.ip,  transform: [ lower-host ] }
   - name: hashes
     accepts: [ MD5, SHA1, SHA256 ]
     id: { strategy: ascending, start: 10024 }

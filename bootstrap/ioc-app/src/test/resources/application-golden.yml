@@ -14,6 +14,7 @@ ioc:
         enabled: true
         path: "target/golden/masks.csv"
         accepts: [ IPV4, DOMAIN, URL ]
+        exclude: [ is-bare-ip ]
         id: { strategy: ascending, start: auto }
         columns:
           - { name: id,              from: id }
@@ -26,6 +27,29 @@ ioc:
           - { name: threat_type,     from: const }
           - { name: source,          from: source.label }
           - { name: description,     from: const }
+      - name: ip_list
+        enabled: true
+        path: "target/golden/ip-list.csv"
+        accepts: [ IPV4 ]
+        include: [ is-bare-ip ]
+        id: { strategy: ascending, start: auto }
+        columns:
+          - { name: id,              from: id }
+          - { name: ip,              from: value }
+          - { name: score,           from: const }
+          - { name: time_last_seen,  from: const }
+          - { name: time_first_seen, from: const }
+          - { name: threat_type,     from: const }
+          - { name: source,          from: source.label, transform: [ "strip-prefix:Письмо " ] }
+          - { name: description,     from: const }
+      - name: address_blacklist
+        enabled: true
+        path: "target/golden/address-blacklist.csv"
+        accepts: [ IPV4, DOMAIN, URL ]
+        exclude: [ is-bare-ip ]
+        columns:
+          - { name: forbidden_url,   from: address.url, transform: [ lower-host ] }
+          - { name: forbidden_ip,    from: address.ip,  transform: [ lower-host ] }
       - name: hashes
         enabled: true
         path: "target/golden/hashes.csv"

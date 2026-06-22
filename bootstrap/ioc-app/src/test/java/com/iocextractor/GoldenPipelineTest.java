@@ -16,8 +16,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * End-to-end golden regression. Runs the real pipeline over a synthetic fixture
- * covering every classification bucket (variants 1–4, onion, telegram, hashes) and
- * compares the generated artifacts to committed golden files.
+ * covering every classification bucket (variants 1–4, bare IP, onion,
+ * telegram, hashes) and compares the generated artifacts to committed golden
+ * files.
  *
  * <p>Isolated: the fixture is a test resource, output is redirected to {@code target/}
  * (not {@code dataframe/}), and the lookup points at a non-existent file.
@@ -35,6 +36,10 @@ class GoldenPipelineTest {
 
         assertThat(normalize(Files.readString(Path.of("target/golden/masks.csv"))))
                 .isEqualTo(goldenResource("golden/expected-masks.csv"));
+        assertThat(normalize(Files.readString(Path.of("target/golden/ip-list.csv"))))
+                .isEqualTo(goldenResource("golden/expected-ip-list.csv"));
+        assertThat(normalize(Files.readString(Path.of("target/golden/address-blacklist.csv"))))
+                .isEqualTo(goldenResource("golden/expected-address-blacklist.csv"));
         assertThat(normalize(Files.readString(Path.of("target/golden/hashes.csv"))))
                 .isEqualTo(goldenResource("golden/expected-hashes.csv"));
     }

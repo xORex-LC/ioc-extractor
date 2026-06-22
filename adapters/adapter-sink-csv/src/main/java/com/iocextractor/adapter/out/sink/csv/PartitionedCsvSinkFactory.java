@@ -38,6 +38,7 @@ public final class PartitionedCsvSinkFactory implements PartitionSinkFactory {
                     artifact.name(),
                     path,
                     artifact.accepts(),
+                    artifact.filter(),
                     artifact.mapper(),
                     new IdGenerator(artifact.idStrategy(), artifact.idStart()),
                     format));

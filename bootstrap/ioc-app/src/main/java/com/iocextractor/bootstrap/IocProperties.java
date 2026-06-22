@@ -60,6 +60,8 @@ public record IocProperties(
                 boolean enabled,
                 @NotBlank String path,
                 @NotEmpty List<IndicatorType> accepts,
+                List<String> include,
+                List<String> exclude,
                 Id id,
                 @NotEmpty @Valid List<Column> columns) {
 

@@ -36,6 +36,7 @@ public final class CsvIocSink implements IocSink {
     private final String name;
     private final Path path;
     private final Set<IndicatorType> accepts;
+    private final ArtifactFilter filter;
     private final RowMapper mapper;
     private final IdGenerator ids;
     private final CSVFormat format;
@@ -46,9 +47,20 @@ public final class CsvIocSink implements IocSink {
                       RowMapper mapper,
                       IdGenerator ids,
                       CSVFormat format) {
+        this(name, path, accepts, ArtifactFilter.none(), mapper, ids, format);
+    }
+
+    public CsvIocSink(String name,
+                      Path path,
+                      Set<IndicatorType> accepts,
+                      ArtifactFilter filter,
+                      RowMapper mapper,
+                      IdGenerator ids,
+                      CSVFormat format) {
         this.name = name;
         this.path = path;
         this.accepts = Set.copyOf(accepts);
+        this.filter = filter == null ? ArtifactFilter.none() : filter;
         this.mapper = mapper;
         this.ids = ids;
         this.format = format;
@@ -63,6 +75,7 @@ public final class CsvIocSink implements IocSink {
     public int write(List<Indicator> indicators) {
         List<Indicator> accepted = indicators.stream()
                 .filter(i -> accepts.contains(i.type()))
+                .filter(filter::accepts)
                 .toList();
         try {
             if (path.getParent() != null) {

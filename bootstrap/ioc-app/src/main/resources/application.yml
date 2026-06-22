@@ -86,6 +86,7 @@ ioc:
         enabled: true
         path: "./dataframe/repListMasks_generated.csv"
         accepts: [ IPV4, DOMAIN, URL ]
+        exclude: [ is-bare-ip ]
         id: { strategy: ascending, start: auto }   # ascending; 'auto' = lookup max + 1
         columns:
           - { name: id,              from: id }
@@ -98,6 +99,29 @@ ioc:
           - { name: threat_type,     from: const }
           - { name: source,          from: source.label }
           - { name: description,     from: const }
+      - name: ip_list                # bare IP IOC -> IP reputation list
+        enabled: true
+        path: "./dataframe/ip_list_generated.csv"
+        accepts: [ IPV4 ]
+        include: [ is-bare-ip ]
+        id: { strategy: ascending, start: auto }
+        columns:
+          - { name: id,              from: id }
+          - { name: ip,              from: value }
+          - { name: score,           from: const }
+          - { name: time_last_seen,  from: const }
+          - { name: time_first_seen, from: const }
+          - { name: threat_type,     from: const }
+          - { name: source,          from: source.label, transform: [ "strip-prefix:Письмо " ] }
+          - { name: description,     from: const }
+      - name: address_blacklist      # simple URL/IP-host address blacklist
+        enabled: true
+        path: "./dataframe/address_blacklist_generated.csv"
+        accepts: [ IPV4, DOMAIN, URL ]
+        exclude: [ is-bare-ip ]
+        columns:
+          - { name: forbidden_url,   from: address.url, transform: [ lower-host ] }
+          - { name: forbidden_ip,    from: address.ip,  transform: [ lower-host ] }
       - name: hashes                 # file IOC -> hash list (separate schema)
         enabled: true
         path: "./dataframe/hashes_generated.csv"
@@ -131,6 +155,13 @@ ioc:
     artifacts:
       - name: masks
         key-columns: [ mask ]
+        conflict-policy: keep-first
+      - name: ip_list
+        key-columns: [ ip ]
+        conflict-policy: keep-first
+      - name: address_blacklist
+        key-columns: [ forbidden_url, forbidden_ip ]
+        key-mode: first-non-empty
         conflict-policy: keep-first
       - name: hashes
         key-columns: [ hash_md5, hash_sha1, hash_sha256 ]

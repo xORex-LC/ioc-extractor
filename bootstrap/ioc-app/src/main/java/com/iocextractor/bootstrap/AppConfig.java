@@ -4,6 +4,9 @@ import com.iocextractor.adapter.out.lookup.CsvArtifactLookupRepository;
 import com.iocextractor.adapter.out.lookup.CsvMaskLookupRepository;
 import com.iocextractor.adapter.out.regex.JdkRegexPatternEngine;
 import com.iocextractor.adapter.out.regex.Re2jPatternEngine;
+import com.iocextractor.adapter.out.sink.csv.AddressIpValueProvider;
+import com.iocextractor.adapter.out.sink.csv.AddressUrlValueProvider;
+import com.iocextractor.adapter.out.sink.csv.ArtifactFilter;
 import com.iocextractor.adapter.out.sink.csv.ArtifactKeyDefinition;
 import com.iocextractor.adapter.out.sink.csv.ColumnSpec;
 import com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper;
@@ -63,6 +66,7 @@ import com.iocextractor.domain.feature.IndicatorNormalizer;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.extract.PatternEngine;
 import com.iocextractor.domain.extract.RegexIndicatorExtractor;
+import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.MaskMatch;
 import com.iocextractor.domain.refang.RefangRule;
@@ -87,6 +91,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 /**
  * Composition root: the single place where the framework wires the otherwise
@@ -220,9 +225,10 @@ public class AppConfig {
     @Bean
     public ExtractIocsUseCase extractIocsUseCase(IocExtractionServiceFactory factory,
                                                  MatchPolicy matchPolicy,
+                                                 IndicatorFeatureExtractor featureExtractor,
                                                  LookupRepository lookup,
                                                  IocProperties props) {
-        List<IocSink> sinks = buildSinks(props, matchPolicy, lookup.maxId());
+        List<IocSink> sinks = buildSinks(props, matchPolicy, featureExtractor, lookup.maxId());
         return factory.create(sinks);
     }
 
@@ -230,10 +236,11 @@ public class AppConfig {
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     public PartitionSinkFactory partitionSinkFactory(IocProperties props,
                                                      MatchPolicy matchPolicy,
+                                                     IndicatorFeatureExtractor featureExtractor,
                                                      LookupRepository lookup) {
         return new PartitionedCsvSinkFactory(
                 Path.of(props.ingestion().output().partitionsDir()),
-                artifactDefinitions(props, matchPolicy, lookup.maxId()),
+                artifactDefinitions(props, matchPolicy, featureExtractor, lookup.maxId()),
                 writeFormat(props.sink().csv()));
     }
 
@@ -248,10 +255,13 @@ public class AppConfig {
 
     @Bean
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
-    public CsvArtifactRepositories csvArtifactRepositories(IocProperties props, MatchPolicy matchPolicy, LookupRepository lookup) {
+    public CsvArtifactRepositories csvArtifactRepositories(IocProperties props,
+                                                           MatchPolicy matchPolicy,
+                                                           IndicatorFeatureExtractor featureExtractor,
+                                                           LookupRepository lookup) {
         validateAggregationConfig(props);
         return new CsvArtifactRepositories(
-                artifactDefinitions(props, matchPolicy, lookup.maxId()),
+                artifactDefinitions(props, matchPolicy, featureExtractor, lookup.maxId()),
                 canonicalArtifactPaths(props),
                 readFormat(props.sink().csv()),
                 writeFormat(props.sink().csv()));
@@ -327,13 +337,17 @@ public class AppConfig {
 
     // ---- artifact assembly -------------------------------------------------
 
-    private List<IocSink> buildSinks(IocProperties props, MatchPolicy matchPolicy, long autoBase) {
+    private List<IocSink> buildSinks(IocProperties props,
+                                     MatchPolicy matchPolicy,
+                                     IndicatorFeatureExtractor featureExtractor,
+                                     long autoBase) {
         CSVFormat writeFormat = writeFormat(props.sink().csv());
-        return artifactDefinitions(props, matchPolicy, autoBase).stream()
+        return artifactDefinitions(props, matchPolicy, featureExtractor, autoBase).stream()
                 .map(artifact -> new CsvIocSink(
                         artifact.name(),
                         Path.of(findArtifactPath(props, artifact.name())),
                         artifact.accepts(),
+                        artifact.filter(),
                         artifact.mapper(),
                         new IdGenerator(artifact.idStrategy(), artifact.idStart()),
                         writeFormat))
@@ -341,9 +355,13 @@ public class AppConfig {
                 .toList();
     }
 
-    private List<CsvArtifactDefinition> artifactDefinitions(IocProperties props, MatchPolicy matchPolicy, long autoBase) {
-        Map<String, ValueProvider> providers = valueProviders(matchPolicy);
+    private List<CsvArtifactDefinition> artifactDefinitions(IocProperties props,
+                                                            MatchPolicy matchPolicy,
+                                                            IndicatorFeatureExtractor featureExtractor,
+                                                            long autoBase) {
+        Map<String, ValueProvider> providers = valueProviders(matchPolicy, featureExtractor);
         Map<String, Transform> transforms = transforms();
+        Map<String, Predicate<Indicator>> filters = artifactFilters(featureExtractor);
         List<CsvArtifactDefinition> artifacts = new ArrayList<>();
         for (IocProperties.Sink.Artifact artifact : props.sink().artifacts()) {
             if (!artifact.enabled()) {
@@ -353,6 +371,7 @@ public class AppConfig {
             artifacts.add(new CsvArtifactDefinition(
                     artifact.name(),
                     EnumSet.copyOf(artifact.accepts()),
+                    artifactFilter(artifact, filters),
                     mapper,
                     strategyOf(artifact.id()),
                     startOf(artifact.id(), autoBase)));
@@ -397,14 +416,55 @@ public class AppConfig {
         }
     }
 
-    private Map<String, ValueProvider> valueProviders(MatchPolicy matchPolicy) {
+    private Map<String, ValueProvider> valueProviders(MatchPolicy matchPolicy,
+                                                      IndicatorFeatureExtractor featureExtractor) {
         Map<String, ValueProvider> providers = new HashMap<>();
         providers.put("id", new IdValueProvider());
         providers.put("value", new IndicatorValueProvider());
         providers.put("source.label", new SourceLabelValueProvider());
         providers.put("match.url", new MatchUrlValueProvider(matchPolicy));
         providers.put("match.host", new MatchHostValueProvider(matchPolicy));
+        providers.put("address.url", new AddressUrlValueProvider(featureExtractor));
+        providers.put("address.ip", new AddressIpValueProvider(featureExtractor));
         return providers;
+    }
+
+    private Map<String, Predicate<Indicator>> artifactFilters(IndicatorFeatureExtractor featureExtractor) {
+        Map<String, Predicate<Indicator>> filters = new HashMap<>();
+        FeaturePredicates.defaults().forEach((key, predicate) ->
+                filters.put(key, indicator -> predicate.test(featureExtractor.extract(indicator))));
+        filters.put("is-bare-ip", indicator -> {
+            var features = featureExtractor.extract(indicator);
+            return indicator.type() == IndicatorType.IPV4
+                    && features.isIp()
+                    && !features.hasPath()
+                    && !features.hasPort()
+                    && !features.hasQuery();
+        });
+        return filters;
+    }
+
+    private ArtifactFilter artifactFilter(IocProperties.Sink.Artifact artifact,
+                                          Map<String, Predicate<Indicator>> filters) {
+        return new ArtifactFilter(
+                resolveArtifactPredicates(artifact.include(), filters),
+                resolveArtifactPredicates(artifact.exclude(), filters));
+    }
+
+    private List<Predicate<Indicator>> resolveArtifactPredicates(List<String> keys,
+                                                                 Map<String, Predicate<Indicator>> filters) {
+        if (keys == null || keys.isEmpty()) {
+            return List.of();
+        }
+        List<Predicate<Indicator>> predicates = new ArrayList<>();
+        for (String key : keys) {
+            Predicate<Indicator> predicate = filters.get(key);
+            if (predicate == null) {
+                throw new IocExtractorException("Unknown artifact filter predicate: " + key);
+            }
+            predicates.add(predicate);
+        }
+        return predicates;
     }
 
     private Map<String, Transform> transforms() {

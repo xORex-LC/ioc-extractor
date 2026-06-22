@@ -1,0 +1,9 @@
+"forbidden_url";"forbidden_ip"
+"example.com";NULL
+"sub.example.com";NULL
+NULL;"5.6.7.8:8080/Payload.exe"
+"example.com/Folder/File.exe";NULL
+"example.com/x?Token=AbC";NULL
+"https://example.com/Path/File.rar";NULL
+"t.me/SomeChannel";NULL
+"abcdefghijklmnop234567.onion";NULL
