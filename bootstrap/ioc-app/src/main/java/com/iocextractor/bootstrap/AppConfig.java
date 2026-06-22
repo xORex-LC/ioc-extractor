@@ -1,12 +1,17 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.adapter.out.lookup.CsvArtifactLookupRepository;
 import com.iocextractor.adapter.out.lookup.CsvMaskLookupRepository;
 import com.iocextractor.adapter.out.regex.JdkRegexPatternEngine;
 import com.iocextractor.adapter.out.regex.Re2jPatternEngine;
+import com.iocextractor.adapter.out.sink.csv.ArtifactKeyDefinition;
 import com.iocextractor.adapter.out.sink.csv.ColumnSpec;
 import com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper;
+import com.iocextractor.adapter.out.sink.csv.ConfigurableArtifactIdentityResolver;
+import com.iocextractor.adapter.out.sink.csv.CsvArtifactRepositories;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition;
 import com.iocextractor.adapter.out.sink.csv.CsvIocSink;
+import com.iocextractor.adapter.out.sink.csv.CsvStableIdIndex;
 import com.iocextractor.adapter.out.sink.csv.IdGenerator;
 import com.iocextractor.adapter.out.sink.csv.IdValueProvider;
 import com.iocextractor.adapter.out.sink.csv.IndicatorValueProvider;
@@ -22,11 +27,18 @@ import com.iocextractor.adapter.out.sink.csv.Transform;
 import com.iocextractor.adapter.out.sink.csv.UppercaseTransform;
 import com.iocextractor.adapter.out.sink.csv.ValueProvider;
 import com.iocextractor.adapter.out.source.TikaSourceReader;
+import com.iocextractor.application.aggregation.AggregationService;
+import com.iocextractor.application.aggregation.KeepFirstMergePolicy;
 import com.iocextractor.application.ingest.IngestionService;
+import com.iocextractor.application.port.in.aggregation.AggregatePartitionsUseCase;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.application.port.out.LookupRepository;
 import com.iocextractor.application.port.out.SourceReader;
+import com.iocextractor.application.port.out.aggregation.ArtifactIdentityResolver;
+import com.iocextractor.application.port.out.aggregation.CanonicalArtifactRepository;
+import com.iocextractor.application.port.out.aggregation.PartitionArtifactRepository;
+import com.iocextractor.application.port.out.aggregation.StableIdIndex;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.PartitionSinkFactory;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
@@ -61,11 +73,14 @@ import com.iocextractor.observability.logging.LoggingPipelineObserver;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.QuoteMode;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -164,7 +179,19 @@ public class AppConfig {
 
     @Bean
     public LookupRepository lookupRepository(IocProperties props) {
-        return new CsvMaskLookupRepository(Path.of(props.lookup().path()));
+        if (!"daemon".equalsIgnoreCase(props.runtime().mode())) {
+            return new CsvMaskLookupRepository(Path.of(props.lookup().path()));
+        }
+        Map<String, Path> paths = new HashMap<>();
+        paths.put("masks", Path.of(props.lookup().path()));
+        paths.put("hashes", Path.of(findArtifactPath(props, "hashes")));
+        return new CsvArtifactLookupRepository(paths);
+    }
+
+    @Bean
+    @Primary
+    public Clock clock() {
+        return Clock.systemUTC();
     }
 
     @Bean
@@ -219,6 +246,85 @@ public class AppConfig {
         return new IngestionService(ledger, sourceLifecycle, partitionSinkFactory, extractionFactory);
     }
 
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    public CsvArtifactRepositories csvArtifactRepositories(IocProperties props, MatchPolicy matchPolicy, LookupRepository lookup) {
+        validateAggregationConfig(props);
+        return new CsvArtifactRepositories(
+                artifactDefinitions(props, matchPolicy, lookup.maxId()),
+                canonicalArtifactPaths(props),
+                readFormat(props.sink().csv()),
+                writeFormat(props.sink().csv()));
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    public ArtifactIdentityResolver artifactIdentityResolver(IocProperties props) {
+        return new ConfigurableArtifactIdentityResolver(props.aggregation().artifacts().stream()
+                .map(artifact -> new ArtifactKeyDefinition(
+                        artifact.name(),
+                        artifact.keyColumns(),
+                        "first-non-empty".equalsIgnoreCase(blankToEmpty(artifact.keyMode()))))
+                .toList());
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    public StableIdIndex stableIdIndex(IocProperties props, Clock clock) {
+        return new CsvStableIdIndex(Path.of(props.aggregation().idIndex().path()), clock);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    public AggregatePartitionsUseCase aggregatePartitionsUseCase(IngestionLedger ledger,
+                                                                 PartitionArtifactRepository partitionRepository,
+                                                                 CanonicalArtifactRepository canonicalRepository,
+                                                                 ArtifactIdentityResolver identityResolver,
+                                                                 StableIdIndex stableIdIndex,
+                                                                 IocProperties props) {
+        return new AggregationService(
+                ledger,
+                partitionRepository,
+                canonicalRepository,
+                identityResolver,
+                stableIdIndex,
+                new KeepFirstMergePolicy(),
+                enabledArtifactNames(props));
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    public AggregationState aggregationState(Clock clock) {
+        return new AggregationState(clock);
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && '${ioc.aggregation.enabled}' == 'true'")
+    public DaemonAggregationScheduler daemonAggregationScheduler(AggregatePartitionsUseCase useCase,
+                                                                 AggregationState state,
+                                                                 IocProperties props) {
+        return new DaemonAggregationScheduler(useCase, state,
+                props.aggregation().interval(), props.aggregation().initialDelay());
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    public IngestionLedgerHealthIndicator ingestionLedgerHealthIndicator(IocProperties props) {
+        return new IngestionLedgerHealthIndicator(props);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    public ArtifactStorageHealthIndicator artifactStorageHealthIndicator(IocProperties props) {
+        return new ArtifactStorageHealthIndicator(props);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    public AggregationHealthIndicator aggregationHealthIndicator(AggregationState state) {
+        return new AggregationHealthIndicator(state);
+    }
+
     // ---- artifact assembly -------------------------------------------------
 
     private List<IocSink> buildSinks(IocProperties props, MatchPolicy matchPolicy, long autoBase) {
@@ -260,6 +366,35 @@ public class AppConfig {
                 .findFirst()
                 .map(IocProperties.Sink.Artifact::path)
                 .orElseThrow(() -> new IocExtractorException("Unknown artifact: " + name));
+    }
+
+    private Map<String, Path> canonicalArtifactPaths(IocProperties props) {
+        Map<String, Path> paths = new HashMap<>();
+        for (IocProperties.Sink.Artifact artifact : props.sink().artifacts()) {
+            if (artifact.enabled()) {
+                paths.put(artifact.name(), Path.of(artifact.path()));
+            }
+        }
+        return paths;
+    }
+
+    private List<String> enabledArtifactNames(IocProperties props) {
+        return props.sink().artifacts().stream()
+                .filter(IocProperties.Sink.Artifact::enabled)
+                .map(IocProperties.Sink.Artifact::name)
+                .toList();
+    }
+
+    private void validateAggregationConfig(IocProperties props) {
+        if (props.aggregation().retention().enabled()) {
+            throw new IocExtractorException("ioc.aggregation.retention.enabled is not supported at stage 11");
+        }
+        for (IocProperties.Aggregation.Artifact artifact : props.aggregation().artifacts()) {
+            if (!"keep-first".equalsIgnoreCase(artifact.conflictPolicy())) {
+                throw new IocExtractorException("Unsupported aggregation conflict policy: "
+                        + artifact.conflictPolicy());
+            }
+        }
     }
 
     private Map<String, ValueProvider> valueProviders(MatchPolicy matchPolicy) {
@@ -316,6 +451,20 @@ public class AppConfig {
     /** A blank/absent mask code means "no match" -> rendered as the CSV null literal. */
     private static String blankToNull(String value) {
         return (value == null || value.isBlank()) ? null : value;
+    }
+
+    private static String blankToEmpty(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private CSVFormat readFormat(IocProperties.Sink.Csv csv) {
+        return CSVFormat.Builder.create()
+                .setDelimiter(csv.delimiter().charAt(0))
+                .setQuote(csv.quote().charAt(0))
+                .setNullString(csv.nullLiteral())
+                .setHeader()
+                .setSkipHeaderRecord(true)
+                .build();
     }
 
     private CSVFormat writeFormat(IocProperties.Sink.Csv csv) {

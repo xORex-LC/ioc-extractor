@@ -13,8 +13,11 @@
 | Файл | Назначение |
 |---|---|
 | `CsvMaskLookupRepository.java` | Загружает колонку `mask` для O(1)-проверок |
+| `CsvArtifactLookupRepository.java` | Artifact-aware lookup для masks + hashes; `maxId()` сохраняет совместимость с mask lookup |
 
 ## Заметки
 
-Реализация специфична для схемы масок; для дедупа хэшей между прогонами —
-отдельный адаптер за тем же портом. Отсутствующий файл = пустое хранилище.
+`CsvMaskLookupRepository` оставлен как узкий legacy adapter. Основной wiring
+использует `CsvArtifactLookupRepository`: network IOC проверяются по `mask`, file
+IOC — по `hash_md5`/`hash_sha1`/`hash_sha256`. Отсутствующий файл = пустое
+хранилище.

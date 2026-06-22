@@ -23,7 +23,11 @@ public interface IngestionLedger {
 
     void markSourceArchived(SourceKey key, Path archivedPath);
 
+    void markAggregated(SourceKey key);
+
     void markFailed(SourceKey key, String reason);
 
     List<IngestionRecord> findIncomplete();
+
+    List<IngestionRecord> findReadyForAggregation();
 }

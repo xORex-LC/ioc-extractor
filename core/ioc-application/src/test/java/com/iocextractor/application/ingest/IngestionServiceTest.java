@@ -72,6 +72,28 @@ class IngestionServiceTest {
     }
 
     @Test
+    void skips_source_when_same_key_was_already_aggregated() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.record = new IngestionRecord(key, IngestionStatus.AGGREGATED,
+                Path.of("old/source.html"), Path.of("processing/source.html"),
+                Path.of("done/source.html"), List.of(Path.of("partition.csv")),
+                Instant.parse("2026-06-22T00:00:00Z"), Instant.parse("2026-06-22T00:00:01Z"), null);
+        var lifecycle = new MemoryLifecycle();
+        var service = new IngestionService(ledger, lifecycle, source -> {
+            throw new AssertionError("partition factory must not be called for duplicate");
+        }, extractionFactory());
+
+        var result = service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source-copy.html"), key, Instant.parse("2026-06-22T00:01:00Z")));
+
+        assertThat(result.duplicate()).isTrue();
+        assertThat(result.status()).isEqualTo(IngestionStatus.AGGREGATED);
+        assertThat(lifecycle.events).containsExactly("archiveDuplicate");
+    }
+
+
+    @Test
     void leaves_claimed_source_for_retry_and_rejects_only_after_final_failure() {
         var key = new SourceKey("ABC123");
         var ledger = new MemoryLedger();
@@ -240,6 +262,13 @@ class IngestionServiceTest {
         }
 
         @Override
+        public void markAggregated(SourceKey key) {
+            record = new IngestionRecord(key, IngestionStatus.AGGREGATED,
+                    record.originalPath(), record.processingPath(), record.archivedPath(), record.partitions(),
+                    record.detectedAt(), record.detectedAt(), null);
+        }
+
+        @Override
         public void markFailed(SourceKey key, String reason) {
             record = new IngestionRecord(key, IngestionStatus.FAILED,
                     Path.of("unknown"), Path.of("unknown"), null, List.of(),
@@ -249,6 +278,13 @@ class IngestionServiceTest {
         @Override
         public List<IngestionRecord> findIncomplete() {
             return record == null ? List.of() : List.of(record);
+        }
+
+        @Override
+        public List<IngestionRecord> findReadyForAggregation() {
+            return record != null && record.status() == IngestionStatus.SOURCE_ARCHIVED
+                    ? List.of(record)
+                    : List.of();
         }
     }
 }

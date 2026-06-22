@@ -13,6 +13,8 @@ public enum EventAction {
     LOOKUP_LOAD("lookup_load"),
     SOURCE_READ("source_read"),
     ARTIFACT_WRITE("artifact_write"),
+    AGGREGATION_START("aggregation_start"),
+    AGGREGATION_COMPLETE("aggregation_complete"),
     DIAGNOSTIC_EMIT("diagnostic_emit");
 
     private final String value;

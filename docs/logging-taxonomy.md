@@ -86,10 +86,11 @@ Per-item поля (`ioc.indicator.*`, `ioc.dedup.key`) не входят в ба
 | `lookup_load` | lookup | lookup artifact загружен |
 | `source_read` | source | source document прочитан |
 | `artifact_write` | sink | CSV artifact записан |
+| `aggregation_start` | aggregation | scheduled aggregation началась |
+| `aggregation_complete` | aggregation | scheduled aggregation завершилась |
 | `diagnostic_emit` | diagnostics | Diagnostic опубликован в log stream |
 
-Для daemon-этапа добавятся ingest/partition/aggregation actions рядом с кодом,
-который их реально вводит.
+Следующие daemon actions добавляются только вместе с первым producer'ом события.
 
 ## Diagnostic mapping
 

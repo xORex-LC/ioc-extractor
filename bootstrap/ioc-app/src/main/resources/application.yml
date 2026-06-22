@@ -121,6 +121,24 @@ ioc:
     path: "./dataframe/repListMasksManual_2026-06-19_08-26-44Z.csv"
     deduplicate: true
 
+  # ---- Daemon aggregation (stage 11; active in daemon mode when enabled) ----
+  aggregation:
+    enabled: true
+    interval: 1m
+    initial-delay: 10s
+    id-index:
+      path: "./dataframe/.ioc-id-index.csv"
+    artifacts:
+      - name: masks
+        key-columns: [ mask ]
+        conflict-policy: keep-first
+      - name: hashes
+        key-columns: [ hash_md5, hash_sha1, hash_sha256 ]
+        key-mode: first-non-empty
+        conflict-policy: keep-first
+    retention:
+      enabled: false
+
   # ---- Daemon ingestion (disabled unless ioc.runtime.mode=daemon) ------------
   ingestion:
     dirs:

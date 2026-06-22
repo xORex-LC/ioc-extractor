@@ -20,6 +20,7 @@
 | `0008-logging-observability-implementation-plan.md` | План реализации этапа 8: logging / observability |
 | `0009-modularization-implementation-plan.md` | План реализации этапа 9: многомодульность |
 | `0010-ingestion-daemon-implementation-plan.md` | План реализации этапа 10: ingest daemon |
+| `0011-daemon-finalization-implementation-plan.md` | План реализации этапа 11: daemon finalization |
 | `README.md` | Назначение каталога и правила ведения планов |
 
 ## Зависимости

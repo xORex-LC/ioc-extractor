@@ -8,9 +8,10 @@
 > Актуализация после этапа 9: проект уже Maven-реактор. Generic pipeline
 > находится в `platform/platform-etl`, IOC use cases и stages — в
 > `core/ioc-application`, технические входы — отдельные `adapter-*` модули.
-> Этап 10 реализует **whole-file daemon ingestion + partition output**. Tail,
-> агрегатор канонических артефактов, retention и SQLite-ledger остаются
-> следующими шагами/расширениями, если прямо не указано обратное.
+> Этап 10 реализовал **whole-file daemon ingestion + partition output**. Этап 11
+> добавил scheduled aggregation в канонические артефакты, stable id sidecar,
+> artifact-aware lookup и минимальный health-контур. Tail, retention/reaper и
+> SQLite/JDBC ledger/index остаются следующими расширениями.
 
 ## 0. Ревью решений и scope этапа 10
 
@@ -70,9 +71,9 @@ wiring.
                    │  refang → extract → attribute → dedup
                    ▼
               IocSink via partition wrapper → partitions/
-                                        └── stage 11: Aggregator → dataframe/
-   driving:  IngestSourceUseCase, ExtractIocsUseCase
-   driven:   IngestionLedger | SourceLifecycle | IocSink | LookupRepository
+                                        └── AggregationService → dataframe/
+   driving:  IngestSourceUseCase, ExtractIocsUseCase, AggregatePartitionsUseCase
+   driven:   IngestionLedger | SourceLifecycle | IocSink | LookupRepository | aggregation storage ports
 ```
 
 **Новые порты**
@@ -83,6 +84,11 @@ wiring.
 | `IngestionLedger` | out (driven) | Durable-журнал **статусов** обработки (идемпотентность, восстановление) |
 | `SourceLifecycle` | out (driven) | Claim/archive/fail источника через атомарные операции ФС; application не знает SI |
 | `PartitionSinkFactory` | out (driven) | Создание daemon-scoped `IocSink`-ов для source-key/content-hash; реализация в `adapter-sink-csv` |
+| `AggregatePartitionsUseCase` | in (driving) | Запуск single-writer aggregation из готовых партиций в канонические артефакты |
+| `PartitionArtifactRepository` | out (driven) | Чтение source-scoped partition CSV как storage-neutral rows |
+| `CanonicalArtifactRepository` | out (driven) | Чтение/атомарная запись канонических артефактов |
+| `StableIdIndex` | out (driven) | Stable id per artifact-key, stage 11 реализация — sidecar CSV |
+| `ArtifactIdentityResolver` | out (driven) | Artifact-specific key extraction; живёт в adapter layer, потому что зависит от схемы артефакта |
 | Partition sink wrapper | adapter wrapper | Daemon-only обёртка над CSV sink/path resolver; пишет партиции без расширения core `IocSink` API |
 
 `SourceFeed` — **не порт ядра**, а adapter-local абстракция внутри
@@ -215,13 +221,19 @@ dataframe/
   перезаписывает ту же партицию → идемпотентно, без гонок на дозапись.
 - **Stage 10:** daemon пишет только партиции. Канонические артефакты остаются
   output-целью `oneshot` и lookup-источником.
-- **Stage 11:** отдельный `Aggregator`, по расписанию или по событию, сводит
-  партиции в канонический артефакт **единым писателем** с глобальной
-  дедупликацией.
-- **Стабильные id:** решаются агрегатором через устойчивый индекс `dedupKey → id`
-  (часть канонического артефакта или отдельный индекс агрегатора). Известный
-  `dedupKey` сохраняет свой id при повторной агрегации, смене порядка партиций,
-  удалении/архивации партиций и дедупе; новый `dedupKey` получает `max+1`.
+- **Stage 11:** `AggregationService` по расписанию вызывает application use case
+  `AggregatePartitionsUseCase`, читает готовые `SOURCE_ARCHIVED` записи из
+  ledger и сводит партиции в канонические артефакты **единым писателем**.
+- **Граница ответственности:** агрегатор — process manager, а не дедупликатор.
+  Identity/upsert вынесены за отдельные контракты:
+  `ArtifactIdentityResolver`, `StableIdIndex`, `CanonicalArtifactRepository`,
+  `PartitionArtifactRepository` и `ArtifactMergePolicy`.
+- **Стабильные id:** решаются через sidecar CSV
+  `ioc.aggregation.id-index.path` (`artifact;key;id;created_at;updated_at`).
+  Известный artifact-key сохраняет id при повторной агрегации; новый ключ
+  получает следующий id. Миграция sidecar CSV на SQLite/JDBC — технический долг.
+- **Conflict policy:** в stage 11 реализован безопасный `keep-first`; более
+  богатая модель merge/update — отдельный долг.
 
 ### 8.1 Жизненный цикл и очистка партиций (retention)
 
@@ -242,9 +254,9 @@ WRITTEN ──aggregate──▶ AGGREGATED ──(grace)──▶ PURGED | ARCH
   (их содержимое подтверждённо влито в канонический артефакт и зафиксировано в
   `IngestionLedger`) **и** старше grace-периода. Не-сагрегированные партиции не
   трогаются никогда — это исключает потерю данных.
-- **Источник статуса:** `Aggregator` помечает партицию как `AGGREGATED` (отметка
-  в ledger/sidecar); `PartitionReaper` читает только эту отметку, сам ничего не
-  агрегирует.
+- **Источник статуса:** `AggregationService` помечает source record как
+  `AGGREGATED` в `IngestionLedger`; `PartitionReaper` в будущем должен читать
+  только эту отметку, сам ничего не агрегируя.
 - **Варианты политики:** `delete` | `archive` (перенос в холодное хранилище) |
   `compress`; критерий — по возрасту, по флагу `aggregated`, по суммарному объёму.
 - После очистки источник истины — канонический артефакт (+ ledger по content-hash
@@ -291,9 +303,10 @@ service-activator + `concurrency > N` — без изменения доменн
 - **Graceful shutdown:** SI-компоненты — `SmartLifecycle`; остановка контекста
   останавливает поллеры, даёт дообработать in-flight, фиксирует ledger. SIGTERM
   от контейнера/systemd → shutdown hook Spring.
-- **Health:** Actuator/health/metrics не входят в этап 10 и остаются на период
-  после этапа 11, когда появятся daemon + aggregator как полный runtime-контур.
-  Для systemd позже можно выбрать heartbeat-файл/`Type=notify`.
+- **Health:** этап 11 добавляет `spring-boot-starter-actuator` и health
+  contributors для ledger, artifact storage и последней aggregation state.
+  HTTP-exposure остаётся deployment/config решением: приложение по умолчанию
+  остаётся non-web.
 - **Деплой:** контейнер (long-running, restart policy) или `systemd`
   (`Restart=always`). Рабочие каталоги монтируются как том.
 
@@ -336,11 +349,22 @@ ioc:
       path: ./var/ledger
     concurrency: 1
 
-    # after stage 11:
-    # aggregation:
-    #   schedule: 1m
-    # retention:
-    #   enabled: false
+  aggregation:
+    enabled: true
+    interval: 1m
+    initial-delay: 10s
+    id-index:
+      path: ./dataframe/.ioc-id-index.csv
+    artifacts:
+      - name: masks
+        key-columns: [ mask ]
+        conflict-policy: keep-first
+      - name: hashes
+        key-columns: [ hash_md5, hash_sha1, hash_sha256 ]
+        key-mode: first-non-empty
+        conflict-policy: keep-first
+    retention:
+      enabled: false              # seam only; implementation postponed
 ```
 
 ## 13. Библиотеки и module placement
@@ -349,7 +373,7 @@ ioc:
 |---|---|---|
 | Инжест-каркас | `spring-boot-starter-integration` + `spring-integration-file` | только `adapter-ingest`/`ioc-app`; poller/watch, фильтры, error-channel |
 | Ретраи/backoff | `spring-retry` (+ `spring-aspects`, если нужен AOP advice) | только `adapter-ingest` |
-| Health/метрики | `spring-boot-starter-actuator` | после этапа 11; для HTTP endpoint нужен management web server |
+| Health/метрики | `spring-boot-starter-actuator` | health contributors есть с этапа 11; для HTTP endpoint нужен management web server/deployment config |
 | Хэш содержимого | JDK `MessageDigest` (`SHA-256`) | новой зависимости не требуется |
 | Durable ledger (later) | `org.xerial:sqlite-jdbc` + `spring-integration-jdbc` | если файлового metadata-store станет мало |
 | Tail (later) | Apache Commons `Tailer` / SI tail producer | не входит в baseline stage 10 |
@@ -373,12 +397,17 @@ ioc:
    `@TempDir`, daemon e2e for duplicate drop/restart compensation, golden check
    against partition content.
 
+Реализовано этапом 11:
+
+- `AggregationService` / `AggregatePartitionsUseCase` → канонические артефакты
+  с stable id sidecar;
+- artifact-aware `LookupRepository` для masks + hashes;
+- health contributors для daemon runtime.
+
 Позже:
 
-- stage 11: `Aggregator` → канонический артефакт с глобальными id;
 - tail-источники (`FileTailingMessageProducer`);
-- Actuator/health/metrics после этапа 11;
-- SQLite-ledger; параллелизм пулом;
+- SQLite/JDBC ledger и stable id index; параллелизм пулом;
 - `PartitionReaper` за портом `RetentionPolicy` — очистка/архив подтверждённо
   сагрегированных партиций.
 
@@ -386,12 +415,12 @@ ioc:
 
 ## 15. Связи
 
-- Готовит закрытие TODO `id auto` ([architecture.md](architecture.md)) через
-  агрегацию на этапе 11.
+- Stage 11 закрывает daemon-side stable ids через sidecar index; legacy
+  `id.start:auto` для oneshot остаётся совместимым с lookup `maxId()`.
 - Использует diagnostics/observability как разные подсистемы
   ([cross-cutting.md](cross-cutting.md), [logging.md](logging.md)).
-- Новый модуль `adapters/adapter-ingest` нужно добавить в reactor и в проверки
-  границ ([modularization.md](modularization.md), [boundaries.md](boundaries.md)).
+- Модуль `adapters/adapter-ingest` включён в reactor и проверки границ
+  ([modularization.md](modularization.md), [boundaries.md](boundaries.md)).
 
 ## 16. Паттерны и референсы
 

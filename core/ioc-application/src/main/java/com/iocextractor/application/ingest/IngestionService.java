@@ -86,9 +86,9 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     }
 
     private IngestSourceResult handleExisting(IngestSourceCommand command, IngestionRecord record) {
-        if (record.status() == IngestionStatus.SOURCE_ARCHIVED) {
+        if (record.status() == IngestionStatus.SOURCE_ARCHIVED || record.status() == IngestionStatus.AGGREGATED) {
             sourceLifecycle.archiveDuplicate(command.source(), command.key());
-            return new IngestSourceResult(command.key(), IngestionStatus.SOURCE_ARCHIVED,
+            return new IngestSourceResult(command.key(), record.status(),
                     true, record.partitions(), null);
         }
         if (record.status() == IngestionStatus.FAILED) {
@@ -104,7 +104,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                     record.key(), record.originalPath(), record.processingPath(), record.detectedAt()));
             case PARTITION_WRITTEN -> completeAfterPartitionWrite(record);
             case LEDGER_RECORDED -> archiveRecorded(record);
-            case FAILED, SOURCE_ARCHIVED -> new IngestSourceResult(record.key(), record.status(),
+            case FAILED, SOURCE_ARCHIVED, AGGREGATED -> new IngestSourceResult(record.key(), record.status(),
                     false, record.partitions(), null);
         };
     }

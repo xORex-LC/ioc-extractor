@@ -79,6 +79,14 @@ public final class FileIngestionLedger implements IngestionLedger {
     }
 
     @Override
+    public void markAggregated(SourceKey key) {
+        IngestionRecord record = require(key);
+        write(new IngestionRecord(key, IngestionStatus.AGGREGATED,
+                record.originalPath(), record.processingPath(), record.archivedPath(),
+                record.partitions(), record.detectedAt(), Instant.now(clock), record.reason()));
+    }
+
+    @Override
     public void markFailed(SourceKey key, String reason) {
         IngestionRecord record = find(key).orElse(new IngestionRecord(key, IngestionStatus.FAILED,
                 Path.of("unknown"), Path.of("unknown"), null, List.of(),
@@ -90,6 +98,18 @@ public final class FileIngestionLedger implements IngestionLedger {
 
     @Override
     public List<IngestionRecord> findIncomplete() {
+        return findRecords(record -> record.status() != IngestionStatus.SOURCE_ARCHIVED
+                && record.status() != IngestionStatus.AGGREGATED
+                && record.status() != IngestionStatus.FAILED);
+    }
+
+    @Override
+    public List<IngestionRecord> findReadyForAggregation() {
+        return findRecords(record -> record.status() == IngestionStatus.SOURCE_ARCHIVED
+                && !record.partitions().isEmpty());
+    }
+
+    private List<IngestionRecord> findRecords(java.util.function.Predicate<IngestionRecord> predicate) {
         if (!Files.exists(ledgerDir)) {
             return List.of();
         }
@@ -97,8 +117,7 @@ public final class FileIngestionLedger implements IngestionLedger {
             return files
                     .filter(path -> path.getFileName().toString().endsWith(".properties"))
                     .map(this::read)
-                    .filter(record -> record.status() != IngestionStatus.SOURCE_ARCHIVED
-                            && record.status() != IngestionStatus.FAILED)
+                    .filter(predicate)
                     .toList();
         } catch (IOException e) {
             throw new IocExtractorException("Failed to read ingestion ledger: " + ledgerDir, e);

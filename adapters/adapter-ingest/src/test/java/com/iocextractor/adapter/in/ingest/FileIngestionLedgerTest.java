@@ -44,5 +44,16 @@ class FileIngestionLedgerTest {
                 .extracting("status")
                 .isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
         assertThat(ledger.findIncomplete()).isEmpty();
+        assertThat(ledger.findReadyForAggregation()).singleElement()
+                .extracting("status")
+                .isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
+
+        ledger.markAggregated(key);
+
+        assertThat(ledger.find(key)).get()
+                .extracting("status")
+                .isEqualTo(IngestionStatus.AGGREGATED);
+        assertThat(ledger.findIncomplete()).isEmpty();
+        assertThat(ledger.findReadyForAggregation()).isEmpty();
     }
 }

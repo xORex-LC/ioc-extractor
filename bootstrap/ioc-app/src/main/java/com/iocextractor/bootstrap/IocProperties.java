@@ -31,6 +31,7 @@ public record IocProperties(
         @NotNull @Valid Sink sink,
         @NotNull @Valid Lookup lookup,
         @NotNull @Valid Ingestion ingestion,
+        @NotNull @Valid Aggregation aggregation,
         @NotNull @Valid Observability observability) {
 
     public record Runtime(@NotBlank String mode) {
@@ -76,6 +77,28 @@ public record IocProperties(
     }
 
     public record Lookup(String type, @NotBlank String path, boolean deduplicate) {
+    }
+
+    public record Aggregation(
+            boolean enabled,
+            @NotNull Duration interval,
+            @NotNull Duration initialDelay,
+            @NotNull @Valid IdIndex idIndex,
+            @NotEmpty @Valid List<Artifact> artifacts,
+            @NotNull @Valid Retention retention) {
+
+        public record IdIndex(@NotBlank String path) {
+        }
+
+        public record Artifact(
+                @NotBlank String name,
+                @NotEmpty List<String> keyColumns,
+                String keyMode,
+                @NotBlank String conflictPolicy) {
+        }
+
+        public record Retention(boolean enabled) {
+        }
     }
 
     public record Ingestion(

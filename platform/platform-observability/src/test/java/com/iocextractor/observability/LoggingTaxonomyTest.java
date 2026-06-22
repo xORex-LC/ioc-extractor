@@ -21,6 +21,8 @@ class LoggingTaxonomyTest {
                         "lookup_load",
                         "source_read",
                         "artifact_write",
+                        "aggregation_start",
+                        "aggregation_complete",
                         "diagnostic_emit")
                 .doesNotHaveDuplicates();
     }

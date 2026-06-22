@@ -20,6 +20,10 @@
 | `ValueProvider.java` + `*ValueProvider` | Источники значений: `id`, `value`, `source.label`, `match.url`, `match.host` |
 | `Transform.java` + `*Transform` | Трансформации: `lower`, `lower-host` (только хост), `upper`, `strip-prefix` |
 | `IdGenerator.java` | Последовательность id артефакта (ascending/descending) |
+| `PartitionedCsvSinkFactory.java` | Daemon partition sinks по source-key/content-hash |
+| `CsvArtifactRepositories.java` | Чтение partition CSV и атомарная запись canonical CSV за aggregation ports |
+| `CsvStableIdIndex.java` | Sidecar CSV stable id index для stage 11 aggregation |
+| `ConfigurableArtifactIdentityResolver.java` | Artifact-specific stable row key extraction из CSV columns |
 
 ## Заметки
 
@@ -27,3 +31,7 @@
 (`QuoteMode.ALL_NON_NULL` + `nullString`). DSL ограничен (см.
 `docs/output-mapping.md`): провайдер/`const`, `when-type`, упорядоченные
 `transform` — без выражений в конфиге. Реестры собираются в `bootstrap/AppConfig`.
+
+Stage 11 aggregation использует те же artifact definitions, но держит
+ответственности раздельно: application orchestration не знает CSV-диалект, а
+adapter отвечает за partition/canonical files, stable id sidecar и key extraction.

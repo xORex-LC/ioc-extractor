@@ -6,9 +6,9 @@
 конфигурации (без кода); новая семантика колонки — это новый тонкий
 provider/transform (OCP, но это код).
 
-> Статус: **дизайн принят**, реализация ждёт. Сейчас (скелет) используются
-> временные хардкод-мапперы (`NetworkMaskRowMapper`/`FileHashRowMapper`) —
-> их заменяет описанный ниже generic-маппер.
+> Статус: **реализовано**. `ConfigurableRowMapper` использует provider/transform
+> registries и единую artifact definition как для oneshot canonical sinks, так и
+> для daemon partition/canonical CSV adapters.
 
 ## Принцип
 

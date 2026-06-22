@@ -90,13 +90,13 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `platform-diagnostics-logging` | Bridge `DiagnosticSink` → LogEvent/SLF4J (`LoggingDiagnosticSink`); зависит на `platform-diagnostics` + `platform-observability` |
 | `platform-errors` | базовые ошибки/common-типы и трансляция; нижний слой для `DiagnosticException` |
 | `ioc-domain` | Refanger, IndicatorExtractor, SourceAttributor, MatchPolicy, модели, feature extraction |
-| `ioc-application` | Pipeline orchestrator (`ExtractIocsUseCase`), ports, IOC stage implementations, payload records |
+| `ioc-application` | Pipeline orchestrator (`ExtractIocsUseCase`), aggregation use case (`AggregatePartitionsUseCase`), ports, IOC stage implementations, payload records |
 | `adapter-regex-re2j` | PatternEngine implementation (RE2J + JDK fallback) |
 | `adapter-source-tika` | SourceReader (Tika) |
-| `adapter-sink-csv` | IocSink + ArtifactFiller (provider/transform) |
-| `adapter-lookup-csv` | LookupRepository |
+| `adapter-sink-csv` | IocSink + ArtifactFiller (provider/transform), partition/canonical CSV repositories, stable id sidecar CSV |
+| `adapter-lookup-csv` | artifact-aware `LookupRepository` for masks + hashes |
 | `adapter-psl` | HostClassifier (PSL/Guava) |
-| `adapter-ingest` | Watch ingest: `IngestSourceUseCase`(in), `SourceLifecycle`, `IngestionLedger`; SourceFeed adapter-local (Spring Integration) — stage 10 |
+| `adapter-ingest` | Watch ingest: `IngestSourceUseCase`(in), `SourceLifecycle`, `IngestionLedger`; SourceFeed adapter-local (Spring Integration); `AGGREGATED` ledger support |
 | `adapter-cli-picocli` | входной CLI |
 | `ioc-app` (bootstrap) | composition root, исполняемый jar |
 

@@ -10,5 +10,6 @@ public enum IngestionStatus {
     PARTITION_WRITTEN,
     LEDGER_RECORDED,
     SOURCE_ARCHIVED,
+    AGGREGATED,
     FAILED
 }
