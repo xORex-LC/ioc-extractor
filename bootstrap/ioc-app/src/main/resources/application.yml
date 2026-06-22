@@ -32,6 +32,14 @@ logging:
 server:
   address: 127.0.0.1
   port: 8081
+  # Tiny pool: this server only serves /actuator/** (health/info). Tomcat's default
+  # of 200 worker threads would waste threads/memory and push against the systemd
+  # TasksMax / MemoryMax limits.
+  tomcat:
+    threads:
+      max: 8
+      min-spare: 1
+    accept-count: 10
 management:
   endpoints:
     web:

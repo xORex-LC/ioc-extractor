@@ -50,6 +50,15 @@ SystemCallArchitectures=native
 KeyringMode=private
 RemoveIPC=true
 
+# Network: the daemon binds only the loopback actuator/health server (TCP 8081 in
+# daemon mode) and makes no outbound connections (ingest is file-based). Restrict
+# socket families to the essentials and confine all IP traffic to loopback.
+# NOTE: relax this when outbound/remote web features land (ING-8: REST push,
+# scraping) — e.g. drop IPAddressDeny or allow the needed egress ranges.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressAllow=localhost
+IPAddressDeny=any
+
 # Keep generated files readable by the service user/group only.
 UMask=0027
 
