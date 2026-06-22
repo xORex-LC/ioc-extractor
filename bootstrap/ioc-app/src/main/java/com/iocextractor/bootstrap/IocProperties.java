@@ -32,6 +32,7 @@ public record IocProperties(
         @NotNull @Valid Lookup lookup,
         @NotNull @Valid Ingestion ingestion,
         @NotNull @Valid Aggregation aggregation,
+        @Valid Maintenance maintenance,
         @NotNull @Valid Observability observability) {
 
     public record Runtime(@NotBlank String mode) {
@@ -52,7 +53,8 @@ public record IocProperties(
 
     public record Sink(@NotNull @Valid Csv csv, @NotEmpty @Valid List<Artifact> artifacts) {
 
-        public record Csv(@NotBlank String delimiter, @NotBlank String quote, @NotBlank String nullLiteral) {
+        public record Csv(@NotBlank String delimiter, @NotBlank String quote, @NotBlank String nullLiteral,
+                          String charset) {
         }
 
         public record Artifact(
@@ -88,8 +90,7 @@ public record IocProperties(
             @NotNull Duration interval,
             @NotNull Duration initialDelay,
             @NotNull @Valid IdIndex idIndex,
-            @NotEmpty @Valid List<Artifact> artifacts,
-            @NotNull @Valid Retention retention) {
+            @NotEmpty @Valid List<Artifact> artifacts) {
 
         public record IdIndex(@NotBlank String path) {
         }
@@ -100,8 +101,29 @@ public record IocProperties(
                 String keyMode,
                 @NotBlank String conflictPolicy) {
         }
+    }
 
-        public record Retention(boolean enabled) {
+    /**
+     * Daemon housekeeping. A single {@link Retention} sweep reaps aged/over-count
+     * entries from growing directories ({@code partitions}, {@code done},
+     * {@code failed}); each {@link Retention.Target} is configured declaratively.
+     */
+    public record Maintenance(@Valid Retention retention) {
+
+        public record Retention(
+                boolean enabled,
+                Duration interval,
+                Duration initialDelay,
+                @Valid List<Target> targets) {
+
+            public record Target(
+                    @NotBlank String name,
+                    @NotBlank String dir,
+                    Duration maxAge,
+                    int maxCount,
+                    String action,
+                    String archiveDir) {
+            }
         }
     }
 

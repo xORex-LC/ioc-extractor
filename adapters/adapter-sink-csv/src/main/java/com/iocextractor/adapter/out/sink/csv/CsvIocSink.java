@@ -15,8 +15,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
-import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -40,6 +41,7 @@ public final class CsvIocSink implements IocSink {
     private final RowMapper mapper;
     private final IdGenerator ids;
     private final CSVFormat format;
+    private final Charset charset;
 
     public CsvIocSink(String name,
                       Path path,
@@ -47,7 +49,7 @@ public final class CsvIocSink implements IocSink {
                       RowMapper mapper,
                       IdGenerator ids,
                       CSVFormat format) {
-        this(name, path, accepts, ArtifactFilter.none(), mapper, ids, format);
+        this(name, path, accepts, ArtifactFilter.none(), mapper, ids, format, StandardCharsets.UTF_8);
     }
 
     public CsvIocSink(String name,
@@ -57,6 +59,17 @@ public final class CsvIocSink implements IocSink {
                       RowMapper mapper,
                       IdGenerator ids,
                       CSVFormat format) {
+        this(name, path, accepts, filter, mapper, ids, format, StandardCharsets.UTF_8);
+    }
+
+    public CsvIocSink(String name,
+                      Path path,
+                      Set<IndicatorType> accepts,
+                      ArtifactFilter filter,
+                      RowMapper mapper,
+                      IdGenerator ids,
+                      CSVFormat format,
+                      Charset charset) {
         this.name = name;
         this.path = path;
         this.accepts = Set.copyOf(accepts);
@@ -64,6 +77,7 @@ public final class CsvIocSink implements IocSink {
         this.mapper = mapper;
         this.ids = ids;
         this.format = format;
+        this.charset = charset == null ? StandardCharsets.UTF_8 : charset;
     }
 
     @Override
@@ -82,7 +96,7 @@ public final class CsvIocSink implements IocSink {
                 Files.createDirectories(path.getParent());
             }
             Path temp = tempPath();
-            try (BufferedWriter writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8);
+            try (BufferedWriter writer = CsvIo.newWriter(temp, charset);
                  CSVPrinter printer = new CSVPrinter(writer, format)) {
                 printer.printRecord(mapper.header());
                 for (Indicator indicator : accepted) {

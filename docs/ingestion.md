@@ -229,32 +229,42 @@ dataframe/
 - **Conflict policy:** реализован безопасный `keep-first`; более богатая модель
   merge/update — отдельный долг.
 
-### 8.1 Жизненный цикл и очистка партиций (retention)
+### 8.1 Retention reaper (housekeeping)
 
-Партиция проходит состояния:
+Растущие каталоги демона (`partitions`, `done`, `failed`) чистит **единый
+декларативный reaper** — общая обслуживающая абстракция, а не свой механизм на
+каждый каталог. Раскладка по слоям (как обсуждалось — обслуживание это
+дирижируемый набор use-case'ов, не отдельный модуль):
 
-```
-WRITTEN ──aggregate──▶ AGGREGATED ──(grace)──▶ PURGED | ARCHIVED
-```
+- **Триггер по времени** — `DaemonMaintenanceScheduler` (`bootstrap`), как и
+  `DaemonAggregationScheduler`: «часы», которые дёргают use-case.
+- **Политика** — чистая `RetentionPolicy` (`application.maintenance`): по списку
+  записей и `now` решает, что просрочено. Запись реапается, если **старше
+  `max-age` ИЛИ за пределами `max-count` самых свежих** (критерии объединяются).
+  Без часов и ФС — покрыта таблицей тест-кейсов.
+- **IO** — порт `RetentionStore` (`application.port.out.maintenance`) +
+  `FileSystemRetentionStore` (в `adapter-ingest`). Реапит **листовые файлы
+  рекурсивно**, поэтому корректно работает и для плоских `done/failed`, и для
+  вложенного дерева `partitions/<artifact>/<day>/<key>.csv` — постоянные
+  бакеты верхнего уровня за единицу очистки не принимаются.
 
-Очистку выносим в **отдельный опциональный планировщик** `PartitionReaper` за
-портом `RetentionPolicy`. Он не связан с основным потоком инжеста/агрегации и
-добавляется «в стороне» — **seam зарезервирован сразу, реализация может прийти
-позже**.
+Свойства:
 
-- **Безопасный дефолт:** retention **выключен** (`enabled: false`) — без явного
+- **Безопасный дефолт:** `ioc.maintenance.retention.enabled: false` — без явного
   включения ничего не удаляется.
-- **Безопасность очистки:** удаляются только партиции со статусом `AGGREGATED`
-  (их содержимое подтверждённо влито в канонический артефакт и зафиксировано в
-  `IngestionLedger`) **и** старше grace-периода. Не-сагрегированные партиции не
-  трогаются никогда — это исключает потерю данных.
-- **Источник статуса:** `AggregationService` помечает source record как
-  `AGGREGATED` в `IngestionLedger`; `PartitionReaper` в будущем должен читать
-  только эту отметку, сам ничего не агрегируя.
-- **Варианты политики:** `delete` | `archive` (перенос в холодное хранилище) |
-  `compress`; критерий — по возрасту, по флагу `aggregated`, по суммарному объёму.
+- **Действия:** `delete` | `archive` (перенос в `archive-dir`). Непустые пустые
+  каталоги после реапа не подчищаются (намеренно — это держит путь реапа
+  безопасным; пустой `…/<day>/` безвреден).
+- **Порядок vs агрегация:** reaper по партициям работает **по возрасту/количеству**,
+  он не читает статус `AGGREGATED`. Поэтому `max-age` партиций берётся с большим
+  запасом относительно интервала агрегации (дефолт `14d` ≫ `interval: 1m`) — к
+  моменту реапа партиция давно влита в канон. Гейтинг по `AGGREGATED`-флагу —
+  возможное ужесточение на будущее (см. техдолг), если потребуется агрессивная
+  очистка с малым `max-age`.
 - После очистки источник истины — канонический артефакт (+ ledger по content-hash
   для дедупа повторных дропов).
+
+Конфиг — см. §12 (`ioc.maintenance.retention.*`).
 
 ## 9. Ошибки, ретраи, dead-letter
 
@@ -360,9 +370,22 @@ ioc:
         key-columns: [ hash_md5, hash_sha1, hash_sha256 ]
         key-mode: first-non-empty
         conflict-policy: keep-first
+
+  maintenance:
     retention:
-      enabled: false              # seam only; implementation postponed
+      enabled: false              # безопасный дефолт: ничего не удаляется
+      interval: 1h
+      initial-delay: 5m
+      targets:
+        - { name: partitions, dir: ./dataframe/partitions, max-age: 14d, max-count: 0, action: delete }
+        - { name: done,       dir: ./var/done,   max-age: 30d, max-count: 0, action: delete }
+        - { name: failed,     dir: ./var/failed, max-age: 90d, max-count: 0, action: delete }
+        # action: archive требует archive-dir, напр.:
+        # - { name: failed, dir: ./var/failed, max-age: 90d, action: archive, archive-dir: ./var/archive }
 ```
+
+`max-age` — Spring/ISO-длительность (`14d`, `720h`); `max-count: 0` — критерий
+по количеству выключен. См. §8.1.
 
 ## 13. Библиотеки и module placement
 

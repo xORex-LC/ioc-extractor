@@ -15,6 +15,7 @@ public enum EventAction {
     ARTIFACT_WRITE("artifact_write"),
     AGGREGATION_START("aggregation_start"),
     AGGREGATION_COMPLETE("aggregation_complete"),
+    RETENTION_SWEEP("retention_sweep"),
     DIAGNOSTIC_EMIT("diagnostic_emit");
 
     private final String value;

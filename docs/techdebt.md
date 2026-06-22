@@ -17,7 +17,7 @@
 
 | ID | Долг | Статус | Эфф. | Источник |
 |---|---|---|---|---|
-| ING-1 | **Retention / `PartitionReaper`** — партиции не чистятся никогда; нужен критерий (возраст/объём) и режим (delete/archive/compress). Сейчас `ioc.aggregation.retention.enabled` — заглушка-`throw`. | открыт | M | dev/0001 #6 |
+| ING-1 | **Retention reaper** — единый декларативный reaper (`ioc.maintenance.retention`) чистит `partitions` + `done` + `failed` по возрасту/количеству (delete/archive); пул-политика `RetentionPolicy`, порт `RetentionStore`, `DaemonMaintenanceScheduler`. | закрыт | M | dev/0001 #6 |
 | ING-2 | **Tail-режим** для растущих фидов (offset/rotation/checkpoint; inode vs file-id). Сейчас только whole-file. | seam | L | dev/0001 #1, dev/0006 |
 | ING-3 | **Health-транспорт демона** — health-indicators зарегистрированы, но не экспонированы (`web-application-type: none`); нужен Actuator/heartbeat-контур. | открыт | M | dev/0001 |
 | ING-4 | **Durability ledger** — файловый стор → SQLite (`spring-integration-jdbc`) при росте требований. | seam | M | dev/0001 |
@@ -79,7 +79,6 @@
 | EXP-2 | **`.deb`-пакет** с maintainer-скриптами (сейчас shell-установщик). | открыт | M | packaging |
 | OPS-1 | **Мульти-источник — верификация:** несколько файлов разом + новый файл на работающем демоне (watch-service + reconcile). | открыт | S | review |
 | OPS-2 | **Логротация средствами ОС** (сейчас только rolling-appender Logback). | открыт | S | packaging |
-| OPS-3 | **`AGENTS.md`** — устаревший почти-дубликат `CLAUDE.md` (оба gitignored): синхронизировать или удалить. | открыт | S | review |
 
 ---
 
@@ -87,15 +86,16 @@
 
 1. **Hardening-проход (дёшево, высокая отдача при онбординге источников):**
    `OPS-1` (проверить мульти-источник) + `CFG-1`/`CFG-2`/`CFG-3` (fail-fast конфиг).
-2. **Эксплуатация вдолгую:** `ING-1` (retention) — иначе партиции копятся бесконечно.
-3. **Ценность данных:** `OUT-1` (обогащение meta-колонок).
-4. **Фича по выбору:** `EXT-1` (IPv6/email, почти весь config-driven) или `EXP-1`
+2. **Ценность данных:** `OUT-1` (обогащение meta-колонок).
+3. **Фича по выбору:** `EXT-1` (IPv6/email, почти весь config-driven) или `EXP-1`
    (STIX-экспорт — модель готова).
 
 ## Недавно закрыто (для контекста)
 
 - **Hash-aware lookup** — `CsvArtifactLookupRepository` грузит и дедуплицирует хэши + per-artifact `maxId`.
 - **D2** (зависимость `platform-observability` на `application.pipeline`) — снят выносом generic ETL-контрактов в `platform-etl` (этап 9).
+- **ING-1** — retention reaper реализован: один `RetentionPolicy` + порт `RetentionStore` (`FileSystemRetentionStore`, реап листовых файлов рекурсивно) + `DaemonMaintenanceScheduler`; конфиг `ioc.maintenance.retention` (targets: partitions/done/failed, max-age/max-count, delete|archive). Заглушка `ioc.aggregation.retention` удалена.
+- **Кодировки I/O** — задекларированный `ioc.source.charset` теперь реально соблюдается (форс text/HTML через Tika `EncodingDetector`; docx/pdf — по дизайну нет), добавлен `ioc.sink.csv.charset` для всех писателей **и** чтения артефактов в lookup/агрегации (read=write), непредставимые символы заменяются (не падаем), fail-fast на неизвестном имени кодировки.
 - **Атрибуция:** пустой `source` вместо `UNKNOWN` + первый реальный продьюсер диагностик (`SOURCE.MARKERS_UNMATCHED`), частично закрывает OBS-D1.
 
 > Связанные документы: [roadmap.md](roadmap.md) (статус этапов), [dev/](dev/)

@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,9 +42,15 @@ public final class CsvArtifactLookupRepository implements LookupRepository {
     private final Set<String> sha1 = new HashSet<>();
     private final Set<String> sha256 = new HashSet<>();
     private final Map<String, Long> maxIds = new HashMap<>();
+    private final Charset charset;
     private long maxId;
 
     public CsvArtifactLookupRepository(Map<String, Path> artifactPaths) {
+        this(artifactPaths, StandardCharsets.UTF_8);
+    }
+
+    public CsvArtifactLookupRepository(Map<String, Path> artifactPaths, Charset charset) {
+        this.charset = charset == null ? StandardCharsets.UTF_8 : charset;
         loadMasks(artifactPaths.get("masks"));
         loadIps(artifactPaths.get("ip_list"));
         loadHashes(artifactPaths.get("hashes"));
@@ -129,7 +136,7 @@ public final class CsvArtifactLookupRepository implements LookupRepository {
                 .setHeader()
                 .setSkipHeaderRecord(true)
                 .build();
-        try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8);
+        try (Reader reader = Files.newBufferedReader(path, charset);
              CSVParser parser = CSVParser.parse(reader, format)) {
             return parser.getRecords();
         } catch (IOException e) {

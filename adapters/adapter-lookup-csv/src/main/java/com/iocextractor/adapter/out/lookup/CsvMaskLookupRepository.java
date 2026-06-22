@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,9 +37,15 @@ public final class CsvMaskLookupRepository implements LookupRepository {
     private static final Logger log = LoggerFactory.getLogger(CsvMaskLookupRepository.class);
 
     private final Set<String> masks = new HashSet<>();
+    private final Charset charset;
     private long maxId;
 
     public CsvMaskLookupRepository(Path path) {
+        this(path, StandardCharsets.UTF_8);
+    }
+
+    public CsvMaskLookupRepository(Path path, Charset charset) {
+        this.charset = charset == null ? StandardCharsets.UTF_8 : charset;
         load(path);
     }
 
@@ -70,7 +77,7 @@ public final class CsvMaskLookupRepository implements LookupRepository {
                 .setHeader()
                 .setSkipHeaderRecord(true)
                 .build();
-        try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8);
+        try (Reader reader = Files.newBufferedReader(path, charset);
              CSVParser parser = CSVParser.parse(reader, format)) {
             for (CSVRecord record : parser) {
                 String mask = record.isMapped("mask") ? record.get("mask") : null;

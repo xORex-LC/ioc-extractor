@@ -23,6 +23,7 @@ class LoggingTaxonomyTest {
                         "artifact_write",
                         "aggregation_start",
                         "aggregation_complete",
+                        "retention_sweep",
                         "diagnostic_emit")
                 .doesNotHaveDuplicates();
     }

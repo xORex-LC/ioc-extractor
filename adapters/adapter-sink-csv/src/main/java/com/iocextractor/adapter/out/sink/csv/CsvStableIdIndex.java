@@ -11,6 +11,7 @@ import org.apache.commons.csv.CSVPrinter;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.Reader;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -42,12 +43,18 @@ public final class CsvStableIdIndex implements StableIdIndex {
 
     private final Path path;
     private final Clock clock;
+    private final Charset charset;
     private final Map<IndexKey, IndexEntry> entries = new LinkedHashMap<>();
     private long nextId = 1L;
 
     public CsvStableIdIndex(Path path, Clock clock) {
+        this(path, clock, StandardCharsets.UTF_8);
+    }
+
+    public CsvStableIdIndex(Path path, Clock clock, Charset charset) {
         this.path = Objects.requireNonNull(path, "path");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.charset = charset == null ? StandardCharsets.UTF_8 : charset;
         load();
     }
 
@@ -72,7 +79,7 @@ public final class CsvStableIdIndex implements StableIdIndex {
             }
             Path temp = Files.createTempFile(path.getParent() == null ? Path.of(".") : path.getParent(),
                     path.getFileName().toString(), ".tmp");
-            try (BufferedWriter writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8);
+            try (BufferedWriter writer = CsvIo.newWriter(temp, charset);
                  CSVPrinter printer = new CSVPrinter(writer, WRITE_FORMAT)) {
                 printer.printRecord("artifact", "key", "id", "created_at", "updated_at");
                 for (IndexEntry entry : entries.values()) {
@@ -94,7 +101,7 @@ public final class CsvStableIdIndex implements StableIdIndex {
         if (!Files.exists(path)) {
             return;
         }
-        try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8);
+        try (Reader reader = CsvIo.newReader(path, charset);
              CSVParser parser = CSVParser.parse(reader, FORMAT)) {
             for (var record : parser) {
                 IndexEntry entry = new IndexEntry(

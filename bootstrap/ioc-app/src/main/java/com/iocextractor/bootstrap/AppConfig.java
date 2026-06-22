@@ -2,6 +2,7 @@ package com.iocextractor.bootstrap;
 
 import com.iocextractor.adapter.out.lookup.CsvArtifactLookupRepository;
 import com.iocextractor.adapter.out.lookup.CsvMaskLookupRepository;
+import com.iocextractor.adapter.out.maintenance.FileSystemRetentionStore;
 import com.iocextractor.adapter.out.regex.JdkRegexPatternEngine;
 import com.iocextractor.adapter.out.regex.Re2jPatternEngine;
 import com.iocextractor.adapter.out.sink.csv.AddressIpValueProvider;
@@ -33,7 +34,12 @@ import com.iocextractor.adapter.out.source.TikaSourceReader;
 import com.iocextractor.application.aggregation.AggregationService;
 import com.iocextractor.application.aggregation.KeepFirstMergePolicy;
 import com.iocextractor.application.ingest.IngestionService;
+import com.iocextractor.application.maintenance.RetentionAction;
+import com.iocextractor.application.maintenance.RetentionService;
+import com.iocextractor.application.maintenance.RetentionTarget;
 import com.iocextractor.application.port.in.aggregation.AggregatePartitionsUseCase;
+import com.iocextractor.application.port.in.maintenance.RunRetentionUseCase;
+import com.iocextractor.application.port.out.maintenance.RetentionStore;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.application.port.out.LookupRepository;
@@ -84,8 +90,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -179,17 +188,18 @@ public class AppConfig {
     }
 
     @Bean
-    public SourceReader sourceReader() {
-        return new TikaSourceReader();
+    public SourceReader sourceReader(IocProperties props) {
+        return new TikaSourceReader(sourceCharset(props));
     }
 
     @Bean
     public LookupRepository lookupRepository(IocProperties props) {
+        Charset charset = csvCharset(props);
         Map<String, Path> artifactPaths = lookupArtifactPaths(props);
         if (artifactPaths.isEmpty() && !"daemon".equalsIgnoreCase(props.runtime().mode())) {
-            return new CsvMaskLookupRepository(Path.of(props.lookup().path()));
+            return new CsvMaskLookupRepository(Path.of(props.lookup().path()), charset);
         }
-        return new CsvArtifactLookupRepository(artifactPaths);
+        return new CsvArtifactLookupRepository(artifactPaths, charset);
     }
 
     @Bean
@@ -240,7 +250,8 @@ public class AppConfig {
         return new PartitionedCsvSinkFactory(
                 Path.of(props.ingestion().output().partitionsDir()),
                 artifactDefinitions(props, matchPolicy, featureExtractor, lookup),
-                writeFormat(props.sink().csv()));
+                writeFormat(props.sink().csv()),
+                csvCharset(props));
     }
 
     @Bean
@@ -263,7 +274,8 @@ public class AppConfig {
                 artifactDefinitions(props, matchPolicy, featureExtractor, lookup),
                 canonicalArtifactPaths(props),
                 readFormat(props.sink().csv()),
-                writeFormat(props.sink().csv()));
+                writeFormat(props.sink().csv()),
+                csvCharset(props));
     }
 
     @Bean
@@ -280,7 +292,7 @@ public class AppConfig {
     @Bean
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     public StableIdIndex stableIdIndex(IocProperties props, Clock clock) {
-        return new CsvStableIdIndex(Path.of(props.aggregation().idIndex().path()), clock);
+        return new CsvStableIdIndex(Path.of(props.aggregation().idIndex().path()), clock, csvCharset(props));
     }
 
     @Bean
@@ -334,6 +346,58 @@ public class AppConfig {
         return new AggregationHealthIndicator(state);
     }
 
+    // ---- daemon housekeeping: retention reaper -----------------------------
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.maintenance.retention.enabled:false}' == 'true'")
+    public RetentionStore retentionStore() {
+        return new FileSystemRetentionStore();
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.maintenance.retention.enabled:false}' == 'true'")
+    public RunRetentionUseCase runRetentionUseCase(RetentionStore store, IocProperties props, Clock clock) {
+        return new RetentionService(store, retentionTargets(props), clock);
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.maintenance.retention.enabled:false}' == 'true'")
+    public DaemonMaintenanceScheduler daemonMaintenanceScheduler(RunRetentionUseCase useCase,
+                                                                 IocProperties props) {
+        IocProperties.Maintenance.Retention retention = props.maintenance().retention();
+        Duration interval = retention.interval() == null ? Duration.ofHours(1) : retention.interval();
+        Duration initialDelay = retention.initialDelay() == null
+                ? Duration.ofMinutes(5) : retention.initialDelay();
+        return new DaemonMaintenanceScheduler(useCase, interval, initialDelay);
+    }
+
+    private List<RetentionTarget> retentionTargets(IocProperties props) {
+        IocProperties.Maintenance maintenance = props.maintenance();
+        if (maintenance == null || maintenance.retention() == null
+                || maintenance.retention().targets() == null) {
+            return List.of();
+        }
+        List<RetentionTarget> targets = new ArrayList<>();
+        for (IocProperties.Maintenance.Retention.Target target : maintenance.retention().targets()) {
+            RetentionAction action = "archive".equalsIgnoreCase(blankToEmpty(target.action()))
+                    ? RetentionAction.ARCHIVE
+                    : RetentionAction.DELETE;
+            Path archiveDir = (target.archiveDir() == null || target.archiveDir().isBlank())
+                    ? null : Path.of(target.archiveDir());
+            targets.add(new RetentionTarget(
+                    target.name(),
+                    Path.of(target.dir()),
+                    target.maxAge(),
+                    target.maxCount(),
+                    action,
+                    archiveDir));
+        }
+        return targets;
+    }
+
     // ---- artifact assembly -------------------------------------------------
 
     private List<IocSink> buildSinks(IocProperties props,
@@ -341,6 +405,7 @@ public class AppConfig {
                                      IndicatorFeatureExtractor featureExtractor,
                                      LookupRepository lookup) {
         CSVFormat writeFormat = writeFormat(props.sink().csv());
+        Charset charset = csvCharset(props);
         return artifactDefinitions(props, matchPolicy, featureExtractor, lookup).stream()
                 .map(artifact -> new CsvIocSink(
                         artifact.name(),
@@ -349,7 +414,8 @@ public class AppConfig {
                         artifact.filter(),
                         artifact.mapper(),
                         new IdGenerator(artifact.idStrategy(), artifact.idStart()),
-                        writeFormat))
+                        writeFormat,
+                        charset))
                 .map(IocSink.class::cast)
                 .toList();
     }
@@ -417,9 +483,6 @@ public class AppConfig {
     }
 
     private void validateAggregationConfig(IocProperties props) {
-        if (props.aggregation().retention().enabled()) {
-            throw new IocExtractorException("ioc.aggregation.retention.enabled is not supported at stage 11");
-        }
         for (IocProperties.Aggregation.Artifact artifact : props.aggregation().artifacts()) {
             if (!"keep-first".equalsIgnoreCase(artifact.conflictPolicy())) {
                 throw new IocExtractorException("Unsupported aggregation conflict policy: "
@@ -521,6 +584,39 @@ public class AppConfig {
 
     private static String blankToEmpty(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    /**
+     * Output charset for all CSV artifacts (writers) and for reading existing
+     * artifacts in lookup/aggregation, so read and write always agree. Blank or
+     * absent {@code ioc.sink.csv.charset} means UTF-8.
+     */
+    private Charset csvCharset(IocProperties props) {
+        return resolveCharset(props.sink().csv().charset(), StandardCharsets.UTF_8, "ioc.sink.csv.charset");
+    }
+
+    /**
+     * Forced input charset (boundary 1). {@code auto}/blank/absent means Tika
+     * auto-detection; an explicit name forces decoding of text/HTML sources.
+     */
+    private Charset sourceCharset(IocProperties props) {
+        String value = props.source().charset();
+        if (value == null || value.isBlank() || "auto".equalsIgnoreCase(value.trim())) {
+            return null;
+        }
+        return resolveCharset(value, null, "ioc.source.charset");
+    }
+
+    private Charset resolveCharset(String value, Charset fallback, String key) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Charset.forName(value.trim());
+        } catch (IllegalArgumentException e) {  // unsupported or illegal name
+            throw new IocExtractorException("Unsupported charset for " + key + ": '" + value.trim()
+                    + "'. Use a JVM-supported charset name (e.g. UTF-8, windows-1251).", e);
+        }
     }
 
     private CSVFormat readFormat(IocProperties.Sink.Csv csv) {

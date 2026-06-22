@@ -35,7 +35,10 @@ ioc:
   # ---- Source profile: how to read & where indicators come from --------------
   source:
     type: auto                       # 'auto' = Tika detects format (.docx/.htm/.pdf/...)
-    charset: windows-1251            # charset hint for legacy HTML (Word export is cp1251)
+    # Input charset (boundary 1). 'auto' = Tika/ICU detection. An explicit name
+    # FORCES decoding of text/HTML sources (use for legacy cp1251 Word exports
+    # that auto-detect wrongly); docx/pdf ignore it (POI/PDFBox own their encoding).
+    charset: auto
     # Section headers that set the `source` attribution for following indicators.
     section-markers:
       - "БИБ-\\d+"
@@ -86,6 +89,10 @@ ioc:
       delimiter: ";"
       quote: "\""
       null-literal: "NULL"
+      # Output charset (boundary 2) for ALL artifacts, and for reading existing
+      # artifacts in lookup/aggregation (read and write always agree). Unmappable
+      # characters are replaced, never fatal. Blank = UTF-8.
+      charset: UTF-8
     artifacts:
       - name: masks                  # network IOC -> reputation-list masks
         enabled: true
@@ -176,8 +183,21 @@ ioc:
         key-columns: [ hash_md5, hash_sha1, hash_sha256 ]
         key-mode: first-non-empty
         conflict-policy: keep-first
+
+  # ---- Daemon housekeeping: retention reaper (active in daemon mode when enabled)
+  #  One declarative policy reaps aged/over-count entries from growing dirs.
+  #  max-age: ISO-8601 / Spring duration (e.g. 14d, 720h); max-count: 0 = disabled.
+  #  action: delete | archive (archive needs archive-dir).
+  #  An entry is reaped if older than max-age OR beyond the max-count newest.
+  maintenance:
     retention:
       enabled: false
+      interval: 1h
+      initial-delay: 5m
+      targets:
+        - { name: partitions, dir: "./dataframe/partitions", max-age: 14d, max-count: 0, action: delete }
+        - { name: done,       dir: "./var/done",   max-age: 30d, max-count: 0, action: delete }
+        - { name: failed,     dir: "./var/failed", max-age: 90d, max-count: 0, action: delete }
 
   # ---- Daemon ingestion (disabled unless ioc.runtime.mode=daemon) ------------
   ingestion:

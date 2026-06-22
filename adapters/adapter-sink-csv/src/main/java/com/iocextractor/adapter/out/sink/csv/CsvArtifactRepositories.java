@@ -14,6 +14,7 @@ import org.apache.commons.csv.CSVPrinter;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.Reader;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -36,15 +37,25 @@ public final class CsvArtifactRepositories implements PartitionArtifactRepositor
     private final Map<String, Path> canonicalPaths;
     private final CSVFormat readFormat;
     private final CSVFormat writeFormat;
+    private final Charset charset;
 
     public CsvArtifactRepositories(List<CsvArtifactDefinition> definitions,
                                    Map<String, Path> canonicalPaths,
                                    CSVFormat readFormat,
                                    CSVFormat writeFormat) {
+        this(definitions, canonicalPaths, readFormat, writeFormat, StandardCharsets.UTF_8);
+    }
+
+    public CsvArtifactRepositories(List<CsvArtifactDefinition> definitions,
+                                   Map<String, Path> canonicalPaths,
+                                   CSVFormat readFormat,
+                                   CSVFormat writeFormat,
+                                   Charset charset) {
         this.definitions = definitionsByName(definitions);
         this.canonicalPaths = Map.copyOf(Objects.requireNonNull(canonicalPaths, "canonicalPaths"));
         this.readFormat = Objects.requireNonNull(readFormat, "readFormat");
         this.writeFormat = Objects.requireNonNull(writeFormat, "writeFormat");
+        this.charset = charset == null ? StandardCharsets.UTF_8 : charset;
     }
 
     @Override
@@ -77,7 +88,7 @@ public final class CsvArtifactRepositories implements PartitionArtifactRepositor
                 Files.createDirectories(path.getParent());
             }
             Path temp = tempPath(path);
-            try (BufferedWriter writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8);
+            try (BufferedWriter writer = CsvIo.newWriter(temp, charset);
                  CSVPrinter printer = new CSVPrinter(writer, writeFormat)) {
                 printer.printRecord(artifact.header());
                 for (ArtifactRow row : artifact.rows()) {
@@ -97,7 +108,7 @@ public final class CsvArtifactRepositories implements PartitionArtifactRepositor
         if (!Files.exists(path)) {
             return List.of();
         }
-        try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8);
+        try (Reader reader = CsvIo.newReader(path, charset);
              CSVParser parser = CSVParser.parse(reader, readFormat)) {
             List<String> headers = parser.getHeaderNames();
             List<ArtifactRow> rows = new ArrayList<>();
