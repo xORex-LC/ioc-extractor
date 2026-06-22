@@ -84,7 +84,7 @@ ioc:
     artifacts:
       - name: masks                  # network IOC -> reputation-list masks
         enabled: true
-        path: "./dataframe/repListMasks_generated.csv"
+        path: "./dataframe/masks_list_generated.csv"
         accepts: [ IPV4, DOMAIN, URL ]
         exclude: [ is-bare-ip ]
         id: { strategy: ascending, start: auto }   # ascending; 'auto' = lookup max + 1
@@ -124,9 +124,9 @@ ioc:
           - { name: forbidden_ip,    from: address.ip,  transform: [ lower-host ] }
       - name: hashes                 # file IOC -> hash list (separate schema)
         enabled: true
-        path: "./dataframe/hashes_generated.csv"
+        path: "./dataframe/hashes_list_generated.csv"
         accepts: [ MD5, SHA1, SHA256 ]
-        id: { strategy: ascending, start: 10024 }   # explicit until a hash-aware lookup exists
+        id: { strategy: ascending, start: auto }
         columns:
           - { name: id,              from: id }
           - { name: hash_md5,        from: value, when-type: MD5,    transform: [ upper ] }
@@ -142,8 +142,12 @@ ioc:
   # ---- Lookup repository (dedup / cross-checks against existing artifact) -----
   lookup:
     type: csv
-    path: "./dataframe/repListMasksManual_2026-06-19_08-26-44Z.csv"
+    path: "./dataframe/masks_list.csv"
     deduplicate: true
+    artifacts:
+      - { name: masks,   path: "./dataframe/masks_list.csv" }
+      - { name: ip_list, path: "./dataframe/ip_list.csv" }
+      - { name: hashes,  path: "./dataframe/hashes_list.csv" }
 
   # ---- Daemon aggregation (stage 11; active in daemon mode when enabled) ----
   aggregation:

@@ -184,13 +184,11 @@ public class AppConfig {
 
     @Bean
     public LookupRepository lookupRepository(IocProperties props) {
-        if (!"daemon".equalsIgnoreCase(props.runtime().mode())) {
+        Map<String, Path> artifactPaths = lookupArtifactPaths(props);
+        if (artifactPaths.isEmpty() && !"daemon".equalsIgnoreCase(props.runtime().mode())) {
             return new CsvMaskLookupRepository(Path.of(props.lookup().path()));
         }
-        Map<String, Path> paths = new HashMap<>();
-        paths.put("masks", Path.of(props.lookup().path()));
-        paths.put("hashes", Path.of(findArtifactPath(props, "hashes")));
-        return new CsvArtifactLookupRepository(paths);
+        return new CsvArtifactLookupRepository(artifactPaths);
     }
 
     @Bean
@@ -228,7 +226,7 @@ public class AppConfig {
                                                  IndicatorFeatureExtractor featureExtractor,
                                                  LookupRepository lookup,
                                                  IocProperties props) {
-        List<IocSink> sinks = buildSinks(props, matchPolicy, featureExtractor, lookup.maxId());
+        List<IocSink> sinks = buildSinks(props, matchPolicy, featureExtractor, lookup);
         return factory.create(sinks);
     }
 
@@ -240,7 +238,7 @@ public class AppConfig {
                                                      LookupRepository lookup) {
         return new PartitionedCsvSinkFactory(
                 Path.of(props.ingestion().output().partitionsDir()),
-                artifactDefinitions(props, matchPolicy, featureExtractor, lookup.maxId()),
+                artifactDefinitions(props, matchPolicy, featureExtractor, lookup),
                 writeFormat(props.sink().csv()));
     }
 
@@ -261,7 +259,7 @@ public class AppConfig {
                                                            LookupRepository lookup) {
         validateAggregationConfig(props);
         return new CsvArtifactRepositories(
-                artifactDefinitions(props, matchPolicy, featureExtractor, lookup.maxId()),
+                artifactDefinitions(props, matchPolicy, featureExtractor, lookup),
                 canonicalArtifactPaths(props),
                 readFormat(props.sink().csv()),
                 writeFormat(props.sink().csv()));
@@ -340,9 +338,9 @@ public class AppConfig {
     private List<IocSink> buildSinks(IocProperties props,
                                      MatchPolicy matchPolicy,
                                      IndicatorFeatureExtractor featureExtractor,
-                                     long autoBase) {
+                                     LookupRepository lookup) {
         CSVFormat writeFormat = writeFormat(props.sink().csv());
-        return artifactDefinitions(props, matchPolicy, featureExtractor, autoBase).stream()
+        return artifactDefinitions(props, matchPolicy, featureExtractor, lookup).stream()
                 .map(artifact -> new CsvIocSink(
                         artifact.name(),
                         Path.of(findArtifactPath(props, artifact.name())),
@@ -358,7 +356,7 @@ public class AppConfig {
     private List<CsvArtifactDefinition> artifactDefinitions(IocProperties props,
                                                             MatchPolicy matchPolicy,
                                                             IndicatorFeatureExtractor featureExtractor,
-                                                            long autoBase) {
+                                                            LookupRepository lookup) {
         Map<String, ValueProvider> providers = valueProviders(matchPolicy, featureExtractor);
         Map<String, Transform> transforms = transforms();
         Map<String, Predicate<Indicator>> filters = artifactFilters(featureExtractor);
@@ -374,9 +372,22 @@ public class AppConfig {
                     artifactFilter(artifact, filters),
                     mapper,
                     strategyOf(artifact.id()),
-                    startOf(artifact.id(), autoBase)));
+                    startOf(artifact.name(), artifact.id(), lookup)));
         }
         return artifacts;
+    }
+
+    private Map<String, Path> lookupArtifactPaths(IocProperties props) {
+        Map<String, Path> paths = new HashMap<>();
+        if (props.lookup().artifacts() != null) {
+            for (IocProperties.Lookup.Artifact artifact : props.lookup().artifacts()) {
+                paths.put(artifact.name(), Path.of(artifact.path()));
+            }
+        }
+        if (!paths.containsKey("masks") && props.lookup().path() != null && !props.lookup().path().isBlank()) {
+            paths.put("masks", Path.of(props.lookup().path()));
+        }
+        return paths;
     }
 
     private String findArtifactPath(IocProperties props, String name) {
@@ -491,20 +502,20 @@ public class AppConfig {
 
     /**
      * Resolve the starting id. {@code auto} continues the ascending sequence from
-     * the lookup's current max id (+1); a numeric value is used verbatim.
+     * the named artifact's current max id (+1); a numeric value is used verbatim.
      */
-    private long startOf(IocProperties.Sink.Artifact.Id id, long autoBase) {
+    private long startOf(String artifactName, IocProperties.Sink.Artifact.Id id, LookupRepository lookup) {
         if (id == null || id.start() == null) {
-            return autoBase + 1;
+            return lookup.maxId(artifactName) + 1;
         }
         String start = id.start().trim();
         if (start.equalsIgnoreCase("auto")) {
-            return autoBase + 1;
+            return lookup.maxId(artifactName) + 1;
         }
         try {
             return Long.parseLong(start);
         } catch (NumberFormatException ignored) {
-            return autoBase + 1;
+            return lookup.maxId(artifactName) + 1;
         }
     }
 

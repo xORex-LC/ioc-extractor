@@ -18,4 +18,15 @@ public interface LookupRepository {
      * restarting — see {@code id.start: auto}.
      */
     long maxId();
+
+    /**
+     * Highest id currently present in one named backing artifact, or the repository
+     * default max id when artifact-specific storage is not available.
+     *
+     * @param artifactName output artifact name
+     * @return highest id for the artifact, or {@link #maxId()} as fallback
+     */
+    default long maxId(String artifactName) {
+        return maxId();
+    }
 }

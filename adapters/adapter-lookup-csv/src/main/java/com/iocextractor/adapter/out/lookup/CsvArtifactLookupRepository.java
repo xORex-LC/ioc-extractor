@@ -20,6 +20,7 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
@@ -27,26 +28,33 @@ import java.util.Set;
 
 /**
  * Artifact-aware CSV lookup. Network indicators are checked against the masks
- * artifact, while file indicators are checked against hash columns.
+ * artifact, bare IP indicators against the IP artifact, while file indicators
+ * are checked against hash columns.
  */
 public final class CsvArtifactLookupRepository implements LookupRepository {
 
     private static final Logger log = LoggerFactory.getLogger(CsvArtifactLookupRepository.class);
 
     private final Set<String> masks = new HashSet<>();
+    private final Set<String> ips = new HashSet<>();
     private final Set<String> md5 = new HashSet<>();
     private final Set<String> sha1 = new HashSet<>();
     private final Set<String> sha256 = new HashSet<>();
+    private final Map<String, Long> maxIds = new HashMap<>();
     private long maxId;
 
     public CsvArtifactLookupRepository(Map<String, Path> artifactPaths) {
         loadMasks(artifactPaths.get("masks"));
+        loadIps(artifactPaths.get("ip_list"));
         loadHashes(artifactPaths.get("hashes"));
     }
 
     @Override
     public boolean contains(Indicator indicator) {
         if (indicator.type().category() == IndicatorCategory.NETWORK) {
+            if (indicator.type() == IndicatorType.IPV4 && isBareIp(indicator.value())) {
+                return ips.contains(indicator.value().toLowerCase(Locale.ROOT));
+            }
             return masks.contains(indicator.value().toLowerCase(Locale.ROOT));
         }
         return switch (indicator.type()) {
@@ -62,21 +70,44 @@ public final class CsvArtifactLookupRepository implements LookupRepository {
         return maxId;
     }
 
+    @Override
+    public long maxId(String artifactName) {
+        if (artifactName == null || artifactName.isBlank()) {
+            return maxId();
+        }
+        return maxIds.getOrDefault(artifactName, maxId());
+    }
+
     private void loadMasks(Path path) {
+        long artifactMaxId = 0L;
         for (CSVRecord record : read(path)) {
             addIfPresent(record, "mask", masks, true);
-            maxId = Math.max(maxId, parseId(record));
+            artifactMaxId = Math.max(artifactMaxId, parseId(record));
         }
+        recordMaxId("masks", artifactMaxId);
         logLoaded(path, masks.size());
+    }
+
+    private void loadIps(Path path) {
+        long artifactMaxId = 0L;
+        for (CSVRecord record : read(path)) {
+            addIfPresent(record, "ip", ips, true);
+            artifactMaxId = Math.max(artifactMaxId, parseId(record));
+        }
+        recordMaxId("ip_list", artifactMaxId);
+        logLoaded(path, ips.size());
     }
 
     private void loadHashes(Path path) {
         int before = md5.size() + sha1.size() + sha256.size();
+        long artifactMaxId = 0L;
         for (CSVRecord record : read(path)) {
             addIfPresent(record, "hash_md5", md5, false);
             addIfPresent(record, "hash_sha1", sha1, false);
             addIfPresent(record, "hash_sha256", sha256, false);
+            artifactMaxId = Math.max(artifactMaxId, parseId(record));
         }
+        recordMaxId("hashes", artifactMaxId);
         logLoaded(path, md5.size() + sha1.size() + sha256.size() - before);
     }
 
@@ -132,6 +163,20 @@ public final class CsvArtifactLookupRepository implements LookupRepository {
         } catch (NumberFormatException | NullPointerException e) {
             return 0L;
         }
+    }
+
+    private void recordMaxId(String artifactName, long artifactMaxId) {
+        maxIds.put(artifactName, artifactMaxId);
+        maxId = Math.max(maxId, artifactMaxId);
+    }
+
+    private boolean isBareIp(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        return value.indexOf(':') < 0
+                && value.indexOf('/') < 0
+                && value.indexOf('?') < 0;
     }
 
     private void logLoaded(Path path, int rows) {

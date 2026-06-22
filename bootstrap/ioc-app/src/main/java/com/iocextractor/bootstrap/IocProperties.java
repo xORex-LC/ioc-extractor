@@ -78,7 +78,9 @@ public record IocProperties(
         }
     }
 
-    public record Lookup(String type, @NotBlank String path, boolean deduplicate) {
+    public record Lookup(String type, @NotBlank String path, boolean deduplicate, List<Artifact> artifacts) {
+        public record Artifact(@NotBlank String name, @NotBlank String path) {
+        }
     }
 
     public record Aggregation(

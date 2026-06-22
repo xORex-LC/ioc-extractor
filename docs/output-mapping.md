@@ -81,6 +81,24 @@ ConfigurableRowMapper ──uses──▶ Map<key, ValueProvider>
 `exclude` отбрасывает индикатор, если сработал хотя бы один предикат. Пустые
 списки означают «без дополнительного фильтра».
 
+## Id и lookup baseline
+
+Артефакты имеют независимые id-space. Для `id.start: auto` baseline берётся не
+из общего max id, а из lookup path конкретного артефакта:
+
+```yaml
+ioc:
+  lookup:
+    artifacts:
+      - { name: masks,   path: "./dataframe/masks_list.csv" }
+      - { name: ip_list, path: "./dataframe/ip_list.csv" }
+      - { name: hashes,  path: "./dataframe/hashes_list.csv" }
+```
+
+Если artifact-specific path не задан, используется старый fallback
+`lookup.path`/`LookupRepository.maxId()`. Артефакты без `id` в колонках
+(`address_blacklist`) могут не иметь lookup baseline.
+
 ## Декларативная классификация масок (match.url / match.host)
 
 Коды `url_match`/`host_match` **тоже не зашиты в код**: провайдеры `match.url`/
@@ -166,7 +184,7 @@ artifacts:
       - { name: forbidden_ip,  from: address.ip,  transform: [ lower-host ] }
   - name: hashes
     accepts: [ MD5, SHA1, SHA256 ]
-    id: { strategy: ascending, start: 10024 }
+    id: { strategy: ascending, start: auto }
     columns:
       - { name: id,          from: id }
       - { name: hash_md5,    from: value, when-type: MD5,    transform: [ upper ] }
