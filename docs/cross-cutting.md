@@ -6,8 +6,9 @@
 модули и работать через порты. Жёстко зашивать зависимости между сервисами и
 такими подсистемами — запрещено.
 
-> Статус: **проектирование**. Ниже — целевая модель и порты. Реализация —
-> по мере выделения модулей ([modularization.md](modularization.md)).
+> Статус: **реализовано базовое ядро**. Подсистемы выделены в
+> `platform-errors`, `platform-diagnostics`, `platform-etl`,
+> `platform-observability` и `platform-diagnostics-logging`.
 > Детальный дизайн диагностики — в [diagnostics.md](diagnostics.md), operational
 > logging фонового сервиса — в [logging.md](logging.md), таксономия логов — в
 > [logging-taxonomy.md](logging-taxonomy.md).

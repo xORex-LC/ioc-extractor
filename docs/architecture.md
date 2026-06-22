@@ -12,15 +12,14 @@
 
 ```
 bootstrap ─▶ adapters ─▶ application ─▶ domain
-    │           │             │              └────▶ platform/*
-    │           │             └───────────────────▶ platform/*
+    │           │             └──────────────▶ platform/*
     │           └─────────────────────────────────▶ platform/*
     └─────────────────────────────────────────────▶ platform/*
 ```
 
 - `platform` содержит переиспользуемые подсистемы: errors, diagnostics,
   generic ETL kernel, observability and diagnostics-logging bridge.
-- `domain` не зависит от application/adapters/bootstrap/platform-etl и не тянет
+- `domain` не зависит от application/adapters/bootstrap/platform и не тянет
   фреймворки или IO-библиотеки.
 - `application` зависит от `domain`, `platform-etl` and diagnostics contracts.
 - `adapter` и `bootstrap` зависят внутрь; здесь — и только здесь — живут
@@ -41,15 +40,18 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Platform | `diagnostics` | Diagnostic model, catalog, `Result`/`Notification`, `FailurePolicy`, sink ports |
 | Platform | `observability` | MDC/log event helpers and logging taxonomy |
 | Application | `application/port/in` | `ExtractIocsUseCase`, `ExtractionCommand`, `ExtractionResult` (driving) |
-| Application | `application/port/out` | `SourceReader`, `IocSink`, `LookupRepository` (driven) |
+| Application | `application/port/out` | `SourceReader`, `IocSink`, `LookupRepository`, ingestion/aggregation ports (driven) |
 | Application | `application/pipeline/payload` | IOC-specific payload records between stages |
 | Application | `application/pipeline/stage` | IOC ETL stage implementations |
 | Application | `application/service` | `IocExtractionService` — use-case orchestrator |
+| Application | `application/ingest` | daemon ingestion orchestration (`IngestionService`) |
+| Application | `application/aggregation` | partition aggregation, stable id assignment, merge policy |
 | Adapter (in) | `adapter/in/cli` | `IocRootCommand`, `ExtractCommand`, `CliRunner` (picocli) |
 | Adapter (out) | `adapter/out/regex` | `Re2jPatternEngine` (default), `JdkRegexPatternEngine` |
 | Adapter (out) | `adapter/out/source` | `TikaSourceReader` |
 | Adapter (out) | `adapter/out/sink/csv` | `CsvIocSink`, `RowMapper` + мапперы, `IdGenerator` |
 | Adapter (out) | `adapter/out/lookup` | `CsvMaskLookupRepository` |
+| Adapter (in) | `adapter/in/ingest` | Spring Integration file-poll daemon, filesystem lifecycle, file ledger |
 | Bootstrap | `bootstrap` | `IocProperties` (конфиг), `AppConfig` (composition root) |
 | Platform | `common` | `IocExtractorException` (`ioc-platform-errors`) |
 
@@ -64,15 +66,16 @@ read (SourceReader)
   → extract (IndicatorExtractor / PatternEngine)
   → attribute source (SourceAttributor)
   → de-duplicate (LookupRepository)
-  → write (IocSink на каждый артефакт, маршрутизация по IndicatorType)
+  → write (IocSink на каждый артефакт, маршрутизация по IndicatorType + artifact filters)
 ```
 
 Подход к конвейеру (Pipes-and-Filters + `Envelope`/diagnostics) — [pipeline.md](pipeline.md);
 каталог и карта сервисов стадий — [services.md](services.md).
 
 Конвейер — цепочка независимых стадий: новую стадию/реализацию добавляем, не
-трогая остальные (OCP). Маршрутизация по типу индикатора позволяет одному
-прогону наполнять несколько артефактов (сетевые маски, файловые хэши).
+трогая остальные (OCP). Маршрутизация по типу индикатора и декларативным
+`include`/`exclude`-фильтрам позволяет одному прогону наполнять несколько
+артефактов: сетевые маски, bare-IP list, address blacklist и файловые хэши.
 
 ## Порты (контракты)
 
@@ -83,6 +86,8 @@ read (SourceReader)
 | `IocSink` | driven (out) | Один выходной артефакт; фильтрует принимаемые типы |
 | `LookupRepository` | driven (out) | Проверки существования (дедуп) против «хранилища» |
 | `PatternEngine` | domain SPI | Движок regex (RE2/J по умолчанию, JDK — замена) |
+| `IngestSourceUseCase` | driving (in) | Обработка одного daemon source unit |
+| `AggregatePartitionsUseCase` | driving (in) | Сведение готовых daemon-партиций в canonical CSV |
 
 ## Классификация сетевых масок
 
@@ -100,7 +105,7 @@ read (SourceReader)
 Разграничение «регистрируемый домен vs поддомен» (вариант 1 vs 2) — по
 **Public Suffix List** (Guava `InternetDomainName`), что корректно для
 многосоставных суффиксов (`com.br`, `co.uk`, `workers.dev`). Триггеры и
-открытые случаи — в [notes/0002](notes/0002-output-mapping-and-matching.md).
+открытые случаи — в [dev/0002](dev/0002-output-mapping-and-matching.md).
 
 Политика — **rule-based и декларативная**: тонкий вычислитель + реестр
 предикатов над признаками индикатора; сами правила и коды задаются конфигом
@@ -115,6 +120,15 @@ read (SourceReader)
 
 Колонки и правила заполнения артефактов **декларативны в конфиге**, не в коде
 (provider/transform-модель). Детали — [output-mapping.md](output-mapping.md).
+
+Текущие артефакты:
+
+| Артефакт | Содержимое | Id-space |
+|---|---|---|
+| `masks` | сетевые IOC кроме голых IP: домены, URL, IP с port/path | свой, baseline из `lookup.artifacts[masks]` |
+| `ip_list` | только голые IPv4 | свой, baseline из `lookup.artifacts[ip_list]` |
+| `address_blacklist` | простой список `forbidden_url` / `forbidden_ip`; без id | нет id |
+| `hashes` | MD5/SHA1/SHA256 по разным колонкам | свой, baseline из `lookup.artifacts[hashes]` |
 
 **Словарь колонок (masks):**
 

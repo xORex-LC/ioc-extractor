@@ -38,6 +38,7 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 │   ├── adapter-sink-csv           (IocSink + ArtifactFiller → commons-csv)
 │   ├── adapter-lookup-csv         (LookupRepository → CSV)
 │   ├── adapter-psl                (HostClassifier → Guava PSL)
+│   ├── adapter-ingest             (daemon file ingest → Spring Integration)
 │   └── adapter-cli-picocli        (входной адаптер CLI)
 └── bootstrap/
     └── ioc-app                    (Spring Boot, composition root, исполняемый jar)
@@ -112,7 +113,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 - Первым кандидатом на будущий вынос из domain остаётся `refang`, если появится
   реальное переиспользование вне этого приложения.
 
-Подробное решение: [notes/0009](notes/0009-modularization-granularity.md).
+Подробное решение: [dev/0009](dev/0009-modularization-granularity.md).
 
 ## Поэтапный переход
 

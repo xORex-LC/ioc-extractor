@@ -13,7 +13,7 @@ import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.sli
  *
  * <p>The IOC domain is a single Maven module ({@code ioc-domain}); its
  * capability packages are kept in their lanes by these rules rather than by
- * separate artifacts (see {@code docs/notes/0009-modularization-granularity.md}).
+ * separate artifacts (see {@code docs/dev/0009-modularization-granularity.md}).
  *
  * <p>Allowed edges (acyclic):
  * <pre>

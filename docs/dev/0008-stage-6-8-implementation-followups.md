@@ -9,10 +9,8 @@
 
 ## Контекст
 
-Реализация шла по планам [0006](../plan/0006-diagnostics-implementation-plan.md),
-[0007](../plan/0007-pipeline-envelope-implementation-plan.md),
-[0008](../plan/0008-logging-observability-implementation-plan.md). Архитектура
-выдержана: `diagnostics` без SLF4J/Logback, ядро pipeline framework-free,
+Реализация этапов 6–8 выдержала опубликованную архитектуру: `diagnostics` без
+SLF4J/Logback, ядро pipeline framework-free,
 observability подключён через порт `PipelineObserver`, три подсистемы разделены
 (подтверждено ArchUnit). Ниже — точечные находки.
 

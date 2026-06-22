@@ -4,13 +4,19 @@
 покрытия. Классификация масок (`url_match`/`host_match`) — в
 [output-mapping.md](output-mapping.md#декларативная-классификация-масок-matchurl--matchhost).
 
-> Статус: **дизайн**. Паттерны и нормализация декларативны (`ioc.*`), RE2-safe
-> (`\b`, без look-around) — работают на обоих движках `PatternEngine`.
+> Статус: **реализовано базовое покрытие**. Паттерны и нормализация
+> декларативны (`ioc.*`), RE2-safe (`\b`, без look-around) — работают на обоих
+> движках `PatternEngine`. `.onion` и telegram URL сейчас покрываются общими
+> `DOMAIN`/`URL`-паттернами и feature-классификацией; строгие `.onion`-границы,
+> telegram handles, IPv6 и email остаются расширением корпуса/паттернов.
 
 ## Покрытие типов
 
-Сейчас: текущие сетевые/файловые + **.onion** + **telegram** (есть в корпусе).
-email/IPv6 — позже (в текущих данных отсутствуют; набор расширяется конфигом).
+Сейчас: сетевые (`IPV4`, `DOMAIN`, `URL`) и файловые (`MD5`, `SHA1`, `SHA256`)
+индикаторы. `.onion` адреса проходят как `DOMAIN`, telegram bot/channel links —
+как `URL`/host+path; отдельного типа или специального regex для них нет.
+email/IPv6/telegram handles — позже, через расширение `IndicatorType`/паттернов и
+тестового корпуса.
 
 | Тип | Что ловим | Примечание |
 |---|---|---|
@@ -18,11 +24,12 @@ email/IPv6 — позже (в текущих данных отсутствуют
 | `DOMAIN` | FQDN (+ `/path`) | классификация по PSL |
 | `URL` | `https?://…` | хост извлекается для `host_match` |
 | `MD5/SHA1/SHA256` | hex 32/40/64 | upper-case в артефакте |
-| `.onion` | base32-адрес + `.onion` | спец-TLD → вариант 1 |
-| telegram | `t.me/…`, `telegram.me/…`, `api.telegram.org/bot<id>:<token>` | URL; `:token` — не порт |
+| `.onion` | как `DOMAIN` по общему FQDN regex | `HostClassifier` трактует `.onion` как спец-host kind → вариант 1 |
+| telegram URL | `https?://…` или host+path по общим regex | `:token` в path не считается портом |
 
-Приоритет паттернов (claim диапазонов) ставит URL/onion/telegram/IP перед общим
-`DOMAIN`, чтобы хост URL не переэмитился как отдельный домен.
+Приоритет паттернов (claim диапазонов) ставит URL/IP перед общим `DOMAIN`, чтобы
+хост URL не переэмитился как отдельный домен. `.onion` и host-only telegram links
+сейчас не имеют отдельного приоритета: их ловят общие `DOMAIN`/`URL` правила.
 
 ## Нормализация
 
@@ -99,8 +106,10 @@ private-секция**):
 
 ## Этапы
 
-1. Паттерны `.onion`/telegram + нормализация (authority-port, trailing punct,
-   host-extraction).
-2. Case-table корпус (бакеты + edge) + параметризованные тесты.
-3. Rule-based 4-вариантный `MatchPolicy` на PSL (Guava) + onion/не-PSL.
-4. Golden e2e фикстура (синтетическая, в тест-ресурсах).
+1. Сделано: нормализация authority/path/query, host-extraction, `lower-host`.
+2. Сделано: case-table/golden e2e на ключевые бакеты, включая `.onion`,
+   telegram URL, bare IP и варианты 1–4.
+3. Сделано: rule-based 4-вариантный `MatchPolicy` на PSL (Guava) +
+   onion/не-PSL.
+4. Открыто: строгие `.onion` v3-границы, telegram handles, IPv6, email и более
+   широкий corpus на реальных краевых случаях.

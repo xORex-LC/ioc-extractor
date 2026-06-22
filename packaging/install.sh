@@ -238,7 +238,7 @@ cat <<EOF
 $(log "done.")
   Service : ${SERVICE}    User: ${RUN_USER}    Prefix: ${PREFIX}
   Feed    : drop *.htm/*.html/*.docx into ${PREFIX}/var/inbox/
-  Output  : ${PREFIX}/dataframe/  (partitions/ + repListMasks_generated.csv, hashes_generated.csv)
+  Output  : ${PREFIX}/dataframe/  (partitions/ + *_generated.csv artifacts)
   Logs    : journalctl -u ${SERVICE} -f   (and ${PREFIX}/var/logs/)
   Config  : ${PREFIX}/etc/application.yml  then: systemctl restart ${SERVICE}
 EOF
