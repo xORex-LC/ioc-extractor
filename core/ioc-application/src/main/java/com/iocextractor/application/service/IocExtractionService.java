@@ -99,7 +99,7 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                 DiagnosticSink diagnosticSink) {
         this(
                 new PipelineRunner(FailurePolicy.failFast(), observer),
-                pipeline(reader, refanger, extractor, attributor, lookup, sinks, deduplicate),
+                pipeline(reader, refanger, extractor, attributor, lookup, sinks, deduplicate, Clock.systemUTC()),
                 Clock.systemUTC(),
                 observabilityMode,
                 diagnosticSink);
@@ -180,12 +180,13 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                                                               SourceAttributor attributor,
                                                                               LookupRepository lookup,
                                                                               List<IocSink> sinks,
-                                                                              boolean deduplicate) {
+                                                                              boolean deduplicate,
+                                                                              Clock clock) {
         return Pipeline.<ExtractionCommand>start()
                 .then(new ReadSourceStage(reader))
                 .then(new RefangStage(refanger))
                 .then(new ExtractIndicatorsStage(extractor))
-                .then(new AttributeSourceStage(attributor))
+                .then(new AttributeSourceStage(attributor, clock))
                 .then(new DeduplicateIndicatorsStage(lookup, deduplicate))
                 .then(new WriteArtifactsStage(sinks));
     }

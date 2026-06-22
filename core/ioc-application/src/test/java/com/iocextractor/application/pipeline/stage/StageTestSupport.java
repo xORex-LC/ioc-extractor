@@ -37,6 +37,6 @@ final class StageTestSupport {
     }
 
     static Indicator indicator(String value) {
-        return new Indicator(value, IndicatorType.DOMAIN, SourceContext.UNKNOWN);
+        return new Indicator(value, IndicatorType.DOMAIN, new SourceContext("test-source", null));
     }
 }

@@ -9,6 +9,7 @@ Generated from `DiagnosticCatalogs`.
 | `SOURCE.READ_FAILED` | SOURCE | FATAL | `source.read-failed` | Source {source} could not be read: {reason} |
 | `SOURCE.UNSUPPORTED_FORMAT` | SOURCE | ERROR | `source.unsupported-format` | Source {source} has unsupported format {format} |
 | `SOURCE.EMPTY_TEXT` | SOURCE | WARN | `source.empty-text` | Source {source} produced empty text |
+| `SOURCE.MARKERS_UNMATCHED` | SOURCE | WARN | `source.markers-unmatched` | No section marker matched {unattributed} of {total} indicator(s); source left empty (extend ioc.source.section-markers) |
 | `EXTRACTION.PATTERN_INVALID` | EXTRACTION | FATAL | `extraction.pattern-invalid` | Extraction pattern {pattern} is invalid: {reason} |
 | `EXTRACTION.INDICATOR_SKIPPED` | EXTRACTION | DEBUG | `extraction.indicator-skipped` | Indicator {indicator} was skipped: {reason} |
 | `EXTRACTION.AMBIGUOUS_VALUE` | EXTRACTION | WARN | `extraction.ambiguous-value` | Value {value} is ambiguous: {reason} |

@@ -69,6 +69,9 @@ class PipelineModelArchitectureTest {
         if (List.class.equals(type)) {
             return List.of();
         }
+        if (type == java.time.Clock.class) {
+            return java.time.Clock.systemUTC();
+        }
         if (type.isInterface()) {
             return java.lang.reflect.Proxy.newProxyInstance(
                     type.getClassLoader(),

@@ -29,11 +29,11 @@ class CsvArtifactLookupRepositoryTest {
 
         var lookup = new CsvArtifactLookupRepository(Map.of("masks", masks, "ip_list", ips, "hashes", hashes));
 
-        assertThat(lookup.contains(new Indicator("example.com", IndicatorType.DOMAIN, SourceContext.UNKNOWN))).isTrue();
-        assertThat(lookup.contains(new Indicator("1.2.3.4", IndicatorType.IPV4, SourceContext.UNKNOWN))).isTrue();
-        assertThat(lookup.contains(new Indicator("1.2.3.4:8080/payload.exe", IndicatorType.IPV4, SourceContext.UNKNOWN))).isFalse();
-        assertThat(lookup.contains(new Indicator("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", IndicatorType.MD5, SourceContext.UNKNOWN))).isTrue();
-        assertThat(lookup.contains(new Indicator("example.org", IndicatorType.DOMAIN, SourceContext.UNKNOWN))).isFalse();
+        assertThat(lookup.contains(new Indicator("example.com", IndicatorType.DOMAIN, new SourceContext(null, null)))).isTrue();
+        assertThat(lookup.contains(new Indicator("1.2.3.4", IndicatorType.IPV4, new SourceContext(null, null)))).isTrue();
+        assertThat(lookup.contains(new Indicator("1.2.3.4:8080/payload.exe", IndicatorType.IPV4, new SourceContext(null, null)))).isFalse();
+        assertThat(lookup.contains(new Indicator("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", IndicatorType.MD5, new SourceContext(null, null)))).isTrue();
+        assertThat(lookup.contains(new Indicator("example.org", IndicatorType.DOMAIN, new SourceContext(null, null)))).isFalse();
         assertThat(lookup.maxId("masks")).isEqualTo(10L);
         assertThat(lookup.maxId("ip_list")).isEqualTo(692L);
         assertThat(lookup.maxId("hashes")).isEqualTo(100L);

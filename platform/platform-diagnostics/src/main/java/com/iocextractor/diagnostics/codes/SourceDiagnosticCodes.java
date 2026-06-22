@@ -13,7 +13,9 @@ public enum SourceDiagnosticCodes implements DiagnosticCode {
     UNSUPPORTED_FORMAT(DiagnosticSeverity.ERROR, "source.unsupported-format",
             "Source {source} has unsupported format {format}"),
     EMPTY_TEXT(DiagnosticSeverity.WARN, "source.empty-text",
-            "Source {source} produced empty text");
+            "Source {source} produced empty text"),
+    MARKERS_UNMATCHED(DiagnosticSeverity.WARN, "source.markers-unmatched",
+            "No section marker matched {unattributed} of {total} indicator(s); source left empty (extend ioc.source.section-markers)");
 
     private final DiagnosticSeverity defaultSeverity;
     private final String messageKey;

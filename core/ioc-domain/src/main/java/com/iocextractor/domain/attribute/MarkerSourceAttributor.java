@@ -13,7 +13,8 @@ import java.util.List;
 /**
  * Default {@link SourceAttributor}. Locates all section-marker occurrences, then
  * assigns each indicator the label of the nearest marker that precedes it.
- * Indicators before the first marker get {@link SourceContext#UNKNOWN}.
+ * Indicators with no preceding marker get a {@code null} source label, which the
+ * sink renders as the CSV null literal (an empty {@code source} cell).
  */
 public final class MarkerSourceAttributor implements SourceAttributor {
 
@@ -52,9 +53,9 @@ public final class MarkerSourceAttributor implements SourceAttributor {
         return markers;
     }
 
-    /** Nearest marker whose position is at or before {@code position}. */
+    /** Nearest marker whose position is at or before {@code position}, or {@code null} if none. */
     private String labelAt(List<Marker> markers, int position) {
-        String label = SourceContext.UNKNOWN.label();
+        String label = null;
         for (Marker marker : markers) {
             if (marker.position() <= position) {
                 label = marker.label();

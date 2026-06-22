@@ -37,7 +37,7 @@ class RuleBasedMatchPolicyTest {
     }
 
     private MaskMatch classify(String value, IndicatorType type) {
-        return policy.classify(new Indicator(value, type, SourceContext.UNKNOWN));
+        return policy.classify(new Indicator(value, type, new SourceContext(null, null)));
     }
 
     @Test

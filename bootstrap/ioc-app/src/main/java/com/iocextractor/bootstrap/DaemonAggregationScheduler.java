@@ -2,6 +2,7 @@ package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.port.in.aggregation.AggregatePartitionsUseCase;
 import com.iocextractor.application.port.in.aggregation.AggregationCommand;
+import com.iocextractor.application.port.in.aggregation.AggregationResult;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
@@ -77,19 +78,22 @@ public final class DaemonAggregationScheduler implements SmartLifecycle {
             return;
         }
         try {
-            LogEvents.info(log)
-                    .action(EventAction.AGGREGATION_START)
-                    .outcome(EventOutcome.SUCCESS)
-                    .message("aggregation started")
-                    .log();
             var result = useCase.aggregate(AggregationCommand.allArtifacts());
             state.success(result);
-            LogEvents.info(log)
-                    .action(EventAction.AGGREGATION_COMPLETE)
-                    .outcome(EventOutcome.SUCCESS)
-                    .field(LogField.IOC_ROWS, result.rowsWritten().values().stream().mapToInt(Integer::intValue).sum())
-                    .message("aggregation completed")
-                    .log();
+            if (hasWork(result)) {
+                LogEvents.info(log)
+                        .action(EventAction.AGGREGATION_COMPLETE)
+                        .outcome(EventOutcome.SUCCESS)
+                        .field(LogField.IOC_ROWS, rowsWritten(result))
+                        .message("aggregation completed")
+                        .log();
+            } else {
+                LogEvents.debug(log)
+                        .action(EventAction.AGGREGATION_COMPLETE)
+                        .outcome(EventOutcome.SUCCESS)
+                        .message("aggregation skipped: no ready partitions")
+                        .log();
+            }
         } catch (RuntimeException e) {
             state.failure(e);
             LogEvents.error(log)
@@ -100,5 +104,23 @@ public final class DaemonAggregationScheduler implements SmartLifecycle {
         } finally {
             running.set(false);
         }
+    }
+
+    private static boolean hasWork(AggregationResult result) {
+        return result.sourcesProcessed() > 0
+                || result.partitionsRead() > 0
+                || rowsRead(result) > 0
+                || rowsWritten(result) > 0
+                || result.newStableIds() > 0
+                || result.unchangedRows() > 0
+                || result.skippedRows() > 0;
+    }
+
+    private static int rowsRead(AggregationResult result) {
+        return result.rowsRead().values().stream().mapToInt(Integer::intValue).sum();
+    }
+
+    private static int rowsWritten(AggregationResult result) {
+        return result.rowsWritten().values().stream().mapToInt(Integer::intValue).sum();
     }
 }

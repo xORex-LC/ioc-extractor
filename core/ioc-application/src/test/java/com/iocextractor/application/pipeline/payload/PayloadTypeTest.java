@@ -52,6 +52,6 @@ class PayloadTypeTest {
     }
 
     private Indicator indicator(String value) {
-        return new Indicator(value, IndicatorType.DOMAIN, SourceContext.UNKNOWN);
+        return new Indicator(value, IndicatorType.DOMAIN, new SourceContext(null, null));
     }
 }

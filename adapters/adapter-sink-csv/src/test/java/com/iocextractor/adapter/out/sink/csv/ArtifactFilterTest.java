@@ -56,6 +56,6 @@ class ArtifactFilterTest {
     }
 
     private Indicator indicator(String value, IndicatorType type) {
-        return new Indicator(value, type, SourceContext.UNKNOWN);
+        return new Indicator(value, type, new SourceContext(null, null));
     }
 }

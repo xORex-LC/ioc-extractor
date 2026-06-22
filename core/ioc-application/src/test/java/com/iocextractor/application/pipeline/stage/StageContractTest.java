@@ -42,7 +42,7 @@ class StageContractTest {
                 StageTestSupport.envelope(new RefangedText("example.com"), false),
                 diagnostic);
         assertPreservesContract(
-                new AttributeSourceStage((text, rawIndicators) -> List.of(StageTestSupport.indicator("example.com"))),
+                new AttributeSourceStage((text, rawIndicators) -> List.of(StageTestSupport.indicator("example.com")), StageTestSupport.CLOCK),
                 StageTestSupport.envelope(new ExtractedIndicators(
                         "example.com",
                         List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0))),

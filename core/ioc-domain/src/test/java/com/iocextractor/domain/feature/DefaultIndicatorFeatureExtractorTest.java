@@ -15,7 +15,7 @@ class DefaultIndicatorFeatureExtractorTest {
             new DefaultIndicatorFeatureExtractor(new DefaultIndicatorNormalizer(), stub);
 
     private IndicatorFeatures features(String value, IndicatorType type) {
-        return extractor.extract(new Indicator(value, type, SourceContext.UNKNOWN));
+        return extractor.extract(new Indicator(value, type, new SourceContext(null, null)));
     }
 
     @Test

@@ -145,7 +145,7 @@ class IngestionServiceTest {
                 source -> "example.com",
                 text -> text,
                 text -> List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)),
-                (text, indicators) -> List.of(new Indicator("example.com", IndicatorType.DOMAIN, SourceContext.UNKNOWN)),
+                (text, indicators) -> List.of(new Indicator("example.com", IndicatorType.DOMAIN, new SourceContext(null, null))),
                 new LookupRepository() {
                     @Override
                     public boolean contains(Indicator indicator) {
