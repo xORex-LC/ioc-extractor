@@ -25,7 +25,7 @@
 set -Eeuo pipefail
 
 # ---- defaults --------------------------------------------------------------
-VERSION="0.1.0"
+APP_VERSION="0.1.0"
 SERVICE="ioc-extractor"
 DEFAULT_PREFIX="/opt/ioc-extractor"
 PREFIX=""
@@ -99,13 +99,13 @@ fi
 # Locate the application jar.
 if [[ -z "${JAR}" ]]; then
   for cand in \
-      "${SCRIPT_DIR}/ioc-app-${VERSION}.jar" \
-      "${SCRIPT_DIR}/lib/ioc-app-${VERSION}.jar" \
-      "${SCRIPT_DIR}/../bootstrap/ioc-app/target/ioc-app-${VERSION}.jar"; do
+      "${SCRIPT_DIR}/ioc-app-${APP_VERSION}.jar" \
+      "${SCRIPT_DIR}/lib/ioc-app-${APP_VERSION}.jar" \
+      "${SCRIPT_DIR}/../bootstrap/ioc-app/target/ioc-app-${APP_VERSION}.jar"; do
     [[ -f "${cand}" ]] && { JAR="${cand}"; break; }
   done
 fi
-[[ -n "${JAR}" && -f "${JAR}" ]] || die "application jar not found; pass --jar PATH (looked for ioc-app-${VERSION}.jar)."
+[[ -n "${JAR}" && -f "${JAR}" ]] || die "application jar not found; pass --jar PATH (looked for ioc-app-${APP_VERSION}.jar)."
 log "using jar: ${JAR}"
 
 log "install prefix : ${PREFIX}"
@@ -171,7 +171,7 @@ mkdir -p \
 
 # ---- 4. deploy jar + config ------------------------------------------------
 log "deploying application jar"
-install -m 0644 "${JAR}" "${PREFIX}/lib/ioc-app-${VERSION}.jar"
+install -m 0644 "${JAR}" "${PREFIX}/lib/ioc-app-${APP_VERSION}.jar"
 
 deploy_config() {  # src dst
   local src="$1" dst="$2"
@@ -213,7 +213,7 @@ chmod -R u+rwX,g+rX "${PREFIX}/var" "${PREFIX}/dataframe"
 UNIT="/etc/systemd/system/${SERVICE}.service"
 log "rendering ${UNIT}"
 sed -e "s|@PREFIX@|${PREFIX}|g" \
-    -e "s|@VERSION@|${VERSION}|g" \
+    -e "s|@VERSION@|${APP_VERSION}|g" \
     -e "s|@JAVA_BIN@|${JAVA_BIN}|g" \
     -e "s|@USER@|${RUN_USER}|g" \
     "${SCRIPT_DIR}/templates/ioc-extractor.service" > "${UNIT}"

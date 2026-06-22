@@ -8,6 +8,11 @@ spring:
   main:
     web-application-type: none      # CLI app, no web server
     banner-mode: "off"
+  profiles:
+    # Logback appenders are selected by Spring profile. Keep that profile aligned
+    # with the public observability mode knob, so `ioc.observability.mode=daemon`
+    # enables daemon ECS file logging as well.
+    active: ${ioc.observability.mode:oneshot}
   config:
     # External, user-editable overrides (optional files).
     import: "optional:file:./configs/application.yml"

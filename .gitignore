@@ -41,6 +41,8 @@ dataframe/*
 !dataframe/ip_list.csv
 !dataframe/address_blacklist.csv
 
+.envrc
+
 .vscode
 
 CLAUDE.md

@@ -8,6 +8,10 @@
 #  This file only OVERRIDES the packaged defaults (in the jar). Everything not
 #  set here keeps its built-in value. Edit and `systemctl restart ioc-extractor`.
 # ============================================================================
+spring:
+  profiles:
+    active: daemon          # activates the daemon logback profile / ECS file appender
+
 ioc:
   runtime:
     mode: daemon            # also forced on the command line by the systemd unit
