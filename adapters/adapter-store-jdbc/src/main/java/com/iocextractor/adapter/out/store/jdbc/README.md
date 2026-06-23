@@ -14,7 +14,7 @@ types to bootstrap; domain/application do not import this package.
 | Файл / группа | Назначение |
 |---|---|
 | `Sqlite*` | SQLite-specific datasource and PRAGMA policy |
-| `Jdbc*` | Future JDBC implementations of storage ports |
+| `Jdbc*` | JDBC implementations of storage ports |
 | `*Schema*` | SQLite `user_version` runner and migration support |
 
 ## Зависимости
