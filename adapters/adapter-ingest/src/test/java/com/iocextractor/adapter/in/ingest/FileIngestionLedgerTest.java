@@ -3,6 +3,8 @@ package com.iocextractor.adapter.in.ingest;
 import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.SourceUnit;
+import com.iocextractor.application.port.out.ingest.IngestionLedger;
+import com.iocextractor.application.port.out.ingest.IngestionLedgerContractTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -14,10 +16,15 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class FileIngestionLedgerTest {
+class FileIngestionLedgerTest extends IngestionLedgerContractTest {
 
     @TempDir
     Path tempDir;
+
+    @Override
+    protected IngestionLedger createLedger(Clock clock) {
+        return new FileIngestionLedger(tempDir, clock);
+    }
 
     @Test
     void persists_status_transitions_and_lists_only_incomplete_records() {
