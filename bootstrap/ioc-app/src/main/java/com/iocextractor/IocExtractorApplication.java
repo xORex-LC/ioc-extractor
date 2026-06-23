@@ -2,6 +2,7 @@ package com.iocextractor;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 /**
@@ -9,7 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
  * is driven from {@code CliRunner}. The process exit code is taken from the
  * command via Spring's {@code ExitCodeGenerator}.
  */
-@SpringBootApplication
+@SpringBootApplication(exclude = DataSourceAutoConfiguration.class)
 @ConfigurationPropertiesScan
 public class IocExtractorApplication {
 

@@ -31,6 +31,13 @@ import com.iocextractor.adapter.out.sink.csv.Transform;
 import com.iocextractor.adapter.out.sink.csv.UppercaseTransform;
 import com.iocextractor.adapter.out.sink.csv.ValueProvider;
 import com.iocextractor.adapter.out.source.TikaSourceReader;
+import com.iocextractor.adapter.out.store.jdbc.JdbcIngestionLedger;
+import com.iocextractor.adapter.out.store.jdbc.SchemaMigrationResult;
+import com.iocextractor.adapter.out.store.jdbc.ServiceSchemaMigrations;
+import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceFactory;
+import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceSettings;
+import com.iocextractor.adapter.out.store.jdbc.SqlitePragmaPolicy;
+import com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator;
 import com.iocextractor.application.aggregation.AggregationService;
 import com.iocextractor.application.aggregation.KeepFirstMergePolicy;
 import com.iocextractor.application.ingest.IngestionService;
@@ -54,6 +61,7 @@ import com.iocextractor.application.port.out.ingest.PartitionSinkFactory;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.render.DiagnosticRenderer;
 import com.iocextractor.diagnostics.render.TemplateDiagnosticRenderer;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
@@ -82,6 +90,7 @@ import com.iocextractor.domain.refang.ReplacementRefanger;
 import com.iocextractor.domain.refang.Refanger;
 import com.iocextractor.observability.diagnostics.LoggingDiagnosticSink;
 import com.iocextractor.observability.logging.LoggingPipelineObserver;
+import com.zaxxer.hikari.HikariDataSource;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.QuoteMode;
 import org.slf4j.LoggerFactory;
@@ -256,6 +265,46 @@ public class AppConfig {
                 artifactDefinitions(props, matchPolicy, featureExtractor, lookup),
                 writeFormat(props.sink().csv()),
                 csvCharset(props));
+    }
+
+    @Bean(destroyMethod = "close")
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.ingestion.ledger.type:file}' == 'jdbc'")
+    public HikariDataSource serviceStorageDataSource(IocProperties props) {
+        IocProperties.Storage.Service service = props.storage().service();
+        if (!"jdbc".equalsIgnoreCase(service.type())) {
+            throw new IocExtractorException("ioc.storage.service.type must be 'jdbc' when "
+                    + "ioc.ingestion.ledger.type=jdbc");
+        }
+        return new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(new SqliteDataSourceSettings(
+                "service",
+                service.url(),
+                service.sqlite().tuning(),
+                service.pool().writeMax(),
+                service.pool().readMax()));
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.ingestion.ledger.type:file}' == 'jdbc'")
+    public SchemaMigrationResult serviceSchemaMigration(HikariDataSource serviceStorageDataSource,
+                                                        DiagnosticSink diagnosticSink,
+                                                        Clock clock) {
+        return new SqliteUserVersionSchemaMigrator(
+                serviceStorageDataSource,
+                ServiceSchemaMigrations.sqlite(),
+                diagnosticSink,
+                new DiagnosticFactory(clock),
+                "service").migrate();
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.ingestion.ledger.type:file}' == 'jdbc'")
+    public IngestionLedger jdbcIngestionLedger(HikariDataSource serviceStorageDataSource,
+                                               SchemaMigrationResult serviceSchemaMigration,
+                                               Clock clock) {
+        return new JdbcIngestionLedger(serviceStorageDataSource, clock);
     }
 
     @Bean

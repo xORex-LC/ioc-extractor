@@ -2,9 +2,11 @@ package com.iocextractor;
 
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.bootstrap.IocProperties;
+import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -19,6 +21,9 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.main.banner-mode=off"
 })
 class ApplicationContextTest {
+
+    @Autowired
+    ApplicationContext context;
 
     @Autowired
     ExtractIocsUseCase useCase;
@@ -38,5 +43,6 @@ class ApplicationContextTest {
         assertThat(props.storage().service().sqlite().tuning()).isEqualTo("low-memory");
         assertThat(props.storage().service().pool().writeMax()).isEqualTo(1);
         assertThat(props.storage().service().pool().readMax()).isEqualTo(2);
+        assertThat(context.getBeansOfType(HikariDataSource.class)).isEmpty();
     }
 }

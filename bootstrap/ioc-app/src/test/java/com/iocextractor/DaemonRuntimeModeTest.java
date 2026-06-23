@@ -1,7 +1,10 @@
 package com.iocextractor;
 
 import com.iocextractor.adapter.in.cli.CliRunner;
+import com.iocextractor.adapter.in.ingest.FileIngestionLedger;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
+import com.iocextractor.application.port.out.ingest.IngestionLedger;
+import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -39,5 +42,7 @@ class DaemonRuntimeModeTest {
         assertThat(context.getBeansOfType(CliRunner.class)).isEmpty();
         assertThat(context.getBeansOfType(IntegrationFlow.class))
                 .containsKey("iocIngestionFlow");
+        assertThat(context.getBean(IngestionLedger.class)).isInstanceOf(FileIngestionLedger.class);
+        assertThat(context.getBeansOfType(HikariDataSource.class)).isEmpty();
     }
 }
