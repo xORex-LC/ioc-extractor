@@ -53,6 +53,10 @@
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-adapter-store-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
             <artifactId>ioc-adapter-cli-picocli</artifactId>
         </dependency>
 

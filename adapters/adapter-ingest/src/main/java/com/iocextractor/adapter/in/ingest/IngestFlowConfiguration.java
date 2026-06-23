@@ -50,6 +50,8 @@ public class IngestFlowConfiguration {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "ioc.ingestion.ledger", name = "type", havingValue = "file",
+            matchIfMissing = true)
     public IngestionLedger ingestionLedger(IngestAdapterProperties properties, Clock ingestClock) {
         return new FileIngestionLedger(Path.of(properties.ledger().path()), ingestClock);
     }
