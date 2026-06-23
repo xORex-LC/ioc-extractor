@@ -25,3 +25,12 @@ Spring transaction types.
 runtime JDBC drivers.
 
 **Не импортируется:** domain/application internals and sibling adapters.
+
+## Runtime Notes
+
+- The initial service datasource factory opens one Hikari pool. `writeMax` and
+  `readMax` are retained as a capacity budget; dedicated read/write pools and
+  the strict write-pool=1 topology belong to bootstrap wiring in the ledger
+  selector slice.
+- SQLite connection PRAGMAs are installed as Xerial `SQLiteConfig` driver
+  properties on physical connection creation, not on every pool borrow.

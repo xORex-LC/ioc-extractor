@@ -23,3 +23,10 @@ types to bootstrap; domain/application do not import this package.
 platform observability, Spring JDBC/JDBC, Hikari.
 
 **Не импортирует:** bootstrap and sibling adapters.
+
+## Ограничения
+
+- `SqliteUserVersionSchemaMigrator` currently splits `vN.sql` files as simple
+  semicolon-delimited DDL. This is intentional for the service v1 schema; add a
+  proper SQL script parser before migrations contain triggers, `BEGIN...END`
+  blocks, seed data with semicolons, or string literals containing semicolons.
