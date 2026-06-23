@@ -1,15 +1,29 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.diagnostics.DiagnosticException;
+import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.codes.StorageDiagnosticCodes;
+import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.observability.EventAction;
+import com.iocextractor.observability.EventOutcome;
+import com.iocextractor.observability.LogField;
+import com.iocextractor.observability.logging.LogEvents;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -18,12 +32,33 @@ import java.util.stream.Collectors;
  */
 public final class SqliteUserVersionSchemaMigrator {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(SqliteUserVersionSchemaMigrator.class);
+    private static final String DEFAULT_DB_ROLE = "storage";
+
     private final DataSource dataSource;
     private final List<SqliteSchemaMigration> migrations;
+    private final DiagnosticSink diagnosticSink;
+    private final DiagnosticFactory diagnosticFactory;
+    private final String dbRole;
 
     public SqliteUserVersionSchemaMigrator(DataSource dataSource, List<SqliteSchemaMigration> migrations) {
-        this.dataSource = dataSource;
+        this(dataSource, migrations, NoopDiagnosticSink.INSTANCE,
+                new DiagnosticFactory(Clock.systemUTC()), DEFAULT_DB_ROLE);
+    }
+
+    public SqliteUserVersionSchemaMigrator(DataSource dataSource,
+                                           List<SqliteSchemaMigration> migrations,
+                                           DiagnosticSink diagnosticSink,
+                                           DiagnosticFactory diagnosticFactory,
+                                           String dbRole) {
+        this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.migrations = validate(migrations);
+        this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
+        this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
+        if (dbRole == null || dbRole.isBlank()) {
+            throw new IllegalArgumentException("dbRole is required");
+        }
+        this.dbRole = dbRole;
     }
 
     public SchemaMigrationResult migrate() {
@@ -31,8 +66,20 @@ public final class SqliteUserVersionSchemaMigrator {
             int previousVersion = userVersion(connection);
             int targetVersion = targetVersion();
             if (previousVersion > targetVersion) {
-                throw new IocExtractorException("SQLite schema version " + previousVersion
-                        + " is newer than supported version " + targetVersion);
+                Diagnostic diagnostic = diagnosticFactory.create(StorageDiagnosticCodes.MIGRATION_DOWNGRADE)
+                        .with("dbRole", dbRole)
+                        .with("fromVersion", previousVersion)
+                        .with("toVersion", targetVersion)
+                        .build();
+                diagnosticSink.emit(diagnostic);
+                LogEvents.error(LOGGER)
+                        .action(EventAction.SCHEMA_MIGRATE)
+                        .outcome(EventOutcome.FAILURE)
+                        .field(LogField.IOC_DB_ROLE, dbRole)
+                        .field(LogField.IOC_SCHEMA_VERSION, previousVersion)
+                        .message("sqlite schema downgrade refused")
+                        .log();
+                throw new DiagnosticException(diagnostic);
             }
 
             List<Integer> applied = new ArrayList<>();
@@ -41,6 +88,15 @@ public final class SqliteUserVersionSchemaMigrator {
                     apply(connection, migration);
                     applied.add(migration.version());
                 }
+            }
+            if (applied.isEmpty()) {
+                LogEvents.debug(LOGGER)
+                        .action(EventAction.SCHEMA_MIGRATE)
+                        .outcome(EventOutcome.SKIPPED)
+                        .field(LogField.IOC_DB_ROLE, dbRole)
+                        .field(LogField.IOC_SCHEMA_VERSION, targetVersion)
+                        .message("sqlite schema already current")
+                        .log();
             }
             return new SchemaMigrationResult(previousVersion, targetVersion, applied);
         } catch (SQLException e) {
@@ -89,13 +145,44 @@ public final class SqliteUserVersionSchemaMigrator {
             }
             statement.execute("PRAGMA user_version=" + migration.version());
             connection.commit();
+            emitApplied(migration);
         } catch (SQLException e) {
             rollback(connection, e);
-            throw new IocExtractorException("Failed to apply SQLite schema migration v"
-                    + migration.version() + " (" + migration.name() + ")", e);
+            Diagnostic diagnostic = diagnosticFactory.create(StorageDiagnosticCodes.MIGRATION_ROLLBACK)
+                    .with("dbRole", dbRole)
+                    .with("migrationVersion", migration.version())
+                    .with("reason", e.getMessage())
+                    .cause(e)
+                    .build();
+            diagnosticSink.emit(diagnostic);
+            LogEvents.error(LOGGER)
+                    .action(EventAction.SCHEMA_MIGRATE)
+                    .outcome(EventOutcome.FAILURE)
+                    .field(LogField.IOC_DB_ROLE, dbRole)
+                    .field(LogField.IOC_MIGRATION_VERSION, migration.version())
+                    .message("sqlite schema migration rolled back")
+                    .log(e);
+            throw new DiagnosticException(diagnostic);
         } finally {
             connection.setAutoCommit(previousAutoCommit);
         }
+    }
+
+    private void emitApplied(SqliteSchemaMigration migration) {
+        Diagnostic diagnostic = diagnosticFactory.create(StorageDiagnosticCodes.MIGRATION_APPLIED)
+                .with("dbRole", dbRole)
+                .with("migrationVersion", migration.version())
+                .with("schemaVersion", migration.version())
+                .build();
+        diagnosticSink.emit(diagnostic);
+        LogEvents.info(LOGGER)
+                .action(EventAction.SCHEMA_MIGRATE)
+                .outcome(EventOutcome.SUCCESS)
+                .field(LogField.IOC_DB_ROLE, dbRole)
+                .field(LogField.IOC_MIGRATION_VERSION, migration.version())
+                .field(LogField.IOC_SCHEMA_VERSION, migration.version())
+                .message("sqlite schema migration applied")
+                .log();
     }
 
     private void rollback(Connection connection, SQLException original) throws SQLException {

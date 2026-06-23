@@ -1,6 +1,10 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.observability.EventAction;
+import com.iocextractor.observability.EventOutcome;
+import com.iocextractor.observability.LogField;
+import com.iocextractor.observability.logging.LogEvents;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.slf4j.Logger;
@@ -38,9 +42,15 @@ public final class SqliteDataSourceFactory {
 
         ManagedSqliteDataSource dataSource = new ManagedSqliteDataSource(new HikariDataSource(config), pragmas);
         dataSource.initializePersistentPragmas();
-        LOGGER.info("sqlite datasource initialized role={} url={} tuning={} maxPoolSize={} busyTimeoutMs={}",
-                settings.role(), settings.jdbcUrl(), settings.tuning(), settings.maxPoolSize(),
-                pragmas.busyTimeout().toMillis());
+        LogEvents.info(LOGGER)
+                .action(EventAction.SCHEMA_VALIDATE)
+                .outcome(EventOutcome.SUCCESS)
+                .field(LogField.IOC_DB_ROLE, settings.role())
+                .field("ioc.storage.sqlite.tuning", settings.tuning())
+                .field("ioc.storage.sqlite.max_pool_size", settings.maxPoolSize())
+                .field("ioc.storage.sqlite.busy_timeout_ms", pragmas.busyTimeout().toMillis())
+                .message("sqlite datasource initialized")
+                .log();
         return dataSource;
     }
 

@@ -18,6 +18,8 @@ pipeline orchestration.
 | `ExtractionDiagnosticCodes.java` | Ошибки извлечения IOC |
 | `ClassificationDiagnosticCodes.java` | Ошибки классификации |
 | `SinkDiagnosticCodes.java` | Ошибки записи артефактов |
+| `StorageDiagnosticCodes.java` | Ошибки durable storage: миграции, импорт, identity |
+| `SchemaDiagnosticCodes.java` | Guardrail-коды сверки схемы storage |
 | `PipelineDiagnosticCodes.java` | Ошибки стадий pipeline |
 
 ## Зависимости

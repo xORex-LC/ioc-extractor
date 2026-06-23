@@ -16,6 +16,12 @@ public enum EventAction {
     AGGREGATION_START("aggregation_start"),
     AGGREGATION_COMPLETE("aggregation_complete"),
     RETENTION_SWEEP("retention_sweep"),
+    SCHEMA_MIGRATE("schema_migrate"),
+    SCHEMA_VALIDATE("schema_validate"),
+    LEDGER_IMPORT("ledger_import"),
+    DB_HEALTH("db_health"),
+    MAINTENANCE("maintenance"),
+    BACKFILL("backfill"),
     DIAGNOSTIC_EMIT("diagnostic_emit");
 
     private final String value;

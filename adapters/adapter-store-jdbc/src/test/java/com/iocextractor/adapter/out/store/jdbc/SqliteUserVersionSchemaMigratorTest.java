@@ -1,11 +1,17 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.diagnostics.DiagnosticException;
+import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.codes.StorageDiagnosticCodes;
+import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.sql.Connection;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -13,18 +19,25 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SqliteUserVersionSchemaMigratorTest {
 
+    private static final DiagnosticFactory DIAGNOSTICS = new DiagnosticFactory(
+            Clock.fixed(Instant.parse("2026-06-23T00:00:00Z"), ZoneOffset.UTC));
+
     @TempDir
     Path tempDir;
 
     @Test
     void applies_service_schema_to_fresh_database() throws Exception {
         try (ManagedSqliteDataSource dataSource = dataSource("fresh.db")) {
-            SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(
-                    dataSource, ServiceSchemaMigrations.sqlite()).migrate();
+            var diagnostics = new CollectingDiagnosticSink();
+            SchemaMigrationResult result = migrator(dataSource, diagnostics, ServiceSchemaMigrations.sqlite())
+                    .migrate();
 
             assertThat(result.previousVersion()).isZero();
             assertThat(result.currentVersion()).isEqualTo(1);
             assertThat(result.appliedVersions()).containsExactly(1);
+            assertThat(diagnostics.diagnostics())
+                    .extracting(diagnostic -> diagnostic.code())
+                    .containsExactly(StorageDiagnosticCodes.MIGRATION_APPLIED);
             try (Connection connection = dataSource.getConnection()) {
                 assertThat(userVersion(connection)).isEqualTo(1);
                 assertThat(tableExists(connection, "ingestion_ledger")).isTrue();
@@ -38,14 +51,18 @@ class SqliteUserVersionSchemaMigratorTest {
     @Test
     void skips_when_schema_is_current() throws Exception {
         try (ManagedSqliteDataSource dataSource = dataSource("current.db")) {
-            var migrator = new SqliteUserVersionSchemaMigrator(dataSource, ServiceSchemaMigrations.sqlite());
+            var setupDiagnostics = new CollectingDiagnosticSink();
+            var migrator = migrator(dataSource, setupDiagnostics, ServiceSchemaMigrations.sqlite());
             migrator.migrate();
 
+            var diagnostics = new CollectingDiagnosticSink();
+            migrator = migrator(dataSource, diagnostics, ServiceSchemaMigrations.sqlite());
             SchemaMigrationResult result = migrator.migrate();
 
             assertThat(result.previousVersion()).isEqualTo(1);
             assertThat(result.currentVersion()).isEqualTo(1);
             assertThat(result.appliedVersions()).isEmpty();
+            assertThat(diagnostics.diagnostics()).isEmpty();
         }
     }
 
@@ -59,11 +76,18 @@ class SqliteUserVersionSchemaMigratorTest {
             connection.createStatement().execute("CREATE TABLE one (id INTEGER PRIMARY KEY)");
             connection.createStatement().execute("PRAGMA user_version=1");
 
-            SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
+            var diagnostics = new CollectingDiagnosticSink();
+            SchemaMigrationResult result = migrator(dataSource, diagnostics, migrations).migrate();
 
             assertThat(result.previousVersion()).isEqualTo(1);
             assertThat(result.currentVersion()).isEqualTo(2);
             assertThat(result.appliedVersions()).containsExactly(2);
+            assertThat(diagnostics.diagnostics())
+                    .singleElement()
+                    .satisfies(diagnostic -> {
+                        assertThat(diagnostic.code()).isEqualTo(StorageDiagnosticCodes.MIGRATION_APPLIED);
+                        assertThat(diagnostic.context()).containsEntry("migrationVersion", 2);
+                    });
             assertThat(tableExists(connection, "one")).isTrue();
             assertThat(tableExists(connection, "two")).isTrue();
         }
@@ -75,12 +99,20 @@ class SqliteUserVersionSchemaMigratorTest {
              Connection connection = dataSource.getConnection()) {
             connection.createStatement().execute("CREATE TABLE preserved (id INTEGER PRIMARY KEY)");
             connection.createStatement().execute("PRAGMA user_version=5");
+            var diagnostics = new CollectingDiagnosticSink();
 
-            assertThatThrownBy(() -> new SqliteUserVersionSchemaMigrator(
-                    dataSource, ServiceSchemaMigrations.sqlite()).migrate())
-                    .isInstanceOf(IocExtractorException.class)
-                    .hasMessageContaining("newer than supported");
+            assertThatThrownBy(() -> migrator(dataSource, diagnostics, ServiceSchemaMigrations.sqlite()).migrate())
+                    .isInstanceOf(DiagnosticException.class)
+                    .hasMessageContaining(StorageDiagnosticCodes.MIGRATION_DOWNGRADE.id());
 
+            assertThat(diagnostics.diagnostics())
+                    .singleElement()
+                    .satisfies(diagnostic -> {
+                        assertThat(diagnostic.code()).isEqualTo(StorageDiagnosticCodes.MIGRATION_DOWNGRADE);
+                        assertThat(diagnostic.context())
+                                .containsEntry("fromVersion", 5)
+                                .containsEntry("toVersion", 1);
+                    });
             assertThat(userVersion(connection)).isEqualTo(5);
             assertThat(tableExists(connection, "preserved")).isTrue();
         }
@@ -93,14 +125,27 @@ class SqliteUserVersionSchemaMigratorTest {
                         + "CREATE TABLE broken ("));
         try (ManagedSqliteDataSource dataSource = dataSource("rollback.db");
              Connection connection = dataSource.getConnection()) {
+            var diagnostics = new CollectingDiagnosticSink();
 
-            assertThatThrownBy(() -> new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate())
-                    .isInstanceOf(IocExtractorException.class)
-                    .hasMessageContaining("Failed to apply SQLite schema migration v1");
+            assertThatThrownBy(() -> migrator(dataSource, diagnostics, migrations).migrate())
+                    .isInstanceOf(DiagnosticException.class)
+                    .hasMessageContaining(StorageDiagnosticCodes.MIGRATION_ROLLBACK.id());
 
+            assertThat(diagnostics.diagnostics())
+                    .singleElement()
+                    .satisfies(diagnostic -> {
+                        assertThat(diagnostic.code()).isEqualTo(StorageDiagnosticCodes.MIGRATION_ROLLBACK);
+                        assertThat(diagnostic.context()).containsEntry("migrationVersion", 1);
+                    });
             assertThat(userVersion(connection)).isZero();
             assertThat(tableExists(connection, "created_before_failure")).isFalse();
         }
+    }
+
+    private SqliteUserVersionSchemaMigrator migrator(ManagedSqliteDataSource dataSource,
+                                                     CollectingDiagnosticSink diagnostics,
+                                                     List<SqliteSchemaMigration> migrations) {
+        return new SqliteUserVersionSchemaMigrator(dataSource, migrations, diagnostics, DIAGNOSTICS, "service");
     }
 
     private ManagedSqliteDataSource dataSource(String fileName) {
