@@ -4,7 +4,7 @@
 
 Адаптеры — внешний слой ввода/вывода. Реализуют порты прикладного ядра поверх
 конкретных технологий. Здесь (и только здесь, наряду с `bootstrap`) живут внешние
-библиотеки: picocli, Apache Tika, RE2/J, commons-csv.
+библиотеки: picocli, Apache Tika, RE2/J, commons-csv, Spring JDBC.
 
 **Правило слоя:** зависит внутрь — на `application` (порты) и `domain`. Ядро
 никогда не импортирует из `adapter`; адаптеры не зависят друг на друга.
@@ -18,6 +18,7 @@
 | `out/source/` | `SourceReader`: Apache Tika |
 | `out/sink/csv/` | `IocSink`: запись CSV-артефактов (commons-csv) |
 | `out/lookup/` | `LookupRepository`: чтение существующего CSV |
+| `out/store/jdbc/` | durable storage ports over relational stores (Spring JDBC/JDBC drivers) |
 
 ## Зависимости
 

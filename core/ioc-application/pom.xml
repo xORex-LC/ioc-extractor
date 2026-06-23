@@ -34,4 +34,34 @@
         </dependency>
 
     </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Storage mechanism dependencies belong to adapters/bootstrap only. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>ban-storage-mechanisms-in-application</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <excludes>
+                                        <exclude>org.springframework:spring-jdbc</exclude>
+                                        <exclude>org.springframework:spring-tx</exclude>
+                                        <exclude>com.zaxxer:HikariCP</exclude>
+                                        <exclude>org.xerial:sqlite-jdbc</exclude>
+                                    </excludes>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>
