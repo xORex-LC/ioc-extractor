@@ -51,6 +51,8 @@
                                         <exclude>com.google.guava:guava</exclude>
                                         <exclude>com.google.re2j:re2j</exclude>
                                         <exclude>info.picocli:*</exclude>
+                                        <exclude>com.zaxxer:HikariCP</exclude>
+                                        <exclude>org.xerial:sqlite-jdbc</exclude>
                                     </excludes>
                                 </bannedDependencies>
                             </rules>

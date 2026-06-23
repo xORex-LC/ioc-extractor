@@ -76,6 +76,13 @@ class ArchitectureTest {
                     "..adapter..", "..bootstrap..");
 
     @ArchTest
+    static final ArchRule storage_mechanism_types_stay_in_adapters_and_bootstrap = noClasses()
+            .that().resideOutsideOfPackages("..adapter..", "..bootstrap..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "java.sql..", "javax.sql..", "org.springframework.jdbc..",
+                    "org.springframework.transaction..", "org.sqlite..", "com.zaxxer.hikari..");
+
+    @ArchTest
     static final ArchRule domain_does_not_depend_on_application_pipeline = noClasses()
             .that().resideInAPackage("..domain..")
             .should().dependOnClassesThat().resideInAnyPackage("..application.pipeline..");
