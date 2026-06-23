@@ -84,14 +84,23 @@ public final class DaemonAggregationScheduler implements SmartLifecycle, Aggrega
     /**
      * Event-driven kick: request an aggregation soon without blocking the caller.
      * Coalesces a burst into at most one queued run (idempotent aggregation makes
-     * a coalesced request only a latency concern). Falls back to a synchronous run
-     * if the executor is not started.
+     * a coalesced request only a latency concern). If the scheduler is not started
+     * yet the request is dropped rather than run synchronously on the caller's
+     * thread: the {@link AggregationTrigger} contract is non-blocking, and the
+     * startup run picks the work up — the interval safety-net (when enabled) or the
+     * next post-start event. In daemon mode this scheduler is up before any
+     * partition (and thus any request) is produced, so the drop path is a guard,
+     * not a normal case.
      */
     @Override
     public void request() {
         ScheduledExecutorService ex = this.executor;
         if (ex == null) {
-            runOnce();
+            // Honor the non-blocking contract. Dropping is safe: aggregation is
+            // idempotent (keep-first) and the next run catches the partition up.
+            LogEvents.debug(log)
+                    .message("aggregation request ignored: scheduler not started")
+                    .log();
             return;
         }
         if (pending.compareAndSet(false, true)) {

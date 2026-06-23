@@ -20,11 +20,12 @@
 | ING-1 | **Retention reaper** — единый декларативный reaper (`ioc.maintenance.retention`) чистит `partitions` + `done` + `failed` по возрасту/количеству (delete/archive); пул-политика `RetentionPolicy`, порт `RetentionStore`, `DaemonMaintenanceScheduler`. | закрыт | M | dev/0001 #6 |
 | ING-2 | **Tail-режим для источников** (растущие append-фиды: offset/rotation/checkpoint). **Descoped:** вне домена document-ingest — источники дискретны (Word/HTML, скрейпинг даёт целые документы). При появлении стриминг-источника — новый режим/`SourceReader` тогда. | descoped | L | dev/0001 #1, dev/0006 |
 | ING-3 | **Health-транспорт демона** — actuator/health по HTTP, web включается только в daemon (`DaemonWebEnvironmentPostProcessor` по `ioc.runtime.mode`), loopback-bind, expose `health,info`. Первый камень под web driving-adapter (ING-8). | закрыт | M | dev/0001 |
-| ING-4 | **Durability ledger** — файловый стор → SQLite (`spring-integration-jdbc`) при росте требований. Тянет за собой схему/кэш/проекцию CSV из БД — отдельная итерация (см. ING-7). | seam | M | dev/0001 |
+| ING-4 | **Durability ledger + сторадж** — файловый стор → SQLite (`spring-integration-jdbc`) при росте требований. Тянет за собой схему/кэш/проекцию CSV из БД — отдельная итерация (см. ING-7). Сюда же сводятся два retention-вопроса, которым нужен запрос к стору, а не обход ФС: **(а)** развязка retention↔агрегации (реапить только заведомо агрегированные партиции, а не по голому возрасту/количеству); **(б)** per-group count-retention (счёт «N новейших на артефакт/группу», а не по плоскому пулу листьев). | seam | M | dev/0001, review |
 | ING-5 | **Триггер агрегации** — `ioc.aggregation.trigger: interval｜on-partition｜both`; `AggregationTrigger` port, событийный kick из `IngestionService` с коалесингом, интервал-страховка. | закрыт | M | dev/0001 |
 | ING-6 | **Partition-wrapper boundary** — инвариант зафиксирован ArchUnit: `..domain..` и `..application.pipeline..` не зависят от `..ingest..` (source-key доходит до ядра только как Envelope-metadata). | закрыт | S | dev/0001 |
 | ING-7 | **Инкрементальная запись датафреймов** — сейчас полный rewrite+atomic-move на каждый прогон. Append корректен при keep-first (строки иммутабельны), но экономит только запись, не чтение, и теряет атомарность. Решать вместе со стораджем (ING-4): CSV как проекция из БД, кэш, дельта-запись. | seam | M | review |
-| ING-8 | **Web driving-adapter** — HTTP как третья точка входа рядом с CLI/file-poll: ops (ING-3) → REST-ингест/запросы → TAXII/STIX-сервер (синергия с EXP-1) + BFF под фронтенд. Эндпоинты живут в отдельном `adapter-web`. **Требование:** REST-эндпоинты, дёргающие use-cases, обязаны открывать `MdcScope` (run-id), как CLI/демон, иначе прогоны теряют корреляцию в логах. | seam | L | review |
+| ING-8 | **Web driving-adapter** — HTTP как третья точка входа рядом с CLI/file-poll: ops (ING-3) → REST-ингест/запросы → TAXII/STIX-сервер (синергия с EXP-1) + BFF под фронтенд. Эндпоинты живут в отдельном `adapter-web`. **Требование:** REST-эндпоинты, дёргающие use-cases, обязаны открывать `MdcScope` (run-id), как CLI/демон, иначе прогоны теряют корреляцию в логах. **Связка с актуатором:** при выносе web за loopback `management.endpoint.health.show-details` нужно закрыть auth / перевести в `when-authorized` (сейчас `always` безопасен только из-за loopback-бинда). | seam | L | review |
+| ING-9 | **Коллизия имён при архивации партиций** — `FileSystemRetentionStore.archive` сплющивал вложенное дерево до имени файла, поэтому `masks/<day>/<hash>.csv` и `hashes/<day>/<hash>.csv` (одинаковый basename = хэш источника) затирали друг друга при `action: archive` → тихая потеря 2 из 3 файлов. Фикс: `RetentionEntry` несёт корень цели (`baseDir`), архив зеркалит относительный подпуть под archive-dir; `REPLACE_EXISTING` теперь перезаписывает только тот же самый элемент. | закрыт | S | review (ревью ING-1) |
 
 ## 2. Обогащение вывода (`OUT`)
 
@@ -95,6 +96,18 @@
 
 ## Недавно закрыто (для контекста)
 
+- **Ревью-проход по ING-1/3/5/6 (hardening side-findings):**
+  - **ING-9** — устранена коллизия имён при `action: archive` на вложенном дереве партиций:
+    `RetentionEntry` теперь несёт корень цели (`baseDir`), `FileSystemRetentionStore.archive`
+    зеркалит относительный подпуть под archive-dir (регресс-тест на одинаковый basename из
+    разных под-деревьев). Раньше `masks/<day>/<hash>.csv` и `hashes/<day>/<hash>.csv` затирали друг друга.
+  - **Триггер агрегации** — `AggregationTrigger.request()` больше не запускает агрегацию
+    синхронно на потоке вызывающего до старта планировщика (контракт «never block»): в этом окне
+    запрос дропается с debug-логом — идемпотентность (keep-first) + стартовый прогон покрывают.
+  - **Count-retention** — задокументирована грубая семантика `max-count` на вложенном дереве (пул
+    всех листьев; для `partitions` предпочитать `max-age`); точный per-group счёт отложен в ING-4.
+  - **Actuator** — `show-details: always` явно связан с loopback-биндом + пометка REVISIT для ING-8
+    (вынос web за loopback ⇒ auth / `when-authorized`, иначе утечка внутренних путей).
 - **Hash-aware lookup** — `CsvArtifactLookupRepository` грузит и дедуплицирует хэши + per-artifact `maxId`.
 - **D2** (зависимость `platform-observability` на `application.pipeline`) — снят выносом generic ETL-контрактов в `platform-etl` (этап 9).
 - **ING-3** — health-транспорт демона: actuator/health по HTTP, web-сервер поднимается только в daemon-режиме (`DaemonWebEnvironmentPostProcessor` флипает `spring.main.web-application-type` по `ioc.runtime.mode`; oneshot/CLI остаётся non-web), bind на loopback, expose `health,info`, без `shutdown`. Заодно seed под ING-8.

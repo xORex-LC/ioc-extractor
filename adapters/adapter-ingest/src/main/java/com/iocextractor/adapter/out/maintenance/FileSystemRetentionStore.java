@@ -20,6 +20,13 @@ import java.util.stream.Stream;
  * the nested partition tree ({@code partitions/<artifact>/<day>/<key>.csv}) without
  * mistaking the permanent top-level buckets for reapable units. Empty directories
  * left behind are harmless and intentionally not pruned (keeps reaping path-safe).
+ * Archiving mirrors each entry's sub-path under the archive dir (via
+ * {@link RetentionEntry#relativePath()}), so same-named leaves from different
+ * sub-trees do not collide.
+ *
+ * <p>Because the unit is the leaf file, count-based retention pools all leaves under a
+ * target — coarse for the nested partition tree (prefer age-based there); age-based
+ * retention is unaffected. Per-group counting is deferred to the storage rework (ING-4).
  */
 public final class FileSystemRetentionStore implements RetentionStore {
 
@@ -30,7 +37,7 @@ public final class FileSystemRetentionStore implements RetentionStore {
         }
         try (Stream<Path> walk = Files.walk(dir)) {
             return walk.filter(Files::isRegularFile)
-                    .map(FileSystemRetentionStore::toEntry)
+                    .map(path -> toEntry(path, dir))
                     .toList();
         } catch (IOException | UncheckedIOException e) {
             throw new IocExtractorException("Failed to scan retention directory: " + dir, e);
@@ -48,9 +55,15 @@ public final class FileSystemRetentionStore implements RetentionStore {
 
     @Override
     public void archive(RetentionEntry entry, Path archiveDir) {
-        Path target = archiveDir.resolve(entry.path().getFileName());
+        // Mirror the entry's sub-path under archiveDir so leaf files that share a base
+        // name across sub-trees (masks/<day>/<hash>.csv vs hashes/<day>/<hash>.csv) do
+        // not overwrite each other; REPLACE_EXISTING then only re-archives the same item.
+        Path target = archiveDir.resolve(entry.relativePath());
         try {
-            Files.createDirectories(archiveDir);
+            Path parent = target.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
             try {
                 Files.move(entry.path(), target,
                         StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
@@ -59,14 +72,14 @@ public final class FileSystemRetentionStore implements RetentionStore {
             }
         } catch (IOException e) {
             throw new IocExtractorException("Failed to archive expired entry " + entry.path()
-                    + " to " + archiveDir, e);
+                    + " to " + target, e);
         }
     }
 
-    private static RetentionEntry toEntry(Path path) {
+    private static RetentionEntry toEntry(Path path, Path baseDir) {
         try {
             Instant lastModified = Files.getLastModifiedTime(path).toInstant();
-            return new RetentionEntry(path, lastModified);
+            return new RetentionEntry(path, lastModified, baseDir);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

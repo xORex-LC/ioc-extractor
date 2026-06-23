@@ -14,7 +14,7 @@ class RetentionPolicyTest {
     private static final Instant NOW = Instant.parse("2026-06-22T00:00:00Z");
 
     private static RetentionEntry entry(String name, Duration age) {
-        return new RetentionEntry(Path.of(name), NOW.minus(age));
+        return new RetentionEntry(Path.of(name), NOW.minus(age), Path.of("."));
     }
 
     @Test

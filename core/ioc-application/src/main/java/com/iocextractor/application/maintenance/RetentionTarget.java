@@ -12,7 +12,9 @@ import java.util.Objects;
  * @param name       human-readable target name (for logging/metrics)
  * @param dir        directory whose top-level entries are subject to retention
  * @param maxAge     entries older than this are expired; {@code null}/zero disables age-based reaping
- * @param maxCount   keep at most this many newest entries; {@code <= 0} disables count-based reaping
+ * @param maxCount   keep at most this many newest entries, counted over the leaf entries the
+ *                   store lists; for a nested tree (e.g. {@code partitions}) this pools all
+ *                   leaves together, so prefer {@code maxAge} there. {@code <= 0} disables count-based reaping
  * @param action     what to do with expired entries
  * @param archiveDir destination for {@link RetentionAction#ARCHIVE}; ignored for {@code DELETE}
  */
