@@ -6,8 +6,6 @@ package com.iocextractor.observability;
 public enum EventOutcome {
     SUCCESS("success"),
     FAILURE("failure"),
-    RETRY("retry"),
-    SKIPPED("skipped"),
     UNKNOWN("unknown");
 
     private final String value;

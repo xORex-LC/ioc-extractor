@@ -24,6 +24,13 @@ public record SqliteDataSourceSettings(String role,
         }
     }
 
+    /**
+     * Returns the capacity of the current single Hikari pool. Dedicated
+     * read/write pools are introduced by bootstrap wiring when JDBC ledger
+     * beans are selected; this factory only opens one concrete pool.
+     *
+     * @return single-pool maximum size
+     */
     public int maxPoolSize() {
         return writeMax + readMax;
     }

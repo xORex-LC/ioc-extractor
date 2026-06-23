@@ -1,5 +1,6 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
+import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -18,7 +19,7 @@ class SqliteDataSourceFactoryTest {
         Path db = tempDir.resolve("nested/service.db");
         SqliteDataSourceFactory factory = new SqliteDataSourceFactory(new SqlitePragmaPolicy());
 
-        try (ManagedSqliteDataSource dataSource = factory.create(
+        try (HikariDataSource dataSource = factory.create(
                 new SqliteDataSourceSettings("service", "jdbc:sqlite:" + db, "low-memory", 1, 2));
              Connection connection = dataSource.getConnection()) {
 

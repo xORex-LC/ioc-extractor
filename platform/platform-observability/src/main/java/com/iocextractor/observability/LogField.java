@@ -5,6 +5,7 @@ package com.iocextractor.observability;
  */
 public enum LogField {
     EVENT_ACTION("event.action"),
+    EVENT_TYPE("event.type"),
     EVENT_OUTCOME("event.outcome"),
     EVENT_DURATION("event.duration"),
     FILE_PATH("file.path"),

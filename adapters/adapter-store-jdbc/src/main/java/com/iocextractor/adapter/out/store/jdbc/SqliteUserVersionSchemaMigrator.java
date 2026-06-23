@@ -92,7 +92,8 @@ public final class SqliteUserVersionSchemaMigrator {
             if (applied.isEmpty()) {
                 LogEvents.debug(LOGGER)
                         .action(EventAction.SCHEMA_MIGRATE)
-                        .outcome(EventOutcome.SKIPPED)
+                        .outcome(EventOutcome.UNKNOWN)
+                        .field(LogField.EVENT_TYPE, "skipped")
                         .field(LogField.IOC_DB_ROLE, dbRole)
                         .field(LogField.IOC_SCHEMA_VERSION, targetVersion)
                         .message("sqlite schema already current")
@@ -194,6 +195,9 @@ public final class SqliteUserVersionSchemaMigrator {
     }
 
     private List<String> statements(String script) {
+        // vN.sql files in the service schema are limited to simple DDL
+        // statements. Replace this splitter before adding triggers, BEGIN...END
+        // blocks, or semicolons inside string literals.
         String cleaned = script.lines()
                 .map(line -> line.replaceFirst("--.*$", ""))
                 .collect(Collectors.joining("\n"));

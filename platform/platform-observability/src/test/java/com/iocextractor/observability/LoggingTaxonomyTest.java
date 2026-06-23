@@ -26,6 +26,7 @@ class LoggingTaxonomyTest {
                         "retention_sweep",
                         "schema_migrate",
                         "schema_validate",
+                        "db_open",
                         "ledger_import",
                         "db_health",
                         "maintenance",
@@ -39,6 +40,7 @@ class LoggingTaxonomyTest {
         assertThat(Arrays.stream(LogField.values()).map(LogField::key).toList())
                 .containsExactly(
                         "event.action",
+                        "event.type",
                         "event.outcome",
                         "event.duration",
                         "file.path",

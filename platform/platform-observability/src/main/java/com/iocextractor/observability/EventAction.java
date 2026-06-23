@@ -18,6 +18,7 @@ public enum EventAction {
     RETENTION_SWEEP("retention_sweep"),
     SCHEMA_MIGRATE("schema_migrate"),
     SCHEMA_VALIDATE("schema_validate"),
+    DB_OPEN("db_open"),
     LEDGER_IMPORT("ledger_import"),
     DB_HEALTH("db_health"),
     MAINTENANCE("maintenance"),

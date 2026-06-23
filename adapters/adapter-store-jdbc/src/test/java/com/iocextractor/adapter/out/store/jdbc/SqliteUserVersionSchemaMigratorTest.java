@@ -4,6 +4,7 @@ import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.StorageDiagnosticCodes;
 import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
+import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -27,7 +28,7 @@ class SqliteUserVersionSchemaMigratorTest {
 
     @Test
     void applies_service_schema_to_fresh_database() throws Exception {
-        try (ManagedSqliteDataSource dataSource = dataSource("fresh.db")) {
+        try (HikariDataSource dataSource = dataSource("fresh.db")) {
             var diagnostics = new CollectingDiagnosticSink();
             SchemaMigrationResult result = migrator(dataSource, diagnostics, ServiceSchemaMigrations.sqlite())
                     .migrate();
@@ -50,7 +51,7 @@ class SqliteUserVersionSchemaMigratorTest {
 
     @Test
     void skips_when_schema_is_current() throws Exception {
-        try (ManagedSqliteDataSource dataSource = dataSource("current.db")) {
+        try (HikariDataSource dataSource = dataSource("current.db")) {
             var setupDiagnostics = new CollectingDiagnosticSink();
             var migrator = migrator(dataSource, setupDiagnostics, ServiceSchemaMigrations.sqlite());
             migrator.migrate();
@@ -71,7 +72,7 @@ class SqliteUserVersionSchemaMigratorTest {
         List<SqliteSchemaMigration> migrations = List.of(
                 new SqliteSchemaMigration(1, "one", "CREATE TABLE one (id INTEGER PRIMARY KEY);"),
                 new SqliteSchemaMigration(2, "two", "CREATE TABLE two (id INTEGER PRIMARY KEY);"));
-        try (ManagedSqliteDataSource dataSource = dataSource("partial.db");
+        try (HikariDataSource dataSource = dataSource("partial.db");
              Connection connection = dataSource.getConnection()) {
             connection.createStatement().execute("CREATE TABLE one (id INTEGER PRIMARY KEY)");
             connection.createStatement().execute("PRAGMA user_version=1");
@@ -95,7 +96,7 @@ class SqliteUserVersionSchemaMigratorTest {
 
     @Test
     void refuses_downgrade_without_mutating_database() throws Exception {
-        try (ManagedSqliteDataSource dataSource = dataSource("downgrade.db");
+        try (HikariDataSource dataSource = dataSource("downgrade.db");
              Connection connection = dataSource.getConnection()) {
             connection.createStatement().execute("CREATE TABLE preserved (id INTEGER PRIMARY KEY)");
             connection.createStatement().execute("PRAGMA user_version=5");
@@ -123,7 +124,7 @@ class SqliteUserVersionSchemaMigratorTest {
         List<SqliteSchemaMigration> migrations = List.of(new SqliteSchemaMigration(1, "broken",
                 "CREATE TABLE created_before_failure (id INTEGER PRIMARY KEY);"
                         + "CREATE TABLE broken ("));
-        try (ManagedSqliteDataSource dataSource = dataSource("rollback.db");
+        try (HikariDataSource dataSource = dataSource("rollback.db");
              Connection connection = dataSource.getConnection()) {
             var diagnostics = new CollectingDiagnosticSink();
 
@@ -142,13 +143,13 @@ class SqliteUserVersionSchemaMigratorTest {
         }
     }
 
-    private SqliteUserVersionSchemaMigrator migrator(ManagedSqliteDataSource dataSource,
+    private SqliteUserVersionSchemaMigrator migrator(HikariDataSource dataSource,
                                                      CollectingDiagnosticSink diagnostics,
                                                      List<SqliteSchemaMigration> migrations) {
         return new SqliteUserVersionSchemaMigrator(dataSource, migrations, diagnostics, DIAGNOSTICS, "service");
     }
 
-    private ManagedSqliteDataSource dataSource(String fileName) {
+    private HikariDataSource dataSource(String fileName) {
         Path db = tempDir.resolve(fileName);
         return new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(
                 new SqliteDataSourceSettings("service", "jdbc:sqlite:" + db, "low-memory", 1, 1));
