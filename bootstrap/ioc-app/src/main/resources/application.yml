@@ -58,6 +58,21 @@ ioc:
   runtime:
     mode: oneshot
 
+  # ---- Storage topology ------------------------------------------------------
+  # Storage-neutral selectors live at the role level. Backend-specific tuning is
+  # nested under that backend so future Postgres/Redis settings do not pollute
+  # the common shape. Slice 2 only binds this config; no datasource is created
+  # until ledger.type=jdbc wiring lands.
+  storage:
+    service:
+      type: jdbc
+      url: "jdbc:sqlite:./var/ioc-service.db"
+      sqlite:
+        tuning: low-memory
+      pool:
+        write-max: 1
+        read-max: 2
+
   observability:
     mode: oneshot
     per-item-trace-enabled: false
