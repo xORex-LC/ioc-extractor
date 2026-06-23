@@ -5,6 +5,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -24,6 +25,7 @@ import java.util.Map;
 public record IocProperties(
         String engine,
         @NotNull @Valid Runtime runtime,
+        @NotNull @Valid Storage storage,
         @NotNull @Valid Source source,
         @NotNull @Valid Refang refang,
         @NotEmpty Map<IndicatorType, String> patterns,
@@ -36,6 +38,27 @@ public record IocProperties(
         @NotNull @Valid Observability observability) {
 
     public record Runtime(@NotBlank String mode) {
+    }
+
+    /**
+     * Storage topology and backend-specific tuning. Runtime code selects a role
+     * ({@code service}, later {@code dataframe}) through ports; SQL/JDBC details
+     * remain in storage adapters.
+     */
+    public record Storage(@NotNull @Valid Service service) {
+
+        public record Service(
+                @NotBlank String type,
+                @NotBlank String url,
+                @NotNull @Valid Sqlite sqlite,
+                @NotNull @Valid Pool pool) {
+        }
+
+        public record Sqlite(@NotBlank String tuning) {
+        }
+
+        public record Pool(@Positive int writeMax, @Positive int readMax) {
+        }
     }
 
     public record Source(@NotBlank String type, String charset, @NotNull List<String> sectionMarkers) {

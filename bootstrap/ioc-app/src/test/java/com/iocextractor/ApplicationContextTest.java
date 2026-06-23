@@ -1,6 +1,7 @@
 package com.iocextractor;
 
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
+import com.iocextractor.bootstrap.IocProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -22,8 +23,20 @@ class ApplicationContextTest {
     @Autowired
     ExtractIocsUseCase useCase;
 
+    @Autowired
+    IocProperties props;
+
     @Test
     void context_loads_and_wires_the_use_case() {
         assertThat(useCase).isNotNull();
+    }
+
+    @Test
+    void binds_service_storage_defaults_without_creating_storage_runtime() {
+        assertThat(props.storage().service().type()).isEqualTo("jdbc");
+        assertThat(props.storage().service().url()).isEqualTo("jdbc:sqlite:./var/ioc-service.db");
+        assertThat(props.storage().service().sqlite().tuning()).isEqualTo("low-memory");
+        assertThat(props.storage().service().pool().writeMax()).isEqualTo(1);
+        assertThat(props.storage().service().pool().readMax()).isEqualTo(2);
     }
 }
