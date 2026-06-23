@@ -4,7 +4,8 @@
 
 Outbound storage adapter for relational stores. It owns JDBC access, SQL dialect
 mechanics, SQLite runtime policy, local transactions and schema migration
-mechanics behind application ports.
+mechanics behind application ports. As an edge module it also emits storage
+diagnostics and operational ECS log events for startup/storage actions.
 
 **Правило слоя:** implements storage ports with Spring JDBC/JdbcClient and JDBC
 drivers. Domain and application never import JDBC, SQL, Hikari, SQLite driver or
@@ -19,7 +20,8 @@ Spring transaction types.
 
 ## Зависимости
 
-**Зависит от:** `ioc-application`, `ioc-platform-errors`, Spring JDBC, HikariCP,
+**Зависит от:** `ioc-application`, `ioc-platform-errors`,
+`ioc-platform-diagnostics`, `ioc-platform-observability`, Spring JDBC, HikariCP,
 runtime JDBC drivers.
 
 **Не импортируется:** domain/application internals and sibling adapters.

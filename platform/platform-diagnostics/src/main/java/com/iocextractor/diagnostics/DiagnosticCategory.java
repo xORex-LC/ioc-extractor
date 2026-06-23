@@ -10,5 +10,6 @@ public enum DiagnosticCategory {
     CLASSIFY,
     SINK,
     INGEST,
+    STORAGE,
     PIPELINE
 }

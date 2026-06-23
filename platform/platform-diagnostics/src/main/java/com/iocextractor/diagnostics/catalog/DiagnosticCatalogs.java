@@ -6,8 +6,10 @@ import com.iocextractor.diagnostics.codes.ConfigDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.ExtractionDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
+import com.iocextractor.diagnostics.codes.SchemaDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.SourceDiagnosticCodes;
+import com.iocextractor.diagnostics.codes.StorageDiagnosticCodes;
 
 import java.util.Arrays;
 import java.util.List;
@@ -24,6 +26,8 @@ public final class DiagnosticCatalogs {
             ClassificationDiagnosticCodes.values(),
             SinkDiagnosticCodes.values(),
             IngestDiagnosticCodes.values(),
+            StorageDiagnosticCodes.values(),
+            SchemaDiagnosticCodes.values(),
             PipelineDiagnosticCodes.values()));
 
     private DiagnosticCatalogs() {

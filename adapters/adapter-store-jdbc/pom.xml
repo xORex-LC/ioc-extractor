@@ -24,6 +24,14 @@
             <groupId>com.iocextractor</groupId>
             <artifactId>ioc-platform-errors</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-diagnostics</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-observability</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.slf4j</groupId>

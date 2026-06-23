@@ -15,10 +15,11 @@ types to bootstrap; domain/application do not import this package.
 |---|---|
 | `Sqlite*` | SQLite-specific datasource and PRAGMA policy |
 | `Jdbc*` | Future JDBC implementations of storage ports |
-| `*Schema*` | Future schema version runner and migration support |
+| `*Schema*` | SQLite `user_version` runner and migration support |
 
 ## Зависимости
 
-**Зависит от:** application ports, platform errors, Spring JDBC/JDBC, Hikari.
+**Зависит от:** application ports, platform errors, platform diagnostics,
+platform observability, Spring JDBC/JDBC, Hikari.
 
 **Не импортирует:** bootstrap and sibling adapters.

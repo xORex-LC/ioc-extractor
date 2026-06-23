@@ -24,6 +24,12 @@ class LoggingTaxonomyTest {
                         "aggregation_start",
                         "aggregation_complete",
                         "retention_sweep",
+                        "schema_migrate",
+                        "schema_validate",
+                        "ledger_import",
+                        "db_health",
+                        "maintenance",
+                        "backfill",
                         "diagnostic_emit")
                 .doesNotHaveDuplicates();
     }
@@ -44,6 +50,11 @@ class LoggingTaxonomyTest {
                         "ioc.source.content_hash",
                         "ioc.artifact.name",
                         "ioc.rows",
+                        "ioc.db.role",
+                        "ioc.schema.version",
+                        "ioc.migration.version",
+                        "ioc.identity.epoch",
+                        "ioc.affected_rows",
                         "ioc.diagnostic.code",
                         "ioc.diagnostic.category",
                         "ioc.diagnostic.severity")
