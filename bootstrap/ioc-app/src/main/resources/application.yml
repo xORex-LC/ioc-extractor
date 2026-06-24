@@ -159,7 +159,7 @@ ioc:
           - { name: mask,            from: value, transform: [ lower-host ] }
           - { name: url_match,       from: match.url }
           - { name: host_match,      from: match.host }
-          - { name: score,           from: const }
+          - { name: score,           from: const, type: INTEGER }
           - { name: time_last_seen,  from: const }
           - { name: time_first_seen, from: const }
           - { name: threat_type,     from: const }
@@ -174,7 +174,7 @@ ioc:
         columns:
           - { name: id,              from: id }
           - { name: ip,              from: value }
-          - { name: score,           from: const }
+          - { name: score,           from: const, type: INTEGER }
           - { name: time_last_seen,  from: const }
           - { name: time_first_seen, from: const }
           - { name: threat_type,     from: const }
@@ -198,7 +198,7 @@ ioc:
           - { name: hash_md5,        from: value, when-type: MD5,    transform: [ upper ] }
           - { name: hash_sha256,     from: value, when-type: SHA256, transform: [ upper ] }
           - { name: hash_sha1,       from: value, when-type: SHA1,   transform: [ upper ] }
-          - { name: score,           from: const }
+          - { name: score,           from: const, type: INTEGER }
           - { name: time_last_seen,  from: const }
           - { name: time_first_seen, from: const }
           - { name: threat_type,     from: const }

@@ -1,6 +1,9 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.codes.SchemaDiagnosticCodes;
+import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -9,6 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.Clock;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -136,9 +140,41 @@ class DataframeSchemaReconcilerTest {
         }
     }
 
+    @Test
+    void emits_schema_added_diagnostic_when_column_added() {
+        CollectingDiagnosticSink sink = new CollectingDiagnosticSink();
+        DataframeSchemaReconciler reconciler = diagnosticReconciler(sink);
+        reconciler.reconcile(List.of(schema("masks", column("mask"))));
+
+        reconciler.reconcile(List.of(schema("masks", column("mask"), column("score"))));
+
+        assertThat(sink.diagnostics())
+                .extracting(diagnostic -> diagnostic.code().id())
+                .contains(SchemaDiagnosticCodes.SCHEMA_ADDED.id());
+    }
+
+    @Test
+    void emits_destructive_change_diagnostic_before_refusing_drift() {
+        CollectingDiagnosticSink sink = new CollectingDiagnosticSink();
+        DataframeSchemaReconciler reconciler = diagnosticReconciler(sink);
+        reconciler.reconcile(List.of(schema("masks", column("mask"), column("score"))));
+
+        assertThatThrownBy(() -> reconciler.reconcile(List.of(schema("masks", column("mask")))))
+                .isInstanceOf(IocExtractorException.class);
+        assertThat(sink.diagnostics())
+                .extracting(diagnostic -> diagnostic.code().id())
+                .contains(SchemaDiagnosticCodes.SCHEMA_DESTRUCTIVE_CHANGE.id());
+    }
+
     private DataframeSchemaReconciler reconciler() {
         dataSource = dataSource("schema-" + System.nanoTime() + ".db");
         return new DataframeSchemaReconciler(dataSource);
+    }
+
+    private DataframeSchemaReconciler diagnosticReconciler(CollectingDiagnosticSink sink) {
+        dataSource = dataSource("schema-" + System.nanoTime() + ".db");
+        return new DataframeSchemaReconciler(
+                dataSource, sink, new DiagnosticFactory(Clock.systemUTC()), "dataframe");
     }
 
     private DataframeArtifactSchema schema(String artifactName, DataframeColumn... columns) {

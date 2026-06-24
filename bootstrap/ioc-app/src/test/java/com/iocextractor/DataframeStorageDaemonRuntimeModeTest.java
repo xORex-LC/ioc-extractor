@@ -7,8 +7,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
+import java.util.Comparator;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -30,6 +38,31 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.main.banner-mode=off"
 })
 class DataframeStorageDaemonRuntimeModeTest {
+
+    /**
+     * Reconciliation runs against whatever schema the dataframe DB already has,
+     * so the test must start from a pristine file; otherwise a left-over table
+     * from an earlier run (with different column types) is flagged as drift.
+     * Runs before the application context is refreshed.
+     */
+    @DynamicPropertySource
+    static void pristineDataframeDatabase(DynamicPropertyRegistry registry) {
+        Path dir = Path.of("target/test-dataframe-storage");
+        if (Files.notExists(dir)) {
+            return;
+        }
+        try (Stream<Path> paths = Files.walk(dir)) {
+            paths.sorted(Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.delete(path);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
 
     @Autowired
     ApplicationContext context;

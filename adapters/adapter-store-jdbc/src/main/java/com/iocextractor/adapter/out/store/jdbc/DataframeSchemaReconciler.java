@@ -1,13 +1,27 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.diagnostics.DiagnosticException;
+import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.codes.SchemaDiagnosticCodes;
+import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.observability.EventAction;
+import com.iocextractor.observability.EventOutcome;
+import com.iocextractor.observability.LogField;
+import com.iocextractor.observability.logging.LogEvents;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Clock;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -24,12 +38,29 @@ import java.util.Set;
  */
 public final class DataframeSchemaReconciler {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(DataframeSchemaReconciler.class);
     private static final Set<String> INTERNAL_COLUMNS = Set.of("row_key", "_created_at", "_first_source_key");
 
     private final DataSource dataSource;
+    private final DiagnosticSink diagnosticSink;
+    private final DiagnosticFactory diagnosticFactory;
+    private final String dbRole;
 
     public DataframeSchemaReconciler(DataSource dataSource) {
+        this(dataSource, NoopDiagnosticSink.INSTANCE, new DiagnosticFactory(Clock.systemUTC()), "dataframe");
+    }
+
+    public DataframeSchemaReconciler(DataSource dataSource,
+                                     DiagnosticSink diagnosticSink,
+                                     DiagnosticFactory diagnosticFactory,
+                                     String dbRole) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
+        this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
+        this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
+        if (dbRole == null || dbRole.isBlank()) {
+            throw new IllegalArgumentException("dbRole is required");
+        }
+        this.dbRole = dbRole;
     }
 
     public DataframeSchemaPlan dryRun(List<DataframeArtifactSchema> schemas) {
@@ -44,6 +75,7 @@ public final class DataframeSchemaReconciler {
         try (Connection connection = dataSource.getConnection()) {
             DataframeSchemaPlan plan = plan(connection, schemas);
             apply(connection, plan);
+            emitApplied(plan);
             return plan;
         } catch (SQLException e) {
             throw new IocExtractorException("Failed to reconcile dataframe schema", e);
@@ -82,8 +114,8 @@ public final class DataframeSchemaReconciler {
                             "ALTER TABLE " + quote(table) + " ADD COLUMN "
                                     + quote(desired.name()) + " " + desired.sqlType()));
                 } else if (!typesEqual(current.type(), desired.sqlType())) {
-                    throw new IocExtractorException("Destructive dataframe schema drift for " + table + "."
-                            + desired.name() + ": type " + current.type() + " -> " + desired.sqlType());
+                    throw destructiveDrift(table, "type-change", "column " + desired.name()
+                            + " type " + current.type() + " -> " + desired.sqlType());
                 }
             }
         }
@@ -108,24 +140,64 @@ public final class DataframeSchemaReconciler {
 
     private void guardAgainstDestructiveDrift(DataframeArtifactSchema schema,
                                               Map<String, ExistingColumn> existing) {
-        Map<String, String> desired = new LinkedHashMap<>();
-        desired.put("id", "INTEGER");
+        Set<String> desired = new HashSet<>();
+        desired.add("id");
         for (DataframeColumn column : businessColumns(schema)) {
-            desired.put(column.name(), column.sqlType());
+            desired.add(column.name());
         }
-        desired.put("row_key", "TEXT");
-        desired.put("_created_at", "TEXT");
-        desired.put("_first_source_key", "TEXT");
+        desired.add("row_key");
+        desired.add("_created_at");
+        desired.add("_first_source_key");
 
         for (ExistingColumn column : existing.values()) {
             if (column.name().startsWith("_")) {
                 continue;
             }
-            if (!desired.containsKey(column.name())) {
-                throw new IocExtractorException("Destructive dataframe schema drift for "
-                        + schema.artifactName() + ": unexpected column " + column.name());
+            if (!desired.contains(column.name())) {
+                throw destructiveDrift(schema.artifactName(), "drop-or-rename",
+                        "unexpected column " + column.name());
             }
         }
+    }
+
+    private DiagnosticException destructiveDrift(String artifact, String change, String reason) {
+        Diagnostic diagnostic = diagnosticFactory.create(SchemaDiagnosticCodes.SCHEMA_DESTRUCTIVE_CHANGE)
+                .with("artifact", artifact)
+                .with("change", change)
+                .with("reason", reason)
+                .build();
+        diagnosticSink.emit(diagnostic);
+        LogEvents.error(LOGGER)
+                .action(EventAction.SCHEMA_VALIDATE)
+                .outcome(EventOutcome.FAILURE)
+                .field(LogField.IOC_DB_ROLE, dbRole)
+                .field(LogField.IOC_ARTIFACT_NAME, artifact)
+                .message("destructive dataframe schema drift refused")
+                .log();
+        return new DiagnosticException(diagnostic);
+    }
+
+    private void emitApplied(DataframeSchemaPlan plan) {
+        for (DataframeSchemaChange change : plan.changes()) {
+            if (change.kind() == DataframeSchemaChange.Kind.ADD_COLUMN) {
+                emitColumnAdded(change.tableName(), change.columnName());
+            }
+        }
+    }
+
+    private void emitColumnAdded(String artifact, String column) {
+        Diagnostic diagnostic = diagnosticFactory.create(SchemaDiagnosticCodes.SCHEMA_ADDED)
+                .with("artifact", artifact)
+                .with("column", column)
+                .build();
+        diagnosticSink.emit(diagnostic);
+        LogEvents.info(LOGGER)
+                .action(EventAction.SCHEMA_VALIDATE)
+                .outcome(EventOutcome.SUCCESS)
+                .field(LogField.IOC_DB_ROLE, dbRole)
+                .field(LogField.IOC_ARTIFACT_NAME, artifact)
+                .message("dataframe schema column added")
+                .log();
     }
 
     private List<DataframeColumn> businessColumns(DataframeArtifactSchema schema) {
