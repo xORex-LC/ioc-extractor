@@ -4,7 +4,10 @@ import com.iocextractor.adapter.in.cli.CliRunner;
 import com.iocextractor.adapter.out.store.jdbc.JdbcIngestionLedger;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
+import com.iocextractor.bootstrap.IngestionLedgerHealthIndicator;
+import com.iocextractor.bootstrap.JdbcStorageHealthIndicator;
 import com.zaxxer.hikari.HikariDataSource;
+import org.springframework.boot.actuate.health.Status;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -53,6 +56,11 @@ class JdbcLedgerDaemonRuntimeModeTest {
         assertThat(context.getBean(IngestionLedger.class)).isInstanceOf(JdbcIngestionLedger.class);
         assertThat(context.getBeansOfType(HikariDataSource.class))
                 .containsOnlyKeys("serviceStorageDataSource");
+        assertThat(context.getBeansOfType(IngestionLedgerHealthIndicator.class)).isEmpty();
+        assertThat(context.getBeansOfType(JdbcStorageHealthIndicator.class))
+                .containsOnlyKeys("jdbcStorageHealthIndicator");
+        assertThat(context.getBean(JdbcStorageHealthIndicator.class).health().getStatus())
+                .isEqualTo(Status.UP);
 
         try (var connection = serviceStorageDataSource.getConnection();
              var statement = connection.createStatement();
