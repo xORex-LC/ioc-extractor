@@ -44,6 +44,7 @@ public final class LegacyLedgerImporter {
     private static final String PARTITION_SEPARATOR = "\n";
     private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
     private static final String STATUS_COMPLETED = "COMPLETED";
+    private static final String STATUS_FAILED = "FAILED";
 
     private final Path legacyDir;
     private final IngestionLedger ledger;
@@ -75,31 +76,36 @@ public final class LegacyLedgerImporter {
 
     public LegacyLedgerImportSummary importAll() {
         if (!Files.isDirectory(legacyDir)) {
-            return new LegacyLedgerImportSummary(0, 0, 0);
+            return new LegacyLedgerImportSummary(0, 0, 0, 0);
         }
         List<Path> files = legacyFiles();
         int imported = 0;
         int skipped = 0;
+        int failed = 0;
         for (Path file : files) {
-            String checksum = checksum(file);
             String name = file.getFileName().toString();
-            if (alreadyCompleted(name, checksum)) {
-                skipped++;
-                emitReplaySkipped(name, file);
-                continue;
-            }
-            markStarted(name, file, checksum);
+            // Best-effort: a single unreadable/corrupt legacy file is recorded FAILED and
+            // skipped, not allowed to abort daemon startup. Re-runs retry it idempotently.
             try {
+                String checksum = checksum(file);
+                if (alreadyCompleted(name, checksum)) {
+                    skipped++;
+                    emitReplaySkipped(name, file);
+                    continue;
+                }
+                markStarted(name, file, checksum);
                 replay(read(file));
                 markCompleted(name);
                 imported++;
                 logImported(name, file);
             } catch (RuntimeException e) {
                 markPartial(name, file, e);
-                throw e;
+                failed++;
             }
         }
-        return new LegacyLedgerImportSummary(files.size(), imported, skipped);
+        LegacyLedgerImportSummary summary = new LegacyLedgerImportSummary(files.size(), imported, skipped, failed);
+        logSummary(summary);
+        return summary;
     }
 
     private List<Path> legacyFiles() {
@@ -165,7 +171,7 @@ public final class LegacyLedgerImporter {
                             completed_at = NULL
                         WHERE name = :name
                         """)
-                .param("status", "FAILED")
+                .param("status", STATUS_FAILED)
                 .param("name", name)
                 .update();
         diagnosticSink.emit(diagnosticFactory.create(StorageDiagnosticCodes.IMPORT_PARTIAL)
@@ -316,10 +322,22 @@ public final class LegacyLedgerImporter {
                 .log();
     }
 
+    private void logSummary(LegacyLedgerImportSummary summary) {
+        LogEvents.info(LOGGER)
+                .action(EventAction.LEDGER_IMPORT)
+                .outcome(summary.failed() == 0 ? EventOutcome.SUCCESS : EventOutcome.FAILURE)
+                .field("ioc.legacy_import.scanned", summary.scanned())
+                .field("ioc.legacy_import.imported", summary.imported())
+                .field("ioc.legacy_import.skipped", summary.skipped())
+                .field("ioc.legacy_import.failed", summary.failed())
+                .message("legacy ingestion ledger import finished")
+                .log();
+    }
+
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
     }
 
-    public record LegacyLedgerImportSummary(int scanned, int imported, int skipped) {
+    public record LegacyLedgerImportSummary(int scanned, int imported, int skipped, int failed) {
     }
 }

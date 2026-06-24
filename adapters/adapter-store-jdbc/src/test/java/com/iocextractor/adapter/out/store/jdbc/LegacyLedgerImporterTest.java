@@ -108,6 +108,26 @@ class LegacyLedgerImporterTest {
                 .contains(StorageDiagnosticCodes.IMPORT_IDEMPOTENT_REPLAY.id());
     }
 
+    @Test
+    void continues_past_corrupt_file_and_imports_the_rest() throws Exception {
+        // 'source-bad' sorts before 'source-good', so it is processed first and must
+        // not abort the import of the good file.
+        Files.writeString(legacyDir.resolve("source-bad.properties"), "status=SOURCE_ARCHIVED\n");
+        writeLegacy("source-good.properties", "source-good", IngestionStatus.SOURCE_ARCHIVED,
+                List.of("partitions/source-good.csv"), "done/source-good.html", null);
+
+        var summary = importer().importAll();
+
+        assertThat(summary.scanned()).isEqualTo(2);
+        assertThat(summary.imported()).isEqualTo(1);
+        assertThat(summary.failed()).isEqualTo(1);
+        assertThat(ledger.find(new SourceKey("source-good"))).isPresent();
+        assertThat(markerStatus("source-bad.properties")).isEqualTo("FAILED");
+        assertThat(diagnostics.diagnostics())
+                .extracting(diagnostic -> diagnostic.code().id())
+                .contains(StorageDiagnosticCodes.IMPORT_PARTIAL.id());
+    }
+
     private LegacyLedgerImporter importer() {
         return new LegacyLedgerImporter(legacyDir, ledger, dataSource, diagnostics,
                 new DiagnosticFactory(CLOCK), CLOCK);

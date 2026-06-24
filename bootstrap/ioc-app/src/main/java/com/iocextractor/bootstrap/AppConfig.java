@@ -95,7 +95,6 @@ import com.iocextractor.observability.logging.LoggingPipelineObserver;
 import com.zaxxer.hikari.HikariDataSource;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.QuoteMode;
-import org.springframework.boot.ApplicationRunner;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -103,8 +102,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
-import org.springframework.core.Ordered;
-import org.springframework.core.annotation.Order;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -273,8 +270,7 @@ public class AppConfig {
     }
 
     @Bean(destroyMethod = "close")
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
-            + "'${ioc.ingestion.ledger.type:file}' == 'jdbc'")
+    @ConditionalOnJdbcLedger
     public HikariDataSource serviceStorageDataSource(IocProperties props) {
         IocProperties.Storage.Service service = props.storage().service();
         if (!"jdbc".equalsIgnoreCase(service.type())) {
@@ -290,8 +286,7 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
-            + "'${ioc.ingestion.ledger.type:file}' == 'jdbc'")
+    @ConditionalOnJdbcLedger
     public SchemaMigrationResult serviceSchemaMigration(HikariDataSource serviceStorageDataSource,
                                                         DiagnosticSink diagnosticSink,
                                                         Clock clock) {
@@ -304,8 +299,7 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
-            + "'${ioc.ingestion.ledger.type:file}' == 'jdbc'")
+    @ConditionalOnJdbcLedger
     public IngestionLedger jdbcIngestionLedger(HikariDataSource serviceStorageDataSource,
                                                SchemaMigrationResult serviceSchemaMigration,
                                                Clock clock) {
@@ -313,16 +307,14 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
-            + "'${ioc.ingestion.ledger.type:file}' == 'jdbc'")
+    @ConditionalOnJdbcLedger
     public JdbcStorageHealthProbe serviceStorageHealthProbe(HikariDataSource serviceStorageDataSource,
                                                             SchemaMigrationResult serviceSchemaMigration) {
         return new JdbcStorageHealthProbe(serviceStorageDataSource, "service");
     }
 
     @Bean
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
-            + "'${ioc.ingestion.ledger.type:file}' == 'jdbc'")
+    @ConditionalOnJdbcLedger
     public LegacyLedgerImporter legacyLedgerImporter(IocProperties props,
                                                      IngestionLedger ledger,
                                                      HikariDataSource serviceStorageDataSource,
@@ -337,12 +329,17 @@ public class AppConfig {
                 clock);
     }
 
+    /**
+     * Runs the legacy import during singleton instantiation, i.e. BEFORE Spring
+     * Integration's pollers start (SmartLifecycle starts only after the context is
+     * fully instantiated). This guarantees the legacy ledger is replayed before the
+     * daemon consumes the inbox — an {@code ApplicationRunner} (run after lifecycle
+     * start) would not. The returned summary bean is just the instantiation marker.
+     */
     @Bean
-    @Order(Ordered.HIGHEST_PRECEDENCE)
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
-            + "'${ioc.ingestion.ledger.type:file}' == 'jdbc'")
-    public ApplicationRunner legacyLedgerImportRunner(LegacyLedgerImporter importer) {
-        return args -> importer.importAll();
+    @ConditionalOnJdbcLedger
+    public LegacyLedgerImporter.LegacyLedgerImportSummary legacyLedgerImport(LegacyLedgerImporter importer) {
+        return importer.importAll();
     }
 
     @Bean
@@ -450,15 +447,13 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
-            + "'${ioc.ingestion.ledger.type:file}' == 'file'")
+    @ConditionalOnFileLedger
     public IngestionLedgerHealthIndicator ingestionLedgerHealthIndicator(IocProperties props) {
         return new IngestionLedgerHealthIndicator(props);
     }
 
     @Bean
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
-            + "'${ioc.ingestion.ledger.type:file}' == 'jdbc'")
+    @ConditionalOnJdbcLedger
     public JdbcStorageHealthIndicator jdbcStorageHealthIndicator(JdbcStorageHealthProbe serviceStorageHealthProbe) {
         return new JdbcStorageHealthIndicator(serviceStorageHealthProbe);
     }
