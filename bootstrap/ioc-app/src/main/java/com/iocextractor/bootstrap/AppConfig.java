@@ -32,6 +32,7 @@ import com.iocextractor.adapter.out.sink.csv.UppercaseTransform;
 import com.iocextractor.adapter.out.sink.csv.ValueProvider;
 import com.iocextractor.adapter.out.source.TikaSourceReader;
 import com.iocextractor.adapter.out.store.jdbc.JdbcIngestionLedger;
+import com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealthProbe;
 import com.iocextractor.adapter.out.store.jdbc.LegacyLedgerImporter;
 import com.iocextractor.adapter.out.store.jdbc.SchemaMigrationResult;
 import com.iocextractor.adapter.out.store.jdbc.ServiceSchemaMigrations;
@@ -314,6 +315,14 @@ public class AppConfig {
     @Bean
     @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
             + "'${ioc.ingestion.ledger.type:file}' == 'jdbc'")
+    public JdbcStorageHealthProbe serviceStorageHealthProbe(HikariDataSource serviceStorageDataSource,
+                                                            SchemaMigrationResult serviceSchemaMigration) {
+        return new JdbcStorageHealthProbe(serviceStorageDataSource, "service");
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.ingestion.ledger.type:file}' == 'jdbc'")
     public LegacyLedgerImporter legacyLedgerImporter(IocProperties props,
                                                      IngestionLedger ledger,
                                                      HikariDataSource serviceStorageDataSource,
@@ -441,9 +450,17 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.ingestion.ledger.type:file}' == 'file'")
     public IngestionLedgerHealthIndicator ingestionLedgerHealthIndicator(IocProperties props) {
         return new IngestionLedgerHealthIndicator(props);
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.ingestion.ledger.type:file}' == 'jdbc'")
+    public JdbcStorageHealthIndicator jdbcStorageHealthIndicator(JdbcStorageHealthProbe serviceStorageHealthProbe) {
+        return new JdbcStorageHealthIndicator(serviceStorageHealthProbe);
     }
 
     @Bean

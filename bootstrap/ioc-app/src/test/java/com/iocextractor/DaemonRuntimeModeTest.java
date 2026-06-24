@@ -4,6 +4,8 @@ import com.iocextractor.adapter.in.cli.CliRunner;
 import com.iocextractor.adapter.in.ingest.FileIngestionLedger;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
+import com.iocextractor.bootstrap.IngestionLedgerHealthIndicator;
+import com.iocextractor.bootstrap.JdbcStorageHealthIndicator;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,5 +46,8 @@ class DaemonRuntimeModeTest {
                 .containsKey("iocIngestionFlow");
         assertThat(context.getBean(IngestionLedger.class)).isInstanceOf(FileIngestionLedger.class);
         assertThat(context.getBeansOfType(HikariDataSource.class)).isEmpty();
+        assertThat(context.getBeansOfType(IngestionLedgerHealthIndicator.class))
+                .containsOnlyKeys("ingestionLedgerHealthIndicator");
+        assertThat(context.getBeansOfType(JdbcStorageHealthIndicator.class)).isEmpty();
     }
 }
