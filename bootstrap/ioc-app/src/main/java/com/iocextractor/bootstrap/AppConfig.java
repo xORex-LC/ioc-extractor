@@ -387,8 +387,11 @@ public class AppConfig {
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             @Qualifier("dataframeFormatSchemaMigration")
             SchemaMigrationResult dataframeFormatSchemaMigration,
-            IocProperties props) {
-        return new DataframeSchemaReconciler(dataframeStorageDataSource)
+            IocProperties props,
+            DiagnosticSink diagnosticSink,
+            Clock clock) {
+        return new DataframeSchemaReconciler(
+                dataframeStorageDataSource, diagnosticSink, new DiagnosticFactory(clock), "dataframe")
                 .reconcile(dataframeSchemas(props));
     }
 
