@@ -12,6 +12,7 @@ canonical artifacts, artifact identity и stable id index.
 | `PartitionArtifactRepository.java` | Чтение source-scoped partition artifacts |
 | `CanonicalArtifactRepository.java` | Чтение/запись canonical artifacts |
 | `ArtifactIdentityResolver.java` | Artifact-specific row key extraction |
+| `ArtifactIdentityStore.java` | Guardrail-хранилище identity formula hash + epoch |
 | `StableIdIndex.java` | Stable id allocation/persistence |
 
 ## Границы

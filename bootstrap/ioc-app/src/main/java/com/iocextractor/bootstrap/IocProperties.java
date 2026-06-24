@@ -131,6 +131,7 @@ public record IocProperties(
                 @NotBlank String name,
                 @NotEmpty List<String> keyColumns,
                 String keyMode,
+                @Positive Integer epoch,
                 @NotBlank String conflictPolicy) {
         }
     }
