@@ -9,7 +9,6 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 import javax.sql.DataSource;
 import java.util.Locale;
-import java.util.Optional;
 
 /**
  * Lookup repository backed by indexed dataframe tables.
@@ -26,14 +25,14 @@ public final class JdbcLookupRepository implements LookupRepository {
     public boolean contains(Indicator indicator) {
         if (indicator.type().category() == IndicatorCategory.NETWORK) {
             if (indicator.type() == IndicatorType.IPV4 && isBareIp(indicator.value())) {
-                return exists("ip_list", "ip", indicator.value().toLowerCase(Locale.ROOT));
+                return exists("ip_list", "ip", indicator.value());
             }
-            return exists("masks", "mask", indicator.value().toLowerCase(Locale.ROOT));
+            return exists("masks", "mask", indicator.value());
         }
         return switch (indicator.type()) {
-            case MD5 -> exists("hashes", "hash_md5", indicator.value().toUpperCase(Locale.ROOT));
-            case SHA1 -> exists("hashes", "hash_sha1", indicator.value().toUpperCase(Locale.ROOT));
-            case SHA256 -> exists("hashes", "hash_sha256", indicator.value().toUpperCase(Locale.ROOT));
+            case MD5 -> exists("hashes", "hash_md5", indicator.value());
+            case SHA1 -> exists("hashes", "hash_sha1", indicator.value());
+            case SHA256 -> exists("hashes", "hash_sha256", indicator.value());
             default -> false;
         };
     }
@@ -45,17 +44,19 @@ public final class JdbcLookupRepository implements LookupRepository {
 
     @Override
     public long maxId(String artifactName) {
-        String table = quote(artifactName);
         try {
-            Optional<Long> value = jdbc.sql("SELECT MAX(" + quote("id") + ") FROM " + table)
+            return jdbc.sql("SELECT MAX(" + quote("id") + ") FROM " + quote(artifactName))
                     .query(Long.class)
-                    .optional();
-            return value.orElse(0L) == null ? 0L : value.orElse(0L);
+                    .optional()
+                    .orElse(0L);
         } catch (RuntimeException e) {
             throw new IocExtractorException("Failed to read max id for JDBC artifact: " + artifactName, e);
         }
     }
 
+    // Case-insensitive existence check. The match stays on lower(column) so it is
+    // independent of each artifact's stored casing (masks lower-case, hashes
+    // upper-case); a functional index on lower(column) is the wire-time follow-up.
     private boolean exists(String table, String column, String value) {
         Long count = jdbc.sql("SELECT COUNT(1) FROM " + quote(table)
                         + " WHERE lower(" + quote(column) + ") = :value")

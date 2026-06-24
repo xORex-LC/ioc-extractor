@@ -45,6 +45,8 @@ runtime JDBC drivers.
   `ON CONFLICT(row_key) DO NOTHING`, preserving explicit legacy ids when present.
   `JdbcLookupRepository` serves indexed-style SQL lookups and `maxId` without
   loading CSVs into memory.
-- `JdbcLegacyArtifactImporter` is a one-shot migration helper for existing
-  `*_generated.csv` files and `.ioc-id-index.csv`; it imports via the repository
-  and raises SQLite sequences to the legacy maximum.
+- `JdbcLegacyArtifactImporter` is a one-shot migration helper that reads existing
+  rows through a source `CanonicalArtifactRepository` (the CSV adapter owns CSV
+  parsing) and writes them via `JdbcCanonicalArtifactRepository`, then raises
+  SQLite sequences to the legacy maximum. The `.ioc-id-index.csv` floor is read by
+  the caller and passed in, so this adapter parses no CSV itself.

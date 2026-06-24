@@ -18,7 +18,7 @@ types to bootstrap; domain/application do not import this package.
 | `Jdbc*` | JDBC implementations of storage ports |
 | `*Schema*` | SQLite `user_version` runner, migration support and dataframe reconciler |
 | `Dataframe*` | Table-per-artifact desired schema, additive plan and reconciliation |
-| `JdbcLegacyArtifactImporter` | One-shot import of legacy generated CSV artifacts into dataframe tables |
+| `JdbcLegacyArtifactImporter` | One-shot import of legacy rows (read via a source `CanonicalArtifactRepository`) into dataframe tables |
 
 ## Зависимости
 

@@ -4,12 +4,12 @@ import com.iocextractor.application.aggregation.ArtifactIdentityDefinition;
 import com.iocextractor.application.aggregation.ArtifactRow;
 import com.iocextractor.application.aggregation.CanonicalArtifact;
 import com.iocextractor.application.aggregation.CanonicalArtifactIdentityResolver;
+import com.iocextractor.application.port.out.aggregation.CanonicalArtifactRepository;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
@@ -36,25 +36,20 @@ class JdbcLegacyArtifactImporterTest {
     }
 
     @Test
-    void imports_generated_csv_preserving_ids_and_bumps_sequence_from_sidecar() throws Exception {
+    void imports_legacy_rows_preserving_ids_and_bumps_sequence_from_sidecar() {
         DataframeArtifactSchema schema = new DataframeArtifactSchema("masks", List.of(
                 new DataframeColumn("id"),
                 new DataframeColumn("mask"),
                 new DataframeColumn("source")));
         JdbcCanonicalArtifactRepository repository = repository(schema);
-        Path csv = tempDir.resolve("masks_list_generated.csv");
-        Files.writeString(csv, "\"id\";\"mask\";\"source\"\r\n"
-                + "\"10\";\"example.com\";\"legacy\"\r\n"
-                + "\"11\";\"example.org\";\"legacy\"\r\n");
-        Path idIndex = tempDir.resolve(".ioc-id-index.csv");
-        Files.writeString(idIndex, "\"artifact\";\"key\";\"id\";\"created_at\";\"updated_at\"\r\n"
-                + "\"masks\";\"old\";\"99\";\"2026-06-01T00:00:00Z\";\"2026-06-01T00:00:00Z\"\r\n");
-        var importer = new JdbcLegacyArtifactImporter(
-                dataSource,
-                repository,
-                List.of(schema),
-                Map.of("masks", csv),
-                idIndex);
+
+        // Legacy CSV reading is the CSV adapter's job; here the source repository
+        // hands back already-parsed rows. The sidecar floor (99) arrives from the
+        // caller, which reads .ioc-id-index.csv with the CSV stack.
+        CanonicalArtifactRepository legacySource = legacySource("masks", List.of("id", "mask", "source"),
+                row("id", "10", "mask", "example.com", "source", "legacy"),
+                row("id", "11", "mask", "example.org", "source", "legacy"));
+        var importer = new JdbcLegacyArtifactImporter(dataSource, repository, legacySource, List.of(schema), 99L);
 
         var summary = importer.importAll();
         repository.write("masks", new CanonicalArtifact("masks", List.of("id", "mask", "source"),
@@ -68,6 +63,22 @@ class JdbcLegacyArtifactImporterTest {
                 .containsExactly("10:example.com", "11:example.org", "100:example.net");
     }
 
+    private CanonicalArtifactRepository legacySource(String artifactName, List<String> header, ArtifactRow... rows) {
+        return new CanonicalArtifactRepository() {
+            @Override
+            public CanonicalArtifact load(String name) {
+                return name.equals(artifactName)
+                        ? new CanonicalArtifact(artifactName, header, List.of(rows))
+                        : new CanonicalArtifact(name, header, List.of());
+            }
+
+            @Override
+            public void write(String name, CanonicalArtifact artifact) {
+                throw new UnsupportedOperationException("read-only legacy source");
+            }
+        };
+    }
+
     private JdbcCanonicalArtifactRepository repository(DataframeArtifactSchema schema) {
         dataSource = dataSource("legacy-" + System.nanoTime() + ".db");
         new SqliteUserVersionSchemaMigrator(dataSource, DataframeFormatMigrations.sqlite()).migrate();
@@ -78,6 +89,14 @@ class JdbcLegacyArtifactImporterTest {
                 new CanonicalArtifactIdentityResolver(List.of(
                         new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1))),
                 CLOCK);
+    }
+
+    private ArtifactRow row(String... pairs) {
+        var values = new java.util.LinkedHashMap<String, String>();
+        for (int i = 0; i < pairs.length; i += 2) {
+            values.put(pairs[i], pairs[i + 1]);
+        }
+        return ArtifactRow.ordered(values);
     }
 
     private HikariDataSource dataSource(String fileName) {
