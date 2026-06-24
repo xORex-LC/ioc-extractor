@@ -1,7 +1,7 @@
 # Worknote: слой хранилища (ING-4)
 
-**Статус:** проектирование завершено — O1–O11 ратифицированы, открытых нитей нет;
-готово к реализации Шага 1. **Ветка:** `feature/data-storage/sqlite`.
+**Статус:** Шаг 1 реализован verify-green до JDBC service ledger + health;
+следующий фокус — Шаг 2 (business dataframe truth). **Ветка:** `feature/data-storage/sqlite`.
 **Якорь:** ING-4 в [../techdebt.md](../techdebt.md); сворачивает ING-7 и два
 retention-seam'а. **Формат:** живой документ — фиксируем решения и открытые нити
 по ходу диалога.
@@ -905,6 +905,12 @@ stable-id. Только перенос durable-ledger на JDBC-стор. Verify
    `ledger.type=file`.
 10. **Step 1 docs/status.** Обновить `docs/ingestion.md` (`file | jdbc`, не `sqlite`),
     `docs/techdebt.md` (ING-4 `seam` → `частично`), config examples и worknote state.
+
+**Статус Шага 1:** срезы 1–10 реализованы и покрыты `./mvnw verify`: JDBC storage
+adapter, service SQLite datasource policy, `user_version`-schema, `IngestionLedger`
+TCK, `JdbcIngestionLedger`, selector wiring, legacy import, JDBC health и docs/status.
+File-ledger остаётся default; JDBC включается только в `daemon+jdbc`; oneshot datasource
+не поднимает.
 11. **Dataframe schema foundation.** Добавить dataframe datasource + versioned format
     schema + additive declarative reconciler для business columns; guardrail tests
     add/reorder/drop/type/reserved-prefix/dry-run.

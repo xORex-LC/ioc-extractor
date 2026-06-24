@@ -9,8 +9,10 @@
 > `platform/platform-etl`, IOC use cases и stages — в `core/ioc-application`,
 > технические входы — отдельные `adapter-*` модули. Реализованы whole-file
 > daemon ingestion, partition output, scheduled aggregation в canonical CSV,
-> stable id sidecar, artifact-aware lookup и минимальный health-контур. Tail,
-> retention/reaper и SQLite/JDBC ledger/index остаются следующими расширениями.
+> stable id sidecar, artifact-aware lookup, retention/reaper и health-контур.
+> Служебный durable ledger уже можно переключить с file на JDBC
+> (`ioc.ingestion.ledger.type: file | jdbc`); dataframe/index storage остаётся
+> следующим расширением.
 
 ## 0. Реализованный scope 0.1.0
 
@@ -335,6 +337,16 @@ ioc:
   observability:
     mode: daemon                  # обычно совпадает с runtime.mode; пишет ioc.mode в логах
 
+  storage:
+    service:
+      type: jdbc
+      url: jdbc:sqlite:./var/ioc-service.db
+      sqlite:
+        tuning: low-memory
+      pool:
+        write-max: 1
+        read-max: 2
+
   ingestion:
     dirs:
       inbox: ./var/inbox
@@ -356,8 +368,8 @@ ioc:
       max-attempts: 3
       backoff: 5s
     ledger:
-      type: file                  # file | sqlite
-      path: ./var/ledger
+      type: file                  # file | jdbc; СУБД задаётся storage.service.url
+      path: ./var/ledger          # file-ledger dir; legacy import source при type=jdbc
     concurrency: 1
 
   aggregation:
@@ -407,7 +419,7 @@ ioc:
 | Ретраи/backoff | `spring-retry` (+ `spring-aspects`, если нужен AOP advice) | только `adapter-ingest` |
 | Health/метрики | `spring-boot-starter-actuator` + `spring-boot-starter-web` | health contributors + HTTP `/actuator/health`; web включается **только в daemon** (`DaemonWebEnvironmentPostProcessor`), loopback-bind. См. [dev/0010](dev/0010-health-actuator.md) |
 | Хэш содержимого | JDK `MessageDigest` (`SHA-256`) | новой зависимости не требуется |
-| Durable ledger (later) | `org.xerial:sqlite-jdbc` + `spring-integration-jdbc` | если файлового metadata-store станет мало |
+| Durable ledger | `spring-jdbc`/`JdbcClient` + `org.xerial:sqlite-jdbc` + Hikari | `ioc.ingestion.ledger.type: file \| jdbc`; datasource создаётся только для `daemon+jdbc`, schema через `user_version`, DB health через `quick_check`/PRAGMA |
 | Tail (later) | Apache Commons `Tailer` / SI tail producer | descoped для источников (вне домена document-ingest), см. техдолг ING-2 |
 
 ## 14. Реализованный контур и расширения
@@ -425,6 +437,10 @@ ioc:
 6. Test contour: unit tests for ledger/status transitions, adapter tests with
    `@TempDir`, daemon e2e for duplicate drop/restart compensation, golden check
    against partition content.
+7. Optional JDBC service ledger: `adapter-store-jdbc` provides SQLite datasource
+   policy, service schema migrations, `JdbcIngestionLedger`, legacy file-ledger
+   import and DB health; file-ledger remains the default and oneshot does not
+   create a datasource.
 
 Также реализовано:
 
@@ -438,7 +454,7 @@ ioc:
 
 Позже:
 
-- SQLite/JDBC ledger и stable id index; параллелизм пулом;
+- dataframe storage, CSV-проекция и stable id index; параллелизм пулом;
 - web driving-adapter (REST-ингест/запросы, TAXII/STIX) — ING-8.
 - tail-источники — **descoped** (вне домена document-ingest, ING-2).
 

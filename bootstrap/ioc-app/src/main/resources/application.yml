@@ -61,8 +61,9 @@ ioc:
   # ---- Storage topology ------------------------------------------------------
   # Storage-neutral selectors live at the role level. Backend-specific tuning is
   # nested under that backend so future Postgres/Redis settings do not pollute
-  # the common shape. Slice 2 only binds this config; no datasource is created
-  # until ledger.type=jdbc wiring lands.
+  # the common shape. The service datasource is created only in daemon mode when
+  # ioc.ingestion.ledger.type=jdbc; oneshot and file-ledger daemon runs stay
+  # storage-free.
   storage:
     service:
       type: jdbc
