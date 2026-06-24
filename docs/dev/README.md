@@ -26,6 +26,8 @@
 | `0008-stage-6-8-implementation-followups.md` | Ревью реализации этапов 6–8: устранённые находки + отложенный техдолг (D1 интеграция diagnostics, D3 ECS-типы; D2 закрыт этапом 9) |
 | `0009-modularization-granularity.md` | Гранулярность реактора (14 модулей, единый `ioc-domain`); coupling vs cross-cut; критерий выноса capability; `refang` — кандидат №1; защита границ слоями (Maven/Enforcer/ArchUnit), Modulith отложен |
 | `0010-health-actuator.md` | Health/Actuator по HTTP только в daemon (`DaemonWebEnvironmentPostProcessor` гейтит по `runtime.mode`), loopback-bind, прижатый пул Tomcat, systemd-hardening; задел под web driving-adapter (ING-8) |
+| `0011-remote-sync.md` | Двунаправленная синхронизация с внешними хранилищами (`ioc.sync`, SMB/smbj): транспорт за портом (`FileTransport`), вход → существующий inbox, выход → сформированные артефакты (агностично к output-mode из 0012); v1 = демон + CLI `ioc sync`. **Проектирование.** Открыто: граница транспорт-агностичности |
+| `0012-streaming-dataframe-emission.md` | Формирование датафреймов над непрерывным потоком: окна/триггеры/watermark (Dataflow-модель), output-modes `complete`/`append`, immutable-снимки + маркер готовности, дешёвый консистентный снимок со стороны хранилища (WAL). Cross-cutting: sink ↔ aggregation ↔ storage (ING-4), потребляется доставкой 0011. **Исследование** |
 
 ## Формат
 
