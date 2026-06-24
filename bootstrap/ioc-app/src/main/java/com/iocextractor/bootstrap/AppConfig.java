@@ -10,6 +10,7 @@ import com.iocextractor.adapter.out.sink.csv.AddressUrlValueProvider;
 import com.iocextractor.adapter.out.sink.csv.ArtifactFilter;
 import com.iocextractor.adapter.out.sink.csv.ColumnSpec;
 import com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper;
+import com.iocextractor.adapter.out.sink.csv.CsvArtifactProjection;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactRepositories;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition;
 import com.iocextractor.adapter.out.sink.csv.CsvIocSink;
@@ -22,6 +23,7 @@ import com.iocextractor.adapter.out.sink.csv.LowercaseTransform;
 import com.iocextractor.adapter.out.sink.csv.MatchHostValueProvider;
 import com.iocextractor.adapter.out.sink.csv.MatchUrlValueProvider;
 import com.iocextractor.adapter.out.sink.csv.PartitionedCsvSinkFactory;
+import com.iocextractor.adapter.out.sink.csv.ProjectingCanonicalArtifactRepository;
 import com.iocextractor.adapter.out.sink.csv.RowMapper;
 import com.iocextractor.adapter.out.sink.csv.SourceLabelValueProvider;
 import com.iocextractor.adapter.out.sink.csv.StripPrefixTransform;
@@ -30,7 +32,10 @@ import com.iocextractor.adapter.out.sink.csv.UppercaseTransform;
 import com.iocextractor.adapter.out.sink.csv.ValueProvider;
 import com.iocextractor.adapter.out.source.TikaSourceReader;
 import com.iocextractor.adapter.out.store.jdbc.JdbcArtifactIdentityStore;
+import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository;
 import com.iocextractor.adapter.out.store.jdbc.JdbcIngestionLedger;
+import com.iocextractor.adapter.out.store.jdbc.JdbcIocSink;
+import com.iocextractor.adapter.out.store.jdbc.JdbcLookupRepository;
 import com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealthProbe;
 import com.iocextractor.adapter.out.store.jdbc.LegacyLedgerImporter;
 import com.iocextractor.adapter.out.store.jdbc.DataframeArtifactSchema;
@@ -217,13 +222,26 @@ public class AppConfig {
     }
 
     @Bean
-    public LookupRepository lookupRepository(IocProperties props) {
+    @Primary
+    public LookupRepository lookupRepository(IocProperties props,
+                                             ObjectProvider<JdbcLookupRepository> jdbcLookupRepository) {
+        if (isDataframeJdbc(props)) {
+            return jdbcLookupRepository.getObject();
+        }
         Charset charset = csvCharset(props);
         Map<String, Path> artifactPaths = lookupArtifactPaths(props);
         if (artifactPaths.isEmpty() && !"daemon".equalsIgnoreCase(props.runtime().mode())) {
             return new CsvMaskLookupRepository(Path.of(props.lookup().path()), charset);
         }
         return new CsvArtifactLookupRepository(artifactPaths, charset);
+    }
+
+    @Bean
+    @ConditionalOnDataframeStorage
+    public JdbcLookupRepository jdbcLookupRepository(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            DataframeSchemaPlan dataframeSchemaReconciliation) {
+        return new JdbcLookupRepository(dataframeStorageDataSource);
     }
 
     @Bean
@@ -260,8 +278,17 @@ public class AppConfig {
                                                  MatchPolicy matchPolicy,
                                                  IndicatorFeatureExtractor featureExtractor,
                                                  LookupRepository lookup,
+                                                 ObjectProvider<JdbcCanonicalArtifactRepository>
+                                                         jdbcCanonicalRepository,
+                                                 ObjectProvider<CsvArtifactProjection> csvArtifactProjection,
                                                  IocProperties props) {
-        List<IocSink> sinks = buildSinks(props, matchPolicy, featureExtractor, lookup);
+        List<IocSink> sinks = buildSinks(
+                props,
+                matchPolicy,
+                featureExtractor,
+                lookup,
+                jdbcCanonicalRepository.getIfAvailable(),
+                csvArtifactProjection.getIfAvailable());
         return factory.create(sinks);
     }
 
@@ -422,6 +449,45 @@ public class AppConfig {
     }
 
     @Bean
+    @ConditionalOnDataframeStorage
+    public JdbcCanonicalArtifactRepository jdbcCanonicalArtifactRepository(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            DataframeSchemaPlan dataframeSchemaReconciliation,
+            ArtifactIdentityResolver artifactIdentityResolver,
+            IocProperties props,
+            Clock clock) {
+        return new JdbcCanonicalArtifactRepository(
+                dataframeStorageDataSource,
+                dataframeSchemas(props),
+                artifactIdentityResolver,
+                clock);
+    }
+
+    @Bean
+    @ConditionalOnDataframeStorage
+    public CsvArtifactProjection csvArtifactProjection(JdbcCanonicalArtifactRepository jdbcCanonicalArtifactRepository,
+                                                       IocProperties props,
+                                                       MatchPolicy matchPolicy,
+                                                       IndicatorFeatureExtractor featureExtractor,
+                                                       LookupRepository lookup) {
+        return new CsvArtifactProjection(
+                jdbcCanonicalArtifactRepository,
+                artifactDefinitions(props, matchPolicy, featureExtractor, lookup),
+                canonicalArtifactPaths(props),
+                writeFormat(props.sink().csv()),
+                csvCharset(props));
+    }
+
+    @Bean
+    @Primary
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && '${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
+    public CanonicalArtifactRepository projectingCanonicalArtifactRepository(
+            JdbcCanonicalArtifactRepository jdbcCanonicalArtifactRepository,
+            CsvArtifactProjection csvArtifactProjection) {
+        return new ProjectingCanonicalArtifactRepository(jdbcCanonicalArtifactRepository, csvArtifactProjection);
+    }
+
+    @Bean
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     public IngestionService ingestionService(IngestionLedger ledger,
                                              SourceLifecycle sourceLifecycle,
@@ -464,7 +530,6 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     public ArtifactIdentityResolver artifactIdentityResolver(IocProperties props) {
         return new CanonicalArtifactIdentityResolver(artifactIdentityDefinitions(props));
     }
@@ -601,19 +666,38 @@ public class AppConfig {
     private List<IocSink> buildSinks(IocProperties props,
                                      MatchPolicy matchPolicy,
                                      IndicatorFeatureExtractor featureExtractor,
-                                     LookupRepository lookup) {
+                                     LookupRepository lookup,
+                                     JdbcCanonicalArtifactRepository jdbcCanonicalRepository,
+                                     CsvArtifactProjection csvArtifactProjection) {
         CSVFormat writeFormat = writeFormat(props.sink().csv());
         Charset charset = csvCharset(props);
         return artifactDefinitions(props, matchPolicy, featureExtractor, lookup).stream()
-                .map(artifact -> new CsvIocSink(
-                        artifact.name(),
-                        Path.of(findArtifactPath(props, artifact.name())),
-                        artifact.accepts(),
-                        artifact.filter(),
-                        artifact.mapper(),
-                        new IdGenerator(artifact.idStrategy(), artifact.idStart()),
-                        writeFormat,
-                        charset))
+                .map(artifact -> {
+                    if (isDataframeJdbc(props)) {
+                        if (jdbcCanonicalRepository == null || csvArtifactProjection == null) {
+                            throw new IocExtractorException("Dataframe JDBC storage is enabled but repository "
+                                    + "or CSV projection is not wired");
+                        }
+                        return new JdbcIocSink(
+                                artifact.name(),
+                                artifact.accepts(),
+                                artifact.filter()::accepts,
+                                artifact.mapper().header(),
+                                artifact.mapper()::toRow,
+                                new IdGenerator(artifact.idStrategy(), artifact.idStart())::next,
+                                jdbcCanonicalRepository,
+                                csvArtifactProjection::project);
+                    }
+                    return new CsvIocSink(
+                            artifact.name(),
+                            Path.of(findArtifactPath(props, artifact.name())),
+                            artifact.accepts(),
+                            artifact.filter(),
+                            artifact.mapper(),
+                            new IdGenerator(artifact.idStrategy(), artifact.idStart()),
+                            writeFormat,
+                            charset);
+                })
                 .map(IocSink.class::cast)
                 .toList();
     }
@@ -678,6 +762,10 @@ public class AppConfig {
                 .filter(IocProperties.Sink.Artifact::enabled)
                 .map(IocProperties.Sink.Artifact::name)
                 .toList();
+    }
+
+    private boolean isDataframeJdbc(IocProperties props) {
+        return "jdbc".equalsIgnoreCase(props.storage().dataframe().type());
     }
 
     private void validateAggregationConfig(IocProperties props) {

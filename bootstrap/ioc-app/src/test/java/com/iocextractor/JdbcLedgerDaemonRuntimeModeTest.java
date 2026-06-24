@@ -10,6 +10,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.boot.actuate.health.Status;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.integration.dsl.IntegrationFlow;
@@ -29,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "ioc.ingestion.ledger.type=jdbc",
         "ioc.ingestion.ledger.path=target/test-daemon-jdbc/legacy-ledger",
         "ioc.storage.service.url=jdbc:sqlite:target/test-daemon-jdbc/ioc-service.db",
+        "ioc.storage.dataframe.url=jdbc:sqlite:target/test-daemon-jdbc/ioc-dataframe.db",
         "ioc.ingestion.dirs.inbox=target/test-daemon-jdbc/inbox",
         "ioc.ingestion.dirs.processing=target/test-daemon-jdbc/processing",
         "ioc.ingestion.dirs.done=target/test-daemon-jdbc/done",
@@ -45,6 +47,7 @@ class JdbcLedgerDaemonRuntimeModeTest {
     IngestSourceUseCase ingestSourceUseCase;
 
     @Autowired
+    @Qualifier("serviceStorageDataSource")
     HikariDataSource serviceStorageDataSource;
 
     @Test
@@ -55,7 +58,7 @@ class JdbcLedgerDaemonRuntimeModeTest {
                 .containsKey("iocIngestionFlow");
         assertThat(context.getBean(IngestionLedger.class)).isInstanceOf(JdbcIngestionLedger.class);
         assertThat(context.getBeansOfType(HikariDataSource.class))
-                .containsOnlyKeys("serviceStorageDataSource");
+                .containsOnlyKeys("serviceStorageDataSource", "dataframeStorageDataSource");
         assertThat(context.getBeansOfType(IngestionLedgerHealthIndicator.class)).isEmpty();
         assertThat(context.getBeansOfType(JdbcStorageHealthIndicator.class))
                 .containsOnlyKeys("jdbcStorageHealthIndicator");

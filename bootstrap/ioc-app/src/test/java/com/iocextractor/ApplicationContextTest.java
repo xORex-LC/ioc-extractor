@@ -18,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
         "ioc.lookup.path=target/test-no-such-lookup.csv",
+        "ioc.storage.dataframe.type=disabled",
         "spring.main.banner-mode=off"
 })
 class ApplicationContextTest {

@@ -62,8 +62,8 @@ ioc:
   # Storage-neutral selectors live at the role level. Backend-specific tuning is
   # nested under that backend so future Postgres/Redis settings do not pollute
   # the common shape. The service datasource is created only in daemon mode when
-  # ioc.ingestion.ledger.type=jdbc. The dataframe datasource foundation is opt-in
-  # until the business-data truth switch is wired.
+  # ioc.ingestion.ledger.type=jdbc. The dataframe datasource is the business-data
+  # source of truth; configured CSV files are generated projections.
   storage:
     service:
       type: jdbc
@@ -74,7 +74,7 @@ ioc:
         write-max: 1
         read-max: 2
     dataframe:
-      type: disabled
+      type: jdbc
       url: "jdbc:sqlite:./dataframe/ioc-dataframe.db"
       sqlite:
         tuning: low-memory

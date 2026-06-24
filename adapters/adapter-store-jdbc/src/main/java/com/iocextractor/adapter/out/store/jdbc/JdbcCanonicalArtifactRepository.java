@@ -89,6 +89,8 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
         var rowKey = identityResolver.keyOf(schema.artifactName(), row)
                 .orElseThrow(() -> new IocExtractorException("Cannot resolve row_key for artifact "
                         + schema.artifactName()));
+        String observedAt = clock.instant().toString();
+        String sourceKey = sourceKey(row);
         List<String> columns = new ArrayList<>();
         List<String> values = new ArrayList<>();
         String explicitId = row.value("id");
@@ -105,9 +107,9 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
         columns.add("row_key");
         values.add(rowKey.value());
         columns.add("_created_at");
-        values.add(clock.instant().toString());
+        values.add(observedAt);
         columns.add("_first_source_key");
-        values.add(null);
+        values.add(sourceKey);
 
         String sql = "INSERT INTO " + quote(schema.artifactName()) + "(" + joinedQuoted(columns) + ") VALUES ("
                 + "?,".repeat(columns.size()).replaceFirst(",$", "")
@@ -118,6 +120,53 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
             }
             statement.executeUpdate();
         }
+        upsertSource(connection, schema.artifactName(), rowKey.value(), sourceKey, observedAt);
+    }
+
+    private void upsertSource(Connection connection,
+                              String artifactName,
+                              String rowKey,
+                              String sourceKey,
+                              String observedAt) throws SQLException {
+        String sourceTable = artifactName + "_sources";
+        Long rowId = rowId(connection, artifactName, rowKey);
+        if (rowId == null) {
+            return;
+        }
+        String sql = "INSERT INTO " + quote(sourceTable)
+                + " (" + joinedQuoted(List.of("row_id", "source_key", "first_seen_at", "last_seen_at", "occurrences"))
+                + ") VALUES (?, ?, ?, ?, 1) ON CONFLICT(" + quote("row_id") + ", " + quote("source_key") + ") "
+                + "DO UPDATE SET " + quote("last_seen_at") + " = excluded." + quote("last_seen_at")
+                + ", " + quote("occurrences") + " = " + quote("occurrences") + " + 1";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, rowId);
+            statement.setString(2, sourceKey);
+            statement.setString(3, observedAt);
+            statement.setString(4, observedAt);
+            statement.executeUpdate();
+        }
+    }
+
+    private Long rowId(Connection connection, String artifactName, String rowKey) throws SQLException {
+        String sql = "SELECT " + quote("id") + " FROM " + quote(artifactName)
+                + " WHERE " + quote("row_key") + " = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, rowKey);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next() ? resultSet.getLong(1) : null;
+            }
+        }
+    }
+
+    private String sourceKey(ArtifactRow row) {
+        String sourceKey = row.value("_source_key");
+        if (sourceKey == null || sourceKey.isBlank()) {
+            sourceKey = row.value("source");
+        }
+        if (sourceKey == null || sourceKey.isBlank()) {
+            return "unknown";
+        }
+        return sourceKey;
     }
 
     private Map<String, DataframeArtifactSchema> schemasByName(List<DataframeArtifactSchema> source) {
