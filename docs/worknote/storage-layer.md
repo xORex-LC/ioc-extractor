@@ -933,3 +933,37 @@ File-ledger остаётся default; JDBC включается только в 
 `STORAGE.SCHEMA_DESTRUCTIVE_*`/`SCHEMA_ADDED`; 12 — `STORAGE.IDENTITY_DRIFT`/`EPOCH_BUMP`;
 14 — saga/run-ledger коды + crash-window. Severity→поведение и MDC/events — §«Интеграция
 с Diagnostics & Observability».
+
+**Статус Шага 2 (срезы 11–13 реализованы, `verify` green).** Заметки реализации,
+зафиксированные после код-ревью:
+
+- **Единая identity-формула — намеренная смена семантики composite-ключа (ревью A).**
+  Срез 12 убрал adapter-локальный `ConfigurableArtifactIdentityResolver` и перевёл
+  daemon-агрегацию на `CanonicalArtifactIdentityResolver` (application) — одна формула
+  `row_key` для дедупа CSV И для JDBC-storage («не раздваивать truth»). Для текущего
+  конфига классы эквивалентности не изменились (нормализация идентична; в проде только
+  одноколоночный composite + `first-non-empty`). НО семантика **многоколоночного**
+  composite изменена осознанно: старый резолвер отбрасывал строку, если хоть одна
+  ключевая колонка пуста; новый кодирует пустую как явный `null` и всё равно строит
+  ключ (строка остаётся). Сегодня таких артефактов в конфиге нет → регрессии нет;
+  поведение закреплено тестом `composite_identity_keeps_explicit_nulls`. Если появится
+  многоколоночный composite — помнить, что строки с частичными null больше не выпадают.
+
+- **`<artifact>_sources` / `<artifact>_last_seen` намеренно пустые до среза 14 (ревью D).**
+  В срезах 11–13 они созданы как schema foundation, но писать туда пока некому: текущий
+  `CanonicalArtifact` не несёт observation/provenance, а `JdbcCanonicalArtifactRepository.write()`
+  сознательно остался совместим с существующим aggregation-контрактом. Плановое место
+  заполнения — **срез 14** (DB truth switch + saga/run-ledger): расширить write-path так,
+  чтобы вместе с upsert основной строки писать observation в `<artifact>_sources`
+  (`source_key`, `first_seen_at`, `last_seen_at`, `occurrences`), а `_first_source_key`
+  в основной таблице заполнять при first insert. Сейчас корректно это сделать нельзя без
+  изменения модели данных (источник теряется до уровня `CanonicalArtifact`). Статус:
+  инфраструктура готова заранее, пустая намеренно — не dead weight, не YAGNI-ошибка.
+
+- **Чистка ревью (срезы 11–13):** `JdbcLegacyArtifactImporter` читает строки через
+  source-порт `CanonicalArtifactRepository` (CSV-диалект остаётся в adapter-sink-csv;
+  JDBC-адаптер не парсит CSV сам), сайдкар-floor `.ioc-id-index.csv` приходит параметром
+  от вызывающего слоя. Sequence-floor намеренно глобальный (единый счётчик `nextId`
+  в `CsvStableIdIndex` → общее id-пространство). `JdbcLookupRepository.contains` —
+  регистро-независимый `lower(col)=?`; функциональный индекс на `lower(col)` — follow-up
+  на момент wire-up в срезе 14.

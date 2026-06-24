@@ -24,7 +24,6 @@
 | `PartitionedCsvSinkFactory.java` | Daemon partition sinks по source-key/content-hash |
 | `CsvArtifactRepositories.java` | Чтение partition CSV и атомарная запись canonical CSV за aggregation ports |
 | `CsvStableIdIndex.java` | Sidecar CSV stable id index для stage 11 aggregation |
-| `ConfigurableArtifactIdentityResolver.java` | Artifact-specific stable row key extraction из CSV columns |
 
 ## Заметки
 
