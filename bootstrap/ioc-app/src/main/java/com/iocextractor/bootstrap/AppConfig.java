@@ -34,6 +34,11 @@ import com.iocextractor.adapter.out.source.TikaSourceReader;
 import com.iocextractor.adapter.out.store.jdbc.JdbcIngestionLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealthProbe;
 import com.iocextractor.adapter.out.store.jdbc.LegacyLedgerImporter;
+import com.iocextractor.adapter.out.store.jdbc.DataframeArtifactSchema;
+import com.iocextractor.adapter.out.store.jdbc.DataframeColumn;
+import com.iocextractor.adapter.out.store.jdbc.DataframeFormatMigrations;
+import com.iocextractor.adapter.out.store.jdbc.DataframeSchemaPlan;
+import com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler;
 import com.iocextractor.adapter.out.store.jdbc.SchemaMigrationResult;
 import com.iocextractor.adapter.out.store.jdbc.ServiceSchemaMigrations;
 import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceFactory;
@@ -96,6 +101,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.QuoteMode;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -287,7 +293,9 @@ public class AppConfig {
 
     @Bean
     @ConditionalOnJdbcLedger
-    public SchemaMigrationResult serviceSchemaMigration(HikariDataSource serviceStorageDataSource,
+    public SchemaMigrationResult serviceSchemaMigration(
+                                                        @Qualifier("serviceStorageDataSource")
+                                                        HikariDataSource serviceStorageDataSource,
                                                         DiagnosticSink diagnosticSink,
                                                         Clock clock) {
         return new SqliteUserVersionSchemaMigrator(
@@ -300,7 +308,9 @@ public class AppConfig {
 
     @Bean
     @ConditionalOnJdbcLedger
-    public IngestionLedger jdbcIngestionLedger(HikariDataSource serviceStorageDataSource,
+    public IngestionLedger jdbcIngestionLedger(@Qualifier("serviceStorageDataSource")
+                                               HikariDataSource serviceStorageDataSource,
+                                               @Qualifier("serviceSchemaMigration")
                                                SchemaMigrationResult serviceSchemaMigration,
                                                Clock clock) {
         return new JdbcIngestionLedger(serviceStorageDataSource, clock);
@@ -308,7 +318,9 @@ public class AppConfig {
 
     @Bean
     @ConditionalOnJdbcLedger
-    public JdbcStorageHealthProbe serviceStorageHealthProbe(HikariDataSource serviceStorageDataSource,
+    public JdbcStorageHealthProbe serviceStorageHealthProbe(@Qualifier("serviceStorageDataSource")
+                                                            HikariDataSource serviceStorageDataSource,
+                                                            @Qualifier("serviceSchemaMigration")
                                                             SchemaMigrationResult serviceSchemaMigration) {
         return new JdbcStorageHealthProbe(serviceStorageDataSource, "service");
     }
@@ -317,6 +329,7 @@ public class AppConfig {
     @ConditionalOnJdbcLedger
     public LegacyLedgerImporter legacyLedgerImporter(IocProperties props,
                                                      IngestionLedger ledger,
+                                                     @Qualifier("serviceStorageDataSource")
                                                      HikariDataSource serviceStorageDataSource,
                                                      DiagnosticSink diagnosticSink,
                                                      Clock clock) {
@@ -340,6 +353,43 @@ public class AppConfig {
     @ConditionalOnJdbcLedger
     public LegacyLedgerImporter.LegacyLedgerImportSummary legacyLedgerImport(LegacyLedgerImporter importer) {
         return importer.importAll();
+    }
+
+    @Bean(destroyMethod = "close")
+    @ConditionalOnDataframeStorage
+    public HikariDataSource dataframeStorageDataSource(IocProperties props) {
+        IocProperties.Storage.Dataframe dataframe = props.storage().dataframe();
+        return new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(new SqliteDataSourceSettings(
+                "dataframe",
+                dataframe.url(),
+                dataframe.sqlite().tuning(),
+                dataframe.pool().writeMax(),
+                dataframe.pool().readMax()));
+    }
+
+    @Bean
+    @ConditionalOnDataframeStorage
+    public SchemaMigrationResult dataframeFormatSchemaMigration(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            DiagnosticSink diagnosticSink,
+            Clock clock) {
+        return new SqliteUserVersionSchemaMigrator(
+                dataframeStorageDataSource,
+                DataframeFormatMigrations.sqlite(),
+                diagnosticSink,
+                new DiagnosticFactory(clock),
+                "dataframe").migrate();
+    }
+
+    @Bean
+    @ConditionalOnDataframeStorage
+    public DataframeSchemaPlan dataframeSchemaReconciliation(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            @Qualifier("dataframeFormatSchemaMigration")
+            SchemaMigrationResult dataframeFormatSchemaMigration,
+            IocProperties props) {
+        return new DataframeSchemaReconciler(dataframeStorageDataSource)
+                .reconcile(dataframeSchemas(props));
     }
 
     @Bean
@@ -673,6 +723,17 @@ public class AppConfig {
         return artifact.columns().stream()
                 .map(column -> new ColumnSpec(column.name(), column.from(),
                         column.value(), column.whenType(), column.transform()))
+                .toList();
+    }
+
+    private List<DataframeArtifactSchema> dataframeSchemas(IocProperties props) {
+        return props.sink().artifacts().stream()
+                .filter(IocProperties.Sink.Artifact::enabled)
+                .map(artifact -> new DataframeArtifactSchema(
+                        artifact.name(),
+                        artifact.columns().stream()
+                                .map(column -> new DataframeColumn(column.name(), column.type()))
+                                .toList()))
                 .toList();
     }
 
