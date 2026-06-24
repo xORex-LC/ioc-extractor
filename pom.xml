@@ -39,6 +39,7 @@
         <module>platform/platform-diagnostics-logging</module>
         <module>core/ioc-domain</module>
         <module>core/ioc-application</module>
+        <module>core/ioc-application-tck</module>
         <module>adapters/adapter-regex-re2j</module>
         <module>adapters/adapter-psl</module>
         <module>adapters/adapter-source-tika</module>
@@ -129,6 +130,11 @@
             <dependency>
                 <groupId>com.iocextractor</groupId>
                 <artifactId>ioc-application</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-application-tck</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

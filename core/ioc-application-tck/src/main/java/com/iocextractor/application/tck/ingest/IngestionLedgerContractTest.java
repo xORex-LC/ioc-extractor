@@ -1,9 +1,10 @@
-package com.iocextractor.application.port.out.ingest;
+package com.iocextractor.application.tck.ingest;
 
 import com.iocextractor.application.ingest.IngestionRecord;
 import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.SourceUnit;
+import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -16,7 +17,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Reusable behavior contract for {@link IngestionLedger} adapters.
+ * Reusable behavior contract for {@link IngestionLedger} adapters. Lives in this
+ * dedicated TCK module (a normal jar) rather than a {@code test-jar}: adapters add
+ * it as a {@code test}-scoped dependency and subclass it, with no package-phase
+ * coupling, inherited test toolkit, and a clean "only the contract is exported" boundary.
  */
 public abstract class IngestionLedgerContractTest {
 
@@ -67,6 +71,9 @@ public abstract class IngestionLedgerContractTest {
         ledger.markPartitionWritten(unit.key(), List.of(path("partitions/old.csv")));
         ledger.markPartitionWritten(unit.key(), List.of(path("partitions/new-a.csv"), path("partitions/new-b.csv")));
 
+        // Partition ORDER is not part of the contract (see JdbcIngestionLedger#partitions):
+        // adapters may return any order. The inputs here are alphabetical, so isEqualTo
+        // happens to hold for both the insertion-order (file) and sorted (jdbc) backends.
         assertThat(ledger.find(unit.key())).get()
                 .extracting(IngestionRecord::partitions)
                 .isEqualTo(List.of(path("partitions/new-a.csv"), path("partitions/new-b.csv")));
