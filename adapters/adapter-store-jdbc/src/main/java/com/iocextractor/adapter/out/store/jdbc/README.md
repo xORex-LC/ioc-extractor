@@ -3,8 +3,8 @@
 ## Назначение
 
 JDBC storage adapter internals: datasource creation, SQLite runtime policy,
-schema migration mechanics, dataframe schema reconciliation and repository
-implementations for storage ports.
+schema migration mechanics, dataframe schema reconciliation, repository
+implementations for storage ports and legacy artifact import.
 
 **Правило слоя:** this package may use JDBC, Hikari, SQL and database-specific
 mechanics. It must expose only application-port implementations and storage VO
@@ -18,6 +18,7 @@ types to bootstrap; domain/application do not import this package.
 | `Jdbc*` | JDBC implementations of storage ports |
 | `*Schema*` | SQLite `user_version` runner, migration support and dataframe reconciler |
 | `Dataframe*` | Table-per-artifact desired schema, additive plan and reconciliation |
+| `JdbcLegacyArtifactImporter` | One-shot import of legacy generated CSV artifacts into dataframe tables |
 
 ## Зависимости
 
