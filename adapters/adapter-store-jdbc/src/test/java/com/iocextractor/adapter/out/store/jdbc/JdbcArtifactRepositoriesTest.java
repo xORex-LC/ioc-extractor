@@ -53,6 +53,11 @@ class JdbcArtifactRepositoriesTest {
         assertThat(loaded.rows())
                 .extracting(row -> row.value("id") + ":" + row.value("mask") + ":" + row.value("source"))
                 .containsExactly("42:example.com:first", "44:example.org:second");
+        assertThat(sourceRows("masks"))
+                .containsExactlyInAnyOrder(
+                        "42:first:1",
+                        "42:duplicate:1",
+                        "44:second:1");
     }
 
     @Test
@@ -115,6 +120,26 @@ class JdbcArtifactRepositoriesTest {
 
     private SourceContext source() {
         return new SourceContext(null, null);
+    }
+
+    private List<String> sourceRows(String artifactName) {
+        try (var connection = dataSource.getConnection();
+             var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("""
+                     SELECT row_id, source_key, occurrences
+                     FROM %s_sources
+                     ORDER BY row_id, source_key
+                     """.formatted(artifactName))) {
+            var rows = new java.util.ArrayList<String>();
+            while (resultSet.next()) {
+                rows.add(resultSet.getLong("row_id") + ":"
+                        + resultSet.getString("source_key") + ":"
+                        + resultSet.getLong("occurrences"));
+            }
+            return rows;
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
     }
 
     private HikariDataSource dataSource(String fileName) {

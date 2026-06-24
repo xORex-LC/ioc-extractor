@@ -28,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "ioc.ingestion.dirs.failed=target/test-daemon/failed",
         "ioc.ingestion.ledger.path=target/test-daemon/ledger",
         "ioc.ingestion.output.partitions-dir=target/test-daemon/partitions",
+        "ioc.storage.dataframe.url=jdbc:sqlite:target/test-daemon/ioc-dataframe.db",
         "spring.main.banner-mode=off"
 })
 class DaemonRuntimeModeTest {
@@ -45,7 +46,8 @@ class DaemonRuntimeModeTest {
         assertThat(context.getBeansOfType(IntegrationFlow.class))
                 .containsKey("iocIngestionFlow");
         assertThat(context.getBean(IngestionLedger.class)).isInstanceOf(FileIngestionLedger.class);
-        assertThat(context.getBeansOfType(HikariDataSource.class)).isEmpty();
+        assertThat(context.getBeansOfType(HikariDataSource.class))
+                .containsOnlyKeys("dataframeStorageDataSource");
         assertThat(context.getBeansOfType(IngestionLedgerHealthIndicator.class))
                 .containsOnlyKeys("ingestionLedgerHealthIndicator");
         assertThat(context.getBeansOfType(JdbcStorageHealthIndicator.class)).isEmpty();

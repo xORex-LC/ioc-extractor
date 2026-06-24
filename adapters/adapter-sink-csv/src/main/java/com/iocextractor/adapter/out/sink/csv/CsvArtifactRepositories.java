@@ -71,7 +71,10 @@ public final class CsvArtifactRepositories implements PartitionArtifactRepositor
         for (IngestionRecord record : records) {
             for (Path path : record.partitions()) {
                 String artifactName = artifactNameFor(path);
-                partitions.add(new PartitionArtifact(record.key(), artifactName, path, readRows(path)));
+                List<ArtifactRow> rows = readRows(path).stream()
+                        .map(row -> row.withValue("_source_key", record.key().value()))
+                        .toList();
+                partitions.add(new PartitionArtifact(record.key(), artifactName, path, rows));
             }
         }
         return partitions;
