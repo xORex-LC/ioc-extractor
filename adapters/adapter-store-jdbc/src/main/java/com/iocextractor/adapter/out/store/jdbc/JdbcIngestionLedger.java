@@ -220,6 +220,12 @@ public final class JdbcIngestionLedger implements IngestionLedger {
         }
     }
 
+    // Only multi-statement mutations (markClaimed, markPartitionWritten) need an
+    // explicit transaction to stay atomic. Single-statement UPDATE marks are atomic
+    // under autocommit, and the find-then-write marks (markFailed, the status marks
+    // via require()) are safe ONLY because of the single-writer model (no concurrent
+    // writer can interleave between the read and the write). Revisit this — wrap the
+    // read-modify-write marks in inTransaction — if/when concurrent writers are introduced.
     private void inTransaction(Runnable action) {
         transactions.executeWithoutResult(status -> action.run());
     }
@@ -249,6 +255,11 @@ public final class JdbcIngestionLedger implements IngestionLedger {
                 row.reason());
     }
 
+    // Partition order is NOT part of the ledger contract: partitions of a source
+    // are disjoint per-artifact files and nothing downstream depends on their order.
+    // ORDER BY partition_path only makes the result deterministic; it intentionally
+    // differs from FileIngestionLedger's insertion order. (Partitions are transitional
+    // and removed at the optional β-collapse, O1.)
     private List<Path> partitions(SourceKey key) {
         return jdbc.sql("""
                         SELECT partition_path

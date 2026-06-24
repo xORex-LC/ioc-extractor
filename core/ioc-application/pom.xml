@@ -37,19 +37,6 @@
 
     <build>
         <plugins>
-            <!-- Export reusable port contract tests for adapters. -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>test-jar</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-
             <!-- Storage mechanism dependencies belong to adapters/bootstrap only. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

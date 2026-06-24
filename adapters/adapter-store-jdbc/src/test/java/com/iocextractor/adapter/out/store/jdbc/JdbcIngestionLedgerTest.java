@@ -2,7 +2,7 @@ package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.ingest.SourceUnit;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
-import com.iocextractor.application.port.out.ingest.IngestionLedgerContractTest;
+import com.iocextractor.application.tck.ingest.IngestionLedgerContractTest;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
