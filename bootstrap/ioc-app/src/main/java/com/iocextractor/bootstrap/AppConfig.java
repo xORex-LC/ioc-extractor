@@ -8,10 +8,8 @@ import com.iocextractor.adapter.out.regex.Re2jPatternEngine;
 import com.iocextractor.adapter.out.sink.csv.AddressIpValueProvider;
 import com.iocextractor.adapter.out.sink.csv.AddressUrlValueProvider;
 import com.iocextractor.adapter.out.sink.csv.ArtifactFilter;
-import com.iocextractor.adapter.out.sink.csv.ArtifactKeyDefinition;
 import com.iocextractor.adapter.out.sink.csv.ColumnSpec;
 import com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper;
-import com.iocextractor.adapter.out.sink.csv.ConfigurableArtifactIdentityResolver;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactRepositories;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition;
 import com.iocextractor.adapter.out.sink.csv.CsvIocSink;
@@ -31,6 +29,7 @@ import com.iocextractor.adapter.out.sink.csv.Transform;
 import com.iocextractor.adapter.out.sink.csv.UppercaseTransform;
 import com.iocextractor.adapter.out.sink.csv.ValueProvider;
 import com.iocextractor.adapter.out.source.TikaSourceReader;
+import com.iocextractor.adapter.out.store.jdbc.JdbcArtifactIdentityStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcIngestionLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealthProbe;
 import com.iocextractor.adapter.out.store.jdbc.LegacyLedgerImporter;
@@ -46,7 +45,10 @@ import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceSettings;
 import com.iocextractor.adapter.out.store.jdbc.SqlitePragmaPolicy;
 import com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator;
 import com.iocextractor.application.aggregation.AggregationService;
+import com.iocextractor.application.aggregation.ArtifactIdentityDefinition;
+import com.iocextractor.application.aggregation.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.aggregation.KeepFirstMergePolicy;
+import com.iocextractor.application.aggregation.StoredArtifactIdentity;
 import com.iocextractor.application.ingest.IngestionService;
 import com.iocextractor.application.maintenance.RetentionAction;
 import com.iocextractor.application.maintenance.RetentionService;
@@ -60,6 +62,7 @@ import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.application.port.out.LookupRepository;
 import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.application.port.out.aggregation.ArtifactIdentityResolver;
+import com.iocextractor.application.port.out.aggregation.ArtifactIdentityStore;
 import com.iocextractor.application.port.out.aggregation.CanonicalArtifactRepository;
 import com.iocextractor.application.port.out.aggregation.PartitionArtifactRepository;
 import com.iocextractor.application.port.out.aggregation.StableIdIndex;
@@ -396,6 +399,29 @@ public class AppConfig {
     }
 
     @Bean
+    @ConditionalOnDataframeStorage
+    public ArtifactIdentityStore artifactIdentityStore(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            DiagnosticSink diagnosticSink,
+            Clock clock) {
+        return new JdbcArtifactIdentityStore(
+                dataframeStorageDataSource,
+                clock,
+                diagnosticSink,
+                new DiagnosticFactory(clock),
+                "dataframe");
+    }
+
+    @Bean
+    @ConditionalOnDataframeStorage
+    public List<StoredArtifactIdentity> artifactIdentityValidation(
+            ArtifactIdentityStore artifactIdentityStore,
+            DataframeSchemaPlan dataframeSchemaReconciliation,
+            IocProperties props) {
+        return artifactIdentityStore.ensureAll(artifactIdentityDefinitions(props));
+    }
+
+    @Bean
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     public IngestionService ingestionService(IngestionLedger ledger,
                                              SourceLifecycle sourceLifecycle,
@@ -440,12 +466,7 @@ public class AppConfig {
     @Bean
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     public ArtifactIdentityResolver artifactIdentityResolver(IocProperties props) {
-        return new ConfigurableArtifactIdentityResolver(props.aggregation().artifacts().stream()
-                .map(artifact -> new ArtifactKeyDefinition(
-                        artifact.name(),
-                        artifact.keyColumns(),
-                        "first-non-empty".equalsIgnoreCase(blankToEmpty(artifact.keyMode()))))
-                .toList());
+        return new CanonicalArtifactIdentityResolver(artifactIdentityDefinitions(props));
     }
 
     @Bean
@@ -737,6 +758,16 @@ public class AppConfig {
                         artifact.columns().stream()
                                 .map(column -> new DataframeColumn(column.name(), column.type()))
                                 .toList()))
+                .toList();
+    }
+
+    private List<ArtifactIdentityDefinition> artifactIdentityDefinitions(IocProperties props) {
+        return props.aggregation().artifacts().stream()
+                .map(artifact -> new ArtifactIdentityDefinition(
+                        artifact.name(),
+                        artifact.keyColumns(),
+                        "first-non-empty".equalsIgnoreCase(blankToEmpty(artifact.keyMode())),
+                        artifact.epoch() == null ? 1 : artifact.epoch()))
                 .toList();
     }
 

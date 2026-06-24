@@ -130,8 +130,9 @@ class DataframeSchemaReconcilerTest {
                 dataSource,
                 DataframeFormatMigrations.sqlite()).migrate();
 
-        assertThat(result.currentVersion()).isEqualTo(1);
+        assertThat(result.currentVersion()).isEqualTo(2);
         assertThat(tableExists("dataframe_schema_format")).isTrue();
+        assertThat(tableExists("artifact_identity")).isTrue();
         try (Connection connection = dataSource.getConnection();
              var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT value FROM dataframe_schema_format WHERE name = 'format'")) {
