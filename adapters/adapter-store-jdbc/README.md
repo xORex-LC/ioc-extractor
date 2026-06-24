@@ -3,8 +3,8 @@
 ## Назначение
 
 Outbound storage adapter for relational stores. It owns JDBC access, SQL dialect
-mechanics, SQLite runtime policy, local transactions and schema migration
-mechanics behind application ports. As an edge module it also emits storage
+mechanics, SQLite runtime policy, local transactions, schema migration mechanics
+and dataframe schema reconciliation. As an edge module it also emits storage
 diagnostics and operational ECS log events for startup/storage actions.
 
 **Правило слоя:** implements storage ports with Spring JDBC/JdbcClient and JDBC
@@ -17,6 +17,8 @@ Spring transaction types.
 |---|---|
 | `pom.xml` | Maven module descriptor |
 | `src/main/java/com/iocextractor/adapter/out/store/jdbc/` | JDBC storage implementations and internal SQL helpers |
+| `src/main/resources/com/iocextractor/adapter/out/store/jdbc/dataframe/` | Versioned dataframe format migrations |
+| `src/main/resources/com/iocextractor/adapter/out/store/jdbc/service/` | Versioned service storage migrations |
 
 ## Зависимости
 
@@ -34,3 +36,7 @@ runtime JDBC drivers.
   selector slice.
 - SQLite connection PRAGMAs are installed as Xerial `SQLiteConfig` driver
   properties on physical connection creation, not on every pool borrow.
+- Dataframe business tables are reconciled additively from `ioc.sink.artifacts`:
+  missing tables/columns are created, order changes are ignored, and
+  drop/rename/type drift fails before mutation. Internal `_`-prefixed columns are
+  excluded from config drift checks.

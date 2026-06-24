@@ -45,9 +45,16 @@ public record IocProperties(
      * ({@code service}, later {@code dataframe}) through ports; SQL/JDBC details
      * remain in storage adapters.
      */
-    public record Storage(@NotNull @Valid Service service) {
+    public record Storage(@NotNull @Valid Service service, @NotNull @Valid Dataframe dataframe) {
 
         public record Service(
+                @NotBlank String type,
+                @NotBlank String url,
+                @NotNull @Valid Sqlite sqlite,
+                @NotNull @Valid Pool pool) {
+        }
+
+        public record Dataframe(
                 @NotBlank String type,
                 @NotBlank String url,
                 @NotNull @Valid Sqlite sqlite,
@@ -97,6 +104,7 @@ public record IocProperties(
                     @NotBlank String name,
                     @NotBlank String from,
                     String value,
+                    String type,
                     IndicatorType whenType,
                     List<String> transform) {
             }
