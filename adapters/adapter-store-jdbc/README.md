@@ -4,8 +4,9 @@
 
 Outbound storage adapter for relational stores. It owns JDBC access, SQL dialect
 mechanics, SQLite runtime policy, local transactions, schema migration mechanics
-and dataframe schema reconciliation. As an edge module it also emits storage
-diagnostics and operational ECS log events for startup/storage actions.
+dataframe schema reconciliation, artifact repositories and legacy artifact
+import. As an edge module it also emits storage diagnostics and operational ECS
+log events for startup/storage actions.
 
 **Правило слоя:** implements storage ports with Spring JDBC/JdbcClient and JDBC
 drivers. Domain and application never import JDBC, SQL, Hikari, SQLite driver or
@@ -40,3 +41,10 @@ runtime JDBC drivers.
   missing tables/columns are created, order changes are ignored, and
   drop/rename/type drift fails before mutation. Internal `_`-prefixed columns are
   excluded from config drift checks.
+- `JdbcCanonicalArtifactRepository` writes rows with canonical `row_key` and
+  `ON CONFLICT(row_key) DO NOTHING`, preserving explicit legacy ids when present.
+  `JdbcLookupRepository` serves indexed-style SQL lookups and `maxId` without
+  loading CSVs into memory.
+- `JdbcLegacyArtifactImporter` is a one-shot migration helper for existing
+  `*_generated.csv` files and `.ioc-id-index.csv`; it imports via the repository
+  and raises SQLite sequences to the legacy maximum.

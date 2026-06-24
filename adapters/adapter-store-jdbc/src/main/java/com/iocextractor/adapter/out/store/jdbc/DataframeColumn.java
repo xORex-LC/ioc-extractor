@@ -12,6 +12,10 @@ public record DataframeColumn(String name, String sqlType) {
 
     private static final Set<String> SUPPORTED_TYPES = Set.of("TEXT", "INTEGER", "REAL", "BLOB", "NUMERIC");
 
+    public DataframeColumn(String name) {
+        this(name, "TEXT");
+    }
+
     public DataframeColumn {
         name = requireIdentifier(name, "column name");
         sqlType = normalizeType(sqlType);
