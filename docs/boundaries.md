@@ -82,9 +82,9 @@ classes().that().resideInAPackage("..application.port..").should().beInterfaces(
 // 5) Без циклов между срезами
 slices().matching("com.iocextractor.(*)..").should().beFreeOfCycles();
 
-// 6) Partition-wrapper boundary (ING-6): ингест-концерны (source-key/партиции)
-//    не протекают ни в домен, ни в generic extraction pipeline — source-key
-//    доходит до ядра только как непрозрачная Envelope-metadata.
+// 6) Ingest boundary: ingest concerns do not leak into domain or generic
+//    extraction pipeline. Source metadata reaches the pipeline only through
+//    explicit application contracts.
 noClasses().that().resideInAPackage("..domain..")
     .should().dependOnClassesThat().resideInAnyPackage("..ingest..");
 noClasses().that().resideInAPackage("..application.pipeline..")

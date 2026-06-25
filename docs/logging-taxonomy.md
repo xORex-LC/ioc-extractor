@@ -86,8 +86,8 @@ Per-item поля (`ioc.indicator.*`, `ioc.dedup.key`) не входят в ба
 | `lookup_load` | lookup | lookup artifact загружен |
 | `source_read` | source | source document прочитан |
 | `artifact_write` | sink | CSV artifact записан |
-| `aggregation_start` | aggregation | scheduled aggregation началась |
-| `aggregation_complete` | aggregation | scheduled aggregation завершилась |
+| `storage_write` | storage | canonical storage write завершён |
+| `artifact_project` | sink | CSV projection regenerated from storage |
 | `diagnostic_emit` | diagnostics | Diagnostic опубликован в log stream |
 
 Следующие daemon actions добавляются только вместе с первым producer'ом события.

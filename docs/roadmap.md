@@ -26,13 +26,13 @@
 | 7 | Конвейер Pipes-and-Filters (`Stage`/`Envelope`/`Result`); эволюция `IocExtractionService` | 6 | стадии за `Stage`; вывод не меняется; collect-and-continue работает | mvn test + прогон |
 | 8 | Observability/logging ([logging.md](logging.md), [logging-taxonomy.md](logging-taxonomy.md)): ECS, `MdcScope` из `Envelope.meta`, seed-таксономия, stage-события, bridge `LoggingDiagnosticSink`, daemon ECS-file | 6,7 | MDC без протечек (изолир. тест); ECS-ключи стабильны; diagnostics→`ioc.diagnostic.*` через bridge; daemon rolling ECS-file | mvn test + прогон |
 | 9 | Многомодульность ([modularization.md](modularization.md)) | 1,7,8 | Maven reactor; вынос platform/core/adapters/bootstrap; границы держатся компиляцией, Enforcer и ArchUnit | `./mvnw -B -ntp -T 1C verify` |
-| 10 | Инжест-демон ([ingestion.md](ingestion.md)): `ioc.runtime.mode`, `IngestSourceUseCase`, watch/poll (SI), автомат каталогов, `IngestionLedger`, partition output | 6,7,8,9 | daemon whole-file поток; CLI остаётся `oneshot`; статус-машина + компенсации; идемпотентность | mvn test + daemon e2e |
-| 11 | Финализация daemon: агрегатор (партиции→канон), stable id sidecar, artifact-aware lookup, health | 10 | стабильные id при повторной агрегации; `AGGREGATED` в ledger; retention off; health indicators | mvn test + e2e |
+| 10 | Инжест-демон ([ingestion.md](ingestion.md)): `ioc.runtime.mode`, `IngestSourceUseCase`, watch/poll (SI), автомат каталогов, `IngestionLedger` | 6,7,8,9 | daemon whole-file поток; CLI остаётся `oneshot`; статус-машина + компенсации; идемпотентность | mvn test + daemon e2e |
+| 11 | Storage finalization: JDBC dataframe truth, artifact-aware lookup, CSV projection, run-ledger recovery, health | 10 | stable row identity; daemon и oneshot пишут в один canonical store; CSV — проекция; health indicators | mvn test + e2e |
 
 Порядок гибкий — этапы 0–1 дешёвые и включают остальное; 2→3→4 — трек «доменной
 корректности»; 5 параллелен; **6 диагностика → 7 pipeline (`Envelope`) → 8
 observability** (логирование читает `Envelope.meta`); далее 9 модули, 10 инжест,
-11 агрегатор. Заказчик выдаёт этапы в удобном порядке.
+11 storage finalization. Заказчик выдаёт этапы в удобном порядке.
 
 ## Статус
 

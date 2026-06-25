@@ -49,7 +49,7 @@ dead-letter sidecar или JSONL.
 | Ingest adapter | detect/claim/stabilize/move/retry/dead-letter | SLF4J + MDC |
 | Application pipeline | stage started/completed, counters, duration | SLF4J / LogEvent helper |
 | Domain services | редкие DEBUG/TRACE решения без инфраструктурных деталей | SLF4J или diagnostic result |
-| Out adapters | IO: read/write CSV, lookup loaded, partition written | SLF4J |
+| Out adapters | IO: read/write CSV, JDBC storage, lookup loaded, projection written | SLF4J |
 | Diagnostics bridge | diagnostic result rendered as log event | `LoggingDiagnosticSink` |
 
 ## Границы ответственности
@@ -160,8 +160,7 @@ run id.
 | `ioc.stage` | custom | вокруг стадии |
 | `ioc.source.path` | custom | путь источника |
 | `ioc.source.content_hash` | custom | после стабилизации файла |
-| `ioc.artifact.name` | custom | запись sink/aggregation |
-| `ioc.partition.path` | custom | stream partition |
+| `ioc.artifact.name` | custom | запись sink/projection |
 
 `event.dataset` — ECS-поле encoder-а. В официальном `logback-ecs-encoder` оно
 сериализуется до MDC, а одноимённый MDC-key фильтруется как reserved ECS key.
@@ -246,7 +245,7 @@ ECS JSON:
 - `var/logs/` в `.gitignore`;
 - rolling file с `max-file-size`, `max-history`, `total-size-cap`;
 - console appender сохраняется для journal/container logs;
-- retention логов не связан с retention партиций инжеста;
+- retention логов не связан с retention каталогов инжеста;
 - JSONL diagnostics можно добавить позже, если эксплуатационно нужно отделить
   data-processing report от общего application log.
 

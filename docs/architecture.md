@@ -40,12 +40,12 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Platform | `diagnostics` | Diagnostic model, catalog, `Result`/`Notification`, `FailurePolicy`, sink ports |
 | Platform | `observability` | MDC/log event helpers and logging taxonomy |
 | Application | `application/port/in` | `ExtractIocsUseCase`, `ExtractionCommand`, `ExtractionResult` (driving) |
-| Application | `application/port/out` | `SourceReader`, `IocSink`, `LookupRepository`, ingestion/aggregation ports, `AggregationTrigger`, `RetentionStore` (driven) |
+| Application | `application/port/out` | `SourceReader`, `IocSink`, `LookupRepository`, ingestion/artifact-storage ports, `RetentionStore` (driven) |
 | Application | `application/pipeline/payload` | IOC-specific payload records between stages |
 | Application | `application/pipeline/stage` | IOC ETL stage implementations |
 | Application | `application/service` | `IocExtractionService` — use-case orchestrator |
 | Application | `application/ingest` | daemon ingestion orchestration (`IngestionService`) |
-| Application | `application/aggregation` | partition aggregation, stable id assignment, merge policy |
+| Application | `application/aggregation` | storage-neutral artifact row identity, canonical artifact snapshots and ingest run recovery model |
 | Application | `application/maintenance` | retention reaper: `RetentionPolicy` (pure) + `RetentionService` |
 | Adapter (in) | `adapter/in/cli` | `IocRootCommand`, `ExtractCommand`, `CliRunner` (picocli) |
 | Adapter (out) | `adapter/out/regex` | `Re2jPatternEngine` (default), `JdkRegexPatternEngine` |
@@ -89,8 +89,6 @@ read (SourceReader)
 | `LookupRepository` | driven (out) | Проверки существования (дедуп) против «хранилища» |
 | `PatternEngine` | domain SPI | Движок regex (RE2/J по умолчанию, JDK — замена) |
 | `IngestSourceUseCase` | driving (in) | Обработка одного daemon source unit |
-| `AggregatePartitionsUseCase` | driving (in) | Сведение готовых daemon-партиций в canonical CSV |
-| `AggregationTrigger` | driven (out) | Событийный kick агрегации «партиция готова» (коалесинг); `interval｜on-partition｜both` |
 | `RunRetentionUseCase` / `RetentionStore` | driving (in) / driven (out) | Reaper растущих каталогов по возрасту/количеству (delete/archive) |
 
 ## Классификация сетевых масок
@@ -154,7 +152,7 @@ read (SourceReader)
 
 **Кодировки I/O.** Вход декодируется по `ioc.source.charset` (`auto` = детект Tika/ICU;
 явное имя форсит text/HTML, docx/pdf — по дизайну нет); внутри — Unicode `String`.
-Выход всех CSV и чтение существующих артефактов в lookup/агрегации — в
+Выход всех CSV и чтение существующих артефактов в lookup/storage — в
 `ioc.sink.csv.charset` (read=write); непредставимые символы заменяются с WARN-сигналом,
 неизвестное имя кодировки — fail-fast. Детали — [extraction.md](extraction.md) и
 [output-mapping.md](output-mapping.md).

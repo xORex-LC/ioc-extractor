@@ -17,16 +17,16 @@
 
 | ID | Долг | Статус | Эфф. | Источник |
 |---|---|---|---|---|
-| ING-1 | **Retention reaper** — единый декларативный reaper (`ioc.maintenance.retention`) чистит `partitions` + `done` + `failed` по возрасту/количеству (delete/archive); пул-политика `RetentionPolicy`, порт `RetentionStore`, `DaemonMaintenanceScheduler`. | закрыт | M | dev/0001 #6 |
+| ING-1 | **Retention reaper** — единый декларативный reaper (`ioc.maintenance.retention`) чистит `done` + `failed` по возрасту/количеству (delete/archive); пул-политика `RetentionPolicy`, порт `RetentionStore`, `DaemonMaintenanceScheduler`. Partition-specific retention удалён вместе с partition-staging. | закрыт | M | dev/0001 #6, storage collapse |
 | ING-2 | **Tail-режим для источников** (растущие append-фиды: offset/rotation/checkpoint). **Descoped:** вне домена document-ingest — источники дискретны (Word/HTML, скрейпинг даёт целые документы). При появлении стриминг-источника — новый режим/`SourceReader` тогда. | descoped | L | dev/0001 #1, dev/0006 |
 | ING-3 | **Health-транспорт демона** — actuator/health по HTTP, web включается только в daemon (`DaemonWebEnvironmentPostProcessor` по `ioc.runtime.mode`), loopback-bind, expose `health,info`. Первый камень под web driving-adapter (ING-8). | закрыт | M | dev/0001 |
-| ING-4 | **Durability ledger + сторадж** — реализован служебный JDBC storage (`ioc.ingestion.ledger.type: file \| jdbc`, service SQLite datasource, `user_version`-миграции, JDBC `IngestionLedger`, legacy-import, DB health) **и business dataframe truth**: `ioc.storage.dataframe.type: jdbc` (default), per-artifact identity (`identity_hash`/`epoch`), JDBC canonical/lookup repositories с `<artifact>_sources`, CSV (`*_generated.csv`) как проекция из БД для oneshot и daemon. Retention по `partitions` ledger-gated: реапит только partition-файлы из `AGGREGATED` записей; `max-count` для `partitions` применяется per-artifact. Durable `aggregation_run` закрывает crash-window между commit БД и записью CSV-проекции. | закрыт | M | dev/0001, review, worknote/storage-layer |
-| ING-4a | **Durable run-ledger + saga (crash-window).** Service schema содержит `aggregation_run`/`export_run`; daemon-агрегация пишет checkpoints `STARTED → DB_COMMITTED → PROJECTION_COMPLETED → COMPLETED`. Если процесс падает после commit БД, startup recovery находит `DB_COMMITTED`, повторяет CSV-проекцию из БД и закрывает run. Сбой до DB commit помечается `FAILED`, потому что автоматический replay без повторного расчёта unsafe. | закрыт | M | review, worknote/storage-layer §«Статус Шага 3» |
-| ING-5 | **Триггер агрегации** — `ioc.aggregation.trigger: interval｜on-partition｜both`; `AggregationTrigger` port, событийный kick из `IngestionService` с коалесингом, интервал-страховка. | закрыт | M | dev/0001 |
-| ING-6 | **Partition-wrapper boundary** — инвариант зафиксирован ArchUnit: `..domain..` и `..application.pipeline..` не зависят от `..ingest..` (source-key доходит до ядра только как Envelope-metadata). | закрыт | S | dev/0001 |
+| ING-4 | **Durability ledger + сторадж** — реализован служебный JDBC storage (`ioc.ingestion.ledger.type: file \| jdbc`, service SQLite datasource, `user_version`-миграции, JDBC `IngestionLedger`, legacy-import, DB health) **и business dataframe truth**: `ioc.storage.dataframe.type: jdbc` (default), per-artifact identity (`identity_hash`/`epoch`), JDBC canonical/lookup repositories с `<artifact>_sources`, CSV (`*_generated.csv`) как проекция из БД для oneshot и daemon. Partition-staging удалён; daemon пишет сразу в canonical store. | закрыт | M | dev/0001, review, worknote/storage-layer |
+| ING-4a | **Durable run-ledger + saga (crash-window).** Service schema содержит `ingest_run`; daemon пишет checkpoints `STARTED → DB_COMMITTED → PROJECTION_COMPLETED → COMPLETED` для per-file write→project. Если процесс падает после commit БД, startup recovery повторяет CSV-проекцию из БД и закрывает run. Сбой до DB commit помечается `FAILED`, потому что автоматический replay без повторного расчёта unsafe. | закрыт | M | review, worknote/storage-layer §«Статус Шага 3» |
+| ING-5 | **Триггер прежнего merge-pass** — удалён вместе с partition-staging; daemon больше не ждёт отдельный scheduled pass после ingest. | закрыт | M | dev/0001, storage collapse |
+| ING-6 | **Partition-wrapper boundary** — исторический guardrail снят после удаления промежуточного staging; source-key теперь доходит в JDBC sink как adapter/application concern. | закрыт | S | dev/0001, storage collapse |
 | ING-7 | **Инкрементальная запись датафреймов** — CSV теперь проекция из БД (ING-4), но `CsvArtifactProjection` всё ещё полностью перечитывает артефакт из БД и переписывает весь файл (atomic temp→move) на каждый write. Корректно и атомарно по файлу, но O(N) на каждый прогон/агрегацию. Остаётся: дельта-проекция/кэш (писать только изменённые строки), либо проекция по запросу/расписанию вместо после-каждого-write. | seam | M | review |
 | ING-8 | **Web driving-adapter** — HTTP как третья точка входа рядом с CLI/file-poll: ops (ING-3) → REST-ингест/запросы → TAXII/STIX-сервер (синергия с EXP-1) + BFF под фронтенд. Эндпоинты живут в отдельном `adapter-web`. **Требование:** REST-эндпоинты, дёргающие use-cases, обязаны открывать `MdcScope` (run-id), как CLI/демон, иначе прогоны теряют корреляцию в логах. **Связка с актуатором:** при выносе web за loopback `management.endpoint.health.show-details` нужно закрыть auth / перевести в `when-authorized` (сейчас `always` безопасен только из-за loopback-бинда). | seam | L | review |
-| ING-9 | **Коллизия имён при архивации партиций** — `FileSystemRetentionStore.archive` сплющивал вложенное дерево до имени файла, поэтому `masks/<day>/<hash>.csv` и `hashes/<day>/<hash>.csv` (одинаковый basename = хэш источника) затирали друг друга при `action: archive` → тихая потеря 2 из 3 файлов. Фикс: `RetentionEntry` несёт корень цели (`baseDir`), архив зеркалит относительный подпуть под archive-dir; `REPLACE_EXISTING` теперь перезаписывает только тот же самый элемент. | закрыт | S | review (ревью ING-1) |
+| ING-9 | **Коллизия имён при архивации вложенных targets** — `FileSystemRetentionStore.archive` раньше сплющивал вложенное дерево до имени файла. Фикс: `RetentionEntry` несёт корень цели (`baseDir`), архив зеркалит относительный подпуть под archive-dir; после удаления partition-target это остаётся защитой для будущих вложенных targets. | закрыт | S | review (ревью ING-1) |
 
 ## 2. Обогащение вывода (`OUT`)
 
@@ -56,7 +56,7 @@
 | ID | Долг | Статус | Эфф. | Источник |
 |---|---|---|---|---|
 | CFG-1 | **Тихий `catch (NumberFormatException ignored)`** на `id.start` ([AppConfig.java:512](../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java#L512)) — опечатка молча уходит в `auto`. | открыт | S | review |
-| CFG-2 | **Нет кросс-проверки имён артефактов** `lookup.artifacts` / `aggregation.artifacts` ↔ `sink.artifacts` — опечатка → молчаливый неверный baseline / no-op агрегации. | открыт | S | review |
+| CFG-2 | **Нет кросс-проверки имён артефактов** `lookup.artifacts` / `aggregation.artifacts` ↔ `sink.artifacts` — опечатка → молчаливый неверный baseline / no-op identity config. | открыт | S | review |
 | CFG-3 | **«stage 11» протекло в рантайм-ошибку** ([AppConfig.java:421](../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java#L421)) — внутренний номер этапа в сообщении пользователю. | открыт | S | review |
 
 ## 6. Код-смелл (`CODE`)
@@ -98,25 +98,23 @@
 ## Недавно закрыто (для контекста)
 
 - **Ревью-проход по ING-1/3/5/6 (hardening side-findings):**
-  - **ING-9** — устранена коллизия имён при `action: archive` на вложенном дереве партиций:
+  - **ING-9** — устранена коллизия имён при `action: archive` на вложенном дереве:
     `RetentionEntry` теперь несёт корень цели (`baseDir`), `FileSystemRetentionStore.archive`
     зеркалит относительный подпуть под archive-dir (регресс-тест на одинаковый basename из
     разных под-деревьев). Раньше `masks/<day>/<hash>.csv` и `hashes/<day>/<hash>.csv` затирали друг друга.
-  - **Триггер агрегации** — `AggregationTrigger.request()` больше не запускает агрегацию
-    синхронно на потоке вызывающего до старта планировщика (контракт «never block»): в этом окне
-    запрос дропается с debug-логом — идемпотентность (keep-first) + стартовый прогон покрывают.
-  - **Count-retention** — для `partitions` `max-count` теперь применяется per-artifact
-    (первый сегмент подпути относительно target-dir); для остальных targets остаётся общий пул.
+  - **Триггер прежнего merge-pass** — удалён вместе с partition-staging; direct-to-canonical daemon write
+    закрывает прежний scheduled merge контур.
+  - **Count-retention** — после удаления `partitions` target остаётся общий пул для плоских
+    `done`/`failed`.
   - **Actuator** — `show-details: always` явно связан с loopback-биндом + пометка REVISIT для ING-8
     (вынос web за loopback ⇒ auth / `when-authorized`, иначе утечка внутренних путей).
 - **Hash-aware lookup** — `CsvArtifactLookupRepository` грузит и дедуплицирует хэши + per-artifact `maxId`.
 - **D2** (зависимость `platform-observability` на `application.pipeline`) — снят выносом generic ETL-контрактов в `platform-etl` (этап 9).
 - **ING-3** — health-транспорт демона: actuator/health по HTTP, web-сервер поднимается только в daemon-режиме (`DaemonWebEnvironmentPostProcessor` флипает `spring.main.web-application-type` по `ioc.runtime.mode`; oneshot/CLI остаётся non-web), bind на loopback, expose `health,info`, без `shutdown`. Заодно seed под ING-8.
-- **ING-5** — триггер агрегации стал конфигурируемым (`ioc.aggregation.trigger: interval｜on-partition｜both`): `AggregationTrigger` port, событийный kick из `IngestionService` после архивации партиции (коалесинг через `pending`-флаг + single-thread executor), интервал остаётся страховкой.
-- **ING-6** — инвариант partition-wrapper зафиксирован ArchUnit (`..domain..` и `..application.pipeline..` ⊥ `..ingest..`); код уже был чист, теперь протечка краснит сборку.
-- **ING-1** — retention reaper реализован: один `RetentionPolicy` + порт `RetentionStore` (`FileSystemRetentionStore`, реап листовых файлов рекурсивно) + `DaemonMaintenanceScheduler`; конфиг `ioc.maintenance.retention` (targets: partitions/done/failed, max-age/max-count, delete|archive). Для `partitions` добавлен ledger-gating: удаляются только файлы из `AGGREGATED` записей; `max-count` применяется per-artifact. Заглушка `ioc.aggregation.retention` удалена.
-- **ING-4a** — durable `aggregation_run` реализован: post-DB-commit crash-window восстанавливается startup recovery через адресную CSV-проекцию незавершённых артефактов.
-- **Кодировки I/O** — задекларированный `ioc.source.charset` теперь реально соблюдается (форс text/HTML через Tika `EncodingDetector`; docx/pdf — по дизайну нет), добавлен `ioc.sink.csv.charset` для всех писателей **и** чтения артефактов в lookup/агрегации (read=write), непредставимые символы заменяются (не падаем), fail-fast на неизвестном имени кодировки.
+- **ING-5/ING-6** — partition trigger и wrapper удалены при storage collapse.
+- **ING-1** — retention reaper реализован: один `RetentionPolicy` + порт `RetentionStore` (`FileSystemRetentionStore`, реап листовых файлов рекурсивно) + `DaemonMaintenanceScheduler`; конфиг `ioc.maintenance.retention` (targets: done/failed, max-age/max-count, delete|archive).
+- **ING-4a** — durable `ingest_run` реализован: post-DB-commit crash-window восстанавливается startup recovery через адресную CSV-проекцию незавершённых артефактов.
+- **Кодировки I/O** — задекларированный `ioc.source.charset` теперь реально соблюдается (форс text/HTML через Tika `EncodingDetector`; docx/pdf — по дизайну нет), добавлен `ioc.sink.csv.charset` для всех писателей **и** чтения артефактов в lookup/storage (read=write), непредставимые символы заменяются (не падаем), fail-fast на неизвестном имени кодировки.
 - **Атрибуция:** пустой `source` вместо `UNKNOWN` + первый реальный продьюсер диагностик (`SOURCE.MARKERS_UNMATCHED`), частично закрывает OBS-D1.
 
 > Связанные документы: [roadmap.md](roadmap.md) (статус этапов), [dev/](dev/)
