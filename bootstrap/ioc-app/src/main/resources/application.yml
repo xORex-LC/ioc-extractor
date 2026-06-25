@@ -247,17 +247,14 @@ ioc:
   #  max-age: ISO-8601 / Spring duration (e.g. 14d, 720h); max-count: 0 = disabled.
   #  action: delete | archive (archive needs archive-dir).
   #  An entry is reaped if older than max-age OR beyond the max-count newest.
-  #  NOTE: entries are individual leaf files, reaped recursively. So for the nested
-  #  partitions tree max-count pools all artifact/day files together (coarse) — prefer
-  #  max-age there; max-count fits the flat done/failed dirs. Per-group count lands
-  #  with the storage rework (ING-4), where retention becomes a query.
+  #  NOTE: entries are individual leaf files, reaped recursively. Count retention
+  #  is global per target and intended for flat done/failed dirs.
   maintenance:
     retention:
       enabled: false
       interval: 1h
       initial-delay: 5m
       targets:
-        - { name: partitions, dir: "./dataframe/partitions", max-age: 14d, max-count: 0, action: delete }
         - { name: done,       dir: "./var/done",   max-age: 30d, max-count: 0, action: delete }
         - { name: failed,     dir: "./var/failed", max-age: 90d, max-count: 0, action: delete }
 

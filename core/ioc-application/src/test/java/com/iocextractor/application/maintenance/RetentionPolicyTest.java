@@ -41,19 +41,14 @@ class RetentionPolicyTest {
     }
 
     @Test
-    void count_can_be_applied_per_group() {
+    void count_retention_is_global_across_entries() {
         List<RetentionEntry> entries = List.of(
                 entry("masks-newest", Duration.ofHours(1)),
                 entry("masks-oldest", Duration.ofHours(2)),
                 entry("hashes-newest", Duration.ofHours(1)),
                 entry("hashes-oldest", Duration.ofHours(2)));
 
-        List<RetentionEntry> reaped = RetentionPolicy.select(
-                entries,
-                NOW,
-                null,
-                1,
-                entry -> entry.path().getFileName().toString().split("-")[0]);
+        List<RetentionEntry> reaped = RetentionPolicy.select(entries, NOW, null, 2);
 
         assertThat(reaped).extracting(e -> e.path().toString())
                 .containsExactlyInAnyOrder("masks-oldest", "hashes-oldest");

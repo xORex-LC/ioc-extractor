@@ -10,7 +10,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Function;
 
 /**
  * Use case that sweeps every configured {@link RetentionTarget} once: list its
@@ -20,25 +19,14 @@ import java.util.function.Function;
  */
 public final class RetentionService implements RunRetentionUseCase {
 
-    private static final String PARTITIONS_TARGET = "partitions";
-
     private final RetentionStore store;
     private final List<RetentionTarget> targets;
     private final Clock clock;
-    private final RetentionEligibility eligibility;
 
     public RetentionService(RetentionStore store, List<RetentionTarget> targets, Clock clock) {
-        this(store, targets, clock, RetentionEligibility.allowAll());
-    }
-
-    public RetentionService(RetentionStore store,
-                            List<RetentionTarget> targets,
-                            Clock clock,
-                            RetentionEligibility eligibility) {
         this.store = Objects.requireNonNull(store, "store");
         this.targets = List.copyOf(Objects.requireNonNull(targets, "targets"));
         this.clock = Objects.requireNonNull(clock, "clock");
-        this.eligibility = Objects.requireNonNull(eligibility, "eligibility");
     }
 
     @Override
@@ -50,9 +38,8 @@ public final class RetentionService implements RunRetentionUseCase {
         for (RetentionTarget target : targets) {
             List<RetentionEntry> entries = store.list(target.dir());
             scanned += entries.size();
-            List<RetentionEntry> eligible = eligibility.eligibleEntries(target, entries);
             List<RetentionEntry> expired =
-                    RetentionPolicy.select(eligible, now, target.maxAge(), target.maxCount(), groupBy(target));
+                    RetentionPolicy.select(entries, now, target.maxAge(), target.maxCount());
             for (RetentionEntry entry : expired) {
                 if (target.action() == RetentionAction.ARCHIVE) {
                     store.archive(entry, target.archiveDir());
@@ -64,16 +51,5 @@ public final class RetentionService implements RunRetentionUseCase {
             reapedByTarget.put(target.name(), expired.size());
         }
         return new RetentionResult(scanned, reaped, reapedByTarget);
-    }
-
-    private Function<RetentionEntry, String> groupBy(RetentionTarget target) {
-        if (!PARTITIONS_TARGET.equalsIgnoreCase(target.name())) {
-            return ignored -> "";
-        }
-        return entry -> {
-            var relative = entry.baseDir().toAbsolutePath().normalize()
-                    .relativize(entry.path().toAbsolutePath().normalize());
-            return relative.getNameCount() == 0 ? "" : relative.getName(0).toString();
-        };
     }
 }

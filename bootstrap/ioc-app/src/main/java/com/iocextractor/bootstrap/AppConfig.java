@@ -53,7 +53,6 @@ import com.iocextractor.application.aggregation.NoopArtifactProjection;
 import com.iocextractor.application.aggregation.NoopRunLedger;
 import com.iocextractor.application.aggregation.StoredArtifactIdentity;
 import com.iocextractor.application.ingest.IngestionService;
-import com.iocextractor.application.maintenance.RetentionEligibility;
 import com.iocextractor.application.maintenance.RetentionAction;
 import com.iocextractor.application.maintenance.RetentionService;
 import com.iocextractor.application.maintenance.RetentionTarget;
@@ -570,8 +569,7 @@ public class AppConfig {
         return new RetentionService(
                 store,
                 retentionTargets(props),
-                clock,
-                RetentionEligibility.allowAll());
+                clock);
     }
 
     @Bean
