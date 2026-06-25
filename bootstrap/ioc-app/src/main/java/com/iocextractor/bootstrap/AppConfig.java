@@ -274,6 +274,7 @@ public class AppConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "oneshot", matchIfMissing = true)
     public ExtractIocsUseCase extractIocsUseCase(IocExtractionServiceFactory factory,
                                                  MatchPolicy matchPolicy,
                                                  IndicatorFeatureExtractor featureExtractor,
@@ -466,13 +467,10 @@ public class AppConfig {
     @Bean
     @ConditionalOnDataframeStorage
     public CsvArtifactProjection csvArtifactProjection(JdbcCanonicalArtifactRepository jdbcCanonicalArtifactRepository,
-                                                       IocProperties props,
-                                                       MatchPolicy matchPolicy,
-                                                       IndicatorFeatureExtractor featureExtractor,
-                                                       LookupRepository lookup) {
+                                                       IocProperties props) {
         return new CsvArtifactProjection(
                 jdbcCanonicalArtifactRepository,
-                artifactDefinitions(props, matchPolicy, featureExtractor, lookup),
+                artifactHeaders(props),
                 canonicalArtifactPaths(props),
                 writeFormat(props.sink().csv()),
                 csvCharset(props));
@@ -755,6 +753,22 @@ public class AppConfig {
             }
         }
         return paths;
+    }
+
+    /**
+     * Projection headers are the configured artifact column names — the same list
+     * a {@code ConfigurableRowMapper} exposes — so the projection needs neither the
+     * row mapper nor the lookup repository to know its output shape.
+     */
+    private Map<String, List<String>> artifactHeaders(IocProperties props) {
+        Map<String, List<String>> headers = new LinkedHashMap<>();
+        for (IocProperties.Sink.Artifact artifact : props.sink().artifacts()) {
+            if (artifact.enabled()) {
+                headers.put(artifact.name(),
+                        artifact.columns().stream().map(IocProperties.Sink.Artifact.Column::name).toList());
+            }
+        }
+        return headers;
     }
 
     private List<String> enabledArtifactNames(IocProperties props) {

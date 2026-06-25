@@ -10,9 +10,13 @@
 > технические входы — отдельные `adapter-*` модули. Реализованы whole-file
 > daemon ingestion, partition output, scheduled aggregation в canonical CSV,
 > stable id sidecar, artifact-aware lookup, retention/reaper и health-контур.
-> Служебный durable ledger уже можно переключить с file на JDBC
-> (`ioc.ingestion.ledger.type: file | jdbc`); dataframe/index storage остаётся
-> следующим расширением.
+> Служебный durable ledger переключается file ↔ JDBC
+> (`ioc.ingestion.ledger.type: file | jdbc`). **Бизнес-данные dataframe теперь
+> хранятся в SQLite как source of truth** (`ioc.storage.dataframe.type: jdbc`,
+> default), а CSV-артефакты (`*_generated.csv`) — генерируемая проекция из БД.
+> Это касается обоих режимов: oneshot и daemon переключены на DB-truth
+> одновременно. Открытый хвост — durable run-ledger/saga для crash-window
+> (см. [techdebt ING-4](techdebt.md)).
 
 ## 0. Реализованный scope 0.1.0
 
@@ -45,6 +49,18 @@ Spring profile можно использовать для logback/config overrid
 **нет** `System.exit` после старта контекста: жизнь процесса поддерживают
 компоненты Spring Integration (`SmartLifecycle`). CLI-runner активен только в
 `oneshot`.
+
+> **`oneshot` накопителен, а не «регенерирует с нуля».** При `dataframe.type=jdbc`
+> (default) `ioc extract` пишет в персистентный `./dataframe/ioc-dataframe.db`
+> через `INSERT … ON CONFLICT(row_key) DO NOTHING` (keep-first), затем
+> перепроецирует CSV из БД. Поэтому несколько прогонов **накапливают** IOC в БД,
+> а каждый `*_generated.csv` — это проекция всей накопленной таблицы, а не только
+> текущего источника. Повтор того же источника идемпотентен (дедуп по `row_key`).
+> Это намеренно: БД — система записи. Чтобы получить «чистый» набор только из
+> одного источника, удалите `dataframe/ioc-dataframe.db` перед прогоном (так же
+> поступают golden-тесты) либо запустите с отдельным `ioc.storage.dataframe.url`.
+> В отличие от прежнего поведения, oneshot теперь поднимает Hikari-пул + SQLite
+> на каждый вызов CLI.
 
 ## 2. Размещение в архитектуре
 
