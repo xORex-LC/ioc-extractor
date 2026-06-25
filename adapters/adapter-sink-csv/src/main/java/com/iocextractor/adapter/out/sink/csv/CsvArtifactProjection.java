@@ -1,8 +1,8 @@
 package com.iocextractor.adapter.out.sink.csv;
 
-import com.iocextractor.application.aggregation.CanonicalArtifact;
-import com.iocextractor.application.port.out.aggregation.CanonicalArtifactRepository;
-import com.iocextractor.application.port.out.aggregation.ArtifactProjection;
+import com.iocextractor.application.artifact.CanonicalArtifact;
+import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
+import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;

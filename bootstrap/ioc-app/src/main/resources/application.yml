@@ -145,7 +145,7 @@ ioc:
       quote: "\""
       null-literal: "NULL"
       # Output charset (boundary 2) for ALL artifacts, and for reading existing
-      # artifacts in lookup/aggregation (read and write always agree). Unmappable
+      # artifacts in lookup/storage (read and write always agree). Unmappable
       # characters are replaced, never fatal. Blank = UTF-8.
       charset: UTF-8
     artifacts:
@@ -217,28 +217,18 @@ ioc:
       - { name: hashes,  path: "./dataframe/hashes_list.csv" }
 
   # ---- Artifact identity (row_key) -------------------------------------------
-  # Historical key name kept for config compatibility; this no longer controls
-  # scheduled daemon aggregation. It defines canonical row identity per artifact.
-  aggregation:
-    enabled: true
-    trigger: both
-    interval: 1m
-    initial-delay: 10s
+  artifact-identity:
     artifacts:
       - name: masks
         key-columns: [ mask ]
-        conflict-policy: keep-first
       - name: ip_list
         key-columns: [ ip ]
-        conflict-policy: keep-first
       - name: address_blacklist
         key-columns: [ forbidden_url, forbidden_ip ]
         key-mode: first-non-empty
-        conflict-policy: keep-first
       - name: hashes
         key-columns: [ hash_md5, hash_sha1, hash_sha256 ]
         key-mode: first-non-empty
-        conflict-policy: keep-first
 
   # ---- Daemon housekeeping: retention reaper (active in daemon mode when enabled)
   #  One declarative policy reaps aged/over-count entries from growing dirs.

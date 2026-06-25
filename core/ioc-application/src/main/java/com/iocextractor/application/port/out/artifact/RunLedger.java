@@ -1,6 +1,6 @@
-package com.iocextractor.application.port.out.aggregation;
+package com.iocextractor.application.port.out.artifact;
 
-import com.iocextractor.application.aggregation.IngestRun;
+import com.iocextractor.application.artifact.IngestRun;
 
 import java.util.List;
 

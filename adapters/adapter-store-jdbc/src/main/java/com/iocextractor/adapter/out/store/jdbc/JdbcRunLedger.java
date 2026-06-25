@@ -1,8 +1,8 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.application.aggregation.IngestRun;
-import com.iocextractor.application.aggregation.IngestRunStatus;
-import com.iocextractor.application.port.out.aggregation.RunLedger;
+import com.iocextractor.application.artifact.IngestRun;
+import com.iocextractor.application.artifact.IngestRunStatus;
+import com.iocextractor.application.port.out.artifact.RunLedger;
 
 import javax.sql.DataSource;
 import java.time.Clock;
@@ -24,7 +24,9 @@ public final class JdbcRunLedger implements RunLedger {
     private final Clock clock;
 
     public JdbcRunLedger(DataSource dataSource, Clock clock) {
-        this(JdbcClient.create(dataSource), clock);
+        Objects.requireNonNull(dataSource, "dataSource");
+        this.jdbc = JdbcClient.create(dataSource);
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     JdbcRunLedger(JdbcClient jdbc, Clock clock) {

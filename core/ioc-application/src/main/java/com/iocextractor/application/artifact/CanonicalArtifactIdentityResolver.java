@@ -1,6 +1,6 @@
-package com.iocextractor.application.aggregation;
+package com.iocextractor.application.artifact;
 
-import com.iocextractor.application.port.out.aggregation.ArtifactIdentityResolver;
+import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 
 import java.util.LinkedHashMap;
 import java.util.List;

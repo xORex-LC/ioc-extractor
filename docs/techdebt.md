@@ -56,7 +56,7 @@
 | ID | Долг | Статус | Эфф. | Источник |
 |---|---|---|---|---|
 | CFG-1 | **Тихий `catch (NumberFormatException ignored)`** на `id.start` ([AppConfig.java:512](../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java#L512)) — опечатка молча уходит в `auto`. | открыт | S | review |
-| CFG-2 | **Нет кросс-проверки имён артефактов** `lookup.artifacts` / `aggregation.artifacts` ↔ `sink.artifacts` — опечатка → молчаливый неверный baseline / no-op identity config. | открыт | S | review |
+| CFG-2 | **Нет кросс-проверки имён артефактов** `lookup.artifacts` / `artifact-identity.artifacts` ↔ `sink.artifacts` — опечатка → молчаливый неверный baseline / no-op identity config. | открыт | S | review |
 | CFG-3 | **«stage 11» протекло в рантайм-ошибку** ([AppConfig.java:421](../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java#L421)) — внутренний номер этапа в сообщении пользователю. | открыт | S | review |
 
 ## 6. Код-смелл (`CODE`)

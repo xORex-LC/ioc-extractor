@@ -16,7 +16,7 @@
 |---|---|
 | `port/in/` | Driving-порты: `ExtractIocsUseCase`, ingest и maintenance use cases, команды и результаты |
 | `port/out/` | Driven-порты: `SourceReader`, `IocSink`, `LookupRepository`, ingest и artifact storage ports |
-| `aggregation/` | Storage-neutral artifact row identity, canonical artifact snapshots and run-ledger recovery model |
+| `artifact/` | Storage-neutral artifact row identity, canonical artifact snapshots and run-ledger recovery model |
 | `pipeline/` | `Envelope`/`Stage`/`PipelineRunner` и concrete stages текущего ETL |
 | `service/` | `IocExtractionService` — use-case boundary и запуск pipeline |
 

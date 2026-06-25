@@ -1,6 +1,6 @@
-package com.iocextractor.application.aggregation;
+package com.iocextractor.application.artifact;
 
-import com.iocextractor.application.port.out.aggregation.ArtifactProjection;
+import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 
 /**
  * Projection implementation for modes where canonical storage has no derived CSV output.

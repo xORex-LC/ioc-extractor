@@ -33,7 +33,7 @@ public record IocProperties(
         @NotNull @Valid Sink sink,
         @NotNull @Valid Lookup lookup,
         @NotNull @Valid Ingestion ingestion,
-        @NotNull @Valid Aggregation aggregation,
+        @NotNull @Valid ArtifactIdentity artifactIdentity,
         @Valid Maintenance maintenance,
         @NotNull @Valid Observability observability) {
 
@@ -116,26 +116,20 @@ public record IocProperties(
         }
     }
 
-    public record Aggregation(
-            boolean enabled,
-            String trigger,
-            @NotNull Duration interval,
-            @NotNull Duration initialDelay,
-            @NotEmpty @Valid List<Artifact> artifacts) {
+    public record ArtifactIdentity(@NotEmpty @Valid List<Artifact> artifacts) {
 
         public record Artifact(
                 @NotBlank String name,
                 @NotEmpty List<String> keyColumns,
                 String keyMode,
-                @Positive Integer epoch,
-                @NotBlank String conflictPolicy) {
+                @Positive Integer epoch) {
         }
     }
 
     /**
      * Daemon housekeeping. A single {@link Retention} sweep reaps aged/over-count
-     * entries from growing directories ({@code partitions}, {@code done},
-     * {@code failed}); each {@link Retention.Target} is configured declaratively.
+     * entries from growing directories ({@code done}, {@code failed}); each
+     * {@link Retention.Target} is configured declaratively.
      */
     public record Maintenance(@Valid Retention retention) {
 

@@ -1,0 +1,69 @@
+# Test profile for DaemonIngestE2ETest: redirects the dataframe DB and sink
+# projections to target/daemon-e2e. List properties (sink.artifacts) must be
+# redefined as a whole — Spring Boot replaces, not merges, list overrides.
+ioc:
+  storage:
+    dataframe:
+      type: jdbc
+      url: "jdbc:sqlite:target/daemon-e2e/ioc-dataframe.db"
+  sink:
+    csv:
+      delimiter: ";"
+      quote: "\""
+      null-literal: "NULL"
+    artifacts:
+      - name: masks
+        enabled: true
+        path: "target/daemon-e2e/masks_list_generated.csv"
+        accepts: [ IPV4, DOMAIN, URL ]
+        exclude: [ is-bare-ip ]
+        id: { strategy: ascending, start: auto }
+        columns:
+          - { name: id,              from: id }
+          - { name: mask,            from: value, transform: [ lower-host ] }
+          - { name: url_match,       from: match.url }
+          - { name: host_match,      from: match.host }
+          - { name: score,           from: const }
+          - { name: time_last_seen,  from: const }
+          - { name: time_first_seen, from: const }
+          - { name: threat_type,     from: const }
+          - { name: source,          from: source.label }
+          - { name: description,     from: const }
+      - name: ip_list
+        enabled: true
+        path: "target/daemon-e2e/ip_list_generated.csv"
+        accepts: [ IPV4 ]
+        include: [ is-bare-ip ]
+        id: { strategy: ascending, start: auto }
+        columns:
+          - { name: id,              from: id }
+          - { name: ip,              from: value }
+          - { name: score,           from: const }
+          - { name: time_last_seen,  from: const }
+          - { name: time_first_seen, from: const }
+          - { name: threat_type,     from: const }
+          - { name: source,          from: source.label, transform: [ "strip-prefix:Письмо " ] }
+          - { name: description,     from: const }
+      - name: address_blacklist
+        enabled: true
+        path: "target/daemon-e2e/address_blacklist_generated.csv"
+        accepts: [ IPV4, DOMAIN, URL ]
+        columns:
+          - { name: forbidden_url,   from: address.url, transform: [ lower-host ] }
+          - { name: forbidden_ip,    from: address.ip,  transform: [ lower-host ] }
+      - name: hashes
+        enabled: true
+        path: "target/daemon-e2e/hashes_list_generated.csv"
+        accepts: [ MD5, SHA1, SHA256 ]
+        id: { strategy: ascending, start: auto }
+        columns:
+          - { name: id,              from: id }
+          - { name: hash_md5,        from: value, when-type: MD5,    transform: [ upper ] }
+          - { name: hash_sha256,     from: value, when-type: SHA256, transform: [ upper ] }
+          - { name: hash_sha1,       from: value, when-type: SHA1,   transform: [ upper ] }
+          - { name: score,           from: const }
+          - { name: time_last_seen,  from: const }
+          - { name: time_first_seen, from: const }
+          - { name: threat_type,     from: const }
+          - { name: source,          from: source.label, transform: [ "strip-prefix:Письмо " ] }
+          - { name: description,     from: const }

@@ -17,16 +17,15 @@ import java.util.stream.Stream;
 /**
  * Filesystem {@link RetentionStore}. It reaps <em>leaf files</em> recursively, so
  * it works uniformly for flat archive dirs ({@code done}/{@code failed}) and for
- * the nested partition tree ({@code partitions/<artifact>/<day>/<key>.csv}) without
- * mistaking the permanent top-level buckets for reapable units. Empty directories
- * left behind are harmless and intentionally not pruned (keeps reaping path-safe).
+ * future nested targets without mistaking permanent bucket directories for
+ * reapable units. Empty directories left behind are harmless and intentionally
+ * not pruned (keeps reaping path-safe).
  * Archiving mirrors each entry's sub-path under the archive dir (via
  * {@link RetentionEntry#relativePath()}), so same-named leaves from different
  * sub-trees do not collide.
  *
- * <p>Because the unit is the leaf file, count-based retention pools all leaves under a
- * target — coarse for the nested partition tree (prefer age-based there); age-based
- * retention is unaffected. Per-group counting is deferred to the storage rework (ING-4).
+ * <p>Because the unit is the leaf file, count-based retention pools all leaves
+ * under a target; age-based retention is unaffected.
  */
 public final class FileSystemRetentionStore implements RetentionStore {
 

@@ -1,6 +1,6 @@
-package com.iocextractor.application.port.out.aggregation;
+package com.iocextractor.application.port.out.artifact;
 
-import com.iocextractor.application.aggregation.CanonicalArtifact;
+import com.iocextractor.application.artifact.CanonicalArtifact;
 
 /**
  * Driven port for canonical artifact storage.

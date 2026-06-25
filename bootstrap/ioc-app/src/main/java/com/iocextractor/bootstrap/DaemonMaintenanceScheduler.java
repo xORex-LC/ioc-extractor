@@ -17,9 +17,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Scheduled daemon trigger for the retention reaper. Like
- * {@link DaemonAggregationScheduler}, the trigger is framework boundary code; the
- * retention decision and I/O stay in the application use case and its adapter.
+ * Scheduled daemon trigger for the retention reaper. The trigger is framework
+ * boundary code; the retention decision and I/O stay in the application use case
+ * and its adapter.
  */
 public final class DaemonMaintenanceScheduler implements SmartLifecycle {
 

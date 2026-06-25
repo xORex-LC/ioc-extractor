@@ -1,4 +1,4 @@
-package com.iocextractor.application.aggregation;
+package com.iocextractor.application.artifact;
 
 /**
  * Stable id allocated for an artifact row key.

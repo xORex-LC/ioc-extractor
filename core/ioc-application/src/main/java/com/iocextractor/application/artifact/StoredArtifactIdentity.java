@@ -1,4 +1,4 @@
-package com.iocextractor.application.aggregation;
+package com.iocextractor.application.artifact;
 
 /**
  * Persisted identity formula marker for one artifact.

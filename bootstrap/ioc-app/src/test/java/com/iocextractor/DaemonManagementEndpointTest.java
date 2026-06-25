@@ -24,7 +24,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "ioc.runtime.mode=daemon",
         "spring.main.web-application-type=servlet",
-        "ioc.aggregation.enabled=false",
         "ioc.lookup.path=target/test-mgmt/no-lookup.csv",
         "ioc.ingestion.dirs.inbox=target/test-mgmt/inbox",
         "ioc.ingestion.dirs.processing=target/test-mgmt/processing",

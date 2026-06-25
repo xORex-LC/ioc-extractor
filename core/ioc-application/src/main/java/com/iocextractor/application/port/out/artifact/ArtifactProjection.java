@@ -1,4 +1,4 @@
-package com.iocextractor.application.port.out.aggregation;
+package com.iocextractor.application.port.out.artifact;
 
 /**
  * Derived artifact projection written after canonical storage commits.

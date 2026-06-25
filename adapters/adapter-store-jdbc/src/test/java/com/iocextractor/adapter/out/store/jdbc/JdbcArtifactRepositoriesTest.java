@@ -1,9 +1,9 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.application.aggregation.ArtifactIdentityDefinition;
-import com.iocextractor.application.aggregation.ArtifactRow;
-import com.iocextractor.application.aggregation.CanonicalArtifact;
-import com.iocextractor.application.aggregation.CanonicalArtifactIdentityResolver;
+import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
+import com.iocextractor.application.artifact.ArtifactRow;
+import com.iocextractor.application.artifact.CanonicalArtifact;
+import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.SourceContext;
@@ -17,7 +17,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

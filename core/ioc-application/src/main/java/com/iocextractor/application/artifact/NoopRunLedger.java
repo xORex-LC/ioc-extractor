@@ -1,6 +1,6 @@
-package com.iocextractor.application.aggregation;
+package com.iocextractor.application.artifact;
 
-import com.iocextractor.application.port.out.aggregation.RunLedger;
+import com.iocextractor.application.port.out.artifact.RunLedger;
 
 import java.util.List;
 

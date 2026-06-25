@@ -6,7 +6,7 @@ import java.util.Set;
 
 /**
  * Reusable CSV artifact definition. The same row mapping configuration can be
- * rendered either to canonical oneshot artifacts or daemon partition artifacts.
+ * rendered either to direct CSV artifacts or dataframe CSV projections.
  *
  * @param name artifact name
  * @param accepts accepted indicator types
