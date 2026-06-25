@@ -1,7 +1,7 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.application.aggregation.AggregationRun;
-import com.iocextractor.application.aggregation.AggregationRunStatus;
+import com.iocextractor.application.aggregation.IngestRun;
+import com.iocextractor.application.aggregation.IngestRunStatus;
 import com.iocextractor.application.port.out.aggregation.RunLedger;
 
 import javax.sql.DataSource;
@@ -14,7 +14,7 @@ import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
- * JDBC-backed durable run ledger for aggregation/export saga checkpoints.
+ * JDBC-backed durable run ledger for per-file ingest saga checkpoints.
  */
 public final class JdbcRunLedger implements RunLedger {
 
@@ -33,53 +33,55 @@ public final class JdbcRunLedger implements RunLedger {
     }
 
     @Override
-    public AggregationRun startAggregation(List<String> artifacts) {
+    public IngestRun startIngest(String sourceKey, List<String> artifacts) {
         String runId = UUID.randomUUID().toString();
         Instant now = clock.instant();
         jdbc.sql("""
-                        INSERT INTO aggregation_run(run_id, status, artifacts, started_at, updated_at, reason)
-                        VALUES (:run_id, :status, :artifacts, :started_at, :updated_at, NULL)
+                        INSERT INTO ingest_run(run_id, source_key, status, artifacts, started_at, updated_at, reason)
+                        VALUES (:run_id, :source_key, :status, :artifacts, :started_at, :updated_at, NULL)
                         """)
                 .param("run_id", runId)
-                .param("status", AggregationRunStatus.STARTED.name())
+                .param("source_key", sourceKey)
+                .param("status", IngestRunStatus.STARTED.name())
                 .param("artifacts", joinArtifacts(artifacts))
                 .param("started_at", now.toString())
                 .param("updated_at", now.toString())
                 .update();
-        return new AggregationRun(runId, AggregationRunStatus.STARTED, artifacts, now, now, null);
+        return new IngestRun(runId, sourceKey, IngestRunStatus.STARTED, artifacts, now, now, null);
     }
 
     @Override
     public void markDbCommitted(String runId) {
-        update(runId, AggregationRunStatus.DB_COMMITTED, null);
+        update(runId, IngestRunStatus.DB_COMMITTED, null);
     }
 
     @Override
     public void markProjectionCompleted(String runId) {
-        update(runId, AggregationRunStatus.PROJECTION_COMPLETED, null);
+        update(runId, IngestRunStatus.PROJECTION_COMPLETED, null);
     }
 
     @Override
     public void markCompleted(String runId) {
-        update(runId, AggregationRunStatus.COMPLETED, null);
+        update(runId, IngestRunStatus.COMPLETED, null);
     }
 
     @Override
     public void markFailed(String runId, String reason) {
-        update(runId, AggregationRunStatus.FAILED, reason);
+        update(runId, IngestRunStatus.FAILED, reason);
     }
 
     @Override
-    public List<AggregationRun> findIncompleteAggregationRuns() {
+    public List<IngestRun> findIncompleteIngestRuns() {
         return jdbc.sql("""
-                        SELECT run_id, status, artifacts, started_at, updated_at, reason
-                        FROM aggregation_run
+                        SELECT run_id, source_key, status, artifacts, started_at, updated_at, reason
+                        FROM ingest_run
                         WHERE status IN ('STARTED', 'DB_COMMITTED', 'PROJECTION_COMPLETED')
                         ORDER BY started_at, run_id
                         """)
-                .query((rs, rowNum) -> new AggregationRun(
+                .query((rs, rowNum) -> new IngestRun(
                         rs.getString("run_id"),
-                        AggregationRunStatus.valueOf(rs.getString("status")),
+                        rs.getString("source_key"),
+                        IngestRunStatus.valueOf(rs.getString("status")),
                         splitArtifacts(rs.getString("artifacts")),
                         Instant.parse(rs.getString("started_at")),
                         Instant.parse(rs.getString("updated_at")),
@@ -87,9 +89,9 @@ public final class JdbcRunLedger implements RunLedger {
                 .list();
     }
 
-    private void update(String runId, AggregationRunStatus status, String reason) {
+    private void update(String runId, IngestRunStatus status, String reason) {
         jdbc.sql("""
-                        UPDATE aggregation_run
+                        UPDATE ingest_run
                         SET status = :status,
                             updated_at = :updated_at,
                             reason = :reason

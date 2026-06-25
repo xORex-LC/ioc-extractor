@@ -10,8 +10,8 @@ import java.util.List;
 public final class NoopRunLedger implements RunLedger {
 
     @Override
-    public AggregationRun startAggregation(List<String> artifacts) {
-        return new AggregationRun("noop", AggregationRunStatus.STARTED, artifacts, null, null, null);
+    public IngestRun startIngest(String sourceKey, List<String> artifacts) {
+        return new IngestRun("noop", sourceKey, IngestRunStatus.STARTED, artifacts, null, null, null);
     }
 
     @Override
@@ -31,7 +31,7 @@ public final class NoopRunLedger implements RunLedger {
     }
 
     @Override
-    public List<AggregationRun> findIncompleteAggregationRuns() {
+    public List<IngestRun> findIncompleteIngestRuns() {
         return List.of();
     }
 }

@@ -49,7 +49,7 @@ runtime JDBC drivers.
   rows through a source `CanonicalArtifactRepository` (the CSV adapter owns CSV
   parsing) and writes them via `JdbcCanonicalArtifactRepository`, then raises
   SQLite sequences to the imported maximum id.
-- `JdbcRunLedger` stores durable aggregation checkpoints in `aggregation_run`.
+- `JdbcRunLedger` stores durable per-file ingest checkpoints in `ingest_run`.
   Startup recovery treats `DB_COMMITTED` as recoverable by replaying the derived
   CSV projection from dataframe truth; failures before that checkpoint are marked
   `FAILED`.
