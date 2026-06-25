@@ -2,10 +2,13 @@ package com.iocextractor.application.ingest;
 
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
 import com.iocextractor.application.port.in.ingest.IngestSourceResult;
+import com.iocextractor.application.aggregation.AggregationRun;
+import com.iocextractor.application.aggregation.AggregationRunStatus;
+import com.iocextractor.application.port.out.aggregation.ArtifactProjection;
+import com.iocextractor.application.port.out.aggregation.RunLedger;
 import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.application.port.out.LookupRepository;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
-import com.iocextractor.application.port.out.ingest.PartitionSinkFactory;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
@@ -28,22 +31,25 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class IngestionServiceTest {
 
     @Test
-    void processes_claimed_source_into_partition_and_archives_it() {
+    void processes_claimed_source_into_canonical_storage_projects_and_archives_it() {
         var key = new SourceKey("ABC123");
         var ledger = new MemoryLedger();
         var lifecycle = new MemoryLifecycle();
-        var partitionPath = Path.of("partitions/masks/2026-06-22/abc123.csv");
         var sink = new CountingSink();
-        PartitionSinkFactory partitionFactory = source -> new PartitionSinks(List.of(sink), List.of(partitionPath));
-        var service = new IngestionService(ledger, lifecycle, partitionFactory, extractionFactory());
+        var runLedger = new MemoryRunLedger();
+        var projection = new CollectingProjection();
+        var service = new IngestionService(ledger, lifecycle, source -> new SourceSinks(List.of(sink)),
+                extractionFactory(), runLedger, projection);
 
         var result = service.ingest(new IngestSourceCommand(
                 Path.of("inbox/source.html"), key, Instant.parse("2026-06-22T00:00:00Z")));
 
         assertThat(result.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
         assertThat(result.duplicate()).isFalse();
-        assertThat(result.partitions()).containsExactly(partitionPath);
+        assertThat(result.partitions()).isEmpty();
         assertThat(sink.written).isEqualTo(1);
+        assertThat(projection.artifacts).containsExactly("masks");
+        assertThat(runLedger.status).isEqualTo(AggregationRunStatus.COMPLETED);
         assertThat(ledger.find(key)).get()
                 .extracting(IngestionRecord::status)
                 .isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
@@ -51,39 +57,42 @@ class IngestionServiceTest {
     }
 
     @Test
-    void fires_aggregation_trigger_after_a_partition_is_archived() {
+    void leaves_run_recoverable_when_projection_fails_after_db_write() {
         var key = new SourceKey("ABC123");
         var ledger = new MemoryLedger();
         var lifecycle = new MemoryLifecycle();
-        var partitionPath = Path.of("partitions/masks/2026-06-22/abc123.csv");
-        PartitionSinkFactory partitionFactory =
-                source -> new PartitionSinks(List.of(new CountingSink()), List.of(partitionPath));
-        var trigger = new CountingTrigger();
-        var service = new IngestionService(ledger, lifecycle, partitionFactory, extractionFactory(), trigger);
+        var runLedger = new MemoryRunLedger();
+        var service = new IngestionService(ledger, lifecycle, source -> new SourceSinks(List.of(new CountingSink())),
+                extractionFactory(), runLedger, artifactName -> {
+                    throw new IllegalStateException("projection failed");
+                });
 
-        service.ingest(new IngestSourceCommand(
-                Path.of("inbox/source.html"), key, Instant.parse("2026-06-22T00:00:00Z")));
+        assertThatThrownBy(() -> service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source.html"), key, Instant.parse("2026-06-22T00:00:00Z"))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("projection failed");
 
-        assertThat(trigger.requests).isEqualTo(1);
+        assertThat(runLedger.status).isEqualTo(AggregationRunStatus.DB_COMMITTED);
+        assertThat(ledger.find(key)).get()
+                .extracting(IngestionRecord::status)
+                .isEqualTo(IngestionStatus.CLAIMED);
+        assertThat(lifecycle.events).containsExactly("claim");
     }
 
     @Test
-    void does_not_fire_aggregation_trigger_for_a_duplicate_source() {
+    void does_not_create_sinks_for_a_duplicate_source() {
         var key = new SourceKey("ABC123");
         var ledger = new MemoryLedger();
         ledger.record = new IngestionRecord(key, IngestionStatus.SOURCE_ARCHIVED,
                 Path.of("old/source.html"), Path.of("processing/source.html"),
                 Path.of("done/source.html"), List.of(Path.of("partition.csv")),
                 Instant.parse("2026-06-22T00:00:00Z"), Instant.parse("2026-06-22T00:00:01Z"), null);
-        var trigger = new CountingTrigger();
         var service = new IngestionService(ledger, new MemoryLifecycle(), source -> {
-            throw new AssertionError("partition factory must not be called for duplicate");
-        }, extractionFactory(), trigger);
+            throw new AssertionError("source sink factory must not be called for duplicate");
+        }, extractionFactory());
 
         service.ingest(new IngestSourceCommand(
                 Path.of("inbox/source-copy.html"), key, Instant.parse("2026-06-22T00:01:00Z")));
-
-        assertThat(trigger.requests).isZero();
     }
 
     @Test
@@ -96,7 +105,7 @@ class IngestionServiceTest {
                 Instant.parse("2026-06-22T00:00:00Z"), Instant.parse("2026-06-22T00:00:01Z"), null);
         var lifecycle = new MemoryLifecycle();
         var service = new IngestionService(ledger, lifecycle, source -> {
-            throw new AssertionError("partition factory must not be called for duplicate");
+            throw new AssertionError("source sink factory must not be called for duplicate");
         }, extractionFactory());
 
         var result = service.ingest(new IngestSourceCommand(
@@ -117,7 +126,7 @@ class IngestionServiceTest {
                 Instant.parse("2026-06-22T00:00:00Z"), Instant.parse("2026-06-22T00:00:01Z"), null);
         var lifecycle = new MemoryLifecycle();
         var service = new IngestionService(ledger, lifecycle, source -> {
-            throw new AssertionError("partition factory must not be called for duplicate");
+            throw new AssertionError("source sink factory must not be called for duplicate");
         }, extractionFactory());
 
         var result = service.ingest(new IngestSourceCommand(
@@ -135,7 +144,7 @@ class IngestionServiceTest {
         var ledger = new MemoryLedger();
         var lifecycle = new MemoryLifecycle();
         var service = new IngestionService(ledger, lifecycle, source -> {
-            throw new IllegalStateException("partition unavailable");
+            throw new IllegalStateException("source sink unavailable");
         }, extractionFactory());
 
         assertThatThrownBy(() -> service.ingest(new IngestSourceCommand(
@@ -147,7 +156,7 @@ class IngestionServiceTest {
                 .isEqualTo(IngestionStatus.CLAIMED);
         assertThat(lifecycle.events).containsExactly("claim");
 
-        service.reject(key, "partition unavailable");
+        service.reject(key, "source sink unavailable");
 
         assertThat(ledger.find(key)).get()
                 .extracting(IngestionRecord::status)
@@ -162,7 +171,7 @@ class IngestionServiceTest {
         var lifecycle = new MemoryLifecycle();
         lifecycle.processingSources = List.of(new ArchivedSourceUnit(
                 key, Path.of("processing/abc123-source.html"), Instant.parse("2026-06-22T00:00:00Z")));
-        var service = new IngestionService(ledger, lifecycle, source -> new PartitionSinks(List.of(), List.of()),
+        var service = new IngestionService(ledger, lifecycle, source -> new SourceSinks(List.of()),
                 extractionFactory());
 
         var results = service.recoverIncomplete();
@@ -199,15 +208,6 @@ class IngestionServiceTest {
                 NoopDiagnosticSink.INSTANCE);
     }
 
-    private static final class CountingTrigger implements com.iocextractor.application.port.out.aggregation.AggregationTrigger {
-        private int requests;
-
-        @Override
-        public void request() {
-            requests++;
-        }
-    }
-
     private static final class CountingSink implements IocSink {
         private int written;
 
@@ -220,6 +220,50 @@ class IngestionServiceTest {
         public int write(List<Indicator> indicators) {
             written += indicators.size();
             return indicators.size();
+        }
+    }
+
+    private static final class CollectingProjection implements ArtifactProjection {
+        private final List<String> artifacts = new ArrayList<>();
+
+        @Override
+        public void project(String artifactName) {
+            artifacts.add(artifactName);
+        }
+    }
+
+    private static final class MemoryRunLedger implements RunLedger {
+        private AggregationRunStatus status;
+
+        @Override
+        public AggregationRun startAggregation(List<String> artifacts) {
+            status = AggregationRunStatus.STARTED;
+            return new AggregationRun("run-1", status, artifacts, Instant.EPOCH, Instant.EPOCH, null);
+        }
+
+        @Override
+        public void markDbCommitted(String runId) {
+            status = AggregationRunStatus.DB_COMMITTED;
+        }
+
+        @Override
+        public void markProjectionCompleted(String runId) {
+            status = AggregationRunStatus.PROJECTION_COMPLETED;
+        }
+
+        @Override
+        public void markCompleted(String runId) {
+            status = AggregationRunStatus.COMPLETED;
+        }
+
+        @Override
+        public void markFailed(String runId, String reason) {
+            status = AggregationRunStatus.FAILED;
+        }
+
+        @Override
+        public List<AggregationRun> findIncompleteAggregationRuns() {
+            return List.of();
         }
     }
 

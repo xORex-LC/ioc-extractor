@@ -7,10 +7,13 @@ import com.iocextractor.application.port.in.ingest.IngestSourceResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
 import com.iocextractor.application.port.in.ingest.RecoverIngestionUseCase;
-import com.iocextractor.application.port.out.aggregation.AggregationTrigger;
+import com.iocextractor.application.aggregation.NoopArtifactProjection;
+import com.iocextractor.application.aggregation.NoopRunLedger;
+import com.iocextractor.application.port.out.aggregation.ArtifactProjection;
+import com.iocextractor.application.port.out.aggregation.RunLedger;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
-import com.iocextractor.application.port.out.ingest.PartitionSinkFactory;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
+import com.iocextractor.application.port.out.ingest.SourceSinkFactory;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.common.IocExtractorException;
 
@@ -28,27 +31,31 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
 
     private final IngestionLedger ledger;
     private final SourceLifecycle sourceLifecycle;
-    private final PartitionSinkFactory partitionSinkFactory;
+    private final SourceSinkFactory sourceSinkFactory;
     private final IocExtractionServiceFactory extractionFactory;
-    private final AggregationTrigger aggregationTrigger;
+    private final RunLedger runLedger;
+    private final ArtifactProjection projection;
 
     public IngestionService(IngestionLedger ledger,
                             SourceLifecycle sourceLifecycle,
-                            PartitionSinkFactory partitionSinkFactory,
+                            SourceSinkFactory sourceSinkFactory,
                             IocExtractionServiceFactory extractionFactory) {
-        this(ledger, sourceLifecycle, partitionSinkFactory, extractionFactory, AggregationTrigger.noop());
+        this(ledger, sourceLifecycle, sourceSinkFactory, extractionFactory,
+                new NoopRunLedger(), new NoopArtifactProjection());
     }
 
     public IngestionService(IngestionLedger ledger,
                             SourceLifecycle sourceLifecycle,
-                            PartitionSinkFactory partitionSinkFactory,
+                            SourceSinkFactory sourceSinkFactory,
                             IocExtractionServiceFactory extractionFactory,
-                            AggregationTrigger aggregationTrigger) {
+                            RunLedger runLedger,
+                            ArtifactProjection projection) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.sourceLifecycle = Objects.requireNonNull(sourceLifecycle, "sourceLifecycle");
-        this.partitionSinkFactory = Objects.requireNonNull(partitionSinkFactory, "partitionSinkFactory");
+        this.sourceSinkFactory = Objects.requireNonNull(sourceSinkFactory, "sourceSinkFactory");
         this.extractionFactory = Objects.requireNonNull(extractionFactory, "extractionFactory");
-        this.aggregationTrigger = Objects.requireNonNull(aggregationTrigger, "aggregationTrigger");
+        this.runLedger = Objects.requireNonNull(runLedger, "runLedger");
+        this.projection = Objects.requireNonNull(projection, "projection");
     }
 
     @Override
@@ -121,16 +128,30 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     }
 
     private IngestSourceResult processClaimed(SourceUnit unit) {
-        var partitionSinks = partitionSinkFactory.createFor(unit);
-        ExtractionResult extraction = extractionFactory.create(partitionSinks.sinks())
+        var sourceSinks = sourceSinkFactory.createFor(unit);
+        var run = runLedger.startAggregation(sourceSinks.artifactNames());
+        boolean dbCommitted = false;
+        ExtractionResult extraction;
+        try {
+            extraction = extractionFactory.create(sourceSinks.sinks())
                 .extract(new ExtractionCommand(unit.processingPath(), false));
-        ledger.markPartitionWritten(unit.key(), partitionSinks.paths());
-        ledger.markLedgerRecorded(unit.key());
+            runLedger.markDbCommitted(run.runId());
+            dbCommitted = true;
+            for (String artifactName : sourceSinks.artifactNames()) {
+                projection.project(artifactName);
+            }
+            runLedger.markProjectionCompleted(run.runId());
+        } catch (RuntimeException e) {
+            if (!dbCommitted) {
+                runLedger.markFailed(run.runId(), e.getMessage());
+            }
+            throw e;
+        }
         Path archived = sourceLifecycle.archive(unit);
         ledger.markSourceArchived(unit.key(), archived);
-        aggregationTrigger.request();
+        runLedger.markCompleted(run.runId());
         return new IngestSourceResult(unit.key(), IngestionStatus.SOURCE_ARCHIVED,
-                false, partitionSinks.paths(), extraction);
+                false, List.of(), extraction);
     }
 
     private IngestSourceResult completeAfterPartitionWrite(IngestionRecord record) {
@@ -146,7 +167,6 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         Path archived = sourceLifecycle.archive(new ArchivedSourceUnit(
                 record.key(), record.processingPath(), record.detectedAt()));
         ledger.markSourceArchived(record.key(), archived);
-        aggregationTrigger.request();
         return new IngestSourceResult(record.key(), IngestionStatus.SOURCE_ARCHIVED,
                 false, record.partitions(), null);
     }

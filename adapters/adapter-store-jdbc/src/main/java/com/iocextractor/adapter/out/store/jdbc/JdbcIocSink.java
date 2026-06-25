@@ -30,6 +30,7 @@ public final class JdbcIocSink implements IocSink {
     private final LongSupplier ids;
     private final CanonicalArtifactRepository repository;
     private final Consumer<String> afterWrite;
+    private final String sourceKey;
 
     public JdbcIocSink(String name,
                        Set<IndicatorType> accepts,
@@ -39,6 +40,18 @@ public final class JdbcIocSink implements IocSink {
                        LongSupplier ids,
                        CanonicalArtifactRepository repository,
                        Consumer<String> afterWrite) {
+        this(name, accepts, filter, header, mapper, ids, repository, afterWrite, null);
+    }
+
+    public JdbcIocSink(String name,
+                       Set<IndicatorType> accepts,
+                       Predicate<Indicator> filter,
+                       List<String> header,
+                       BiFunction<Long, Indicator, List<String>> mapper,
+                       LongSupplier ids,
+                       CanonicalArtifactRepository repository,
+                       Consumer<String> afterWrite,
+                       String sourceKey) {
         this.name = Objects.requireNonNull(name, "name");
         this.accepts = Set.copyOf(Objects.requireNonNull(accepts, "accepts"));
         this.filter = filter == null ? indicator -> true : filter;
@@ -47,6 +60,7 @@ public final class JdbcIocSink implements IocSink {
         this.ids = Objects.requireNonNull(ids, "ids");
         this.repository = Objects.requireNonNull(repository, "repository");
         this.afterWrite = afterWrite == null ? ignored -> { } : afterWrite;
+        this.sourceKey = sourceKey;
     }
 
     @Override
@@ -79,6 +93,9 @@ public final class JdbcIocSink implements IocSink {
     }
 
     private String sourceKey(Indicator indicator) {
+        if (sourceKey != null && !sourceKey.isBlank()) {
+            return sourceKey;
+        }
         if (indicator.source().label() != null && !indicator.source().label().isBlank()) {
             return indicator.source().label();
         }

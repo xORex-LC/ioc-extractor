@@ -22,7 +22,6 @@ import com.iocextractor.adapter.out.sink.csv.LowerHostTransform;
 import com.iocextractor.adapter.out.sink.csv.LowercaseTransform;
 import com.iocextractor.adapter.out.sink.csv.MatchHostValueProvider;
 import com.iocextractor.adapter.out.sink.csv.MatchUrlValueProvider;
-import com.iocextractor.adapter.out.sink.csv.PartitionedCsvSinkFactory;
 import com.iocextractor.adapter.out.sink.csv.RowMapper;
 import com.iocextractor.adapter.out.sink.csv.SourceLabelValueProvider;
 import com.iocextractor.adapter.out.sink.csv.StripPrefixTransform;
@@ -78,8 +77,8 @@ import com.iocextractor.application.port.out.aggregation.PartitionArtifactReposi
 import com.iocextractor.application.port.out.aggregation.RunLedger;
 import com.iocextractor.application.port.out.aggregation.StableIdIndex;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
-import com.iocextractor.application.port.out.ingest.PartitionSinkFactory;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
+import com.iocextractor.application.port.out.ingest.SourceSinkFactory;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
@@ -301,15 +300,33 @@ public class AppConfig {
 
     @Bean
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
-    public PartitionSinkFactory partitionSinkFactory(IocProperties props,
-                                                     MatchPolicy matchPolicy,
-                                                     IndicatorFeatureExtractor featureExtractor,
-                                                     LookupRepository lookup) {
-        return new PartitionedCsvSinkFactory(
-                Path.of(props.ingestion().output().partitionsDir()),
-                artifactDefinitions(props, matchPolicy, featureExtractor, lookup),
-                writeFormat(props.sink().csv()),
-                csvCharset(props));
+    public SourceSinkFactory sourceSinkFactory(IocProperties props,
+                                               MatchPolicy matchPolicy,
+                                               IndicatorFeatureExtractor featureExtractor,
+                                               LookupRepository lookup,
+                                               JdbcCanonicalArtifactRepository jdbcCanonicalRepository) {
+        if (!isDataframeJdbc(props)) {
+            throw new IocExtractorException("Daemon direct-to-canonical ingest requires "
+                    + "ioc.storage.dataframe.type=jdbc");
+        }
+        var artifacts = artifactDefinitions(props, matchPolicy, featureExtractor, lookup);
+        Map<String, IdGenerator> ids = new LinkedHashMap<>();
+        for (CsvArtifactDefinition artifact : artifacts) {
+            ids.put(artifact.name(), new IdGenerator(artifact.idStrategy(), artifact.idStart()));
+        }
+        return source -> new com.iocextractor.application.ingest.SourceSinks(artifacts.stream()
+                .map(artifact -> new JdbcIocSink(
+                        artifact.name(),
+                        artifact.accepts(),
+                        artifact.filter()::accepts,
+                        artifact.mapper().header(),
+                        artifact.mapper()::toRow,
+                        ids.get(artifact.name())::next,
+                        jdbcCanonicalRepository,
+                        null,
+                        source.key().value()))
+                .map(IocSink.class::cast)
+                .toList());
     }
 
     @Bean(destroyMethod = "close")
@@ -507,11 +524,17 @@ public class AppConfig {
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     public IngestionService ingestionService(IngestionLedger ledger,
                                              SourceLifecycle sourceLifecycle,
-                                             PartitionSinkFactory partitionSinkFactory,
+                                             SourceSinkFactory sourceSinkFactory,
                                              IocExtractionServiceFactory extractionFactory,
-                                             AggregationTrigger aggregationTrigger) {
-        return new IngestionService(ledger, sourceLifecycle, partitionSinkFactory, extractionFactory,
-                aggregationTrigger);
+                                             ObjectProvider<RunLedger> runLedger,
+                                             ObjectProvider<ArtifactProjection> projection) {
+        return new IngestionService(
+                ledger,
+                sourceLifecycle,
+                sourceSinkFactory,
+                extractionFactory,
+                runLedger.getIfAvailable(NoopRunLedger::new),
+                projection.getIfAvailable(NoopArtifactProjection::new));
     }
 
     /**
