@@ -3,9 +3,12 @@ package com.iocextractor.application.maintenance;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * Pure retention decision: given the entries under a target and the current time,
@@ -34,22 +37,49 @@ public final class RetentionPolicy {
                                               Instant now,
                                               Duration maxAge,
                                               int maxCount) {
+        return select(entries, now, maxAge, maxCount, ignored -> "");
+    }
+
+    /**
+     * Select expired entries while applying count-retention independently per
+     * group. Age-retention remains global because age is entry-local.
+     *
+     * @param entries   candidate entries (any order)
+     * @param now       reference instant for age comparison
+     * @param maxAge    maximum age; {@code null}/zero/negative disables age-based reaping
+     * @param maxCount  maximum number of newest entries to keep per group; {@code <= 0} disables count reaping
+     * @param groupBy   group classifier for count-retention
+     * @return entries to reap
+     */
+    public static List<RetentionEntry> select(List<RetentionEntry> entries,
+                                              Instant now,
+                                              Duration maxAge,
+                                              int maxCount,
+                                              Function<RetentionEntry, String> groupBy) {
         boolean ageActive = maxAge != null && !maxAge.isZero() && !maxAge.isNegative();
         boolean countActive = maxCount > 0;
         if (!ageActive && !countActive) {
             return List.of();
         }
-        // Newest first, so index >= maxCount are the surplus older ones.
-        List<RetentionEntry> sorted = entries.stream()
-                .sorted(Comparator.comparing(RetentionEntry::lastModified).reversed())
-                .toList();
         Set<RetentionEntry> reap = new LinkedHashSet<>();
-        for (int i = 0; i < sorted.size(); i++) {
-            RetentionEntry entry = sorted.get(i);
+        for (RetentionEntry entry : entries) {
             boolean tooOld = ageActive && Duration.between(entry.lastModified(), now).compareTo(maxAge) > 0;
-            boolean overCount = countActive && i >= maxCount;
-            if (tooOld || overCount) {
+            if (tooOld) {
                 reap.add(entry);
+            }
+        }
+        if (countActive) {
+            Map<String, List<RetentionEntry>> byGroup = new LinkedHashMap<>();
+            for (RetentionEntry entry : entries) {
+                byGroup.computeIfAbsent(groupBy.apply(entry), ignored -> new java.util.ArrayList<>()).add(entry);
+            }
+            for (List<RetentionEntry> group : byGroup.values()) {
+                List<RetentionEntry> sorted = group.stream()
+                        .sorted(Comparator.comparing(RetentionEntry::lastModified).reversed())
+                        .toList();
+                for (int i = maxCount; i < sorted.size(); i++) {
+                    reap.add(sorted.get(i));
+                }
             }
         }
         return List.copyOf(reap);

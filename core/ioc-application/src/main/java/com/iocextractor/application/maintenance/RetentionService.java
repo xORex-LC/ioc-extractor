@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 
 /**
  * Use case that sweeps every configured {@link RetentionTarget} once: list its
@@ -18,6 +19,8 @@ import java.util.Objects;
  * deterministic under test.
  */
 public final class RetentionService implements RunRetentionUseCase {
+
+    private static final String PARTITIONS_TARGET = "partitions";
 
     private final RetentionStore store;
     private final List<RetentionTarget> targets;
@@ -49,7 +52,7 @@ public final class RetentionService implements RunRetentionUseCase {
             scanned += entries.size();
             List<RetentionEntry> eligible = eligibility.eligibleEntries(target, entries);
             List<RetentionEntry> expired =
-                    RetentionPolicy.select(eligible, now, target.maxAge(), target.maxCount());
+                    RetentionPolicy.select(eligible, now, target.maxAge(), target.maxCount(), groupBy(target));
             for (RetentionEntry entry : expired) {
                 if (target.action() == RetentionAction.ARCHIVE) {
                     store.archive(entry, target.archiveDir());
@@ -61,5 +64,16 @@ public final class RetentionService implements RunRetentionUseCase {
             reapedByTarget.put(target.name(), expired.size());
         }
         return new RetentionResult(scanned, reaped, reapedByTarget);
+    }
+
+    private Function<RetentionEntry, String> groupBy(RetentionTarget target) {
+        if (!PARTITIONS_TARGET.equalsIgnoreCase(target.name())) {
+            return ignored -> "";
+        }
+        return entry -> {
+            var relative = entry.baseDir().toAbsolutePath().normalize()
+                    .relativize(entry.path().toAbsolutePath().normalize());
+            return relative.getNameCount() == 0 ? "" : relative.getName(0).toString();
+        };
     }
 }

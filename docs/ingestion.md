@@ -277,6 +277,10 @@ dataframe/
   `IngestionLedger`: age/count policy применяется только к partition-файлам из
   записей со статусом `AGGREGATED`. `done`/`failed` остаются обычными
   age/count targets.
+- **Count-retention партиций** — `max-count` для `partitions` применяется
+  независимо по первому сегменту подпути относительно target-dir
+  (`<artifact>/...`), то есть «N новейших на артефакт». Для `done`/`failed`
+  `max-count` остаётся общим по target.
 
 Свойства:
 
@@ -287,8 +291,7 @@ dataframe/
   безопасным; пустой `…/<day>/` безвреден).
 - **Порядок vs агрегация:** reaper по партициям не удаляет записи, пока ledger
   не фиксирует `AGGREGATED`. Поэтому `max-age`/`max-count` можно ужесточать без
-  риска удалить ещё не влитую partition-стадию. Per-group count-retention
-  (`N` новейших на artifact/group) остаётся отдельным payoff-срезом.
+  риска удалить ещё не влитую partition-стадию.
 - После очистки источник истины — канонический артефакт (+ ledger по content-hash
   для дедупа повторных дропов).
 
