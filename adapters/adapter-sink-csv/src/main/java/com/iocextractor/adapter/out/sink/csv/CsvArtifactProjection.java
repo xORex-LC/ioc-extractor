@@ -2,6 +2,7 @@ package com.iocextractor.adapter.out.sink.csv;
 
 import com.iocextractor.application.aggregation.CanonicalArtifact;
 import com.iocextractor.application.port.out.aggregation.CanonicalArtifactRepository;
+import com.iocextractor.application.port.out.aggregation.ArtifactProjection;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
@@ -29,7 +30,7 @@ import java.util.Objects;
  * derived artifact here; the repository behind the port remains the source of
  * truth.
  */
-public final class CsvArtifactProjection {
+public final class CsvArtifactProjection implements ArtifactProjection {
 
     private static final Logger log = LoggerFactory.getLogger(CsvArtifactProjection.class);
 
@@ -56,6 +57,7 @@ public final class CsvArtifactProjection {
      *
      * @param artifactName artifact to project
      */
+    @Override
     public void project(String artifactName) {
         List<String> header = requireHeader(artifactName);
         CanonicalArtifact artifact = repository.load(artifactName);

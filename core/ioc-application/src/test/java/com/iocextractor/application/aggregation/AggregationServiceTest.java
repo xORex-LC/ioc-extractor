@@ -5,8 +5,10 @@ import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.port.in.aggregation.AggregationCommand;
 import com.iocextractor.application.port.out.aggregation.ArtifactIdentityResolver;
+import com.iocextractor.application.port.out.aggregation.ArtifactProjection;
 import com.iocextractor.application.port.out.aggregation.CanonicalArtifactRepository;
 import com.iocextractor.application.port.out.aggregation.PartitionArtifactRepository;
+import com.iocextractor.application.port.out.aggregation.RunLedger;
 import com.iocextractor.application.port.out.aggregation.StableIdIndex;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import org.junit.jupiter.api.Test;
@@ -71,6 +73,23 @@ class AggregationServiceTest {
         assertThat(ledger.records.get(0).status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
     }
 
+    @Test
+    void leaves_db_committed_run_recoverable_when_projection_fails_after_db_write() {
+        var ledger = new MemoryLedger(sourceRecord("A", Instant.parse("2026-06-22T00:00:00Z")));
+        var canonical = new MemoryCanonicalRepository();
+        var runLedger = new MemoryRunLedger();
+        var service = service(ledger, partitionRepository(row("mask", "example.com")), canonical,
+                new MemoryStableIdIndex(), new FailingProjection(), runLedger);
+
+        assertThatThrownBy(() -> service.aggregate(AggregationCommand.allArtifacts()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("projection failed");
+
+        assertThat(canonical.written).isNotNull();
+        assertThat(ledger.records.get(0).status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
+        assertThat(runLedger.status).isEqualTo(AggregationRunStatus.DB_COMMITTED);
+    }
+
     private AggregationService service(IngestionLedger ledger,
                                        PartitionArtifactRepository partitionRepository,
                                        CanonicalArtifactRepository canonicalRepository,
@@ -79,6 +98,18 @@ class AggregationServiceTest {
                 .map(ArtifactRowKey::new);
         return new AggregationService(ledger, partitionRepository, canonicalRepository, resolver,
                 stableIdIndex, new KeepFirstMergePolicy(), List.of("masks"));
+    }
+
+    private AggregationService service(IngestionLedger ledger,
+                                       PartitionArtifactRepository partitionRepository,
+                                       CanonicalArtifactRepository canonicalRepository,
+                                       StableIdIndex stableIdIndex,
+                                       ArtifactProjection projection,
+                                       RunLedger runLedger) {
+        ArtifactIdentityResolver resolver = (artifactName, row) -> Optional.ofNullable(row.value("mask"))
+                .map(ArtifactRowKey::new);
+        return new AggregationService(ledger, partitionRepository, canonicalRepository, resolver,
+                stableIdIndex, new KeepFirstMergePolicy(), List.of("masks"), projection, runLedger);
     }
 
     private PartitionArtifactRepository partitionRepository(ArtifactRow row) {
@@ -212,6 +243,48 @@ class AggregationServiceTest {
 
         @Override
         public void save() {
+        }
+    }
+
+    private static final class FailingProjection implements ArtifactProjection {
+        @Override
+        public void project(String artifactName) {
+            throw new IllegalStateException("projection failed");
+        }
+    }
+
+    private static final class MemoryRunLedger implements RunLedger {
+        private AggregationRunStatus status;
+
+        @Override
+        public AggregationRun startAggregation(List<String> artifacts) {
+            status = AggregationRunStatus.STARTED;
+            return new AggregationRun("run-1", status, artifacts, Instant.EPOCH, Instant.EPOCH, null);
+        }
+
+        @Override
+        public void markDbCommitted(String runId) {
+            status = AggregationRunStatus.DB_COMMITTED;
+        }
+
+        @Override
+        public void markProjectionCompleted(String runId) {
+            status = AggregationRunStatus.PROJECTION_COMPLETED;
+        }
+
+        @Override
+        public void markCompleted(String runId) {
+            status = AggregationRunStatus.COMPLETED;
+        }
+
+        @Override
+        public void markFailed(String runId, String reason) {
+            status = AggregationRunStatus.FAILED;
+        }
+
+        @Override
+        public List<AggregationRun> findIncompleteAggregationRuns() {
+            return List.of();
         }
     }
 }

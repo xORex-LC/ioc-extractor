@@ -47,9 +47,10 @@ class DaemonRuntimeModeTest {
                 .containsKey("iocIngestionFlow");
         assertThat(context.getBean(IngestionLedger.class)).isInstanceOf(FileIngestionLedger.class);
         assertThat(context.getBeansOfType(HikariDataSource.class))
-                .containsOnlyKeys("dataframeStorageDataSource");
+                .containsOnlyKeys("dataframeStorageDataSource", "serviceStorageDataSource");
         assertThat(context.getBeansOfType(IngestionLedgerHealthIndicator.class))
                 .containsOnlyKeys("ingestionLedgerHealthIndicator");
-        assertThat(context.getBeansOfType(JdbcStorageHealthIndicator.class)).isEmpty();
+        assertThat(context.getBeansOfType(JdbcStorageHealthIndicator.class))
+                .containsOnlyKeys("jdbcStorageHealthIndicator");
     }
 }

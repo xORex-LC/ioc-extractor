@@ -67,9 +67,9 @@ class JdbcLedgerDaemonRuntimeModeTest {
 
         try (var connection = serviceStorageDataSource.getConnection();
              var statement = connection.createStatement();
-             var resultSet = statement.executeQuery("PRAGMA user_version")) {
+            var resultSet = statement.executeQuery("PRAGMA user_version")) {
             assertThat(resultSet.next()).isTrue();
-            assertThat(resultSet.getInt(1)).isEqualTo(1);
+            assertThat(resultSet.getInt(1)).isEqualTo(2);
         }
     }
 }

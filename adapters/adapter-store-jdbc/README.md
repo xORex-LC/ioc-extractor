@@ -3,10 +3,10 @@
 ## Назначение
 
 Outbound storage adapter for relational stores. It owns JDBC access, SQL dialect
-mechanics, SQLite runtime policy, local transactions, schema migration mechanics
-dataframe schema reconciliation, artifact repositories and legacy artifact
-import. As an edge module it also emits storage diagnostics and operational ECS
-log events for startup/storage actions.
+mechanics, SQLite runtime policy, local transactions, schema migration mechanics,
+dataframe schema reconciliation, artifact repositories, run-ledger checkpoints
+and legacy artifact import. As an edge module it also emits storage diagnostics
+and operational ECS log events for startup/storage actions.
 
 **Правило слоя:** implements storage ports with Spring JDBC/JdbcClient and JDBC
 drivers. Domain and application never import JDBC, SQL, Hikari, SQLite driver or
@@ -50,3 +50,7 @@ runtime JDBC drivers.
   parsing) and writes them via `JdbcCanonicalArtifactRepository`, then raises
   SQLite sequences to the legacy maximum. The `.ioc-id-index.csv` floor is read by
   the caller and passed in, so this adapter parses no CSV itself.
+- `JdbcRunLedger` stores durable aggregation checkpoints in `aggregation_run`.
+  Startup recovery treats `DB_COMMITTED` as recoverable by replaying the derived
+  CSV projection from dataframe truth; failures before that checkpoint are marked
+  `FAILED`.

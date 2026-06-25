@@ -12,12 +12,15 @@ import java.util.List;
 public final class ServiceSchemaMigrations {
 
     private static final String V1 = "com/iocextractor/adapter/out/store/jdbc/service/v1__service_schema.sql";
+    private static final String V2 = "com/iocextractor/adapter/out/store/jdbc/service/v2__run_ledger.sql";
 
     private ServiceSchemaMigrations() {
     }
 
     public static List<SqliteSchemaMigration> sqlite() {
-        return List.of(new SqliteSchemaMigration(1, "service schema", resource(V1)));
+        return List.of(
+                new SqliteSchemaMigration(1, "service schema", resource(V1)),
+                new SqliteSchemaMigration(2, "run ledger", resource(V2)));
     }
 
     private static String resource(String name) {
