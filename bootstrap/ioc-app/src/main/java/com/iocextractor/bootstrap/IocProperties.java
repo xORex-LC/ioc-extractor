@@ -121,11 +121,7 @@ public record IocProperties(
             String trigger,
             @NotNull Duration interval,
             @NotNull Duration initialDelay,
-            @NotNull @Valid IdIndex idIndex,
             @NotEmpty @Valid List<Artifact> artifacts) {
-
-        public record IdIndex(@NotBlank String path) {
-        }
 
         public record Artifact(
                 @NotBlank String name,

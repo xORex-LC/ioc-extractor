@@ -2,8 +2,8 @@
 
 ## Назначение
 
-Driven-порты для canonical artifact storage, artifact identity, CSV projection,
-run-ledger recovery и временного stable id index.
+Driven-порты для canonical artifact storage, artifact identity, CSV projection
+и run-ledger recovery.
 
 ## Структура
 
@@ -14,9 +14,8 @@ run-ledger recovery и временного stable id index.
 | `ArtifactIdentityStore.java` | Guardrail-хранилище identity formula hash + epoch |
 | `ArtifactProjection.java` | Projection-порт для производных артефактов |
 | `RunLedger.java` | Durable checkpoint store для write→project recovery |
-| `StableIdIndex.java` | Stable id allocation/persistence |
 
 ## Границы
 
-Порты не задают SQL/CSV-диалект, формат sidecar index или пути файлов. Эти
-детали принадлежат adapter layer.
+Порты не задают SQL/CSV-диалект или пути файлов. Эти детали принадлежат adapter
+layer.

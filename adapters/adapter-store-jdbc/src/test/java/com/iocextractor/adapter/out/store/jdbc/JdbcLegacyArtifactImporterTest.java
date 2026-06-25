@@ -36,7 +36,7 @@ class JdbcLegacyArtifactImporterTest {
     }
 
     @Test
-    void imports_legacy_rows_preserving_ids_and_bumps_sequence_from_sidecar() {
+    void imports_legacy_rows_preserving_ids_and_bumps_sequence_from_imported_max_id() {
         DataframeArtifactSchema schema = new DataframeArtifactSchema("masks", List.of(
                 new DataframeColumn("id"),
                 new DataframeColumn("mask"),
@@ -44,12 +44,11 @@ class JdbcLegacyArtifactImporterTest {
         JdbcCanonicalArtifactRepository repository = repository(schema);
 
         // Legacy CSV reading is the CSV adapter's job; here the source repository
-        // hands back already-parsed rows. The sidecar floor (99) arrives from the
-        // caller, which reads .ioc-id-index.csv with the CSV stack.
+        // hands back already-parsed rows.
         CanonicalArtifactRepository legacySource = legacySource("masks", List.of("id", "mask", "source"),
                 row("id", "10", "mask", "example.com", "source", "legacy"),
                 row("id", "11", "mask", "example.org", "source", "legacy"));
-        var importer = new JdbcLegacyArtifactImporter(dataSource, repository, legacySource, List.of(schema), 99L);
+        var importer = new JdbcLegacyArtifactImporter(dataSource, repository, legacySource, List.of(schema));
 
         var summary = importer.importAll();
         repository.write("masks", new CanonicalArtifact("masks", List.of("id", "mask", "source"),
@@ -57,10 +56,10 @@ class JdbcLegacyArtifactImporterTest {
 
         assertThat(summary.artifacts()).isEqualTo(1);
         assertThat(summary.rows()).isEqualTo(2);
-        assertThat(summary.sequenceFloor()).isEqualTo(99L);
+        assertThat(summary.sequenceFloor()).isEqualTo(11L);
         assertThat(repository.load("masks").rows())
                 .extracting(row -> row.value("id") + ":" + row.value("mask"))
-                .containsExactly("10:example.com", "11:example.org", "100:example.net");
+                .containsExactly("10:example.com", "11:example.org", "12:example.net");
     }
 
     private CanonicalArtifactRepository legacySource(String artifactName, List<String> header, ArtifactRow... rows) {

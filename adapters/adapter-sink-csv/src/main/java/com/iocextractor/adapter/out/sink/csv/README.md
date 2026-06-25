@@ -21,7 +21,6 @@
 | `ValueProvider.java` + `*ValueProvider` | Источники значений: `id`, `value`, `source.label`, `match.url`, `match.host`, `address.url`, `address.ip` |
 | `Transform.java` + `*Transform` | Трансформации: `lower`, `lower-host` (только хост), `upper`, `strip-prefix` |
 | `IdGenerator.java` | Последовательность id артефакта (ascending/descending) |
-| `CsvStableIdIndex.java` | Sidecar CSV stable id index для stage 11 aggregation |
 | `CsvArtifactProjection.java` | Производная CSV-проекция из canonical JDBC storage |
 
 ## Заметки
@@ -34,4 +33,4 @@
 
 DB truth switch использует те же artifact definitions, но держит ответственности
 раздельно: application orchestration не знает CSV-диалект, а adapter отвечает за
-projection-файл, stable id sidecar и key extraction.
+projection-файл и key extraction.

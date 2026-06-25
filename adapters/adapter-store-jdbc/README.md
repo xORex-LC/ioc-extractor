@@ -48,8 +48,7 @@ runtime JDBC drivers.
 - `JdbcLegacyArtifactImporter` is a one-shot migration helper that reads existing
   rows through a source `CanonicalArtifactRepository` (the CSV adapter owns CSV
   parsing) and writes them via `JdbcCanonicalArtifactRepository`, then raises
-  SQLite sequences to the legacy maximum. The `.ioc-id-index.csv` floor is read by
-  the caller and passed in, so this adapter parses no CSV itself.
+  SQLite sequences to the imported maximum id.
 - `JdbcRunLedger` stores durable aggregation checkpoints in `aggregation_run`.
   Startup recovery treats `DB_COMMITTED` as recoverable by replaying the derived
   CSV projection from dataframe truth; failures before that checkpoint are marked
