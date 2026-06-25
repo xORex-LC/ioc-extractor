@@ -30,4 +30,6 @@ public interface IngestionLedger {
     List<IngestionRecord> findIncomplete();
 
     List<IngestionRecord> findReadyForAggregation();
+
+    List<IngestionRecord> findAggregated();
 }

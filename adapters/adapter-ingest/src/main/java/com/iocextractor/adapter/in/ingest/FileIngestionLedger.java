@@ -109,6 +109,12 @@ public final class FileIngestionLedger implements IngestionLedger {
                 && !record.partitions().isEmpty());
     }
 
+    @Override
+    public List<IngestionRecord> findAggregated() {
+        return findRecords(record -> record.status() == IngestionStatus.AGGREGATED
+                && !record.partitions().isEmpty());
+    }
+
     private List<IngestionRecord> findRecords(java.util.function.Predicate<IngestionRecord> predicate) {
         if (!Files.exists(ledgerDir)) {
             return List.of();

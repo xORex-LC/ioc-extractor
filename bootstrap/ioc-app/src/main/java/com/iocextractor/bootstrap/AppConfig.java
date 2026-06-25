@@ -54,6 +54,7 @@ import com.iocextractor.application.aggregation.ArtifactIdentityDefinition;
 import com.iocextractor.application.aggregation.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.aggregation.KeepFirstMergePolicy;
 import com.iocextractor.application.aggregation.StoredArtifactIdentity;
+import com.iocextractor.application.maintenance.AggregatedPartitionRetentionEligibility;
 import com.iocextractor.application.ingest.IngestionService;
 import com.iocextractor.application.maintenance.RetentionAction;
 import com.iocextractor.application.maintenance.RetentionService;
@@ -619,8 +620,15 @@ public class AppConfig {
     @Bean
     @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
             + "'${ioc.maintenance.retention.enabled:false}' == 'true'")
-    public RunRetentionUseCase runRetentionUseCase(RetentionStore store, IocProperties props, Clock clock) {
-        return new RetentionService(store, retentionTargets(props), clock);
+    public RunRetentionUseCase runRetentionUseCase(RetentionStore store,
+                                                   IngestionLedger ledger,
+                                                   IocProperties props,
+                                                   Clock clock) {
+        return new RetentionService(
+                store,
+                retentionTargets(props),
+                clock,
+                new AggregatedPartitionRetentionEligibility(ledger));
     }
 
     @Bean

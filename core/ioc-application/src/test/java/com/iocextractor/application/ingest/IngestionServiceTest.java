@@ -331,5 +331,12 @@ class IngestionServiceTest {
                     ? List.of(record)
                     : List.of();
         }
+
+        @Override
+        public List<IngestionRecord> findAggregated() {
+            return record != null && record.status() == IngestionStatus.AGGREGATED
+                    ? List.of(record)
+                    : List.of();
+        }
     }
 }

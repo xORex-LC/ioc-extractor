@@ -164,6 +164,13 @@ class AggregationServiceTest {
                     .toList();
         }
 
+        @Override
+        public List<IngestionRecord> findAggregated() {
+            return records.stream()
+                    .filter(record -> record.status() == IngestionStatus.AGGREGATED)
+                    .toList();
+        }
+
         private void replace(SourceKey key, IngestionStatus status) {
             for (int i = 0; i < records.size(); i++) {
                 IngestionRecord record = records.get(i);
