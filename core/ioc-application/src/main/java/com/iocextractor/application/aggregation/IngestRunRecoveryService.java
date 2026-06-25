@@ -6,14 +6,14 @@ import com.iocextractor.application.port.out.aggregation.RunLedger;
 import java.util.Objects;
 
 /**
- * Recovers aggregation crash windows recorded in the run ledger.
+ * Recovers per-file write-to-project crash windows recorded in the run ledger.
  */
-public final class AggregationRunRecoveryService {
+public final class IngestRunRecoveryService {
 
     private final RunLedger runLedger;
     private final ArtifactProjection projection;
 
-    public AggregationRunRecoveryService(RunLedger runLedger, ArtifactProjection projection) {
+    public IngestRunRecoveryService(RunLedger runLedger, ArtifactProjection projection) {
         this.runLedger = Objects.requireNonNull(runLedger, "runLedger");
         this.projection = Objects.requireNonNull(projection, "projection");
     }
@@ -25,13 +25,13 @@ public final class AggregationRunRecoveryService {
      */
     public int recover() {
         int recovered = 0;
-        for (AggregationRun run : runLedger.findIncompleteAggregationRuns()) {
+        for (IngestRun run : runLedger.findIncompleteIngestRuns()) {
             recovered++;
-            if (run.status() == AggregationRunStatus.STARTED) {
+            if (run.status() == IngestRunStatus.STARTED) {
                 runLedger.markFailed(run.runId(), "startup recovery: run stopped before DB commit");
                 continue;
             }
-            if (run.status() == AggregationRunStatus.DB_COMMITTED) {
+            if (run.status() == IngestRunStatus.DB_COMMITTED) {
                 for (String artifact : run.artifacts()) {
                     projection.project(artifact);
                 }

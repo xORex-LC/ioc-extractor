@@ -1,9 +1,9 @@
 package com.iocextractor.application.aggregation;
 
 /**
- * Durable aggregation saga checkpoints.
+ * Durable per-file ingest saga checkpoints.
  */
-public enum AggregationRunStatus {
+public enum IngestRunStatus {
     STARTED,
     DB_COMMITTED,
     PROJECTION_COMPLETED,

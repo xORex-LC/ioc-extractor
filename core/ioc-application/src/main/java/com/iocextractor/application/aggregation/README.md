@@ -17,7 +17,7 @@ Actuator. Он работает только через ports из `application.
 | `ArtifactRow.java` / `ArtifactRowKey.java` | Storage-neutral row model и stable identity value |
 | `CanonicalArtifact.java` | Storage-neutral snapshot для canonical artifact |
 | `StableArtifactId.java` | Результат stable id allocation |
-| `AggregationRun*.java` / `RunLedger`-model | Durable checkpoint model для write→project recovery |
+| `IngestRun*.java` / `RunLedger`-model | Durable checkpoint model для write→project recovery |
 
 ## Границы
 

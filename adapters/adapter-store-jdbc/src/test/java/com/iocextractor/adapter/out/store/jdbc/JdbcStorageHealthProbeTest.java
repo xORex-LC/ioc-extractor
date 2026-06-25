@@ -25,7 +25,7 @@ class JdbcStorageHealthProbeTest {
 
             assertThat(health.healthy()).isTrue();
             assertThat(health.dbRole()).isEqualTo("service");
-            assertThat(health.userVersion()).isEqualTo(3);
+            assertThat(health.userVersion()).isEqualTo(4);
             assertThat(health.foreignKeys()).isTrue();
             assertThat(health.journalMode()).isEqualToIgnoringCase("wal");
             assertThat(health.quickCheck()).isEqualToIgnoringCase("ok");

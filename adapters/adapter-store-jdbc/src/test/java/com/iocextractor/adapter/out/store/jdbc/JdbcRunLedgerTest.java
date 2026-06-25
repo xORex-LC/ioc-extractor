@@ -1,6 +1,6 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.application.aggregation.AggregationRunStatus;
+import com.iocextractor.application.aggregation.IngestRunStatus;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -31,24 +31,25 @@ class JdbcRunLedgerTest {
     }
 
     @Test
-    void tracks_incomplete_aggregation_run_until_completion() {
+    void tracks_incomplete_ingest_run_until_completion() {
         var ledger = ledger();
 
-        var run = ledger.startAggregation(List.of("masks", "hashes"));
+        var run = ledger.startIngest("source-1", List.of("masks", "hashes"));
         ledger.markDbCommitted(run.runId());
 
-        assertThat(ledger.findIncompleteAggregationRuns())
+        assertThat(ledger.findIncompleteIngestRuns())
                 .singleElement()
                 .satisfies(saved -> {
                     assertThat(saved.runId()).isEqualTo(run.runId());
-                    assertThat(saved.status()).isEqualTo(AggregationRunStatus.DB_COMMITTED);
+                    assertThat(saved.sourceKey()).isEqualTo("source-1");
+                    assertThat(saved.status()).isEqualTo(IngestRunStatus.DB_COMMITTED);
                     assertThat(saved.artifacts()).containsExactly("masks", "hashes");
                 });
 
         ledger.markProjectionCompleted(run.runId());
         ledger.markCompleted(run.runId());
 
-        assertThat(ledger.findIncompleteAggregationRuns()).isEmpty();
+        assertThat(ledger.findIncompleteIngestRuns()).isEmpty();
     }
 
     private JdbcRunLedger ledger() {

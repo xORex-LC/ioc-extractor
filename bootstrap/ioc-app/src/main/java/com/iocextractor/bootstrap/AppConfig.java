@@ -46,7 +46,7 @@ import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceFactory;
 import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceSettings;
 import com.iocextractor.adapter.out.store.jdbc.SqlitePragmaPolicy;
 import com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator;
-import com.iocextractor.application.aggregation.AggregationRunRecoveryService;
+import com.iocextractor.application.aggregation.IngestRunRecoveryService;
 import com.iocextractor.application.aggregation.ArtifactIdentityDefinition;
 import com.iocextractor.application.aggregation.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.aggregation.NoopArtifactProjection;
@@ -320,8 +320,7 @@ public class AppConfig {
     }
 
     @Bean(destroyMethod = "close")
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
-            + "('${ioc.ingestion.ledger.type:file}' == 'jdbc' || '${ioc.aggregation.enabled:false}' == 'true')")
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     public HikariDataSource serviceStorageDataSource(IocProperties props) {
         IocProperties.Storage.Service service = props.storage().service();
         if (!"jdbc".equalsIgnoreCase(service.type())) {
@@ -336,8 +335,7 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
-            + "('${ioc.ingestion.ledger.type:file}' == 'jdbc' || '${ioc.aggregation.enabled:false}' == 'true')")
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     public SchemaMigrationResult serviceSchemaMigration(
                                                         @Qualifier("serviceStorageDataSource")
                                                         HikariDataSource serviceStorageDataSource,
@@ -362,8 +360,7 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
-            + "('${ioc.ingestion.ledger.type:file}' == 'jdbc' || '${ioc.aggregation.enabled:false}' == 'true')")
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     public JdbcStorageHealthProbe serviceStorageHealthProbe(@Qualifier("serviceStorageDataSource")
                                                             HikariDataSource serviceStorageDataSource,
                                                             @Qualifier("serviceSchemaMigration")
@@ -372,8 +369,7 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
-            + "'${ioc.aggregation.enabled:false}' == 'true'")
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     public RunLedger runLedger(@Qualifier("serviceStorageDataSource")
                                HikariDataSource serviceStorageDataSource,
                                @Qualifier("serviceSchemaMigration")
@@ -504,10 +500,9 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
-            + "'${ioc.aggregation.enabled:false}' == 'true'")
-    public Integer aggregationRunRecovery(RunLedger runLedger, ArtifactProjection csvArtifactProjection) {
-        return new AggregationRunRecoveryService(runLedger, csvArtifactProjection).recover();
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    public Integer ingestRunRecovery(RunLedger runLedger, ArtifactProjection csvArtifactProjection) {
+        return new IngestRunRecoveryService(runLedger, csvArtifactProjection).recover();
     }
 
     @Bean
@@ -539,8 +534,7 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
-            + "('${ioc.ingestion.ledger.type:file}' == 'jdbc' || '${ioc.aggregation.enabled:false}' == 'true')")
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     public JdbcStorageHealthIndicator jdbcStorageHealthIndicator(JdbcStorageHealthProbe serviceStorageHealthProbe) {
         return new JdbcStorageHealthIndicator(serviceStorageHealthProbe);
     }

@@ -124,7 +124,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
 
     private IngestSourceResult processClaimed(SourceUnit unit) {
         var sourceSinks = sourceSinkFactory.createFor(unit);
-        var run = runLedger.startAggregation(sourceSinks.artifactNames());
+        var run = runLedger.startIngest(unit.key().value(), sourceSinks.artifactNames());
         boolean dbCommitted = false;
         ExtractionResult extraction;
         try {

@@ -2,8 +2,8 @@ package com.iocextractor.application.ingest;
 
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
 import com.iocextractor.application.port.in.ingest.IngestSourceResult;
-import com.iocextractor.application.aggregation.AggregationRun;
-import com.iocextractor.application.aggregation.AggregationRunStatus;
+import com.iocextractor.application.aggregation.IngestRun;
+import com.iocextractor.application.aggregation.IngestRunStatus;
 import com.iocextractor.application.port.out.aggregation.ArtifactProjection;
 import com.iocextractor.application.port.out.aggregation.RunLedger;
 import com.iocextractor.application.port.out.IocSink;
@@ -48,7 +48,7 @@ class IngestionServiceTest {
         assertThat(result.duplicate()).isFalse();
         assertThat(sink.written).isEqualTo(1);
         assertThat(projection.artifacts).containsExactly("masks");
-        assertThat(runLedger.status).isEqualTo(AggregationRunStatus.COMPLETED);
+        assertThat(runLedger.status).isEqualTo(IngestRunStatus.COMPLETED);
         assertThat(ledger.find(key)).get()
                 .extracting(IngestionRecord::status)
                 .isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
@@ -71,7 +71,7 @@ class IngestionServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("projection failed");
 
-        assertThat(runLedger.status).isEqualTo(AggregationRunStatus.DB_COMMITTED);
+        assertThat(runLedger.status).isEqualTo(IngestRunStatus.DB_COMMITTED);
         assertThat(ledger.find(key)).get()
                 .extracting(IngestionRecord::status)
                 .isEqualTo(IngestionStatus.CLAIMED);
@@ -210,36 +210,36 @@ class IngestionServiceTest {
     }
 
     private static final class MemoryRunLedger implements RunLedger {
-        private AggregationRunStatus status;
+        private IngestRunStatus status;
 
         @Override
-        public AggregationRun startAggregation(List<String> artifacts) {
-            status = AggregationRunStatus.STARTED;
-            return new AggregationRun("run-1", status, artifacts, Instant.EPOCH, Instant.EPOCH, null);
+        public IngestRun startIngest(String sourceKey, List<String> artifacts) {
+            status = IngestRunStatus.STARTED;
+            return new IngestRun("run-1", sourceKey, status, artifacts, Instant.EPOCH, Instant.EPOCH, null);
         }
 
         @Override
         public void markDbCommitted(String runId) {
-            status = AggregationRunStatus.DB_COMMITTED;
+            status = IngestRunStatus.DB_COMMITTED;
         }
 
         @Override
         public void markProjectionCompleted(String runId) {
-            status = AggregationRunStatus.PROJECTION_COMPLETED;
+            status = IngestRunStatus.PROJECTION_COMPLETED;
         }
 
         @Override
         public void markCompleted(String runId) {
-            status = AggregationRunStatus.COMPLETED;
+            status = IngestRunStatus.COMPLETED;
         }
 
         @Override
         public void markFailed(String runId, String reason) {
-            status = AggregationRunStatus.FAILED;
+            status = IngestRunStatus.FAILED;
         }
 
         @Override
-        public List<AggregationRun> findIncompleteAggregationRuns() {
+        public List<IngestRun> findIncompleteIngestRuns() {
             return List.of();
         }
     }

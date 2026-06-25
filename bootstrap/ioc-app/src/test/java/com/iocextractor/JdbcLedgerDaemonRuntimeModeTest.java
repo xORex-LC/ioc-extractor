@@ -68,7 +68,7 @@ class JdbcLedgerDaemonRuntimeModeTest {
              var statement = connection.createStatement();
             var resultSet = statement.executeQuery("PRAGMA user_version")) {
             assertThat(resultSet.next()).isTrue();
-            assertThat(resultSet.getInt(1)).isEqualTo(3);
+            assertThat(resultSet.getInt(1)).isEqualTo(4);
         }
     }
 }
