@@ -1,9 +1,17 @@
 # 0001 — Стриминговый инжест (демон)
 
-- **Статус:** принято; актуализировано после этапа 9
+- **Статус:** принято; актуализировано после этапа 9; **partition/aggregation-часть
+  заменена storage-коллапсом** (см. ниже)
 - **Дата:** 2026-06-21
 - **Связано:** [../ingestion.md](../ingestion.md), [../architecture.md](../architecture.md),
   [../cross-cutting.md](../cross-cutting.md), [../modularization.md](../modularization.md)
+
+> **Superseded (storage Step 1–3 / β-коллапс):** этот ADR — историческая запись
+> исходного дизайна с partition-staging, отдельным проходом агрегации и stable-id
+> sidecar. Они **удалены**: бизнес-данные теперь в canonical SQLite (truth), демон
+> пишет каждый файл прямо в canonical + CSV-проекция, id даёт единый `IdGenerator`.
+> Актуальный контур — [../ingestion.md](../ingestion.md) и
+> [../worknote/storage-layer.md](../worknote/storage-layer.md). Ниже — как было.
 
 > **Поправки после ревью ([0006](0006-design-review-refinements.md)) и
 > модуляризации:** `SourceFeed` — не порт ядра, а adapter-local abstraction над

@@ -8,23 +8,28 @@
 > Текущий контур: проект — Maven-реактор; generic pipeline находится в
 > `platform/platform-etl`, IOC use cases и stages — в `core/ioc-application`,
 > технические входы — отдельные `adapter-*` модули. Реализованы whole-file
-> daemon ingestion, partition output, scheduled aggregation в canonical CSV,
-> stable id sidecar, artifact-aware lookup, retention/reaper и health-контур.
+> daemon ingestion, **прямая запись в canonical SQLite-хранилище**, CSV-проекция,
+> artifact-aware lookup, retention/reaper и health-контур.
 > Служебный durable ledger переключается file ↔ JDBC
-> (`ioc.ingestion.ledger.type: file | jdbc`). **Бизнес-данные dataframe теперь
-> хранятся в SQLite как source of truth** (`ioc.storage.dataframe.type: jdbc`,
-> default), а CSV-артефакты (`*_generated.csv`) — генерируемая проекция из БД.
-> Это касается обоих режимов: oneshot и daemon переключены на DB-truth
-> одновременно. Для daemon-агрегации есть durable run-ledger: crash-window после
-> commit БД и до CSV-проекции восстанавливается на старте через повторную
-> проекцию незавершённого `DB_COMMITTED` run.
+> (`ioc.ingestion.ledger.type: file | jdbc`). **Бизнес-данные dataframe хранятся
+> в SQLite как source of truth** (`ioc.storage.dataframe.type: jdbc`, default), а
+> CSV-артефакты (`*_generated.csv`) — генерируемая проекция из БД. Это касается
+> обоих режимов: oneshot и daemon переключены на DB-truth одновременно.
+>
+> **β-коллапс выполнен:** partition-staging, отдельный проход агрегации и
+> stable-id sidecar удалены. Демон извлекает каждый файл прямо в canonical
+> (`SourceSinkFactory → JdbcIocSink`) и тут же перепроецирует CSV. Запись→проекция
+> идёт сагой с durable run-ledger (`ingest_run`): crash-window после commit БД и до
+> CSV-проекции закрывается на старте повторной проекцией незавершённого
+> `DB_COMMITTED` run (и/или полным идемпотентным репроцессом источника со статусом
+> `CLAIMED`).
 
 ## 0. Реализованный scope 0.1.0
 
-File-ingest реализован как driving-adapter поверх существующего
-`ExtractIocsUseCase`. Spring Integration остаётся в `adapter-ingest`, ядро
-application/domain не знает о SI, а идемпотентность строится вокруг durable
-ledger и source-scoped партиций.
+File-ingest реализован как driving-adapter поверх извлекающего pipeline. Spring
+Integration остаётся в `adapter-ingest`, ядро application/domain не знает о SI, а
+идемпотентность строится вокруг durable ledger и `INSERT … ON CONFLICT(row_key)
+DO NOTHING` в canonical-таблицах (keep-first).
 
 Ключевые runtime-решения:
 
@@ -33,10 +38,11 @@ ledger и source-scoped партиций.
 - В `daemon` CLI runner выключен, а процесс живёт вместе со Spring context и
   Spring Integration flow.
 - `IocSink` API не расширен контекстом источника. В daemon-режиме bootstrap
-  подставляет partition wrapper/factory в adapter layer: путь партиции строится
-  по source-key/content-hash и делегирует запись существующему CSV mapper/sink.
-- Глобальные stable id назначает single-writer aggregation через sidecar
-  `artifact;key;id;created_at;updated_at`.
+  подставляет per-source `JdbcIocSink`-и (`SourceSinkFactory.createFor(unit)`),
+  которые пишут прямо в canonical с `_source_key` из ingestion-record; провенанс
+  оседает в `<artifact>_sources`.
+- **Авторитет id — единый** `IdGenerator(strategy, start=maxId+1)` (как в oneshot);
+  отдельный stable-id sidecar упразднён, `id AUTOINCREMENT` — пассивная подстраховка.
 
 ## 1. Режимы запуска
 
@@ -75,15 +81,15 @@ wiring.
                    │  (SourceFeed — adapter-local над SI: whole-file / tail)
                    ▼
               IngestSourceUseCase (application)
-                   │  ledger/status/recovery
+                   │  ledger/status/recovery + run-ledger saga
                    ├──────────────▶ SourceLifecycle (claim/archive/fail)
-                   └──────────────▶ ExtractIocsUseCase (pipeline без доменных изменений)
-                   │  refang → extract → attribute → dedup
+                   └──────────────▶ extraction pipeline (refang → extract → attribute)
+                   │
                    ▼
-              IocSink via partition wrapper → partitions/
-                                        └── AggregationService → dataframe/
-   driving:  IngestSourceUseCase, ExtractIocsUseCase, AggregatePartitionsUseCase
-   driven:   IngestionLedger | SourceLifecycle | IocSink | LookupRepository | aggregation storage ports
+              JdbcIocSink (per-source) → canonical SQLite ──▶ ArtifactProjection → *_generated.csv
+   driving:  IngestSourceUseCase, ExtractIocsUseCase
+   driven:   IngestionLedger | SourceLifecycle | SourceSinkFactory | CanonicalArtifactRepository
+             | ArtifactProjection | RunLedger | LookupRepository
 ```
 
 **Новые порты**
@@ -93,15 +99,12 @@ wiring.
 | `IngestSourceUseCase` | in (driving) | Приём одной единицы-источника на обработку (вызывается watch-адаптером) |
 | `IngestionLedger` | out (driven) | Durable-журнал **статусов** обработки (идемпотентность, восстановление) |
 | `SourceLifecycle` | out (driven) | Claim/archive/fail источника через атомарные операции ФС; application не знает SI |
-| `PartitionSinkFactory` | out (driven) | Создание daemon-scoped `IocSink`-ов для source-key/content-hash; реализация в `adapter-sink-csv` |
-| `AggregatePartitionsUseCase` | in (driving) | Запуск single-writer aggregation из готовых партиций в канонические артефакты |
-| `PartitionArtifactRepository` | out (driven) | Чтение source-scoped partition CSV как storage-neutral rows |
-| `CanonicalArtifactRepository` | out (driven) | Чтение/атомарная запись канонических артефактов |
-| `StableIdIndex` | out (driven) | Stable id per artifact-key; текущая реализация — sidecar CSV |
-| `ArtifactIdentityResolver` | out (driven) | Artifact-specific key extraction; живёт в adapter layer, потому что зависит от схемы артефакта |
-| `AggregationTrigger` | out (driven) | Событийный kick «партиция готова» из ингеста; impl — `DaemonAggregationScheduler` (коалесинг) |
+| `SourceSinkFactory` | out (driven) | Создание per-source `IocSink`-ов (`JdbcIocSink`), пишущих прямо в canonical с `_source_key`; реализация в bootstrap поверх `adapter-store-jdbc` |
+| `CanonicalArtifactRepository` | out (driven) | Чтение / транзакционная запись canonical-таблиц (rows + `<artifact>_sources`), keep-first `ON CONFLICT` |
+| `ArtifactProjection` | out (driven) | Перепроекция `*_generated.csv` из canonical-истины (`CsvArtifactProjection`) |
+| `ArtifactIdentityResolver` | out (driven) | Единая формула `row_key` из output-значений (application) |
+| `RunLedger` | out (driven) | Durable чекпоинты саги per-file `write→project` (`ingest_run`); recovery + observability |
 | `RunRetentionUseCase` / `RetentionStore` | in / out | Reaper растущих каталогов (возраст/количество → delete/archive); IO — `FileSystemRetentionStore` |
-| Partition sink wrapper | adapter wrapper | Daemon-only обёртка над CSV sink/path resolver; пишет партиции без расширения core `IocSink` API |
 
 `SourceFeed` — **не порт ядра**, а adapter-local абстракция внутри
 `adapter-ingest` над Spring Integration (whole-file/tail). Наружу единицы
@@ -112,10 +115,11 @@ SI заменяем без влияния на ядро.
 
 | Модуль | Что добавляется |
 |---|---|
-| `core/ioc-application` | `IngestSourceUseCase`, ingestion command/result, `IngestionLedger`, `SourceLifecycle`, `PartitionSinkFactory`, orchestration service |
+| `core/ioc-application` | `IngestSourceUseCase`, ingestion command/result, `IngestionLedger`, `SourceLifecycle`, `SourceSinkFactory`, run-ledger saga + `IngestRunRecoveryService`, orchestration service |
 | `adapters/adapter-ingest` | Spring Integration file flow, stability filters, `SourceLifecycle` FS implementation, file ledger implementation |
-| `adapters/adapter-sink-csv` | partition wrapper/path resolver поверх существующей CSV-записи; core `IocSink` API не расширяется на этапе 10 |
-| `bootstrap/ioc-app` | conditional wiring: `oneshot` CLI vs `daemon` ingest, config binding, app lifecycle |
+| `adapters/adapter-store-jdbc` | `JdbcIocSink`, `JdbcCanonicalArtifactRepository` (rows + `_sources`), `JdbcRunLedger`, schema migrations/health |
+| `adapters/adapter-sink-csv` | `CsvArtifactProjection` (CSV-проекция из canonical) |
+| `bootstrap/ioc-app` | conditional wiring: `oneshot` CLI vs `daemon` ingest, `SourceSinkFactory`, config binding, app lifecycle |
 
 ## 3. Детект появления (гибрид)
 
@@ -190,111 +194,84 @@ Spring filter — оптимизация входа, ledger — источник
 
 **Явные статусы юнита в `IngestionLedger`** (не булево «обработано»):
 ```
-CLAIMED ─▶ PARTITION_WRITTEN ─▶ LEDGER_RECORDED ─▶ SOURCE_ARCHIVED ─▶ (AGGREGATED)
+CLAIMED ─▶ SOURCE_ARCHIVED          (отказ на любом шаге → FAILED)
 ```
-Каждый переход фиксируется durable **до** выполнения следующего шага.
+После `markClaimed` единственный промежуточный статус — `CLAIMED`; запись→проекция
+выполняется как сага под durable run-ledger, и лишь затем источник доводится до
+`SOURCE_ARCHIVED`.
 
-**Восстановление (компенсации) при старте — по последнему статусу:**
+**Восстановление (компенсации) при старте:**
 
-| Последний статус | Состояние | Компенсация |
+| Слой | Состояние | Компенсация |
 |---|---|---|
-| `CLAIMED` | в `processing/`, партиция не записана | переобработать (write → …) |
-| `PARTITION_WRITTEN` | партиция есть, в ledger не зафиксировано | дозаписать запись ledger (идемпотентно по ключу) |
-| `LEDGER_RECORDED` | зафиксировано, источник не перемещён | **довести до `SOURCE_ARCHIVED`** (move в `done/`) |
-| `SOURCE_ARCHIVED` | завершено | ничего |
+| ingestion-ledger `CLAIMED` | в `processing/`, не доведён до архива | **полный идемпотентный репроцесс** источника (extract → canonical write → project → archive) |
+| ingestion-ledger `SOURCE_ARCHIVED` / `FAILED` | завершено / отклонено | ничего |
+| run-ledger `STARTED` | крэш до commit БД | пометить `FAILED` (без авто-replay: пересчёт unsafe) |
+| run-ledger `DB_COMMITTED` | данные есть, проекция нет | **повторить проекцию** из canonical → `COMPLETED` |
+| orphan в `processing/` без записи ledger | осиротевший источник | `fail` + `FAILED` |
 
-Все шаги **идемпотентны**: партиция перезаписывается по ключу, запись ledger —
-upsert по ключу, перемещение — `ATOMIC_MOVE` (уже перемещён → no-op). Поэтому
-случай «ledger сказал обработано, а источник ещё в `processing/`» не теряется:
-компенсация доводит до `SOURCE_ARCHIVED`. Итог — at-least-once доставка +
-идемпотентные шаги = effectively-once на выходе.
+Все шаги **идемпотентны**: canonical-запись — `ON CONFLICT(row_key) DO NOTHING`
+(keep-first), проекция — полная регенерация из БД, перемещение — `ATOMIC_MOVE`
+(уже перемещён → no-op). Итог — at-least-once доставка + идемпотентные шаги =
+effectively-once на выходе. Run-ledger гарантирует, что окно «БД записана, CSV нет»
+закрывается даже без полного репроцесса; см. §8 о роли run-ledger.
 
-**Атомарность записи:** партиция и записи ledger пишутся `*.tmp` → `ATOMIC_MOVE` —
-частичных файлов при падении не возникает. После обработки источник доводится до
-`SOURCE_ARCHIVED`; после успешной агрегации запись получает `AGGREGATED`.
+## 8. Выход: прямая запись в canonical + CSV-проекция
 
-## 8. Выход: партиции + агрегация
-
-**Партиции держим отдельно от канональных артефактов** — в выделенной
-поддиректории (по умолчанию `dataframe/partitions/`, конфигурируемо, в
-`.gitignore`), чтобы не смешивать с выходными артефактами в `dataframe/`.
+`dataframe.type=jdbc` (default) делает **SQLite source of truth**, а `*_generated.csv`
+— производную проекцию. Промежуточного partition-staging нет.
 
 ```
 dataframe/
-├── partitions/                      ← промежуточные, идемпотентные (gitignored)
-│   ├── masks/<date>/<content-hash>.csv
-│   ├── ip_list/<date>/<content-hash>.csv
-│   ├── address_blacklist/<date>/<content-hash>.csv
-│   └── hashes/<date>/<content-hash>.csv
-├── masks_list_generated.csv         ← канонические артефакты (результат агрегации)
+├── ioc-dataframe.db                 ← canonical SQLite (source of truth)
+├── masks_list_generated.csv         ← проекция из БД
 ├── ip_list_generated.csv
 ├── address_blacklist_generated.csv
 └── hashes_list_generated.csv
 ```
 
-- **Запись:** обработанный источник → партиция. Ключ партиции зависит от режима:
-  whole-file — `content-hash`; tail — checkpoint-id (см. §7). Переобработка
-  перезаписывает ту же партицию → идемпотентно, без гонок на дозапись.
-- Daemon пишет source-scoped партиции, а `AggregationService` вызывает application
-  use case `AggregatePartitionsUseCase`, читает готовые `SOURCE_ARCHIVED` записи из
-  ledger и сводит партиции в канонические артефакты **единым писателем**.
-- **Когда запускается агрегация** (`ioc.aggregation.trigger`): `interval` — только
-  по таймеру; `on-partition` — событийно, сразу после того как ингест архивировал
-  партицию (`AggregationTrigger.request()` из `IngestionService`); `both` (дефолт)
-  — событийный kick + таймер-страховка. Kick неблокирующий и коалесится (флаг
-  `pending` + single-thread executor + `running`-guard), прогоны не пересекаются;
-  агрегация идемпотентна (keep-first), так что коалесинг/потеря kick'а влияет лишь
-  на латентность, не на корректность.
-- **Граница ответственности:** агрегатор — process manager, а не дедупликатор.
-  Identity/upsert вынесены за отдельные контракты:
-  `ArtifactIdentityResolver`, `StableIdIndex`, `CanonicalArtifactRepository`,
-  `PartitionArtifactRepository` и `ArtifactMergePolicy`.
-- **Стабильные id:** решаются через sidecar CSV
-  `ioc.aggregation.id-index.path` (`artifact;key;id;created_at;updated_at`).
-  Известный artifact-key сохраняет id при повторной агрегации; новый ключ
-  получает следующий id. Миграция sidecar CSV на SQLite/JDBC — технический долг.
-- **Conflict policy:** реализован безопасный `keep-first`; более богатая модель
-  merge/update — отдельный долг.
+- **Запись:** извлечённые из источника индикаторы идут в per-source `JdbcIocSink`-и
+  (`SourceSinkFactory.createFor(unit)`), которые пишут прямо в canonical-таблицы
+  одной транзакцией на артефакт (rows + `<artifact>_sources` с `_source_key` из
+  ingestion-record). Дедуп — `ON CONFLICT(row_key) DO NOTHING` (keep-first), причём
+  источник отброшенного дубля всё равно учитывается в `<artifact>_sources`.
+- **Проекция:** после успешного commit БД `IngestionService` вызывает
+  `ArtifactProjection.project(...)` — `CsvArtifactProjection` перечитывает артефакт
+  из БД и атомарно (`*.tmp → ATOMIC_MOVE`) переписывает `*_generated.csv`.
+- **Сага и run-ledger:** per-file шаг — `STARTED → DB_COMMITTED → PROJECTION_COMPLETED
+  → COMPLETED` (`ingest_run` в service-БД). При падении после commit БД и до проекции
+  startup-recovery (`IngestRunRecoveryService`) доспроецирует незавершённый
+  `DB_COMMITTED` run. Run-ledger держим как **durable-observability**: восстановление
+  и так несёт ingestion-ledger (`CLAIMED → полный репроцесс`), а run-ledger даёт
+  наблюдаемость фаз write→project и фундамент под будущую export-сагу.
+- **Авторитет id:** единый `IdGenerator(strategy, start=canonical maxId+1)` (как в
+  oneshot), общий счётчик через сессию демона; контракт id — stable/unique/ascending
+  (не gapless). `id AUTOINCREMENT` — пассивная подстраховка.
 
 ### 8.1 Retention reaper (housekeeping)
 
-Растущие каталоги демона (`partitions`, `done`, `failed`) чистит **единый
-декларативный reaper** — общая обслуживающая абстракция, а не свой механизм на
-каждый каталог. Раскладка по слоям (как обсуждалось — обслуживание это
-дирижируемый набор use-case'ов, не отдельный модуль):
+Архивные каталоги демона (`done`, `failed`) чистит **единый декларативный
+reaper** — общая обслуживающая абстракция, а не свой механизм на каждый каталог.
+После β-коллапса partition-staging нет, поэтому target'ы — плоские `done`/`failed`
+(canonical-данные живут в БД и retention'у не подлежат). Раскладка по слоям:
 
-- **Триггер по времени** — `DaemonMaintenanceScheduler` (`bootstrap`), как и
-  `DaemonAggregationScheduler`: «часы», которые дёргают use-case.
+- **Триггер по времени** — `DaemonMaintenanceScheduler` (`bootstrap`): «часы»,
+  которые дёргают use-case.
 - **Политика** — чистая `RetentionPolicy` (`application.maintenance`): по списку
   записей и `now` решает, что просрочено. Запись реапается, если **старше
   `max-age` ИЛИ за пределами `max-count` самых свежих** (критерии объединяются).
   Без часов и ФС — покрыта таблицей тест-кейсов.
 - **IO** — порт `RetentionStore` (`application.port.out.maintenance`) +
   `FileSystemRetentionStore` (в `adapter-ingest`). Реапит **листовые файлы
-  рекурсивно**, поэтому корректно работает и для плоских `done/failed`, и для
-  вложенного дерева `partitions/<artifact>/<day>/<key>.csv` — постоянные
-  бакеты верхнего уровня за единицу очистки не принимаются.
-- **Гейтинг партиций** — для target `partitions` retention сначала сверяется с
-  `IngestionLedger`: age/count policy применяется только к partition-файлам из
-  записей со статусом `AGGREGATED`. `done`/`failed` остаются обычными
-  age/count targets.
-- **Count-retention партиций** — `max-count` для `partitions` применяется
-  независимо по первому сегменту подпути относительно target-dir
-  (`<artifact>/...`), то есть «N новейших на артефакт». Для `done`/`failed`
-  `max-count` остаётся общим по target.
+  рекурсивно**; `done`/`failed` — плоские каталоги архивов источников.
 
 Свойства:
 
 - **Безопасный дефолт:** `ioc.maintenance.retention.enabled: false` — без явного
   включения ничего не удаляется.
-- **Действия:** `delete` | `archive` (перенос в `archive-dir`). Непустые пустые
-  каталоги после реапа не подчищаются (намеренно — это держит путь реапа
-  безопасным; пустой `…/<day>/` безвреден).
-- **Порядок vs агрегация:** reaper по партициям не удаляет записи, пока ledger
-  не фиксирует `AGGREGATED`. Поэтому `max-age`/`max-count` можно ужесточать без
-  риска удалить ещё не влитую partition-стадию.
-- После очистки источник истины — канонический артефакт (+ ledger по content-hash
-  для дедупа повторных дропов).
+- **Действия:** `delete` | `archive` (перенос в `archive-dir`).
+- Источник истины бизнес-данных — canonical SQLite; reaper трогает только
+  файловые архивы обработанных/упавших источников.
 
 Конфиг — см. §12 (`ioc.maintenance.retention.*`).
 
@@ -339,8 +316,9 @@ service-activator + `concurrency > N` — без изменения доменн
 - **Graceful shutdown:** SI-компоненты — `SmartLifecycle`; остановка контекста
   останавливает поллеры, даёт дообработать in-flight, фиксирует ledger. SIGTERM
   от контейнера/systemd → shutdown hook Spring.
-- **Health:** health contributors для ledger, artifact storage и последней
-  aggregation state экспонируются по HTTP (`/actuator/health`, `/actuator/info`).
+- **Health:** health contributors для ledger и JDBC-хранилищ (service + dataframe:
+  connect / `user_version` / PRAGMA / `quick_check`) экспонируются по HTTP
+  (`/actuator/health`, `/actuator/info`).
   Web-сервер поднимается **только в daemon-режиме**: `DaemonWebEnvironmentPostProcessor`
   флипает `spring.main.web-application-type` в `servlet` по `ioc.runtime.mode=daemon`
   (oneshot/CLI остаётся non-web — one-shot не должен поднимать сервер). По умолчанию
@@ -384,8 +362,6 @@ ioc:
       max-messages-per-poll: 50
     stability:
       quiet-period: 10s           # «тишина» size/mtime перед обработкой
-    output:
-      partitions-dir: ./dataframe/partitions
     retry:
       max-attempts: 3
       backoff: 5s
@@ -394,28 +370,9 @@ ioc:
       path: ./var/ledger          # file-ledger dir; legacy import source при type=jdbc
     concurrency: 1
 
-  aggregation:
-    enabled: true
-    trigger: both                 # interval | on-partition | both
-    interval: 1m
-    initial-delay: 10s
-    id-index:
-      path: ./dataframe/.ioc-id-index.csv
-    artifacts:
-      - name: masks
-        key-columns: [ mask ]
-        conflict-policy: keep-first
-      - name: ip_list
-        key-columns: [ ip ]
-        conflict-policy: keep-first
-      - name: address_blacklist
-        key-columns: [ forbidden_url, forbidden_ip ]
-        key-mode: first-non-empty
-        conflict-policy: keep-first
-      - name: hashes
-        key-columns: [ hash_md5, hash_sha1, hash_sha256 ]
-        key-mode: first-non-empty
-        conflict-policy: keep-first
+  # Бизнес-вывод — в storage.dataframe (canonical SQLite) + sink-проекция
+  # (*_generated.csv); формула row_key — в ioc.artifact-identity.artifacts
+  # (key-columns / key-mode / epoch). Отдельного блока агрегации/партиций больше нет.
 
   maintenance:
     retention:
@@ -423,14 +380,13 @@ ioc:
       interval: 1h
       initial-delay: 5m
       targets:
-        - { name: partitions, dir: ./dataframe/partitions, max-age: 14d, max-count: 0, action: delete }
-        - { name: done,       dir: ./var/done,   max-age: 30d, max-count: 0, action: delete }
-        - { name: failed,     dir: ./var/failed, max-age: 90d, max-count: 0, action: delete }
+        - { name: done,   dir: ./var/done,   max-age: 30d, max-count: 0, action: delete }
+        - { name: failed, dir: ./var/failed, max-age: 90d, max-count: 0, action: delete }
         # action: archive требует archive-dir, напр.:
         # - { name: failed, dir: ./var/failed, max-age: 90d, action: archive, archive-dir: ./var/archive }
 ```
 
-`max-age` — Spring/ISO-длительность (`14d`, `720h`); `max-count: 0` — критерий
+`max-age` — Spring/ISO-длительность (`30d`, `720h`); `max-count: 0` — критерий
 по количеству выключен. См. §8.1.
 
 ## 13. Библиотеки и module placement
@@ -441,7 +397,7 @@ ioc:
 | Ретраи/backoff | `spring-retry` (+ `spring-aspects`, если нужен AOP advice) | только `adapter-ingest` |
 | Health/метрики | `spring-boot-starter-actuator` + `spring-boot-starter-web` | health contributors + HTTP `/actuator/health`; web включается **только в daemon** (`DaemonWebEnvironmentPostProcessor`), loopback-bind. См. [dev/0010](dev/0010-health-actuator.md) |
 | Хэш содержимого | JDK `MessageDigest` (`SHA-256`) | новой зависимости не требуется |
-| Durable ledger | `spring-jdbc`/`JdbcClient` + `org.xerial:sqlite-jdbc` + Hikari | `ioc.ingestion.ledger.type: file \| jdbc`; datasource создаётся только для `daemon+jdbc`, schema через `user_version`, DB health через `quick_check`/PRAGMA |
+| Durable ledger + run-ledger + canonical | `spring-jdbc`/`JdbcClient` + `org.xerial:sqlite-jdbc` + Hikari | `ioc.ingestion.ledger.type: file \| jdbc`; service-datasource создаётся в любом daemon (нужен для run-ledger), dataframe-datasource — при `storage.dataframe.type=jdbc` (default); schema через `user_version`, DB health через `quick_check`/PRAGMA |
 | Tail (later) | Apache Commons `Tailer` / SI tail producer | descoped для источников (вне домена document-ingest), см. техдолг ING-2 |
 
 ## 14. Реализованный контур и расширения
@@ -452,42 +408,41 @@ ioc:
    для whole-file source unit.
 3. Модуль `adapters/adapter-ingest`: Spring Integration file flow,
    include/exclude/stability filters, atomic claim, file ledger implementation.
-4. Partition-aware artifact writing: отдельный partition wrapper в adapter layer,
-   чтобы daemon писал в `dataframe/partitions/...` без изменения domain logic и
-   без расширения core `IocSink` API на этапе 10.
-5. Recovery/compensation по статусам, retry/dead-letter, sidecar error file.
-6. Test contour: unit tests for ledger/status transitions, adapter tests with
-   `@TempDir`, daemon e2e for duplicate drop/restart compensation, golden check
-   against partition content.
-7. Optional JDBC service ledger: `adapter-store-jdbc` provides SQLite datasource
-   policy, service schema migrations, `JdbcIngestionLedger`, legacy file-ledger
-   import, durable `aggregation_run` checkpoints and DB health; file-ledger
-   remains the default and oneshot does not create the service datasource.
+4. Direct-to-canonical artifact writing: per-source `JdbcIocSink` пишет прямо в
+   canonical SQLite (rows + `<artifact>_sources`), без partition-staging; CSV —
+   проекция (`CsvArtifactProjection`).
+5. Recovery/compensation: ingestion-ledger (`CLAIMED → репроцесс`) + run-ledger
+   (`DB_COMMITTED → репроекция`), retry/dead-letter, `.error` sidecar упавшего файла.
+6. Test contour: unit-тесты статус-переходов, adapter-тесты с `@TempDir`,
+   `DataframeRecoveryIntegrationTest` (crash-window/no-data-loss snapshot),
+   `DaemonIngestE2ETest` (полный daemon ingest → canonical+`_sources`+проекция),
+   golden e2e на проекцию.
+7. JDBC service + dataframe storage: `adapter-store-jdbc` — SQLite datasource
+   policy, service/dataframe миграции (`user_version`), `JdbcIngestionLedger`,
+   `JdbcRunLedger`, `JdbcCanonicalArtifactRepository`, legacy import и DB health.
 
 Также реализовано:
 
-- `AggregationService` / `AggregatePartitionsUseCase` → канонические артефакты
-  с stable id sidecar; триггер `ioc.aggregation.trigger` (`interval｜on-partition｜both`)
-  с событийным kick'ом из ингеста (см. §8);
-- `aggregation_run` в service storage → startup recovery для окна
-  `DB_COMMITTED → CSV projection`;
-- artifact-aware `LookupRepository` для masks, `ip_list` и hashes;
+- прямая запись daemon-ингеста в canonical + CSV-проекция, сага write→project
+  под `ingest_run` (см. §8);
+- единый авторитет id (`IdGenerator(maxId+1)`); stable-id sidecar упразднён;
+- artifact-aware `LookupRepository` (JDBC) для masks, `ip_list` и hashes;
 - health contributors + HTTP `/actuator/health` (daemon-only, см. [dev/0010](dev/0010-health-actuator.md));
 - **retention reaper** (`RetentionService`/`RetentionStore`/`DaemonMaintenanceScheduler`):
-  возраст/количество → delete/archive для `partitions`/`done`/`failed` (§8.1).
+  возраст/количество → delete/archive для `done`/`failed` (§8.1).
 
 Позже:
 
-- β-коллапс partition-staging после стабилизации recovery-пути;
-- web driving-adapter (REST-ингест/запросы, TAXII/STIX) — ING-8.
+- export-сага (STIX/OpenIOC) — под неё в service-схеме задуман `ingest_run`-каркас;
+- web driving-adapter (REST-ингест/запросы, TAXII/STIX) — ING-8;
 - tail-источники — **descoped** (вне домена document-ingest, ING-2).
 
 На каждом этапе сборка и тесты остаются зелёными; ядро не меняется.
 
 ## 15. Связи
 
-- Daemon-side stable ids закрыты через sidecar index; legacy
-  `id.start:auto` для oneshot остаётся совместимым с lookup `maxId()`.
+- Daemon- и oneshot-id назначает единый `IdGenerator(start=lookup.maxId()+1)`;
+  отдельного stable-id sidecar больше нет (β-коллапс).
 - Использует diagnostics/observability как разные подсистемы
   ([cross-cutting.md](cross-cutting.md), [logging.md](logging.md)).
 - Модуль `adapters/adapter-ingest` включён в reactor и проверки границ
