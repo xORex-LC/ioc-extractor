@@ -14,7 +14,7 @@
 | [pipeline.md](pipeline.md) | Подход к ETL-конвейеру: Pipes-and-Filters (EIP) + Envelope + Result/Either |
 | [output-mapping.md](output-mapping.md) | Конфигурируемое заполнение артефактов: провайдеры + трансформации, декларативные колонки (без хардкода) |
 | [extraction.md](extraction.md) | Извлечение/нормализация IOC, PSL/onion-классификация и тест-корпус (изоляция от артефактов проекта, case-table + golden) |
-| [ingestion.md](ingestion.md) | Стриминговый демон-инжест: детект, конечный автомат каталогов, идемпотентность, партиции+агрегация, жизненный цикл |
+| [ingestion.md](ingestion.md) | Стриминговый демон-инжест: детект, конечный автомат каталогов, JDBC truth, CSV-проекции, идемпотентность, жизненный цикл |
 | [modularization.md](modularization.md) | Текущая многомодульная структура: Maven-реактор, platform/core/adapters/bootstrap и правила зависимостей |
 | [cross-cutting.md](cross-cutting.md) | Сквозные подсистемы (логирование, диагностика, ошибки) как самостоятельные модули за портами |
 | [diagnostics.md](diagnostics.md) | Диагностика обработки данных: каталог кодов в коде, данные→сообщение, Result/Notification, bridge в logging |
@@ -31,7 +31,7 @@
 
 Этапы 0–11 реализованы: проект переведён в Maven-реактор с модулями
 `platform`, `core`, `adapters` и `bootstrap`; ядро, диагностика, pipeline,
-observability, CSV DSL, daemon ingestion, агрегация и packaging проверяются
+observability, CSV DSL, daemon ingestion, storage и packaging проверяются
 через reactor build. Документы по архитектуре и границам — живые: расширяются
 по мере добавления новых источников, форматов артефактов и экспортных sink-ов.
 

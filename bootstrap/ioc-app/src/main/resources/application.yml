@@ -216,13 +216,11 @@ ioc:
       - { name: ip_list, path: "./dataframe/ip_list.csv" }
       - { name: hashes,  path: "./dataframe/hashes_list.csv" }
 
-  # ---- Daemon aggregation (stage 11; active in daemon mode when enabled) ----
+  # ---- Artifact identity (row_key) -------------------------------------------
+  # Historical key name kept for config compatibility; this no longer controls
+  # scheduled daemon aggregation. It defines canonical row identity per artifact.
   aggregation:
     enabled: true
-    # When to aggregate partitions into canonical artifacts:
-    #   interval     — periodic timer only
-    #   on-partition — event-driven: aggregate right after each ingest produces a partition
-    #   both         — event kick + timer as a safety net (default)
     trigger: both
     interval: 1m
     initial-delay: 10s

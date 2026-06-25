@@ -7,8 +7,8 @@
 provider/transform (OCP, но это код).
 
 > Статус: **реализовано**. `ConfigurableRowMapper` использует provider/transform
-> registries и единую artifact definition как для oneshot canonical sinks, так и
-> для daemon partition/canonical CSV adapters.
+> registries и единую artifact definition для oneshot/daemon JDBC-write path и
+> CSV projection adapters.
 
 ## Принцип
 
@@ -213,11 +213,11 @@ artifacts:
 ## Кодировка вывода (граница выхода)
 
 `ioc.sink.csv.charset` (дефолт `UTF-8`) — кодировка **всех** CSV-артефактов и
-**чтения существующих** артефактов в lookup/агрегации, чтобы запись и чтение
+**чтения существующих** артефактов в lookup/storage, чтобы запись и чтение
 всегда совпадали (один «диалект dataframe» — без рассинхрона read/write):
 
-- применяется во всех писателях (`CsvIocSink`, партиционный синк,
-  `CsvArtifactRepositories`, `CsvStableIdIndex`) и читателях (lookup-репозитории);
+- применяется во всех писателях (`CsvIocSink`, `CsvArtifactProjection`) и
+  читателях (lookup/storage-репозитории);
 - **непредставимый символ** в целевой кодировке (напр. emoji в cp1251)
   **заменяется**, а не роняет батч (`CodingErrorAction.REPLACE`); для UTF-8 это
   no-op;

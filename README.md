@@ -12,7 +12,7 @@
 **refangs** defanged IOCs (`hxxp[:]//`, `[.]`, `[:]`), detects and normalizes them,
 classifies network masks, attributes a `source` from section headers, de-duplicates,
 and emits several reputation artifacts as CSV. It runs both as a one-shot CLI and as a
-streaming daemon with partitioning and aggregation.
+streaming daemon backed by SQLite dataframe storage.
 
 ```text
 hxxps[:]//bad[.]example[.]com/down/x.exe   ─┐
@@ -30,7 +30,7 @@ e3b0c44298fc1c149afbf4c8996fb924…           ─┘
 - **Source attribution** from header markers (`БИБ-…`, `Письмо ФСТЭК России …`).
 - **Multiple artifacts from a single run** — each with its own schema, id-space and normalization.
 - **Config-driven DSL** — a new output format is added by editing `application.yml` (column specs + provider/transform/filter registries), **no code**.
-- **Two run modes**: a one-shot CLI (`extract`) and a streaming **daemon** (Spring Integration: `inbox` → partitions → aggregation with stable ids, ledger, retry, crash recovery).
+- **Two run modes**: a one-shot CLI (`extract`) and a streaming **daemon** (Spring Integration: `inbox` → JDBC dataframe truth → CSV projection, ledger, retry, crash recovery).
 - **Observability**: ECS-JSON logs (Logback) + a diagnostics subsystem behind ports.
 - **Clean hexagonal architecture** whose boundaries are enforced by the **build** (ArchUnit + Maven Enforcer), not by review.
 
@@ -60,8 +60,8 @@ java -jar bootstrap/ioc-app/target/ioc-app-0.1.0.jar extract --source source/ioc
 ## Daemon mode
 
 With `ioc.runtime.mode=daemon`, sources are dropped into `./var/inbox`, pass a
-stability quiet-period, are written as partitions under `./dataframe/partitions`,
-and are periodically aggregated into canonical CSVs with stable ids. See
+stability quiet-period, are written directly into the JDBC dataframe store, and
+regenerate `*_generated.csv` projections from that store. See
 [docs/ingestion.md](docs/ingestion.md).
 
 ```bash
@@ -84,7 +84,7 @@ Schemas, normalization and column filling are described in [docs/output-mapping.
 
 The single source of truth is [bootstrap/ioc-app/src/main/resources/application.yml](bootstrap/ioc-app/src/main/resources/application.yml),
 under the `ioc.*` tree (`runtime`, `source`, `refang`, `engine`, `patterns`,
-`classify`, `sink`, `lookup`, `aggregation`, `ingestion`). Override order:
+`classify`, `sink`, `lookup`, `storage`, `aggregation`, `ingestion`). Override order:
 
 ```text
 classpath:application.yml  <  ./configs/application.yml  <  CLI flags / env
@@ -113,8 +113,8 @@ A multi-module Maven reactor; **one external adapter = one library**:
 
 ```text
 platform/   cross-cutting subsystems behind ports (errors, diagnostics, etl, observability)
-core/       ioc-domain (pure Java) + ioc-application (use cases, ports, stages, ingest, aggregation)
-adapters/   one library each: regex-re2j · psl · source-tika · lookup-csv · sink-csv · ingest · cli-picocli
+core/       ioc-domain (pure Java) + ioc-application (use cases, ports, stages, ingest, artifact storage)
+adapters/   one library each: regex-re2j · psl · source-tika · lookup-csv · sink-csv · store-jdbc · ingest · cli-picocli
 bootstrap/  ioc-app — composition root + Spring Boot entry point (CLI/daemon, no web)
 ```
 
@@ -126,7 +126,7 @@ Principles, architecture and conventions live in [docs/](docs/) (in Russian):
 - [modularization.md](docs/modularization.md) — the reactor module map;
 - [pipeline.md](docs/pipeline.md) — the Pipes-and-Filters pipeline;
 - [output-mapping.md](docs/output-mapping.md) — declarative artifact filling;
-- [ingestion.md](docs/ingestion.md) — the streaming daemon, partitions and aggregation;
+- [ingestion.md](docs/ingestion.md) — the streaming daemon, JDBC truth and CSV projection;
 - [boundaries.md](docs/boundaries.md) — architectural boundary enforcement (ArchUnit + Enforcer);
 - [diagnostics.md](docs/diagnostics.md) · [logging.md](docs/logging.md) — diagnostics and ECS observability;
 - [principles.md](docs/principles.md) · [conventions.md](docs/conventions.md) — engineering principles and conventions.
