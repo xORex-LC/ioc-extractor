@@ -11,7 +11,6 @@ import com.iocextractor.adapter.out.sink.csv.ArtifactFilter;
 import com.iocextractor.adapter.out.sink.csv.ColumnSpec;
 import com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactProjection;
-import com.iocextractor.adapter.out.sink.csv.CsvArtifactRepositories;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition;
 import com.iocextractor.adapter.out.sink.csv.CsvIocSink;
 import com.iocextractor.adapter.out.sink.csv.CsvStableIdIndex;
@@ -48,11 +47,9 @@ import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceFactory;
 import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceSettings;
 import com.iocextractor.adapter.out.store.jdbc.SqlitePragmaPolicy;
 import com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator;
-import com.iocextractor.application.aggregation.AggregationService;
 import com.iocextractor.application.aggregation.AggregationRunRecoveryService;
 import com.iocextractor.application.aggregation.ArtifactIdentityDefinition;
 import com.iocextractor.application.aggregation.CanonicalArtifactIdentityResolver;
-import com.iocextractor.application.aggregation.KeepFirstMergePolicy;
 import com.iocextractor.application.aggregation.NoopArtifactProjection;
 import com.iocextractor.application.aggregation.NoopRunLedger;
 import com.iocextractor.application.aggregation.StoredArtifactIdentity;
@@ -61,9 +58,7 @@ import com.iocextractor.application.ingest.IngestionService;
 import com.iocextractor.application.maintenance.RetentionAction;
 import com.iocextractor.application.maintenance.RetentionService;
 import com.iocextractor.application.maintenance.RetentionTarget;
-import com.iocextractor.application.port.in.aggregation.AggregatePartitionsUseCase;
 import com.iocextractor.application.port.in.maintenance.RunRetentionUseCase;
-import com.iocextractor.application.port.out.aggregation.AggregationTrigger;
 import com.iocextractor.application.port.out.aggregation.ArtifactProjection;
 import com.iocextractor.application.port.out.maintenance.RetentionStore;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
@@ -72,8 +67,6 @@ import com.iocextractor.application.port.out.LookupRepository;
 import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.application.port.out.aggregation.ArtifactIdentityResolver;
 import com.iocextractor.application.port.out.aggregation.ArtifactIdentityStore;
-import com.iocextractor.application.port.out.aggregation.CanonicalArtifactRepository;
-import com.iocextractor.application.port.out.aggregation.PartitionArtifactRepository;
 import com.iocextractor.application.port.out.aggregation.RunLedger;
 import com.iocextractor.application.port.out.aggregation.StableIdIndex;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
@@ -537,37 +530,6 @@ public class AppConfig {
                 projection.getIfAvailable(NoopArtifactProjection::new));
     }
 
-    /**
-     * Trigger the ingest use case calls after a partition is ready. With
-     * {@code ioc.aggregation.trigger=on-partition|both} this is the scheduler
-     * (event-driven kick); with {@code interval} it is a no-op (timer only).
-     */
-    @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
-    public AggregationTrigger aggregationTrigger(ObjectProvider<DaemonAggregationScheduler> schedulerProvider,
-                                                 IocProperties props) {
-        DaemonAggregationScheduler scheduler = schedulerProvider.getIfAvailable();
-        if (scheduler != null && !"interval".equals(aggregationTriggerMode(props))) {
-            return scheduler;
-        }
-        return AggregationTrigger.noop();
-    }
-
-    @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
-    public CsvArtifactRepositories csvArtifactRepositories(IocProperties props,
-                                                           MatchPolicy matchPolicy,
-                                                           IndicatorFeatureExtractor featureExtractor,
-                                                           LookupRepository lookup) {
-        validateAggregationConfig(props);
-        return new CsvArtifactRepositories(
-                artifactDefinitions(props, matchPolicy, featureExtractor, lookup),
-                canonicalArtifactPaths(props),
-                readFormat(props.sink().csv()),
-                writeFormat(props.sink().csv()),
-                csvCharset(props));
-    }
-
     @Bean
     public ArtifactIdentityResolver artifactIdentityResolver(IocProperties props) {
         return new CanonicalArtifactIdentityResolver(artifactIdentityDefinitions(props));
@@ -577,55 +539,6 @@ public class AppConfig {
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     public StableIdIndex stableIdIndex(IocProperties props, Clock clock) {
         return new CsvStableIdIndex(Path.of(props.aggregation().idIndex().path()), clock, csvCharset(props));
-    }
-
-    @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
-    public AggregatePartitionsUseCase aggregatePartitionsUseCase(IngestionLedger ledger,
-                                                                 PartitionArtifactRepository partitionRepository,
-                                                                 CanonicalArtifactRepository canonicalRepository,
-                                                                 ArtifactIdentityResolver identityResolver,
-                                                                 StableIdIndex stableIdIndex,
-                                                                 ObjectProvider<ArtifactProjection> projection,
-                                                                 ObjectProvider<RunLedger> runLedger,
-                                                                 IocProperties props) {
-        return new AggregationService(
-                ledger,
-                partitionRepository,
-                canonicalRepository,
-                identityResolver,
-                stableIdIndex,
-                new KeepFirstMergePolicy(),
-                enabledArtifactNames(props),
-                projection.getIfAvailable(NoopArtifactProjection::new),
-                runLedger.getIfAvailable(NoopRunLedger::new));
-    }
-
-    @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
-    public AggregationState aggregationState(Clock clock) {
-        return new AggregationState(clock);
-    }
-
-    @Bean
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && '${ioc.aggregation.enabled}' == 'true'")
-    public DaemonAggregationScheduler daemonAggregationScheduler(AggregatePartitionsUseCase useCase,
-                                                                 AggregationState state,
-                                                                 IocProperties props) {
-        return new DaemonAggregationScheduler(useCase, state,
-                props.aggregation().interval(), props.aggregation().initialDelay(),
-                !"on-partition".equals(aggregationTriggerMode(props)));
-    }
-
-    /** Normalize + validate {@code ioc.aggregation.trigger} (default {@code both}). */
-    private String aggregationTriggerMode(IocProperties props) {
-        String value = props.aggregation().trigger();
-        String mode = (value == null || value.isBlank()) ? "both" : value.trim().toLowerCase(Locale.ROOT);
-        if (!Set.of("interval", "on-partition", "both").contains(mode)) {
-            throw new IocExtractorException("Unknown ioc.aggregation.trigger: '" + value
-                    + "' (use interval | on-partition | both)");
-        }
-        return mode;
     }
 
     @Bean
@@ -645,12 +558,6 @@ public class AppConfig {
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     public ArtifactStorageHealthIndicator artifactStorageHealthIndicator(IocProperties props) {
         return new ArtifactStorageHealthIndicator(props);
-    }
-
-    @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
-    public AggregationHealthIndicator aggregationHealthIndicator(AggregationState state) {
-        return new AggregationHealthIndicator(state);
     }
 
     // ---- daemon housekeeping: retention reaper -----------------------------
@@ -824,24 +731,8 @@ public class AppConfig {
         return headers;
     }
 
-    private List<String> enabledArtifactNames(IocProperties props) {
-        return props.sink().artifacts().stream()
-                .filter(IocProperties.Sink.Artifact::enabled)
-                .map(IocProperties.Sink.Artifact::name)
-                .toList();
-    }
-
     private boolean isDataframeJdbc(IocProperties props) {
         return "jdbc".equalsIgnoreCase(props.storage().dataframe().type());
-    }
-
-    private void validateAggregationConfig(IocProperties props) {
-        for (IocProperties.Aggregation.Artifact artifact : props.aggregation().artifacts()) {
-            if (!"keep-first".equalsIgnoreCase(artifact.conflictPolicy())) {
-                throw new IocExtractorException("Unsupported aggregation conflict policy: "
-                        + artifact.conflictPolicy());
-            }
-        }
     }
 
     private Map<String, ValueProvider> valueProviders(MatchPolicy matchPolicy,
