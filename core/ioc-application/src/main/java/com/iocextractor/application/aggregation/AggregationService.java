@@ -5,8 +5,10 @@ import com.iocextractor.application.port.in.aggregation.AggregatePartitionsUseCa
 import com.iocextractor.application.port.in.aggregation.AggregationCommand;
 import com.iocextractor.application.port.in.aggregation.AggregationResult;
 import com.iocextractor.application.port.out.aggregation.ArtifactIdentityResolver;
+import com.iocextractor.application.port.out.aggregation.ArtifactProjection;
 import com.iocextractor.application.port.out.aggregation.CanonicalArtifactRepository;
 import com.iocextractor.application.port.out.aggregation.PartitionArtifactRepository;
+import com.iocextractor.application.port.out.aggregation.RunLedger;
 import com.iocextractor.application.port.out.aggregation.StableIdIndex;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 
@@ -34,6 +36,8 @@ public final class AggregationService implements AggregatePartitionsUseCase {
     private final StableIdIndex stableIdIndex;
     private final ArtifactMergePolicy mergePolicy;
     private final List<String> artifactOrder;
+    private final ArtifactProjection projection;
+    private final RunLedger runLedger;
 
     public AggregationService(IngestionLedger ledger,
                               PartitionArtifactRepository partitionRepository,
@@ -42,6 +46,19 @@ public final class AggregationService implements AggregatePartitionsUseCase {
                               StableIdIndex stableIdIndex,
                               ArtifactMergePolicy mergePolicy,
                               List<String> artifactOrder) {
+        this(ledger, partitionRepository, canonicalRepository, identityResolver, stableIdIndex, mergePolicy,
+                artifactOrder, new NoopArtifactProjection(), new NoopRunLedger());
+    }
+
+    public AggregationService(IngestionLedger ledger,
+                              PartitionArtifactRepository partitionRepository,
+                              CanonicalArtifactRepository canonicalRepository,
+                              ArtifactIdentityResolver identityResolver,
+                              StableIdIndex stableIdIndex,
+                              ArtifactMergePolicy mergePolicy,
+                              List<String> artifactOrder,
+                              ArtifactProjection projection,
+                              RunLedger runLedger) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.partitionRepository = Objects.requireNonNull(partitionRepository, "partitionRepository");
         this.canonicalRepository = Objects.requireNonNull(canonicalRepository, "canonicalRepository");
@@ -49,6 +66,8 @@ public final class AggregationService implements AggregatePartitionsUseCase {
         this.stableIdIndex = Objects.requireNonNull(stableIdIndex, "stableIdIndex");
         this.mergePolicy = Objects.requireNonNull(mergePolicy, "mergePolicy");
         this.artifactOrder = List.copyOf(Objects.requireNonNull(artifactOrder, "artifactOrder"));
+        this.projection = Objects.requireNonNull(projection, "projection");
+        this.runLedger = Objects.requireNonNull(runLedger, "runLedger");
     }
 
     @Override
@@ -75,12 +94,28 @@ public final class AggregationService implements AggregatePartitionsUseCase {
             accumulator.add(artifactName, artifactAggregation);
         }
 
-        stableIdIndex.save();
-        for (Map.Entry<String, CanonicalArtifact> entry : updatedArtifacts.entrySet()) {
-            canonicalRepository.write(entry.getKey(), entry.getValue());
-        }
-        for (IngestionRecord record : records) {
-            ledger.markAggregated(record.key());
+        var run = runLedger.startAggregation(activeArtifacts);
+        boolean dbCommitted = false;
+        try {
+            stableIdIndex.save();
+            for (Map.Entry<String, CanonicalArtifact> entry : updatedArtifacts.entrySet()) {
+                canonicalRepository.write(entry.getKey(), entry.getValue());
+            }
+            runLedger.markDbCommitted(run.runId());
+            dbCommitted = true;
+            for (String artifactName : updatedArtifacts.keySet()) {
+                projection.project(artifactName);
+            }
+            runLedger.markProjectionCompleted(run.runId());
+            for (IngestionRecord record : records) {
+                ledger.markAggregated(record.key());
+            }
+            runLedger.markCompleted(run.runId());
+        } catch (RuntimeException e) {
+            if (!dbCommitted) {
+                runLedger.markFailed(run.runId(), e.getMessage());
+            }
+            throw e;
         }
         return accumulator.toResult();
     }

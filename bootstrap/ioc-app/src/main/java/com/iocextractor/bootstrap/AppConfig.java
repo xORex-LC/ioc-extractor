@@ -23,7 +23,6 @@ import com.iocextractor.adapter.out.sink.csv.LowercaseTransform;
 import com.iocextractor.adapter.out.sink.csv.MatchHostValueProvider;
 import com.iocextractor.adapter.out.sink.csv.MatchUrlValueProvider;
 import com.iocextractor.adapter.out.sink.csv.PartitionedCsvSinkFactory;
-import com.iocextractor.adapter.out.sink.csv.ProjectingCanonicalArtifactRepository;
 import com.iocextractor.adapter.out.sink.csv.RowMapper;
 import com.iocextractor.adapter.out.sink.csv.SourceLabelValueProvider;
 import com.iocextractor.adapter.out.sink.csv.StripPrefixTransform;
@@ -36,6 +35,7 @@ import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository;
 import com.iocextractor.adapter.out.store.jdbc.JdbcIngestionLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcIocSink;
 import com.iocextractor.adapter.out.store.jdbc.JdbcLookupRepository;
+import com.iocextractor.adapter.out.store.jdbc.JdbcRunLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealthProbe;
 import com.iocextractor.adapter.out.store.jdbc.LegacyLedgerImporter;
 import com.iocextractor.adapter.out.store.jdbc.DataframeArtifactSchema;
@@ -50,9 +50,12 @@ import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceSettings;
 import com.iocextractor.adapter.out.store.jdbc.SqlitePragmaPolicy;
 import com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator;
 import com.iocextractor.application.aggregation.AggregationService;
+import com.iocextractor.application.aggregation.AggregationRunRecoveryService;
 import com.iocextractor.application.aggregation.ArtifactIdentityDefinition;
 import com.iocextractor.application.aggregation.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.aggregation.KeepFirstMergePolicy;
+import com.iocextractor.application.aggregation.NoopArtifactProjection;
+import com.iocextractor.application.aggregation.NoopRunLedger;
 import com.iocextractor.application.aggregation.StoredArtifactIdentity;
 import com.iocextractor.application.maintenance.AggregatedPartitionRetentionEligibility;
 import com.iocextractor.application.ingest.IngestionService;
@@ -62,6 +65,7 @@ import com.iocextractor.application.maintenance.RetentionTarget;
 import com.iocextractor.application.port.in.aggregation.AggregatePartitionsUseCase;
 import com.iocextractor.application.port.in.maintenance.RunRetentionUseCase;
 import com.iocextractor.application.port.out.aggregation.AggregationTrigger;
+import com.iocextractor.application.port.out.aggregation.ArtifactProjection;
 import com.iocextractor.application.port.out.maintenance.RetentionStore;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.out.IocSink;
@@ -71,6 +75,7 @@ import com.iocextractor.application.port.out.aggregation.ArtifactIdentityResolve
 import com.iocextractor.application.port.out.aggregation.ArtifactIdentityStore;
 import com.iocextractor.application.port.out.aggregation.CanonicalArtifactRepository;
 import com.iocextractor.application.port.out.aggregation.PartitionArtifactRepository;
+import com.iocextractor.application.port.out.aggregation.RunLedger;
 import com.iocextractor.application.port.out.aggregation.StableIdIndex;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.PartitionSinkFactory;
@@ -308,12 +313,12 @@ public class AppConfig {
     }
 
     @Bean(destroyMethod = "close")
-    @ConditionalOnJdbcLedger
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "('${ioc.ingestion.ledger.type:file}' == 'jdbc' || '${ioc.aggregation.enabled:false}' == 'true')")
     public HikariDataSource serviceStorageDataSource(IocProperties props) {
         IocProperties.Storage.Service service = props.storage().service();
         if (!"jdbc".equalsIgnoreCase(service.type())) {
-            throw new IocExtractorException("ioc.storage.service.type must be 'jdbc' when "
-                    + "ioc.ingestion.ledger.type=jdbc");
+            throw new IocExtractorException("ioc.storage.service.type must be 'jdbc' for daemon service storage");
         }
         return new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(new SqliteDataSourceSettings(
                 "service",
@@ -324,7 +329,8 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnJdbcLedger
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "('${ioc.ingestion.ledger.type:file}' == 'jdbc' || '${ioc.aggregation.enabled:false}' == 'true')")
     public SchemaMigrationResult serviceSchemaMigration(
                                                         @Qualifier("serviceStorageDataSource")
                                                         HikariDataSource serviceStorageDataSource,
@@ -349,12 +355,24 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnJdbcLedger
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "('${ioc.ingestion.ledger.type:file}' == 'jdbc' || '${ioc.aggregation.enabled:false}' == 'true')")
     public JdbcStorageHealthProbe serviceStorageHealthProbe(@Qualifier("serviceStorageDataSource")
                                                             HikariDataSource serviceStorageDataSource,
                                                             @Qualifier("serviceSchemaMigration")
                                                             SchemaMigrationResult serviceSchemaMigration) {
         return new JdbcStorageHealthProbe(serviceStorageDataSource, "service");
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.aggregation.enabled:false}' == 'true'")
+    public RunLedger runLedger(@Qualifier("serviceStorageDataSource")
+                               HikariDataSource serviceStorageDataSource,
+                               @Qualifier("serviceSchemaMigration")
+                               SchemaMigrationResult serviceSchemaMigration,
+                               Clock clock) {
+        return new JdbcRunLedger(serviceStorageDataSource, clock);
     }
 
     @Bean
@@ -451,6 +469,7 @@ public class AppConfig {
     }
 
     @Bean
+    @Primary
     @ConditionalOnDataframeStorage
     public JdbcCanonicalArtifactRepository jdbcCanonicalArtifactRepository(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
@@ -478,12 +497,10 @@ public class AppConfig {
     }
 
     @Bean
-    @Primary
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && '${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
-    public CanonicalArtifactRepository projectingCanonicalArtifactRepository(
-            JdbcCanonicalArtifactRepository jdbcCanonicalArtifactRepository,
-            CsvArtifactProjection csvArtifactProjection) {
-        return new ProjectingCanonicalArtifactRepository(jdbcCanonicalArtifactRepository, csvArtifactProjection);
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.aggregation.enabled:false}' == 'true'")
+    public Integer aggregationRunRecovery(RunLedger runLedger, ArtifactProjection csvArtifactProjection) {
+        return new AggregationRunRecoveryService(runLedger, csvArtifactProjection).recover();
     }
 
     @Bean
@@ -546,6 +563,8 @@ public class AppConfig {
                                                                  CanonicalArtifactRepository canonicalRepository,
                                                                  ArtifactIdentityResolver identityResolver,
                                                                  StableIdIndex stableIdIndex,
+                                                                 ObjectProvider<ArtifactProjection> projection,
+                                                                 ObjectProvider<RunLedger> runLedger,
                                                                  IocProperties props) {
         return new AggregationService(
                 ledger,
@@ -554,7 +573,9 @@ public class AppConfig {
                 identityResolver,
                 stableIdIndex,
                 new KeepFirstMergePolicy(),
-                enabledArtifactNames(props));
+                enabledArtifactNames(props),
+                projection.getIfAvailable(NoopArtifactProjection::new),
+                runLedger.getIfAvailable(NoopRunLedger::new));
     }
 
     @Bean
@@ -591,7 +612,8 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnJdbcLedger
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "('${ioc.ingestion.ledger.type:file}' == 'jdbc' || '${ioc.aggregation.enabled:false}' == 'true')")
     public JdbcStorageHealthIndicator jdbcStorageHealthIndicator(JdbcStorageHealthProbe serviceStorageHealthProbe) {
         return new JdbcStorageHealthIndicator(serviceStorageHealthProbe);
     }

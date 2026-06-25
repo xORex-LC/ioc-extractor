@@ -34,16 +34,19 @@ class SqliteUserVersionSchemaMigratorTest {
                     .migrate();
 
             assertThat(result.previousVersion()).isZero();
-            assertThat(result.currentVersion()).isEqualTo(1);
-            assertThat(result.appliedVersions()).containsExactly(1);
+            assertThat(result.currentVersion()).isEqualTo(2);
+            assertThat(result.appliedVersions()).containsExactly(1, 2);
             assertThat(diagnostics.diagnostics())
                     .extracting(diagnostic -> diagnostic.code())
-                    .containsExactly(StorageDiagnosticCodes.MIGRATION_APPLIED);
+                    .containsExactly(StorageDiagnosticCodes.MIGRATION_APPLIED,
+                            StorageDiagnosticCodes.MIGRATION_APPLIED);
             try (Connection connection = dataSource.getConnection()) {
-                assertThat(userVersion(connection)).isEqualTo(1);
+                assertThat(userVersion(connection)).isEqualTo(2);
                 assertThat(tableExists(connection, "ingestion_ledger")).isTrue();
                 assertThat(tableExists(connection, "ingestion_partition")).isTrue();
                 assertThat(tableExists(connection, "legacy_imports")).isTrue();
+                assertThat(tableExists(connection, "aggregation_run")).isTrue();
+                assertThat(tableExists(connection, "export_run")).isTrue();
                 assertCascadeDelete(connection);
             }
         }
@@ -60,8 +63,8 @@ class SqliteUserVersionSchemaMigratorTest {
             migrator = migrator(dataSource, diagnostics, ServiceSchemaMigrations.sqlite());
             SchemaMigrationResult result = migrator.migrate();
 
-            assertThat(result.previousVersion()).isEqualTo(1);
-            assertThat(result.currentVersion()).isEqualTo(1);
+            assertThat(result.previousVersion()).isEqualTo(2);
+            assertThat(result.currentVersion()).isEqualTo(2);
             assertThat(result.appliedVersions()).isEmpty();
             assertThat(diagnostics.diagnostics()).isEmpty();
         }
@@ -112,7 +115,7 @@ class SqliteUserVersionSchemaMigratorTest {
                         assertThat(diagnostic.code()).isEqualTo(StorageDiagnosticCodes.MIGRATION_DOWNGRADE);
                         assertThat(diagnostic.context())
                                 .containsEntry("fromVersion", 5)
-                                .containsEntry("toVersion", 1);
+                                .containsEntry("toVersion", 2);
                     });
             assertThat(userVersion(connection)).isEqualTo(5);
             assertThat(tableExists(connection, "preserved")).isTrue();

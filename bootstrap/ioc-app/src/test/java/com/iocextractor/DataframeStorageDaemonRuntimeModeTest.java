@@ -74,8 +74,9 @@ class DataframeStorageDaemonRuntimeModeTest {
     @Test
     void daemon_context_can_opt_into_dataframe_schema_foundation() throws Exception {
         assertThat(context.getBeansOfType(HikariDataSource.class))
-                .containsOnlyKeys("dataframeStorageDataSource");
-        assertThat(context.getBeansOfType(JdbcStorageHealthIndicator.class)).isEmpty();
+                .containsOnlyKeys("dataframeStorageDataSource", "serviceStorageDataSource");
+        assertThat(context.getBeansOfType(JdbcStorageHealthIndicator.class))
+                .containsOnlyKeys("jdbcStorageHealthIndicator");
 
         assertThat(userVersion()).isEqualTo(2);
         assertThat(tableExists("masks")).isTrue();

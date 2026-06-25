@@ -15,8 +15,9 @@
 > хранятся в SQLite как source of truth** (`ioc.storage.dataframe.type: jdbc`,
 > default), а CSV-артефакты (`*_generated.csv`) — генерируемая проекция из БД.
 > Это касается обоих режимов: oneshot и daemon переключены на DB-truth
-> одновременно. Открытый хвост — durable run-ledger/saga для crash-window
-> (см. [techdebt ING-4](techdebt.md)).
+> одновременно. Для daemon-агрегации есть durable run-ledger: crash-window после
+> commit БД и до CSV-проекции восстанавливается на старте через повторную
+> проекцию незавершённого `DB_COMMITTED` run.
 
 ## 0. Реализованный scope 0.1.0
 
@@ -460,14 +461,16 @@ ioc:
    against partition content.
 7. Optional JDBC service ledger: `adapter-store-jdbc` provides SQLite datasource
    policy, service schema migrations, `JdbcIngestionLedger`, legacy file-ledger
-   import and DB health; file-ledger remains the default and oneshot does not
-   create a datasource.
+   import, durable `aggregation_run` checkpoints and DB health; file-ledger
+   remains the default and oneshot does not create the service datasource.
 
 Также реализовано:
 
 - `AggregationService` / `AggregatePartitionsUseCase` → канонические артефакты
   с stable id sidecar; триггер `ioc.aggregation.trigger` (`interval｜on-partition｜both`)
   с событийным kick'ом из ингеста (см. §8);
+- `aggregation_run` в service storage → startup recovery для окна
+  `DB_COMMITTED → CSV projection`;
 - artifact-aware `LookupRepository` для masks, `ip_list` и hashes;
 - health contributors + HTTP `/actuator/health` (daemon-only, см. [dev/0010](dev/0010-health-actuator.md));
 - **retention reaper** (`RetentionService`/`RetentionStore`/`DaemonMaintenanceScheduler`):
@@ -475,7 +478,7 @@ ioc:
 
 Позже:
 
-- dataframe storage, CSV-проекция и stable id index; параллелизм пулом;
+- β-коллапс partition-staging после стабилизации recovery-пути;
 - web driving-adapter (REST-ингест/запросы, TAXII/STIX) — ING-8.
 - tail-источники — **descoped** (вне домена document-ingest, ING-2).
 

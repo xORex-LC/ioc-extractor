@@ -947,12 +947,12 @@ File-ledger остаётся default; JDBC включается только в 
   Golden e2e переведён на проверку проекции (байт-точно), daemon-композиция покрыта
   `DataframeProjectionIntegrationTest`. **oneshot стал накопительным** (БД персистентна,
   `ON CONFLICT DO NOTHING`) — намеренно, задокументировано в [ingestion.md](../ingestion.md).
-- **run-ledger/saga (crash-window) — сознательно отложен из среза 14 → ING-4a.** Шаг
-  «commit БД → запись CSV-проекции» неатомарен, но самовосстанавливается при следующем
-  прогоне (идемпотентность + полная перепроекция), поэтому это окно наблюдаемости, а не
-  баг целостности под single-writer/idempotent моделью. Полноценный durable run-ledger
-  (схема `run_ledger`, фазы, crash-window тесты) — отдельный срез, не хвост truth-switch.
-  См. [techdebt ING-4a](../techdebt.md).
+- **run-ledger/saga (crash-window) — выполнен отдельным Step 3 срезом.** Service schema
+  получила `aggregation_run`/`export_run`; `AggregationService` пишет checkpoints
+  `STARTED → DB_COMMITTED → PROJECTION_COMPLETED → COMPLETED`. Если процесс падает после
+  commit БД, startup recovery находит `DB_COMMITTED`, повторяет CSV-проекцию из БД и
+  закрывает run. Сбой до `DB_COMMITTED` помечается `FAILED`: автоматический replay без
+  повторного расчёта unsafe. См. [techdebt ING-4a](../techdebt.md).
 
 - **Единая identity-формула — намеренная смена семантики composite-ключа (ревью A).**
   Срез 12 убрал adapter-локальный `ConfigurableArtifactIdentityResolver` и перевёл
