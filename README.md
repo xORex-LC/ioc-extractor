@@ -83,8 +83,8 @@ Schemas, normalization and column filling are described in [docs/output-mapping.
 ## Configuration
 
 The single source of truth is [bootstrap/ioc-app/src/main/resources/application.yml](bootstrap/ioc-app/src/main/resources/application.yml),
-under the `ioc.*` tree (`runtime`, `source`, `refang`, `engine`, `patterns`,
-`classify`, `sink`, `lookup`, `storage`, `aggregation`, `ingestion`). Override order:
+under the `ioc.*` tree (`runtime`, `storage`, `source`, `refang`, `engine`, `patterns`,
+`classify`, `sink`, `lookup`, `artifact-identity`, `ingestion`, `maintenance`). Override order:
 
 ```text
 classpath:application.yml  <  ./configs/application.yml  <  CLI flags / env
