@@ -18,25 +18,22 @@ class RetentionServiceTest {
     private static final Instant NOW = Instant.parse("2026-06-25T00:00:00Z");
 
     @Test
-    void partition_count_retention_keeps_newest_entries_per_artifact_group() {
-        Path base = Path.of("dataframe/partitions");
+    void count_retention_keeps_newest_entries_globally() {
+        Path base = Path.of("var/done");
         var store = new MemoryRetentionStore(List.of(
-                entry(base, "masks/2026-06-25/new.csv", Duration.ofHours(1)),
-                entry(base, "masks/2026-06-24/old.csv", Duration.ofHours(2)),
-                entry(base, "hashes/2026-06-25/new.csv", Duration.ofHours(1)),
-                entry(base, "hashes/2026-06-24/old.csv", Duration.ofHours(2))));
-        var target = new RetentionTarget("partitions", base, null, 1, RetentionAction.DELETE, null);
+                entry(base, "newest.html", Duration.ofHours(1)),
+                entry(base, "middle.html", Duration.ofHours(2)),
+                entry(base, "oldest.html", Duration.ofHours(3))));
+        var target = new RetentionTarget("done", base, null, 2, RetentionAction.DELETE, null);
         var service = new RetentionService(store, List.of(target), Clock.fixed(NOW, ZoneOffset.UTC));
 
         var result = service.run();
 
-        assertThat(result.scanned()).isEqualTo(4);
-        assertThat(result.reaped()).isEqualTo(2);
+        assertThat(result.scanned()).isEqualTo(3);
+        assertThat(result.reaped()).isEqualTo(1);
         assertThat(store.deleted)
                 .extracting(Path::toString)
-                .containsExactlyInAnyOrder(
-                        "dataframe/partitions/masks/2026-06-24/old.csv",
-                        "dataframe/partitions/hashes/2026-06-24/old.csv");
+                .containsExactly("var/done/oldest.html");
     }
 
     private RetentionEntry entry(Path base, String relative, Duration age) {
