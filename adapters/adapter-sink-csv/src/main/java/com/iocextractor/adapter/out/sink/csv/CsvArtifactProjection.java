@@ -34,18 +34,18 @@ public final class CsvArtifactProjection {
     private static final Logger log = LoggerFactory.getLogger(CsvArtifactProjection.class);
 
     private final CanonicalArtifactRepository repository;
-    private final Map<String, CsvArtifactDefinition> definitions;
+    private final Map<String, List<String>> headers;
     private final Map<String, Path> paths;
     private final CSVFormat format;
     private final Charset charset;
 
     public CsvArtifactProjection(CanonicalArtifactRepository repository,
-                                 List<CsvArtifactDefinition> definitions,
+                                 Map<String, List<String>> headers,
                                  Map<String, Path> paths,
                                  CSVFormat format,
                                  Charset charset) {
         this.repository = Objects.requireNonNull(repository, "repository");
-        this.definitions = definitionsByName(definitions);
+        this.headers = copyHeaders(Objects.requireNonNull(headers, "headers"));
         this.paths = Map.copyOf(Objects.requireNonNull(paths, "paths"));
         this.format = Objects.requireNonNull(format, "format");
         this.charset = charset == null ? StandardCharsets.UTF_8 : charset;
@@ -57,9 +57,9 @@ public final class CsvArtifactProjection {
      * @param artifactName artifact to project
      */
     public void project(String artifactName) {
-        CsvArtifactDefinition definition = requireDefinition(artifactName);
+        List<String> header = requireHeader(artifactName);
         CanonicalArtifact artifact = repository.load(artifactName);
-        write(artifactName, definition.mapper().header(), artifact);
+        write(artifactName, header, artifact);
     }
 
     private void write(String artifactName, List<String> header, CanonicalArtifact artifact) {
@@ -101,12 +101,12 @@ public final class CsvArtifactProjection {
         }
     }
 
-    private CsvArtifactDefinition requireDefinition(String artifactName) {
-        CsvArtifactDefinition definition = definitions.get(artifactName);
-        if (definition == null) {
-            throw new IocExtractorException("Unknown CSV artifact definition: " + artifactName);
+    private List<String> requireHeader(String artifactName) {
+        List<String> header = headers.get(artifactName);
+        if (header == null) {
+            throw new IocExtractorException("Unknown CSV artifact projection: " + artifactName);
         }
-        return definition;
+        return header;
     }
 
     private Path path(String artifactName) {
@@ -117,11 +117,9 @@ public final class CsvArtifactProjection {
         return path;
     }
 
-    private Map<String, CsvArtifactDefinition> definitionsByName(List<CsvArtifactDefinition> source) {
-        Map<String, CsvArtifactDefinition> byName = new LinkedHashMap<>();
-        for (CsvArtifactDefinition definition : source) {
-            byName.put(definition.name(), definition);
-        }
+    private Map<String, List<String>> copyHeaders(Map<String, List<String>> source) {
+        Map<String, List<String>> byName = new LinkedHashMap<>();
+        source.forEach((name, header) -> byName.put(name, List.copyOf(header)));
         return Map.copyOf(byName);
     }
 

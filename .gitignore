@@ -41,6 +41,14 @@ dataframe/*
 !dataframe/ip_list.csv
 !dataframe/address_blacklist.csv
 
+# Runtime SQLite stores (created with relative paths when the app/tests run
+# from a module dir); never tracked.
+**/dataframe/*.db
+**/ioc-dataframe.db
+**/ioc-service.db
+bootstrap/ioc-app/dataframe/
+bootstrap/ioc-app/var/
+
 .envrc
 
 .vscode

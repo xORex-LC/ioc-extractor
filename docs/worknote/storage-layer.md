@@ -934,8 +934,25 @@ File-ledger остаётся default; JDBC включается только в 
 14 — saga/run-ledger коды + crash-window. Severity→поведение и MDC/events — §«Интеграция
 с Diagnostics & Observability».
 
-**Статус Шага 2 (срезы 11–13 реализованы, `verify` green).** Заметки реализации,
+**Статус Шага 2 (срезы 11–14 реализованы, `verify` green).** Заметки реализации,
 зафиксированные после код-ревью:
+
+- **Срез 14 — truth switch + projection (выполнен).** `ioc.storage.dataframe.type=jdbc`
+  стал дефолтом; oneshot пишет через `JdbcIocSink`, daemon — через агрегацию +
+  `ProjectingCanonicalArtifactRepository`; CSV (`*_generated.csv`) — проекция из БД
+  (`CsvArtifactProjection`, atomic temp→move). Ревью-D закрыт: `write()` пишет
+  `_first_source_key` (first-insert) и upsert в `<artifact>_sources`
+  (`occurrences`/`last_seen`), причём источник отброшенного keep-first-дубля всё равно
+  учитывается. `_source_key` течёт из ingestion-record (daemon) или label/“oneshot”.
+  Golden e2e переведён на проверку проекции (байт-точно), daemon-композиция покрыта
+  `DataframeProjectionIntegrationTest`. **oneshot стал накопительным** (БД персистентна,
+  `ON CONFLICT DO NOTHING`) — намеренно, задокументировано в [ingestion.md](../ingestion.md).
+- **run-ledger/saga (crash-window) — сознательно отложен из среза 14 → ING-4a.** Шаг
+  «commit БД → запись CSV-проекции» неатомарен, но самовосстанавливается при следующем
+  прогоне (идемпотентность + полная перепроекция), поэтому это окно наблюдаемости, а не
+  баг целостности под single-writer/idempotent моделью. Полноценный durable run-ledger
+  (схема `run_ledger`, фазы, crash-window тесты) — отдельный срез, не хвост truth-switch.
+  См. [techdebt ING-4a](../techdebt.md).
 
 - **Единая identity-формула — намеренная смена семантики composite-ключа (ревью A).**
   Срез 12 убрал adapter-локальный `ConfigurableArtifactIdentityResolver` и перевёл

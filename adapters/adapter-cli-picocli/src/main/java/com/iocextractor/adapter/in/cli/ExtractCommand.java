@@ -9,6 +9,7 @@ import com.iocextractor.observability.LogField;
 import com.iocextractor.observability.logging.LogEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import picocli.CommandLine.Command;
@@ -30,7 +31,7 @@ public final class ExtractCommand implements Callable<Integer> {
 
     private static final Logger log = LoggerFactory.getLogger(ExtractCommand.class);
 
-    private final ExtractIocsUseCase useCase;
+    private final ObjectProvider<ExtractIocsUseCase> useCase;
     private final String observabilityMode;
 
     @Option(names = {"-s", "--source"}, required = true,
@@ -41,7 +42,7 @@ public final class ExtractCommand implements Callable<Integer> {
             description = "Extract and report, but do not write any artifact.")
     private boolean dryRun;
 
-    public ExtractCommand(ExtractIocsUseCase useCase,
+    public ExtractCommand(ObjectProvider<ExtractIocsUseCase> useCase,
                           @Value("${ioc.observability.mode:oneshot}") String observabilityMode) {
         this.useCase = useCase;
         this.observabilityMode = observabilityMode;
@@ -57,7 +58,12 @@ public final class ExtractCommand implements Callable<Integer> {
                 .message("command started")
                 .log();
         try {
-            ExtractionResult result = useCase.extract(new ExtractionCommand(source, dryRun));
+            ExtractIocsUseCase extractor = useCase.getIfAvailable();
+            if (extractor == null) {
+                throw new IllegalStateException("The 'extract' command is not available in daemon mode "
+                        + "(ioc.runtime.mode=daemon); run with the default oneshot mode.");
+            }
+            ExtractionResult result = extractor.extract(new ExtractionCommand(source, dryRun));
             System.out.printf("Extracted=%d, retained=%d%n", result.extracted(), result.retained());
             result.writtenPerArtifact().forEach((artifact, rows) ->
                     System.out.printf("  %-8s -> %d rows%n", artifact, rows));
