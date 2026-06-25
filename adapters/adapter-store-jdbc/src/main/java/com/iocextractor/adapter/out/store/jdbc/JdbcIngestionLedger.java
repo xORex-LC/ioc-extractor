@@ -161,6 +161,25 @@ public final class JdbcIngestionLedger implements IngestionLedger {
                 .toList();
     }
 
+    @Override
+    public List<IngestionRecord> findAggregated() {
+        return jdbc.sql("""
+                        SELECT l.source_key, l.status, l.original_path, l.processing_path, l.archived_path,
+                               l.detected_at, l.updated_at, l.reason
+                        FROM ingestion_ledger l
+                        WHERE l.status = 'AGGREGATED'
+                          AND EXISTS (
+                              SELECT 1 FROM ingestion_partition p WHERE p.source_key = l.source_key
+                          )
+                        ORDER BY l.detected_at, l.source_key
+                        """)
+                .query((rs, rowNum) -> row(rs))
+                .list()
+                .stream()
+                .map(this::record)
+                .toList();
+    }
+
     private IngestionRecord require(SourceKey key) {
         return find(key).orElseThrow(() -> new IocExtractorException("Missing ingestion ledger record: " + key.value()));
     }

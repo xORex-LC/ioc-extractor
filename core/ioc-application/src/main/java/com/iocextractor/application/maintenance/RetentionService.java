@@ -22,11 +22,20 @@ public final class RetentionService implements RunRetentionUseCase {
     private final RetentionStore store;
     private final List<RetentionTarget> targets;
     private final Clock clock;
+    private final RetentionEligibility eligibility;
 
     public RetentionService(RetentionStore store, List<RetentionTarget> targets, Clock clock) {
+        this(store, targets, clock, RetentionEligibility.allowAll());
+    }
+
+    public RetentionService(RetentionStore store,
+                            List<RetentionTarget> targets,
+                            Clock clock,
+                            RetentionEligibility eligibility) {
         this.store = Objects.requireNonNull(store, "store");
         this.targets = List.copyOf(Objects.requireNonNull(targets, "targets"));
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.eligibility = Objects.requireNonNull(eligibility, "eligibility");
     }
 
     @Override
@@ -38,8 +47,9 @@ public final class RetentionService implements RunRetentionUseCase {
         for (RetentionTarget target : targets) {
             List<RetentionEntry> entries = store.list(target.dir());
             scanned += entries.size();
+            List<RetentionEntry> eligible = eligibility.eligibleEntries(target, entries);
             List<RetentionEntry> expired =
-                    RetentionPolicy.select(entries, now, target.maxAge(), target.maxCount());
+                    RetentionPolicy.select(eligible, now, target.maxAge(), target.maxCount());
             for (RetentionEntry entry : expired) {
                 if (target.action() == RetentionAction.ARCHIVE) {
                     store.archive(entry, target.archiveDir());

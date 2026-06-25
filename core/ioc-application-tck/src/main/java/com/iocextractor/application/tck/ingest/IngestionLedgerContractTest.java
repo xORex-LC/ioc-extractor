@@ -155,6 +155,44 @@ public abstract class IngestionLedgerContractTest {
     }
 
     @Test
+    void lists_only_aggregated_records_with_partitions() {
+        IngestionLedger ledger = createLedger(FIXED_CLOCK);
+        SourceUnit aggregated = unit("aggregated-with-partitions");
+        SourceUnit aggregatedWithoutPartitions = unit("aggregated-empty");
+        SourceUnit archived = unit("archived-not-aggregated");
+        SourceUnit failed = unit("failed-aggregated-list");
+
+        ledger.markClaimed(aggregated);
+        ledger.markPartitionWritten(aggregated.key(), List.of(path("partitions/aggregated.csv")));
+        ledger.markLedgerRecorded(aggregated.key());
+        ledger.markSourceArchived(aggregated.key(), path("done/aggregated.html"));
+        ledger.markAggregated(aggregated.key());
+
+        ledger.markClaimed(aggregatedWithoutPartitions);
+        ledger.markLedgerRecorded(aggregatedWithoutPartitions.key());
+        ledger.markSourceArchived(aggregatedWithoutPartitions.key(), path("done/aggregated-empty.html"));
+        ledger.markAggregated(aggregatedWithoutPartitions.key());
+
+        ledger.markClaimed(archived);
+        ledger.markPartitionWritten(archived.key(), List.of(path("partitions/archived-not-aggregated.csv")));
+        ledger.markLedgerRecorded(archived.key());
+        ledger.markSourceArchived(archived.key(), path("done/archived-not-aggregated.html"));
+
+        ledger.markClaimed(failed);
+        ledger.markPartitionWritten(failed.key(), List.of(path("partitions/failed-aggregated-list.csv")));
+        ledger.markLedgerRecorded(failed.key());
+        ledger.markSourceArchived(failed.key(), path("done/failed-aggregated-list.html"));
+        ledger.markFailed(failed.key(), "failed");
+
+        assertThat(ledger.findAggregated())
+                .singleElement()
+                .satisfies(record -> {
+                    assertThat(record.key()).isEqualTo(aggregated.key());
+                    assertThat(record.partitions()).containsExactly(path("partitions/aggregated.csv"));
+                });
+    }
+
+    @Test
     void status_transitions_other_than_failure_require_existing_record() {
         IngestionLedger ledger = createLedger(FIXED_CLOCK);
         SourceKey missing = key("missing-transition");
