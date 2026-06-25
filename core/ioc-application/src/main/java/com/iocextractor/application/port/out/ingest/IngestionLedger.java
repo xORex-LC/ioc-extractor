@@ -17,19 +17,9 @@ public interface IngestionLedger {
 
     void markClaimed(SourceUnit unit);
 
-    void markPartitionWritten(SourceKey key, List<Path> partitions);
-
-    void markLedgerRecorded(SourceKey key);
-
     void markSourceArchived(SourceKey key, Path archivedPath);
-
-    void markAggregated(SourceKey key);
 
     void markFailed(SourceKey key, String reason);
 
     List<IngestionRecord> findIncomplete();
-
-    List<IngestionRecord> findReadyForAggregation();
-
-    List<IngestionRecord> findAggregated();
 }

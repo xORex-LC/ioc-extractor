@@ -38,172 +38,43 @@ public abstract class IngestionLedgerContractTest {
     }
 
     @Test
-    void persists_full_status_transition_chain() {
+    void persists_claim_archive_chain() {
         IngestionLedger ledger = createLedger(FIXED_CLOCK);
         SourceUnit unit = unit("alpha");
 
         ledger.markClaimed(unit);
-        assertRecord(ledger, unit.key(), IngestionStatus.CLAIMED, List.of(), null, null);
-
-        ledger.markPartitionWritten(unit.key(), List.of(path("partitions/masks-alpha.csv")));
-        assertRecord(ledger, unit.key(), IngestionStatus.PARTITION_WRITTEN,
-                List.of(path("partitions/masks-alpha.csv")), null, null);
-
-        ledger.markLedgerRecorded(unit.key());
-        assertRecord(ledger, unit.key(), IngestionStatus.LEDGER_RECORDED,
-                List.of(path("partitions/masks-alpha.csv")), null, null);
+        assertRecord(ledger, unit.key(), IngestionStatus.CLAIMED, null, null);
 
         ledger.markSourceArchived(unit.key(), path("done/alpha.html"));
-        assertRecord(ledger, unit.key(), IngestionStatus.SOURCE_ARCHIVED,
-                List.of(path("partitions/masks-alpha.csv")), path("done/alpha.html"), null);
-
-        ledger.markAggregated(unit.key());
-        assertRecord(ledger, unit.key(), IngestionStatus.AGGREGATED,
-                List.of(path("partitions/masks-alpha.csv")), path("done/alpha.html"), null);
-    }
-
-    @Test
-    void mark_partition_written_replaces_previous_partitions() {
-        IngestionLedger ledger = createLedger(FIXED_CLOCK);
-        SourceUnit unit = unit("replace");
-
-        ledger.markClaimed(unit);
-        ledger.markPartitionWritten(unit.key(), List.of(path("partitions/old.csv")));
-        ledger.markPartitionWritten(unit.key(), List.of(path("partitions/new-a.csv"), path("partitions/new-b.csv")));
-
-        // Partition ORDER is not part of the contract (see JdbcIngestionLedger#partitions):
-        // adapters may return any order. The inputs here are alphabetical, so isEqualTo
-        // happens to hold for both the insertion-order (file) and sorted (jdbc) backends.
-        assertThat(ledger.find(unit.key())).get()
-                .extracting(IngestionRecord::partitions)
-                .isEqualTo(List.of(path("partitions/new-a.csv"), path("partitions/new-b.csv")));
+        assertRecord(ledger, unit.key(), IngestionStatus.SOURCE_ARCHIVED, path("done/alpha.html"), null);
     }
 
     @Test
     void lists_only_recoverable_incomplete_records() {
         IngestionLedger ledger = createLedger(FIXED_CLOCK);
         SourceUnit claimed = unit("claimed");
-        SourceUnit partitionWritten = unit("partition-written");
-        SourceUnit ledgerRecorded = unit("ledger-recorded");
         SourceUnit archived = unit("archived");
-        SourceUnit aggregated = unit("aggregated");
         SourceUnit failed = unit("failed");
 
         ledger.markClaimed(claimed);
 
-        ledger.markClaimed(partitionWritten);
-        ledger.markPartitionWritten(partitionWritten.key(), List.of(path("partitions/partition-written.csv")));
-
-        ledger.markClaimed(ledgerRecorded);
-        ledger.markPartitionWritten(ledgerRecorded.key(), List.of(path("partitions/ledger-recorded.csv")));
-        ledger.markLedgerRecorded(ledgerRecorded.key());
-
         ledger.markClaimed(archived);
-        ledger.markPartitionWritten(archived.key(), List.of(path("partitions/archived.csv")));
-        ledger.markLedgerRecorded(archived.key());
         ledger.markSourceArchived(archived.key(), path("done/archived.html"));
-
-        ledger.markClaimed(aggregated);
-        ledger.markPartitionWritten(aggregated.key(), List.of(path("partitions/aggregated.csv")));
-        ledger.markLedgerRecorded(aggregated.key());
-        ledger.markSourceArchived(aggregated.key(), path("done/aggregated.html"));
-        ledger.markAggregated(aggregated.key());
 
         ledger.markClaimed(failed);
         ledger.markFailed(failed.key(), "cannot parse");
 
         assertThat(ledger.findIncomplete())
                 .extracting(record -> record.key().value())
-                .containsExactlyInAnyOrder("claimed", "partition-written", "ledger-recorded");
+                .containsExactly("claimed");
     }
 
     @Test
-    void lists_only_archived_records_with_partitions_as_ready_for_aggregation() {
-        IngestionLedger ledger = createLedger(FIXED_CLOCK);
-        SourceUnit ready = unit("ready");
-        SourceUnit archivedWithoutPartitions = unit("archived-empty");
-        SourceUnit aggregated = unit("already-aggregated");
-        SourceUnit failed = unit("failed-ready");
-
-        ledger.markClaimed(ready);
-        ledger.markPartitionWritten(ready.key(), List.of(path("partitions/ready.csv")));
-        ledger.markLedgerRecorded(ready.key());
-        ledger.markSourceArchived(ready.key(), path("done/ready.html"));
-
-        ledger.markClaimed(archivedWithoutPartitions);
-        ledger.markLedgerRecorded(archivedWithoutPartitions.key());
-        ledger.markSourceArchived(archivedWithoutPartitions.key(), path("done/archived-empty.html"));
-
-        ledger.markClaimed(aggregated);
-        ledger.markPartitionWritten(aggregated.key(), List.of(path("partitions/already-aggregated.csv")));
-        ledger.markLedgerRecorded(aggregated.key());
-        ledger.markSourceArchived(aggregated.key(), path("done/already-aggregated.html"));
-        ledger.markAggregated(aggregated.key());
-
-        ledger.markClaimed(failed);
-        ledger.markPartitionWritten(failed.key(), List.of(path("partitions/failed-ready.csv")));
-        ledger.markLedgerRecorded(failed.key());
-        ledger.markSourceArchived(failed.key(), path("done/failed-ready.html"));
-        ledger.markFailed(failed.key(), "aggregation disabled");
-
-        assertThat(ledger.findReadyForAggregation())
-                .singleElement()
-                .satisfies(record -> {
-                    assertThat(record.key()).isEqualTo(ready.key());
-                    assertThat(record.partitions()).containsExactly(path("partitions/ready.csv"));
-                });
-    }
-
-    @Test
-    void lists_only_aggregated_records_with_partitions() {
-        IngestionLedger ledger = createLedger(FIXED_CLOCK);
-        SourceUnit aggregated = unit("aggregated-with-partitions");
-        SourceUnit aggregatedWithoutPartitions = unit("aggregated-empty");
-        SourceUnit archived = unit("archived-not-aggregated");
-        SourceUnit failed = unit("failed-aggregated-list");
-
-        ledger.markClaimed(aggregated);
-        ledger.markPartitionWritten(aggregated.key(), List.of(path("partitions/aggregated.csv")));
-        ledger.markLedgerRecorded(aggregated.key());
-        ledger.markSourceArchived(aggregated.key(), path("done/aggregated.html"));
-        ledger.markAggregated(aggregated.key());
-
-        ledger.markClaimed(aggregatedWithoutPartitions);
-        ledger.markLedgerRecorded(aggregatedWithoutPartitions.key());
-        ledger.markSourceArchived(aggregatedWithoutPartitions.key(), path("done/aggregated-empty.html"));
-        ledger.markAggregated(aggregatedWithoutPartitions.key());
-
-        ledger.markClaimed(archived);
-        ledger.markPartitionWritten(archived.key(), List.of(path("partitions/archived-not-aggregated.csv")));
-        ledger.markLedgerRecorded(archived.key());
-        ledger.markSourceArchived(archived.key(), path("done/archived-not-aggregated.html"));
-
-        ledger.markClaimed(failed);
-        ledger.markPartitionWritten(failed.key(), List.of(path("partitions/failed-aggregated-list.csv")));
-        ledger.markLedgerRecorded(failed.key());
-        ledger.markSourceArchived(failed.key(), path("done/failed-aggregated-list.html"));
-        ledger.markFailed(failed.key(), "failed");
-
-        assertThat(ledger.findAggregated())
-                .singleElement()
-                .satisfies(record -> {
-                    assertThat(record.key()).isEqualTo(aggregated.key());
-                    assertThat(record.partitions()).containsExactly(path("partitions/aggregated.csv"));
-                });
-    }
-
-    @Test
-    void status_transitions_other_than_failure_require_existing_record() {
+    void archive_requires_existing_record() {
         IngestionLedger ledger = createLedger(FIXED_CLOCK);
         SourceKey missing = key("missing-transition");
 
-        assertThatThrownBy(() -> ledger.markPartitionWritten(missing, List.of(path("partitions/missing.csv"))))
-                .isInstanceOf(RuntimeException.class);
-        assertThatThrownBy(() -> ledger.markLedgerRecorded(missing))
-                .isInstanceOf(RuntimeException.class);
         assertThatThrownBy(() -> ledger.markSourceArchived(missing, path("done/missing.html")))
-                .isInstanceOf(RuntimeException.class);
-        assertThatThrownBy(() -> ledger.markAggregated(missing))
                 .isInstanceOf(RuntimeException.class);
     }
 
@@ -224,7 +95,6 @@ public abstract class IngestionLedgerContractTest {
                 });
 
         ledger.markClaimed(existing);
-        ledger.markPartitionWritten(existing.key(), List.of(path("partitions/existing-failed.csv")));
         ledger.markFailed(existing.key(), "write failed");
 
         assertThat(ledger.find(existing.key())).get()
@@ -232,7 +102,6 @@ public abstract class IngestionLedgerContractTest {
                     assertThat(record.status()).isEqualTo(IngestionStatus.FAILED);
                     assertThat(record.originalPath()).isEqualTo(existing.originalPath());
                     assertThat(record.processingPath()).isEqualTo(existing.processingPath());
-                    assertThat(record.partitions()).containsExactly(path("partitions/existing-failed.csv"));
                     assertThat(record.reason()).isEqualTo("write failed");
                 });
     }
@@ -253,7 +122,6 @@ public abstract class IngestionLedgerContractTest {
     private void assertRecord(IngestionLedger ledger,
                               SourceKey key,
                               IngestionStatus status,
-                              List<Path> partitions,
                               Path archivedPath,
                               String reason) {
         assertThat(ledger.find(key)).get()
@@ -263,7 +131,6 @@ public abstract class IngestionLedgerContractTest {
                     assertThat(record.originalPath()).isEqualTo(path("inbox/" + key.value() + ".html"));
                     assertThat(record.processingPath()).isEqualTo(path("processing/" + key.value() + ".html"));
                     assertThat(record.archivedPath()).isEqualTo(archivedPath);
-                    assertThat(record.partitions()).isEqualTo(partitions);
                     assertThat(record.detectedAt()).isEqualTo(DETECTED_AT);
                     assertThat(record.updatedAt()).isEqualTo(UPDATED_AT);
                     assertThat(record.reason()).isEqualTo(reason);

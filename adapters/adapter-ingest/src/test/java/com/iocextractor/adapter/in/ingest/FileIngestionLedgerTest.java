@@ -12,7 +12,6 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -27,7 +26,7 @@ class FileIngestionLedgerTest extends IngestionLedgerContractTest {
     }
 
     @Test
-    void persists_status_transitions_and_lists_only_incomplete_records() {
+    void persists_status_transitions_and_lists_only_claimed_records_as_incomplete() {
         var clock = Clock.fixed(Instant.parse("2026-06-22T00:00:00Z"), ZoneOffset.UTC);
         var ledger = new FileIngestionLedger(tempDir, clock);
         var key = new SourceKey("ABC123");
@@ -35,32 +34,17 @@ class FileIngestionLedgerTest extends IngestionLedgerContractTest {
                 Path.of("processing/source.html"), Instant.parse("2026-06-22T00:00:00Z"));
 
         ledger.markClaimed(unit);
-        ledger.markPartitionWritten(key, List.of(Path.of("partitions/masks.csv")));
 
         assertThat(ledger.findIncomplete()).hasSize(1);
         assertThat(ledger.find(key)).get()
-                .satisfies(record -> {
-                    assertThat(record.status()).isEqualTo(IngestionStatus.PARTITION_WRITTEN);
-                    assertThat(record.partitions()).containsExactly(Path.of("partitions/masks.csv"));
-                });
+                .extracting("status")
+                .isEqualTo(IngestionStatus.CLAIMED);
 
-        ledger.markLedgerRecorded(key);
         ledger.markSourceArchived(key, Path.of("done/source.html"));
 
         assertThat(ledger.find(key)).get()
                 .extracting("status")
                 .isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
         assertThat(ledger.findIncomplete()).isEmpty();
-        assertThat(ledger.findReadyForAggregation()).singleElement()
-                .extracting("status")
-                .isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
-
-        ledger.markAggregated(key);
-
-        assertThat(ledger.find(key)).get()
-                .extracting("status")
-                .isEqualTo(IngestionStatus.AGGREGATED);
-        assertThat(ledger.findIncomplete()).isEmpty();
-        assertThat(ledger.findReadyForAggregation()).isEmpty();
     }
 }

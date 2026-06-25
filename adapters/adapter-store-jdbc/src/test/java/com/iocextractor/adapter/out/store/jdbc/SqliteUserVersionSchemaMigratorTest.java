@@ -34,20 +34,20 @@ class SqliteUserVersionSchemaMigratorTest {
                     .migrate();
 
             assertThat(result.previousVersion()).isZero();
-            assertThat(result.currentVersion()).isEqualTo(2);
-            assertThat(result.appliedVersions()).containsExactly(1, 2);
+            assertThat(result.currentVersion()).isEqualTo(3);
+            assertThat(result.appliedVersions()).containsExactly(1, 2, 3);
             assertThat(diagnostics.diagnostics())
                     .extracting(diagnostic -> diagnostic.code())
                     .containsExactly(StorageDiagnosticCodes.MIGRATION_APPLIED,
+                            StorageDiagnosticCodes.MIGRATION_APPLIED,
                             StorageDiagnosticCodes.MIGRATION_APPLIED);
             try (Connection connection = dataSource.getConnection()) {
-                assertThat(userVersion(connection)).isEqualTo(2);
+                assertThat(userVersion(connection)).isEqualTo(3);
                 assertThat(tableExists(connection, "ingestion_ledger")).isTrue();
-                assertThat(tableExists(connection, "ingestion_partition")).isTrue();
+                assertThat(tableExists(connection, "ingestion_partition")).isFalse();
                 assertThat(tableExists(connection, "legacy_imports")).isTrue();
                 assertThat(tableExists(connection, "aggregation_run")).isTrue();
                 assertThat(tableExists(connection, "export_run")).isTrue();
-                assertCascadeDelete(connection);
             }
         }
     }
@@ -63,8 +63,8 @@ class SqliteUserVersionSchemaMigratorTest {
             migrator = migrator(dataSource, diagnostics, ServiceSchemaMigrations.sqlite());
             SchemaMigrationResult result = migrator.migrate();
 
-            assertThat(result.previousVersion()).isEqualTo(2);
-            assertThat(result.currentVersion()).isEqualTo(2);
+            assertThat(result.previousVersion()).isEqualTo(3);
+            assertThat(result.currentVersion()).isEqualTo(3);
             assertThat(result.appliedVersions()).isEmpty();
             assertThat(diagnostics.diagnostics()).isEmpty();
         }
@@ -115,7 +115,7 @@ class SqliteUserVersionSchemaMigratorTest {
                         assertThat(diagnostic.code()).isEqualTo(StorageDiagnosticCodes.MIGRATION_DOWNGRADE);
                         assertThat(diagnostic.context())
                                 .containsEntry("fromVersion", 5)
-                                .containsEntry("toVersion", 2);
+                                .containsEntry("toVersion", 3);
                     });
             assertThat(userVersion(connection)).isEqualTo(5);
             assertThat(tableExists(connection, "preserved")).isTrue();
@@ -178,23 +178,4 @@ class SqliteUserVersionSchemaMigratorTest {
         }
     }
 
-    private void assertCascadeDelete(Connection connection) throws Exception {
-        try (var statement = connection.createStatement()) {
-            statement.execute("""
-                    INSERT INTO ingestion_ledger (
-                        source_key, status, original_path, processing_path, detected_at, updated_at
-                    ) VALUES ('abc', 'SOURCE_ARCHIVED', 'inbox/a.htm', 'processing/a.htm',
-                              '2026-06-23T00:00:00Z', '2026-06-23T00:00:01Z')
-                    """);
-            statement.execute("""
-                    INSERT INTO ingestion_partition (source_key, partition_path)
-                    VALUES ('abc', 'dataframe/partitions/masks/abc.csv')
-                    """);
-            statement.execute("DELETE FROM ingestion_ledger WHERE source_key = 'abc'");
-            try (var resultSet = statement.executeQuery("SELECT COUNT(*) FROM ingestion_partition")) {
-                assertThat(resultSet.next()).isTrue();
-                assertThat(resultSet.getInt(1)).isZero();
-            }
-        }
-    }
 }

@@ -31,7 +31,6 @@ import static org.assertj.core.api.Assertions.assertThat;
         "ioc.ingestion.dirs.done=target/test-mgmt/done",
         "ioc.ingestion.dirs.failed=target/test-mgmt/failed",
         "ioc.ingestion.ledger.path=target/test-mgmt/ledger",
-        "ioc.ingestion.output.partitions-dir=target/test-mgmt/partitions",
         "spring.main.banner-mode=off"
 })
 class DaemonManagementEndpointTest {

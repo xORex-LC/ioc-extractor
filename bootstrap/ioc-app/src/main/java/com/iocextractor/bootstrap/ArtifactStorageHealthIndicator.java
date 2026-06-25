@@ -20,7 +20,6 @@ public final class ArtifactStorageHealthIndicator implements HealthIndicator {
     @Override
     public Health health() {
         Health.Builder builder = Health.up();
-        checkDirectory(Path.of(props.ingestion().output().partitionsDir()), "partitionsDir", builder);
         for (IocProperties.Sink.Artifact artifact : props.sink().artifacts()) {
             if (artifact.enabled()) {
                 Path parent = Path.of(artifact.path()).toAbsolutePath().getParent();

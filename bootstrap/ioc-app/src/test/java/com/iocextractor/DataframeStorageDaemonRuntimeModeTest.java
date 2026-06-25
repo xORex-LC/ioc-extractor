@@ -32,7 +32,6 @@ import static org.assertj.core.api.Assertions.assertThat;
         "ioc.ingestion.dirs.done=target/test-dataframe-storage/done",
         "ioc.ingestion.dirs.failed=target/test-dataframe-storage/failed",
         "ioc.ingestion.ledger.path=target/test-dataframe-storage/ledger",
-        "ioc.ingestion.output.partitions-dir=target/test-dataframe-storage/partitions",
         "ioc.storage.dataframe.type=jdbc",
         "ioc.storage.dataframe.url=jdbc:sqlite:target/test-dataframe-storage/ioc-dataframe.db",
         "spring.main.banner-mode=off"

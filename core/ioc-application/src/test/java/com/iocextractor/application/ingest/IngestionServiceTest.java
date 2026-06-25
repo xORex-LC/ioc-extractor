@@ -46,7 +46,6 @@ class IngestionServiceTest {
 
         assertThat(result.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
         assertThat(result.duplicate()).isFalse();
-        assertThat(result.partitions()).isEmpty();
         assertThat(sink.written).isEqualTo(1);
         assertThat(projection.artifacts).containsExactly("masks");
         assertThat(runLedger.status).isEqualTo(AggregationRunStatus.COMPLETED);
@@ -85,7 +84,7 @@ class IngestionServiceTest {
         var ledger = new MemoryLedger();
         ledger.record = new IngestionRecord(key, IngestionStatus.SOURCE_ARCHIVED,
                 Path.of("old/source.html"), Path.of("processing/source.html"),
-                Path.of("done/source.html"), List.of(Path.of("partition.csv")),
+                Path.of("done/source.html"),
                 Instant.parse("2026-06-22T00:00:00Z"), Instant.parse("2026-06-22T00:00:01Z"), null);
         var service = new IngestionService(ledger, new MemoryLifecycle(), source -> {
             throw new AssertionError("source sink factory must not be called for duplicate");
@@ -101,7 +100,7 @@ class IngestionServiceTest {
         var ledger = new MemoryLedger();
         ledger.record = new IngestionRecord(key, IngestionStatus.SOURCE_ARCHIVED,
                 Path.of("old/source.html"), Path.of("processing/source.html"),
-                Path.of("done/source.html"), List.of(Path.of("partition.csv")),
+                Path.of("done/source.html"),
                 Instant.parse("2026-06-22T00:00:00Z"), Instant.parse("2026-06-22T00:00:01Z"), null);
         var lifecycle = new MemoryLifecycle();
         var service = new IngestionService(ledger, lifecycle, source -> {
@@ -115,28 +114,6 @@ class IngestionServiceTest {
         assertThat(result.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
         assertThat(lifecycle.events).containsExactly("archiveDuplicate");
     }
-
-    @Test
-    void skips_source_when_same_key_was_already_aggregated() {
-        var key = new SourceKey("ABC123");
-        var ledger = new MemoryLedger();
-        ledger.record = new IngestionRecord(key, IngestionStatus.AGGREGATED,
-                Path.of("old/source.html"), Path.of("processing/source.html"),
-                Path.of("done/source.html"), List.of(Path.of("partition.csv")),
-                Instant.parse("2026-06-22T00:00:00Z"), Instant.parse("2026-06-22T00:00:01Z"), null);
-        var lifecycle = new MemoryLifecycle();
-        var service = new IngestionService(ledger, lifecycle, source -> {
-            throw new AssertionError("source sink factory must not be called for duplicate");
-        }, extractionFactory());
-
-        var result = service.ingest(new IngestSourceCommand(
-                Path.of("inbox/source-copy.html"), key, Instant.parse("2026-06-22T00:01:00Z")));
-
-        assertThat(result.duplicate()).isTrue();
-        assertThat(result.status()).isEqualTo(IngestionStatus.AGGREGATED);
-        assertThat(lifecycle.events).containsExactly("archiveDuplicate");
-    }
-
 
     @Test
     void leaves_claimed_source_for_retry_and_rejects_only_after_final_failure() {
@@ -325,62 +302,27 @@ class IngestionServiceTest {
         @Override
         public void markClaimed(SourceUnit unit) {
             record = new IngestionRecord(unit.key(), IngestionStatus.CLAIMED,
-                    unit.originalPath(), unit.processingPath(), null, List.of(),
+                    unit.originalPath(), unit.processingPath(), null,
                     unit.detectedAt(), unit.detectedAt(), null);
-        }
-
-        @Override
-        public void markPartitionWritten(SourceKey key, List<Path> partitions) {
-            record = new IngestionRecord(key, IngestionStatus.PARTITION_WRITTEN,
-                    record.originalPath(), record.processingPath(), null, partitions,
-                    record.detectedAt(), record.detectedAt(), null);
-        }
-
-        @Override
-        public void markLedgerRecorded(SourceKey key) {
-            record = new IngestionRecord(key, IngestionStatus.LEDGER_RECORDED,
-                    record.originalPath(), record.processingPath(), null, record.partitions(),
-                    record.detectedAt(), record.detectedAt(), null);
         }
 
         @Override
         public void markSourceArchived(SourceKey key, Path archivedPath) {
             record = new IngestionRecord(key, IngestionStatus.SOURCE_ARCHIVED,
-                    record.originalPath(), record.processingPath(), archivedPath, record.partitions(),
-                    record.detectedAt(), record.detectedAt(), null);
-        }
-
-        @Override
-        public void markAggregated(SourceKey key) {
-            record = new IngestionRecord(key, IngestionStatus.AGGREGATED,
-                    record.originalPath(), record.processingPath(), record.archivedPath(), record.partitions(),
+                    record.originalPath(), record.processingPath(), archivedPath,
                     record.detectedAt(), record.detectedAt(), null);
         }
 
         @Override
         public void markFailed(SourceKey key, String reason) {
             record = new IngestionRecord(key, IngestionStatus.FAILED,
-                    Path.of("unknown"), Path.of("unknown"), null, List.of(),
+                    Path.of("unknown"), Path.of("unknown"), null,
                     Instant.EPOCH, Instant.EPOCH, reason);
         }
 
         @Override
         public List<IngestionRecord> findIncomplete() {
             return record == null ? List.of() : List.of(record);
-        }
-
-        @Override
-        public List<IngestionRecord> findReadyForAggregation() {
-            return record != null && record.status() == IngestionStatus.SOURCE_ARCHIVED
-                    ? List.of(record)
-                    : List.of();
-        }
-
-        @Override
-        public List<IngestionRecord> findAggregated() {
-            return record != null && record.status() == IngestionStatus.AGGREGATED
-                    ? List.of(record)
-                    : List.of();
         }
     }
 }

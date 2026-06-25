@@ -87,7 +87,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
             if (ledger.find(orphan.key()).isEmpty()) {
                 sourceLifecycle.fail(orphan, "orphan processing source without ledger record");
                 ledger.markFailed(orphan.key(), "orphan processing source without ledger record");
-                results.add(new IngestSourceResult(orphan.key(), IngestionStatus.FAILED, false, List.of(), null));
+                results.add(new IngestSourceResult(orphan.key(), IngestionStatus.FAILED, false, null));
             }
         }
         return results;
@@ -104,14 +104,12 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     }
 
     private IngestSourceResult handleExisting(IngestSourceCommand command, IngestionRecord record) {
-        if (record.status() == IngestionStatus.SOURCE_ARCHIVED || record.status() == IngestionStatus.AGGREGATED) {
+        if (record.status() == IngestionStatus.SOURCE_ARCHIVED) {
             sourceLifecycle.archiveDuplicate(command.source(), command.key());
-            return new IngestSourceResult(command.key(), record.status(),
-                    true, record.partitions(), null);
+            return new IngestSourceResult(command.key(), record.status(), true, null);
         }
         if (record.status() == IngestionStatus.FAILED) {
-            return new IngestSourceResult(command.key(), IngestionStatus.FAILED,
-                    false, record.partitions(), null);
+            return new IngestSourceResult(command.key(), IngestionStatus.FAILED, false, null);
         }
         return recover(record);
     }
@@ -120,10 +118,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         return switch (record.status()) {
             case CLAIMED -> processClaimed(new SourceUnit(
                     record.key(), record.originalPath(), record.processingPath(), record.detectedAt()));
-            case PARTITION_WRITTEN -> completeAfterPartitionWrite(record);
-            case LEDGER_RECORDED -> archiveRecorded(record);
-            case FAILED, SOURCE_ARCHIVED, AGGREGATED -> new IngestSourceResult(record.key(), record.status(),
-                    false, record.partitions(), null);
+            case FAILED, SOURCE_ARCHIVED -> new IngestSourceResult(record.key(), record.status(), false, null);
         };
     }
 
@@ -150,25 +145,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         Path archived = sourceLifecycle.archive(unit);
         ledger.markSourceArchived(unit.key(), archived);
         runLedger.markCompleted(run.runId());
-        return new IngestSourceResult(unit.key(), IngestionStatus.SOURCE_ARCHIVED,
-                false, List.of(), extraction);
-    }
-
-    private IngestSourceResult completeAfterPartitionWrite(IngestionRecord record) {
-        ledger.markLedgerRecorded(record.key());
-        return archiveRecorded(record);
-    }
-
-    private IngestSourceResult archiveRecorded(IngestionRecord record) {
-        if (record.processingPath() == null) {
-            throw new IocExtractorException("Cannot recover ingestion record without processing path: "
-                    + record.key().value());
-        }
-        Path archived = sourceLifecycle.archive(new ArchivedSourceUnit(
-                record.key(), record.processingPath(), record.detectedAt()));
-        ledger.markSourceArchived(record.key(), archived);
-        return new IngestSourceResult(record.key(), IngestionStatus.SOURCE_ARCHIVED,
-                false, record.partitions(), null);
+        return new IngestSourceResult(unit.key(), IngestionStatus.SOURCE_ARCHIVED, false, extraction);
     }
 
     private void failRecord(IngestionRecord record, String reason) {
