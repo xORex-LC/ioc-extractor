@@ -16,9 +16,8 @@ import java.util.Objects;
  * dialect) and written through {@link JdbcCanonicalArtifactRepository} so
  * row-key and keep-first semantics stay in one place.
  *
- * <p>The legacy stable-id sidecar ({@code .ioc-id-index.csv}) is read by the
- * caller — where the CSV stack already lives — and passed in as
- * {@code sidecarSequenceFloor}; this adapter does no CSV parsing of its own.
+ * <p>The importer preserves explicit legacy ids and then raises SQLite
+ * identity sequences to the maximum imported id.
  */
 public final class JdbcLegacyArtifactImporter {
 
@@ -26,18 +25,15 @@ public final class JdbcLegacyArtifactImporter {
     private final JdbcCanonicalArtifactRepository target;
     private final CanonicalArtifactRepository source;
     private final List<DataframeArtifactSchema> schemas;
-    private final long sidecarSequenceFloor;
 
     public JdbcLegacyArtifactImporter(DataSource dataSource,
                                       JdbcCanonicalArtifactRepository target,
                                       CanonicalArtifactRepository source,
-                                      List<DataframeArtifactSchema> schemas,
-                                      long sidecarSequenceFloor) {
+                                      List<DataframeArtifactSchema> schemas) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.target = Objects.requireNonNull(target, "target");
         this.source = Objects.requireNonNull(source, "source");
         this.schemas = List.copyOf(Objects.requireNonNull(schemas, "schemas"));
-        this.sidecarSequenceFloor = sidecarSequenceFloor;
     }
 
     public ImportSummary importAll() {
@@ -52,7 +48,7 @@ public final class JdbcLegacyArtifactImporter {
             artifacts++;
             rows += artifact.rows().size();
         }
-        long sequenceFloor = Math.max(maxIdInImportedArtifacts(), sidecarSequenceFloor);
+        long sequenceFloor = maxIdInImportedArtifacts();
         if (sequenceFloor > 0) {
             bumpSequences(sequenceFloor);
         }
@@ -68,10 +64,8 @@ public final class JdbcLegacyArtifactImporter {
     }
 
     /**
-     * Lifts every per-artifact identity sequence to a single shared floor. Stable
-     * ids span all artifacts (one global {@code .ioc-id-index.csv} counter), so the
-     * floor is intentionally global rather than per-artifact; gaps below it are
-     * acceptable under the ascending/unique (not gapless) id contract.
+     * Lifts every per-artifact identity sequence to the imported max id. Gaps
+     * below it are acceptable under the ascending/unique (not gapless) id contract.
      */
     private void bumpSequences(long sequenceFloor) {
         try (Connection connection = dataSource.getConnection();

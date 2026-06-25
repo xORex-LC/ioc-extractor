@@ -13,7 +13,6 @@ import com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactProjection;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition;
 import com.iocextractor.adapter.out.sink.csv.CsvIocSink;
-import com.iocextractor.adapter.out.sink.csv.CsvStableIdIndex;
 import com.iocextractor.adapter.out.sink.csv.IdGenerator;
 import com.iocextractor.adapter.out.sink.csv.IdValueProvider;
 import com.iocextractor.adapter.out.sink.csv.IndicatorValueProvider;
@@ -68,7 +67,6 @@ import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.application.port.out.aggregation.ArtifactIdentityResolver;
 import com.iocextractor.application.port.out.aggregation.ArtifactIdentityStore;
 import com.iocextractor.application.port.out.aggregation.RunLedger;
-import com.iocextractor.application.port.out.aggregation.StableIdIndex;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.port.out.ingest.SourceSinkFactory;
@@ -533,12 +531,6 @@ public class AppConfig {
     @Bean
     public ArtifactIdentityResolver artifactIdentityResolver(IocProperties props) {
         return new CanonicalArtifactIdentityResolver(artifactIdentityDefinitions(props));
-    }
-
-    @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
-    public StableIdIndex stableIdIndex(IocProperties props, Clock clock) {
-        return new CsvStableIdIndex(Path.of(props.aggregation().idIndex().path()), clock, csvCharset(props));
     }
 
     @Bean
