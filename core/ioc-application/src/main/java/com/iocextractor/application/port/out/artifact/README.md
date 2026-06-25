@@ -1,4 +1,4 @@
-# com.iocextractor.application.port.out.aggregation
+# com.iocextractor.application.port.out.artifact
 
 ## Назначение
 

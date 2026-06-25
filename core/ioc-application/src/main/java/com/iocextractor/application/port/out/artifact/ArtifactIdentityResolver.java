@@ -1,7 +1,7 @@
-package com.iocextractor.application.port.out.aggregation;
+package com.iocextractor.application.port.out.artifact;
 
-import com.iocextractor.application.aggregation.ArtifactRow;
-import com.iocextractor.application.aggregation.ArtifactRowKey;
+import com.iocextractor.application.artifact.ArtifactRow;
+import com.iocextractor.application.artifact.ArtifactRowKey;
 
 import java.util.Optional;
 

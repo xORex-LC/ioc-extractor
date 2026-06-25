@@ -1,7 +1,7 @@
-package com.iocextractor.application.aggregation;
+package com.iocextractor.application.artifact;
 
-import com.iocextractor.application.port.out.aggregation.ArtifactProjection;
-import com.iocextractor.application.port.out.aggregation.RunLedger;
+import com.iocextractor.application.port.out.artifact.ArtifactProjection;
+import com.iocextractor.application.port.out.artifact.RunLedger;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;

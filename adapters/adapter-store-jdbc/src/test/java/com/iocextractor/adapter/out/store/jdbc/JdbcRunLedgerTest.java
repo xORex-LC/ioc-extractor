@@ -1,6 +1,6 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.application.aggregation.IngestRunStatus;
+import com.iocextractor.application.artifact.IngestRunStatus;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

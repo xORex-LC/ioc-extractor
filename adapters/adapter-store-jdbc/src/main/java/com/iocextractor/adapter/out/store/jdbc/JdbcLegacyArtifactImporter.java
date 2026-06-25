@@ -1,7 +1,7 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.application.aggregation.CanonicalArtifact;
-import com.iocextractor.application.port.out.aggregation.CanonicalArtifactRepository;
+import com.iocextractor.application.artifact.CanonicalArtifact;
+import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.common.IocExtractorException;
 
 import javax.sql.DataSource;

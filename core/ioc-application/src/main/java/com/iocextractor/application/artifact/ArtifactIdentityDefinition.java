@@ -1,4 +1,4 @@
-package com.iocextractor.application.aggregation;
+package com.iocextractor.application.artifact;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;

@@ -6,7 +6,7 @@ package com.iocextractor.application.port.in.ingest;
 public interface IngestSourceUseCase {
 
     /**
-     * Claims, extracts, writes partition artifacts and archives one source.
+     * Claims, extracts, writes canonical artifacts and archives one source.
      *
      * @param command source command
      * @return ingestion result

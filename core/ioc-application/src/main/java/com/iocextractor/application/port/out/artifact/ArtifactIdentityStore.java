@@ -1,7 +1,7 @@
-package com.iocextractor.application.port.out.aggregation;
+package com.iocextractor.application.port.out.artifact;
 
-import com.iocextractor.application.aggregation.ArtifactIdentityDefinition;
-import com.iocextractor.application.aggregation.StoredArtifactIdentity;
+import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
+import com.iocextractor.application.artifact.StoredArtifactIdentity;
 
 import java.util.List;
 

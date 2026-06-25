@@ -45,7 +45,7 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Application | `application/pipeline/stage` | IOC ETL stage implementations |
 | Application | `application/service` | `IocExtractionService` — use-case orchestrator |
 | Application | `application/ingest` | daemon ingestion orchestration (`IngestionService`) |
-| Application | `application/aggregation` | storage-neutral artifact row identity, canonical artifact snapshots and ingest run recovery model |
+| Application | `application/artifact` | storage-neutral artifact row identity, canonical artifact snapshots and ingest run recovery model |
 | Application | `application/maintenance` | retention reaper: `RetentionPolicy` (pure) + `RetentionService` |
 | Adapter (in) | `adapter/in/cli` | `IocRootCommand`, `ExtractCommand`, `CliRunner` (picocli) |
 | Adapter (out) | `adapter/out/regex` | `Re2jPatternEngine` (default), `JdkRegexPatternEngine` |

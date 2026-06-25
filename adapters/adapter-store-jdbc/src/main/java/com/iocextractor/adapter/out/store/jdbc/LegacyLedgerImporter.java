@@ -247,11 +247,7 @@ public final class LegacyLedgerImporter {
     }
 
     private IngestionStatus status(String value) {
-        return switch (value) {
-            case "PARTITION_WRITTEN", "LEDGER_RECORDED" -> IngestionStatus.CLAIMED;
-            case "AGGREGATED" -> IngestionStatus.SOURCE_ARCHIVED;
-            default -> IngestionStatus.valueOf(value);
-        };
+        return IngestionStatus.valueOf(value);
     }
 
     private String checksum(Path file) {

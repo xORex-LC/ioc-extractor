@@ -1,6 +1,6 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.application.aggregation.ArtifactIdentityDefinition;
+import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.diagnostics.codes.StorageDiagnosticCodes;
 import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import com.zaxxer.hikari.HikariDataSource;

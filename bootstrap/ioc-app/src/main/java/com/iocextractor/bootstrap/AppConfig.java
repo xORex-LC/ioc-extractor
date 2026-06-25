@@ -46,26 +46,26 @@ import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceFactory;
 import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceSettings;
 import com.iocextractor.adapter.out.store.jdbc.SqlitePragmaPolicy;
 import com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator;
-import com.iocextractor.application.aggregation.IngestRunRecoveryService;
-import com.iocextractor.application.aggregation.ArtifactIdentityDefinition;
-import com.iocextractor.application.aggregation.CanonicalArtifactIdentityResolver;
-import com.iocextractor.application.aggregation.NoopArtifactProjection;
-import com.iocextractor.application.aggregation.NoopRunLedger;
-import com.iocextractor.application.aggregation.StoredArtifactIdentity;
+import com.iocextractor.application.artifact.IngestRunRecoveryService;
+import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
+import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
+import com.iocextractor.application.artifact.NoopArtifactProjection;
+import com.iocextractor.application.artifact.NoopRunLedger;
+import com.iocextractor.application.artifact.StoredArtifactIdentity;
 import com.iocextractor.application.ingest.IngestionService;
 import com.iocextractor.application.maintenance.RetentionAction;
 import com.iocextractor.application.maintenance.RetentionService;
 import com.iocextractor.application.maintenance.RetentionTarget;
 import com.iocextractor.application.port.in.maintenance.RunRetentionUseCase;
-import com.iocextractor.application.port.out.aggregation.ArtifactProjection;
+import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.maintenance.RetentionStore;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.application.port.out.LookupRepository;
 import com.iocextractor.application.port.out.SourceReader;
-import com.iocextractor.application.port.out.aggregation.ArtifactIdentityResolver;
-import com.iocextractor.application.port.out.aggregation.ArtifactIdentityStore;
-import com.iocextractor.application.port.out.aggregation.RunLedger;
+import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
+import com.iocextractor.application.port.out.artifact.ArtifactIdentityStore;
+import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.port.out.ingest.SourceSinkFactory;
@@ -122,9 +122,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Predicate;
 
 /**
@@ -791,7 +789,7 @@ public class AppConfig {
     }
 
     private List<ArtifactIdentityDefinition> artifactIdentityDefinitions(IocProperties props) {
-        return props.aggregation().artifacts().stream()
+        return props.artifactIdentity().artifacts().stream()
                 .map(artifact -> new ArtifactIdentityDefinition(
                         artifact.name(),
                         artifact.keyColumns(),
@@ -836,7 +834,7 @@ public class AppConfig {
 
     /**
      * Output charset for all CSV artifacts (writers) and for reading existing
-     * artifacts in lookup/aggregation, so read and write always agree. Blank or
+     * artifacts in lookup/storage, so read and write always agree. Blank or
      * absent {@code ioc.sink.csv.charset} means UTF-8.
      */
     private Charset csvCharset(IocProperties props) {
@@ -865,16 +863,6 @@ public class AppConfig {
             throw new IocExtractorException("Unsupported charset for " + key + ": '" + value.trim()
                     + "'. Use a JVM-supported charset name (e.g. UTF-8, windows-1251).", e);
         }
-    }
-
-    private CSVFormat readFormat(IocProperties.Sink.Csv csv) {
-        return CSVFormat.Builder.create()
-                .setDelimiter(csv.delimiter().charAt(0))
-                .setQuote(csv.quote().charAt(0))
-                .setNullString(csv.nullLiteral())
-                .setHeader()
-                .setSkipHeaderRecord(true)
-                .build();
     }
 
     private CSVFormat writeFormat(IocProperties.Sink.Csv csv) {

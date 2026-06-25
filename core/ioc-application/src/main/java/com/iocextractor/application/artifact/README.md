@@ -1,4 +1,4 @@
-# com.iocextractor.application.aggregation
+# com.iocextractor.application.artifact
 
 ## Назначение
 
@@ -7,7 +7,7 @@ Daemon больше не пишет source-scoped партиции: ingestion и
 canonical storage, а CSV является проекцией из БД.
 
 **Правило слоя:** пакет не знает CSV, filesystem, Spring scheduling или
-Actuator. Он работает только через ports из `application.port.out.aggregation`
+Actuator. Он работает только через ports из `application.port.out.artifact`
 и `application.port.out.ingest`.
 
 ## Структура

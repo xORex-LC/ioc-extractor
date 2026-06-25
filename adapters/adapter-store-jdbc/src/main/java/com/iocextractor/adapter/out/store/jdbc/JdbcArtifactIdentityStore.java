@@ -1,8 +1,8 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.application.aggregation.ArtifactIdentityDefinition;
-import com.iocextractor.application.aggregation.StoredArtifactIdentity;
-import com.iocextractor.application.port.out.aggregation.ArtifactIdentityStore;
+import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
+import com.iocextractor.application.artifact.StoredArtifactIdentity;
+import com.iocextractor.application.port.out.artifact.ArtifactIdentityStore;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticFactory;

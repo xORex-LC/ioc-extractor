@@ -1,9 +1,9 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.application.aggregation.ArtifactRow;
-import com.iocextractor.application.aggregation.CanonicalArtifact;
+import com.iocextractor.application.artifact.ArtifactRow;
+import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.port.out.IocSink;
-import com.iocextractor.application.port.out.aggregation.CanonicalArtifactRepository;
+import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 
@@ -11,7 +11,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
@@ -26,7 +25,7 @@ public final class JdbcIocSink implements IocSink {
     private final Set<IndicatorType> accepts;
     private final Predicate<Indicator> filter;
     private final List<String> header;
-    private final BiFunction<Long, Indicator, List<String>> mapper;
+    private final RowValues mapper;
     private final LongSupplier ids;
     private final CanonicalArtifactRepository repository;
     private final Consumer<String> afterWrite;
@@ -36,7 +35,7 @@ public final class JdbcIocSink implements IocSink {
                        Set<IndicatorType> accepts,
                        Predicate<Indicator> filter,
                        List<String> header,
-                       BiFunction<Long, Indicator, List<String>> mapper,
+                       RowValues mapper,
                        LongSupplier ids,
                        CanonicalArtifactRepository repository,
                        Consumer<String> afterWrite) {
@@ -47,7 +46,7 @@ public final class JdbcIocSink implements IocSink {
                        Set<IndicatorType> accepts,
                        Predicate<Indicator> filter,
                        List<String> header,
-                       BiFunction<Long, Indicator, List<String>> mapper,
+                       RowValues mapper,
                        LongSupplier ids,
                        CanonicalArtifactRepository repository,
                        Consumer<String> afterWrite,
@@ -80,8 +79,17 @@ public final class JdbcIocSink implements IocSink {
         return rows.size();
     }
 
+    /**
+     * Maps an indicator to artifact column values using a primitive {@code long}
+     * id, so no autoboxing happens on the hot extraction path.
+     */
+    @FunctionalInterface
+    public interface RowValues {
+        List<String> map(long id, Indicator indicator);
+    }
+
     private ArtifactRow row(Indicator indicator) {
-        List<String> values = mapper.apply(ids.getAsLong(), indicator);
+        List<String> values = mapper.map(ids.getAsLong(), indicator);
         var row = new LinkedHashMap<String, String>();
         for (int i = 0; i < header.size(); i++) {
             String column = header.get(i);

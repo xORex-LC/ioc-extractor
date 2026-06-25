@@ -984,3 +984,104 @@ File-ledger остаётся default; JDBC включается только в 
   в `CsvStableIdIndex` → общее id-пространство). `JdbcLookupRepository.contains` —
   регистро-независимый `lower(col)=?`; функциональный индекс на `lower(col)` — follow-up
   на момент wire-up в срезе 14.
+
+## Срез 4 — β-коллапс партиций: поэтапный план
+
+Цель: убрать partition-staging + отдельный проход агрегации **полностью** (без
+legacy/мёртвого режима, §«Шаг 3 — scope»), при этом закрыв исходные замыслы,
+не доведённые в Шаге 3. Опирается на ревью срезов 1–3. Каждая фаза — отдельный
+verify-green коммит; партиционный код к концу среза удалён без остатка.
+
+### Решения ДО кода (зафиксировать здесь, затем реализовывать)
+
+- **D1 — авторитет id (закрывает разрыв O3/O4).** Сейчас три механизма: oneshot
+  `IdGenerator(strategy, start=lookup.maxId+1)`, daemon-агрегация `CsvStableIdIndex`
+  (sidecar), и рудиментный `id AUTOINCREMENT`. Пост-коллапс — **один** авторитет.
+  **Рекомендация:** единый `IdGenerator(config strategy, start=canonical maxId+1)`
+  через тот же JDBC-write-путь, что и oneshot; `StableIdIndex`/`CsvStableIdIndex`
+  удаляются; `id AUTOINCREMENT` остаётся пассивной подстраховкой (явный id всегда
+  подаётся). Обоснование: сохраняет конфиг-driven `ascending|descending` + `start`
+  (AUTOINCREMENT не умеет `descending`), уже проверен в oneshot, single-writer daemon
+  делает `maxId+1` безопасным. Альтернатива (честный DB-AUTOINCREMENT, БД-владелец)
+  отклонена: теряет `descending` и требует read-back id. **Решить и записать до фазы B.**
+- **D2 — run-ledger пост-коллапс.** Агрегации больше нет → единица саги = per-file
+  ingest `write→project`. Решить: (а) `aggregation_run` переименовать/обобщить в
+  `run_ledger`/`ingest_run`; (б) держать ли run-ledger в JDBC service-БД даже при
+  `ledger.type=file` (сейчас да — file-ledger daemon уже поднимает service-БД ради
+  run-ledger, ревью #3). Рекомендация: оставить JDBC service-БД для run-ledger,
+  зафиксировать в docs, что «file ledger» ≠ «без служебной БД».
+- **D3 — судьба retention-обобщений (ревью #4).** `partitions`-target и
+  `AggregatedPartitionRetentionEligibility` умирают с партициями. Решить про
+  `RetentionEligibility`-порт и `RetentionPolicy(groupBy)`: при строгом «no dead code»
+  — удалить (остаются плоские `done`/`failed`); либо оставить как seam под будущий
+  export/TAXII-retention. Рекомендация: удалить partition-специфику, `RetentionPolicy`
+  откатить к негруппированному, если нет near-term потребителя.
+
+### Фазы (ordered, verify-green каждая)
+
+- **B — Direct-to-canonical daemon write (ядро).** В `IngestionService.processClaimed`
+  заменить `partitionSinkFactory.createFor(unit)` на per-file JDBC-canonical синки
+  (`JdbcIocSink` c `_source_key = record.key()`); extract пишет прямо в JDBC-truth →
+  `project` (per-file или коалесированно) → archive. Свернуть статусы ledger:
+  убрать `PARTITION_WRITTEN`/`AGGREGATED`, поток `CLAIMED → SOURCE_ARCHIVED`. Убрать
+  `aggregationTrigger` из `IngestionService`. **В этом же коммите** удалить partition-синки
+  (иначе мёртвый режим). Saga (D2) оборачивает write→project.
+- **C — Удалить подсистему агрегации.** `AggregationService`, `AggregatePartitionsUseCase`/
+  `AggregationCommand`/`AggregationResult`, `AggregationTrigger` + `DaemonAggregationScheduler`
+  (+ коалесинг), `AggregationHealthIndicator`, `PartitionArtifact`/`PartitionArtifactRepository`,
+  `CsvArtifactRepositories.readPartitions`, `ArtifactMergePolicy`/`KeepFirstMergePolicy`
+  (keep-first теперь = `ON CONFLICT DO NOTHING` в JDBC), конфиг `ioc.aggregation.*`.
+  Закрывает мину ревью #2 (subset `markAggregated`) — снятием самого `markAggregated`.
+- **D — Удалить partition-staging.** Порт `PartitionSinkFactory` + `PartitionedCsvSinkFactory`
+  + `PartitionPathResolver` + `PartitionSinks`; конфиг `partitions-dir`; таблица
+  `ingestion_partition` (service v3-миграция drop) + `IngestionRecord.partitions` +
+  методы ledger `markPartitionWritten`/`findReadyForAggregation`/`findAggregated`;
+  retention-target `partitions` + `AggregatedPartitionRetentionEligibility`; ArchUnit
+  partition-wrapper инвариант (ING-6) — снять/перенаправить.
+- **E — Удалить stable-id sidecar.** `CsvStableIdIndex` + порт `StableIdIndex` +
+  конфиг `.ioc-id-index.csv` + sequence-floor в `JdbcLegacyArtifactImporter` (sidecar-импорт).
+- **F — Упростить retention (по D3).** Оставить `done`/`failed` (ФС). Откатить/обобщить
+  `RetentionPolicy`/`RetentionEligibility` согласно решению D3.
+- **G — Run-ledger репозиционирование + crash-window тесты (ревью #5).** Сагу перенацелить
+  на per-file write→project (recovery: на старте `DB_COMMITTED` → репроекция из БД →
+  закрыть). Добавить обязательный инвариант **no-data-loss snapshot** (count+checksum
+  до/после) в каждый crash-window тест. Интеграционный тест recovery-at-startup через Spring.
+- **H — Golden/e2e + docs.** Golden oneshot без изменений; daemon-e2e: ingest →
+  canonical → projection напрямую (без партиций). Обновить `ingestion.md` (убрать
+  partition/aggregation нарратив), `techdebt.md` (ING-4/ING-7/ING-4a → закрыть по факту),
+  worknote-статус, директорийные README, диаграммы.
+- **I — Acceptance / sweep мёртвого кода.** Grep по `partition|aggregat|stableid|sidecar`
+  в `*/src/main` → ноль в проде (только история git). Проверить отсутствие осиротевших
+  конфиг-ключей, ledger-статусов, таблиц (или миграция-drop). Это часть acceptance
+  «удалить полностью, без совместимого мёртвого режима».
+
+### Инвариант на протяжении среза
+`./mvnw verify` зелёный после каждой фазы; truth не раздваивается; snapshot
+«no data loss» — обязательная ассерта recovery/crash-window тестов.
+
+### Статус среза 4 (β-коллапс выполнен, `verify` green)
+
+Партиционный механизм вырезан полностью (sweep по `partition|aggregat|stableid`
+в `*/src/main` чист): daemon пишет напрямую в canonical через `SourceSinkFactory`
+→ `JdbcIocSink` (с `_source_key` из ingestion-record), проекцию оркеструет
+`IngestionService` в саге `STARTED→DB_COMMITTED→PROJECTION_COMPLETED→COMPLETED`.
+Миграции service-схемы forward-only: v3 drop `ingestion_partition`, v4
+`aggregation_run→ingest_run` (+ `source_key`) и drop `export_run`. Авторитет id —
+единый `IdGenerator(strategy, start=maxId+1)` (D1), sidecar удалён; `id AUTOINCREMENT`
+остаётся пассивной подстраховкой. Retention упрощён до плоских `done`/`failed`.
+
+**Решение по run-ledger (ревью #5): оставляем как durable-observability.** После
+коллапса единственный промежуточный ingestion-статус — `CLAIMED`, поэтому любой крэш
+до архивации и так влечёт полный идемпотентный репроцесс через `recoverIncomplete`
+(re-extract→re-write→re-project→archive). `IngestRunRecoveryService` (`DB_COMMITTED`→
+репроекция) этот же случай перекрывается, т.е. как механизм **восстановления** run-ledger
+дублирует ingestion-ledger. Его ценность — durable-наблюдаемость фаз write→project и
+основа под будущую export-сагу; этого достаточно, чтобы сохранить его (консистентно с
+дизайном «saga + run-ledger»). Известный нюанс: крэш «после write, до `markDbCommitted`»
+помечает run `FAILED` при уже закоммиченных данных — статус неточен, потери нет.
+
+**Покрытие после ревью:** `DataframeRecoveryIntegrationTest` (crash-window на данных:
+`DB_COMMITTED`-крэш → recovery → проекция == БД, no-data-loss snapshot) и
+`DaemonIngestE2ETest` (полный daemon `ingest()`→canonical+`_sources`+проекция через Spring).
+`ProjectingCanonicalArtifactRepository` удалён как мёртвый (daemon больше не использует
+декоратор-проекцию; проекция — шаг саги `IngestionService`).

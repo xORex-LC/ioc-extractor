@@ -39,7 +39,6 @@ import java.util.Set;
 public final class DataframeSchemaReconciler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DataframeSchemaReconciler.class);
-    private static final Set<String> INTERNAL_COLUMNS = Set.of("row_key", "_created_at", "_first_source_key");
 
     private final DataSource dataSource;
     private final DiagnosticSink diagnosticSink;

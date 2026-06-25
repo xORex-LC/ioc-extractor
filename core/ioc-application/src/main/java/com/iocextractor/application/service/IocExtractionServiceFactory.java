@@ -15,7 +15,7 @@ import java.util.Objects;
 
 /**
  * Factory for extraction use cases that differ only by output sink set. Daemon
- * ingestion uses this to create source-partitioned pipelines without changing
+ * ingestion uses this to create source-scoped pipelines without changing
  * the existing extraction service contract.
  */
 public final class IocExtractionServiceFactory {

@@ -30,8 +30,10 @@ public final class JdbcIngestionLedger implements IngestionLedger {
     private final Clock clock;
 
     public JdbcIngestionLedger(DataSource dataSource, Clock clock) {
-        this(JdbcClient.create(dataSource), new TransactionTemplate(new DataSourceTransactionManager(dataSource)),
-                clock);
+        Objects.requireNonNull(dataSource, "dataSource");
+        this.jdbc = JdbcClient.create(dataSource);
+        this.transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     JdbcIngestionLedger(JdbcClient jdbc, TransactionTemplate transactions, Clock clock) {
@@ -108,7 +110,7 @@ public final class JdbcIngestionLedger implements IngestionLedger {
                         SELECT source_key, status, original_path, processing_path, archived_path,
                                detected_at, updated_at, reason
                         FROM ingestion_ledger
-                        WHERE status NOT IN ('SOURCE_ARCHIVED', 'AGGREGATED', 'FAILED')
+                        WHERE status NOT IN ('SOURCE_ARCHIVED', 'FAILED')
                         ORDER BY detected_at, source_key
                         """)
                 .query((rs, rowNum) -> row(rs))
@@ -195,11 +197,7 @@ public final class JdbcIngestionLedger implements IngestionLedger {
     }
 
     private IngestionStatus status(String value) {
-        return switch (value) {
-            case "PARTITION_WRITTEN", "LEDGER_RECORDED" -> IngestionStatus.CLAIMED;
-            case "AGGREGATED" -> IngestionStatus.SOURCE_ARCHIVED;
-            default -> IngestionStatus.valueOf(value);
-        };
+        return IngestionStatus.valueOf(value);
     }
 
     private Path optionalPath(String value) {

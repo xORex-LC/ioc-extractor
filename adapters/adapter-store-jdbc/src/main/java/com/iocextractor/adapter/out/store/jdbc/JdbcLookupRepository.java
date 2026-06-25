@@ -9,6 +9,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 import javax.sql.DataSource;
 import java.util.Locale;
+import java.util.Objects;
 
 /**
  * Lookup repository backed by indexed dataframe tables.
@@ -18,6 +19,7 @@ public final class JdbcLookupRepository implements LookupRepository {
     private final JdbcClient jdbc;
 
     public JdbcLookupRepository(DataSource dataSource) {
+        Objects.requireNonNull(dataSource, "dataSource");
         this.jdbc = JdbcClient.create(dataSource);
     }
 

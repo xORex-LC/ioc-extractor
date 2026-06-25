@@ -1,4 +1,4 @@
-package com.iocextractor.application.aggregation;
+package com.iocextractor.application.artifact;
 
 import org.junit.jupiter.api.Test;
 

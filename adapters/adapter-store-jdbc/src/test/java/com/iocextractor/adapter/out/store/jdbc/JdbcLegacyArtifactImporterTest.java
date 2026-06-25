@@ -1,10 +1,10 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.application.aggregation.ArtifactIdentityDefinition;
-import com.iocextractor.application.aggregation.ArtifactRow;
-import com.iocextractor.application.aggregation.CanonicalArtifact;
-import com.iocextractor.application.aggregation.CanonicalArtifactIdentityResolver;
-import com.iocextractor.application.port.out.aggregation.CanonicalArtifactRepository;
+import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
+import com.iocextractor.application.artifact.ArtifactRow;
+import com.iocextractor.application.artifact.CanonicalArtifact;
+import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
+import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

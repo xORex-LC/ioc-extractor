@@ -3,4 +3,4 @@
  * run-ledger recovery model. CSV and filesystem details remain behind driven
  * ports.
  */
-package com.iocextractor.application.aggregation;
+package com.iocextractor.application.artifact;

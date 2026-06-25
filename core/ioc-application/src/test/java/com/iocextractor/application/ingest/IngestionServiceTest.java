@@ -2,10 +2,10 @@ package com.iocextractor.application.ingest;
 
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
 import com.iocextractor.application.port.in.ingest.IngestSourceResult;
-import com.iocextractor.application.aggregation.IngestRun;
-import com.iocextractor.application.aggregation.IngestRunStatus;
-import com.iocextractor.application.port.out.aggregation.ArtifactProjection;
-import com.iocextractor.application.port.out.aggregation.RunLedger;
+import com.iocextractor.application.artifact.IngestRun;
+import com.iocextractor.application.artifact.IngestRunStatus;
+import com.iocextractor.application.port.out.artifact.ArtifactProjection;
+import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.application.port.out.LookupRepository;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
