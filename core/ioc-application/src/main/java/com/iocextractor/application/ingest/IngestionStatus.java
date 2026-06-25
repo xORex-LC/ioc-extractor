@@ -7,9 +7,6 @@ package com.iocextractor.application.ingest;
  */
 public enum IngestionStatus {
     CLAIMED,
-    PARTITION_WRITTEN,
-    LEDGER_RECORDED,
     SOURCE_ARCHIVED,
-    AGGREGATED,
     FAILED
 }

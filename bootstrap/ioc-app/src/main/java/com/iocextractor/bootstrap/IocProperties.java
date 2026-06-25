@@ -165,7 +165,6 @@ public record IocProperties(
             @NotNull @Valid Patterns patterns,
             @NotNull @Valid Detect detect,
             @NotNull @Valid Stability stability,
-            @NotNull @Valid Output output,
             @NotNull @Valid Retry retry,
             @NotNull @Valid Ledger ledger,
             int concurrency) {
@@ -184,9 +183,6 @@ public record IocProperties(
         }
 
         public record Stability(@NotNull Duration quietPeriod) {
-        }
-
-        public record Output(@NotBlank String partitionsDir) {
         }
 
         public record Retry(int maxAttempts, @NotNull Duration backoff) {

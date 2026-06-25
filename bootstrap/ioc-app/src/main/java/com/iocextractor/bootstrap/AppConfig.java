@@ -53,8 +53,8 @@ import com.iocextractor.application.aggregation.CanonicalArtifactIdentityResolve
 import com.iocextractor.application.aggregation.NoopArtifactProjection;
 import com.iocextractor.application.aggregation.NoopRunLedger;
 import com.iocextractor.application.aggregation.StoredArtifactIdentity;
-import com.iocextractor.application.maintenance.AggregatedPartitionRetentionEligibility;
 import com.iocextractor.application.ingest.IngestionService;
+import com.iocextractor.application.maintenance.RetentionEligibility;
 import com.iocextractor.application.maintenance.RetentionAction;
 import com.iocextractor.application.maintenance.RetentionService;
 import com.iocextractor.application.maintenance.RetentionTarget;
@@ -573,14 +573,13 @@ public class AppConfig {
     @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
             + "'${ioc.maintenance.retention.enabled:false}' == 'true'")
     public RunRetentionUseCase runRetentionUseCase(RetentionStore store,
-                                                   IngestionLedger ledger,
                                                    IocProperties props,
                                                    Clock clock) {
         return new RetentionService(
                 store,
                 retentionTargets(props),
                 clock,
-                new AggregatedPartitionRetentionEligibility(ledger));
+                RetentionEligibility.allowAll());
     }
 
     @Bean

@@ -13,6 +13,7 @@ public final class ServiceSchemaMigrations {
 
     private static final String V1 = "com/iocextractor/adapter/out/store/jdbc/service/v1__service_schema.sql";
     private static final String V2 = "com/iocextractor/adapter/out/store/jdbc/service/v2__run_ledger.sql";
+    private static final String V3 = "com/iocextractor/adapter/out/store/jdbc/service/v3__drop_ingestion_partition.sql";
 
     private ServiceSchemaMigrations() {
     }
@@ -20,7 +21,8 @@ public final class ServiceSchemaMigrations {
     public static List<SqliteSchemaMigration> sqlite() {
         return List.of(
                 new SqliteSchemaMigration(1, "service schema", resource(V1)),
-                new SqliteSchemaMigration(2, "run ledger", resource(V2)));
+                new SqliteSchemaMigration(2, "run ledger", resource(V2)),
+                new SqliteSchemaMigration(3, "drop ingestion partitions", resource(V3)));
     }
 
     private static String resource(String name) {

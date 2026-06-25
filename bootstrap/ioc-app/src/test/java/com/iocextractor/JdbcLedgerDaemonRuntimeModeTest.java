@@ -35,7 +35,6 @@ import static org.assertj.core.api.Assertions.assertThat;
         "ioc.ingestion.dirs.processing=target/test-daemon-jdbc/processing",
         "ioc.ingestion.dirs.done=target/test-daemon-jdbc/done",
         "ioc.ingestion.dirs.failed=target/test-daemon-jdbc/failed",
-        "ioc.ingestion.output.partitions-dir=target/test-daemon-jdbc/partitions",
         "spring.main.banner-mode=off"
 })
 class JdbcLedgerDaemonRuntimeModeTest {
@@ -69,7 +68,7 @@ class JdbcLedgerDaemonRuntimeModeTest {
              var statement = connection.createStatement();
             var resultSet = statement.executeQuery("PRAGMA user_version")) {
             assertThat(resultSet.next()).isTrue();
-            assertThat(resultSet.getInt(1)).isEqualTo(2);
+            assertThat(resultSet.getInt(1)).isEqualTo(3);
         }
     }
 }

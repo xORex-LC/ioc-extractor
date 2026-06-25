@@ -65,14 +65,13 @@ class LegacyLedgerImporterTest {
         assertThat(summary.skipped()).isZero();
         var record = ledger.find(new SourceKey("source-a")).orElseThrow();
         assertThat(record.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
-        assertThat(record.partitions()).containsExactly(Path.of("partitions/source-a.csv"));
         assertThat(record.archivedPath()).isEqualTo(Path.of("done/source-a.html"));
         assertThat(markerStatus("source-a.properties")).isEqualTo("COMPLETED");
         assertThat(markerCompletedAt("source-a.properties")).isEqualTo(CLOCK.instant().toString());
     }
 
     @Test
-    void replays_in_progress_marker_without_duplicate_partitions() throws Exception {
+    void replays_in_progress_marker_idempotently() throws Exception {
         Path file = writeLegacy("source-b.properties", "source-b", IngestionStatus.SOURCE_ARCHIVED,
                 List.of("partitions/source-b.csv"), "done/source-b.html", null);
         insertMarker("source-b.properties", file, "old-checksum", "IN_PROGRESS");
@@ -84,9 +83,7 @@ class LegacyLedgerImporterTest {
         assertThat(summary.imported()).isEqualTo(1);
         var record = ledger.find(new SourceKey("source-b")).orElseThrow();
         assertThat(record.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
-        assertThat(record.partitions()).containsExactly(Path.of("partitions/source-b.csv"));
         assertThat(markerStatus("source-b.properties")).isEqualTo("COMPLETED");
-        assertThat(partitionRows("source-b")).containsExactly("partitions/source-b.csv");
     }
 
     @Test
@@ -188,25 +185,6 @@ class LegacyLedgerImporterTest {
             try (var resultSet = statement.executeQuery()) {
                 assertThat(resultSet.next()).isTrue();
                 return resultSet.getString(1);
-            }
-        }
-    }
-
-    private List<String> partitionRows(String sourceKey) throws Exception {
-        try (var connection = dataSource.getConnection();
-             var statement = connection.prepareStatement("""
-                     SELECT partition_path
-                     FROM ingestion_partition
-                     WHERE source_key = ?
-                     ORDER BY partition_path
-                     """)) {
-            statement.setString(1, sourceKey);
-            try (var resultSet = statement.executeQuery()) {
-                var rows = new java.util.ArrayList<String>();
-                while (resultSet.next()) {
-                    rows.add(resultSet.getString(1));
-                }
-                return rows;
             }
         }
     }

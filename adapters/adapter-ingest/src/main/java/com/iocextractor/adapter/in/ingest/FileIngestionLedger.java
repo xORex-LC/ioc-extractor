@@ -16,7 +16,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -27,8 +26,6 @@ import java.util.Properties;
  * single-worker invariant of stage 10.
  */
 public final class FileIngestionLedger implements IngestionLedger {
-
-    private static final String PARTITION_SEPARATOR = "\n";
 
     private final Path ledgerDir;
     private final Clock clock;
@@ -50,24 +47,8 @@ public final class FileIngestionLedger implements IngestionLedger {
     @Override
     public void markClaimed(SourceUnit unit) {
         write(new IngestionRecord(unit.key(), IngestionStatus.CLAIMED,
-                unit.originalPath(), unit.processingPath(), null, List.of(),
+                unit.originalPath(), unit.processingPath(), null,
                 unit.detectedAt(), Instant.now(clock), null));
-    }
-
-    @Override
-    public void markPartitionWritten(SourceKey key, List<Path> partitions) {
-        IngestionRecord record = require(key);
-        write(new IngestionRecord(key, IngestionStatus.PARTITION_WRITTEN,
-                record.originalPath(), record.processingPath(), record.archivedPath(),
-                partitions, record.detectedAt(), Instant.now(clock), record.reason()));
-    }
-
-    @Override
-    public void markLedgerRecorded(SourceKey key) {
-        IngestionRecord record = require(key);
-        write(new IngestionRecord(key, IngestionStatus.LEDGER_RECORDED,
-                record.originalPath(), record.processingPath(), record.archivedPath(),
-                record.partitions(), record.detectedAt(), Instant.now(clock), record.reason()));
     }
 
     @Override
@@ -75,44 +56,23 @@ public final class FileIngestionLedger implements IngestionLedger {
         IngestionRecord record = require(key);
         write(new IngestionRecord(key, IngestionStatus.SOURCE_ARCHIVED,
                 record.originalPath(), record.processingPath(), archivedPath,
-                record.partitions(), record.detectedAt(), Instant.now(clock), record.reason()));
-    }
-
-    @Override
-    public void markAggregated(SourceKey key) {
-        IngestionRecord record = require(key);
-        write(new IngestionRecord(key, IngestionStatus.AGGREGATED,
-                record.originalPath(), record.processingPath(), record.archivedPath(),
-                record.partitions(), record.detectedAt(), Instant.now(clock), record.reason()));
+                record.detectedAt(), Instant.now(clock), record.reason()));
     }
 
     @Override
     public void markFailed(SourceKey key, String reason) {
         IngestionRecord record = find(key).orElse(new IngestionRecord(key, IngestionStatus.FAILED,
-                Path.of("unknown"), Path.of("unknown"), null, List.of(),
+                Path.of("unknown"), Path.of("unknown"), null,
                 Instant.now(clock), Instant.now(clock), reason));
         write(new IngestionRecord(key, IngestionStatus.FAILED,
                 record.originalPath(), record.processingPath(), record.archivedPath(),
-                record.partitions(), record.detectedAt(), Instant.now(clock), reason));
+                record.detectedAt(), Instant.now(clock), reason));
     }
 
     @Override
     public List<IngestionRecord> findIncomplete() {
         return findRecords(record -> record.status() != IngestionStatus.SOURCE_ARCHIVED
-                && record.status() != IngestionStatus.AGGREGATED
                 && record.status() != IngestionStatus.FAILED);
-    }
-
-    @Override
-    public List<IngestionRecord> findReadyForAggregation() {
-        return findRecords(record -> record.status() == IngestionStatus.SOURCE_ARCHIVED
-                && !record.partitions().isEmpty());
-    }
-
-    @Override
-    public List<IngestionRecord> findAggregated() {
-        return findRecords(record -> record.status() == IngestionStatus.AGGREGATED
-                && !record.partitions().isEmpty());
     }
 
     private List<IngestionRecord> findRecords(java.util.function.Predicate<IngestionRecord> predicate) {
@@ -141,11 +101,10 @@ public final class FileIngestionLedger implements IngestionLedger {
             SourceKey key = new SourceKey(props.getProperty("key"));
             return new IngestionRecord(
                     key,
-                    IngestionStatus.valueOf(props.getProperty("status")),
+                    status(props.getProperty("status")),
                     Path.of(props.getProperty("originalPath")),
                     Path.of(props.getProperty("processingPath")),
                     optionalPath(props.getProperty("archivedPath")),
-                    partitions(props.getProperty("partitions", "")),
                     optionalInstant(props.getProperty("detectedAt")),
                     optionalInstant(props.getProperty("updatedAt")),
                     blankToNull(props.getProperty("reason")));
@@ -163,7 +122,6 @@ public final class FileIngestionLedger implements IngestionLedger {
             props.setProperty("originalPath", record.originalPath().toString());
             props.setProperty("processingPath", record.processingPath().toString());
             props.setProperty("archivedPath", record.archivedPath() == null ? "" : record.archivedPath().toString());
-            props.setProperty("partitions", join(record.partitions()));
             props.setProperty("detectedAt", record.detectedAt() == null ? "" : record.detectedAt().toString());
             props.setProperty("updatedAt", record.updatedAt() == null ? "" : record.updatedAt().toString());
             props.setProperty("reason", record.reason() == null ? "" : record.reason());
@@ -197,18 +155,12 @@ public final class FileIngestionLedger implements IngestionLedger {
         return normalized == null ? null : Instant.parse(normalized);
     }
 
-    private List<Path> partitions(String value) {
-        if (value == null || value.isBlank()) {
-            return List.of();
-        }
-        return Arrays.stream(value.split(PARTITION_SEPARATOR))
-                .filter(part -> !part.isBlank())
-                .map(Path::of)
-                .toList();
-    }
-
-    private String join(List<Path> partitions) {
-        return String.join(PARTITION_SEPARATOR, partitions.stream().map(Path::toString).toList());
+    private IngestionStatus status(String value) {
+        return switch (value) {
+            case "PARTITION_WRITTEN", "LEDGER_RECORDED" -> IngestionStatus.CLAIMED;
+            case "AGGREGATED" -> IngestionStatus.SOURCE_ARCHIVED;
+            default -> IngestionStatus.valueOf(value);
+        };
     }
 
     private String blankToNull(String value) {

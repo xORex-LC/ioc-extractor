@@ -27,7 +27,6 @@ import static org.assertj.core.api.Assertions.assertThat;
         "ioc.ingestion.dirs.done=target/test-daemon/done",
         "ioc.ingestion.dirs.failed=target/test-daemon/failed",
         "ioc.ingestion.ledger.path=target/test-daemon/ledger",
-        "ioc.ingestion.output.partitions-dir=target/test-daemon/partitions",
         "ioc.storage.dataframe.url=jdbc:sqlite:target/test-daemon/ioc-dataframe.db",
         "spring.main.banner-mode=off"
 })

@@ -279,8 +279,6 @@ ioc:
       max-messages-per-poll: 50
     stability:
       quiet-period: 10s
-    output:
-      partitions-dir: "./dataframe/partitions"
     retry:
       max-attempts: 3
       backoff: 5s

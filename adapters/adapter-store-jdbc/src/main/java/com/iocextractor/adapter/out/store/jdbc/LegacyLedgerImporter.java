@@ -27,7 +27,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
@@ -41,7 +40,6 @@ import java.util.Properties;
 public final class LegacyLedgerImporter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(LegacyLedgerImporter.class);
-    private static final String PARTITION_SEPARATOR = "\n";
     private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
     private static final String STATUS_COMPLETED = "COMPLETED";
     private static final String STATUS_FAILED = "FAILED";
@@ -191,39 +189,11 @@ public final class LegacyLedgerImporter {
     private void replay(IngestionRecord record) {
         ledger.markClaimed(new SourceUnit(record.key(), record.originalPath(), record.processingPath(),
                 detectedAt(record)));
-        if (!record.partitions().isEmpty()) {
-            ledger.markPartitionWritten(record.key(), record.partitions());
-        }
         switch (record.status()) {
             case CLAIMED -> {
             }
-            case PARTITION_WRITTEN -> {
-                if (record.partitions().isEmpty()) {
-                    ledger.markPartitionWritten(record.key(), List.of());
-                }
-            }
-            case LEDGER_RECORDED -> {
-                ensurePartitionCheckpoint(record);
-                ledger.markLedgerRecorded(record.key());
-            }
-            case SOURCE_ARCHIVED -> {
-                ensurePartitionCheckpoint(record);
-                ledger.markLedgerRecorded(record.key());
-                ledger.markSourceArchived(record.key(), requireArchivedPath(record));
-            }
-            case AGGREGATED -> {
-                ensurePartitionCheckpoint(record);
-                ledger.markLedgerRecorded(record.key());
-                ledger.markSourceArchived(record.key(), requireArchivedPath(record));
-                ledger.markAggregated(record.key());
-            }
+            case SOURCE_ARCHIVED -> ledger.markSourceArchived(record.key(), requireArchivedPath(record));
             case FAILED -> ledger.markFailed(record.key(), record.reason());
-        }
-    }
-
-    private void ensurePartitionCheckpoint(IngestionRecord record) {
-        if (record.partitions().isEmpty()) {
-            ledger.markPartitionWritten(record.key(), List.of());
         }
     }
 
@@ -242,11 +212,10 @@ public final class LegacyLedgerImporter {
             SourceKey key = new SourceKey(required(props, "key", file));
             return new IngestionRecord(
                     key,
-                    IngestionStatus.valueOf(required(props, "status", file)),
+                    status(required(props, "status", file)),
                     Path.of(required(props, "originalPath", file)),
                     Path.of(required(props, "processingPath", file)),
                     optionalPath(props.getProperty("archivedPath")),
-                    partitions(props.getProperty("partitions", "")),
                     optionalInstant(props.getProperty("detectedAt")),
                     optionalInstant(props.getProperty("updatedAt")),
                     blankToNull(props.getProperty("reason")));
@@ -277,14 +246,12 @@ public final class LegacyLedgerImporter {
         return normalized == null ? null : Instant.parse(normalized);
     }
 
-    private List<Path> partitions(String value) {
-        if (value == null || value.isBlank()) {
-            return List.of();
-        }
-        return Arrays.stream(value.split(PARTITION_SEPARATOR))
-                .filter(part -> !part.isBlank())
-                .map(Path::of)
-                .toList();
+    private IngestionStatus status(String value) {
+        return switch (value) {
+            case "PARTITION_WRITTEN", "LEDGER_RECORDED" -> IngestionStatus.CLAIMED;
+            case "AGGREGATED" -> IngestionStatus.SOURCE_ARCHIVED;
+            default -> IngestionStatus.valueOf(value);
+        };
     }
 
     private String checksum(Path file) {

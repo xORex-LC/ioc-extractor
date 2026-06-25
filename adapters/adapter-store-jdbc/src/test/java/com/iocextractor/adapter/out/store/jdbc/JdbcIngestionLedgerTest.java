@@ -10,12 +10,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.sql.Connection;
-import java.sql.SQLException;
 import java.time.Clock;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class JdbcIngestionLedgerTest extends IngestionLedgerContractTest {
 
@@ -38,53 +35,27 @@ class JdbcIngestionLedgerTest extends IngestionLedgerContractTest {
     }
 
     @Test
-    void replace_partitions_removes_stale_child_rows() throws Exception {
+    void old_completed_statuses_are_read_as_archived_for_upgrade_compatibility() throws Exception {
         JdbcIngestionLedger ledger = ledger();
-        SourceUnit unit = unit("replace-sql");
+        insertRaw("aggregated", "AGGREGATED");
 
-        ledger.markClaimed(unit);
-        ledger.markPartitionWritten(unit.key(), List.of(path("partitions/stale.csv")));
-        ledger.markPartitionWritten(unit.key(), List.of(path("partitions/current.csv")));
-
-        assertThat(partitionRows(unit.key().value())).containsExactly("partitions/current.csv");
+        assertThat(ledger.find(key("aggregated"))).get()
+                .extracting("status")
+                .isEqualTo(com.iocextractor.application.ingest.IngestionStatus.SOURCE_ARCHIVED);
     }
 
     @Test
-    void deleting_ledger_row_cascades_partition_rows() throws Exception {
+    void old_intermediate_statuses_are_read_as_claimed_for_upgrade_compatibility() throws Exception {
         JdbcIngestionLedger ledger = ledger();
-        SourceUnit unit = unit("cascade");
+        insertRaw("partition-written", "PARTITION_WRITTEN");
 
-        ledger.markClaimed(unit);
-        ledger.markPartitionWritten(unit.key(), List.of(path("partitions/cascade.csv")));
-
-        try (Connection connection = dataSource.getConnection();
-             var statement = connection.prepareStatement("DELETE FROM ingestion_ledger WHERE source_key = ?")) {
-            statement.setString(1, unit.key().value());
-            statement.executeUpdate();
-        }
-
-        assertThat(partitionRows(unit.key().value())).isEmpty();
+        assertThat(ledger.find(key("partition-written"))).get()
+                .extracting("status")
+                .isEqualTo(com.iocextractor.application.ingest.IngestionStatus.CLAIMED);
     }
 
     @Test
-    void database_rejects_orphan_partition_rows() throws Exception {
-        ledger();
-
-        try (Connection connection = dataSource.getConnection();
-             var statement = connection.prepareStatement("""
-                     INSERT INTO ingestion_partition (source_key, partition_path)
-                     VALUES (?, ?)
-                     """)) {
-            statement.setString(1, "missing-parent");
-            statement.setString(2, "partitions/orphan.csv");
-
-            assertThatThrownBy(statement::executeUpdate)
-                    .isInstanceOf(SQLException.class);
-        }
-    }
-
-    @Test
-    void ready_records_are_returned_by_detected_time_then_source_key() {
+    void incomplete_records_are_returned_by_detected_time_then_source_key() {
         JdbcIngestionLedger ledger = ledger();
         SourceUnit second = unit("b-second");
         SourceUnit firstB = new SourceUnit(key("b-first"), path("inbox/b-first.html"),
@@ -92,11 +63,11 @@ class JdbcIngestionLedgerTest extends IngestionLedgerContractTest {
         SourceUnit firstA = new SourceUnit(key("a-first"), path("inbox/a-first.html"),
                 path("processing/a-first.html"), DETECTED_AT.minusSeconds(60));
 
-        markReady(ledger, second);
-        markReady(ledger, firstB);
-        markReady(ledger, firstA);
+        ledger.markClaimed(second);
+        ledger.markClaimed(firstB);
+        ledger.markClaimed(firstA);
 
-        assertThat(ledger.findReadyForAggregation())
+        assertThat(ledger.findIncomplete())
                 .extracting(record -> record.key().value())
                 .containsExactly("a-first", "b-first", "b-second");
     }
@@ -105,29 +76,20 @@ class JdbcIngestionLedgerTest extends IngestionLedgerContractTest {
         return (JdbcIngestionLedger) createLedger(FIXED_CLOCK);
     }
 
-    private void markReady(JdbcIngestionLedger ledger, SourceUnit unit) {
-        ledger.markClaimed(unit);
-        ledger.markPartitionWritten(unit.key(), List.of(path("partitions/" + unit.key().value() + ".csv")));
-        ledger.markLedgerRecorded(unit.key());
-        ledger.markSourceArchived(unit.key(), path("done/" + unit.key().value() + ".html"));
-    }
-
-    private List<String> partitionRows(String sourceKey) throws Exception {
+    private void insertRaw(String sourceKey, String status) throws Exception {
         try (Connection connection = dataSource.getConnection();
              var statement = connection.prepareStatement("""
-                     SELECT partition_path
-                     FROM ingestion_partition
-                     WHERE source_key = ?
-                     ORDER BY partition_path
+                     INSERT INTO ingestion_ledger (
+                         source_key, status, original_path, processing_path, detected_at, updated_at
+                     ) VALUES (?, ?, ?, ?, ?, ?)
                      """)) {
             statement.setString(1, sourceKey);
-            try (var resultSet = statement.executeQuery()) {
-                var rows = new java.util.ArrayList<String>();
-                while (resultSet.next()) {
-                    rows.add(resultSet.getString(1));
-                }
-                return rows;
-            }
+            statement.setString(2, status);
+            statement.setString(3, "inbox/" + sourceKey + ".html");
+            statement.setString(4, "processing/" + sourceKey + ".html");
+            statement.setString(5, DETECTED_AT.toString());
+            statement.setString(6, DETECTED_AT.toString());
+            statement.executeUpdate();
         }
     }
 

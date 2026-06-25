@@ -14,9 +14,9 @@
 
 | Подпапка | Назначение |
 |---|---|
-| `port/in/` | Driving-порты: `ExtractIocsUseCase`, `AggregatePartitionsUseCase`, ingest use cases, команды и результаты |
-| `port/out/` | Driven-порты: `SourceReader`, `IocSink`, `LookupRepository`, ingest и aggregation storage ports |
-| `aggregation/` | Storage-neutral daemon aggregation orchestration, artifact row model, merge policy |
+| `port/in/` | Driving-порты: `ExtractIocsUseCase`, ingest и maintenance use cases, команды и результаты |
+| `port/out/` | Driven-порты: `SourceReader`, `IocSink`, `LookupRepository`, ingest и artifact storage ports |
+| `aggregation/` | Storage-neutral artifact row identity, canonical artifact snapshots and run-ledger recovery model |
 | `pipeline/` | `Envelope`/`Stage`/`PipelineRunner` и concrete stages текущего ETL |
 | `service/` | `IocExtractionService` — use-case boundary и запуск pipeline |
 
