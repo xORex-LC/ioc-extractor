@@ -60,3 +60,6 @@ runtime JDBC drivers.
   changes use expected-status CAS. `COMPLETED`/`SKIPPED` and `export_progress`
   are committed atomically, while an active row survives process crash and blocks
   new work until recovery.
+- `JdbcSnapshotSliceReader` streams a whole export profile from one explicit
+  SQLite read transaction. Coverage/identity metadata and all `ORDER BY id`
+  cursors observe the same WAL snapshot; rows cross the port one at a time.

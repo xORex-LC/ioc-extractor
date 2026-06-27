@@ -93,6 +93,11 @@ class ArchitectureTest {
             .should().dependOnClassesThat().resideInAnyPackage("..application.pipeline.stage..");
 
     @ArchTest
+    static final ArchRule streaming_snapshot_reader_does_not_materialize_canonical_artifacts = noClasses()
+            .that().haveSimpleName("JdbcSnapshotSliceReader")
+            .should().dependOnClassesThat().haveSimpleName("CanonicalArtifact");
+
+    @ArchTest
     static final ArchRule jackson_manifest_mapping_stays_in_its_adapter = noClasses()
             .that().resideOutsideOfPackages(
                     "..adapter.out.manifest.json..",

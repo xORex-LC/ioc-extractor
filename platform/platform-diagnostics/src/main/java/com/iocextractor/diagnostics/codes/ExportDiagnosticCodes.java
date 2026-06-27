@@ -6,6 +6,8 @@ import com.iocextractor.diagnostics.DiagnosticSeverity;
 
 /** Diagnostic codes produced by immutable artifact slice formation. */
 public enum ExportDiagnosticCodes implements DiagnosticCode {
+    SNAPSHOT_READ_FAILED(DiagnosticSeverity.ERROR, "export.snapshot-read-failed",
+            "Export profile {profile} snapshot could not be read: {reason}"),
     STATE_TRANSITION_CONFLICT(DiagnosticSeverity.ERROR, "export.state-transition-conflict",
             "Export run {runId} cannot transition from {actualStatus} to {nextStatus}; expected {expectedStatus}");
 

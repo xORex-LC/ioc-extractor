@@ -18,6 +18,7 @@ types to bootstrap; domain/application do not import this package.
 | `JdbcIngestionLedger`, `JdbcRunLedger` | Source-ingestion state и CAS checkpoints write→project saga |
 | `JdbcCanonicalArtifactRepository`, `JdbcLookupRepository`, `JdbcArtifactRevisionReader` | Canonical truth, lookup и cheap revision read side |
 | `JdbcExportRunLedger`, `JdbcExportProgressStore` | Formation-saga CAS/single-flight и terminal per-artifact progress |
+| `JdbcSnapshotSliceReader` | Strict multi-artifact read snapshot и callback-streaming public rows |
 | `*Schema*` | SQLite `user_version` runner, migration support and dataframe reconciler |
 | `Dataframe*` | Table-per-artifact desired schema, additive plan and reconciliation |
 | `JdbcLegacyArtifactImporter` | One-shot import of legacy rows (read via a source `CanonicalArtifactRepository`) into dataframe tables; preserves explicit ids and lifts sequence to imported max |
@@ -34,6 +35,13 @@ without scanning artifact tables and returns revision zero for never-written art
 checkpoint. `finish` фиксирует progress и `COMPLETED|SKIPPED` в одной
 service-DB transaction. `JdbcRunLedger` использует ту же CAS-дисциплину
 для ingest saga.
+
+`JdbcSnapshotSliceReader` владеет одним connection/read transaction от
+первого coverage SELECT до завершающего callback. Все artifact coverage
+читаются до `begin`; затем public rows идут по одной в `ORDER BY id`.
+Пакет не собирает `CanonicalArtifact`: heap зависит от ширины строки и
+числа artifacts, но не от числа rows. Consumer exception откатывает read-tx,
+закрывает cursor/connection и выходит без подмены exception type.
 
 ## Зависимости
 
