@@ -2,8 +2,8 @@
 
 ## Назначение
 
-Application layer: use-case ports, IOC ETL payloads/stages and
-`IocExtractionService` pipeline orchestration.
+Application layer: use-case ports, IOC ETL payloads/stages, extraction
+orchestration и storage-neutral Artifact Emission contracts/model.
 
 **Правило слоя:** application работает через ports and domain/platform
 contracts. It does not import concrete adapters, Spring or runtime logging.
