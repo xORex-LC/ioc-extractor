@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.iocextractor</groupId>
+        <artifactId>ioc-extractor-parent</artifactId>
+        <version>0.1.0</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>ioc-adapter-manifest-json-jackson</artifactId>
+    <name>ioc-adapter-manifest-json-jackson</name>
+    <description>Deterministic Jackson JSON codec for immutable artifact slice manifests</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-application</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-errors</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+    </dependencies>
+</project>

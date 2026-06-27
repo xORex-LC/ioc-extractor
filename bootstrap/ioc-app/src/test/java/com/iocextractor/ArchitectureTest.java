@@ -93,6 +93,14 @@ class ArchitectureTest {
             .should().dependOnClassesThat().resideInAnyPackage("..application.pipeline.stage..");
 
     @ArchTest
+    static final ArchRule jackson_manifest_mapping_stays_in_its_adapter = noClasses()
+            .that().resideOutsideOfPackages(
+                    "..adapter.out.manifest.json..",
+                    "..adapter.in.cli..",
+                    "..bootstrap..")
+            .should().dependOnClassesThat().resideInAnyPackage("com.fasterxml.jackson..");
+
+    @ArchTest
     static final ArchRule concrete_pipeline_stages_do_not_own_pipeline_order = noClasses()
             .that().resideInAPackage("..application.pipeline.stage..")
             .should().dependOnClassesThat().resideInAnyPackage(

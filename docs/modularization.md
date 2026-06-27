@@ -36,6 +36,7 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 │   ├── adapter-regex-re2j         (PatternEngine → RE2J/JDK fallback)
 │   ├── adapter-source-tika        (SourceReader → Tika)
 │   ├── adapter-sink-csv           (IocSink + ArtifactFiller + CSV projection → commons-csv)
+│   ├── adapter-manifest-json-jackson (SliceManifestCodec → Jackson)
 │   ├── adapter-store-jdbc         (service/dataframe storage → Spring JDBC + sqlite-jdbc)
 │   ├── adapter-lookup-csv         (LookupRepository → CSV)
 │   ├── adapter-psl                (HostClassifier → Guava PSL)
@@ -96,6 +97,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `adapter-regex-re2j` | PatternEngine implementation (RE2J + JDK fallback) |
 | `adapter-source-tika` | SourceReader (Tika) |
 | `adapter-sink-csv` | IocSink + ArtifactFiller (provider/transform), CSV projection from canonical storage |
+| `adapter-manifest-json-jackson` | Deterministic versioned JSON codec for immutable slice manifests |
 | `adapter-store-jdbc` | Service/dataframe SQLite storage: migrations, JDBC ingestion ledger, run-ledger, canonical artifact repository, lookup repository, schema guardrails, health probe |
 | `adapter-lookup-csv` | artifact-aware `LookupRepository` for masks + hashes |
 | `adapter-psl` | HostClassifier (PSL/Guava) |

@@ -49,6 +49,10 @@
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-adapter-manifest-json-jackson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
             <artifactId>ioc-adapter-ingest</artifactId>
         </dependency>
         <dependency>

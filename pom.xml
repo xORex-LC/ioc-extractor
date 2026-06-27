@@ -45,6 +45,7 @@
         <module>adapters/adapter-source-tika</module>
         <module>adapters/adapter-lookup-csv</module>
         <module>adapters/adapter-sink-csv</module>
+        <module>adapters/adapter-manifest-json-jackson</module>
         <module>adapters/adapter-store-jdbc</module>
         <module>adapters/adapter-ingest</module>
         <module>adapters/adapter-cli-picocli</module>
@@ -160,6 +161,11 @@
             <dependency>
                 <groupId>com.iocextractor</groupId>
                 <artifactId>ioc-adapter-sink-csv</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-adapter-manifest-json-jackson</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
