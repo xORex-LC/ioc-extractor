@@ -50,6 +50,7 @@
 | OBS-D3 | **ECS-типы строками** — `event.duration` / `ioc.rows` идут через MDC (только `String`); ECS типизирует `event.duration` как `long` → риск mapping-конфликта в Elasticsearch. | открыт | M | dev/0008 |
 | OBS-1 | **Таблица `Severity → log.level`** — финализировать теперь, когда появились первые коды каталога. | открыт | S | dev/0007 |
 | OBS-2 | **`SINK.CHARSET_UNMAPPABLE` — полноценная диагностика непредставимых символов на выходе.** Сейчас — только WARN-лог на артефакт (`CsvIocSink`/`CsvArtifactRepositories` через `CountingCharsetWriter`); коды диагностики нет, т.к. запись в адаптере не держит `DiagnosticSink`. Протащить через `WriteArtifactsStage` для collect-and-continue + точный счёт по значению. | частично | M | review |
+| OBS-3 | **Свести seed-actions док с `EventAction` + вычистить стэйл.** `logging-taxonomy.md` «Seed actions» разошлась с `EventAction.java`: док перечисляет `storage_write`/`artifact_project` (в enum нет), enum несёт `retention_sweep/schema_migrate/schema_validate/db_open/ledger_import/db_health/maintenance/backfill` (в доке нет); плюс стэйл `aggregation_start/complete` — вырезанный β-коллапсом сабсистем, продакшен-продюсеров нет (живут лишь в enum + `LoggingTaxonomyTest`). Свести таблицу с кодом (или перевести в generated-док из констант) + удалить `aggregation_*` из enum и `LoggingTaxonomyTest`. | открыт | S | обсуждение 0011 (logging) |
 
 ## 5. Надёжность конфига (`CFG`)
 
