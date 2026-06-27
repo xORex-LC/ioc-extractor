@@ -17,7 +17,8 @@ import java.util.function.Predicate;
 
 /**
  * {@link IocSink} that writes extraction output to canonical dataframe storage.
- * Optional projection is triggered only after the canonical write succeeds.
+ * Optional projection is triggered only after the canonical write succeeds;
+ * the returned count reflects rows accepted by canonical keep-first storage.
  */
 public final class JdbcIocSink implements IocSink {
 
@@ -74,9 +75,9 @@ public final class JdbcIocSink implements IocSink {
                 .filter(filter)
                 .map(this::row)
                 .toList();
-        repository.write(name, new CanonicalArtifact(name, header, rows));
+        int inserted = repository.write(name, new CanonicalArtifact(name, header, rows)).inserted();
         afterWrite.accept(name);
-        return rows.size();
+        return inserted;
     }
 
     /**

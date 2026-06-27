@@ -3,6 +3,7 @@ package com.iocextractor.adapter.out.store.jdbc;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
+import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.zaxxer.hikari.HikariDataSource;
@@ -47,7 +48,8 @@ class JdbcLegacyArtifactImporterTest {
         // hands back already-parsed rows.
         CanonicalArtifactRepository legacySource = legacySource("masks", List.of("id", "mask", "source"),
                 row("id", "10", "mask", "example.com", "source", "legacy"),
-                row("id", "11", "mask", "example.org", "source", "legacy"));
+                row("id", "11", "mask", "example.org", "source", "legacy"),
+                row("id", "12", "mask", "example.com", "source", "duplicate"));
         var importer = new JdbcLegacyArtifactImporter(dataSource, repository, legacySource, List.of(schema));
 
         var summary = importer.importAll();
@@ -59,7 +61,9 @@ class JdbcLegacyArtifactImporterTest {
         assertThat(summary.sequenceFloor()).isEqualTo(11L);
         assertThat(repository.load("masks").rows())
                 .extracting(row -> row.value("id") + ":" + row.value("mask"))
-                .containsExactly("10:example.com", "11:example.org", "12:example.net");
+                // SQLite may consume an explicit AUTOINCREMENT candidate even
+                // when row_key conflict handling keeps the public row out.
+                .containsExactly("10:example.com", "11:example.org", "13:example.net");
     }
 
     private CanonicalArtifactRepository legacySource(String artifactName, List<String> header, ArtifactRow... rows) {
@@ -72,7 +76,7 @@ class JdbcLegacyArtifactImporterTest {
             }
 
             @Override
-            public void write(String name, CanonicalArtifact artifact) {
+            public CanonicalWriteResult write(String name, CanonicalArtifact artifact) {
                 throw new UnsupportedOperationException("read-only legacy source");
             }
         };

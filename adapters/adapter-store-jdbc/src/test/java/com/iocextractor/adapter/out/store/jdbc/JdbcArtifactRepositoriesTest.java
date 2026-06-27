@@ -4,6 +4,8 @@ import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
+import com.iocextractor.application.export.ArtifactRevision;
+import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.SourceContext;
@@ -17,8 +19,11 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class JdbcArtifactRepositoriesTest {
 
@@ -42,11 +47,13 @@ class JdbcArtifactRepositoriesTest {
         var repository = canonicalRepository(List.of(schema), List.of(
                 new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1)));
 
-        repository.write("masks", new CanonicalArtifact("masks", List.of("id", "mask", "source"), List.of(
+        var result = repository.write("masks", new CanonicalArtifact("masks", List.of("id", "mask", "source"), List.of(
                 row("id", "42", "mask", "example.com", "source", "first"),
                 row("id", "43", "mask", "example.com", "source", "duplicate"),
                 row("id", "44", "mask", "example.org", "source", "second"))));
 
+        assertThat(result.inserted()).isEqualTo(2);
+        assertThat(result.revision()).isEqualTo(1);
         CanonicalArtifact loaded = repository.load("masks");
         assertThat(loaded.header()).containsExactly("id", "mask", "source");
         assertThat(loaded.rows())
@@ -57,6 +64,72 @@ class JdbcArtifactRepositoriesTest {
                         "42:first:1",
                         "42:duplicate:1",
                         "44:second:1");
+    }
+
+    @Test
+    void duplicate_only_write_does_not_advance_revision_and_reader_preserves_requested_order() {
+        var schemas = List.of(schema("masks", "id", "mask"), schema("hashes", "id", "hash_md5"));
+        var repository = canonicalRepository(schemas, List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1),
+                new ArtifactIdentityDefinition("hashes", List.of("hash_md5"), false, 1)));
+        var artifact = new CanonicalArtifact("masks", List.of("id", "mask"),
+                List.of(row("id", "1", "mask", "example.com")));
+
+        var first = repository.write("masks", artifact);
+        var duplicate = repository.write("masks", artifact);
+        List<ArtifactRevision> revisions = new JdbcArtifactRevisionReader(dataSource)
+                .read(List.of("hashes", "masks"));
+
+        assertThat(first).extracting("inserted", "revision").containsExactly(1, 1L);
+        assertThat(duplicate).extracting("inserted", "revision").containsExactly(0, 1L);
+        assertThat(revisions).containsExactly(
+                new ArtifactRevision("hashes", 0, null),
+                new ArtifactRevision("masks", 1, CLOCK.instant()));
+    }
+
+    @Test
+    void failed_batch_rolls_back_public_rows_provenance_and_revision() {
+        var schema = schema("masks", "id", "mask", "source");
+        var repository = canonicalRepository(List.of(schema), List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1)));
+        var conflictingIds = new CanonicalArtifact("masks", List.of("id", "mask", "source"), List.of(
+                row("id", "1", "mask", "example.com", "source", "first"),
+                row("id", "1", "mask", "example.org", "source", "second")));
+
+        assertThatThrownBy(() -> repository.write("masks", conflictingIds))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("Failed to write JDBC artifact");
+
+        assertThat(repository.load("masks").rows()).isEmpty();
+        assertThat(sourceRows("masks")).isEmpty();
+        assertThat(new JdbcArtifactRevisionReader(dataSource).read(List.of("masks")))
+                .containsExactly(new ArtifactRevision("masks", 0, null));
+    }
+
+    @Test
+    void jdbc_sink_reports_actual_insert_count_instead_of_mapped_row_count() {
+        var schema = schema("masks", "id", "mask");
+        var repository = canonicalRepository(List.of(schema), List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1)));
+        var ids = new AtomicLong();
+        var sink = new JdbcIocSink(
+                "masks",
+                Set.of(IndicatorType.DOMAIN),
+                null,
+                List.of("id", "mask"),
+                (id, indicator) -> List.of(Long.toString(id), indicator.value()),
+                ids::incrementAndGet,
+                repository,
+                null);
+        Indicator duplicate = new Indicator("example.com", IndicatorType.DOMAIN, source());
+
+        int written = sink.write(List.of(duplicate, duplicate));
+
+        assertThat(written).isOne();
+        assertThat(repository.load("masks").rows()).hasSize(1);
+        assertThat(new JdbcArtifactRevisionReader(dataSource).read(List.of("masks")))
+                .extracting(ArtifactRevision::revision)
+                .containsExactly(1L);
     }
 
     @Test

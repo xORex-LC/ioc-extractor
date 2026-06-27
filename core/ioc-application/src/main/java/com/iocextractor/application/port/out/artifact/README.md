@@ -9,7 +9,7 @@ Driven-порты для canonical artifact storage, artifact identity, CSV proj
 
 | Файл | Назначение |
 |---|---|
-| `CanonicalArtifactRepository.java` | Чтение/запись canonical artifacts |
+| `CanonicalArtifactRepository.java` | Чтение/запись canonical artifacts; write возвращает actual inserts и revision |
 | `ArtifactIdentityResolver.java` | Artifact-specific row key extraction |
 | `ArtifactIdentityStore.java` | Guardrail-хранилище identity formula hash + epoch |
 | `ArtifactProjection.java` | Projection-порт для производных артефактов |

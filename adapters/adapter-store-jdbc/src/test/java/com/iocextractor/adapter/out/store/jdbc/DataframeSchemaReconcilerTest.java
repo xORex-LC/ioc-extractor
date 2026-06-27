@@ -130,14 +130,40 @@ class DataframeSchemaReconcilerTest {
                 dataSource,
                 DataframeFormatMigrations.sqlite()).migrate();
 
-        assertThat(result.currentVersion()).isEqualTo(2);
+        assertThat(result.currentVersion()).isEqualTo(3);
         assertThat(tableExists("dataframe_schema_format")).isTrue();
         assertThat(tableExists("artifact_identity")).isTrue();
+        assertThat(tableExists("artifact_revision")).isTrue();
         try (Connection connection = dataSource.getConnection();
              var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT value FROM dataframe_schema_format WHERE name = 'format'")) {
             assertThat(resultSet.next()).isTrue();
             assertThat(resultSet.getString(1)).isEqualTo("dataframe-v1");
+        }
+    }
+
+    @Test
+    void format_migration_upgrades_v2_database_without_recreating_existing_tables() throws Exception {
+        dataSource = dataSource("format-v2.db");
+        List<SqliteSchemaMigration> migrations = DataframeFormatMigrations.sqlite();
+        new SqliteUserVersionSchemaMigrator(dataSource, migrations.subList(0, 2)).migrate();
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.createStatement()) {
+            statement.execute("INSERT INTO artifact_identity(artifact, identity_hash, epoch, applied_at) "
+                    + "VALUES ('masks', 'hash', 1, '2026-06-28T00:00:00Z')");
+        }
+
+        SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
+
+        assertThat(result.previousVersion()).isEqualTo(2);
+        assertThat(result.currentVersion()).isEqualTo(3);
+        assertThat(result.appliedVersions()).containsExactly(3);
+        assertThat(tableExists("artifact_revision")).isTrue();
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("SELECT epoch FROM artifact_identity WHERE artifact = 'masks'")) {
+            assertThat(resultSet.next()).isTrue();
+            assertThat(resultSet.getInt(1)).isOne();
         }
     }
 

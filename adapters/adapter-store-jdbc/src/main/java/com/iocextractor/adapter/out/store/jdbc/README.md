@@ -20,6 +20,11 @@ types to bootstrap; domain/application do not import this package.
 | `Dataframe*` | Table-per-artifact desired schema, additive plan and reconciliation |
 | `JdbcLegacyArtifactImporter` | One-shot import of legacy rows (read via a source `CanonicalArtifactRepository`) into dataframe tables; preserves explicit ids and lifts sequence to imported max |
 
+`JdbcCanonicalArtifactRepository` reports actual public-row inserts and advances
+`artifact_revision` once per mutating write in the same transaction. Provenance-only
+updates do not advance the revision. `JdbcArtifactRevisionReader` exposes this marker
+without scanning artifact tables and returns revision zero for never-written artifacts.
+
 ## Зависимости
 
 **Зависит от:** application ports, platform errors, platform diagnostics,

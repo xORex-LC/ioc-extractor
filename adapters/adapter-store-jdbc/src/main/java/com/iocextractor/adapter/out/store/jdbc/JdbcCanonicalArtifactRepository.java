@@ -2,6 +2,7 @@ package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
+import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.common.IocExtractorException;
@@ -21,6 +22,10 @@ import java.util.Objects;
 
 /**
  * Canonical artifact repository backed by dataframe tables.
+ *
+ * <p>One write transaction owns public-row inserts, provenance updates and a
+ * single artifact revision bump. Duplicate-only writes may update provenance
+ * but preserve the public revision and report zero inserted rows.
  */
 public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactRepository {
 
@@ -63,16 +68,23 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
     }
 
     @Override
-    public void write(String artifactName, CanonicalArtifact artifact) {
+    public CanonicalWriteResult write(String artifactName, CanonicalArtifact artifact) {
         DataframeArtifactSchema schema = schema(artifactName);
         try (Connection connection = dataSource.getConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             try {
+                int inserted = 0;
                 for (ArtifactRow row : artifact.rows()) {
-                    insertRow(connection, schema, row);
+                    if (insertRow(connection, schema, row)) {
+                        inserted++;
+                    }
                 }
+                long revision = inserted > 0
+                        ? bumpRevision(connection, artifactName, clock.instant().toString())
+                        : currentRevision(connection, artifactName);
                 connection.commit();
+                return new CanonicalWriteResult(inserted, revision);
             } catch (SQLException | RuntimeException e) {
                 rollback(connection, e);
                 throw e;
@@ -84,7 +96,7 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
         }
     }
 
-    private void insertRow(Connection connection, DataframeArtifactSchema schema, ArtifactRow row)
+    private boolean insertRow(Connection connection, DataframeArtifactSchema schema, ArtifactRow row)
             throws SQLException {
         var rowKey = identityResolver.keyOf(schema.artifactName(), row)
                 .orElseThrow(() -> new IocExtractorException("Cannot resolve row_key for artifact "
@@ -114,13 +126,40 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
         String sql = "INSERT INTO " + quote(schema.artifactName()) + "(" + joinedQuoted(columns) + ") VALUES ("
                 + "?,".repeat(columns.size()).replaceFirst(",$", "")
                 + ") ON CONFLICT(" + quote("row_key") + ") DO NOTHING";
+        int inserted;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             for (int i = 0; i < values.size(); i++) {
                 statement.setString(i + 1, values.get(i));
             }
-            statement.executeUpdate();
+            inserted = statement.executeUpdate();
         }
         upsertSource(connection, schema.artifactName(), rowKey.value(), sourceKey, observedAt);
+        return inserted > 0;
+    }
+
+    private long bumpRevision(Connection connection, String artifactName, String changedAt) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO artifact_revision(artifact, revision, changed_at)
+                VALUES (?, 1, ?)
+                ON CONFLICT(artifact) DO UPDATE SET
+                    revision = artifact_revision.revision + 1,
+                    changed_at = excluded.changed_at
+                """)) {
+            statement.setString(1, artifactName);
+            statement.setString(2, changedAt);
+            statement.executeUpdate();
+        }
+        return currentRevision(connection, artifactName);
+    }
+
+    private long currentRevision(Connection connection, String artifactName) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT revision FROM artifact_revision WHERE artifact = ?")) {
+            statement.setString(1, artifactName);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next() ? resultSet.getLong(1) : 0L;
+            }
+        }
     }
 
     private void upsertSource(Connection connection,

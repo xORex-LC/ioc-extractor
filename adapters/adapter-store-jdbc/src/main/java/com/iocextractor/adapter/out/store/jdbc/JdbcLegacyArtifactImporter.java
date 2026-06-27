@@ -17,7 +17,8 @@ import java.util.Objects;
  * row-key and keep-first semantics stay in one place.
  *
  * <p>The importer preserves explicit legacy ids and then raises SQLite
- * identity sequences to the maximum imported id.
+ * identity sequences to the maximum imported id. Import summaries count rows
+ * actually inserted into canonical storage rather than duplicate source rows.
  */
 public final class JdbcLegacyArtifactImporter {
 
@@ -44,9 +45,11 @@ public final class JdbcLegacyArtifactImporter {
             if (artifact.rows().isEmpty()) {
                 continue;
             }
-            target.write(schema.artifactName(), artifact);
-            artifacts++;
-            rows += artifact.rows().size();
+            int inserted = target.write(schema.artifactName(), artifact).inserted();
+            if (inserted > 0) {
+                artifacts++;
+                rows += inserted;
+            }
         }
         long sequenceFloor = maxIdInImportedArtifacts();
         if (sequenceFloor > 0) {
