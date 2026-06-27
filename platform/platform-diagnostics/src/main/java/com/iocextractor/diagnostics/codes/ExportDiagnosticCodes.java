@@ -8,6 +8,12 @@ import com.iocextractor.diagnostics.DiagnosticSeverity;
 public enum ExportDiagnosticCodes implements DiagnosticCode {
     SNAPSHOT_READ_FAILED(DiagnosticSeverity.ERROR, "export.snapshot-read-failed",
             "Export profile {profile} snapshot could not be read: {reason}"),
+    SLICE_WRITE_FAILED(DiagnosticSeverity.ERROR, "export.slice-write-failed",
+            "Export run {runId} could not write slice at {path}: {reason}"),
+    MANIFEST_INVALID(DiagnosticSeverity.ERROR, "export.manifest-invalid",
+            "Export run {runId} has an invalid slice at {path}: {reason}"),
+    ATOMIC_PUBLISH_UNSUPPORTED(DiagnosticSeverity.FATAL, "export.atomic-publish-unsupported",
+            "Export run {runId} cannot atomically publish {path}: {reason}"),
     STATE_TRANSITION_CONFLICT(DiagnosticSeverity.ERROR, "export.state-transition-conflict",
             "Export run {runId} cannot transition from {actualStatus} to {nextStatus}; expected {expectedStatus}");
 

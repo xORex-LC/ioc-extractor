@@ -98,6 +98,14 @@ class ArchitectureTest {
             .should().dependOnClassesThat().haveSimpleName("CanonicalArtifact");
 
     @ArchTest
+    static final ArchRule slice_writer_owns_no_jdbc_or_materialized_repository_model = noClasses()
+            .that().resideInAPackage("..adapter.out.sink.csv..")
+            .and().haveSimpleNameContaining("Slice")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "java.sql..", "javax.sql..", "..adapter.out.store.jdbc..")
+            .orShould().dependOnClassesThat().haveSimpleName("CanonicalArtifact");
+
+    @ArchTest
     static final ArchRule jackson_manifest_mapping_stays_in_its_adapter = noClasses()
             .that().resideOutsideOfPackages(
                     "..adapter.out.manifest.json..",

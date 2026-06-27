@@ -96,7 +96,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `ioc-application` | Pipeline orchestrator (`ExtractIocsUseCase`), daemon ingest (`IngestSourceUseCase`), artifact identity/run-ledger recovery model, retention (`RetentionPolicy`/`RetentionService` + `RunRetentionUseCase`/`RetentionStore` ports), ports, IOC stage implementations, payload records |
 | `adapter-regex-re2j` | PatternEngine implementation (RE2J + JDK fallback) |
 | `adapter-source-tika` | SourceReader (Tika) |
-| `adapter-sink-csv` | IocSink + ArtifactFiller (provider/transform), CSV projection from canonical storage |
+| `adapter-sink-csv` | IocSink + ArtifactFiller, canonical CSV projection, callback-streaming immutable slices with durable staging/atomic local publish |
 | `adapter-manifest-json-jackson` | Deterministic versioned JSON codec for immutable slice manifests |
 | `adapter-store-jdbc` | Service/dataframe SQLite storage: migrations, JDBC ingestion ledger, run-ledger, canonical artifact repository, lookup repository, schema guardrails, health probe |
 | `adapter-lookup-csv` | artifact-aware `LookupRepository` for masks + hashes |

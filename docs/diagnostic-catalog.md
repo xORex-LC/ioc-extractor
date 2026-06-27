@@ -30,6 +30,9 @@ Generated from `DiagnosticCatalogs`.
 | `STORAGE.SCHEMA_ADDED` | STORAGE | INFO | `storage.schema-added` | Artifact {artifact} schema added column {column} |
 | `STORAGE.SCHEMA_DESTRUCTIVE_CHANGE` | STORAGE | FATAL | `storage.schema-destructive-change` | Artifact {artifact} schema has destructive change {change}: {reason} |
 | `EXPORT.SNAPSHOT_READ_FAILED` | EXPORT | ERROR | `export.snapshot-read-failed` | Export profile {profile} snapshot could not be read: {reason} |
+| `EXPORT.SLICE_WRITE_FAILED` | EXPORT | ERROR | `export.slice-write-failed` | Export run {runId} could not write slice at {path}: {reason} |
+| `EXPORT.MANIFEST_INVALID` | EXPORT | ERROR | `export.manifest-invalid` | Export run {runId} has an invalid slice at {path}: {reason} |
+| `EXPORT.ATOMIC_PUBLISH_UNSUPPORTED` | EXPORT | FATAL | `export.atomic-publish-unsupported` | Export run {runId} cannot atomically publish {path}: {reason} |
 | `EXPORT.STATE_TRANSITION_CONFLICT` | EXPORT | ERROR | `export.state-transition-conflict` | Export run {runId} cannot transition from {actualStatus} to {nextStatus}; expected {expectedStatus} |
 | `PIPELINE.STAGE_FAILED` | PIPELINE | ERROR | `pipeline.stage-failed` | Pipeline stage {stage} failed: {reason} |
 | `PIPELINE.ITEM_SKIPPED` | PIPELINE | WARN | `pipeline.item-skipped` | Pipeline item {item} was skipped at stage {stage}: {reason} |
