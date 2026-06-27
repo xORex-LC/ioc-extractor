@@ -591,6 +591,10 @@ single-flight и один export root.
 
 ## План реализации по commit-срезам
 
+**Статус реализации:** C0–C3 закрыты; durable foundation (application-контракты,
+canonical revisions/actual write count, CAS export-state и global single-flight) прошёл
+полный `verify`. C4–C11 остаются планом следующих волн.
+
 Оптимальная гранулярность — **11 реализационных коммитов плюс отдельный C0 с текущим
 дизайном**. Меньшее число смешает schema/storage, filesystem protocol и orchestration в
 непроверяемые большие изменения; заметно большее начнёт разрывать единые транзакционные

@@ -55,3 +55,8 @@ runtime JDBC drivers.
   Startup recovery treats `DB_COMMITTED` as recoverable by replaying the derived
   CSV projection from dataframe truth; failures before that checkpoint are marked
   `FAILED`.
+- `JdbcExportRunLedger` stores immutable-slice formation checkpoints in
+  `export_run`. A partial unique index enforces one global active run; all state
+  changes use expected-status CAS. `COMPLETED`/`SKIPPED` and `export_progress`
+  are committed atomically, while an active row survives process crash and blocks
+  new work until recovery.

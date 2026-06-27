@@ -4,6 +4,7 @@ import com.iocextractor.diagnostics.DiagnosticCode;
 import com.iocextractor.diagnostics.codes.ClassificationDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.ConfigDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.ExtractionDiagnosticCodes;
+import com.iocextractor.diagnostics.codes.ExportDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.SchemaDiagnosticCodes;
@@ -28,6 +29,7 @@ public final class DiagnosticCatalogs {
             IngestDiagnosticCodes.values(),
             StorageDiagnosticCodes.values(),
             SchemaDiagnosticCodes.values(),
+            ExportDiagnosticCodes.values(),
             PipelineDiagnosticCodes.values()));
 
     private DiagnosticCatalogs() {

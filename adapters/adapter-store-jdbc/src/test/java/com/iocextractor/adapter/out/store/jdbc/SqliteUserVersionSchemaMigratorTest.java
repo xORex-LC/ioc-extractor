@@ -34,21 +34,24 @@ class SqliteUserVersionSchemaMigratorTest {
                     .migrate();
 
             assertThat(result.previousVersion()).isZero();
-            assertThat(result.currentVersion()).isEqualTo(4);
-            assertThat(result.appliedVersions()).containsExactly(1, 2, 3, 4);
+            assertThat(result.currentVersion()).isEqualTo(5);
+            assertThat(result.appliedVersions()).containsExactly(1, 2, 3, 4, 5);
             assertThat(diagnostics.diagnostics())
                     .extracting(diagnostic -> diagnostic.code())
                     .containsExactly(StorageDiagnosticCodes.MIGRATION_APPLIED,
                             StorageDiagnosticCodes.MIGRATION_APPLIED,
                             StorageDiagnosticCodes.MIGRATION_APPLIED,
+                            StorageDiagnosticCodes.MIGRATION_APPLIED,
                             StorageDiagnosticCodes.MIGRATION_APPLIED);
             try (Connection connection = dataSource.getConnection()) {
-                assertThat(userVersion(connection)).isEqualTo(4);
+                assertThat(userVersion(connection)).isEqualTo(5);
                 assertThat(tableExists(connection, "ingestion_ledger")).isTrue();
                 assertThat(tableExists(connection, "ingestion_partition")).isFalse();
                 assertThat(tableExists(connection, "legacy_imports")).isTrue();
                 assertThat(tableExists(connection, "ingest_run")).isTrue();
-                assertThat(tableExists(connection, "export_run")).isFalse();
+                assertThat(tableExists(connection, "export_run")).isTrue();
+                assertThat(tableExists(connection, "export_progress")).isTrue();
+                assertThat(tableExists(connection, "ux_export_run_active_singleton")).isTrue();
             }
         }
     }
@@ -64,10 +67,41 @@ class SqliteUserVersionSchemaMigratorTest {
             migrator = migrator(dataSource, diagnostics, ServiceSchemaMigrations.sqlite());
             SchemaMigrationResult result = migrator.migrate();
 
-            assertThat(result.previousVersion()).isEqualTo(4);
-            assertThat(result.currentVersion()).isEqualTo(4);
+            assertThat(result.previousVersion()).isEqualTo(5);
+            assertThat(result.currentVersion()).isEqualTo(5);
             assertThat(result.appliedVersions()).isEmpty();
             assertThat(diagnostics.diagnostics()).isEmpty();
+        }
+    }
+
+    @Test
+    void upgrades_v4_service_database_without_losing_ingest_runs() throws Exception {
+        try (HikariDataSource dataSource = dataSource("service-v4.db")) {
+            List<SqliteSchemaMigration> migrations = ServiceSchemaMigrations.sqlite();
+            migrator(dataSource, new CollectingDiagnosticSink(), migrations.subList(0, 4)).migrate();
+            try (Connection connection = dataSource.getConnection()) {
+                connection.createStatement().execute("""
+                        INSERT INTO ingest_run(
+                            run_id, status, artifacts, started_at, updated_at, reason, source_key)
+                        VALUES (
+                            'ingest-1', 'COMPLETED', 'masks',
+                            '2026-06-28T00:00:00Z', '2026-06-28T00:00:00Z', NULL, 'source-1')
+                        """);
+            }
+
+            SchemaMigrationResult result = migrator(
+                    dataSource, new CollectingDiagnosticSink(), migrations).migrate();
+
+            assertThat(result.previousVersion()).isEqualTo(4);
+            assertThat(result.currentVersion()).isEqualTo(5);
+            assertThat(result.appliedVersions()).containsExactly(5);
+            try (Connection connection = dataSource.getConnection();
+                 var resultSet = connection.createStatement().executeQuery(
+                         "SELECT status FROM ingest_run WHERE run_id = 'ingest-1'")) {
+                assertThat(resultSet.next()).isTrue();
+                assertThat(resultSet.getString(1)).isEqualTo("COMPLETED");
+                assertThat(tableExists(connection, "export_run")).isTrue();
+            }
         }
     }
 
@@ -103,7 +137,7 @@ class SqliteUserVersionSchemaMigratorTest {
         try (HikariDataSource dataSource = dataSource("downgrade.db");
              Connection connection = dataSource.getConnection()) {
             connection.createStatement().execute("CREATE TABLE preserved (id INTEGER PRIMARY KEY)");
-            connection.createStatement().execute("PRAGMA user_version=5");
+            connection.createStatement().execute("PRAGMA user_version=6");
             var diagnostics = new CollectingDiagnosticSink();
 
             assertThatThrownBy(() -> migrator(dataSource, diagnostics, ServiceSchemaMigrations.sqlite()).migrate())
@@ -115,10 +149,10 @@ class SqliteUserVersionSchemaMigratorTest {
                     .satisfies(diagnostic -> {
                         assertThat(diagnostic.code()).isEqualTo(StorageDiagnosticCodes.MIGRATION_DOWNGRADE);
                         assertThat(diagnostic.context())
-                                .containsEntry("fromVersion", 5)
-                                .containsEntry("toVersion", 4);
+                                .containsEntry("fromVersion", 6)
+                                .containsEntry("toVersion", 5);
                     });
-            assertThat(userVersion(connection)).isEqualTo(5);
+            assertThat(userVersion(connection)).isEqualTo(6);
             assertThat(tableExists(connection, "preserved")).isTrue();
         }
     }

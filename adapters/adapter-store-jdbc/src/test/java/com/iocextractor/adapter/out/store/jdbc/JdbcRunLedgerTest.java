@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.artifact.IngestRunStatus;
+import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class JdbcRunLedgerTest {
 
@@ -49,6 +51,24 @@ class JdbcRunLedgerTest {
         ledger.markProjectionCompleted(run.runId());
         ledger.markCompleted(run.runId());
 
+        // Replayed earlier checkpoints observe a later compatible state and
+        // must not overwrite the terminal row.
+        ledger.markDbCommitted(run.runId());
+        ledger.markProjectionCompleted(run.runId());
+        ledger.markCompleted(run.runId());
+
+        assertThat(ledger.findIncompleteIngestRuns()).isEmpty();
+    }
+
+    @Test
+    void cas_rejects_transition_from_incompatible_terminal_state() {
+        var ledger = ledger();
+        var run = ledger.startIngest("source-failed", List.of("masks"));
+        ledger.markFailed(run.runId(), "write failed");
+
+        assertThatThrownBy(() -> ledger.markDbCommitted(run.runId()))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("transition conflict");
         assertThat(ledger.findIncompleteIngestRuns()).isEmpty();
     }
 

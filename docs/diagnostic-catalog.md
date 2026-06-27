@@ -29,5 +29,6 @@ Generated from `DiagnosticCatalogs`.
 | `STORAGE.IDENTITY_EPOCH_BUMP` | STORAGE | INFO | `storage.identity-epoch-bump` | Artifact {artifact} identity epoch bumped from {fromEpoch} to {toEpoch} |
 | `STORAGE.SCHEMA_ADDED` | STORAGE | INFO | `storage.schema-added` | Artifact {artifact} schema added column {column} |
 | `STORAGE.SCHEMA_DESTRUCTIVE_CHANGE` | STORAGE | FATAL | `storage.schema-destructive-change` | Artifact {artifact} schema has destructive change {change}: {reason} |
+| `EXPORT.STATE_TRANSITION_CONFLICT` | EXPORT | ERROR | `export.state-transition-conflict` | Export run {runId} cannot transition from {actualStatus} to {nextStatus}; expected {expectedStatus} |
 | `PIPELINE.STAGE_FAILED` | PIPELINE | ERROR | `pipeline.stage-failed` | Pipeline stage {stage} failed: {reason} |
 | `PIPELINE.ITEM_SKIPPED` | PIPELINE | WARN | `pipeline.item-skipped` | Pipeline item {item} was skipped at stage {stage}: {reason} |

@@ -15,6 +15,7 @@ public final class ServiceSchemaMigrations {
     private static final String V2 = "com/iocextractor/adapter/out/store/jdbc/service/v2__run_ledger.sql";
     private static final String V3 = "com/iocextractor/adapter/out/store/jdbc/service/v3__drop_legacy_ingestion_child_table.sql";
     private static final String V4 = "com/iocextractor/adapter/out/store/jdbc/service/v4__ingest_run_ledger.sql";
+    private static final String V5 = "com/iocextractor/adapter/out/store/jdbc/service/v5__export_state.sql";
 
     private ServiceSchemaMigrations() {
     }
@@ -24,7 +25,8 @@ public final class ServiceSchemaMigrations {
                 new SqliteSchemaMigration(1, "service schema", resource(V1)),
                 new SqliteSchemaMigration(2, "run ledger", resource(V2)),
                 new SqliteSchemaMigration(3, "drop legacy ingestion child table", resource(V3)),
-                new SqliteSchemaMigration(4, "ingest run ledger", resource(V4)));
+                new SqliteSchemaMigration(4, "ingest run ledger", resource(V4)),
+                new SqliteSchemaMigration(5, "export state", resource(V5)));
     }
 
     private static String resource(String name) {
