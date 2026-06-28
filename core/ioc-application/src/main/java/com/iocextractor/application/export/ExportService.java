@@ -3,9 +3,11 @@ package com.iocextractor.application.export;
 import com.iocextractor.application.port.in.export.ExportArtifactsCommand;
 import com.iocextractor.application.port.in.export.ExportArtifactsResult;
 import com.iocextractor.application.port.in.export.ExportArtifactsUseCase;
+import com.iocextractor.application.port.in.export.RecoverExportUseCase;
 import com.iocextractor.application.port.out.export.ArtifactRevisionReader;
 import com.iocextractor.application.port.out.export.ArtifactSliceWriter;
 import com.iocextractor.application.port.out.export.ExportObserver;
+import com.iocextractor.application.port.out.export.ExportOperationGuard;
 import com.iocextractor.application.port.out.export.ExportProgressStore;
 import com.iocextractor.application.port.out.export.ExportRunLedger;
 import com.iocextractor.application.port.out.export.SnapshotSliceReader;
@@ -39,6 +41,8 @@ public final class ExportService implements ExportArtifactsUseCase {
     private final ExportRunLedger ledger;
     private final SnapshotSliceReader snapshotReader;
     private final ArtifactSliceWriter sliceWriter;
+    private final RecoverExportUseCase recovery;
+    private final ExportOperationGuard operationGuard;
     private final ExportChangeDetector changeDetector;
     private final ExportObserver observer;
     private final Clock clock;
@@ -51,9 +55,11 @@ public final class ExportService implements ExportArtifactsUseCase {
                          ExportRunLedger ledger,
                          SnapshotSliceReader snapshotReader,
                          ArtifactSliceWriter sliceWriter,
+                         RecoverExportUseCase recovery,
+                         ExportOperationGuard operationGuard,
                          Clock clock) {
         this(plans, revisionReader, progressStore, ledger, snapshotReader, sliceWriter,
-                new ExportChangeDetector(), NoopExportObserver.INSTANCE, clock,
+                recovery, operationGuard, new ExportChangeDetector(), NoopExportObserver.INSTANCE, clock,
                 () -> UUID.randomUUID().toString());
     }
 
@@ -64,6 +70,8 @@ public final class ExportService implements ExportArtifactsUseCase {
                          ExportRunLedger ledger,
                          SnapshotSliceReader snapshotReader,
                          ArtifactSliceWriter sliceWriter,
+                         RecoverExportUseCase recovery,
+                         ExportOperationGuard operationGuard,
                          ExportChangeDetector changeDetector,
                          ExportObserver observer,
                          Clock clock,
@@ -74,6 +82,8 @@ public final class ExportService implements ExportArtifactsUseCase {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.snapshotReader = Objects.requireNonNull(snapshotReader, "snapshotReader");
         this.sliceWriter = Objects.requireNonNull(sliceWriter, "sliceWriter");
+        this.recovery = Objects.requireNonNull(recovery, "recovery");
+        this.operationGuard = Objects.requireNonNull(operationGuard, "operationGuard");
         this.changeDetector = Objects.requireNonNull(changeDetector, "changeDetector");
         this.observer = Objects.requireNonNull(observer, "observer");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -87,6 +97,13 @@ public final class ExportService implements ExportArtifactsUseCase {
         if (plan.profile().mode() != ExportMode.COMPLETE) {
             throw new IllegalArgumentException("Export mode is not supported in v1: " + plan.profile().mode());
         }
+        try (ExportOperationGuard.Lease ignored = operationGuard.acquire()) {
+            recovery.recoverIncomplete();
+            return export(plan);
+        }
+    }
+
+    private ExportArtifactsResult export(ExportPlan plan) {
         List<String> artifacts = plan.artifacts().stream().map(ExportArtifactSpec::artifactName).toList();
         List<ArtifactRevision> revisions = revisionReader.read(artifacts);
         List<ExportProgress> progress = progressStore.findByProfile(plan.profile().name());

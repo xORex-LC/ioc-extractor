@@ -3,6 +3,7 @@ package com.iocextractor.application.export;
 import com.iocextractor.application.port.in.export.RecoverExportUseCase;
 import com.iocextractor.application.port.out.export.ArtifactSliceWriter;
 import com.iocextractor.application.port.out.export.ExportObserver;
+import com.iocextractor.application.port.out.export.ExportProgressStore;
 import com.iocextractor.application.port.out.export.ExportRunLedger;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
@@ -25,6 +26,7 @@ public final class ExportRunRecoveryService implements RecoverExportUseCase {
 
     private final ExportRunLedger ledger;
     private final ArtifactSliceWriter sliceWriter;
+    private final ExportProgressStore progressStore;
     private final ExportChangeDetector changeDetector;
     private final ExportObserver observer;
     private final DiagnosticSink diagnosticSink;
@@ -34,14 +36,16 @@ public final class ExportRunRecoveryService implements RecoverExportUseCase {
     /** Creates recovery with no-op diagnostics and operational events. */
     public ExportRunRecoveryService(ExportRunLedger ledger,
                                     ArtifactSliceWriter sliceWriter,
+                                    ExportProgressStore progressStore,
                                     Clock clock) {
-        this(ledger, sliceWriter, new ExportChangeDetector(), NoopExportObserver.INSTANCE,
+        this(ledger, sliceWriter, progressStore, new ExportChangeDetector(), NoopExportObserver.INSTANCE,
                 NoopDiagnosticSink.INSTANCE, new DiagnosticFactory(clock), clock);
     }
 
     /** Creates recovery with explicit policies and event/diagnostic delivery. */
     public ExportRunRecoveryService(ExportRunLedger ledger,
                                     ArtifactSliceWriter sliceWriter,
+                                    ExportProgressStore progressStore,
                                     ExportChangeDetector changeDetector,
                                     ExportObserver observer,
                                     DiagnosticSink diagnosticSink,
@@ -49,6 +53,7 @@ public final class ExportRunRecoveryService implements RecoverExportUseCase {
                                     Clock clock) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.sliceWriter = Objects.requireNonNull(sliceWriter, "sliceWriter");
+        this.progressStore = Objects.requireNonNull(progressStore, "progressStore");
         this.changeDetector = Objects.requireNonNull(changeDetector, "changeDetector");
         this.observer = Objects.requireNonNull(observer, "observer");
         this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
@@ -92,12 +97,8 @@ public final class ExportRunRecoveryService implements RecoverExportUseCase {
     private ExportRun recoverStarted(ExportRun run) {
         SliceInspection inspection = sliceWriter.inspect(run);
         return switch (inspection.state()) {
-            case RECOVERABLE -> {
-                StagedSlice recovered = sliceWriter.recoverStaging(run);
-                yield ledger.transition(run.runId(), ExportRunStatus.STARTED,
-                        ExportRunStatus.STAGED, recovered.manifestSha256(), null);
-            }
-            case STAGED, AVAILABLE -> ledger.transition(run.runId(), ExportRunStatus.STARTED,
+            case RECOVERABLE, STAGED -> recoverStartedCandidate(run, inspection);
+            case AVAILABLE -> ledger.transition(run.runId(), ExportRunStatus.STARTED,
                     ExportRunStatus.STAGED, inspection.manifestSha256(), null);
             case MISSING, PARTIAL -> {
                 sliceWriter.discardStaging(run);
@@ -105,6 +106,26 @@ public final class ExportRunRecoveryService implements RecoverExportUseCase {
             }
             case CORRUPT, CONFLICT -> fail(run, inspection.reason());
         };
+    }
+
+    /** Repeats the post-hash decision lost by a crash after complete staging. */
+    private ExportRun recoverStartedCandidate(ExportRun run, SliceInspection inspection) {
+        List<ExportProgress> previous = progressStore.findByProfile(run.profile());
+        if (changeDetector.sameContent(inspection.manifest(), previous)) {
+            sliceWriter.discardStaging(run);
+            List<ExportProgress> skipped = changeDetector.skippedProgress(
+                    inspection.manifest(), previous, clock.instant());
+            ExportRun terminal = ledger.finish(run.runId(), ExportRunStatus.STARTED,
+                    ExportRunStatus.SKIPPED, skipped);
+            observer.completed(terminal);
+            return terminal;
+        }
+        String manifestSha256 = inspection.manifestSha256();
+        if (inspection.state() == SliceInspectionState.RECOVERABLE) {
+            manifestSha256 = sliceWriter.recoverStaging(run).manifestSha256();
+        }
+        return ledger.transition(run.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.STAGED, manifestSha256, null);
     }
 
     private ExportRun recoverStaged(ExportRun run) {

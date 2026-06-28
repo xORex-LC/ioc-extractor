@@ -36,15 +36,20 @@ Spring живёт здесь.
 конструкторе; export infrastructure/use-case beans помечены `@Lazy`. Holder не
 зависит от `ioc.runtime.mode`: daemon может использовать тот же DB-backed
 single-flight, что и ручной CLI. При этом
-`ExportCommand` разрешает use cases только внутри `call()`, поэтому построение
-root CLI и unrelated commands не создаёт `var/ioc-service.db`.
+`ExportCommand` выполняет eager catalog-backed profile preflight и разрешает
+storage-backed use case только внутри `call()`, поэтому построение root CLI,
+unrelated commands и unknown profile не создают `var/ioc-service.db`.
+`ExportService` после IO-free profile validation удерживает общий NIO operation
+lease вокруг recovery и formation; standalone recovery использует тот же guard.
 
 Resolved profile строится из ordered sink columns, identity definition и CSV
 format. `schemaHash` покрывает ordered `(column, declaredType)`, `identityHash`
 переиспользует canonical identity formula, `mappingHash` — accepts/filters/id и
 column providers/constants/predicates/transforms, а artifact file name берётся
 из leaf configured sink path. Эти значения входят в `planHash`; schema/identity
-затем проверяются snapshot reader-ом против canonical metadata.
+затем проверяются snapshot reader-ом против canonical metadata. Charset,
+односивольная форма delimiter/quote, их различие и reserved slice names
+валидируются catalog-ом до разрешения lazy storage graph и захвата single-flight.
 
 ## Daemon cadence
 

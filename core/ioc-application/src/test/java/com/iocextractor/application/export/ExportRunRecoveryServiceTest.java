@@ -1,6 +1,7 @@
 package com.iocextractor.application.export;
 
 import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.ExportDiagnosticCodes;
 import org.junit.jupiter.api.Test;
@@ -8,9 +9,11 @@ import org.junit.jupiter.api.Test;
 import java.time.Clock;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.List;
 
 import static com.iocextractor.application.export.ExportFixtures.NOW;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ExportRunRecoveryServiceTest {
 
@@ -26,6 +29,16 @@ class ExportRunRecoveryServiceTest {
         assertThat(fixture.writer.discards).isEqualTo(1);
         assertThat(fixture.diagnostics).extracting(diagnostic -> diagnostic.code())
                 .containsExactly(ExportDiagnosticCodes.RECOVERY_FAILED);
+    }
+
+    @Test
+    void startedMissingIsDiscardedAndFailed() {
+        Fixture fixture = fixture(ExportRunStatus.STARTED, SliceInspectionState.MISSING);
+
+        fixture.service.recoverIncomplete();
+
+        assertThat(fixture.status()).isEqualTo(ExportRunStatus.FAILED);
+        assertThat(fixture.writer.discards).isEqualTo(1);
     }
 
     @Test
@@ -51,6 +64,33 @@ class ExportRunRecoveryServiceTest {
         assertThat(fixture.writer.recoveries).isZero();
         assertThat(fixture.writer.publications).isEqualTo(1);
         assertThat(fixture.status()).isEqualTo(ExportRunStatus.COMPLETED);
+    }
+
+    @Test
+    void finalRenameObservedBeforeStartedCheckpointRecoversForward() {
+        Fixture fixture = fixture(ExportRunStatus.STARTED, SliceInspectionState.AVAILABLE);
+
+        fixture.service.recoverIncomplete();
+
+        assertThat(fixture.status()).isEqualTo(ExportRunStatus.COMPLETED);
+        assertThat(fixture.writer.publications).isEqualTo(1);
+    }
+
+    @Test
+    void completedStagingAfterCrashRepeatsPostHashAndSkipsIdenticalCandidate() {
+        Fixture fixture = fixture(ExportRunStatus.STARTED, SliceInspectionState.STAGED);
+        fixture.ledger.progress = List.of(ExportFixtures.progress(
+                0, ExportFixtures.CONTENT, "slice-old", ExportFixtures.plan().planHash()));
+
+        fixture.service.recoverIncomplete();
+
+        assertThat(fixture.status()).isEqualTo(ExportRunStatus.SKIPPED);
+        assertThat(fixture.writer.discards).isEqualTo(1);
+        assertThat(fixture.writer.publications).isZero();
+        assertThat(fixture.ledger.progress).singleElement().satisfies(progress -> {
+            assertThat(progress.lastRevision()).isEqualTo(1);
+            assertThat(progress.lastSliceId()).isEqualTo("slice-old");
+        });
     }
 
     @Test
@@ -102,6 +142,21 @@ class ExportRunRecoveryServiceTest {
         assertThat(conflict.writer.publications).isZero();
     }
 
+    @Test
+    void unexpectedAdapterFailureIsReportedWithoutReclassifyingDurableState() {
+        Fixture fixture = fixture(ExportRunStatus.STARTED, SliceInspectionState.STAGED);
+        fixture.writer.inspectFailure = new IllegalStateException("inspection unavailable");
+
+        assertThatThrownBy(fixture.service::recoverIncomplete)
+                .isInstanceOf(DiagnosticException.class)
+                .hasMessageContaining(ExportDiagnosticCodes.RECOVERY_FAILED.id());
+
+        assertThat(fixture.status()).isEqualTo(ExportRunStatus.STARTED);
+        assertThat(fixture.diagnostics).singleElement()
+                .extracting(Diagnostic::code)
+                .isEqualTo(ExportDiagnosticCodes.RECOVERY_FAILED);
+    }
+
     private Fixture fixture(ExportRunStatus status, SliceInspectionState filesystemState) {
         var ledger = new ExportFixtures.FakeLedger();
         ledger.seed(ExportFixtures.run("run-recovery", status));
@@ -110,7 +165,8 @@ class ExportRunRecoveryServiceTest {
         var observer = new ExportFixtures.RecordingObserver();
         var diagnostics = new ArrayList<Diagnostic>();
         var service = new ExportRunRecoveryService(
-                ledger, writer, new ExportChangeDetector(), observer, diagnostics::add,
+                ledger, writer, profile -> ledger.progress,
+                new ExportChangeDetector(), observer, diagnostics::add,
                 new DiagnosticFactory(clock), clock);
         return new Fixture(ledger, writer, diagnostics, service);
     }

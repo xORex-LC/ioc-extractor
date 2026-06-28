@@ -327,8 +327,8 @@ STARTED → STAGED → AVAILABLE → COMPLETED
 | Наблюдаемое состояние | Recovery |
 |---|---|
 | `STARTED`, staging без валидного manifest | удалить staging, `FAILED`; следующий запуск создаёт новый run со свежим snapshot |
-| `STARTED`, manifest+data валидны, `_SUCCESS` нет | проверить hashes, записать+force `_SUCCESS`, fsync каталога, CAS→`STAGED` |
-| `STARTED`, полный валидный staging с `_SUCCESS` | CAS→`STAGED` |
+| `STARTED`, manifest+data валидны, `_SUCCESS` нет | повторить post-hash; byte-identical → удалить staging и атомарно `SKIPPED`, иначе проверить hashes, записать+force `_SUCCESS`, fsync каталога, CAS→`STAGED` |
+| `STARTED`, полный валидный staging с `_SUCCESS` | повторить post-hash против service `ExportProgress`; byte-identical → удалить staging и атомарно `SKIPPED`, иначе CAS→`STAGED` |
 | `STAGED`, staging существует | проверить root hash, atomic rename staging→final, fsync published-parent, CAS→`AVAILABLE` |
 | `STAGED`, final существует, staging нет | проверить final по `_SUCCESS`, CAS→`AVAILABLE` (crash после rename) |
 | `AVAILABLE` | из manifest идемпотентно применить progress и CAS→`COMPLETED` в одной service-DB транзакции |
@@ -374,6 +374,10 @@ ref-1 streaming-vs-heap).
   unique-index по `STARTED|STAGED|AVAILABLE`; crash блокирует новый run до recovery. В daemon
   recovery создаётся до `SmartLifecycle` scheduler, `ioc export` всегда сначала вызывает
   `RecoverExportUseCase`, затем пытается стартовать run.
+- **Recovery ownership** — recovery + formation удерживают один local OS file lease под export
+  root. DB row остаётся durable single-flight authority, а lease не позволяет второму живому
+  CLI/daemon process принять staging владельца за crash evidence; после process-crash lock
+  освобождается ОС и следующий процесс выполняет forward recovery.
 
 `v5__export_state.sql` создаёт `export_run(run_id, profile, status, slice_name, plan_hash,
 manifest_sha256, started_at, updated_at, reason)` + partial unique-index для активных статусов и
@@ -515,10 +519,11 @@ ioc:
 
 **CLI/service DB (ref-8).** Service datasource, migrations и export beans больше не conditional
 только на daemon: они `@Lazy` и conditional на `ioc.storage.service.type=jdbc`. Daemon поднимает
-их через ingest/export dependencies; `ExportCommand` получает lazy `ExportArtifactsUseCase`
-только внутри `call()` и перед запуском вызывает recovery; `extract`, `health` и `--help` этот
-graph не разрешают и `var/ioc-service.db` не открывают. CLI и daemon используют один DB-backed
-single-flight и один export root.
+их через ingest/export dependencies; `ExportCommand` сначала вызывает IO-free profile validator,
+затем получает lazy `ExportArtifactsUseCase` только внутри `call()`. Application service под
+общим OS lease выполняет recovery перед formation; `extract`, `health`, `--help` и unknown profile
+storage graph не разрешают и `var/ioc-service.db` не открывают. CLI и daemon используют один
+DB-backed single-flight и один export root.
 
 ### Решённые развилки
 - **A — `ExportRunLedger` отдельным портом** (не генерик `RunLedger<R>`). KISS; две саги =

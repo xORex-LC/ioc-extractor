@@ -54,7 +54,8 @@ adapters за портами `application.port.out.export`.
 ## Formation saga
 
 `ExportService` получает resolved `ExportPlan`, но не знает его config-origin.
-Он дешёво читает revisions/progress, захватывает DB-backed single-flight через
+После IO-free profile validation он захватывает cross-process operation lease,
+выполняет recovery, дешёво читает revisions/progress и захватывает DB-backed single-flight через
 `tryStart`, передаёт callback-stream напрямую от `SnapshotSliceReader` к
 `ArtifactSliceWriter` и фиксирует checkpoints строго после durable side effect:
 
@@ -72,12 +73,17 @@ adapters за портами `application.port.out.export`.
 поэтому технически не может перечитать mutable canonical truth. Он проверяет
 `SliceInspection` и продвигает только подтверждённые durable факты:
 
-- `STARTED` + recoverable manifest дописывает marker и фиксирует `STAGED`;
+- `STARTED` + valid staging повторяет post-hash против service `ExportProgress`:
+  byte-identical candidate удаляется и атомарно получает `SKIPPED`; иначе
+  recoverable manifest дописывает marker и фиксирует `STAGED`;
 - `STAGED` + staging выполняет atomic publish; final после crash rename
   распознаётся идемпотентно;
 - `AVAILABLE` восстанавливает progress из manifest coverage/hash и завершает run;
 - missing/partial staging удаляется и получает `FAILED`; corrupt/conflicting
   evidence не перезаписывается и также получает `FAILED` + `RECOVERY_FAILED`.
+
+Operation lease удерживается и formation, и standalone startup recovery, поэтому
+второй живой CLI/daemon process не может восстанавливать активный run владельца.
 
 ## Границы ответственности
 

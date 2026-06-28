@@ -20,6 +20,7 @@ import com.iocextractor.adapter.out.sink.csv.IdValueProvider;
 import com.iocextractor.adapter.out.sink.csv.IndicatorValueProvider;
 import com.iocextractor.adapter.out.sink.csv.LowerHostTransform;
 import com.iocextractor.adapter.out.sink.csv.LowercaseTransform;
+import com.iocextractor.adapter.out.sink.csv.NioExportOperationGuard;
 import com.iocextractor.adapter.out.sink.csv.MatchHostValueProvider;
 import com.iocextractor.adapter.out.sink.csv.MatchUrlValueProvider;
 import com.iocextractor.adapter.out.sink.csv.RowMapper;
@@ -73,6 +74,7 @@ import com.iocextractor.application.port.in.maintenance.RunRetentionUseCase;
 import com.iocextractor.application.port.in.export.ExportArtifactsUseCase;
 import com.iocextractor.application.port.in.export.RecoverExportUseCase;
 import com.iocextractor.application.port.in.export.RunSliceRetentionUseCase;
+import com.iocextractor.application.port.in.export.ValidateExportProfileUseCase;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.maintenance.RetentionStore;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
@@ -88,6 +90,7 @@ import com.iocextractor.application.port.out.ingest.SourceSinkFactory;
 import com.iocextractor.application.port.out.export.ArtifactRevisionReader;
 import com.iocextractor.application.port.out.export.ArtifactSliceWriter;
 import com.iocextractor.application.port.out.export.ExportObserver;
+import com.iocextractor.application.port.out.export.ExportOperationGuard;
 import com.iocextractor.application.port.out.export.ExportProgressStore;
 import com.iocextractor.application.port.out.export.ExportRunLedger;
 import com.iocextractor.application.port.out.export.ExportRunReader;
@@ -286,6 +289,11 @@ public class AppConfig {
                                                DiagnosticSink diagnosticSink,
                                                Clock clock) {
         return new ExportPlanCatalog(props, diagnosticSink, new DiagnosticFactory(clock));
+    }
+
+    @Bean
+    public ValidateExportProfileUseCase validateExportProfileUseCase(ExportPlanCatalog plans) {
+        return command -> plans.requireProfile(command.profile());
     }
 
     @Bean
@@ -594,6 +602,29 @@ public class AppConfig {
 
     @Bean
     @Lazy
+    public ExportOperationGuard exportOperationGuard(IocProperties props) {
+        return new NioExportOperationGuard(Path.of(props.export().root()));
+    }
+
+    @Bean
+    @Lazy
+    @ConditionalOnExpression("'${ioc.storage.service.type:disabled}' == 'jdbc' && "
+            + "'${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
+    public ExportRunRecoveryService exportRunRecoveryService(
+            ExportRunLedger exportRunLedger,
+            ExportProgressStore exportProgressStore,
+            ArtifactSliceWriter artifactSliceWriter,
+            ExportObserver exportObserver,
+            DiagnosticSink diagnosticSink,
+            Clock clock) {
+        return new ExportRunRecoveryService(
+                exportRunLedger, artifactSliceWriter, exportProgressStore,
+                new ExportChangeDetector(), exportObserver,
+                diagnosticSink, new DiagnosticFactory(clock), clock);
+    }
+
+    @Bean
+    @Lazy
     @ConditionalOnExpression("'${ioc.storage.service.type:disabled}' == 'jdbc' && "
             + "'${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
     public ExportArtifactsUseCase exportArtifactsUseCase(
@@ -603,27 +634,30 @@ public class AppConfig {
             ExportRunLedger exportRunLedger,
             SnapshotSliceReader snapshotSliceReader,
             ArtifactSliceWriter artifactSliceWriter,
+            ExportRunRecoveryService exportRunRecoveryService,
+            ExportOperationGuard exportOperationGuard,
             ExportObserver exportObserver,
             Clock clock) {
         return new ExportService(
                 plans.plans(), artifactRevisionReader, exportProgressStore, exportRunLedger,
-                snapshotSliceReader, artifactSliceWriter, new ExportChangeDetector(),
+                snapshotSliceReader, artifactSliceWriter,
+                exportRunRecoveryService, exportOperationGuard, new ExportChangeDetector(),
                 exportObserver, clock, () -> java.util.UUID.randomUUID().toString());
     }
 
     @Bean
     @Lazy
+    @Primary
     @ConditionalOnExpression("'${ioc.storage.service.type:disabled}' == 'jdbc' && "
             + "'${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
     public RecoverExportUseCase recoverExportUseCase(
-            ExportRunLedger exportRunLedger,
-            ArtifactSliceWriter artifactSliceWriter,
-            ExportObserver exportObserver,
-            DiagnosticSink diagnosticSink,
-            Clock clock) {
-        return new ExportRunRecoveryService(
-                exportRunLedger, artifactSliceWriter, new ExportChangeDetector(), exportObserver,
-                diagnosticSink, new DiagnosticFactory(clock), clock);
+            ExportRunRecoveryService recoveryService,
+            ExportOperationGuard operationGuard) {
+        return () -> {
+            try (ExportOperationGuard.Lease ignored = operationGuard.acquire()) {
+                return recoveryService.recoverIncomplete();
+            }
+        };
     }
 
     @Bean

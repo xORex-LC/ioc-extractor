@@ -122,6 +122,7 @@ final class ExportFixtures {
         int recoveries;
         int publications;
         int discards;
+        RuntimeException inspectFailure;
 
         @Override
         public StagedSlice stage(ExportRun run,
@@ -142,6 +143,9 @@ final class ExportFixtures {
 
         @Override
         public SliceInspection inspect(ExportRun run) {
+            if (inspectFailure != null) {
+                throw inspectFailure;
+            }
             boolean hasManifest = state == SliceInspectionState.RECOVERABLE
                     || state == SliceInspectionState.STAGED
                     || state == SliceInspectionState.AVAILABLE;

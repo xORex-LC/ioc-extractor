@@ -31,6 +31,7 @@ canonical dataframe и формирование immutable export slices. Схе�
 | `FileSystemSliceRetentionStore.java` | Profile-scoped discovery и recursive directory-as-unit delete только verified final slices |
 | `SliceDirectoryLayout.java` | Безопасное разрешение `.staging/<runId>` и `<profile>/<sliceName>` внутри configured root |
 | `NioSliceFileOperations.java`, `SliceFileOperations.java` | `force(true)`, directory fsync и `ATOMIC_MOVE` без copy/rename fallback |
+| `NioExportOperationGuard.java` | NIO file lease, сериализующий formation/recovery между локальными JVM/processes |
 | `SliceHashes.java` | Потоковые SHA-256 helpers без загрузки data files в heap |
 
 ## Заметки

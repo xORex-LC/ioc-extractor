@@ -18,6 +18,7 @@ command/result DTO. Входной адаптер не зависит от concr
 | `ExportArtifactsUseCase` | Запуск одного configured profile до terminal result |
 | `ExportArtifactsCommand` | Минимальная команда с именем profile; storage/layout settings в неё не передаются |
 | `ExportArtifactsResult` | Terminal status и optional run/slice identity; pre-gate `SKIPPED` не создаёт run и возвращает `runId=null` |
+| `ValidateExportProfileUseCase` | IO-free preflight profile до разрешения CLI полного lazy export graph |
 | `RecoverExportUseCase` | Startup forward recovery всех durable incomplete runs |
 | `RunSliceRetentionUseCase` | Один profile-scoped sweep завершённых immutable slices |
 | `SliceRetentionResult` | Счётчики scanned/deleted/blocked и удалений по profile |
@@ -30,6 +31,9 @@ command/result DTO. Входной адаптер не зависит от concr
   не содержит его, поскольку single-flight/ledger не затрагивались.
 - `recoverIncomplete` возвращает число проверенных runs, а не число
   созданных срезов.
+- Driving adapter сначала вызывает lightweight profile validation и только затем
+  разрешает storage-backed export use case; application service повторяет проверку
+  на собственной границе.
 - Slice retention применяет `max-age`/`max-count` независимо к каждому profile;
   blocked candidates остаются в пуле, поэтому count limit при pins best-effort.
 - CAS transitions, single-flight, filesystem inspection и retry decisions — ответственность

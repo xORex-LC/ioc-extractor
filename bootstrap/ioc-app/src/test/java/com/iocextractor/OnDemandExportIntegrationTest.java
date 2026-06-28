@@ -6,6 +6,7 @@ import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.export.ExportPlan;
 import com.iocextractor.application.export.ExportRunStatus;
+import com.iocextractor.application.export.ExportRunRecoveryService;
 import com.iocextractor.application.export.ExportService;
 import com.iocextractor.application.export.SliceManifest;
 import com.iocextractor.application.export.SnapshotArtifactMetadata;
@@ -15,6 +16,7 @@ import com.iocextractor.application.port.in.export.ExportArtifactsResult;
 import com.iocextractor.application.port.out.export.ArtifactRevisionReader;
 import com.iocextractor.application.port.out.export.ArtifactSliceWriter;
 import com.iocextractor.application.port.out.export.ExportProgressStore;
+import com.iocextractor.application.port.out.export.ExportOperationGuard;
 import com.iocextractor.application.port.out.export.ExportRunLedger;
 import com.iocextractor.application.port.out.export.SliceManifestCodec;
 import com.iocextractor.application.port.out.export.SnapshotRowConsumer;
@@ -96,6 +98,12 @@ class OnDemandExportIntegrationTest {
     ArtifactSliceWriter sliceWriter;
 
     @Autowired
+    ExportRunRecoveryService recoveryService;
+
+    @Autowired
+    ExportOperationGuard operationGuard;
+
+    @Autowired
     Clock clock;
 
     @Test
@@ -141,7 +149,8 @@ class OnDemandExportIntegrationTest {
         var release = new CountDownLatch(1);
         var service = new ExportService(
                 List.of(plan), revisionReader, progressStore, runLedger,
-                blockingReader(began, release), sliceWriter, clock);
+                blockingReader(began, release), sliceWriter,
+                recoveryService, operationGuard, clock);
 
         ExportArtifactsResult during;
         try (var executor = Executors.newSingleThreadExecutor()) {

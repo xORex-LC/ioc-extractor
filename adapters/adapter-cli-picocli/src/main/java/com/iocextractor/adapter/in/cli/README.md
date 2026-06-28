@@ -14,7 +14,7 @@
 |---|---|
 | `IocRootCommand.java` | Корневая команда `ioc` (держит под-команды) |
 | `ExtractCommand.java` | Под-команда `extract` (`-s/--source`, `--dry-run`) |
-| `ExportCommand.java` | Под-команда `export --profile`: lazy recovery + on-demand formation use case |
+| `ExportCommand.java` | Под-команда `export --profile`: lazy on-demand formation use case |
 | `HealthCommand.java` | Запрос actuator health у отдельного daemon process |
 | `CliRunner.java` | Мост Spring Boot ↔ picocli, проброс exit-кода |
 
@@ -24,8 +24,9 @@
 - `ioc export --profile <configured-name>`;
 - `ioc health [--json]`.
 
-`ExportCommand` держит `ObjectProvider` для export/recovery ports и разрешает
-их только внутри `call()`. Построение root help, `extract` и `health` поэтому не
-инициализирует service datasource/migrations. Перед каждым ручным export сначала
-выполняется forward recovery; тот же DB-backed single-flight используется daemon
-и CLI процессами.
+`ExportCommand` сначала вызывает IO-free profile validator и только затем
+разрешает через `ObjectProvider` storage-backed export use case. Построение root
+help, `extract`, `health` и отказ для unknown profile поэтому не инициализируют
+service datasource/migrations. Exclusive operation lease, forward recovery и
+formation упорядочивает application use case; driving adapter не координирует их
+самостоятельно.

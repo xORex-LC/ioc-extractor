@@ -25,6 +25,7 @@ state transitions принадлежат use case.
 | `ExportRunLedger` | Durable CAS state machine, global single-flight и атомарная фиксация terminal progress |
 | `ExportRunReader` | Operational read model последних run checkpoints для health |
 | `ExportObserver` | Lifecycle callbacks в точках фактических durable checkpoints; конкретный ECS logger остаётся снаружи application |
+| `ExportOperationGuard` | Cross-process lease, не позволяющий recovery принять staging живого formation-run за crash evidence |
 | `SliceRetentionStore` | Перечисляет и удаляет только целые integrity-valid final slices, не leaf-файлы |
 | `SliceRetentionGuard` | Чистый delivery-aware veto, вызываемый непосредственно перед delete |
 
@@ -39,6 +40,8 @@ state transitions принадлежат use case.
   никогда не меняет ledger. Ledger не выполняет filesystem IO.
 - `tryStart` — единственная точка global single-flight; `transition` применяет
   expected-state CAS; `finish` атомарно сохраняет progress и terminal status.
+- Operation guard удерживается вокруг recovery + formation. DB single-flight
+  остаётся durable authority, а OS lease различает crash и второй живой process.
 - `ExportObserver` не управляет flow и не должен бросать исключения: producer
   вызывает его после соответствующего durable действия/ledger checkpoint.
 - Retention store получает `SliceDescriptor`, но обязан повторно проверить

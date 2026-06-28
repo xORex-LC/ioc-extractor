@@ -37,6 +37,10 @@ class ExportPlanCatalogTest {
             assertThat(artifact.identityHash()).hasSize(64);
             assertThat(artifact.schemaHash()).hasSize(64);
         });
+        catalog.requireProfile("reputation-lists");
+        assertThatThrownBy(() -> catalog.requireProfile("missing"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown export profile");
     }
 
     @Test
@@ -111,6 +115,37 @@ class ExportPlanCatalogTest {
         });
     }
 
+    @Test
+    void rejectsInvalidCsvFormatBeforeInfrastructureIo() throws Exception {
+        IocProperties properties = defaults();
+
+        assertThatThrownBy(() -> catalog(withCsv(properties,
+                new IocProperties.Sink.Csv(";", "\"", "NULL", "not-a-charset")), new ArrayList<>()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unsupported export charset");
+        assertThatThrownBy(() -> catalog(withCsv(properties,
+                new IocProperties.Sink.Csv(";;", "\"", "NULL", "UTF-8")), new ArrayList<>()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must be one character");
+        assertThatThrownBy(() -> catalog(withCsv(properties,
+                new IocProperties.Sink.Csv(";", ";", "NULL", "UTF-8")), new ArrayList<>()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must be distinct");
+    }
+
+    @Test
+    void rejectsReservedSliceFileNameBeforeInfrastructureIo() throws Exception {
+        IocProperties properties = defaults();
+        IocProperties.Sink.Artifact masks = properties.sink().artifacts().getFirst();
+        IocProperties.Sink.Artifact reserved = new IocProperties.Sink.Artifact(
+                masks.name(), masks.enabled(), "./dataframe/manifest.json", masks.accepts(),
+                masks.include(), masks.exclude(), masks.id(), masks.columns());
+
+        assertThatThrownBy(() -> catalog(withSinkArtifact(properties, reserved), new ArrayList<>()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("reserved slice file name");
+    }
+
     private ExportPlanCatalog catalog(IocProperties properties, ArrayList<Diagnostic> diagnostics) {
         Clock clock = Clock.systemUTC();
         return new ExportPlanCatalog(properties, diagnostics::add, new DiagnosticFactory(clock));
@@ -145,6 +180,14 @@ class ExportPlanCatalogTest {
                 .findFirst().orElseThrow();
         artifacts.set(index, replacement);
         IocProperties.Sink sink = new IocProperties.Sink(source.sink().csv(), artifacts);
+        return new IocProperties(
+                source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
+                source.patterns(), source.classify(), sink, source.lookup(), source.ingestion(),
+                source.artifactIdentity(), source.export(), source.maintenance(), source.observability());
+    }
+
+    private IocProperties withCsv(IocProperties source, IocProperties.Sink.Csv csv) {
+        IocProperties.Sink sink = new IocProperties.Sink(csv, source.sink().artifacts());
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), sink, source.lookup(), source.ingestion(),

@@ -5,7 +5,9 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.iocextractor.application.export.ExportFixtures.CONTENT;
 import static com.iocextractor.application.export.ExportFixtures.NOW;
@@ -102,6 +104,51 @@ class ExportServiceTest {
         assertThat(snapshot.calls).hasValue(0);
     }
 
+    @Test
+    void rejectsUnknownProfileBeforeGuardRecoveryOrInfrastructureIo() {
+        var guarded = new AtomicInteger();
+        var recovered = new AtomicInteger();
+        var service = new ExportService(
+                List.of(plan), artifacts -> {
+                    throw new AssertionError("revision IO must not run");
+                }, profile -> List.of(), new ExportFixtures.FakeLedger(),
+                new ExportFixtures.CountingSnapshotReader(), new ExportFixtures.FakeWriter(),
+                recovered::incrementAndGet,
+                () -> {
+                    guarded.incrementAndGet();
+                    return () -> { };
+                }, clock);
+
+        assertThatThrownBy(() -> service.export(new ExportArtifactsCommand("unknown")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown export profile");
+        assertThat(guarded).hasValue(0);
+        assertThat(recovered).hasValue(0);
+    }
+
+    @Test
+    void holdsOperationLeaseAcrossRecoveryAndFormationPreGate() {
+        List<String> calls = new ArrayList<>();
+        ExportProgress prior = ExportFixtures.progress(3, CONTENT, "slice-old", plan.planHash());
+        var service = new ExportService(
+                List.of(plan), artifacts -> {
+                    calls.add("revisions");
+                    return List.of(new ArtifactRevision("masks", 3, NOW));
+                }, profile -> List.of(prior), new ExportFixtures.FakeLedger(),
+                new ExportFixtures.CountingSnapshotReader(), new ExportFixtures.FakeWriter(),
+                () -> {
+                    calls.add("recovery");
+                    return 0;
+                }, () -> {
+                    calls.add("acquire");
+                    return () -> calls.add("release");
+                }, clock);
+
+        service.export(new ExportArtifactsCommand("reputation"));
+
+        assertThat(calls).containsExactly("acquire", "recovery", "revisions", "release");
+    }
+
     private ExportService service(ExportFixtures.FakeLedger ledger,
                                   ExportFixtures.FakeWriter writer,
                                   ExportFixtures.CountingSnapshotReader snapshot,
@@ -109,6 +156,7 @@ class ExportServiceTest {
                                   List<ExportProgress> progress,
                                   ExportFixtures.RecordingObserver observer) {
         return new ExportService(List.of(plan), artifacts -> revisions, profile -> progress,
-                ledger, snapshot, writer, new ExportChangeDetector(), observer, clock, () -> "run-new");
+                ledger, snapshot, writer, () -> 0, () -> () -> { },
+                new ExportChangeDetector(), observer, clock, () -> "run-new");
     }
 }

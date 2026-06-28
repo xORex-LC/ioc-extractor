@@ -4,7 +4,7 @@ import com.iocextractor.application.export.ExportRunStatus;
 import com.iocextractor.application.port.in.export.ExportArtifactsCommand;
 import com.iocextractor.application.port.in.export.ExportArtifactsResult;
 import com.iocextractor.application.port.in.export.ExportArtifactsUseCase;
-import com.iocextractor.application.port.in.export.RecoverExportUseCase;
+import com.iocextractor.application.port.in.export.ValidateExportProfileUseCase;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
@@ -29,8 +29,8 @@ public final class ExportCommand implements Callable<Integer> {
 
     private static final Logger log = LoggerFactory.getLogger(ExportCommand.class);
 
+    private final ValidateExportProfileUseCase profileValidator;
     private final ObjectProvider<ExportArtifactsUseCase> useCase;
-    private final ObjectProvider<RecoverExportUseCase> recovery;
     private final String observabilityMode;
 
     @Option(names = "--profile", required = true, description = "Configured export profile name.")
@@ -39,15 +39,15 @@ public final class ExportCommand implements Callable<Integer> {
     /**
      * Creates a lazy command that does not resolve service storage before {@link #call()}.
      *
+     * @param profileValidator IO-free profile preflight
      * @param useCase lazy artifact export primary port
-     * @param recovery lazy forward-recovery primary port
      * @param observabilityMode operational logging mode
      */
-    public ExportCommand(ObjectProvider<ExportArtifactsUseCase> useCase,
-                         ObjectProvider<RecoverExportUseCase> recovery,
+    public ExportCommand(ValidateExportProfileUseCase profileValidator,
+                         ObjectProvider<ExportArtifactsUseCase> useCase,
                          @Value("${ioc.observability.mode:oneshot}") String observabilityMode) {
+        this.profileValidator = profileValidator;
         this.useCase = useCase;
-        this.recovery = recovery;
         this.observabilityMode = observabilityMode;
     }
 
@@ -61,13 +61,13 @@ public final class ExportCommand implements Callable<Integer> {
                 .message("export command started")
                 .log();
         try {
-            RecoverExportUseCase recover = recovery.getIfAvailable();
+            ExportArtifactsCommand command = new ExportArtifactsCommand(profile);
+            profileValidator.validate(command);
             ExportArtifactsUseCase exporter = useCase.getIfAvailable();
-            if (recover == null || exporter == null) {
+            if (exporter == null) {
                 throw new IllegalStateException("Artifact export requires JDBC service and dataframe storage");
             }
-            recover.recoverIncomplete();
-            ExportArtifactsResult result = exporter.export(new ExportArtifactsCommand(profile));
+            ExportArtifactsResult result = exporter.export(command);
             render(result);
             LogEvents.info(log)
                     .action(EventAction.COMMAND_COMPLETE)
