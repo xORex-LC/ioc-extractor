@@ -256,7 +256,8 @@ ioc:
   # ---- Remote synchronization (delivery/SMB) --------------------------------
   # Disabled by default. Endpoint names are shared by fetch and publish, but
   # source and target paths stay independent. Secrets are supplied through env
-  # placeholders in external configs; do not commit plain credentials.
+  # placeholders in external configs; do not commit plain credentials. Optional
+  # SMB connect-timeout/read-timeout/idle-timeout default to 10s/30s/5m.
   sync:
     enabled: false
     retry:

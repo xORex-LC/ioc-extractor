@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class DaemonSliceRetentionScheduler implements SmartLifecycle {
 
     /** Runs after export formation; future publish lifecycle components must run before this phase. */
-    public static final int PHASE = DaemonExportScheduler.PHASE + 100;
+    public static final int PHASE = 200;
 
     private static final Logger log = LoggerFactory.getLogger(DaemonSliceRetentionScheduler.class);
 

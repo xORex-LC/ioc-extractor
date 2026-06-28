@@ -15,7 +15,7 @@
 | `domain/` | Чистое доменное ядро (без фреймворков) |
 | `application/` | Порты (in/out) и use-case оркестратор |
 | `adapter/` | Входные/выходные адаптеры (CLI, Tika, CSV, regex-движки) |
-| `bootstrap/` | Конфигурация и composition root (Spring) |
+| `bootstrap/` | Конфигурация, composition root и daemon schedulers (ingest/export/sync/retention) |
 | `common/` | Общие типы (исключения) |
 | `diagnostics/` | Диагностика обработки данных в pipeline |
 | `observability/` | Operational logging taxonomy, MDC scope и bridge diagnostics→logs |

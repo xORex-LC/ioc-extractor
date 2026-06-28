@@ -117,6 +117,25 @@ class RemoteFetchServiceTest {
         assertThat(transport.deleteCalls).isZero();
     }
 
+    @Test
+    void sourceFilterScansOnlySelectedSource() {
+        RemoteObject object = object("/share/a.htm", 10);
+        FakeTransport transport = new FakeTransport(List.of(object));
+        FakeLedger ledger = new FakeLedger();
+        List<RemoteFetchSource> sources = List.of(
+                new RemoteFetchSource("one", "endpoint-one", "/one", List.of("*"), List.of()),
+                new RemoteFetchSource("two", "endpoint-two", "/two", List.of("*"), List.of()));
+        var service = new RemoteFetchService(
+                transport, ledger, sources, tempDir,
+                new Retrier(new RetryPolicy(1, Duration.ofMillis(1), 1.0d,
+                        Duration.ofMillis(1), false), ignored -> { }), CLOCK);
+
+        var result = service.fetch(new RemoteFetchCommand(Optional.of("two"), false));
+
+        assertThat(result.fetched()).isOne();
+        assertThat(transport.listCalls).containsExactly("endpoint-two:/two");
+    }
+
     private RemoteFetchService service(FakeTransport transport, FakeLedger ledger) {
         return service(transport, ledger, new RemoteFetchSource(
                 "src", "endpoint", "/share", List.of("*"), List.of("*.part", ".*")));
@@ -153,6 +172,7 @@ class RemoteFetchServiceTest {
         private final List<RemoteObject> objects;
         private int getCalls;
         private int deleteCalls;
+        private final List<String> listCalls = new java.util.ArrayList<>();
         private boolean failGet;
         private boolean writeThenFail;
 
@@ -162,6 +182,7 @@ class RemoteFetchServiceTest {
 
         @Override
         public List<RemoteObject> list(String endpoint, String remotePath) {
+            listCalls.add(endpoint + ":" + remotePath);
             return objects;
         }
 

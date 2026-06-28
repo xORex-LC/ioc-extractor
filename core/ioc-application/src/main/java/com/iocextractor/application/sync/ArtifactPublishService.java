@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Publishes verified local export slices to all configured remote targets through the publish ledger.
@@ -51,38 +52,98 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
     }
 
     @Override
+    public ArtifactPublishResult reconcile(ArtifactPublishCommand command) {
+        return forEachSelectedPair(command,
+                (slice, target, counters) -> reconcilePair(slice, target, command.dryRun(), counters));
+    }
+
+    @Override
     public ArtifactPublishResult publish(ArtifactPublishCommand command) {
+        return forEachSelectedPair(command,
+                (slice, target, counters) -> publishPair(slice, target, command.dryRun(), counters));
+    }
+
+    private ArtifactPublishResult forEachSelectedPair(ArtifactPublishCommand command, PairAction action) {
         Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(action, "action");
         PublishCounters counters = new PublishCounters();
         for (String profile : selectedProfiles(command)) {
-            List<PublishTarget> profileTargets = targetsForProfile(profile);
+            List<PublishTarget> profileTargets = targetsForProfile(profile, command);
+            if (profileTargets.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Selected sync publish target does not belong to profile: " + profile);
+            }
             for (CompletedSlice slice : sliceCatalog.listCompleted(profile)) {
                 for (PublishTarget target : profileTargets) {
-                    PublishRecord record = reconcile(slice, target);
-                    apply(record, slice, command.dryRun(), counters);
+                    action.accept(slice, target, counters);
                 }
             }
         }
         return counters.toResult();
     }
 
-    private List<String> selectedProfiles(ArtifactPublishCommand command) {
-        return command.profile()
-                .map(List::of)
-                .orElseGet(() -> targets.stream()
-                        .map(PublishTarget::exportProfile)
-                        .distinct()
-                        .toList());
+    private void reconcilePair(CompletedSlice slice,
+                               PublishTarget target,
+                               boolean dryRun,
+                               PublishCounters counters) {
+        Optional<PublishRecord> record = resolveRecord(slice, target, dryRun);
+        if (record.isEmpty()) {
+            counters.pending++;
+            return;
+        }
+        countState(record.orElseThrow(), counters);
     }
 
-    private List<PublishTarget> targetsForProfile(String profile) {
-        return targets.stream()
+    private void publishPair(CompletedSlice slice,
+                             PublishTarget target,
+                             boolean dryRun,
+                             PublishCounters counters) {
+        Optional<PublishRecord> record = resolveRecord(slice, target, dryRun);
+        if (record.isEmpty()) {
+            counters.pending++;
+            return;
+        }
+        apply(record.orElseThrow(), slice, dryRun, counters);
+    }
+
+    private List<String> selectedProfiles(ArtifactPublishCommand command) {
+        if (command.profile().isPresent()) {
+            String selected = command.profile().orElseThrow();
+            if (targets.stream().noneMatch(target -> target.exportProfile().equals(selected))) {
+                throw new IllegalArgumentException("Unknown sync publish profile: " + selected);
+            }
+            return List.of(selected);
+        }
+        return selectedTargets(command).stream()
+                        .map(PublishTarget::exportProfile)
+                        .distinct()
+                        .toList();
+    }
+
+    private List<PublishTarget> targetsForProfile(String profile, ArtifactPublishCommand command) {
+        return selectedTargets(command).stream()
                 .filter(target -> target.exportProfile().equals(profile))
                 .toList();
     }
 
-    private PublishRecord reconcile(CompletedSlice slice, PublishTarget target) {
-        return ledger.ensurePending(PublishRecord.pending(
+    private List<PublishTarget> selectedTargets(ArtifactPublishCommand command) {
+        if (command.target().isEmpty()) {
+            return targets;
+        }
+        String selected = command.target().orElseThrow();
+        List<PublishTarget> matches = targets.stream()
+                .filter(target -> target.targetId().equals(selected))
+                .toList();
+        if (matches.isEmpty()) {
+            throw new IllegalArgumentException("Unknown sync publish target: " + selected);
+        }
+        return matches;
+    }
+
+    private Optional<PublishRecord> resolveRecord(CompletedSlice slice,
+                                                  PublishTarget target,
+                                                  boolean dryRun) {
+        PublishRecord pending = PublishRecord.pending(
                 slice.sliceId(),
                 target.targetId(),
                 slice.profile(),
@@ -90,7 +151,20 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
                 slice.manifestSha256(),
                 target.endpoint(),
                 target.sliceRemotePath(slice.sliceName()),
-                clock.instant()));
+                clock.instant());
+        if (dryRun) {
+            return ledger.find(slice.sliceId(), target.targetId());
+        }
+        return Optional.of(ledger.ensurePending(pending));
+    }
+
+    private void countState(PublishRecord record, PublishCounters counters) {
+        switch (record.status()) {
+            case SUCCEEDED -> counters.succeeded++;
+            case ABANDONED -> counters.abandoned++;
+            case FAILED -> counters.failed++;
+            case PENDING, IN_PROGRESS -> counters.pending++;
+        }
     }
 
     private void apply(PublishRecord record, CompletedSlice slice, boolean dryRun, PublishCounters counters) {
@@ -189,6 +263,11 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
         private ArtifactPublishResult toResult() {
             return new ArtifactPublishResult(pending, succeeded, failed, abandoned);
         }
+    }
+
+    @FunctionalInterface
+    private interface PairAction {
+        void accept(CompletedSlice slice, PublishTarget target, PublishCounters counters);
     }
 
     private record RemoteMarker(boolean present, String content) {

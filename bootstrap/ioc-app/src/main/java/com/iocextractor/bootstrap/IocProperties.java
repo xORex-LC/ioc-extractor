@@ -226,14 +226,21 @@ public record IocProperties(
                               String domain,
                               @NotBlank String username,
                               @NotBlank String password,
-                              boolean encrypt) {
+                              boolean encrypt,
+                              Duration connectTimeout,
+                              Duration readTimeout,
+                              Duration idleTimeout) {
 
                 public Smb {
                     host = requireText(host, "sync SMB host");
                     share = requireText(share, "sync SMB share");
                     username = requireText(username, "sync SMB username");
                     password = requireText(password, "sync SMB password");
+                    optionalPositive(connectTimeout, "sync SMB connectTimeout");
+                    optionalPositive(readTimeout, "sync SMB readTimeout");
+                    optionalPositive(idleTimeout, "sync SMB idleTimeout");
                 }
+
             }
         }
 
@@ -321,6 +328,12 @@ public record IocProperties(
         private static void positive(Duration duration, String name) {
             if (duration == null || duration.isZero() || duration.isNegative()) {
                 throw new IllegalArgumentException(name + " must be positive");
+            }
+        }
+
+        private static void optionalPositive(Duration duration, String name) {
+            if (duration != null) {
+                positive(duration, name);
             }
         }
 

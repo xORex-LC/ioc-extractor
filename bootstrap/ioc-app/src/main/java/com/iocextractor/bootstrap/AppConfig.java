@@ -136,7 +136,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -708,9 +707,11 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnMissingBean(SliceRetentionGuard.class)
     @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
-            + "'${ioc.export.enabled:true}' == 'true'")
+            + "'${ioc.export.enabled:true}' == 'true' && ("
+            + "'${ioc.sync.enabled:false}' != 'true' || "
+            + "'${ioc.sync.publish.enabled:false}' != 'true' || "
+            + "'${ioc.storage.service.type:disabled}' != 'jdbc')")
     public SliceRetentionGuard sliceRetentionGuard() {
         return StandaloneSliceRetentionGuard.INSTANCE;
     }

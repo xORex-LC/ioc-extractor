@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
@@ -34,7 +35,8 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
     private final Map<String, SmbEndpointSettings> endpoints;
     private final SmbShareClientFactory clientFactory;
     private final Clock clock;
-    private final Map<String, CachedClient> clients = new HashMap<>();
+    private final Map<String, CachedClient> clients = new ConcurrentHashMap<>();
+    private final Map<String, Object> endpointLocks = new HashMap<>();
 
     public SmbFileTransport(List<SmbEndpointSettings> endpoints) {
         this(endpoints, new SmbjShareClientFactory(), Clock.systemUTC());
@@ -48,6 +50,7 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
             if (previous != null) {
                 throw new IllegalArgumentException("duplicate SMB endpoint: " + endpoint.name());
             }
+            endpointLocks.put(endpoint.name(), new Object());
         }
         this.clientFactory = Objects.requireNonNull(clientFactory, "clientFactory");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -96,22 +99,25 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
     }
 
     @Override
-    public synchronized void close() {
-        for (CachedClient cached : clients.values()) {
-            cached.client().close();
+    public void close() {
+        for (String endpoint : endpoints.keySet()) {
+            synchronized (endpointLocks.get(endpoint)) {
+                closeClient(endpoint);
+            }
         }
-        clients.clear();
     }
 
     /** Closes cached clients that have been idle longer than their endpoint policy. */
-    public synchronized void closeIdle() {
+    public void closeIdle() {
         Instant now = clock.instant();
-        List<String> stale = clients.entrySet().stream()
-                .filter(entry -> !now.minus(endpoint(entry.getKey()).idleTimeout()).isBefore(entry.getValue().lastUsedAt()))
-                .map(Map.Entry::getKey)
-                .toList();
-        for (String endpoint : stale) {
-            closeClient(endpoint);
+        for (String endpoint : endpoints.keySet()) {
+            synchronized (endpointLocks.get(endpoint)) {
+                CachedClient cached = clients.get(endpoint);
+                if (cached != null && !now.minus(endpoint(endpoint).idleTimeout())
+                        .isBefore(cached.lastUsedAt())) {
+                    closeClient(endpoint);
+                }
+            }
         }
     }
 
@@ -167,21 +173,23 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
     private <T> T withClient(String endpoint, String operation, Function<SmbShareClient, T> action) {
         requireEndpointName(endpoint);
         endpoint(endpoint);
-        try {
-            SmbShareClient client = client(endpoint);
-            T result = action.apply(client);
-            touch(endpoint);
-            return result;
-        } catch (RuntimeException failure) {
-            RemoteTransportException mapped = SmbExceptionMapper.map(failure, operation, endpoint);
-            if (mapped.kind() == RemoteErrorKind.TRANSIENT || mapped.kind() == RemoteErrorKind.UNREACHABLE) {
-                closeClient(endpoint);
+        synchronized (endpointLocks.get(endpoint)) {
+            try {
+                SmbShareClient client = client(endpoint);
+                T result = action.apply(client);
+                touch(endpoint);
+                return result;
+            } catch (RuntimeException failure) {
+                RemoteTransportException mapped = SmbExceptionMapper.map(failure, operation, endpoint);
+                if (mapped.kind() == RemoteErrorKind.TRANSIENT || mapped.kind() == RemoteErrorKind.UNREACHABLE) {
+                    closeClient(endpoint);
+                }
+                throw mapped;
             }
-            throw mapped;
         }
     }
 
-    private synchronized SmbShareClient client(String endpoint) {
+    private SmbShareClient client(String endpoint) {
         CachedClient cached = clients.get(endpoint);
         if (cached != null) {
             return cached.client();
@@ -191,14 +199,14 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
         return opened;
     }
 
-    private synchronized void touch(String endpoint) {
+    private void touch(String endpoint) {
         CachedClient cached = clients.get(endpoint);
         if (cached != null) {
             clients.put(endpoint, new CachedClient(cached.client(), clock.instant()));
         }
     }
 
-    private synchronized void closeClient(String endpoint) {
+    private void closeClient(String endpoint) {
         CachedClient cached = clients.remove(endpoint);
         if (cached != null) {
             cached.client().close();

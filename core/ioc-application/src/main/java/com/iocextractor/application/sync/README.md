@@ -38,6 +38,10 @@ value objects и политики, которые одинаковы для SMB/
   `PublishLedger`, а local slice catalog остаётся read-only.
 - Missing publish pairs materialize before remote write; `FAILED` remains retryable,
   `ABANDONED` and `SUCCEEDED` are terminal for retention.
+- Отдельная `reconcile`-операция materializes missing pairs без remote I/O; dry-run
+  только считает hypothetical/существующие состояния и не пишет ledger.
+- Source/target filters позволяют daemon изолировать ошибку одного endpoint и продолжить
+  остальные элементы конфигурационного порядка.
 - Existing remote `_SUCCESS` with matching manifest hash is forward recovery to
   `SUCCEEDED`; mismatched marker emits `SYNC.PUBLISH_VERIFY_FAILED`.
 - `RemoteFetchService` не делает remote claim/move/delete: источник read-only,

@@ -4,6 +4,10 @@ import com.iocextractor.adapter.in.cli.CliRunner;
 import com.iocextractor.adapter.in.ingest.FileIngestionLedger;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
+import com.iocextractor.application.export.StandaloneSliceRetentionGuard;
+import com.iocextractor.application.port.out.export.SliceRetentionGuard;
+import com.iocextractor.bootstrap.DaemonFetchScheduler;
+import com.iocextractor.bootstrap.DaemonPublishScheduler;
 import com.iocextractor.bootstrap.IngestionLedgerHealthIndicator;
 import com.iocextractor.bootstrap.JdbcStorageHealthIndicator;
 import com.iocextractor.bootstrap.DaemonExportScheduler;
@@ -61,5 +65,9 @@ class DaemonRuntimeModeTest {
                 .containsOnlyKeys("daemonSliceRetentionScheduler");
         assertThat(context.getBeansOfType(ExportHealthIndicator.class))
                 .containsOnlyKeys("exportHealthIndicator");
+        assertThat(context.getBeansOfType(DaemonFetchScheduler.class)).isEmpty();
+        assertThat(context.getBeansOfType(DaemonPublishScheduler.class)).isEmpty();
+        assertThat(context.getBean(SliceRetentionGuard.class))
+                .isSameAs(StandaloneSliceRetentionGuard.INSTANCE);
     }
 }

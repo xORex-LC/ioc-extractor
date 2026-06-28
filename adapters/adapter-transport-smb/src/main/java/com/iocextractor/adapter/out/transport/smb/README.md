@@ -22,6 +22,11 @@ SMB-сессии, handles или типы transport-библиотеки.
 - Уже опубликованный slice с совпадающим marker считается idempotent success.
 - Remote partial без marker считается adapter-owned состоянием и может быть перезаписан.
 - `delete` используется только явными retention/cleanup сценариями; fetch-source в v1 read-only.
+- Соединение создаётся lazy и переиспользуется per endpoint. Операции одного endpoint
+  сериализованы, поэтому reconnect/idle-close не закрывают share во время активного IO;
+  разные endpoints могут обслуживаться параллельно.
+- Transient/unreachable failure инвалидирует cached client; следующий macro/micro retry
+  открывает новое соединение. Bootstrap вызывает `closeIdle`, shutdown закрывает все clients.
 
 ## Тестирование
 

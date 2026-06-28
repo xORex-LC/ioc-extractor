@@ -77,7 +77,7 @@ class SyncPropertiesTest {
     @Test
     void rejectsIncompleteSmbCredentialsAfterBinding() {
         assertThatThrownBy(() -> new IocProperties.Sync.Endpoint.Smb(
-                "server", "share", null, "user", "", true))
+                "server", "share", null, "user", "", true, null, null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("password");
     }
@@ -105,7 +105,7 @@ class SyncPropertiesTest {
     private IocProperties.Sync.Endpoint endpoint(String name) {
         return new IocProperties.Sync.Endpoint(name, "smb",
                 new IocProperties.Sync.Endpoint.Smb("server", "share", null,
-                        "user", "secret", true));
+                        "user", "secret", true, null, null, null));
     }
 
     private IocProperties.Sync.Fetch.Source source(String name, String endpoint) {

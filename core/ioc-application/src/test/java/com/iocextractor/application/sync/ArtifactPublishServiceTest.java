@@ -56,6 +56,51 @@ class ArtifactPublishServiceTest {
     }
 
     @Test
+    void startupReconcileCreatesPairsWithoutRemoteIo() throws Exception {
+        CompletedSlice slice = slice("reputation", "slice-one");
+        FakeLedger ledger = new FakeLedger();
+        FakeTransport transport = new FakeTransport();
+
+        var result = service(catalog(slice), ledger, transport, targets("reputation"), diagnostics())
+                .reconcile(new ArtifactPublishCommand(Optional.empty(), false));
+
+        assertThat(result.pending()).isEqualTo(2);
+        assertThat(ledger.records())
+                .hasSize(2)
+                .allSatisfy(record -> assertThat(record.status()).isEqualTo(PublishStatus.PENDING));
+        assertThat(transport.published).isEmpty();
+    }
+
+    @Test
+    void dryRunDoesNotCreateLedgerPairsOrPublish() throws Exception {
+        CompletedSlice slice = slice("reputation", "slice-one");
+        FakeLedger ledger = new FakeLedger();
+        FakeTransport transport = new FakeTransport();
+
+        var result = service(catalog(slice), ledger, transport, targets("reputation"), diagnostics())
+                .publish(new ArtifactPublishCommand(Optional.empty(), true));
+
+        assertThat(result.pending()).isEqualTo(2);
+        assertThat(ledger.records()).isEmpty();
+        assertThat(transport.published).isEmpty();
+    }
+
+    @Test
+    void targetFilterPublishesOnlySelectedTarget() throws Exception {
+        CompletedSlice slice = slice("reputation", "slice-one");
+        FakeLedger ledger = new FakeLedger();
+        FakeTransport transport = new FakeTransport();
+
+        var result = service(catalog(slice), ledger, transport, targets("reputation"), diagnostics())
+                .publish(new ArtifactPublishCommand(
+                        Optional.of("reputation"), Optional.of("target-b"), false));
+
+        assertThat(result.succeeded()).isOne();
+        assertThat(ledger.records()).extracting(PublishRecord::targetId).containsExactly("target-b");
+        assertThat(transport.published).containsExactly("endpoint-b:/remote/b/slice-one");
+    }
+
+    @Test
     void failureOfOneTargetDoesNotBlockAnotherTarget() throws Exception {
         CompletedSlice slice = slice("reputation", "slice-one");
         FakeLedger ledger = new FakeLedger();

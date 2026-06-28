@@ -55,7 +55,7 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
     public RemoteFetchResult fetch(RemoteFetchCommand command) {
         Objects.requireNonNull(command, "command");
         FetchCounters counters = new FetchCounters();
-        for (RemoteFetchSource source : sources) {
+        for (RemoteFetchSource source : selectedSources(command)) {
             for (RemoteObject object : transport.list(source.endpoint(), source.remotePath())) {
                 if (!matches(source, object)) {
                     counters.skipped++;
@@ -65,6 +65,20 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
             }
         }
         return counters.toResult();
+    }
+
+    private List<RemoteFetchSource> selectedSources(RemoteFetchCommand command) {
+        if (command.source().isEmpty()) {
+            return sources;
+        }
+        String selected = command.source().orElseThrow();
+        List<RemoteFetchSource> matches = sources.stream()
+                .filter(source -> source.sourceId().equals(selected))
+                .toList();
+        if (matches.isEmpty()) {
+            throw new IllegalArgumentException("Unknown sync fetch source: " + selected);
+        }
+        return matches;
     }
 
     private void fetchOne(RemoteFetchSource source, RemoteObject object, boolean dryRun, FetchCounters counters) {

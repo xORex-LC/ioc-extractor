@@ -63,6 +63,10 @@
             <groupId>com.iocextractor</groupId>
             <artifactId>ioc-adapter-cli-picocli</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-adapter-transport-smb</artifactId>
+        </dependency>
 
         <!-- Platform modules used directly by the composition root -->
         <dependency>
