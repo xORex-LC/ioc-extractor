@@ -122,6 +122,14 @@ category → severity → шаблон → где возникает) — для
 разработчиков, и как реестр для отчётов. Генерация — отдельный инструмент/тест,
 не рантайм-зависимость.
 
+Опубликованный generated artifact — [diagnostic-catalog.md](diagnostic-catalog.md).
+Категория `EXPORT` полностью покрывает executable boundaries Artifact Emission:
+unsupported mode, snapshot read, slice write, invalid manifest/tree, отсутствие
+atomic publish, ledger CAS conflict и recovery failure. Код создаётся рядом с
+producer-ом: config resolution — bootstrap, snapshot/ledger — JDBC adapter,
+filesystem/manifest — CSV adapter, recovery policy — application. Cadence
+`SKIPPED` и успешные checkpoints являются operational events, а не ошибками.
+
 ## Связь с operational logging
 
 Operational logging шире диагностики: application lifecycle, IO, retry, записи в

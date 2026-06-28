@@ -31,6 +31,7 @@ e3b0c44298fc1c149afbf4c8996fb924…           ─┘
 - **Multiple artifacts from a single run** — each with its own schema, id-space and normalization.
 - **Config-driven DSL** — a new output format is added by editing `application.yml` (column specs + provider/transform/filter registries), **no code**.
 - **Two run modes**: a one-shot CLI (`extract`) and a streaming **daemon** (Spring Integration: `inbox` → JDBC dataframe truth → CSV projection, ledger, retry, crash recovery).
+- **Immutable artifact export**: manual `ioc export --profile …` or daemon cadence; one WAL snapshot streams to CSV + manifest + `_SUCCESS`, with durable recovery and slice retention.
 - **Observability**: ECS-JSON logs (Logback) + a diagnostics subsystem behind ports.
 - **Clean hexagonal architecture** whose boundaries are enforced by the **build** (ArchUnit + Maven Enforcer), not by review.
 
@@ -55,6 +56,9 @@ cd ioc-extractor
 
 # one-shot run
 java -jar bootstrap/ioc-app/target/ioc-app-0.1.0.jar extract --source source/ioc-source.htm [--dry-run]
+
+# export one configured immutable profile slice from accumulated SQLite truth
+java -jar bootstrap/ioc-app/target/ioc-app-0.1.0.jar export --profile reputation-lists
 ```
 
 ## Daemon mode
@@ -62,7 +66,8 @@ java -jar bootstrap/ioc-app/target/ioc-app-0.1.0.jar extract --source source/ioc
 With `ioc.runtime.mode=daemon`, sources are dropped into `./var/inbox`, pass a
 stability quiet-period, are written directly into the JDBC dataframe store, and
 regenerate `*_generated.csv` projections from that store. See
-[docs/ingestion.md](docs/ingestion.md).
+[docs/ingestion.md](docs/ingestion.md). The daemon also schedules immutable
+profile exports by `ioc.export.trigger` and reports per-profile export health.
 
 ```bash
 java -jar bootstrap/ioc-app/target/ioc-app-0.1.0.jar --ioc.runtime.mode=daemon
@@ -84,7 +89,7 @@ Schemas, normalization and column filling are described in [docs/output-mapping.
 
 The single source of truth is [bootstrap/ioc-app/src/main/resources/application.yml](bootstrap/ioc-app/src/main/resources/application.yml),
 under the `ioc.*` tree (`runtime`, `storage`, `source`, `refang`, `engine`, `patterns`,
-`classify`, `sink`, `lookup`, `artifact-identity`, `ingestion`, `maintenance`). Override order:
+`classify`, `sink`, `lookup`, `artifact-identity`, `export`, `ingestion`, `maintenance`). Override order:
 
 ```text
 classpath:application.yml  <  ./configs/application.yml  <  CLI flags / env
@@ -114,7 +119,7 @@ A multi-module Maven reactor; **one external adapter = one library**:
 ```text
 platform/   cross-cutting subsystems behind ports (errors, diagnostics, etl, observability)
 core/       ioc-domain (pure Java) + ioc-application (use cases, ports, stages, ingest, artifact storage)
-adapters/   one library each: regex-re2j · psl · source-tika · lookup-csv · sink-csv · store-jdbc · ingest · cli-picocli
+adapters/   one library each: regex-re2j · psl · source-tika · lookup-csv · sink-csv · manifest-json-jackson · store-jdbc · ingest · cli-picocli
 bootstrap/  ioc-app — composition root + Spring Boot entry point (CLI/daemon, no web)
 ```
 

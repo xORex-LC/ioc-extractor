@@ -52,6 +52,7 @@ dead-letter sidecar или JSONL.
 | Out adapters | IO: read/write CSV, JDBC storage, lookup loaded, projection written | SLF4J |
 | Diagnostics bridge | diagnostic result rendered as log event | `LoggingDiagnosticSink` |
 | Export observer (bootstrap) | formation checkpoints/recovery, profile/slice/revision | `ExportObserver` → SLF4J + MDC |
+| Export schedulers (bootstrap) | cadence failures, slice-retention sweep/blocks | `LogEvent` helper; ошибка tick не останавливает daemon |
 
 ## Границы ответственности
 

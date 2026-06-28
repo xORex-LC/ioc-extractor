@@ -4,8 +4,21 @@ import com.iocextractor.adapter.in.cli.IocRootCommand;
 import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
+import com.iocextractor.application.export.ExportPlan;
+import com.iocextractor.application.export.ExportRunStatus;
+import com.iocextractor.application.export.ExportService;
 import com.iocextractor.application.export.SliceManifest;
+import com.iocextractor.application.export.SnapshotArtifactMetadata;
+import com.iocextractor.application.export.SnapshotMetadata;
+import com.iocextractor.application.port.in.export.ExportArtifactsCommand;
+import com.iocextractor.application.port.in.export.ExportArtifactsResult;
+import com.iocextractor.application.port.out.export.ArtifactRevisionReader;
+import com.iocextractor.application.port.out.export.ArtifactSliceWriter;
+import com.iocextractor.application.port.out.export.ExportProgressStore;
+import com.iocextractor.application.port.out.export.ExportRunLedger;
 import com.iocextractor.application.port.out.export.SliceManifestCodec;
+import com.iocextractor.application.port.out.export.SnapshotRowConsumer;
+import com.iocextractor.application.port.out.export.SnapshotSliceReader;
 import com.iocextractor.bootstrap.ExportPlanCatalog;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,13 +31,20 @@ import picocli.CommandLine.IFactory;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Full C8 path: canonical JDBC row to CLI-created verified immutable local slice. */
+/** Full artifact-emission path from canonical JDBC writes to verified immutable slices. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 class OnDemandExportIntegrationTest {
 
@@ -60,18 +80,30 @@ class OnDemandExportIntegrationTest {
     @Autowired
     SliceManifestCodec manifestCodec;
 
+    @Autowired
+    ArtifactRevisionReader revisionReader;
+
+    @Autowired
+    ExportProgressStore progressStore;
+
+    @Autowired
+    ExportRunLedger runLedger;
+
+    @Autowired
+    SnapshotSliceReader snapshotReader;
+
+    @Autowired
+    ArtifactSliceWriter sliceWriter;
+
+    @Autowired
+    Clock clock;
+
     @Test
-    void manualExportCreatesValidFinalSliceAndThenCheapSkips() throws Exception {
+    void canonicalWriteExportsGoldenSliceSkipsDuplicatesAndCatchesConcurrentCommit() throws Exception {
         var plan = plans.plans().stream()
                 .filter(candidate -> candidate.profile().name().equals("e2e-reputation"))
                 .findFirst().orElseThrow();
-        var artifact = plan.artifacts().getFirst();
-        LinkedHashMap<String, String> values = new LinkedHashMap<>();
-        artifact.columns().forEach(column -> values.put(column, null));
-        values.put("id", "1");
-        values.put("mask", "example.org");
-        canonical.write("masks", new CanonicalArtifact(
-                "masks", artifact.columns(), List.of(ArtifactRow.ordered(values))));
+        writeMask(plan, "1", "example.org");
 
         int first = new CommandLine(rootCommand, commandFactory)
                 .execute("export", "--profile", "e2e-reputation");
@@ -91,8 +123,10 @@ class OnDemandExportIntegrationTest {
             assertThat(entry.rows()).isEqualTo(1);
             assertThat(entry.coverage().revision()).isEqualTo(1);
         });
+        assertThat(Files.readString(slice.resolve("masks_list_generated.csv")))
+                .isEqualTo(golden("golden/expected-export-masks.csv"));
         assertThat(Files.readString(slice.resolve("_SUCCESS"), StandardCharsets.US_ASCII))
-                .matches("[0-9a-f]{64}\\n");
+                .isEqualTo(sha256(manifestBytes) + "\n");
 
         int second = new CommandLine(rootCommand, commandFactory)
                 .execute("export", "--profile", "e2e-reputation");
@@ -100,6 +134,117 @@ class OnDemandExportIntegrationTest {
         assertThat(second).isZero();
         try (var paths = Files.list(EXPORT_ROOT.resolve("e2e-reputation"))) {
             assertThat(paths.filter(Files::isDirectory).toList()).hasSize(1);
+        }
+
+        writeMask(plan, "2", "before-snapshot.example");
+        var began = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var service = new ExportService(
+                List.of(plan), revisionReader, progressStore, runLedger,
+                blockingReader(began, release), sliceWriter, clock);
+
+        ExportArtifactsResult during;
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var future = executor.submit(() -> service.export(
+                    new ExportArtifactsCommand("e2e-reputation")));
+            assertThat(began.await(5, TimeUnit.SECONDS)).isTrue();
+            try {
+                writeMask(plan, "3", "after-snapshot.example");
+            } finally {
+                release.countDown();
+            }
+            during = future.get(5, TimeUnit.SECONDS);
+        }
+
+        assertThat(during.status()).isEqualTo(ExportRunStatus.COMPLETED);
+        Path duringSlice = EXPORT_ROOT.resolve("e2e-reputation").resolve(during.sliceName());
+        SliceManifest duringManifest = manifestCodec.decode(
+                Files.readAllBytes(duringSlice.resolve("manifest.json")));
+        assertThat(duringManifest.artifacts().getFirst().coverage().revision()).isEqualTo(2);
+        assertThat(Files.readString(duringSlice.resolve("masks_list_generated.csv")))
+                .contains("before-snapshot.example")
+                .doesNotContain("after-snapshot.example");
+
+        var catchUp = service.export(new ExportArtifactsCommand("e2e-reputation"));
+
+        assertThat(catchUp.status()).isEqualTo(ExportRunStatus.COMPLETED);
+        Path catchUpSlice = EXPORT_ROOT.resolve("e2e-reputation").resolve(catchUp.sliceName());
+        SliceManifest catchUpManifest = manifestCodec.decode(
+                Files.readAllBytes(catchUpSlice.resolve("manifest.json")));
+        assertThat(catchUpManifest.artifacts().getFirst().coverage().revision()).isEqualTo(3);
+        assertThat(Files.readString(catchUpSlice.resolve("masks_list_generated.csv")))
+                .contains("after-snapshot.example");
+    }
+
+    private void writeMask(ExportPlan plan, String id, String mask) {
+        var artifact = plan.artifacts().getFirst();
+        LinkedHashMap<String, String> values = new LinkedHashMap<>();
+        artifact.columns().forEach(column -> values.put(column, null));
+        values.put("id", id);
+        values.put("mask", mask);
+        canonical.write("masks", new CanonicalArtifact(
+                "masks", artifact.columns(), List.of(ArtifactRow.ordered(values))));
+    }
+
+    private SnapshotSliceReader blockingReader(CountDownLatch began, CountDownLatch release) {
+        return (request, consumer) -> snapshotReader.stream(
+                request, new BlockingConsumer(consumer, began, release));
+    }
+
+    private String golden(String resource) throws Exception {
+        try (var input = getClass().getClassLoader().getResourceAsStream(resource)) {
+            if (input == null) {
+                throw new IllegalStateException("Missing golden resource: " + resource);
+            }
+            String expected = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+            return expected.replace("\n", "\r\n");
+        }
+    }
+
+    private String sha256(byte[] bytes) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 is unavailable", impossible);
+        }
+    }
+
+    private record BlockingConsumer(SnapshotRowConsumer delegate,
+                                    CountDownLatch began,
+                                    CountDownLatch release) implements SnapshotRowConsumer {
+
+        @Override
+        public void begin(SnapshotMetadata metadata) {
+            delegate.begin(metadata);
+            began.countDown();
+            try {
+                if (!release.await(5, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("Timed out waiting for concurrent canonical commit");
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted while holding export snapshot", interrupted);
+            }
+        }
+
+        @Override
+        public void beginArtifact(SnapshotArtifactMetadata artifact) {
+            delegate.beginArtifact(artifact);
+        }
+
+        @Override
+        public void row(ArtifactRow row) {
+            delegate.row(row);
+        }
+
+        @Override
+        public void endArtifact() {
+            delegate.endArtifact();
+        }
+
+        @Override
+        public void end() {
+            delegate.end();
         }
     }
 }

@@ -93,17 +93,17 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `platform-diagnostics-logging` | Bridge `DiagnosticSink` → LogEvent/SLF4J (`LoggingDiagnosticSink`); зависит на `platform-diagnostics` + `platform-observability` |
 | `platform-errors` | базовые ошибки/common-типы и трансляция; нижний слой для `DiagnosticException` |
 | `ioc-domain` | Refanger, IndicatorExtractor, SourceAttributor, MatchPolicy, модели, feature extraction |
-| `ioc-application` | Pipeline orchestrator (`ExtractIocsUseCase`), daemon ingest (`IngestSourceUseCase`), artifact identity/run-ledger recovery model, retention (`RetentionPolicy`/`RetentionService` + `RunRetentionUseCase`/`RetentionStore` ports), ports, IOC stage implementations, payload records |
+| `ioc-application` | Pipeline/ingest use cases; framework-free Artifact Emission model, cadence, formation/recovery saga и slice-retention policy; ports и IOC stages |
 | `adapter-regex-re2j` | PatternEngine implementation (RE2J + JDK fallback) |
 | `adapter-source-tika` | SourceReader (Tika) |
-| `adapter-sink-csv` | IocSink + ArtifactFiller, canonical CSV projection, callback-streaming immutable slices with durable staging/atomic local publish |
+| `adapter-sink-csv` | IocSink + mapping, canonical CSV projection, callback-streaming immutable slices, integrity verification, atomic local publish и directory-level slice retention |
 | `adapter-manifest-json-jackson` | Deterministic versioned JSON codec for immutable slice manifests |
-| `adapter-store-jdbc` | Service/dataframe SQLite storage: migrations, JDBC ingestion ledger, run-ledger, canonical artifact repository, lookup repository, schema guardrails, health probe |
+| `adapter-store-jdbc` | Service/dataframe SQLite: canonical/revision storage, strict snapshot reader, ingest/export ledgers + progress, migrations, lookup и health |
 | `adapter-lookup-csv` | artifact-aware `LookupRepository` for masks + hashes |
 | `adapter-psl` | HostClassifier (PSL/Guava) |
 | `adapter-ingest` | Watch ingest: `IngestSourceUseCase`(in), `SourceLifecycle`, file `IngestionLedger`; SourceFeed adapter-local (Spring Integration); `FileSystemRetentionStore` (reaper IO) |
 | `adapter-cli-picocli` | входной CLI: `extract`, lazy on-demand `export`, remote daemon `health` |
-| `ioc-app` (bootstrap) | composition root, `ioc.export` plan resolution/lazy graph, ECS export observer, исполняемый jar; daemon schedulers, conditional web, health indicators |
+| `ioc-app` (bootstrap) | composition root, `ioc.export` plan resolution/lazy graph, ECS export observer; cadence/export/slice-retention schedulers, conditional web и health |
 
 ## Гранулярность
 
@@ -118,6 +118,12 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
   реальное переиспользование вне этого приложения.
 
 Подробное решение: [dev/0009](dev/0009-modularization-granularity.md).
+
+Artifact Emission не образует новый Maven-модуль: его framework-free модель и
+ports принадлежат `ioc-application`; технологические границы уже разнесены по
+JDBC, CSV/filesystem и Jackson adapters. ArchUnit отдельно запрещает JDBC/Spring
+во внутренних слоях, Jackson вне manifest adapter/bootstrap и JDBC-зависимость
+у callback slice writer.
 
 ## Поэтапный переход
 

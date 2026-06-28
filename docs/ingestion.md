@@ -9,7 +9,7 @@
 > `platform/platform-etl`, IOC use cases и stages — в `core/ioc-application`,
 > технические входы — отдельные `adapter-*` модули. Реализованы whole-file
 > daemon ingestion, **прямая запись в canonical SQLite-хранилище**, CSV-проекция,
-> artifact-aware lookup, retention/reaper и health-контур.
+> artifact-aware lookup, retention/reaper, immutable artifact export и health-контур.
 > Служебный durable ledger переключается file ↔ JDBC
 > (`ioc.ingestion.ledger.type: file | jdbc`). **Бизнес-данные dataframe хранятся
 > в SQLite как source of truth** (`ioc.storage.dataframe.type: jdbc`, default), а
@@ -23,6 +23,11 @@
 > CSV-проекции закрывается на старте повторной проекцией незавершённого
 > `DB_COMMITTED` run (и/или полным идемпотентным репроцессом источника со статусом
 > `CLAIMED`).
+>
+> Поверх canonical truth реализован отдельный Artifact Emission contour:
+> `artifact_revision` bump-ится в canonical write transaction, daemon cadence или
+> ручной `ioc export` создаёт consistent immutable profile slice, а `export_run`
+> закрывает crash windows formation saga. Детали — [dev/0012](dev/0012-streaming-dataframe-emission.md).
 
 ## 0. Реализованный scope 0.1.0
 
@@ -243,7 +248,8 @@ dataframe/
   startup-recovery (`IngestRunRecoveryService`) доспроецирует незавершённый
   `DB_COMMITTED` run. Run-ledger держим как **durable-observability**: восстановление
   и так несёт ingestion-ledger (`CLAIMED → полный репроцесс`), а run-ledger даёт
-  наблюдаемость фаз write→project и фундамент под будущую export-сагу.
+  наблюдаемость фаз write→project. Artifact export использует отдельные
+  `export_run`/`export_progress`, не перегружая ingest ledger.
 - **Авторитет id:** единый `IdGenerator(strategy, start=canonical maxId+1)` (как в
   oneshot), общий счётчик через сессию демона; контракт id — stable/unique/ascending
   (не gapless). `id AUTOINCREMENT` — пассивная подстраховка.
@@ -275,6 +281,26 @@ reaper** — общая обслуживающая абстракция, а не
 
 Конфиг — см. §12 (`ioc.maintenance.retention.*`).
 
+### 8.2 Artifact emission поверх canonical truth
+
+Локальная CSV-проекция ingest-саги и export для доставки — разные механизмы.
+Первый сохраняет always-fresh `*_generated.csv`; второй формирует immutable
+`root/<profile>/<timestamp>__<run-id>/` из одной WAL read transaction.
+
+Canonical repository атомарно обновляет `artifact_revision` только при
+фактической вставке public row. Поэтому duplicate observation не переносит
+quiet-period. Export scheduler сравнивает revisions с `export_progress`, а после
+materialization подтверждает изменение per-file content hashes. Concurrent
+canonical commit не рвёт срез: он получает следующую revision и будет экспортирован
+на следующем tick.
+
+Formation state хранится в service DB отдельно от `ingest_run`:
+`export_run` (`STARTED → STAGED → AVAILABLE → COMPLETED`) и
+`export_progress`. Startup recovery проверяет staging/final manifest evidence и
+не повторяет snapshot. Slice-level reaper рассматривает только integrity-valid
+final directories, применяет age/count отдельно по profile и повторно спрашивает
+delivery guard перед recursive delete; `.staging` остаётся собственностью recovery.
+
 ## 9. Ошибки, ретраи, dead-letter
 
 - SI `error-channel` + `RequestHandlerRetryAdvice` (spring-retry): экспоненциальный
@@ -296,15 +322,14 @@ reaper** — общая обслуживающая абстракция, а не
   источник.
 - Обработка **stateless и идемпотентна** (ключ — content-hash); переобработка
   безопасна.
-- Партиция выхода — отдельный файл по content-hash + atomic temp→rename → нет
-  конкуренции на запись между источниками.
 - Порты потокобезопасны/по-задачно: `IngestionLedger` — атомарная фиксация,
   `LookupRepository` — неизменяемый снапшот, reader/refanger/extractor — без
   разделяемого состояния.
-- **Нет разделяемого счётчика id** в стриминге: id назначается на агрегации
-  единым писателем → главный конкурентный риск исключён.
-- `Aggregator` — **single-writer** (сериализован) независимо от параллелизма
-  инжеста.
+- Canonical writes сериализуются SQLite write connection (`write-max=1`), а
+  `UNIQUE(row_key)` + `ON CONFLICT DO NOTHING` сохраняют keep-first при replay.
+  Id назначает сама artifact table; partition/aggregator слоя больше нет.
+- Export использует WAL read snapshot и отдельный DB-backed global single-flight;
+  concurrent ingest commit не смешивается с уже открытым срезом.
 
 Backpressure: bounded `QueueChannel` + `maxMessagesPerPoll`; идемпотентность
 делает at-least-once безопасным. Включение параллелизма: `TaskExecutor` на
@@ -316,8 +341,9 @@ service-activator + `concurrency > N` — без изменения доменн
 - **Graceful shutdown:** SI-компоненты — `SmartLifecycle`; остановка контекста
   останавливает поллеры, даёт дообработать in-flight, фиксирует ledger. SIGTERM
   от контейнера/systemd → shutdown hook Spring.
-- **Health:** health contributors для ledger и JDBC-хранилищ (service + dataframe:
-  connect / `user_version` / PRAGMA / `quick_check`) экспонируются по HTTP
+- **Health:** contributors для ledger, JDBC-хранилищ (service + dataframe:
+  connect / `user_version` / PRAGMA / `quick_check`) и export profiles
+  (last completed/failed, slice age, revision lag) экспонируются по HTTP
   (`/actuator/health`, `/actuator/info`).
   Web-сервер поднимается **только в daemon-режиме**: `DaemonWebEnvironmentPostProcessor`
   флипает `spring.main.web-application-type` в `servlet` по `ioc.runtime.mode=daemon`
@@ -398,6 +424,7 @@ ioc:
 | Health/метрики | `spring-boot-starter-actuator` + `spring-boot-starter-web` | health contributors + HTTP `/actuator/health`; web включается **только в daemon** (`DaemonWebEnvironmentPostProcessor`), loopback-bind. См. [dev/0010](dev/0010-health-actuator.md) |
 | Хэш содержимого | JDK `MessageDigest` (`SHA-256`) | новой зависимости не требуется |
 | Durable ledger + run-ledger + canonical | `spring-jdbc`/`JdbcClient` + `org.xerial:sqlite-jdbc` + Hikari | `ioc.ingestion.ledger.type: file \| jdbc`; service-datasource создаётся в любом daemon (нужен для run-ledger), dataframe-datasource — при `storage.dataframe.type=jdbc` (default); schema через `user_version`, DB health через `quick_check`/PRAGMA |
+| Immutable export | JDBC snapshot + commons-csv + Jackson | application saga/cadence за портами; JDBC/CSV/JSON остаются в трёх adapter-модулях |
 | Tail (later) | Apache Commons `Tailer` / SI tail producer | descoped для источников (вне домена document-ingest), см. техдолг ING-2 |
 
 ## 14. Реализованный контур и расширения
@@ -430,10 +457,14 @@ ioc:
 - health contributors + HTTP `/actuator/health` (daemon-only, см. [dev/0010](dev/0010-health-actuator.md));
 - **retention reaper** (`RetentionService`/`RetentionStore`/`DaemonMaintenanceScheduler`):
   возраст/количество → delete/archive для `done`/`failed` (§8.1).
+- **artifact emission**: ручной `ioc export`, daemon cadence, strict snapshot,
+  streaming CSV + manifest/`_SUCCESS`, forward recovery, export health и
+  отдельный slice-level retention (§8.2).
 
 Позже:
 
-- export-сага (STIX/OpenIOC) — под неё в service-схеме задуман `ingest_run`-каркас;
+- remote publish/fetch по 0011 и новые форматы STIX/OpenIOC поверх готового
+  immutable-slice/export-saga контракта;
 - web driving-adapter (REST-ингест/запросы, TAXII/STIX) — ING-8;
 - tail-источники — **descoped** (вне домена document-ingest, ING-2).
 

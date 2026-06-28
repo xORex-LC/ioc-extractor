@@ -157,6 +157,40 @@ read (SourceReader)
 неизвестное имя кодировки — fail-fast. Детали — [extraction.md](extraction.md) и
 [output-mapping.md](output-mapping.md).
 
+## Immutable artifact export
+
+Canonical SQLite остаётся системой записи, а export — отдельным bounded context
+**Artifact Emission**. Он не копирует мутабельные `*_generated.csv`, а потоково
+читает один consistent multi-artifact snapshot и формирует неделимый immutable
+срез profile:
+
+```
+artifact_revision + ExportProgress ──▶ cheap change gate
+canonical SQLite (one WAL read tx) ──▶ CSV files ──▶ manifest.json ──▶ _SUCCESS
+                                                staging ──ATOMIC_MOVE──▶ final
+```
+
+- `ioc export --profile <name>` запускает тот же `ExportService`, что и daemon
+  scheduler; v1 выполняет только `complete`, `append` отклоняется до IO.
+- `export_run` в service SQLite хранит CAS-сагу
+  `STARTED → STAGED → AVAILABLE → COMPLETED`; `SKIPPED`/`FAILED` terminal.
+  Partial unique index обеспечивает global single-flight.
+- `artifact_revision` увеличивается в транзакции фактической canonical-вставки.
+  Snapshot metadata (`revision`, `changed_at`, `upper_id`) читается в той же
+  read transaction, что и строки. Concurrent commit попадает в следующий срез.
+- Writer не материализует rows: JDBC callback-stream идёт прямо в CSV digest.
+  `_SUCCESS` содержит SHA-256 точных bytes manifest; manifest содержит hashes и
+  coverage всех data files. Final становится видимым одним atomic directory move.
+- Startup recovery продвигается только вперёд по ledger + filesystem evidence и
+  никогда не перечитывает mutable canonical snapshot.
+- Daemon поддерживает `interval` и `quiet-period` с обязательным `max-cap`.
+  Export health показывает последний success/failure, возраст среза и revision lag.
+- Slice retention ранжирует завершённые каталоги отдельно по profile и удаляет
+  каталог целиком. Guard проверяется непосредственно перед delete; standalone
+  разрешает удаление, реализация из 0011 сможет pin-ить недоставленные срезы.
+
+Полный протокол, crash-матрица и rationale: [dev/0012](dev/0012-streaming-dataframe-emission.md).
+
 ## Composition root
 
 `bootstrap/AppConfig` — единственное место, где фреймворк связывает

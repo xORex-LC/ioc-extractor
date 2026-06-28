@@ -2,15 +2,17 @@
 
 ## Статус
 
-**Проектирование — Q1–Q5 решены; два hardening-прохода после ревью завершены.** Findings
-F1–F5 и ref-1…9 закрыты не только направлением, но и исполнимыми контрактами: crash-матрицей
-локальной публикации, callback-streaming между JDBC/CSV, атомарным `artifact_revision`,
-delivery-aware retention guard, lazy service-DB wiring для CLI и export-profile как неделимой
-единицей publish. Формат среза и проверочный контур зафиксированы ниже.
-Cross-cutting поверх **реализованного**
-storage-слоя (ING-4): трогает проекцию (`adapter-sink-csv`), ingest-сагу
-(`application/ingest`) и будущую export-сагу; результат *потребляется* доставкой
-([0011](0011-remote-sync.md)). **Переписан** после приземления SQLite-хранилища и
+**Реализовано — C0–C11 закрыты.** Findings F1–F5 и ref-1…9 воплощены в коде:
+strict WAL snapshot, callback-streaming JDBC→CSV, атомарный `artifact_revision`,
+CAS-backed export saga/recovery, deterministic manifest + `_SUCCESS`, CLI/daemon cadence,
+health и delivery-aware slice retention. Финальный контур проверяет concurrent ingest,
+duplicate/`SKIPPED`, crash windows, fresh/upgrade migrations, golden slice и архитектурные
+границы. Документ остаётся design log и implementation trace для следующего этапа
+[0011](0011-remote-sync.md), который потребляет готовые immutable profile slices.
+
+Cross-cutting поверх **реализованного** storage-слоя (ING-4): затрагивает canonical write
+revision, JDBC snapshot, CSV/filesystem writer, service ledger и bootstrap lifecycle.
+**Переписан** после приземления SQLite-хранилища и
 β-коллапса (партиции и отдельный проход агрегации удалены) — прежняя редакция
 исходила из «перезаписи canonical-файла», что более неверно. Грунт — текущий код
 и [../ingestion.md](../ingestion.md) / [../worknote/storage-layer.md](../worknote/storage-layer.md).
@@ -34,14 +36,12 @@ storage-слоя (ING-4): трогает проекцию (`adapter-sink-csv`), 
   PROJECTION_COMPLETED`).
 - id — per-artifact `AUTOINCREMENT` + `row_key TEXT UNIQUE`; provenance/observation
   — `<artifact>_sources` (1:N: `first_seen_at`, `last_seen_at`, `occurrences`).
-- Export-саги **ещё нет**, и её run-ledger-таблицы в служебной схеме **тоже нет**:
-  заготовка `export_run` из v2 была **удалена миграцией v4** (β-коллапс) — при
-  реализации пере-создаём её forward-миграцией (`v5__export_state.sql`: run-ledger + progress, см.
-  «Архитектура реализации»).
+- Export-сага реализована поверх service migration `v5__export_state.sql`:
+  `export_run` + `export_progress`, global single-flight, forward recovery и operational read model.
 
-Поэтому остаточная задача узкая и конкретная: **каденс эмиссии** и **контракт
-экспорта для удалённых потребителей**. Опора на индустриальную модель сохраняется,
-но якорится на экспорт, а не на «растущий файл»:
+Реализованная задача была узкой и конкретной: **каденс эмиссии** и **контракт
+экспорта для удалённых потребителей**. Опора на индустриальную модель якорится
+на экспорт, а не на «растущий файл»:
 
 - **Dataflow-модель** (Akidau и др., VLDB 2015; *«Streaming Systems»*; Apache Beam):
   *what / where (окно) / when (триггер+watermark) / how (accumulating vs discarding)*.
@@ -901,6 +901,14 @@ standalone разрешает; pinned slices делают max-count best-effort;
 ```bash
 ./mvnw -B -ntp -T 1C verify
 ```
+
+**Реализация C11:** E2E объединяет canonical write, revision, real JDBC snapshot,
+CSV/manifest/marker, duplicate skip и concurrent commit с catch-up run. Остальная
+матрица распределена по ответственностям: recovery crash windows — application,
+atomic publication/corruption — CSV adapter, snapshot isolation и fresh/upgrade
+migrations — JDBC adapter, cadence/health/retention/ECS — bootstrap/platform.
+Golden CSV хранится отдельной test resource; generated diagnostic catalog и
+ArchUnit rules входят в общий `verify`.
 
 ## Группировка для реализации
 

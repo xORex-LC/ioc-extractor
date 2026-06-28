@@ -20,6 +20,9 @@
 - `platform-etl` не зависит на IOC domain/application/adapters/bootstrap и
   остаётся framework-free.
 - `application` зависит на `domain` и platform contracts, не на адаптеры/Spring.
+- JDBC/`java.sql`/Hikari разрешены только adapters/bootstrap; Jackson manifest
+  mapping — только `adapter-manifest-json-jackson`/bootstrap. Streaming slice
+  writer отдельно защищён от JDBC и materialized canonical repository model.
 - Внутри `ioc-domain` capability-пакеты держат DAG (`model/refang/extract/
   feature/classify/attribute`) через module-local ArchUnit.
 - Onion/hexagonal-правило слоёв: доступ только «внутрь».
@@ -69,6 +72,14 @@ noClasses().that().resideInAPackage("..domain..")
 // 3) Application — только на domain (+ свои порты), не на адаптеры/Spring
 noClasses().that().resideInAPackage("..application..")
     .should().dependOnClassesThat().resideInAnyPackage("..adapter..", "org.springframework..");
+
+// 3b) Storage/serialization mechanisms do not leak inward
+noClasses().that().resideOutsideOfPackages("..adapter..", "..bootstrap..")
+    .should().dependOnClassesThat().resideInAnyPackage(
+        "java.sql..", "javax.sql..", "org.springframework.jdbc..", "com.zaxxer.hikari..");
+noClasses().that().resideOutsideOfPackages(
+        "..adapter.out.manifest.json..", "..adapter.in.cli..", "..bootstrap..")
+    .should().dependOnClassesThat().resideInAnyPackage("com.fasterxml.jackson..");
 
 // 3a) Generic ETL kernel — без IOC/application/adapters/frameworks
 noClasses().that().resideInAPackage("..platform.etl..")
