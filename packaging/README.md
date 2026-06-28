@@ -8,10 +8,13 @@ Release `0.1.0`.
 | File | Purpose |
 |---|---|
 | `install.sh` | From-scratch installer (root): JDK 21 (manual), user, directories, jar, config, systemd unit. |
+| `deploy-local.sh` | Ordinary-user entry point: verify/build, immutable release activation, health gate and rollback. |
+| `deploy-local-root.sh` | Privileged activation phase called by `deploy-local.sh`; not a user entry point. |
 | `uninstall.sh` | Stop/remove the service; `--purge` also deletes the directory and the user. |
-| `templates/ioc-extractor.service` | Unit template; placeholders `@PREFIX@/@VERSION@/@JAVA_BIN@/@USER@/@GROUP@` are substituted at install time. |
+| `templates/ioc-extractor.service` | Unit template; placeholders `@PREFIX@/@JAVA_BIN@/@USER@/@GROUP@` are substituted at install time. |
 | `templates/application.yml` | Production override (daemon mode); deployed to `<prefix>/etc/application.yml`. |
 | `templates/ioc-extractor.env` | `EnvironmentFile` with `JAVA_OPTS`. |
+| `templates/ioc` | Host CLI launcher rendered to `<prefix>/bin/ioc`. |
 
 **Layer rule:** deployment material only (shell + templates), no Java code or
 business logic. Daemon mode and configuration are documented in
@@ -33,7 +36,11 @@ self-contained:
 ```text
 <prefix>/                         # default /opt/ioc-extractor
 ├── jdk/                          # Temurin 21 (installed manually)
-├── lib/ioc-app-0.1.0.jar
+├── releases/
+│   └── <commit>-<timestamp>/       # immutable jar, checksum and build identity
+├── current -> releases/<active>    # atomically switched by deployment
+├── backups/                        # offline SQLite snapshots for rollback
+├── bin/ioc                         # oneshot CLI launcher through systemd-run
 ├── etc/application.yml           # override (operator-editable)
 ├── etc/ioc-extractor.env         # JAVA_OPTS + optional SMB credentials
 ├── var/
@@ -46,6 +53,42 @@ self-contained:
 
 The service `WorkingDirectory` is `<prefix>`, so the application's relative paths
 (`./var/...`, `./dataframe/...`) resolve inside the install directory.
+
+## Local deployment
+
+For a development/test host, run deployment from the source checkout as an
+ordinary user (never through `sudo`):
+
+```bash
+./packaging/deploy-local.sh
+# explicit equivalent for the current WSL test runtime:
+./packaging/deploy-local.sh --prefix /srv/ioc-extractor --port 8081
+```
+
+The command refuses a dirty worktree by default. To deliberately test uncommitted
+changes, make that loss of reproducibility explicit:
+
+```bash
+./packaging/deploy-local.sh --allow-dirty
+```
+
+The unprivileged phase runs the complete `./mvnw -B -ntp -T 1C verify` gate and
+builds the bootable jar. Only then does it invoke the privileged activation helper:
+
+1. first run bootstraps through `install.sh`, reusing an installed Java 21+ outside
+   `/home` and downloading bundled Temurin only when no suitable system Java exists;
+2. later runs stage an immutable `releases/<id>` directory;
+3. the daemon stops and `var/db` is archived offline;
+4. `current` switches atomically and the daemon starts;
+5. service JDBC, dataframe JDBC and artifact-directory health components must
+   become `UP` in four quiet attempts separated by two seconds;
+6. failure restores both the previous `current` target and SQLite snapshot.
+
+Remote sync health is deliberately not a deployment gate: an unavailable SMB
+endpoint must not roll back an otherwise valid application/storage upgrade.
+Defaults keep five releases and five DB backups. `flock` prevents overlapping
+local activations. Configuration and `ioc-extractor.env` remain host-owned and
+are not replaced during regular deployments.
 
 ## Systemd hardening
 
@@ -92,6 +135,7 @@ sudo packaging/install.sh                         # prompts for the directory (d
 sudo packaging/install.sh --prefix /opt/ioc-extractor
 sudo packaging/install.sh --jdk-tarball /tmp/temurin21.tar.gz   # offline host
 sudo packaging/install.sh --jar /path/ioc-app-0.1.0.jar --no-start
+sudo packaging/install.sh --jar /path/ioc-app.jar --release-id 2ad7c09-manual --no-start
 ```
 
 The installer is **idempotent**: re-running upgrades the jar and the unit; an
@@ -143,8 +187,19 @@ the v1 flow. Details: [docs/sync.md](../docs/sync.md).
 systemctl status ioc-extractor
 journalctl -u ioc-extractor -f                 # ECS-JSON logs (+ <prefix>/var/logs/)
 cp report.htm /opt/ioc-extractor/var/inbox/    # submit a source for processing
-ioc health                                     # daemon health as a table (exit 0/1/2)
-ioc health --json                              # raw JSON for scripts
+sudo /srv/ioc-extractor/bin/ioc health         # daemon health as a table (exit 0/1/2)
+sudo /srv/ioc-extractor/bin/ioc health --json  # raw JSON for scripts
+```
+
+The jar is intentionally not executable and must not be run as root. The rendered
+`bin/ioc` launcher creates a short-lived hardened systemd unit under the `ioc`
+service account, loads the host `application.yml` and `ioc-extractor.env`, and
+forces `oneshot`/non-web mode without stopping the daemon. Examples:
+
+```bash
+sudo /srv/ioc-extractor/bin/ioc export --profile reputation-lists
+sudo /srv/ioc-extractor/bin/ioc sync fetch
+sudo /srv/ioc-extractor/bin/ioc sync publish --profile reputation-lists
 ```
 
 The daemon exposes `/actuator/health` and `/actuator/info` on `127.0.0.1:8081`

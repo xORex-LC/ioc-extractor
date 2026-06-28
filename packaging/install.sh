@@ -9,7 +9,8 @@
 #
 # Self-contained single-directory layout under the chosen prefix:
 #   <prefix>/jdk/                 manually-installed Temurin 21 runtime
-#   <prefix>/lib/ioc-app-<v>.jar  application
+#   <prefix>/releases/<id>/       immutable application releases
+#   <prefix>/current              atomic symlink to the active release
 #   <prefix>/etc/                 application.yml + ioc-extractor.env (operator-editable)
 #   <prefix>/var/                 db/ export/ inbox/ processing/ done/ failed/ ledger/ logs/
 #   <prefix>/dataframe/           generated CSV projections + lookup seeds
@@ -18,7 +19,7 @@
 # (a *.new is written instead) unless --force is given.
 #
 # Usage:
-#   sudo ./install.sh [--prefix DIR] [--jar PATH] [--user NAME]
+#   sudo ./install.sh [--prefix DIR] [--jar PATH] [--release-id ID] [--user NAME]
 #                     [--jdk-tarball PATH | --jdk-url URL | --system-java]
 #                     [--lookup-seed PATH] [--no-start] [--force] [--help]
 #
@@ -37,8 +38,10 @@ LOOKUP_SEED=""
 USE_SYSTEM_JAVA="false"
 NO_START="false"
 FORCE="false"
+RELEASE_ID=""
 SYSTEMD_AVAILABLE="false"
 SERVICE_WAS_ACTIVE="false"
+CLEANUP_TARBALL=""
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
@@ -47,6 +50,7 @@ log()  { printf '\033[1;34m[install]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; exit 1; }
 trap 'die "failed at line $LINENO"' ERR
+trap '[[ -z "${CLEANUP_TARBALL:-}" ]] || rm -f -- "${CLEANUP_TARBALL}"' EXIT
 
 usage() { sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0; }
 
@@ -55,6 +59,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --prefix)       PREFIX="${2:?}"; shift 2 ;;
     --jar)          JAR="${2:?}"; shift 2 ;;
+    --release-id)   RELEASE_ID="${2:?}"; shift 2 ;;
     --user)         RUN_USER="${2:?}"; shift 2 ;;
     --jdk-tarball)  JDK_TARBALL="${2:?}"; shift 2 ;;
     --jdk-url)      JDK_URL="${2:?}"; shift 2 ;;
@@ -110,8 +115,13 @@ fi
 [[ -n "${JAR}" && -f "${JAR}" ]] || die "application jar not found; pass --jar PATH (looked for ioc-app-${APP_VERSION}.jar)."
 log "using jar: ${JAR}"
 
+RELEASE_ID="${RELEASE_ID:-v${APP_VERSION}}"
+[[ "${RELEASE_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] \
+  || die "release id must match [A-Za-z0-9][A-Za-z0-9._-]{0,127}: ${RELEASE_ID}"
+
 log "install prefix : ${PREFIX}"
 log "service user   : ${RUN_USER}"
+log "release id    : ${RELEASE_ID}"
 
 # ---- 1. Java (manual, no apt repositories) ---------------------------------
 java_major() { "$1" -version 2>&1 | sed -n 's/.*version "\([0-9]*\).*/\1/p' | head -1; }
@@ -148,7 +158,8 @@ else
   rm -rf "${PREFIX}/jdk"
   mkdir -p "${PREFIX}/jdk"
   tar -xzf "${tarball}" -C "${PREFIX}/jdk" --strip-components=1
-  [[ -n "${CLEANUP_TARBALL:-}" ]] && rm -f "${CLEANUP_TARBALL}"
+  [[ -z "${CLEANUP_TARBALL}" ]] || rm -f "${CLEANUP_TARBALL}"
+  CLEANUP_TARBALL=""
   JAVA_BIN="${PREFIX}/jdk/bin/java"
   [[ -x "${JAVA_BIN}" ]] || die "JDK extraction did not yield ${JAVA_BIN}"
   [[ "$(java_major "${JAVA_BIN}")" -ge 21 ]] || die "extracted JDK is < 21."
@@ -182,7 +193,7 @@ fi
 # ---- 3. directory layout ---------------------------------------------------
 log "creating directory layout"
 mkdir -p \
-  "${PREFIX}/lib" "${PREFIX}/etc" \
+  "${PREFIX}/releases" "${PREFIX}/backups" "${PREFIX}/bin" "${PREFIX}/etc" \
   "${PREFIX}/var/db" "${PREFIX}/var/export" \
   "${PREFIX}/var/inbox" "${PREFIX}/var/processing" "${PREFIX}/var/done" \
   "${PREFIX}/var/failed" "${PREFIX}/var/ledger" "${PREFIX}/var/logs" \
@@ -209,9 +220,25 @@ migrate_sqlite() { # legacy-path new-path
 migrate_sqlite "${PREFIX}/var/ioc-service.db" "${PREFIX}/var/db/ioc-service.db"
 migrate_sqlite "${PREFIX}/dataframe/ioc-dataframe.db" "${PREFIX}/var/db/ioc-dataframe.db"
 
-# ---- 4. deploy jar + config ------------------------------------------------
-log "deploying application jar"
-install -m 0644 "${JAR}" "${PREFIX}/lib/ioc-app-${APP_VERSION}.jar"
+# ---- 4. deploy immutable release + config ---------------------------------
+RELEASE_DIR="${PREFIX}/releases/${RELEASE_ID}"
+if [[ -e "${RELEASE_DIR}" ]]; then
+  [[ -f "${RELEASE_DIR}/ioc-app.jar" ]] \
+    || die "release path exists but has no application jar: ${RELEASE_DIR}"
+  [[ "$(sha256sum "${JAR}" | awk '{print $1}')" == \
+     "$(sha256sum "${RELEASE_DIR}/ioc-app.jar" | awk '{print $1}')" ]] \
+    || die "release id already exists with different bytes: ${RELEASE_ID}"
+  log "reusing immutable release ${RELEASE_ID}"
+else
+  log "deploying immutable release ${RELEASE_ID}"
+  mkdir -p "${RELEASE_DIR}"
+  install -m 0644 "${JAR}" "${RELEASE_DIR}/ioc-app.jar"
+  printf '%s  ioc-app.jar\n' "$(sha256sum "${RELEASE_DIR}/ioc-app.jar" | awk '{print $1}')" \
+    > "${RELEASE_DIR}/ioc-app.jar.sha256"
+fi
+CURRENT_LINK="${PREFIX}/.current.$$"
+ln -s "releases/${RELEASE_ID}" "${CURRENT_LINK}"
+mv -Tf "${CURRENT_LINK}" "${PREFIX}/current"
 
 deploy_config() {  # src dst
   local src="$1" dst="$2"
@@ -225,6 +252,13 @@ deploy_config() {  # src dst
 }
 deploy_config "${SCRIPT_DIR}/templates/application.yml"     "${PREFIX}/etc/application.yml"
 deploy_config "${SCRIPT_DIR}/templates/ioc-extractor.env"   "${PREFIX}/etc/ioc-extractor.env"
+
+sed -e "s|@PREFIX@|${PREFIX}|g" \
+    -e "s|@JAVA_BIN@|${JAVA_BIN}|g" \
+    -e "s|@USER@|${RUN_USER}|g" \
+    -e "s|@GROUP@|${RUN_GROUP}|g" \
+    "${SCRIPT_DIR}/templates/ioc" > "${PREFIX}/bin/ioc"
+chmod 0750 "${PREFIX}/bin/ioc"
 
 # ---- 5. seed reference lookups (optional, existing files are preserved) ----
 seed_lookup() { # name [explicit-source]
@@ -257,12 +291,14 @@ seed_lookup "address_blacklist.csv"
 # CSV lookup/projection data are writable by the unprivileged daemon.
 log "setting ownership (runtime user ${RUN_USER}:${RUN_GROUP})"
 chown root:"${RUN_GROUP}" "${PREFIX}"
-chown -R root:"${RUN_GROUP}" "${PREFIX}/lib" "${PREFIX}/etc"
+chown -R root:"${RUN_GROUP}" "${PREFIX}/releases" "${PREFIX}/backups" \
+  "${PREFIX}/bin" "${PREFIX}/etc"
 [[ ! -d "${PREFIX}/jdk" ]] || chown -R root:"${RUN_GROUP}" "${PREFIX}/jdk"
 chown -R "${RUN_USER}:${RUN_GROUP}" "${PREFIX}/var" "${PREFIX}/dataframe"
 chmod 0750 "${PREFIX}"
-chmod 0750 "${PREFIX}/lib" "${PREFIX}/etc" "${PREFIX}/var" "${PREFIX}/dataframe"
-chmod -R go-w "${PREFIX}/lib" "${PREFIX}/etc"
+chmod 0750 "${PREFIX}/releases" "${PREFIX}/backups" "${PREFIX}/bin" "${PREFIX}/etc" \
+  "${PREFIX}/var" "${PREFIX}/dataframe"
+chmod -R go-w "${PREFIX}/releases" "${PREFIX}/backups" "${PREFIX}/etc"
 find "${PREFIX}/var" "${PREFIX}/dataframe" -type d -exec chmod 0750 {} +
 find "${PREFIX}/var" "${PREFIX}/dataframe" -type f -exec chmod 0640 {} +
 chmod 0640 "${PREFIX}/etc/application.yml" "${PREFIX}/etc/ioc-extractor.env"
@@ -273,7 +309,6 @@ chmod 0640 "${PREFIX}/etc/application.yml" "${PREFIX}/etc/ioc-extractor.env"
 UNIT="/etc/systemd/system/${SERVICE}.service"
 log "rendering ${UNIT}"
 sed -e "s|@PREFIX@|${PREFIX}|g" \
-    -e "s|@VERSION@|${APP_VERSION}|g" \
     -e "s|@JAVA_BIN@|${JAVA_BIN}|g" \
     -e "s|@USER@|${RUN_USER}|g" \
     -e "s|@GROUP@|${RUN_GROUP}|g" \
@@ -305,6 +340,7 @@ cat <<EOF
 
 $(log "done.")
   Service : ${SERVICE}    User: ${RUN_USER}    Prefix: ${PREFIX}
+  Release : ${RELEASE_ID}
   Feed    : drop *.htm/*.html/*.docx into ${PREFIX}/var/inbox/
   DB      : ${PREFIX}/var/db/  (canonical + service SQLite stores)
   Export  : ${PREFIX}/var/export/  (immutable artifact slices)

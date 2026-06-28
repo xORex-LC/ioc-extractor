@@ -106,6 +106,50 @@ targets, чтобы retention не обогнал discovery. Оба sync schedul
 имеют overlap guard, изолируют ошибку одного source/target и используют следующий tick
 как macro retry. Shutdown завершает executor и закрывает idle transport sessions.
 
+### Текущая cadence-модель и известный долг
+
+Реализация v1 сознательно построена как polling/reconcile loop:
+
+```text
+fetch interval  ──▶ remote list ──▶ ledger diff ──▶ download new identities
+publish interval──▶ local slice catalog × ledger ──▶ publish pending/failed pairs
+```
+
+Эта модель restart-safe: если процесс упал между discovery, remote commit и ledger update,
+следующий tick снова сверит durable state и доведёт незавершённую работу. Поэтому отсутствие
+новых файлов/срезов не является ошибкой: tick может закончиться `skipped`/already-`SUCCEEDED`
+и оставить health `UP`.
+
+Ограничение v1: `RemoteFetchService` и `ArtifactPublishService` частично совмещают две роли:
+
+- обнаружить, есть ли работа;
+- выполнить работу.
+
+Для fetch это особенно заметно: remote `list` одновременно является проверкой изменения
+источника и началом fetch-use-case. Если SMB-сервер закрыл idle share, первый `list` может
+дать transient ошибку вида `DiskShare has already been closed`; следующий tick обычно
+переоткрывает transport, но health кратко переходит в `DOWN`. Это не указывает на неверный
+`remote-path` или credentials, если последующие ticks продолжают забирать/публиковать файлы.
+
+Целевая модель после v1 — **state-driven sync с reconcile safety net**, а не чистые
+рабочие таймеры у fetch/publish:
+
+```text
+RemoteSourceMonitor
+  └─ detects remote snapshot/fingerprint change
+     └─ RemoteFetchService downloads concrete new identities
+
+PublishWorkDetector
+  └─ detects completed slices × targets × publish_ledger gaps
+     └─ ArtifactPublishService publishes concrete pending/failed work
+```
+
+События/детекторы дают низкую задержку и чистые границы ответственности; периодический
+reconcile остаётся страховкой от потерянных событий, рестартов и crash windows. Publish при
+отсутствии local delivery work должен оставаться idle и не трогать SMB; fetch всё равно
+нуждается в remote snapshot/list или transport-native notification, потому что локальная БД
+не знает о новых файлах на удалённой стороне.
+
 ## CLI
 
 ```bash

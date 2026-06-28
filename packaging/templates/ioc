@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Runs one CLI command with the daemon's host configuration and credentials, but
+# in an isolated oneshot process owned by the service account.
+set -Eeuo pipefail
+
+if [[ "${EUID}" -ne 0 ]]; then
+  printf 'Run through sudo: sudo %s <command> [args]\n' "$0" >&2
+  exit 1
+fi
+[[ $# -gt 0 ]] || set -- --help
+
+UNIT="ioc-extractor-cli-$(date -u +%Y%m%d%H%M%S)-$$"
+exec systemd-run \
+  --quiet \
+  --wait \
+  --pipe \
+  --collect \
+  --service-type=exec \
+  --unit="${UNIT}" \
+  --uid=@USER@ \
+  --gid=@GROUP@ \
+  --working-directory=@PREFIX@ \
+  --property=EnvironmentFile=@PREFIX@/etc/ioc-extractor.env \
+  --property=NoNewPrivileges=yes \
+  --property=ProtectSystem=strict \
+  --property=ProtectHome=yes \
+  --property=PrivateTmp=yes \
+  --property=PrivateDevices=yes \
+  --property=RestrictSUIDSGID=yes \
+  --property=CapabilityBoundingSet= \
+  --property=AmbientCapabilities= \
+  --property='RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6' \
+  --property='ReadWritePaths=@PREFIX@/var @PREFIX@/dataframe' \
+  --setenv=IOC_RUNTIME_MODE=oneshot \
+  --setenv=IOC_OBSERVABILITY_MODE=oneshot \
+  --setenv=SPRING_PROFILES_ACTIVE=oneshot \
+  --setenv=SPRING_MAIN_WEB_APPLICATION_TYPE=none \
+  --setenv=SPRING_CONFIG_ADDITIONAL_LOCATION=optional:file:./etc/application.yml \
+  @JAVA_BIN@ -Xms64m -Xmx512m -Duser.timezone=UTC -Dfile.encoding=UTF-8 \
+  -jar @PREFIX@/current/ioc-app.jar "$@"

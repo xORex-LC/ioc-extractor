@@ -789,6 +789,15 @@ public class AppConfig {
     }
 
     @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
+    public JdbcStorageHealthIndicator dataframeStorageHealthIndicator(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            @Qualifier("dataframeFormatSchemaMigration") SchemaMigrationResult dataframeFormatSchemaMigration) {
+        return new JdbcStorageHealthIndicator(new JdbcStorageHealthProbe(dataframeStorageDataSource, "dataframe"));
+    }
+
+    @Bean
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     public ArtifactStorageHealthIndicator artifactStorageHealthIndicator(IocProperties props) {
         return new ArtifactStorageHealthIndicator(props);

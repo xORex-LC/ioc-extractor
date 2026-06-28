@@ -34,7 +34,7 @@ hs_err_pid*
 replay_pid*
 
 source/*
-!source/ioc-source.htm
+!source/README.md
 dataframe/*
 !dataframe/hashes_list.csv
 !dataframe/masks_list.csv

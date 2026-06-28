@@ -65,9 +65,12 @@ class JdbcLedgerDaemonRuntimeModeTest {
                 .containsOnlyKeys("serviceStorageDataSource", "dataframeStorageDataSource");
         assertThat(context.getBeansOfType(IngestionLedgerHealthIndicator.class)).isEmpty();
         assertThat(context.getBeansOfType(JdbcStorageHealthIndicator.class))
-                .containsOnlyKeys("jdbcStorageHealthIndicator");
-        assertThat(context.getBean(JdbcStorageHealthIndicator.class).health().getStatus())
+                .containsOnlyKeys("jdbcStorageHealthIndicator", "dataframeStorageHealthIndicator");
+        assertThat(context.getBean("jdbcStorageHealthIndicator", JdbcStorageHealthIndicator.class)
+                .health().getStatus())
                 .isEqualTo(Status.UP);
+        assertThat(context.getBean("dataframeStorageHealthIndicator", JdbcStorageHealthIndicator.class)
+                .health().getStatus()).isEqualTo(Status.UP);
         assertThat(context.getBeansOfType(DaemonExportScheduler.class))
                 .containsOnlyKeys("daemonExportScheduler");
         assertThat(context.getBeansOfType(DaemonSliceRetentionScheduler.class))

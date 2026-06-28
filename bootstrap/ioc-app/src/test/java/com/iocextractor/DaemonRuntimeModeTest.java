@@ -58,7 +58,7 @@ class DaemonRuntimeModeTest {
         assertThat(context.getBeansOfType(IngestionLedgerHealthIndicator.class))
                 .containsOnlyKeys("ingestionLedgerHealthIndicator");
         assertThat(context.getBeansOfType(JdbcStorageHealthIndicator.class))
-                .containsOnlyKeys("jdbcStorageHealthIndicator");
+                .containsOnlyKeys("jdbcStorageHealthIndicator", "dataframeStorageHealthIndicator");
         assertThat(context.getBeansOfType(DaemonExportScheduler.class))
                 .containsOnlyKeys("daemonExportScheduler");
         assertThat(context.getBeansOfType(DaemonSliceRetentionScheduler.class))

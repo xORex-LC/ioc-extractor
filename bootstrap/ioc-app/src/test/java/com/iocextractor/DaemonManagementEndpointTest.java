@@ -48,6 +48,17 @@ class DaemonManagementEndpointTest {
         // Exposed and serving the health document. UP -> 200, partial DOWN -> 503;
         // either proves the endpoint is reachable (the point of ING-3).
         assertThat(response.getStatusCode().value()).isIn(200, 503);
-        assertThat(response.getBody()).contains("\"status\"");
+        assertThat(response.getBody())
+                .contains("\"status\"")
+                .contains("\"jdbcStorage\"")
+                .contains("\"dataframeStorage\"")
+                .contains("\"artifactStorage\"");
+
+        for (String component : new String[]{"jdbcStorage", "dataframeStorage", "artifactStorage"}) {
+            ResponseEntity<String> componentResponse = rest.getForEntity(
+                    "http://localhost:" + port + "/actuator/health/" + component, String.class);
+            assertThat(componentResponse.getStatusCode().value()).isEqualTo(200);
+            assertThat(componentResponse.getBody()).contains("\"status\":\"UP\"");
+        }
     }
 }

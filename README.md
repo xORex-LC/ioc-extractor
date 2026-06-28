@@ -109,6 +109,13 @@ systemctl status ioc-extractor
 journalctl -u ioc-extractor -f
 ```
 
+For repeatable deployment of the current checkout to a local WSL/Debian test
+runtime, including verify, SQLite backup, health gating and rollback:
+
+```bash
+./packaging/deploy-local.sh --prefix /srv/ioc-extractor
+```
+
 Offline host: `sudo packaging/install.sh --jdk-tarball /path/temurin-21.tar.gz`.
 See [packaging/README.md](packaging/README.md) for details.
 

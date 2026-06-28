@@ -98,3 +98,7 @@ export formation — 100, publish — 150, slice retention — 200. Publish `sta
 `ConcurrentHashMap`; durable pending/failed counts читаются отдельно из `PublishLedger`.
 Actuator contributor дополнительно считает integrity-valid slices, которые удерживает
 delivery guard. Runtime snapshots после restart имеют `NEVER_RUN`, ledger backlog сохраняется.
+
+Daemon публикует отдельные `jdbcStorage` (service DB) и `dataframeStorage` health
+components. Локальный deployment проверяет их вместе с `artifactStorage`, но не
+использует transient remote `sync` status как основание для rollback.
