@@ -6,6 +6,7 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * Pure retention decision: given the entries under a target and the current time,
@@ -34,21 +35,30 @@ public final class RetentionPolicy {
                                               Instant now,
                                               Duration maxAge,
                                               int maxCount) {
+        return selectValues(entries, RetentionEntry::lastModified, now, maxAge, maxCount);
+    }
+
+    /** Applies the same age/count union policy to a caller-defined retention unit. */
+    public static <T> List<T> selectValues(List<T> entries,
+                                           Function<T, Instant> timestamp,
+                                           Instant now,
+                                           Duration maxAge,
+                                           int maxCount) {
         boolean ageActive = maxAge != null && !maxAge.isZero() && !maxAge.isNegative();
         boolean countActive = maxCount > 0;
         if (!ageActive && !countActive) {
             return List.of();
         }
-        Set<RetentionEntry> reap = new LinkedHashSet<>();
-        for (RetentionEntry entry : entries) {
-            boolean tooOld = ageActive && Duration.between(entry.lastModified(), now).compareTo(maxAge) > 0;
+        Set<T> reap = new LinkedHashSet<>();
+        for (T entry : entries) {
+            boolean tooOld = ageActive && Duration.between(timestamp.apply(entry), now).compareTo(maxAge) > 0;
             if (tooOld) {
                 reap.add(entry);
             }
         }
         if (countActive) {
-            List<RetentionEntry> sorted = entries.stream()
-                    .sorted(Comparator.comparing(RetentionEntry::lastModified).reversed())
+            List<T> sorted = entries.stream()
+                    .sorted(Comparator.comparing(timestamp).reversed())
                     .toList();
             for (int i = maxCount; i < sorted.size(); i++) {
                 reap.add(sorted.get(i));

@@ -12,6 +12,7 @@ import com.iocextractor.adapter.out.sink.csv.ColumnSpec;
 import com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactProjection;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactSliceWriter;
+import com.iocextractor.adapter.out.sink.csv.FileSystemSliceRetentionStore;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition;
 import com.iocextractor.adapter.out.sink.csv.CsvIocSink;
 import com.iocextractor.adapter.out.sink.csv.IdGenerator;
@@ -62,6 +63,8 @@ import com.iocextractor.application.cadence.CadenceSources;
 import com.iocextractor.application.export.ExportChangeDetector;
 import com.iocextractor.application.export.ExportRunRecoveryService;
 import com.iocextractor.application.export.ExportService;
+import com.iocextractor.application.export.SliceRetentionService;
+import com.iocextractor.application.export.StandaloneSliceRetentionGuard;
 import com.iocextractor.application.ingest.IngestionService;
 import com.iocextractor.application.maintenance.RetentionAction;
 import com.iocextractor.application.maintenance.RetentionService;
@@ -69,6 +72,7 @@ import com.iocextractor.application.maintenance.RetentionTarget;
 import com.iocextractor.application.port.in.maintenance.RunRetentionUseCase;
 import com.iocextractor.application.port.in.export.ExportArtifactsUseCase;
 import com.iocextractor.application.port.in.export.RecoverExportUseCase;
+import com.iocextractor.application.port.in.export.RunSliceRetentionUseCase;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.maintenance.RetentionStore;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
@@ -88,6 +92,8 @@ import com.iocextractor.application.port.out.export.ExportProgressStore;
 import com.iocextractor.application.port.out.export.ExportRunLedger;
 import com.iocextractor.application.port.out.export.ExportRunReader;
 import com.iocextractor.application.port.out.export.SliceManifestCodec;
+import com.iocextractor.application.port.out.export.SliceRetentionGuard;
+import com.iocextractor.application.port.out.export.SliceRetentionStore;
 import com.iocextractor.application.port.out.export.SnapshotSliceReader;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.common.IocExtractorException;
@@ -127,6 +133,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -656,6 +663,54 @@ public class AppConfig {
             Clock clock) {
         return new ExportHealthIndicator(
                 catalog.plans(), artifactRevisionReader, exportProgressStore, exportRunReader, clock);
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.export.enabled:true}' == 'true'")
+    public SliceRetentionStore sliceRetentionStore(
+            IocProperties props, SliceManifestCodec sliceManifestCodec) {
+        return new FileSystemSliceRetentionStore(Path.of(props.export().root()), sliceManifestCodec);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(SliceRetentionGuard.class)
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.export.enabled:true}' == 'true'")
+    public SliceRetentionGuard sliceRetentionGuard() {
+        return StandaloneSliceRetentionGuard.INSTANCE;
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.export.enabled:true}' == 'true'")
+    public RunSliceRetentionUseCase runSliceRetentionUseCase(
+            SliceRetentionStore store,
+            SliceRetentionGuard guard,
+            ExportPlanCatalog catalog,
+            IocProperties props,
+            Clock clock) {
+        IocProperties.Export.Retention retention = props.export().retention();
+        List<String> profiles = catalog.plans().stream()
+                .map(plan -> plan.profile().name())
+                .toList();
+        return new SliceRetentionService(
+                store, guard, profiles, retention.maxAge(), retention.maxCount(), clock);
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.export.enabled:true}' == 'true'")
+    public DaemonSliceRetentionScheduler daemonSliceRetentionScheduler(
+            RunSliceRetentionUseCase useCase,
+            IocProperties props) {
+        IocProperties.Maintenance.Retention maintenance = props.maintenance() == null
+                ? null : props.maintenance().retention();
+        Duration interval = maintenance == null || maintenance.interval() == null
+                ? Duration.ofHours(1) : maintenance.interval();
+        Duration initialDelay = maintenance == null || maintenance.initialDelay() == null
+                ? Duration.ofMinutes(5) : maintenance.initialDelay();
+        return new DaemonSliceRetentionScheduler(useCase, interval, initialDelay);
     }
 
     @Bean

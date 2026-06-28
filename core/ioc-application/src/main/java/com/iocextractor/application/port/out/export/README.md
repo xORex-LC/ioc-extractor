@@ -25,6 +25,7 @@ state transitions принадлежат use case.
 | `ExportRunLedger` | Durable CAS state machine, global single-flight и атомарная фиксация terminal progress |
 | `ExportRunReader` | Operational read model последних run checkpoints для health |
 | `ExportObserver` | Lifecycle callbacks в точках фактических durable checkpoints; конкретный ECS logger остаётся снаружи application |
+| `SliceRetentionStore` | Перечисляет и удаляет только целые integrity-valid final slices, не leaf-файлы |
 | `SliceRetentionGuard` | Чистый delivery-aware veto, вызываемый непосредственно перед delete |
 
 ## Протоколы и владение ресурсами
@@ -40,8 +41,12 @@ state transitions принадлежат use case.
   expected-state CAS; `finish` атомарно сохраняет progress и terminal status.
 - `ExportObserver` не управляет flow и не должен бросать исключения: producer
   вызывает его после соответствующего durable действия/ledger checkpoint.
+- Retention store получает `SliceDescriptor`, но обязан повторно проверить
+  manifest/hash-chain перед recursive delete: discovery не является разрешением
+  удалить изменившийся каталог.
 - Retention guard не удаляет срез. Он только даёт актуальный veto
-  непосредственно перед delete; в C0–C8 default policy fail-open.
+  непосредственно перед delete; standalone composition разрешает удаление,
+  будущий publish-ledger adapter сможет pin-ить недоставленные срезы.
 
 ## Границы адаптеров
 

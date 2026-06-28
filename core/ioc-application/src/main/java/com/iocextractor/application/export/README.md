@@ -26,6 +26,8 @@ adapters за портами `application.port.out.export`.
 | `StagedSlice`, `AvailableSlice` | Проверенный результат до и после атомарной локальной публикации |
 | `SliceInspection`, `SliceInspectionState` | Типизированный результат inspection для forward recovery |
 | `SliceDescriptor` | Неделимая retention-единица, которую delivery-layer может запретить удалять |
+| `SliceRetentionService` | Profile-scoped age/count selection и guard check непосредственно перед delete |
+| `StandaloneSliceRetentionGuard` | Fail-open composition, когда remote delivery targets отсутствуют |
 | `ExportChangeDetector` | Чистая policy: revision/plan pre-gate, authoritative content-hash post-check и terminal progress |
 | `ExportService` | Оркестрация одного run от global single-flight до `COMPLETED`/`SKIPPED` |
 | `ExportRunRecoveryService` | Forward recovery активных checkpoints только из ledger и filesystem evidence |
@@ -85,3 +87,12 @@ adapters за портами `application.port.out.export`.
   `publish_ledger` из design 0011.
 - Operational events уходят через `ExportObserver`; application не импортирует
   SLF4J/ECS и не выбирает logging adapter.
+
+## Slice retention
+
+`SliceRetentionService` переиспользует чистую `RetentionPolicy`, но оперирует
+`SliceDescriptor`, а не filesystem leaf entries. Каждый profile образует
+отдельный count pool. Перед каждым delete service повторно вызывает
+`SliceRetentionGuard`; запрет не заменяется обходом следующего лимита и делает
+`max-count` best-effort. Проверка дерева и directory-as-unit delete остаются
+ответственностью filesystem adapter.

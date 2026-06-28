@@ -19,6 +19,8 @@ command/result DTO. Входной адаптер не зависит от concr
 | `ExportArtifactsCommand` | Минимальная команда с именем profile; storage/layout settings в неё не передаются |
 | `ExportArtifactsResult` | Terminal status и optional run/slice identity; pre-gate `SKIPPED` не создаёт run и возвращает `runId=null` |
 | `RecoverExportUseCase` | Startup forward recovery всех durable incomplete runs |
+| `RunSliceRetentionUseCase` | Один profile-scoped sweep завершённых immutable slices |
+| `SliceRetentionResult` | Счётчики scanned/deleted/blocked и удалений по profile |
 
 ## Контракт вызова
 
@@ -28,6 +30,8 @@ command/result DTO. Входной адаптер не зависит от concr
   не содержит его, поскольку single-flight/ledger не затрагивались.
 - `recoverIncomplete` возвращает число проверенных runs, а не число
   созданных срезов.
+- Slice retention применяет `max-age`/`max-count` независимо к каждому profile;
+  blocked candidates остаются в пуле, поэтому count limit при pins best-effort.
 - CAS transitions, single-flight, filesystem inspection и retry decisions — ответственность
   application service за driven-портами, не CLI/scheduler.
 

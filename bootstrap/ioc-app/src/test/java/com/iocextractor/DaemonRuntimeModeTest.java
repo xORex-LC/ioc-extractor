@@ -7,6 +7,7 @@ import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.bootstrap.IngestionLedgerHealthIndicator;
 import com.iocextractor.bootstrap.JdbcStorageHealthIndicator;
 import com.iocextractor.bootstrap.DaemonExportScheduler;
+import com.iocextractor.bootstrap.DaemonSliceRetentionScheduler;
 import com.iocextractor.bootstrap.ExportHealthIndicator;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
@@ -56,6 +57,8 @@ class DaemonRuntimeModeTest {
                 .containsOnlyKeys("jdbcStorageHealthIndicator");
         assertThat(context.getBeansOfType(DaemonExportScheduler.class))
                 .containsOnlyKeys("daemonExportScheduler");
+        assertThat(context.getBeansOfType(DaemonSliceRetentionScheduler.class))
+                .containsOnlyKeys("daemonSliceRetentionScheduler");
         assertThat(context.getBeansOfType(ExportHealthIndicator.class))
                 .containsOnlyKeys("exportHealthIndicator");
     }

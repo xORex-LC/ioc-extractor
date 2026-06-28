@@ -59,6 +59,15 @@ final class SliceTreeVerifier {
         }
     }
 
+    /** Verifies a published slice using only its self-describing integrity chain. */
+    VerifiedSlice verifyAvailable(Path directory) {
+        VerifiedSlice verified = verify(directory, null);
+        if (!verified.successPresent()) {
+            throw invalid("available slice has no _SUCCESS marker");
+        }
+        return verified;
+    }
+
     private SliceManifest decode(byte[] bytes) {
         try {
             return codec.decode(bytes);
@@ -68,6 +77,9 @@ final class SliceTreeVerifier {
     }
 
     private void verifyIdentity(SliceManifest manifest, String manifestHash, ExportRun run) {
+        if (run == null) {
+            return;
+        }
         if (!manifest.runId().equals(run.runId()) || !manifest.sliceId().equals(run.runId())) {
             throw invalid("manifest run/slice identity does not match export run");
         }
