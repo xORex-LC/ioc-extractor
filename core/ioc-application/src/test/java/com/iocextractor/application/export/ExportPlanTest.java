@@ -35,7 +35,7 @@ class ExportPlanTest {
         var columns = new ArrayList<>(List.of("id", "mask"));
         ExportProfile profile = new ExportProfile("default", ExportMode.COMPLETE, names);
         ExportArtifactSpec spec = new ExportArtifactSpec(
-                "masks", "masks.csv", columns, 1, hash('a'), hash('b'));
+                "masks", "masks.csv", columns, 1, hash('a'), hash('b'), hash('c'));
         names.clear();
         columns.clear();
 
@@ -48,7 +48,7 @@ class ExportPlanTest {
     @Test
     void artifact_file_name_must_be_a_leaf() {
         assertThatThrownBy(() -> new ExportArtifactSpec(
-                "masks", "../masks.csv", List.of("id"), 1, hash('a'), hash('b')))
+                "masks", "../masks.csv", List.of("id"), 1, hash('a'), hash('b'), hash('c')))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("single relative path segment");
     }
@@ -60,7 +60,7 @@ class ExportPlanTest {
 
     private ExportArtifactSpec spec(String name) {
         return new ExportArtifactSpec(name, name + ".csv", List.of("id", "value"),
-                1, hash('a'), hash('b'));
+                1, hash('a'), hash('b'), hash('c'));
     }
 
     private ExportFormat format() {

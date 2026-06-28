@@ -29,7 +29,7 @@ final class ExportFixtures {
 
     static ExportPlan plan() {
         ExportArtifactSpec masks = new ExportArtifactSpec(
-                "masks", "masks.csv", List.of("id", "mask"), 1, IDENTITY, SCHEMA);
+                "masks", "masks.csv", List.of("id", "mask"), 1, IDENTITY, SCHEMA, SCHEMA);
         return new ExportPlan(1,
                 new ExportProfile("reputation", ExportMode.COMPLETE, List.of("masks")),
                 new ExportFormat("csv", "UTF-8", ";", "\"", "NULL"),

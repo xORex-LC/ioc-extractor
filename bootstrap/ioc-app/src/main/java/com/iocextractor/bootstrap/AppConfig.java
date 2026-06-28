@@ -11,6 +11,7 @@ import com.iocextractor.adapter.out.sink.csv.ArtifactFilter;
 import com.iocextractor.adapter.out.sink.csv.ColumnSpec;
 import com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactProjection;
+import com.iocextractor.adapter.out.sink.csv.CsvArtifactSliceWriter;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition;
 import com.iocextractor.adapter.out.sink.csv.CsvIocSink;
 import com.iocextractor.adapter.out.sink.csv.IdGenerator;
@@ -27,12 +28,17 @@ import com.iocextractor.adapter.out.sink.csv.Transform;
 import com.iocextractor.adapter.out.sink.csv.UppercaseTransform;
 import com.iocextractor.adapter.out.sink.csv.ValueProvider;
 import com.iocextractor.adapter.out.source.TikaSourceReader;
+import com.iocextractor.adapter.out.manifest.json.JacksonSliceManifestCodec;
 import com.iocextractor.adapter.out.store.jdbc.JdbcArtifactIdentityStore;
+import com.iocextractor.adapter.out.store.jdbc.JdbcArtifactRevisionReader;
 import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository;
 import com.iocextractor.adapter.out.store.jdbc.JdbcIngestionLedger;
+import com.iocextractor.adapter.out.store.jdbc.JdbcExportProgressStore;
+import com.iocextractor.adapter.out.store.jdbc.JdbcExportRunLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcIocSink;
 import com.iocextractor.adapter.out.store.jdbc.JdbcLookupRepository;
 import com.iocextractor.adapter.out.store.jdbc.JdbcRunLedger;
+import com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader;
 import com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealthProbe;
 import com.iocextractor.adapter.out.store.jdbc.LegacyLedgerImporter;
 import com.iocextractor.adapter.out.store.jdbc.DataframeArtifactSchema;
@@ -41,7 +47,6 @@ import com.iocextractor.adapter.out.store.jdbc.DataframeFormatMigrations;
 import com.iocextractor.adapter.out.store.jdbc.DataframeSchemaPlan;
 import com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler;
 import com.iocextractor.adapter.out.store.jdbc.SchemaMigrationResult;
-import com.iocextractor.adapter.out.store.jdbc.ServiceSchemaMigrations;
 import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceFactory;
 import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceSettings;
 import com.iocextractor.adapter.out.store.jdbc.SqlitePragmaPolicy;
@@ -52,11 +57,16 @@ import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.artifact.NoopArtifactProjection;
 import com.iocextractor.application.artifact.NoopRunLedger;
 import com.iocextractor.application.artifact.StoredArtifactIdentity;
+import com.iocextractor.application.export.ExportChangeDetector;
+import com.iocextractor.application.export.ExportRunRecoveryService;
+import com.iocextractor.application.export.ExportService;
 import com.iocextractor.application.ingest.IngestionService;
 import com.iocextractor.application.maintenance.RetentionAction;
 import com.iocextractor.application.maintenance.RetentionService;
 import com.iocextractor.application.maintenance.RetentionTarget;
 import com.iocextractor.application.port.in.maintenance.RunRetentionUseCase;
+import com.iocextractor.application.port.in.export.ExportArtifactsUseCase;
+import com.iocextractor.application.port.in.export.RecoverExportUseCase;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.maintenance.RetentionStore;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
@@ -69,6 +79,13 @@ import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.port.out.ingest.SourceSinkFactory;
+import com.iocextractor.application.port.out.export.ArtifactRevisionReader;
+import com.iocextractor.application.port.out.export.ArtifactSliceWriter;
+import com.iocextractor.application.port.out.export.ExportObserver;
+import com.iocextractor.application.port.out.export.ExportProgressStore;
+import com.iocextractor.application.port.out.export.ExportRunLedger;
+import com.iocextractor.application.port.out.export.SliceManifestCodec;
+import com.iocextractor.application.port.out.export.SnapshotSliceReader;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
@@ -110,6 +127,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Primary;
 
 import java.nio.charset.Charset;
@@ -254,6 +272,18 @@ public class AppConfig {
     }
 
     @Bean
+    public ExportPlanCatalog exportPlanCatalog(IocProperties props,
+                                               DiagnosticSink diagnosticSink,
+                                               Clock clock) {
+        return new ExportPlanCatalog(props, diagnosticSink, new DiagnosticFactory(clock));
+    }
+
+    @Bean
+    public ExportObserver exportObserver() {
+        return new LoggingExportObserver();
+    }
+
+    @Bean
     public IocExtractionServiceFactory iocExtractionServiceFactory(SourceReader reader,
                                                                    Refanger refanger,
                                                                    IndicatorExtractor extractor,
@@ -318,33 +348,25 @@ public class AppConfig {
     }
 
     @Bean(destroyMethod = "close")
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
-    public HikariDataSource serviceStorageDataSource(IocProperties props) {
-        IocProperties.Storage.Service service = props.storage().service();
-        if (!"jdbc".equalsIgnoreCase(service.type())) {
-            throw new IocExtractorException("ioc.storage.service.type must be 'jdbc' for daemon service storage");
-        }
-        return new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(new SqliteDataSourceSettings(
-                "service",
-                service.url(),
-                service.sqlite().tuning(),
-                service.pool().writeMax(),
-                service.pool().readMax()));
+    @ConditionalOnServiceStorage
+    public LazyServiceStorage lazyServiceStorage(IocProperties props,
+                                                DiagnosticSink diagnosticSink,
+                                                Clock clock) {
+        return new LazyServiceStorage(props.storage().service(), diagnosticSink, clock);
+    }
+
+    @Bean(destroyMethod = "")
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
+    public HikariDataSource serviceStorageDataSource(LazyServiceStorage storage) {
+        return storage.dataSource();
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
-    public SchemaMigrationResult serviceSchemaMigration(
-                                                        @Qualifier("serviceStorageDataSource")
-                                                        HikariDataSource serviceStorageDataSource,
-                                                        DiagnosticSink diagnosticSink,
-                                                        Clock clock) {
-        return new SqliteUserVersionSchemaMigrator(
-                serviceStorageDataSource,
-                ServiceSchemaMigrations.sqlite(),
-                diagnosticSink,
-                new DiagnosticFactory(clock),
-                "service").migrate();
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
+    public SchemaMigrationResult serviceSchemaMigration(LazyServiceStorage storage) {
+        return storage.migration();
     }
 
     @Bean
@@ -495,6 +517,103 @@ public class AppConfig {
                 canonicalArtifactPaths(props),
                 writeFormat(props.sink().csv()),
                 csvCharset(props));
+    }
+
+    // ---- immutable artifact export (resolved only by export command/scheduler) ----
+
+    @Bean
+    @Lazy
+    @ConditionalOnDataframeStorage
+    public ArtifactRevisionReader artifactRevisionReader(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            DataframeSchemaPlan dataframeSchemaReconciliation) {
+        return new JdbcArtifactRevisionReader(dataframeStorageDataSource);
+    }
+
+    @Bean
+    @Lazy
+    @ConditionalOnDataframeStorage
+    public SnapshotSliceReader snapshotSliceReader(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            DataframeSchemaPlan dataframeSchemaReconciliation,
+            IocProperties props,
+            DiagnosticSink diagnosticSink,
+            Clock clock) {
+        return new JdbcSnapshotSliceReader(
+                dataframeStorageDataSource,
+                dataframeSchemas(props),
+                clock,
+                diagnosticSink,
+                new DiagnosticFactory(clock));
+    }
+
+    @Bean
+    @Lazy
+    @ConditionalOnServiceStorage
+    public ExportRunLedger exportRunLedger(
+            LazyServiceStorage serviceStorage,
+            DiagnosticSink diagnosticSink,
+            Clock clock) {
+        return new JdbcExportRunLedger(
+                serviceStorage.dataSource(), clock, diagnosticSink, new DiagnosticFactory(clock));
+    }
+
+    @Bean
+    @Lazy
+    @ConditionalOnServiceStorage
+    public ExportProgressStore exportProgressStore(LazyServiceStorage serviceStorage) {
+        return new JdbcExportProgressStore(serviceStorage.dataSource());
+    }
+
+    @Bean
+    @Lazy
+    public SliceManifestCodec sliceManifestCodec() {
+        return new JacksonSliceManifestCodec();
+    }
+
+    @Bean
+    @Lazy
+    public ArtifactSliceWriter artifactSliceWriter(IocProperties props,
+                                                   SliceManifestCodec sliceManifestCodec,
+                                                   DiagnosticSink diagnosticSink,
+                                                   Clock clock) {
+        return new CsvArtifactSliceWriter(
+                Path.of(props.export().root()), sliceManifestCodec,
+                diagnosticSink, new DiagnosticFactory(clock));
+    }
+
+    @Bean
+    @Lazy
+    @ConditionalOnExpression("'${ioc.storage.service.type:disabled}' == 'jdbc' && "
+            + "'${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
+    public ExportArtifactsUseCase exportArtifactsUseCase(
+            ExportPlanCatalog plans,
+            ArtifactRevisionReader artifactRevisionReader,
+            ExportProgressStore exportProgressStore,
+            ExportRunLedger exportRunLedger,
+            SnapshotSliceReader snapshotSliceReader,
+            ArtifactSliceWriter artifactSliceWriter,
+            ExportObserver exportObserver,
+            Clock clock) {
+        return new ExportService(
+                plans.plans(), artifactRevisionReader, exportProgressStore, exportRunLedger,
+                snapshotSliceReader, artifactSliceWriter, new ExportChangeDetector(),
+                exportObserver, clock, () -> java.util.UUID.randomUUID().toString());
+    }
+
+    @Bean
+    @Lazy
+    @ConditionalOnExpression("'${ioc.storage.service.type:disabled}' == 'jdbc' && "
+            + "'${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
+    public RecoverExportUseCase recoverExportUseCase(
+            ExportRunLedger exportRunLedger,
+            ArtifactSliceWriter artifactSliceWriter,
+            ExportObserver exportObserver,
+            DiagnosticSink diagnosticSink,
+            Clock clock) {
+        return new ExportRunRecoveryService(
+                exportRunLedger, artifactSliceWriter, new ExportChangeDetector(), exportObserver,
+                diagnosticSink, new DiagnosticFactory(clock), clock);
     }
 
     @Bean

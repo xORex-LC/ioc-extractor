@@ -203,7 +203,7 @@ class JdbcSnapshotSliceReaderTest {
     private ExportArtifactSpec spec(String artifact, String valueColumn, String identityHash) {
         return new ExportArtifactSpec(
                 artifact, artifact + ".csv", List.of("id", valueColumn),
-                1, identityHash, HASH_B);
+                1, identityHash, HASH_B, HASH_B);
     }
 
     private DataframeArtifactSchema schema(String name, String... columns) {

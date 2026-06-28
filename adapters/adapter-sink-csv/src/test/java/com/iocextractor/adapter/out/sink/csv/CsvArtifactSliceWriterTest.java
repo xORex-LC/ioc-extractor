@@ -221,7 +221,8 @@ class CsvArtifactSliceWriterTest {
     }
 
     private ExportArtifactSpec spec(String name, String fileName, String identity, String schema) {
-        return new ExportArtifactSpec(name, fileName, List.of("id", "value"), 1, identity, schema);
+        return new ExportArtifactSpec(name, fileName, List.of("id", "value"),
+                1, identity, schema, schema);
     }
 
     private ExportRun started(ExportPlan plan) {

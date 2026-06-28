@@ -52,6 +52,7 @@ public record ExportPlan(int manifestVersion,
                 add(digest, Integer.toString(artifact.identityEpoch()));
                 add(digest, artifact.identityHash());
                 add(digest, artifact.schemaHash());
+                add(digest, artifact.mappingHash());
             }
             return HexFormat.of().formatHex(digest.digest());
         } catch (NoSuchAlgorithmException e) {

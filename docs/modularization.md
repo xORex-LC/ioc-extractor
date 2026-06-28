@@ -102,8 +102,8 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `adapter-lookup-csv` | artifact-aware `LookupRepository` for masks + hashes |
 | `adapter-psl` | HostClassifier (PSL/Guava) |
 | `adapter-ingest` | Watch ingest: `IngestSourceUseCase`(in), `SourceLifecycle`, file `IngestionLedger`; SourceFeed adapter-local (Spring Integration); `FileSystemRetentionStore` (reaper IO) |
-| `adapter-cli-picocli` | входной CLI |
-| `ioc-app` (bootstrap) | composition root, исполняемый jar; daemon schedulers (`DaemonMaintenanceScheduler`), `DaemonWebEnvironmentPostProcessor` (web only in daemon), health indicators |
+| `adapter-cli-picocli` | входной CLI: `extract`, lazy on-demand `export`, remote daemon `health` |
+| `ioc-app` (bootstrap) | composition root, `ioc.export` plan resolution/lazy graph, ECS export observer, исполняемый jar; daemon schedulers, conditional web, health indicators |
 
 ## Гранулярность
 

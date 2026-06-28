@@ -13,7 +13,8 @@ public record ExportArtifactSpec(String artifactName,
                                  List<String> columns,
                                  int identityEpoch,
                                  String identityHash,
-                                 String schemaHash) {
+                                 String schemaHash,
+                                 String mappingHash) {
 
     private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
 
@@ -32,6 +33,7 @@ public record ExportArtifactSpec(String artifactName,
         }
         identityHash = requireSha256(identityHash, "identityHash");
         schemaHash = requireSha256(schemaHash, "schemaHash");
+        mappingHash = requireSha256(mappingHash, "mappingHash");
     }
 
     static String requireSha256(String value, String field) {

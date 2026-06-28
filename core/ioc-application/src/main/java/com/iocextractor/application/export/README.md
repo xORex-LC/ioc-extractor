@@ -17,7 +17,8 @@ adapters за портами `application.port.out.export`.
 | Файл / группа | Назначение |
 |---|---|
 | `ExportProfile`, `ExportMode` | Именованный, упорядоченный и неделимый набор артефактов; v1 исполняет только `COMPLETE` |
-| `ExportFormat`, `ExportArtifactSpec`, `ExportPlan` | Полностью resolved-контракт публичных bytes и его детерминированный `planHash` |
+| `ExportFormat`, `ExportArtifactSpec`, `ExportPlan` | Полностью resolved-контракт публичных bytes; `planHash` покрывает format, schema, identity и active mapping |
+| `ArtifactSchemaFingerprint` | SHA-256 ordered public columns + normalized declared types (`schema:v1`) |
 | `SnapshotRequest`, `SnapshotMetadata`, `SnapshotArtifactMetadata`, `ArtifactCoverage` | Запрос и факты, захваченные в одном consistent read snapshot |
 | `SliceManifest`, `SliceArtifactManifest` | Versioned integrity root всего среза и checksums/coverage его файлов |
 | `ExportRun`, `ExportRunStatus` | Durable state machine только для formation saga |

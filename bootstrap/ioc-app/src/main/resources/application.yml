@@ -61,10 +61,10 @@ ioc:
   # ---- Storage topology ------------------------------------------------------
   # Storage-neutral selectors live at the role level. Backend-specific tuning is
   # nested under that backend so future Postgres/Redis settings do not pollute
-  # the common shape. The service datasource is created in daemon mode for the
-  # JDBC ingestion ledger and for durable run-ledger checkpoints. The dataframe
-  # datasource is the business-data source of truth; configured CSV files are
-  # generated projections.
+  # the common shape. The service datasource is lazy: daemon dependencies or an
+  # actual `ioc export` call resolve it for durable ledgers; unrelated CLI commands
+  # do not open the DB. The dataframe datasource is the business-data source of
+  # truth; configured CSV files are generated projections.
   storage:
     service:
       type: jdbc
@@ -229,6 +229,29 @@ ioc:
       - name: hashes
         key-columns: [ hash_md5, hash_sha1, hash_sha256 ]
         key-mode: first-non-empty
+
+  # ---- Immutable artifact emission ------------------------------------------
+  # Profiles are indivisible ordered sets. C8 exposes manual `ioc export`; the
+  # trigger and retention values are configuration seams activated by C9/C10.
+  # `complete` is the only executable v1 mode; `append` fails before storage IO.
+  export:
+    enabled: true
+    root: "./var/export"
+    trigger:
+      type: interval
+      interval: 5m
+      quiet-period: 5m
+      max-cap: 1h
+    profiles:
+      - name: reputation-lists
+        output-mode: complete
+        artifacts: [ masks, ip_list, hashes ]
+      - name: address-blacklist
+        output-mode: complete
+        artifacts: [ address_blacklist ]
+    retention:
+      max-age: 7d
+      max-count: 3
 
   # ---- Daemon housekeeping: retention reaper (active in daemon mode when enabled)
   #  One declarative policy reaps aged/over-count entries from growing dirs.

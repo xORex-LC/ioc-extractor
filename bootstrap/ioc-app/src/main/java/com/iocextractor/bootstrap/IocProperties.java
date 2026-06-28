@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -34,6 +35,7 @@ public record IocProperties(
         @NotNull @Valid Lookup lookup,
         @NotNull @Valid Ingestion ingestion,
         @NotNull @Valid ArtifactIdentity artifactIdentity,
+        @NotNull @Valid Export export,
         @Valid Maintenance maintenance,
         @NotNull @Valid Observability observability) {
 
@@ -123,6 +125,31 @@ public record IocProperties(
                 @NotEmpty List<String> keyColumns,
                 String keyMode,
                 @Positive Integer epoch) {
+        }
+    }
+
+    /** Immutable local artifact export profiles and future scheduling/retention policy. */
+    public record Export(
+            boolean enabled,
+            @NotBlank String root,
+            @NotNull @Valid Trigger trigger,
+            @NotEmpty @Valid List<Profile> profiles,
+            @NotNull @Valid Retention retention) {
+
+        public record Trigger(
+                @NotBlank String type,
+                @NotNull Duration interval,
+                Duration quietPeriod,
+                Duration maxCap) {
+        }
+
+        public record Profile(
+                @NotBlank String name,
+                @NotBlank String outputMode,
+                @NotEmpty List<String> artifacts) {
+        }
+
+        public record Retention(Duration maxAge, @PositiveOrZero int maxCount) {
         }
     }
 

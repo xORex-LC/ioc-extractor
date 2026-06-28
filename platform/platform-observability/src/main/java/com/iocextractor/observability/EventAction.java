@@ -23,6 +23,10 @@ public enum EventAction {
     DB_HEALTH("db_health"),
     MAINTENANCE("maintenance"),
     BACKFILL("backfill"),
+    EXPORT_START("export_start"),
+    EXPORT_COMPLETE("export_complete"),
+    EXPORT_SLICE_WRITE("export_slice_write"),
+    EXPORT_RECOVER("export_recover"),
     DIAGNOSTIC_EMIT("diagnostic_emit");
 
     private final String value;

@@ -31,6 +31,10 @@ class LoggingTaxonomyTest {
                         "db_health",
                         "maintenance",
                         "backfill",
+                        "export_start",
+                        "export_complete",
+                        "export_slice_write",
+                        "export_recover",
                         "diagnostic_emit")
                 .doesNotHaveDuplicates();
     }
@@ -57,6 +61,9 @@ class LoggingTaxonomyTest {
                         "ioc.migration.version",
                         "ioc.identity.epoch",
                         "ioc.affected_rows",
+                        "ioc.export.profile",
+                        "ioc.export.slice.id",
+                        "ioc.export.revision",
                         "ioc.diagnostic.code",
                         "ioc.diagnostic.category",
                         "ioc.diagnostic.severity")

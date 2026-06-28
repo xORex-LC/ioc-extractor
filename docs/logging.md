@@ -51,6 +51,7 @@ dead-letter sidecar или JSONL.
 | Domain services | редкие DEBUG/TRACE решения без инфраструктурных деталей | SLF4J или diagnostic result |
 | Out adapters | IO: read/write CSV, JDBC storage, lookup loaded, projection written | SLF4J |
 | Diagnostics bridge | diagnostic result rendered as log event | `LoggingDiagnosticSink` |
+| Export observer (bootstrap) | formation checkpoints/recovery, profile/slice/revision | `ExportObserver` → SLF4J + MDC |
 
 ## Границы ответственности
 

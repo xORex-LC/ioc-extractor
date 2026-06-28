@@ -29,6 +29,7 @@ Generated from `DiagnosticCatalogs`.
 | `STORAGE.IDENTITY_EPOCH_BUMP` | STORAGE | INFO | `storage.identity-epoch-bump` | Artifact {artifact} identity epoch bumped from {fromEpoch} to {toEpoch} |
 | `STORAGE.SCHEMA_ADDED` | STORAGE | INFO | `storage.schema-added` | Artifact {artifact} schema added column {column} |
 | `STORAGE.SCHEMA_DESTRUCTIVE_CHANGE` | STORAGE | FATAL | `storage.schema-destructive-change` | Artifact {artifact} schema has destructive change {change}: {reason} |
+| `EXPORT.UNSUPPORTED_MODE` | EXPORT | ERROR | `export.unsupported-mode` | Export profile {profile} requests unsupported output mode {mode} |
 | `EXPORT.SNAPSHOT_READ_FAILED` | EXPORT | ERROR | `export.snapshot-read-failed` | Export profile {profile} snapshot could not be read: {reason} |
 | `EXPORT.SLICE_WRITE_FAILED` | EXPORT | ERROR | `export.slice-write-failed` | Export run {runId} could not write slice at {path}: {reason} |
 | `EXPORT.MANIFEST_INVALID` | EXPORT | ERROR | `export.manifest-invalid` | Export run {runId} has an invalid slice at {path}: {reason} |

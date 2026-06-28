@@ -21,6 +21,12 @@ Framework-free контракты operational observability: имена поле
 | `logging/` | Thin SLF4J event helper and pipeline observer |
 | `diagnostics/` | Diagnostic-to-log bridge |
 
+Artifact emission расширяет стабильную taxonomy actions
+`export_start|export_slice_write|export_complete|export_recover` и fields
+`ioc.export.profile`, `ioc.export.slice.id`, `ioc.export.revision`. Конкретный
+producer adapter находится в bootstrap, чтобы generic observability module не
+зависел от application export model.
+
 ## Зависимости
 
 **Зависит от:** SLF4J API/MDC.  

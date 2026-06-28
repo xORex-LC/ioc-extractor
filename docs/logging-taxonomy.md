@@ -53,6 +53,9 @@
 | `ioc.source.content_hash` | content hash источника |
 | `ioc.artifact.name` | имя артефакта |
 | `ioc.rows` | число строк |
+| `ioc.export.profile` | имя неделимого export profile |
+| `ioc.export.slice.id` | immutable slice/run identity |
+| `ioc.export.revision` | максимальная canonical revision в записанном slice event |
 | `ioc.diagnostic.code` | если событие связано с Diagnostic |
 | `ioc.diagnostic.category` | если событие связано с Diagnostic |
 | `ioc.diagnostic.severity` | если событие связано с Diagnostic |
@@ -88,6 +91,10 @@ Per-item поля (`ioc.indicator.*`, `ioc.dedup.key`) не входят в ба
 | `artifact_write` | sink | CSV artifact записан |
 | `storage_write` | storage | canonical storage write завершён |
 | `artifact_project` | sink | CSV projection regenerated from storage |
+| `export_start` | artifact emission | durable global single-flight захвачен |
+| `export_slice_write` | artifact emission | staging data/manifest/marker записаны и проверены |
+| `export_complete` | artifact emission | formation run достиг terminal checkpoint |
+| `export_recover` | artifact emission | начата проверка incomplete durable run |
 | `diagnostic_emit` | diagnostics | Diagnostic опубликован в log stream |
 
 Следующие daemon actions добавляются только вместе с первым producer'ом события.

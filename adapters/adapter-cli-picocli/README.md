@@ -12,7 +12,7 @@ does not implement business rules.
 | Подпапка / файл | Назначение |
 |---|---|
 | `pom.xml` | Maven module descriptor |
-| `src/main/java/com/iocextractor/adapter/in/cli/` | CLI root and extract commands |
+| `src/main/java/com/iocextractor/adapter/in/cli/` | CLI root, extract/export/health commands |
 
 ## Зависимости
 
@@ -20,3 +20,8 @@ does not implement business rules.
 picocli.
 
 **Не импортируется:** bootstrap and outbound adapters.
+
+`ExportCommand` зависит только от lazy `ObjectProvider` driving-портов. Поэтому
+парсинг root help и выполнение остальных команд не разрешают JDBC/service-DB
+graph; recovery и export создаются только после фактического вызова
+`ioc export --profile ...`.
