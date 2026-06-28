@@ -127,15 +127,19 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
     }
 
     private List<PublishTarget> selectedTargets(ArtifactPublishCommand command) {
-        if (command.target().isEmpty()) {
+        if (command.target().isEmpty() && command.endpoint().isEmpty()) {
             return targets;
         }
-        String selected = command.target().orElseThrow();
         List<PublishTarget> matches = targets.stream()
-                .filter(target -> target.targetId().equals(selected))
+                .filter(target -> command.target()
+                        .map(selected -> target.targetId().equals(selected))
+                        .orElse(true))
+                .filter(target -> command.endpoint()
+                        .map(endpoint -> target.endpoint().equals(endpoint))
+                        .orElse(true))
                 .toList();
         if (matches.isEmpty()) {
-            throw new IllegalArgumentException("Unknown sync publish target: " + selected);
+            throw new IllegalArgumentException("No sync publish target matches selection");
         }
         return matches;
     }
@@ -184,40 +188,68 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
             return;
         }
         PublishRecord inProgress = moveToInProgress(record);
+        RemoteMarker marker;
         try {
-            RemoteMarker marker = readRemoteMarker(inProgress);
-            if (marker.present()) {
-                if (marker.matches(slice.manifestSha256())) {
-                    ledger.transition(inProgress.sliceId(), inProgress.targetId(),
-                            PublishStatus.IN_PROGRESS, PublishStatus.SUCCEEDED, null,
-                            "remote marker matched existing manifest " + slice.manifestSha256());
-                    counters.succeeded++;
-                    return;
-                }
-                String reason = "remote _SUCCESS mismatch";
-                emitPublishVerifyFailed(inProgress, reason);
-                ledger.transition(inProgress.sliceId(), inProgress.targetId(),
-                        PublishStatus.IN_PROGRESS, PublishStatus.FAILED, reason, marker.content());
-                counters.failed++;
-                return;
-            }
-            PublishReceipt receipt = retrier.execute(() -> transport.publishAtomically(new PublishAtomicallyRequest(
-                    inProgress.endpoint(),
-                    inProgress.remotePath(),
-                    slice.directory(),
-                    SUCCESS_MARKER)));
-            ledger.transition(inProgress.sliceId(), inProgress.targetId(),
-                    PublishStatus.IN_PROGRESS, PublishStatus.SUCCEEDED, null, receipt.verification());
-            counters.succeeded++;
-        } catch (RemoteTransportException failure) {
-            ledger.transition(inProgress.sliceId(), inProgress.targetId(),
-                    PublishStatus.IN_PROGRESS, PublishStatus.FAILED, failure.getMessage(), null);
-            counters.failed++;
-        } catch (RuntimeException failure) {
-            ledger.transition(inProgress.sliceId(), inProgress.targetId(),
-                    PublishStatus.IN_PROGRESS, PublishStatus.FAILED, failure.getMessage(), null);
-            counters.failed++;
+            marker = readRemoteMarker(inProgress);
+        } catch (RemoteTransportException | IllegalStateException failure) {
+            markFailed(inProgress, failure.getMessage(), null, counters);
+            return;
         }
+        if (marker.present()) {
+            recoverExistingCommit(inProgress, slice, marker, counters);
+            return;
+        }
+        publishNewSlice(inProgress, slice, counters);
+    }
+
+    private void recoverExistingCommit(PublishRecord record,
+                                       CompletedSlice slice,
+                                       RemoteMarker marker,
+                                       PublishCounters counters) {
+        if (marker.matches(slice.manifestSha256())) {
+            markSucceeded(record,
+                    "remote marker matched existing manifest " + slice.manifestSha256(), counters);
+            return;
+        }
+        String reason = "remote _SUCCESS mismatch";
+        emitPublishVerifyFailed(record, reason);
+        markFailed(record, reason, marker.content(), counters);
+    }
+
+    private void publishNewSlice(PublishRecord record,
+                                 CompletedSlice slice,
+                                 PublishCounters counters) {
+        PublishReceipt receipt;
+        try {
+            receipt = retrier.execute(() -> transport.publishAtomically(
+                    new PublishAtomicallyRequest(
+                            record.endpoint(), record.remotePath(), slice.directory(), SUCCESS_MARKER)));
+        } catch (RemoteTransportException | IllegalStateException failure) {
+            markFailed(record, failure.getMessage(), null, counters);
+            return;
+        }
+        markSucceeded(record, receipt.verification(), counters);
+    }
+
+    private void markSucceeded(PublishRecord record,
+                               String remoteVerification,
+                               PublishCounters counters) {
+        ledger.transition(record.sliceId(), record.targetId(),
+                PublishStatus.IN_PROGRESS, PublishStatus.SUCCEEDED, null, remoteVerification);
+        counters.succeeded++;
+    }
+
+    private void markFailed(PublishRecord record,
+                            String reason,
+                            String remoteVerification,
+                            PublishCounters counters) {
+        ledger.transition(record.sliceId(), record.targetId(),
+                PublishStatus.IN_PROGRESS, PublishStatus.FAILED, failureReason(reason), remoteVerification);
+        counters.failed++;
+    }
+
+    private String failureReason(String reason) {
+        return reason == null || reason.isBlank() ? "remote publish failed without detail" : reason;
     }
 
     private PublishRecord moveToInProgress(PublishRecord record) {

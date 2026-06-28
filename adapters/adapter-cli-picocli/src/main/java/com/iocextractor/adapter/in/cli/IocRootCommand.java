@@ -6,7 +6,7 @@ import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Spec;
 
 /**
- * Root CLI command. Holds {@code extract}, {@code export} and {@code health}
+ * Root CLI command. Holds {@code extract}, {@code export}, {@code sync} and {@code health}
  * without coupling their driving adapters. With no sub-command it prints usage.
  */
 @Component
@@ -14,7 +14,7 @@ import picocli.CommandLine.Spec;
         name = "ioc",
         mixinStandardHelpOptions = true,
         description = "IOC extraction toolkit.",
-        subcommands = {ExtractCommand.class, ExportCommand.class, HealthCommand.class})
+        subcommands = {ExtractCommand.class, ExportCommand.class, SyncCommand.class, HealthCommand.class})
 public final class IocRootCommand implements Runnable {
 
     @Spec

@@ -7,6 +7,7 @@ import com.iocextractor.adapter.out.transport.smb.SmbEndpointSettings;
 import com.iocextractor.adapter.out.transport.smb.SmbFileTransport;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
 import com.iocextractor.application.port.in.sync.RemoteFetchUseCase;
+import com.iocextractor.application.port.in.sync.ValidateSyncSelectionUseCase;
 import com.iocextractor.application.port.out.export.SliceManifestCodec;
 import com.iocextractor.application.port.out.export.SliceRetentionGuard;
 import com.iocextractor.application.port.out.sync.CompletedSliceCatalog;
@@ -35,6 +36,11 @@ import java.util.List;
 /** Composition root segment for remote sync transports, use cases and daemon lifecycle. */
 @Configuration
 public class SyncConfig {
+
+    @Bean
+    public ValidateSyncSelectionUseCase validateSyncSelectionUseCase(IocProperties props) {
+        return new SyncSelectionCatalog(props);
+    }
 
     @Bean
     @Lazy

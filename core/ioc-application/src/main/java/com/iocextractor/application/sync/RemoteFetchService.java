@@ -68,15 +68,16 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
     }
 
     private List<RemoteFetchSource> selectedSources(RemoteFetchCommand command) {
-        if (command.source().isEmpty()) {
-            return sources;
-        }
-        String selected = command.source().orElseThrow();
         List<RemoteFetchSource> matches = sources.stream()
-                .filter(source -> source.sourceId().equals(selected))
+                .filter(source -> command.source()
+                        .map(selected -> source.sourceId().equals(selected))
+                        .orElse(true))
+                .filter(source -> command.endpoint()
+                        .map(selected -> source.endpoint().equals(selected))
+                        .orElse(true))
                 .toList();
         if (matches.isEmpty()) {
-            throw new IllegalArgumentException("Unknown sync fetch source: " + selected);
+            throw new IllegalArgumentException("No sync fetch source matches selection");
         }
         return matches;
     }

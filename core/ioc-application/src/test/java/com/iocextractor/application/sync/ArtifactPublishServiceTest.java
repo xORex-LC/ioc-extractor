@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ArtifactPublishServiceTest {
 
@@ -101,6 +102,21 @@ class ArtifactPublishServiceTest {
     }
 
     @Test
+    void endpointFilterPublishesOnlyTargetsOwnedBySelectedEndpoint() throws Exception {
+        CompletedSlice slice = slice("reputation", "slice-one");
+        FakeLedger ledger = new FakeLedger();
+        FakeTransport transport = new FakeTransport();
+
+        var result = service(catalog(slice), ledger, transport, targets("reputation"), diagnostics())
+                .publish(new ArtifactPublishCommand(
+                        Optional.empty(), Optional.empty(), Optional.of("endpoint-a"), false));
+
+        assertThat(result.succeeded()).isOne();
+        assertThat(ledger.records()).extracting(PublishRecord::targetId).containsExactly("target-a");
+        assertThat(transport.published).containsExactly("endpoint-a:/remote/a/slice-one");
+    }
+
+    @Test
     void failureOfOneTargetDoesNotBlockAnotherTarget() throws Exception {
         CompletedSlice slice = slice("reputation", "slice-one");
         FakeLedger ledger = new FakeLedger();
@@ -116,6 +132,21 @@ class ArtifactPublishServiceTest {
                 assertThat(record.status()).isEqualTo(PublishStatus.FAILED));
         assertThat(ledger.find("slice-one", "target-b")).hasValueSatisfying(record ->
                 assertThat(record.status()).isEqualTo(PublishStatus.SUCCEEDED));
+    }
+
+    @Test
+    void unexpectedProgrammingFailureIsNotConvertedToRetryablePublishFailure() throws Exception {
+        CompletedSlice slice = slice("reputation", "slice-one");
+        FakeLedger ledger = new FakeLedger();
+        FakeTransport transport = new FakeTransport();
+        transport.unexpectedPublishFailure = new IllegalArgumentException("adapter contract violation");
+        ArtifactPublishService service = service(
+                catalog(slice), ledger, transport, List.of(targetA("reputation")), diagnostics());
+
+        assertThatThrownBy(() -> service.publish(new ArtifactPublishCommand(Optional.empty(), false)))
+                .isSameAs(transport.unexpectedPublishFailure);
+        assertThat(ledger.find("slice-one", "target-a"))
+                .hasValueSatisfying(record -> assertThat(record.status()).isEqualTo(PublishStatus.IN_PROGRESS));
     }
 
     @Test
@@ -256,6 +287,7 @@ class ArtifactPublishServiceTest {
         private final List<String> published = new ArrayList<>();
         private final Map<String, String> remoteMarkers = new LinkedHashMap<>();
         private String failPublishForEndpoint;
+        private RuntimeException unexpectedPublishFailure;
 
         @Override
         public List<RemoteObject> list(String endpoint, String remotePath) {
@@ -290,6 +322,9 @@ class ArtifactPublishServiceTest {
 
         @Override
         public PublishReceipt publishAtomically(PublishAtomicallyRequest request) {
+            if (unexpectedPublishFailure != null) {
+                throw unexpectedPublishFailure;
+            }
             if (request.endpoint().equals(failPublishForEndpoint)) {
                 throw new RemoteTransportException(RemoteErrorKind.TRANSIENT, "publish failed");
             }
