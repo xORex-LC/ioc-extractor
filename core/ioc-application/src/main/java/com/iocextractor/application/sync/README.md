@@ -16,8 +16,11 @@ value objects и политики, которые одинаковы для SMB/
 | `RemoteObject` / `RemoteObjectIdentity` | Metadata и fetch-ledger identity удалённого файла |
 | `RemoteFetchRecord` / `RemoteFetchStatus` | Durable состояние read-only fetch idempotency |
 | `PublishRecord` / `PublishStatus` | Durable per-slice/per-target publish saga state |
+| `PublishTarget` | Transport-neutral configured delivery target для export profile |
 | `CompletedSlice` | Verified local slice descriptor для publish worklist |
 | `PublishAtomicallyRequest` / `PublishReceipt` | Контракт толстого write-intent для публикации slice-каталога |
+| `ArtifactPublishService` | Use case: reconcile completed slices × targets и publish через ledger |
+| `PublishLedgerSliceRetentionGuard` | Delivery-aware veto для slice retention |
 
 ## Инварианты
 
@@ -29,6 +32,12 @@ value objects и политики, которые одинаковы для SMB/
 - `RemoteObjectIdentity` key = remote `path + size + modifiedAt`; источник остаётся read-only.
 - `CompletedSlice` уже прошёл локальную integrity-chain проверку и содержит normalized
   physical path только как payload для transport adapter.
+- `ArtifactPublishService` не мутирует `export_run`: состояние доставки живёт только в
+  `PublishLedger`, а local slice catalog остаётся read-only.
+- Missing publish pairs materialize before remote write; `FAILED` remains retryable,
+  `ABANDONED` and `SUCCEEDED` are terminal for retention.
+- Existing remote `_SUCCESS` with matching manifest hash is forward recovery to
+  `SUCCEEDED`; mismatched marker emits `SYNC.PUBLISH_VERIFY_FAILED`.
 
 ## Зависимости
 

@@ -23,6 +23,8 @@ adapter-модулях.
 - `delete` существует только как seam для opt-in remote retention/cleanup, не для fetch claim.
 - `CompletedSliceCatalog` не является retention API: staging, incomplete и corrupt final
   каталоги не превращаются в publish work; corruption должна всплывать явно.
+- `PublishLedger` — единственное durable состояние delivery saga; export run ledger
+  не меняется при remote publish/recovery.
 
 ## Зависимости
 
