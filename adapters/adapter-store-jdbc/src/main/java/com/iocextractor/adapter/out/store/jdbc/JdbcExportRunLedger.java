@@ -4,6 +4,7 @@ import com.iocextractor.application.export.ExportProgress;
 import com.iocextractor.application.export.ExportRun;
 import com.iocextractor.application.export.ExportRunStatus;
 import com.iocextractor.application.port.out.export.ExportRunLedger;
+import com.iocextractor.application.port.out.export.ExportRunReader;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
@@ -31,7 +32,7 @@ import java.util.regex.Pattern;
  * <p>Terminal progress and the corresponding {@code COMPLETED}/{@code SKIPPED}
  * checkpoint are committed in one service-database transaction.
  */
-public final class JdbcExportRunLedger implements ExportRunLedger {
+public final class JdbcExportRunLedger implements ExportRunLedger, ExportRunReader {
 
     private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
 
@@ -186,6 +187,22 @@ public final class JdbcExportRunLedger implements ExportRunLedger {
                         """)
                 .query(JdbcExportRunLedger::mapRun)
                 .list();
+    }
+
+    @Override
+    public Optional<ExportRun> findLatest(String profile, ExportRunStatus status) {
+        return jdbc.sql("""
+                        SELECT run_id, profile, status, slice_name, plan_hash,
+                               manifest_sha256, started_at, updated_at, reason
+                        FROM export_run
+                        WHERE profile = :profile AND status = :status
+                        ORDER BY updated_at DESC, run_id DESC
+                        LIMIT 1
+                        """)
+                .param("profile", requireText(profile, "profile"))
+                .param("status", Objects.requireNonNull(status, "status").name())
+                .query(JdbcExportRunLedger::mapRun)
+                .optional();
     }
 
     private Optional<ExportRun> findActive() {

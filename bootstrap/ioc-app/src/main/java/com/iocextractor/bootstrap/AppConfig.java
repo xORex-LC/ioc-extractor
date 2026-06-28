@@ -57,6 +57,8 @@ import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.artifact.NoopArtifactProjection;
 import com.iocextractor.application.artifact.NoopRunLedger;
 import com.iocextractor.application.artifact.StoredArtifactIdentity;
+import com.iocextractor.application.cadence.CadenceSource;
+import com.iocextractor.application.cadence.CadenceSources;
 import com.iocextractor.application.export.ExportChangeDetector;
 import com.iocextractor.application.export.ExportRunRecoveryService;
 import com.iocextractor.application.export.ExportService;
@@ -84,6 +86,7 @@ import com.iocextractor.application.port.out.export.ArtifactSliceWriter;
 import com.iocextractor.application.port.out.export.ExportObserver;
 import com.iocextractor.application.port.out.export.ExportProgressStore;
 import com.iocextractor.application.port.out.export.ExportRunLedger;
+import com.iocextractor.application.port.out.export.ExportRunReader;
 import com.iocextractor.application.port.out.export.SliceManifestCodec;
 import com.iocextractor.application.port.out.export.SnapshotSliceReader;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
@@ -550,7 +553,7 @@ public class AppConfig {
     @Bean
     @Lazy
     @ConditionalOnServiceStorage
-    public ExportRunLedger exportRunLedger(
+    public JdbcExportRunLedger exportRunLedger(
             LazyServiceStorage serviceStorage,
             DiagnosticSink diagnosticSink,
             Clock clock) {
@@ -614,6 +617,45 @@ public class AppConfig {
         return new ExportRunRecoveryService(
                 exportRunLedger, artifactSliceWriter, new ExportChangeDetector(), exportObserver,
                 diagnosticSink, new DiagnosticFactory(clock), clock);
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.export.enabled:true}' == 'true' && "
+            + "'${ioc.storage.service.type:disabled}' == 'jdbc' && "
+            + "'${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
+    public DaemonExportScheduler daemonExportScheduler(
+            ExportPlanCatalog catalog,
+            ArtifactRevisionReader artifactRevisionReader,
+            ExportProgressStore exportProgressStore,
+            RecoverExportUseCase recoverExportUseCase,
+            ExportArtifactsUseCase exportArtifactsUseCase,
+            IocProperties props,
+            Clock clock) {
+        IocProperties.Export.Trigger trigger = props.export().trigger();
+        Map<String, CadenceSource> cadences = new LinkedHashMap<>();
+        for (var plan : catalog.plans()) {
+            cadences.put(plan.profile().name(), CadenceSources.create(
+                    trigger.type(), trigger.interval(), trigger.quietPeriod(), trigger.maxCap(), clock));
+        }
+        return new DaemonExportScheduler(
+                catalog.plans(), cadences, artifactRevisionReader, exportProgressStore,
+                recoverExportUseCase, exportArtifactsUseCase, cadencePollInterval(trigger));
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.export.enabled:true}' == 'true' && "
+            + "'${ioc.storage.service.type:disabled}' == 'jdbc' && "
+            + "'${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
+    public ExportHealthIndicator exportHealthIndicator(
+            ExportPlanCatalog catalog,
+            ArtifactRevisionReader artifactRevisionReader,
+            ExportProgressStore exportProgressStore,
+            ExportRunReader exportRunReader,
+            Clock clock) {
+        return new ExportHealthIndicator(
+                catalog.plans(), artifactRevisionReader, exportProgressStore, exportRunReader, clock);
     }
 
     @Bean
@@ -717,6 +759,14 @@ public class AppConfig {
                     archiveDir));
         }
         return targets;
+    }
+
+    private Duration cadencePollInterval(IocProperties.Export.Trigger trigger) {
+        if (!"quiet-period".equalsIgnoreCase(trigger.type())) {
+            return trigger.interval();
+        }
+        return trigger.quietPeriod().compareTo(trigger.maxCap()) <= 0
+                ? trigger.quietPeriod() : trigger.maxCap();
     }
 
     // ---- artifact assembly -------------------------------------------------

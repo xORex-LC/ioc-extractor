@@ -6,6 +6,8 @@ import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.bootstrap.IngestionLedgerHealthIndicator;
 import com.iocextractor.bootstrap.JdbcStorageHealthIndicator;
+import com.iocextractor.bootstrap.DaemonExportScheduler;
+import com.iocextractor.bootstrap.ExportHealthIndicator;
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.boot.actuate.health.Status;
 import org.junit.jupiter.api.Test;
@@ -63,6 +65,10 @@ class JdbcLedgerDaemonRuntimeModeTest {
                 .containsOnlyKeys("jdbcStorageHealthIndicator");
         assertThat(context.getBean(JdbcStorageHealthIndicator.class).health().getStatus())
                 .isEqualTo(Status.UP);
+        assertThat(context.getBeansOfType(DaemonExportScheduler.class))
+                .containsOnlyKeys("daemonExportScheduler");
+        assertThat(context.getBeansOfType(ExportHealthIndicator.class))
+                .containsOnlyKeys("exportHealthIndicator");
 
         try (var connection = serviceStorageDataSource.getConnection();
              var statement = connection.createStatement();

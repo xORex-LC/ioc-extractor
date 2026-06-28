@@ -96,6 +96,23 @@ class JdbcExportRunLedgerTest {
         }
     }
 
+    @Test
+    void latestRunReadModelFiltersByProfileAndStatus() {
+        try (HikariDataSource dataSource = dataSource("latest-run.db")) {
+            new SqliteUserVersionSchemaMigrator(dataSource, ServiceSchemaMigrations.sqlite()).migrate();
+            var ledger = new JdbcExportRunLedger(dataSource, CLOCK);
+            ExportRun failed = started("run-failed");
+            ledger.tryStart(failed);
+            ExportRun terminal = ledger.transition(
+                    failed.runId(), ExportRunStatus.STARTED, ExportRunStatus.FAILED, null, "failed");
+
+            assertThat(ledger.findLatest("reputation", ExportRunStatus.FAILED))
+                    .contains(terminal);
+            assertThat(ledger.findLatest("other", ExportRunStatus.FAILED)).isEmpty();
+            assertThat(ledger.findLatest("reputation", ExportRunStatus.COMPLETED)).isEmpty();
+        }
+    }
+
     private Optional<ExportRun> attemptStart(HikariDataSource dataSource,
                                              ExportRun run,
                                              CountDownLatch ready,

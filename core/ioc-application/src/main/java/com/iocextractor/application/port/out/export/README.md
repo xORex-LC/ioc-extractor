@@ -23,6 +23,7 @@ state transitions принадлежат use case.
 | `ArtifactRevisionReader` | Дешёво читает canonical revisions в запрошенном порядке, не сканируя rows |
 | `ExportProgressStore` | Read side последнего terminal progress для revision/hash change detection |
 | `ExportRunLedger` | Durable CAS state machine, global single-flight и атомарная фиксация terminal progress |
+| `ExportRunReader` | Operational read model последних run checkpoints для health |
 | `ExportObserver` | Lifecycle callbacks в точках фактических durable checkpoints; конкретный ECS logger остаётся снаружи application |
 | `SliceRetentionGuard` | Чистый delivery-aware veto, вызываемый непосредственно перед delete |
 

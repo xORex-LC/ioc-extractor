@@ -17,7 +17,7 @@ types to bootstrap; domain/application do not import this package.
 | `Sqlite*` | SQLite-specific datasource and PRAGMA policy |
 | `JdbcIngestionLedger`, `JdbcRunLedger` | Source-ingestion state и CAS checkpoints write→project saga |
 | `JdbcCanonicalArtifactRepository`, `JdbcLookupRepository`, `JdbcArtifactRevisionReader` | Canonical truth, lookup и cheap revision read side |
-| `JdbcExportRunLedger`, `JdbcExportProgressStore` | Formation-saga CAS/single-flight и terminal per-artifact progress |
+| `JdbcExportRunLedger`, `JdbcExportProgressStore` | Formation-saga CAS/single-flight, terminal progress и latest-run health read model |
 | `JdbcSnapshotSliceReader` | Strict multi-artifact read snapshot и callback-streaming public rows |
 | `*Schema*` | SQLite `user_version` runner, migration support and dataframe reconciler |
 | `Dataframe*` | Table-per-artifact desired schema, additive plan and reconciliation |
