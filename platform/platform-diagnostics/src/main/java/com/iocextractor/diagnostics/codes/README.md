@@ -21,6 +21,7 @@ pipeline orchestration.
 | `StorageDiagnosticCodes.java` | Ошибки durable storage: миграции, импорт, identity |
 | `SchemaDiagnosticCodes.java` | Guardrail-коды сверки схемы storage |
 | `ExportDiagnosticCodes.java` | Ошибки formation saga и immutable artifact slices |
+| `SyncDiagnosticCodes.java` | Ошибки remote fetch/publish delivery |
 | `PipelineDiagnosticCodes.java` | Ошибки стадий pipeline |
 
 ## Зависимости

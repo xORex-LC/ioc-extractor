@@ -11,8 +11,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Type-safe binding of the {@code ioc.*} configuration tree. This is the only
@@ -36,8 +38,15 @@ public record IocProperties(
         @NotNull @Valid Ingestion ingestion,
         @NotNull @Valid ArtifactIdentity artifactIdentity,
         @NotNull @Valid Export export,
+        @NotNull @Valid Sync sync,
         @Valid Maintenance maintenance,
         @NotNull @Valid Observability observability) {
+
+    public IocProperties {
+        if (sync != null && export != null) {
+            sync.validateAgainst(export);
+        }
+    }
 
     public record Runtime(@NotBlank String mode) {
     }
@@ -150,6 +159,176 @@ public record IocProperties(
         }
 
         public record Retention(Duration maxAge, @PositiveOrZero int maxCount) {
+        }
+    }
+
+    /** Remote fetch/publish synchronization. Connection details remain adapter-owned. */
+    public record Sync(
+            boolean enabled,
+            @NotNull @Valid Retry retry,
+            @NotNull @Valid List<Endpoint> endpoints,
+            @NotNull @Valid Fetch fetch,
+            @NotNull @Valid Publish publish) {
+
+        public Sync {
+            endpoints = List.copyOf(endpoints);
+            unique(endpoints.stream().map(Endpoint::name).toList(), "sync endpoint");
+            Set<String> endpointNames = new HashSet<>(endpoints.stream().map(Endpoint::name).toList());
+            fetch.validate(endpointNames);
+            publish.validate(endpointNames);
+        }
+
+        void validateAgainst(Export export) {
+            Set<String> profiles = new HashSet<>(export.profiles().stream().map(Export.Profile::name).toList());
+            for (Publish.Target target : publish.targets()) {
+                if (!profiles.contains(target.exportProfile())) {
+                    throw new IllegalArgumentException("Unknown sync publish export profile: "
+                            + target.exportProfile());
+                }
+            }
+        }
+
+        public record Retry(@Positive int maxAttempts,
+                            @NotNull Duration backoff,
+                            double multiplier,
+                            @NotNull Duration maxBackoff,
+            boolean jitter) {
+
+            public Retry {
+                if (maxAttempts < 1) {
+                    throw new IllegalArgumentException("sync retry maxAttempts must be at least 1");
+                }
+                positive(backoff, "sync retry backoff");
+                positive(maxBackoff, "sync retry maxBackoff");
+                if (multiplier < 1.0d) {
+                    throw new IllegalArgumentException("sync retry multiplier must be at least 1.0");
+                }
+                if (maxBackoff.compareTo(backoff) < 0) {
+                    throw new IllegalArgumentException("sync retry maxBackoff must be >= backoff");
+                }
+            }
+        }
+
+        public record Endpoint(@NotBlank String name,
+                               @NotBlank String transport,
+                               @Valid Smb smb) {
+
+            public Endpoint {
+                name = requireText(name, "sync endpoint name");
+                transport = requireText(transport, "sync endpoint transport");
+                if ("smb".equalsIgnoreCase(transport) && smb == null) {
+                    throw new IllegalArgumentException("SMB sync endpoint requires smb settings: " + name);
+                }
+            }
+
+            public record Smb(@NotBlank String host,
+                              @NotBlank String share,
+                              String domain,
+                              @NotBlank String username,
+                              @NotBlank String password,
+                              boolean encrypt) {
+
+                public Smb {
+                    host = requireText(host, "sync SMB host");
+                    share = requireText(share, "sync SMB share");
+                    username = requireText(username, "sync SMB username");
+                    password = requireText(password, "sync SMB password");
+                }
+            }
+        }
+
+        public record Fetch(boolean enabled,
+                            @NotNull Duration interval,
+                            @NotNull @Valid List<Source> sources) {
+
+            public Fetch {
+                positive(interval, "sync fetch interval");
+                sources = List.copyOf(sources);
+                unique(sources.stream().map(Source::name).toList(), "sync fetch source");
+            }
+
+            void validate(Set<String> endpointNames) {
+                for (Source source : sources) {
+                    requireEndpoint(endpointNames, source.endpoint(), "sync fetch source " + source.name());
+                }
+            }
+
+            public record Source(@NotBlank String name,
+                                 @NotBlank String endpoint,
+                                 @NotBlank String remotePath,
+                                 @NotNull List<String> include,
+                                 @NotNull List<String> exclude) {
+
+                public Source {
+                    name = requireText(name, "sync fetch source name");
+                    endpoint = requireText(endpoint, "sync fetch source endpoint");
+                    remotePath = requireText(remotePath, "sync fetch source remotePath");
+                    include = List.copyOf(include);
+                    exclude = List.copyOf(exclude);
+                }
+            }
+        }
+
+        public record Publish(boolean enabled,
+                              @NotBlank String trigger,
+                              @NotNull Duration interval,
+                              @NotNull @Valid List<Target> targets) {
+
+            public Publish {
+                if (!Set.of("on-new-output", "interval", "both").contains(trigger)) {
+                    throw new IllegalArgumentException("Unsupported sync publish trigger: " + trigger);
+                }
+                positive(interval, "sync publish interval");
+                targets = List.copyOf(targets);
+                unique(targets.stream().map(Target::name).toList(), "sync publish target");
+            }
+
+            void validate(Set<String> endpointNames) {
+                for (Target target : targets) {
+                    requireEndpoint(endpointNames, target.endpoint(), "sync publish target " + target.name());
+                }
+            }
+
+            public record Target(@NotBlank String name,
+                                 @NotBlank String endpoint,
+                                 @NotBlank String remotePath,
+                                 @NotBlank String exportProfile) {
+
+                public Target {
+                    name = requireText(name, "sync publish target name");
+                    endpoint = requireText(endpoint, "sync publish target endpoint");
+                    remotePath = requireText(remotePath, "sync publish target remotePath");
+                    exportProfile = requireText(exportProfile, "sync publish target exportProfile");
+                }
+            }
+        }
+
+        private static void requireEndpoint(Set<String> endpointNames, String endpoint, String owner) {
+            if (!endpointNames.contains(endpoint)) {
+                throw new IllegalArgumentException(owner + " references unknown endpoint: " + endpoint);
+            }
+        }
+
+        private static void unique(List<String> names, String label) {
+            Set<String> seen = new HashSet<>();
+            for (String name : names) {
+                if (!seen.add(name)) {
+                    throw new IllegalArgumentException("Duplicate " + label + " name: " + name);
+                }
+            }
+        }
+
+        private static void positive(Duration duration, String name) {
+            if (duration == null || duration.isZero() || duration.isNegative()) {
+                throw new IllegalArgumentException(name + " must be positive");
+            }
+        }
+
+        private static String requireText(String value, String name) {
+            if (value == null || value.isBlank()) {
+                throw new IllegalArgumentException(name + " must not be blank");
+            }
+            return value;
         }
     }
 

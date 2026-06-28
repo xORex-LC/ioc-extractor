@@ -11,6 +11,7 @@ import com.iocextractor.diagnostics.codes.SchemaDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.SourceDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.StorageDiagnosticCodes;
+import com.iocextractor.diagnostics.codes.SyncDiagnosticCodes;
 
 import java.util.Arrays;
 import java.util.List;
@@ -30,6 +31,7 @@ public final class DiagnosticCatalogs {
             StorageDiagnosticCodes.values(),
             SchemaDiagnosticCodes.values(),
             ExportDiagnosticCodes.values(),
+            SyncDiagnosticCodes.values(),
             PipelineDiagnosticCodes.values()));
 
     private DiagnosticCatalogs() {

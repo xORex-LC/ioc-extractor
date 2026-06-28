@@ -253,6 +253,29 @@ ioc:
       max-age: 7d
       max-count: 3
 
+  # ---- Remote synchronization (delivery/SMB) --------------------------------
+  # Disabled by default. Endpoint names are shared by fetch and publish, but
+  # source and target paths stay independent. Secrets are supplied through env
+  # placeholders in external configs; do not commit plain credentials.
+  sync:
+    enabled: false
+    retry:
+      max-attempts: 3
+      backoff: 1s
+      multiplier: 2.0
+      max-backoff: 30s
+      jitter: true
+    endpoints: []
+    fetch:
+      enabled: false
+      interval: 1m
+      sources: []
+    publish:
+      enabled: false
+      trigger: on-new-output
+      interval: 5m
+      targets: []
+
   # ---- Daemon housekeeping: retention reapers --------------------------------
   #  interval/initial-delay schedule both the always-on immutable-slice reaper
   #  and, when enabled=true, the legacy leaf-file targets below. Their stores and

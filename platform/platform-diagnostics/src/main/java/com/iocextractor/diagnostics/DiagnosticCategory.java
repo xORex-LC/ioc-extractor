@@ -12,5 +12,6 @@ public enum DiagnosticCategory {
     INGEST,
     STORAGE,
     EXPORT,
+    SYNC,
     PIPELINE
 }

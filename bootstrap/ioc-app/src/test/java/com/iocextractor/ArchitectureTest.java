@@ -83,6 +83,13 @@ class ArchitectureTest {
                     "org.springframework.transaction..", "org.sqlite..", "com.zaxxer.hikari..");
 
     @ArchTest
+    static final ArchRule remote_transport_types_stay_in_adapters_and_bootstrap = noClasses()
+            .that().resideOutsideOfPackages("..adapter..", "..bootstrap..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "com.hierynomus.smbj..", "com.hierynomus.msfscc..", "com.hierynomus.msdtyp..",
+                    "com.hierynomus.protocol..", "com.hierynomus.smb..");
+
+    @ArchTest
     static final ArchRule domain_does_not_depend_on_application_pipeline = noClasses()
             .that().resideInAPackage("..domain..")
             .should().dependOnClassesThat().resideInAnyPackage("..application.pipeline..");

@@ -35,6 +35,12 @@ class LoggingTaxonomyTest {
                         "export_complete",
                         "export_slice_write",
                         "export_recover",
+                        "sync_fetch_start",
+                        "sync_fetch_complete",
+                        "sync_publish_start",
+                        "sync_publish_complete",
+                        "remote_fetch",
+                        "remote_publish",
                         "diagnostic_emit")
                 .doesNotHaveDuplicates();
     }
@@ -64,6 +70,9 @@ class LoggingTaxonomyTest {
                         "ioc.export.profile",
                         "ioc.export.slice.id",
                         "ioc.export.revision",
+                        "ioc.sync.endpoint",
+                        "ioc.sync.files",
+                        "ioc.sync.target",
                         "ioc.diagnostic.code",
                         "ioc.diagnostic.category",
                         "ioc.diagnostic.severity")

@@ -25,6 +25,9 @@ public enum LogField {
     IOC_EXPORT_PROFILE("ioc.export.profile"),
     IOC_EXPORT_SLICE_ID("ioc.export.slice.id"),
     IOC_EXPORT_REVISION("ioc.export.revision"),
+    IOC_SYNC_ENDPOINT("ioc.sync.endpoint"),
+    IOC_SYNC_FILES("ioc.sync.files"),
+    IOC_SYNC_TARGET("ioc.sync.target"),
     IOC_DIAGNOSTIC_CODE("ioc.diagnostic.code"),
     IOC_DIAGNOSTIC_CATEGORY("ioc.diagnostic.category"),
     IOC_DIAGNOSTIC_SEVERITY("ioc.diagnostic.severity");

@@ -27,6 +27,12 @@ public enum EventAction {
     EXPORT_COMPLETE("export_complete"),
     EXPORT_SLICE_WRITE("export_slice_write"),
     EXPORT_RECOVER("export_recover"),
+    SYNC_FETCH_START("sync_fetch_start"),
+    SYNC_FETCH_COMPLETE("sync_fetch_complete"),
+    SYNC_PUBLISH_START("sync_publish_start"),
+    SYNC_PUBLISH_COMPLETE("sync_publish_complete"),
+    REMOTE_FETCH("remote_fetch"),
+    REMOTE_PUBLISH("remote_publish"),
     DIAGNOSTIC_EMIT("diagnostic_emit");
 
     private final String value;

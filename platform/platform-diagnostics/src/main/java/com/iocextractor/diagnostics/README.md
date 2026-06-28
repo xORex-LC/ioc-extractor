@@ -20,7 +20,7 @@ bootstrap. Producer-код может создавать диагностики,
 | `DiagnosticCode.java` | Контракт стабильного кода диагностики |
 | `DiagnosticException.java` | Исключение, переносящее fatal diagnostic |
 | `DiagnosticSeverity.java` | Уровни severity |
-| `DiagnosticCategory.java` | Категории диагностики, включая formation-only `EXPORT` |
+| `DiagnosticCategory.java` | Категории диагностики, включая formation-only `EXPORT` и delivery `SYNC` |
 | `codes/` | Стартовые enum-каталоги кодов |
 | `catalog/` | Агрегация и проверяемые entries каталога |
 | `result/` | `Result`, `Notification`, `FailurePolicy` |

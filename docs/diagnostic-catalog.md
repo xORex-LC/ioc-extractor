@@ -36,5 +36,13 @@ Generated from `DiagnosticCatalogs`.
 | `EXPORT.ATOMIC_PUBLISH_UNSUPPORTED` | EXPORT | FATAL | `export.atomic-publish-unsupported` | Export run {runId} cannot atomically publish {path}: {reason} |
 | `EXPORT.STATE_TRANSITION_CONFLICT` | EXPORT | ERROR | `export.state-transition-conflict` | Export run {runId} cannot transition from {actualStatus} to {nextStatus}; expected {expectedStatus} |
 | `EXPORT.RECOVERY_FAILED` | EXPORT | ERROR | `export.recovery-failed` | Export run {runId} could not recover from {status}: {reason} |
+| `SYNC.ENDPOINT_UNREACHABLE` | SYNC | ERROR | `sync.endpoint-unreachable` | Sync endpoint {endpoint} is unreachable: {reason} |
+| `SYNC.AUTH_FAILED` | SYNC | FATAL | `sync.auth-failed` | Sync endpoint {endpoint} rejected credentials: {reason} |
+| `SYNC.PERMISSION_DENIED` | SYNC | ERROR | `sync.permission-denied` | Sync endpoint {endpoint} denied access to {path}: {reason} |
+| `SYNC.REMOTE_NOT_FOUND` | SYNC | WARN | `sync.remote-not-found` | Remote path {path} was not found on sync endpoint {endpoint} |
+| `SYNC.TRANSPORT_TRANSIENT` | SYNC | WARN | `sync.transport-transient` | Transient transport failure on sync endpoint {endpoint}: {reason} |
+| `SYNC.PUBLISH_VERIFY_FAILED` | SYNC | ERROR | `sync.publish-verify-failed` | Published slice {sliceId} for target {targetId} failed verification: {reason} |
+| `SYNC.ENDPOINT_UNKNOWN` | SYNC | FATAL | `sync.endpoint-unknown` | Sync configuration references unknown endpoint {endpoint} from {owner} |
+| `SYNC.CREDENTIAL_MISSING` | SYNC | FATAL | `sync.credential-missing` | Sync endpoint {endpoint} is missing required credential {credential} |
 | `PIPELINE.STAGE_FAILED` | PIPELINE | ERROR | `pipeline.stage-failed` | Pipeline stage {stage} failed: {reason} |
 | `PIPELINE.ITEM_SKIPPED` | PIPELINE | WARN | `pipeline.item-skipped` | Pipeline item {item} was skipped at stage {stage}: {reason} |

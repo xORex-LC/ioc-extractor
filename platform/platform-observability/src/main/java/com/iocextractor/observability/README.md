@@ -27,6 +27,11 @@ Artifact emission расширяет стабильную taxonomy actions
 producer adapter находится в bootstrap, чтобы generic observability module не
 зависел от application export model.
 
+Remote sync расширяет taxonomy actions
+`sync_fetch_start|sync_fetch_complete|sync_publish_start|sync_publish_complete|remote_fetch|remote_publish`
+и fields `ioc.sync.endpoint`, `ioc.sync.files`, `ioc.sync.target`. Transport-specific
+details и credentials в observability core не попадают.
+
 ## Зависимости
 
 **Зависит от:** SLF4J API/MDC.  
