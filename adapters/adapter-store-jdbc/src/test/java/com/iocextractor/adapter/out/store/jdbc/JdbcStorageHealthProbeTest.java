@@ -25,7 +25,7 @@ class JdbcStorageHealthProbeTest {
 
             assertThat(health.healthy()).isTrue();
             assertThat(health.dbRole()).isEqualTo("service");
-            assertThat(health.userVersion()).isEqualTo(5);
+            assertThat(health.userVersion()).isEqualTo(currentServiceSchemaVersion());
             assertThat(health.foreignKeys()).isTrue();
             assertThat(health.journalMode()).isEqualToIgnoringCase("wal");
             assertThat(health.quickCheck()).isEqualToIgnoringCase("ok");
@@ -48,5 +48,12 @@ class JdbcStorageHealthProbeTest {
             assertThat(health.journalMode()).isNotEqualToIgnoringCase("wal");
             assertThat(health.quickCheck()).isEqualToIgnoringCase("ok");
         }
+    }
+
+    private int currentServiceSchemaVersion() {
+        return ServiceSchemaMigrations.sqlite().stream()
+                .mapToInt(SqliteSchemaMigration::version)
+                .max()
+                .orElseThrow();
     }
 }
