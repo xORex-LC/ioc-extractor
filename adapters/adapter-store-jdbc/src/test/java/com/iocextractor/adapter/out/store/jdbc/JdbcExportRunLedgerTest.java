@@ -12,7 +12,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -113,6 +115,28 @@ class JdbcExportRunLedgerTest {
         }
     }
 
+    @Test
+    void latestRunUsesChronologicalOrderForMixedInstantPrecision() {
+        try (HikariDataSource dataSource = dataSource("latest-run-precision.db")) {
+            new SqliteUserVersionSchemaMigrator(dataSource, ServiceSchemaMigrations.sqlite()).migrate();
+            MutableClock clock = new MutableClock(NOW);
+            var ledger = new JdbcExportRunLedger(dataSource, clock);
+            ExportRun first = started("run-first-at-exact-second");
+            ledger.tryStart(first);
+            ledger.transition(first.runId(), ExportRunStatus.STARTED,
+                    ExportRunStatus.FAILED, null, "first");
+            clock.advance(Duration.ofMillis(100));
+            ExportRun second = ExportRun.started(
+                    "run-second-with-fraction", "reputation",
+                    "20260628T000000Z__run-second-with-fraction", PLAN_HASH, clock.instant());
+            ledger.tryStart(second);
+            ExportRun latest = ledger.transition(second.runId(), ExportRunStatus.STARTED,
+                    ExportRunStatus.FAILED, null, "second");
+
+            assertThat(ledger.findLatest("reputation", ExportRunStatus.FAILED)).contains(latest);
+        }
+    }
+
     private Optional<ExportRun> attemptStart(HikariDataSource dataSource,
                                              ExportRun run,
                                              CountDownLatch ready,
@@ -131,5 +155,32 @@ class JdbcExportRunLedgerTest {
         return new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(
                 new SqliteDataSourceSettings(
                         "service", "jdbc:sqlite:" + tempDir.resolve(fileName), "low-memory", 1, 2));
+    }
+
+    private static final class MutableClock extends Clock {
+        private Instant now;
+
+        private MutableClock(Instant now) {
+            this.now = now;
+        }
+
+        void advance(Duration duration) {
+            now = now.plus(duration);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return now;
+        }
     }
 }

@@ -4,6 +4,7 @@ import com.iocextractor.application.export.ExportMode;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.ExportDiagnosticCodes;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Bindable;
@@ -104,8 +105,10 @@ class ExportPlanCatalogTest {
         assertThatThrownBy(() -> catalog(withExport(properties, invalid), diagnostics))
                 .isInstanceOf(DiagnosticException.class)
                 .hasMessageContaining(ExportDiagnosticCodes.UNSUPPORTED_MODE.id());
-        assertThat(diagnostics).extracting(diagnostic -> diagnostic.code())
-                .containsExactly(ExportDiagnosticCodes.UNSUPPORTED_MODE);
+        assertThat(diagnostics).singleElement().satisfies(diagnostic -> {
+            assertThat(diagnostic.code()).isEqualTo(ExportDiagnosticCodes.UNSUPPORTED_MODE);
+            assertThat(diagnostic.severity()).isEqualTo(DiagnosticSeverity.FATAL);
+        });
     }
 
     private ExportPlanCatalog catalog(IocProperties properties, ArrayList<Diagnostic> diagnostics) {

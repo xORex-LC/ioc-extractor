@@ -54,6 +54,9 @@ executor, затем последовательно проверяет profiles 
 Cadence policy живёт в application: `interval` использует processing time,
 `quiet-period` — canonical `artifact_revision.changed_at` и обязательный
 `max-cap`. Локальный overlap guard не заменяет DB-backed global single-flight.
+Отсутствующий progress или несовпадение `planHash` обходят cadence gate: initial
+export после upgrade и deterministic re-emission конфигурационного drift не
+зависят от появления новой canonical activity.
 
 ## Slice retention lifecycle
 

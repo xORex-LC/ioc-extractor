@@ -196,7 +196,7 @@ public final class JdbcExportRunLedger implements ExportRunLedger, ExportRunRead
                                manifest_sha256, started_at, updated_at, reason
                         FROM export_run
                         WHERE profile = :profile AND status = :status
-                        ORDER BY updated_at DESC, run_id DESC
+                        ORDER BY julianday(updated_at) DESC, run_id DESC
                         LIMIT 1
                         """)
                 .param("profile", requireText(profile, "profile"))

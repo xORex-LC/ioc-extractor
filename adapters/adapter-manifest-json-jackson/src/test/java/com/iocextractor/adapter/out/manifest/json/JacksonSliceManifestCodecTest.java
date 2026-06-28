@@ -85,6 +85,19 @@ class JacksonSliceManifestCodecTest {
     }
 
     @Test
+    void rejects_duplicate_properties_instead_of_accepting_an_ambiguous_manifest() {
+        byte[] duplicateProfile = new String(codec.encode(manifest(
+                "reputation", "masks.csv", ArtifactCoverage.empty(), format())), StandardCharsets.UTF_8)
+                .replace("\"profile\":\"reputation\"",
+                        "\"profile\":\"other\",\"profile\":\"reputation\"")
+                .getBytes(StandardCharsets.UTF_8);
+
+        assertThatThrownBy(() -> codec.decode(duplicateProfile))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("Failed to decode");
+    }
+
+    @Test
     void runtime_map_insertion_order_cannot_change_wire_bytes() {
         Map<String, String> first = new LinkedHashMap<>();
         first.put("type", "csv");

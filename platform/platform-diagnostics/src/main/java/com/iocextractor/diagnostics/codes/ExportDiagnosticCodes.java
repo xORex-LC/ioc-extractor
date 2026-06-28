@@ -6,7 +6,7 @@ import com.iocextractor.diagnostics.DiagnosticSeverity;
 
 /** Diagnostic codes produced by immutable artifact slice formation. */
 public enum ExportDiagnosticCodes implements DiagnosticCode {
-    UNSUPPORTED_MODE(DiagnosticSeverity.ERROR, "export.unsupported-mode",
+    UNSUPPORTED_MODE(DiagnosticSeverity.FATAL, "export.unsupported-mode",
             "Export profile {profile} requests unsupported output mode {mode}"),
     SNAPSHOT_READ_FAILED(DiagnosticSeverity.ERROR, "export.snapshot-read-failed",
             "Export profile {profile} snapshot could not be read: {reason}"),

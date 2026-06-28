@@ -7,8 +7,10 @@ import com.iocextractor.application.export.ExportFormat;
 import com.iocextractor.application.export.ExportMode;
 import com.iocextractor.application.export.ExportPlan;
 import com.iocextractor.application.export.ExportProfile;
+import com.iocextractor.application.export.ExportProgress;
 import com.iocextractor.application.export.ExportRunStatus;
 import com.iocextractor.application.port.in.export.ExportArtifactsResult;
+import com.iocextractor.application.port.out.export.ExportProgressStore;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -111,9 +113,68 @@ class DaemonExportSchedulerTest {
         assertThat(attempts).hasValue(2);
     }
 
+    @Test
+    void missingProgressBypassesCadenceForInitialExportWithoutCanonicalActivity() {
+        AtomicInteger attempts = new AtomicInteger();
+        ExportPlan plan = plan("one");
+        var scheduler = scheduler(
+                List.of(plan), Map.of("one", neverDue()), profile -> List.of(),
+                () -> 0, command -> {
+                    attempts.incrementAndGet();
+                    return completed(command.profile());
+                });
+
+        scheduler.runOnce();
+
+        assertThat(attempts).hasValue(1);
+    }
+
+    @Test
+    void stalePlanProgressBypassesCadenceForDeterministicReEmission() {
+        AtomicInteger attempts = new AtomicInteger();
+        ExportPlan plan = plan("one");
+        ExportProgress stale = progress(plan, "b".repeat(64));
+        var scheduler = scheduler(
+                List.of(plan), Map.of("one", neverDue()), profile -> List.of(stale),
+                () -> 0, command -> {
+                    attempts.incrementAndGet();
+                    return completed(command.profile());
+                });
+
+        scheduler.runOnce();
+
+        assertThat(attempts).hasValue(1);
+    }
+
+    @Test
+    void matchingPlanProgressStillHonorsCadence() {
+        AtomicInteger attempts = new AtomicInteger();
+        ExportPlan plan = plan("one");
+        ExportProgress current = progress(plan, plan.planHash());
+        var scheduler = scheduler(
+                List.of(plan), Map.of("one", neverDue()), profile -> List.of(current),
+                () -> 0, command -> {
+                    attempts.incrementAndGet();
+                    return completed(command.profile());
+                });
+
+        scheduler.runOnce();
+
+        assertThat(attempts).hasValue(0);
+    }
+
     private DaemonExportScheduler scheduler(
             List<ExportPlan> plans,
             Map<String, CadenceSource> cadences,
+            com.iocextractor.application.port.in.export.RecoverExportUseCase recovery,
+            com.iocextractor.application.port.in.export.ExportArtifactsUseCase exporter) {
+        return scheduler(plans, cadences, profile -> List.of(), recovery, exporter);
+    }
+
+    private DaemonExportScheduler scheduler(
+            List<ExportPlan> plans,
+            Map<String, CadenceSource> cadences,
+            ExportProgressStore progressStore,
             com.iocextractor.application.port.in.export.RecoverExportUseCase recovery,
             com.iocextractor.application.port.in.export.ExportArtifactsUseCase exporter) {
         return new DaemonExportScheduler(
@@ -121,7 +182,7 @@ class DaemonExportSchedulerTest {
                 artifacts -> artifacts.stream()
                         .map(name -> new com.iocextractor.application.export.ArtifactRevision(name, 0, null))
                         .toList(),
-                profile -> List.of(), recovery, exporter, Duration.ofHours(1));
+                progressStore, recovery, exporter, Duration.ofHours(1));
     }
 
     private ExportPlan plan(String profile) {
@@ -144,6 +205,25 @@ class DaemonExportSchedulerTest {
             public void completed() {
             }
         };
+    }
+
+    private CadenceSource neverDue() {
+        return new CadenceSource() {
+            @Override
+            public boolean isDue(Instant lastActivity, Instant lastCheckpoint) {
+                return false;
+            }
+
+            @Override
+            public void completed() {
+            }
+        };
+    }
+
+    private ExportProgress progress(ExportPlan plan, String planHash) {
+        String artifact = plan.artifacts().getFirst().artifactName();
+        return new ExportProgress(
+                plan.profile().name(), artifact, 0, "c".repeat(64), "slice-1", planHash, START);
     }
 
     private ExportArtifactsResult completed(String profile) {

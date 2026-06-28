@@ -22,6 +22,6 @@ Root order: `manifest_version`, `slice_id`, `run_id`, `profile`, `created_at`,
 
 ## Ошибки
 
-Malformed JSON, missing/invalid fields и unsupported version преобразуются
-в `IocExtractorException`. Диагностику `EXPORT.MANIFEST_INVALID` эмитит
+Malformed JSON, missing/invalid/duplicate fields, unknown fields и unsupported
+version преобразуются в `IocExtractorException`. Диагностику `EXPORT.MANIFEST_INVALID` эмитит
 filesystem producer, который знает run/path context.

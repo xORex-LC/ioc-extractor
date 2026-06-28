@@ -4,10 +4,11 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.iocextractor.application.export.ArtifactCoverage;
 import com.iocextractor.application.export.ExportFormat;
 import com.iocextractor.application.export.ExportMode;
@@ -36,8 +37,10 @@ public final class JacksonSliceManifestCodec implements SliceManifestCodec {
     private final ObjectWriter writer;
 
     public JacksonSliceManifestCodec() {
-        ObjectMapper mapper = new ObjectMapper()
-                .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        JsonMapper mapper = JsonMapper.builder()
+                .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+                .build();
         this.reader = mapper.readerFor(ManifestDocument.class);
         this.writer = mapper.writerFor(ManifestDocument.class);
     }

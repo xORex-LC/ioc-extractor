@@ -110,19 +110,22 @@ public final class DaemonExportScheduler implements SmartLifecycle {
         String profile = plan.profile().name();
         CadenceSource cadence = cadences.get(profile);
         try {
-            List<String> artifacts = plan.artifacts().stream()
-                    .map(spec -> spec.artifactName()).toList();
-            Instant activity = revisionReader.read(artifacts).stream()
-                    .map(ArtifactRevision::changedAt)
-                    .filter(Objects::nonNull)
-                    .max(Instant::compareTo)
-                    .orElse(null);
-            Instant checkpoint = progressStore.findByProfile(profile).stream()
-                    .map(ExportProgress::updatedAt)
-                    .max(Instant::compareTo)
-                    .orElse(null);
-            if (!cadence.isDue(activity, checkpoint)) {
-                return;
+            List<ExportProgress> progress = progressStore.findByProfile(profile);
+            if (coversCurrentPlan(plan, progress)) {
+                List<String> artifacts = plan.artifacts().stream()
+                        .map(spec -> spec.artifactName()).toList();
+                Instant activity = revisionReader.read(artifacts).stream()
+                        .map(ArtifactRevision::changedAt)
+                        .filter(Objects::nonNull)
+                        .max(Instant::compareTo)
+                        .orElse(null);
+                Instant checkpoint = progress.stream()
+                        .map(ExportProgress::updatedAt)
+                        .max(Instant::compareTo)
+                        .orElse(null);
+                if (!cadence.isDue(activity, checkpoint)) {
+                    return;
+                }
             }
             exporter.export(new ExportArtifactsCommand(profile));
             cadence.completed();
@@ -134,6 +137,30 @@ public final class DaemonExportScheduler implements SmartLifecycle {
                     .message("scheduled artifact export attempt failed")
                     .log(failure);
         }
+    }
+
+    /**
+     * Returns whether every configured artifact has progress for the exact current plan.
+     *
+     * <p>Missing progress and plan drift must reach the export use case independently of
+     * canonical activity. This covers initial export after upgrading an existing database and
+     * deterministic re-emission after byte-affecting configuration changes.
+     */
+    private boolean coversCurrentPlan(ExportPlan plan, List<ExportProgress> progress) {
+        if (progress.size() != plan.artifacts().size()) {
+            return false;
+        }
+        Map<String, ExportProgress> byArtifact = new LinkedHashMap<>();
+        for (ExportProgress item : progress) {
+            if (byArtifact.put(item.artifactName(), item) != null) {
+                return false;
+            }
+        }
+        String planHash = plan.planHash();
+        return plan.artifacts().stream().allMatch(spec -> {
+            ExportProgress item = byArtifact.get(spec.artifactName());
+            return item != null && item.planHash().equals(planHash);
+        });
     }
 
     @Override
