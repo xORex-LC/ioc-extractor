@@ -11,8 +11,8 @@
 #   <prefix>/jdk/                 manually-installed Temurin 21 runtime
 #   <prefix>/lib/ioc-app-<v>.jar  application
 #   <prefix>/etc/                 application.yml + ioc-extractor.env (operator-editable)
-#   <prefix>/var/                 inbox/ processing/ done/ failed/ ledger/ logs/
-#   <prefix>/dataframe/           partitions/ + generated artifacts + lookup seed
+#   <prefix>/var/                 db/ export/ inbox/ processing/ done/ failed/ ledger/ logs/
+#   <prefix>/dataframe/           generated CSV projections + lookup seeds
 #
 # Idempotent: re-running upgrades the jar and unit; existing config is preserved
 # (a *.new is written instead) unless --force is given.
@@ -37,6 +37,8 @@ LOOKUP_SEED=""
 USE_SYSTEM_JAVA="false"
 NO_START="false"
 FORCE="false"
+SYSTEMD_AVAILABLE="false"
+SERVICE_WAS_ACTIVE="false"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
@@ -152,22 +154,60 @@ else
   [[ "$(java_major "${JAVA_BIN}")" -ge 21 ]] || die "extracted JDK is < 21."
 fi
 log "java: $("${JAVA_BIN}" -version 2>&1 | head -1)"
+case "${JAVA_BIN}" in
+  /home/*) die "Java under /home is hidden by systemd ProtectHome; use the bundled JDK or a system JDK outside /home." ;;
+esac
 
 # ---- 2. service user -------------------------------------------------------
 if getent passwd "${RUN_USER}" >/dev/null; then
   log "user ${RUN_USER} already exists"
 else
   log "creating system user ${RUN_USER}"
-  useradd --system --home-dir "${PREFIX}" --no-create-home --shell /usr/sbin/nologin "${RUN_USER}"
+  useradd --system --user-group --home-dir "${PREFIX}" --no-create-home \
+    --shell /usr/sbin/nologin "${RUN_USER}"
+fi
+RUN_GROUP="$(id -gn "${RUN_USER}")"
+
+# Stop an existing instance before replacing its jar or moving live SQLite WAL
+# state. The service is started again at the end unless --no-start was requested.
+if [[ "$(ps -p 1 -o comm= 2>/dev/null)" == "systemd" ]]; then
+  SYSTEMD_AVAILABLE="true"
+  if systemctl is-active --quiet "${SERVICE}"; then
+    SERVICE_WAS_ACTIVE="true"
+    log "stopping active ${SERVICE} for a consistent upgrade"
+    systemctl stop "${SERVICE}"
+  fi
 fi
 
 # ---- 3. directory layout ---------------------------------------------------
 log "creating directory layout"
 mkdir -p \
   "${PREFIX}/lib" "${PREFIX}/etc" \
+  "${PREFIX}/var/db" "${PREFIX}/var/export" \
   "${PREFIX}/var/inbox" "${PREFIX}/var/processing" "${PREFIX}/var/done" \
   "${PREFIX}/var/failed" "${PREFIX}/var/ledger" "${PREFIX}/var/logs" \
-  "${PREFIX}/dataframe/partitions"
+  "${PREFIX}/dataframe"
+
+# 0011/0012 consolidate both SQLite stores under var/db. Move the complete
+# database family only while the service is stopped; never guess if both layouts
+# contain a primary DB.
+migrate_sqlite() { # legacy-path new-path
+  local legacy="$1" target="$2" suffix
+  if [[ -e "${legacy}" && -e "${target}" ]]; then
+    die "both legacy and current SQLite databases exist: ${legacy} and ${target}; reconcile them manually."
+  fi
+  if [[ -e "${legacy}" ]]; then
+    log "migrating SQLite store: ${legacy} -> ${target}"
+    mv -- "${legacy}" "${target}"
+    for suffix in -wal -shm; do
+      [[ ! -e "${legacy}${suffix}" ]] || mv -- "${legacy}${suffix}" "${target}${suffix}"
+    done
+  elif [[ -e "${legacy}-wal" || -e "${legacy}-shm" ]]; then
+    die "legacy SQLite sidecar exists without primary DB: ${legacy}"
+  fi
+}
+migrate_sqlite "${PREFIX}/var/ioc-service.db" "${PREFIX}/var/db/ioc-service.db"
+migrate_sqlite "${PREFIX}/dataframe/ioc-dataframe.db" "${PREFIX}/var/db/ioc-dataframe.db"
 
 # ---- 4. deploy jar + config ------------------------------------------------
 log "deploying application jar"
@@ -186,28 +226,48 @@ deploy_config() {  # src dst
 deploy_config "${SCRIPT_DIR}/templates/application.yml"     "${PREFIX}/etc/application.yml"
 deploy_config "${SCRIPT_DIR}/templates/ioc-extractor.env"   "${PREFIX}/etc/ioc-extractor.env"
 
-# ---- 5. seed the dedup lookup (optional) -----------------------------------
-if ! compgen -G "${PREFIX}/dataframe/repListMasksManual_*.csv" >/dev/null; then
-  seed="${LOOKUP_SEED}"
-  if [[ -z "${seed}" ]]; then
-    for cand in "${SCRIPT_DIR}/seed/"repListMasksManual_*.csv \
-                "${SCRIPT_DIR}/../dataframe/"repListMasksManual_*.csv; do
-      [[ -f "${cand}" ]] && { seed="${cand}"; break; }
-    done
+# ---- 5. seed reference lookups (optional, existing files are preserved) ----
+seed_lookup() { # name [explicit-source]
+  local name="$1" explicit="${2:-}" source=""
+  [[ -e "${PREFIX}/dataframe/${name}" ]] && return 0
+  if [[ -n "${explicit}" ]]; then
+    source="${explicit}"
+  elif [[ -f "${SCRIPT_DIR}/seed/${name}" ]]; then
+    source="${SCRIPT_DIR}/seed/${name}"
+  elif [[ -f "${SCRIPT_DIR}/../dataframe/${name}" ]]; then
+    source="${SCRIPT_DIR}/../dataframe/${name}"
   fi
-  if [[ -n "${seed}" && -f "${seed}" ]]; then
-    install -m 0640 "${seed}" "${PREFIX}/dataframe/$(basename "${seed}")"
-    log "seeded lookup: $(basename "${seed}")"
+  if [[ -n "${source}" && -f "${source}" ]]; then
+    install -m 0640 "${source}" "${PREFIX}/dataframe/${name}"
+    log "seeded lookup: ${name}"
   else
-    warn "no lookup seed found; deduplication starts empty (drop a repListMasksManual_*.csv into ${PREFIX}/dataframe/ to enable)."
+    warn "lookup seed not found: ${name}; the corresponding dedup lookup starts empty."
   fi
-fi
+}
+
+[[ -z "${LOOKUP_SEED}" || -f "${LOOKUP_SEED}" ]] \
+  || die "lookup seed not found: ${LOOKUP_SEED}"
+seed_lookup "masks_list.csv" "${LOOKUP_SEED}"
+seed_lookup "ip_list.csv"
+seed_lookup "hashes_list.csv"
+seed_lookup "address_blacklist.csv"
 
 # ---- 6. ownership & permissions --------------------------------------------
-log "setting ownership to ${RUN_USER}"
-chown -R "${RUN_USER}:${RUN_USER}" "${PREFIX}"
+# Executables and configuration stay root-owned. Only durable runtime state and
+# CSV lookup/projection data are writable by the unprivileged daemon.
+log "setting ownership (runtime user ${RUN_USER}:${RUN_GROUP})"
+chown root:"${RUN_GROUP}" "${PREFIX}"
+chown -R root:"${RUN_GROUP}" "${PREFIX}/lib" "${PREFIX}/etc"
+[[ ! -d "${PREFIX}/jdk" ]] || chown -R root:"${RUN_GROUP}" "${PREFIX}/jdk"
+chown -R "${RUN_USER}:${RUN_GROUP}" "${PREFIX}/var" "${PREFIX}/dataframe"
 chmod 0750 "${PREFIX}"
-chmod -R u+rwX,g+rX "${PREFIX}/var" "${PREFIX}/dataframe"
+chmod 0750 "${PREFIX}/lib" "${PREFIX}/etc" "${PREFIX}/var" "${PREFIX}/dataframe"
+chmod -R go-w "${PREFIX}/lib" "${PREFIX}/etc"
+find "${PREFIX}/var" "${PREFIX}/dataframe" -type d -exec chmod 0750 {} +
+find "${PREFIX}/var" "${PREFIX}/dataframe" -type f -exec chmod 0640 {} +
+chmod 0640 "${PREFIX}/etc/application.yml" "${PREFIX}/etc/ioc-extractor.env"
+[[ ! -f "${PREFIX}/etc/application.yml.new" ]] || chmod 0640 "${PREFIX}/etc/application.yml.new"
+[[ ! -f "${PREFIX}/etc/ioc-extractor.env.new" ]] || chmod 0640 "${PREFIX}/etc/ioc-extractor.env.new"
 
 # ---- 7. systemd unit -------------------------------------------------------
 UNIT="/etc/systemd/system/${SERVICE}.service"
@@ -216,16 +276,24 @@ sed -e "s|@PREFIX@|${PREFIX}|g" \
     -e "s|@VERSION@|${APP_VERSION}|g" \
     -e "s|@JAVA_BIN@|${JAVA_BIN}|g" \
     -e "s|@USER@|${RUN_USER}|g" \
+    -e "s|@GROUP@|${RUN_GROUP}|g" \
     "${SCRIPT_DIR}/templates/ioc-extractor.service" > "${UNIT}"
 chmod 0644 "${UNIT}"
 
-if [[ "$(ps -p 1 -o comm= 2>/dev/null)" == "systemd" ]]; then
+if [[ "${SYSTEMD_AVAILABLE}" == "true" ]]; then
   systemctl daemon-reload
   if [[ "${NO_START}" == "true" ]]; then
     systemctl enable "${SERVICE}" >/dev/null 2>&1 || true
+    [[ "${SERVICE_WAS_ACTIVE}" != "true" ]] \
+      || warn "${SERVICE} was active before upgrade and remains stopped because --no-start was requested."
     log "installed (not started; --no-start). Start with: systemctl start ${SERVICE}"
   else
-    systemctl enable --now "${SERVICE}"
+    systemctl enable "${SERVICE}" >/dev/null
+    if systemctl is-active --quiet "${SERVICE}"; then
+      systemctl restart "${SERVICE}"
+    else
+      systemctl start "${SERVICE}"
+    fi
     sleep 2
     systemctl --no-pager --full status "${SERVICE}" | sed -n '1,6p' || true
   fi
@@ -238,7 +306,9 @@ cat <<EOF
 $(log "done.")
   Service : ${SERVICE}    User: ${RUN_USER}    Prefix: ${PREFIX}
   Feed    : drop *.htm/*.html/*.docx into ${PREFIX}/var/inbox/
-  Output  : ${PREFIX}/dataframe/  (partitions/ + *_generated.csv artifacts)
+  DB      : ${PREFIX}/var/db/  (canonical + service SQLite stores)
+  Export  : ${PREFIX}/var/export/  (immutable artifact slices)
+  Output  : ${PREFIX}/dataframe/  (*_generated.csv projections)
   Logs    : journalctl -u ${SERVICE} -f   (and ${PREFIX}/var/logs/)
   Config  : ${PREFIX}/etc/application.yml  then: systemctl restart ${SERVICE}
 EOF

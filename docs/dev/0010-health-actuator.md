@@ -52,10 +52,13 @@ management-порт — отдельный всё равно потянул бы
 `accept-count=10`: сервер отдаёт только `/actuator/**`, дефолтные 200 потоков
 зря ели бы память и упирались в systemd `TasksMax`/`MemoryMax`.
 
-**5. systemd-hardening под слушающий сокет.** В юните сделано явным:
-`RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`, `IPAddressAllow=localhost`,
-`IPAddressDeny=any`. Капабилити не нужны: порт 8081 > 1024, `CAP_NET_BIND_SERVICE`
-не требуется. (Под ING-8 с исходящим/удалённым трафиком эти ограничения ослабить.)
+**5. systemd-hardening под сетевую поверхность.** В юните сделано явным
+`RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`; actuator остаётся привязан к
+loopback на уровне `server.address`. После реализации 0011 generic
+`IPAddressDeny=any` снят: daemon должен разрешать operator-configured исходящие
+SMB-соединения (обычно TCP/445), в том числе через DNS. Капабилити по-прежнему не
+нужны: actuator использует непривилегированный порт 8081, а SMB — обычный исходящий
+TCP socket. Host-specific egress allowlist остаётся задачей firewall/systemd drop-in.
 
 ## Следствия
 

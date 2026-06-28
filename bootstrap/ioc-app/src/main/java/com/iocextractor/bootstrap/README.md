@@ -45,7 +45,7 @@ Spring живёт здесь.
 single-flight, что и ручной CLI. При этом
 `ExportCommand` выполняет eager catalog-backed profile preflight и разрешает
 storage-backed use case только внутри `call()`, поэтому построение root CLI,
-unrelated commands и unknown profile не создают `var/ioc-service.db`.
+unrelated commands и unknown profile не создают `var/db/ioc-service.db`.
 `ExportService` после IO-free profile validation удерживает общий NIO operation
 lease вокруг recovery и formation; standalone recovery использует тот же guard.
 

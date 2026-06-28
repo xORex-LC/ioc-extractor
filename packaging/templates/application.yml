@@ -12,29 +12,71 @@ spring:
   profiles:
     active: daemon          # activates the daemon logback profile / ECS file appender
 
+logging:
+  file:
+    path: var/logs          # rolling ECS-JSON log under <prefix>/var/logs
+
 ioc:
   runtime:
     mode: daemon            # also forced on the command line by the systemd unit
   observability:
     mode: daemon            # ECS logging tuned for a long-running process
+  # Keep durable SQLite state separate from CSV references/projections. SQLite
+  # creates WAL/SHM sidecars next to each DB, so var/db is the backup unit.
+  storage:
+    service:
+      url: "jdbc:sqlite:./var/db/ioc-service.db"
+    dataframe:
+      url: "jdbc:sqlite:./var/db/ioc-dataframe.db"
 
-logging:
-  file:
-    path: var/logs          # rolling ECS-JSON log under <prefix>/var/logs
+  # ---- Common operator knobs (uncomment & adjust as needed) ----------------
+  # ingestion:
+  #   patterns:
+  #     include: [ "*.htm", "*.html", "*.docx", "*.pdf" ]
+  #   stability:
+  #     quiet-period: 10s     # wait for a file to stop changing before ingest
+  #   detect:
+  #     reconcile-interval: 30s
+  # source:
+  #   charset: windows-1251   # charset hint for legacy Word-exported HTML
+  #   section-markers:
+  #     - "БИБ-\\d+"
+  #     - "Письмо ФСТЭК России[^№]*№\\s*[\\d/]+"
 
-# ---- Common operator knobs (uncomment & adjust as needed) ------------------
-#ioc:
-#  ingestion:
-#    patterns:
-#      include: [ "*.htm", "*.html", "*.docx", "*.pdf" ]
-#    stability:
-#      quiet-period: 10s     # wait for a file to stop changing before ingest
-#    detect:
-#      reconcile-interval: 30s
-#  aggregation:
-#    interval: 1m            # how often partitions are merged into canonical artifacts
-#  source:
-#    charset: windows-1251   # charset hint for legacy Word-exported HTML
-#    section-markers:
-#      - "БИБ-\\d+"
-#      - "Письмо ФСТЭК России[^№]*№\\s*[\\d/]+"
+  # ---- Remote synchronization over SMB (disabled until uncommented) --------
+  # Credentials come from etc/ioc-extractor.env. Never put a plaintext password
+  # into this YAML. Fetch is read-only on the remote source; publish writes an
+  # immutable export slice and its _SUCCESS marker atomically.
+  # sync:
+  #   enabled: true
+  #   endpoints:
+  #     - name: delivery-share
+  #       transport: smb
+  #       smb:
+  #         host: files.example.org
+  #         share: ioc
+  #         domain: CORP               # optional
+  #         username: ${SMB_USER}
+  #         password: ${SMB_PASSWORD}
+  #         encrypt: true
+  #         connect-timeout: 10s
+  #         read-timeout: 30s
+  #         idle-timeout: 5m
+  #   fetch:
+  #     enabled: true
+  #     interval: 1m
+  #     sources:
+  #       - name: incoming-ioc
+  #         endpoint: delivery-share
+  #         remote-path: /incoming
+  #         include: [ "*.htm", "*.html", "*.docx" ]
+  #         exclude: [ "*.tmp", "*.part", ".*" ]
+  #   publish:
+  #     enabled: true
+  #     trigger: on-new-output          # on-new-output | interval | both
+  #     interval: 5m
+  #     targets:
+  #       - name: reputation-delivery
+  #         endpoint: delivery-share
+  #         remote-path: /outgoing/reputation-lists
+  #         export-profile: reputation-lists

@@ -522,7 +522,7 @@ ioc:
 их через ingest/export dependencies; `ExportCommand` сначала вызывает IO-free profile validator,
 затем получает lazy `ExportArtifactsUseCase` только внутри `call()`. Application service под
 общим OS lease выполняет recovery перед formation; `extract`, `health`, `--help` и unknown profile
-storage graph не разрешают и `var/ioc-service.db` не открывают. CLI и daemon используют один
+storage graph не разрешают и `var/db/ioc-service.db` не открывают. CLI и daemon используют один
 DB-backed single-flight и один export root.
 
 ### Решённые развилки

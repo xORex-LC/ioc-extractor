@@ -1,8 +1,9 @@
 [Unit]
 Description=ioc-extractor — IOC ETL ingest daemon
-Documentation=file:@PREFIX@/README.md
-# Local file-poll ingest; no network dependency, but order after fs/network is mounted.
-After=network.target local-fs.target
+# SMB fetch/publish is optional, but when enabled it needs routable networking and
+# DNS before the first scheduler cycle. Runtime retries still handle later outages.
+Wants=network-online.target
+After=network-online.target local-fs.target
 # Avoid a tight restart loop when configuration, permissions or paths are broken.
 StartLimitIntervalSec=5min
 StartLimitBurst=10
@@ -10,7 +11,7 @@ StartLimitBurst=10
 [Service]
 Type=exec
 User=@USER@
-Group=@USER@
+Group=@GROUP@
 WorkingDirectory=@PREFIX@
 EnvironmentFile=@PREFIX@/etc/ioc-extractor.env
 # $JAVA_OPTS is expanded (and word-split) from the EnvironmentFile.
@@ -21,7 +22,8 @@ Restart=on-failure
 RestartSec=5s
 # Spring Boot / JVM SIGTERM shutdown returns 143 (128+15); treat as clean stop.
 SuccessExitStatus=143
-TimeoutStopSec=30s
+# Leave one full default SMB read timeout plus Spring/JVM shutdown headroom.
+TimeoutStopSec=60s
 
 # ---- Sandboxing / hardening -------------------------------------------------
 # The whole filesystem is read-only except the explicitly listed writable paths.
@@ -50,19 +52,17 @@ SystemCallArchitectures=native
 KeyringMode=private
 RemoveIPC=true
 
-# Network: the daemon binds only the loopback actuator/health server (TCP 8081 in
-# daemon mode) and makes no outbound connections (ingest is file-based). Restrict
-# socket families to the essentials and confine all IP traffic to loopback.
-# NOTE: relax this when outbound/remote web features land (ING-8: REST push,
-# scraping) — e.g. drop IPAddressDeny or allow the needed egress ranges.
+# Network: the actuator binds loopback in application.yml. SMB sync additionally
+# opens outbound TCP connections (normally port 445), possibly after DNS lookup.
+# Restrict socket families, but do not apply a generic IPAddressDeny rule here:
+# endpoint addresses are operator configuration and can be DNS-backed/dynamic.
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-IPAddressAllow=localhost
-IPAddressDeny=any
 
 # Keep generated files readable by the service user/group only.
 UMask=0027
 
-# Writable runtime state: inbox/processing/done/failed/ledger/logs + generated artifacts.
+# Writable runtime state: SQLite DB/WAL/SHM, immutable export slices, inbox flow,
+# ledgers/logs and generated CSV projections/lookups.
 # (Note: keep the install prefix OUTSIDE /home so ProtectHome does not hide it; /opt is correct.)
 ReadWritePaths=@PREFIX@/var @PREFIX@/dataframe
 

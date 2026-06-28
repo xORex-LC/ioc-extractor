@@ -63,13 +63,13 @@ Spring profile можно использовать для logback/config overrid
 `oneshot`.
 
 > **`oneshot` накопителен, а не «регенерирует с нуля».** При `dataframe.type=jdbc`
-> (default) `ioc extract` пишет в персистентный `./dataframe/ioc-dataframe.db`
+> (default) `ioc extract` пишет в персистентный `./var/db/ioc-dataframe.db`
 > через `INSERT … ON CONFLICT(row_key) DO NOTHING` (keep-first), затем
 > перепроецирует CSV из БД. Поэтому несколько прогонов **накапливают** IOC в БД,
 > а каждый `*_generated.csv` — это проекция всей накопленной таблицы, а не только
 > текущего источника. Повтор того же источника идемпотентен (дедуп по `row_key`).
 > Это намеренно: БД — система записи. Чтобы получить «чистый» набор только из
-> одного источника, удалите `dataframe/ioc-dataframe.db` перед прогоном (так же
+> одного источника, удалите `var/db/ioc-dataframe.db` перед прогоном (так же
 > поступают golden-тесты) либо запустите с отдельным `ioc.storage.dataframe.url`.
 > В отличие от прежнего поведения, oneshot теперь поднимает Hikari-пул + SQLite
 > на каждый вызов CLI.
@@ -227,8 +227,10 @@ effectively-once на выходе. Run-ledger гарантирует, что о
 — производную проекцию. Промежуточного partition-staging нет.
 
 ```
+var/db/
+└── ioc-dataframe.db                 ← canonical SQLite (source of truth)
+
 dataframe/
-├── ioc-dataframe.db                 ← canonical SQLite (source of truth)
 ├── masks_list_generated.csv         ← проекция из БД
 ├── ip_list_generated.csv
 ├── address_blacklist_generated.csv
@@ -372,7 +374,7 @@ ioc:
   storage:
     service:
       type: jdbc
-      url: jdbc:sqlite:./var/ioc-service.db
+      url: jdbc:sqlite:./var/db/ioc-service.db
       sqlite:
         tuning: low-memory
       pool:

@@ -68,7 +68,7 @@ ioc:
   storage:
     service:
       type: jdbc
-      url: "jdbc:sqlite:./var/ioc-service.db"
+      url: "jdbc:sqlite:./var/db/ioc-service.db"
       sqlite:
         tuning: low-memory
       pool:
@@ -76,7 +76,7 @@ ioc:
         read-max: 2
     dataframe:
       type: jdbc
-      url: "jdbc:sqlite:./dataframe/ioc-dataframe.db"
+      url: "jdbc:sqlite:./var/db/ioc-dataframe.db"
       sqlite:
         tuning: low-memory
       pool:
@@ -257,7 +257,8 @@ ioc:
   # Disabled by default. Endpoint names are shared by fetch and publish, but
   # source and target paths stay independent. Secrets are supplied through env
   # placeholders in external configs; do not commit plain credentials. Optional
-  # SMB connect-timeout/read-timeout/idle-timeout default to 10s/30s/5m.
+  # SMB connect-timeout/read-timeout/idle-timeout default to 10s/30s/5m. The
+  # inactive `smb-example` document at the end shows the complete configuration.
   sync:
     enabled: false
     retry:
@@ -319,3 +320,49 @@ ioc:
       type: file
       path: "./var/ledger"
     concurrency: 1
+
+# ============================================================================
+#  Complete SMB example. This document is inert unless the `smb-example` Spring
+#  profile is explicitly activated. Supply credentials through the environment;
+#  never replace the placeholders with committed secrets.
+# ============================================================================
+---
+spring:
+  config:
+    activate:
+      on-profile: smb-example
+
+ioc:
+  sync:
+    enabled: true
+    endpoints:
+      - name: delivery-share
+        transport: smb
+        smb:
+          host: files.example.org
+          share: ioc
+          domain: CORP
+          username: ${SMB_USER}
+          password: ${SMB_PASSWORD}
+          encrypt: true
+          connect-timeout: 10s
+          read-timeout: 30s
+          idle-timeout: 5m
+    fetch:
+      enabled: true
+      interval: 1m
+      sources:
+        - name: incoming-ioc
+          endpoint: delivery-share
+          remote-path: /incoming
+          include: [ "*.htm", "*.html", "*.docx" ]
+          exclude: [ "*.tmp", "*.part", ".*" ]
+    publish:
+      enabled: true
+      trigger: on-new-output
+      interval: 5m
+      targets:
+        - name: reputation-delivery
+          endpoint: delivery-share
+          remote-path: /outgoing/reputation-lists
+          export-profile: reputation-lists

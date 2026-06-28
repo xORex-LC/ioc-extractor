@@ -12,7 +12,7 @@ dataframe/*_generated.csv
 # Log file
 *.log
 *.ecs.json
-var/logs/
+/var/
 
 # BlueJ files
 *.ctxt
