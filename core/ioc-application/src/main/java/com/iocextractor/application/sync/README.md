@@ -14,11 +14,13 @@ value objects и политики, которые одинаковы для SMB/
 | `RemoteTransportException` | Исключение, через которое adapters сообщают нейтральный remote error |
 | `RetryPolicy` / `Retrier` | Micro-retry executor для `RETRY_NOW` ошибок |
 | `RemoteObject` / `RemoteObjectIdentity` | Metadata и fetch-ledger identity удалённого файла |
+| `RemoteFetchSource` | Transport-neutral configured read-only source |
 | `RemoteFetchRecord` / `RemoteFetchStatus` | Durable состояние read-only fetch idempotency |
 | `PublishRecord` / `PublishStatus` | Durable per-slice/per-target publish saga state |
 | `PublishTarget` | Transport-neutral configured delivery target для export profile |
 | `CompletedSlice` | Verified local slice descriptor для publish worklist |
 | `PublishAtomicallyRequest` / `PublishReceipt` | Контракт толстого write-intent для публикации slice-каталога |
+| `RemoteFetchService` | Use case: read-only remote list/get → atomic local inbox landing |
 | `ArtifactPublishService` | Use case: reconcile completed slices × targets и publish через ledger |
 | `PublishLedgerSliceRetentionGuard` | Delivery-aware veto для slice retention |
 
@@ -38,6 +40,11 @@ value objects и политики, которые одинаковы для SMB/
   `ABANDONED` and `SUCCEEDED` are terminal for retention.
 - Existing remote `_SUCCESS` with matching manifest hash is forward recovery to
   `SUCCEEDED`; mismatched marker emits `SYNC.PUBLISH_VERIFY_FAILED`.
+- `RemoteFetchService` не делает remote claim/move/delete: источник read-only,
+  deduplication строится на identity `path + size + modifiedAt`.
+- Local landing выполняется через hidden `.sync-staging/*.part`, fsync best-effort
+  и atomic move в inbox; ledger `FETCHED` ставится только после final move.
+- Collision local file name решается stable suffix из remote identity, без overwrite.
 
 ## Зависимости
 
