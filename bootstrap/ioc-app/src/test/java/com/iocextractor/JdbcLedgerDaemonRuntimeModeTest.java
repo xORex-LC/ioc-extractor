@@ -2,6 +2,8 @@ package com.iocextractor;
 
 import com.iocextractor.adapter.in.cli.CliRunner;
 import com.iocextractor.adapter.out.store.jdbc.JdbcIngestionLedger;
+import com.iocextractor.adapter.out.store.jdbc.ServiceSchemaMigrations;
+import com.iocextractor.adapter.out.store.jdbc.SqliteSchemaMigration;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.bootstrap.IngestionLedgerHealthIndicator;
@@ -77,7 +79,14 @@ class JdbcLedgerDaemonRuntimeModeTest {
              var statement = connection.createStatement();
             var resultSet = statement.executeQuery("PRAGMA user_version")) {
             assertThat(resultSet.next()).isTrue();
-            assertThat(resultSet.getInt(1)).isEqualTo(5);
+            assertThat(resultSet.getInt(1)).isEqualTo(currentServiceSchemaVersion());
         }
+    }
+
+    private int currentServiceSchemaVersion() {
+        return ServiceSchemaMigrations.sqlite().stream()
+                .mapToInt(SqliteSchemaMigration::version)
+                .max()
+                .orElseThrow();
     }
 }
