@@ -18,6 +18,7 @@ types to bootstrap; domain/application do not import this package.
 | `JdbcIngestionLedger`, `JdbcRunLedger` | Source-ingestion state и CAS checkpoints write→project saga |
 | `JdbcCanonicalArtifactRepository`, `JdbcLookupRepository`, `JdbcArtifactRevisionReader` | Canonical truth, lookup и cheap revision read side |
 | `JdbcExportRunLedger`, `JdbcExportProgressStore` | Formation-saga CAS/single-flight, terminal progress и latest-run health read model |
+| `JdbcRemoteFetchLedger`, `JdbcPublishLedger` | Durable sync fetch idempotency и per-target publish saga state |
 | `JdbcSnapshotSliceReader` | Strict multi-artifact read snapshot и callback-streaming public rows |
 | `*Schema*` | SQLite `user_version` runner, migration support and dataframe reconciler |
 | `Dataframe*` | Table-per-artifact desired schema, additive plan and reconciliation |
@@ -35,6 +36,13 @@ without scanning artifact tables and returns revision zero for never-written art
 checkpoint. `finish` фиксирует progress и `COMPLETED|SKIPPED` в одной
 service-DB transaction. `JdbcRunLedger` использует ту же CAS-дисциплину
 для ingest saga.
+
+`JdbcRemoteFetchLedger` хранит read-only remote identity (`path + size + mtime`) и
+не требует прав на remote move/delete. `JdbcPublishLedger` ключуется по
+`(slice_id,target_id)`, хранит operational slice identity и target binding, а
+status transitions делает через expected-status CAS. `PENDING|FAILED` формируют
+retryable read model; `SUCCEEDED|ABANDONED` являются terminal для delivery-aware
+retention.
 
 `JdbcSnapshotSliceReader` владеет одним connection/read transaction от
 первого coverage SELECT до завершающего callback. Все artifact coverage

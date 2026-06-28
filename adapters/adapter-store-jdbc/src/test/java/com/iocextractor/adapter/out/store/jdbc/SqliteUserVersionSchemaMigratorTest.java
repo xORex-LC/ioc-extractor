@@ -34,17 +34,18 @@ class SqliteUserVersionSchemaMigratorTest {
                     .migrate();
 
             assertThat(result.previousVersion()).isZero();
-            assertThat(result.currentVersion()).isEqualTo(5);
-            assertThat(result.appliedVersions()).containsExactly(1, 2, 3, 4, 5);
+            assertThat(result.currentVersion()).isEqualTo(6);
+            assertThat(result.appliedVersions()).containsExactly(1, 2, 3, 4, 5, 6);
             assertThat(diagnostics.diagnostics())
                     .extracting(diagnostic -> diagnostic.code())
                     .containsExactly(StorageDiagnosticCodes.MIGRATION_APPLIED,
                             StorageDiagnosticCodes.MIGRATION_APPLIED,
                             StorageDiagnosticCodes.MIGRATION_APPLIED,
                             StorageDiagnosticCodes.MIGRATION_APPLIED,
+                            StorageDiagnosticCodes.MIGRATION_APPLIED,
                             StorageDiagnosticCodes.MIGRATION_APPLIED);
             try (Connection connection = dataSource.getConnection()) {
-                assertThat(userVersion(connection)).isEqualTo(5);
+                assertThat(userVersion(connection)).isEqualTo(6);
                 assertThat(tableExists(connection, "ingestion_ledger")).isTrue();
                 assertThat(tableExists(connection, "ingestion_partition")).isFalse();
                 assertThat(tableExists(connection, "legacy_imports")).isTrue();
@@ -52,6 +53,9 @@ class SqliteUserVersionSchemaMigratorTest {
                 assertThat(tableExists(connection, "export_run")).isTrue();
                 assertThat(tableExists(connection, "export_progress")).isTrue();
                 assertThat(tableExists(connection, "ux_export_run_active_singleton")).isTrue();
+                assertThat(tableExists(connection, "remote_fetch_ledger")).isTrue();
+                assertThat(tableExists(connection, "publish_ledger")).isTrue();
+                assertThat(tableExists(connection, "ix_publish_ledger_status")).isTrue();
             }
         }
     }
@@ -67,8 +71,8 @@ class SqliteUserVersionSchemaMigratorTest {
             migrator = migrator(dataSource, diagnostics, ServiceSchemaMigrations.sqlite());
             SchemaMigrationResult result = migrator.migrate();
 
-            assertThat(result.previousVersion()).isEqualTo(5);
-            assertThat(result.currentVersion()).isEqualTo(5);
+            assertThat(result.previousVersion()).isEqualTo(6);
+            assertThat(result.currentVersion()).isEqualTo(6);
             assertThat(result.appliedVersions()).isEmpty();
             assertThat(diagnostics.diagnostics()).isEmpty();
         }
@@ -93,14 +97,34 @@ class SqliteUserVersionSchemaMigratorTest {
                     dataSource, new CollectingDiagnosticSink(), migrations).migrate();
 
             assertThat(result.previousVersion()).isEqualTo(4);
-            assertThat(result.currentVersion()).isEqualTo(5);
-            assertThat(result.appliedVersions()).containsExactly(5);
+            assertThat(result.currentVersion()).isEqualTo(6);
+            assertThat(result.appliedVersions()).containsExactly(5, 6);
             try (Connection connection = dataSource.getConnection();
                  var resultSet = connection.createStatement().executeQuery(
                          "SELECT status FROM ingest_run WHERE run_id = 'ingest-1'")) {
                 assertThat(resultSet.next()).isTrue();
                 assertThat(resultSet.getString(1)).isEqualTo("COMPLETED");
                 assertThat(tableExists(connection, "export_run")).isTrue();
+                assertThat(tableExists(connection, "publish_ledger")).isTrue();
+            }
+        }
+    }
+
+    @Test
+    void upgrades_v5_service_database_with_sync_ledgers_only() throws Exception {
+        try (HikariDataSource dataSource = dataSource("service-v5.db")) {
+            List<SqliteSchemaMigration> migrations = ServiceSchemaMigrations.sqlite();
+            migrator(dataSource, new CollectingDiagnosticSink(), migrations.subList(0, 5)).migrate();
+
+            SchemaMigrationResult result = migrator(
+                    dataSource, new CollectingDiagnosticSink(), migrations).migrate();
+
+            assertThat(result.previousVersion()).isEqualTo(5);
+            assertThat(result.currentVersion()).isEqualTo(6);
+            assertThat(result.appliedVersions()).containsExactly(6);
+            try (Connection connection = dataSource.getConnection()) {
+                assertThat(tableExists(connection, "remote_fetch_ledger")).isTrue();
+                assertThat(tableExists(connection, "publish_ledger")).isTrue();
             }
         }
     }
@@ -137,7 +161,7 @@ class SqliteUserVersionSchemaMigratorTest {
         try (HikariDataSource dataSource = dataSource("downgrade.db");
              Connection connection = dataSource.getConnection()) {
             connection.createStatement().execute("CREATE TABLE preserved (id INTEGER PRIMARY KEY)");
-            connection.createStatement().execute("PRAGMA user_version=6");
+            connection.createStatement().execute("PRAGMA user_version=7");
             var diagnostics = new CollectingDiagnosticSink();
 
             assertThatThrownBy(() -> migrator(dataSource, diagnostics, ServiceSchemaMigrations.sqlite()).migrate())
@@ -149,10 +173,10 @@ class SqliteUserVersionSchemaMigratorTest {
                     .satisfies(diagnostic -> {
                         assertThat(diagnostic.code()).isEqualTo(StorageDiagnosticCodes.MIGRATION_DOWNGRADE);
                         assertThat(diagnostic.context())
-                                .containsEntry("fromVersion", 6)
-                                .containsEntry("toVersion", 5);
+                                .containsEntry("fromVersion", 7)
+                                .containsEntry("toVersion", 6);
                     });
-            assertThat(userVersion(connection)).isEqualTo(6);
+            assertThat(userVersion(connection)).isEqualTo(7);
             assertThat(tableExists(connection, "preserved")).isTrue();
         }
     }

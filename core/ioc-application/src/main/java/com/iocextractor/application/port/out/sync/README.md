@@ -11,6 +11,8 @@ adapter-модулях.
 | Файл | Ответственность |
 |---|---|
 | `FileTransport` | Stateless remote file operations и atomic publish intent |
+| `RemoteFetchLedger` | Durable idempotency ledger для read-only fetch |
+| `PublishLedger` | Durable per-slice/per-target publish saga ledger |
 
 ## Инварианты
 
