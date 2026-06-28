@@ -17,6 +17,7 @@ import org.apache.commons.csv.QuoteMode;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
@@ -95,21 +96,28 @@ final class CsvSliceMaterialization implements SnapshotRowConsumer, AutoCloseabl
                 || !artifact.schemaHash().equals(expected.schemaHash())) {
             throw state("snapshot artifact metadata differs from ordered export plan");
         }
+        OutputStream stream = null;
+        CSVPrinter openedPrinter = null;
         try {
-            Path output = staging.resolve(expected.fileName());
-            MessageDigest digest = SliceHashes.sha256Digest();
-            var stream = Files.newOutputStream(output, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-            var digestStream = new DigestOutputStream(stream, digest);
+            CSVFormat format = csvFormat(plan.format());
             var encoder = Charset.forName(plan.format().charset()).newEncoder()
                     .onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT);
+            Path output = staging.resolve(expected.fileName());
+            MessageDigest digest = SliceHashes.sha256Digest();
+            stream = Files.newOutputStream(output, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+            var digestStream = new DigestOutputStream(stream, digest);
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(digestStream, encoder));
-            printer = new CSVPrinter(writer, csvFormat(plan.format()));
-            printer.printRecord(expected.columns());
+            openedPrinter = new CSVPrinter(writer, format);
+            stream = null; // ownership moved to the printer/writer chain
+            openedPrinter.printRecord(expected.columns());
+            printer = openedPrinter;
+            openedPrinter = null;
             currentDigest = digest;
             currentMetadata = artifact;
             currentRows = 0;
         } catch (IOException | RuntimeException e) {
+            closeOnFailure(openedPrinter != null ? openedPrinter : stream, e);
             closeQuietly();
             throw write("cannot open artifact " + expected.fileName(), e);
         }
@@ -232,6 +240,17 @@ final class CsvSliceMaterialization implements SnapshotRowConsumer, AutoCloseabl
             } finally {
                 printer = null;
             }
+        }
+    }
+
+    private void closeOnFailure(AutoCloseable resource, Throwable original) {
+        if (resource == null) {
+            return;
+        }
+        try {
+            resource.close();
+        } catch (Exception closeFailure) {
+            original.addSuppressed(closeFailure);
         }
     }
 }

@@ -53,7 +53,9 @@ projection-файл и key extraction.
 строк. Закрытый data file принудительно сбрасывается на диск, после всех data
 files записывается и fsync-ится `manifest.json`, а `_SUCCESS` с точным SHA-256
 записанных manifest bytes создаётся последним. После этого fsync-ятся staging и
-его parent directory.
+его parent directory. При первом запуске также fsync-ится каждая созданная
+directory entry вплоть до parent configured root, поэтому сам `export/` не
+остаётся только в page cache родительского каталога.
 
 `inspect` не доверяет одному наличию marker: повторно декодирует manifest,
 сверяет `runId/profile/planHash`, запрещает symlink/лишние файлы и пересчитывает
@@ -78,7 +80,8 @@ corruption была видима оператору. Перед recursive delete
 ## Инварианты и ошибки
 
 - data CSV использует charset/delimiter/quote/null literal из immutable
-  `ExportPlan`; record separator фиксирован как CRLF;
+  `ExportPlan`; record separator фиксирован как CRLF; format/charset проверяются
+  до открытия artifact file;
 - manifest hash считается по фактически записанным bytes codec-а;
 - final slice считается доступным только при валидных data/manifest/marker;
 - одновременное наличие staging и final классифицируется как `CONFLICT`;
@@ -92,6 +95,8 @@ corruption была видима оператору. Перед recursive delete
 `CsvArtifactSliceWriterTest` фиксирует deterministic bytes/tree, порядок marker,
 невидимость final до rename, corruption detection, forward recovery,
 идемпотентную inspection/publication, unsupported atomic move и поток из 50 000
-строк без накопления rows внутри writer.
+строк без накопления rows внутри writer. Failure-path tests отдельно фиксируют,
+что invalid charset не оставляет открытый/пустой artifact file, и что первое
+создание nested export root принудительно сохраняет directory entries.
 `FileSystemSliceRetentionStoreTest` проверяет целостное удаление каталога,
 изоляцию staging и отказ удалять incomplete/corrupt final.

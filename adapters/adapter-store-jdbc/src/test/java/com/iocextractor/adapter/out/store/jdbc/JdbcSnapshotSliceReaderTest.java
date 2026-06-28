@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -99,11 +100,14 @@ class JdbcSnapshotSliceReaderTest {
         try (var executor = Executors.newSingleThreadExecutor()) {
             var current = executor.submit(() -> fixture.reader()
                     .stream(new SnapshotRequest(fixture.plan()), consumer));
-            began.await();
+            assertThat(began.await(5, TimeUnit.SECONDS)).isTrue();
 
-            fixture.write("hashes", row("id", "2", "hash", "BBBB"));
-            release.countDown();
-            SnapshotMetadata currentMetadata = current.get();
+            try {
+                fixture.write("hashes", row("id", "2", "hash", "BBBB"));
+            } finally {
+                release.countDown();
+            }
+            SnapshotMetadata currentMetadata = current.get(5, TimeUnit.SECONDS);
 
             assertThat(consumer.rowsByArtifact.get("hashes")).containsExactly("1");
             assertThat(currentMetadata.artifacts().get(1).coverage().revision()).isEqualTo(1);
@@ -159,6 +163,30 @@ class JdbcSnapshotSliceReaderTest {
         assertThatThrownBy(() -> reader.stream(new SnapshotRequest(fixture.plan()), new NoopConsumer()))
                 .isInstanceOf(DiagnosticException.class)
                 .hasMessageContaining(ExportDiagnosticCodes.SNAPSHOT_READ_FAILED.id());
+        assertThat(diagnostics.diagnostics())
+                .extracting(diagnostic -> diagnostic.code())
+                .containsExactly(ExportDiagnosticCodes.SNAPSHOT_READ_FAILED);
+    }
+
+    @Test
+    void malformed_canonical_coverage_emits_snapshot_diagnostic() throws Exception {
+        Fixture fixture = fixture();
+        fixture.write("masks", row("id", "1", "mask", "a.example"));
+        try (var connection = dataSource.getConnection();
+             var statement = connection.prepareStatement(
+                     "UPDATE artifact_revision SET changed_at = ? WHERE artifact = ?")) {
+            statement.setString(1, "not-an-instant");
+            statement.setString(2, "masks");
+            statement.executeUpdate();
+        }
+        var diagnostics = new CollectingDiagnosticSink();
+        var reader = new JdbcSnapshotSliceReader(
+                dataSource, fixture.schemas(), CLOCK, diagnostics, new DiagnosticFactory(CLOCK));
+
+        assertThatThrownBy(() -> reader.stream(new SnapshotRequest(fixture.plan()), new NoopConsumer()))
+                .isInstanceOf(DiagnosticException.class)
+                .hasMessageContaining(ExportDiagnosticCodes.SNAPSHOT_READ_FAILED.id())
+                .hasRootCauseInstanceOf(java.time.format.DateTimeParseException.class);
         assertThat(diagnostics.diagnostics())
                 .extracting(diagnostic -> diagnostic.code())
                 .containsExactly(ExportDiagnosticCodes.SNAPSHOT_READ_FAILED);

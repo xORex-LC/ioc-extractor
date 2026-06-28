@@ -23,6 +23,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -119,7 +120,7 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
         for (ExportArtifactSpec artifact : plan.artifacts()) {
             StoredIdentity identity = readIdentity(connection, artifact.artifactName());
             if (identity.epoch() != artifact.identityEpoch()
-                    || !identity.hash().equals(artifact.identityHash())) {
+                    || !Objects.equals(identity.hash(), artifact.identityHash())) {
                 throw new SQLException("Export identity metadata does not match canonical store: "
                         + artifact.artifactName());
             }
@@ -166,12 +167,27 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                 if (!resultSet.next()) {
                     throw new SQLException("Coverage query returned no row for " + artifactName);
                 }
-                String changedAt = resultSet.getString("changed_at");
-                return new ArtifactCoverage(
+                return coverage(
+                        artifactName,
                         resultSet.getLong("revision"),
-                        changedAt == null ? null : Instant.parse(changedAt),
+                        resultSet.getString("changed_at"),
                         resultSet.getLong("upper_id"));
             }
+        }
+    }
+
+    private ArtifactCoverage coverage(String artifactName,
+                                      long revision,
+                                      String changedAt,
+                                      long upperId) throws SQLException {
+        try {
+            return new ArtifactCoverage(
+                    revision,
+                    changedAt == null ? null : Instant.parse(changedAt),
+                    upperId);
+        } catch (DateTimeParseException | IllegalArgumentException invalidMetadata) {
+            throw new SQLException("Invalid canonical coverage metadata for artifact: "
+                    + artifactName, invalidMetadata);
         }
     }
 

@@ -28,7 +28,9 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -101,8 +103,7 @@ public final class CsvArtifactSliceWriter implements ArtifactSliceWriter, Snapsh
                     || Files.exists(layout.available(run), LinkOption.NOFOLLOW_LINKS)) {
                 throw new IllegalStateException("slice path already exists; inspect/recover before staging");
             }
-            Files.createDirectories(layout.stagingParent());
-            fileOperations.forceDirectory(layout.root());
+            createDirectoriesDurably(layout.stagingParent());
             Files.createDirectory(staging);
             fileOperations.forceDirectory(layout.stagingParent());
             active = new CsvSliceMaterialization(run, request.plan(), staging, codec, fileOperations);
@@ -211,9 +212,7 @@ public final class CsvArtifactSliceWriter implements ArtifactSliceWriter, Snapsh
         Path staging = layout.staging(run);
         Path target = layout.available(run);
         try {
-            Files.createDirectories(layout.profile(run));
-            fileOperations.forceDirectory(layout.root());
-            fileOperations.forceDirectory(layout.profile(run));
+            createDirectoriesDurably(layout.profile(run));
             fileOperations.moveAtomically(staging, target);
             fileOperations.forceDirectory(layout.profile(run));
             fileOperations.forceDirectory(layout.stagingParent());
@@ -301,6 +300,25 @@ public final class CsvArtifactSliceWriter implements ArtifactSliceWriter, Snapsh
             throw new InvalidSliceException("available slice has no _SUCCESS marker");
         }
         return SliceInspectionState.AVAILABLE;
+    }
+
+    /** Creates missing path segments and persists every newly linked directory entry. */
+    private void createDirectoriesDurably(Path directory) throws IOException {
+        List<Path> missing = new ArrayList<>();
+        Path current = directory.toAbsolutePath().normalize();
+        while (current != null && !Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
+            missing.add(current);
+            current = current.getParent();
+        }
+        Files.createDirectories(directory);
+        for (int index = missing.size() - 1; index >= 0; index--) {
+            Path created = missing.get(index);
+            Path parent = created.getParent();
+            if (parent != null) {
+                fileOperations.forceDirectory(parent);
+            }
+            fileOperations.forceDirectory(created);
+        }
     }
 
     private StagedSlice staged(ExportRun run, VerifiedSlice verified) {

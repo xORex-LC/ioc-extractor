@@ -194,6 +194,36 @@ class CsvArtifactSliceWriterTest {
                 .isEqualTo(SliceInspectionState.CONFLICT);
     }
 
+    @Test
+    void validatesCharsetBeforeOpeningArtifactFile() {
+        ExportPlan plan = plan(new ExportFormat("csv", "not-a-charset", ";", "\"", "NULL"));
+        ExportRun run = started(plan);
+        List<Diagnostic> diagnostics = new ArrayList<>();
+        CsvArtifactSliceWriter writer = writer(tempDir, new TestManifestCodec(),
+                new RecordingFileOperations(), diagnostics);
+
+        assertThatThrownBy(() -> writer.stage(run, new SnapshotRequest(plan), reader(plan, 1)))
+                .isInstanceOf(DiagnosticException.class)
+                .satisfies(failure -> assertThat(((DiagnosticException) failure).diagnostic().code())
+                        .isEqualTo(ExportDiagnosticCodes.SLICE_WRITE_FAILED));
+        assertThat(tempDir.resolve(".staging/run-1/masks.csv")).doesNotExist();
+        assertThat(diagnostics).extracting(Diagnostic::code)
+                .containsExactly(ExportDiagnosticCodes.SLICE_WRITE_FAILED);
+    }
+
+    @Test
+    void persistsEveryDirectoryEntryWhenCreatingANestedExportRoot() {
+        Path root = tempDir.resolve("new-parent/export");
+        ExportPlan plan = oneArtifactPlan();
+        RecordingFileOperations operations = new RecordingFileOperations();
+        CsvArtifactSliceWriter writer = writer(root, new TestManifestCodec(), operations, new ArrayList<>());
+
+        writer.stage(started(plan), new SnapshotRequest(plan), reader(plan, 1));
+
+        assertThat(operations.forcedDirectories)
+                .contains(tempDir, tempDir.resolve("new-parent"), root, root.resolve(".staging"));
+    }
+
     private CsvArtifactSliceWriter writer(Path root,
                                           SliceManifestCodec codec,
                                           SliceFileOperations operations,
@@ -204,11 +234,15 @@ class CsvArtifactSliceWriterTest {
     }
 
     private ExportPlan plan() {
+        return plan(new ExportFormat("csv", "UTF-8", ";", "\"", "NULL"));
+    }
+
+    private ExportPlan plan(ExportFormat format) {
         ExportArtifactSpec masks = spec("masks", "masks.csv", HASH_A, HASH_B);
         ExportArtifactSpec hashes = spec("hashes", "hashes.csv", HASH_B, HASH_C);
         return new ExportPlan(1,
                 new ExportProfile("complete", ExportMode.COMPLETE, List.of("masks", "hashes")),
-                new ExportFormat("csv", "UTF-8", ";", "\"", "NULL"),
+                format,
                 List.of(masks, hashes));
     }
 
@@ -287,6 +321,7 @@ class CsvArtifactSliceWriterTest {
         private final NioSliceFileOperations delegate = new NioSliceFileOperations();
         private final List<String> forcedFiles = new ArrayList<>();
         private final List<String> atomicMoves = new ArrayList<>();
+        private final List<Path> forcedDirectories = new ArrayList<>();
         private boolean atomicMoveSupported = true;
 
         @Override
@@ -298,6 +333,7 @@ class CsvArtifactSliceWriterTest {
         @Override
         public void forceDirectory(Path directory) throws IOException {
             delegate.forceDirectory(directory);
+            forcedDirectories.add(directory);
         }
 
         @Override
