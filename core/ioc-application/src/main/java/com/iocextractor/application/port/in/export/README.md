@@ -17,13 +17,15 @@ command/result DTO. Входной адаптер не зависит от concr
 |---|---|
 | `ExportArtifactsUseCase` | Запуск одного configured profile до terminal result |
 | `ExportArtifactsCommand` | Минимальная команда с именем profile; storage/layout settings в неё не передаются |
-| `ExportArtifactsResult` | Терминальный run id/status и immutable slice name; для `SKIPPED` slice может отсутствовать |
+| `ExportArtifactsResult` | Terminal status и optional run/slice identity; pre-gate `SKIPPED` не создаёт run и возвращает `runId=null` |
 | `RecoverExportUseCase` | Startup forward recovery всех durable incomplete runs |
 
 ## Контракт вызова
 
 - `export` возвращается только после terminal state: срез доступен,
   изменений нет (`SKIPPED`) или запуск завершился ошибкой.
+- `SKIPPED` после materialization содержит run id; cheap pre-gate `SKIPPED`
+  не содержит его, поскольку single-flight/ledger не затрагивались.
 - `recoverIncomplete` возвращает число проверенных runs, а не число
   созданных срезов.
 - CAS transitions, single-flight, filesystem inspection и retry decisions — ответственность

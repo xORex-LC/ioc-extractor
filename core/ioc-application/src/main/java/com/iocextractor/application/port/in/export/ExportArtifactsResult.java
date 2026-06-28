@@ -11,8 +11,15 @@ public record ExportArtifactsResult(String runId,
                                     String sliceName) {
 
     public ExportArtifactsResult {
-        Objects.requireNonNull(runId, "runId");
         Objects.requireNonNull(profile, "profile");
         Objects.requireNonNull(status, "status");
+        if (runId == null && status != ExportRunStatus.SKIPPED) {
+            throw new IllegalArgumentException("Only a pre-gate SKIPPED result may omit runId");
+        }
+    }
+
+    /** Returns a no-op result when the cheap revision/plan gate avoided creating a run. */
+    public static ExportArtifactsResult unchanged(String profile) {
+        return new ExportArtifactsResult(null, profile, ExportRunStatus.SKIPPED, null);
     }
 }

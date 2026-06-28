@@ -15,7 +15,9 @@ public enum ExportDiagnosticCodes implements DiagnosticCode {
     ATOMIC_PUBLISH_UNSUPPORTED(DiagnosticSeverity.FATAL, "export.atomic-publish-unsupported",
             "Export run {runId} cannot atomically publish {path}: {reason}"),
     STATE_TRANSITION_CONFLICT(DiagnosticSeverity.ERROR, "export.state-transition-conflict",
-            "Export run {runId} cannot transition from {actualStatus} to {nextStatus}; expected {expectedStatus}");
+            "Export run {runId} cannot transition from {actualStatus} to {nextStatus}; expected {expectedStatus}"),
+    RECOVERY_FAILED(DiagnosticSeverity.ERROR, "export.recovery-failed",
+            "Export run {runId} could not recover from {status}: {reason}");
 
     private final DiagnosticSeverity defaultSeverity;
     private final String messageKey;

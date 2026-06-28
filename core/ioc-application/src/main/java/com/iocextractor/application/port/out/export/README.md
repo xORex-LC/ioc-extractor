@@ -23,6 +23,7 @@ state transitions принадлежат use case.
 | `ArtifactRevisionReader` | Дешёво читает canonical revisions в запрошенном порядке, не сканируя rows |
 | `ExportProgressStore` | Read side последнего terminal progress для revision/hash change detection |
 | `ExportRunLedger` | Durable CAS state machine, global single-flight и атомарная фиксация terminal progress |
+| `ExportObserver` | Lifecycle callbacks в точках фактических durable checkpoints; конкретный ECS logger остаётся снаружи application |
 | `SliceRetentionGuard` | Чистый delivery-aware veto, вызываемый непосредственно перед delete |
 
 ## Протоколы и владение ресурсами
@@ -36,6 +37,8 @@ state transitions принадлежат use case.
   никогда не меняет ledger. Ledger не выполняет filesystem IO.
 - `tryStart` — единственная точка global single-flight; `transition` применяет
   expected-state CAS; `finish` атомарно сохраняет progress и terminal status.
+- `ExportObserver` не управляет flow и не должен бросать исключения: producer
+  вызывает его после соответствующего durable действия/ledger checkpoint.
 - Retention guard не удаляет срез. Он только даёт актуальный veto
   непосредственно перед delete; в C0–C8 default policy fail-open.
 

@@ -34,5 +34,6 @@ Generated from `DiagnosticCatalogs`.
 | `EXPORT.MANIFEST_INVALID` | EXPORT | ERROR | `export.manifest-invalid` | Export run {runId} has an invalid slice at {path}: {reason} |
 | `EXPORT.ATOMIC_PUBLISH_UNSUPPORTED` | EXPORT | FATAL | `export.atomic-publish-unsupported` | Export run {runId} cannot atomically publish {path}: {reason} |
 | `EXPORT.STATE_TRANSITION_CONFLICT` | EXPORT | ERROR | `export.state-transition-conflict` | Export run {runId} cannot transition from {actualStatus} to {nextStatus}; expected {expectedStatus} |
+| `EXPORT.RECOVERY_FAILED` | EXPORT | ERROR | `export.recovery-failed` | Export run {runId} could not recover from {status}: {reason} |
 | `PIPELINE.STAGE_FAILED` | PIPELINE | ERROR | `pipeline.stage-failed` | Pipeline stage {stage} failed: {reason} |
 | `PIPELINE.ITEM_SKIPPED` | PIPELINE | WARN | `pipeline.item-skipped` | Pipeline item {item} was skipped at stage {stage}: {reason} |

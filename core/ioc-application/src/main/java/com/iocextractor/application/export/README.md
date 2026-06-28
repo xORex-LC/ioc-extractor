@@ -5,7 +5,7 @@
 Framework-free модель bounded context **Artifact Emission**. Пакет
 фиксирует словарь формирования неизменяемых локальных срезов:
 профиль и детерминированный план, metadata единого snapshot,
-versioned manifest, durable saga run/progress и recovery/retention descriptors.
+versioned manifest, durable saga run/progress, change detection и forward recovery.
 
 **Правило слоя:** модель описывает смысл и инварианты, но не
 знает, как строки читаются из JDBC, кодируются в CSV/JSON или
@@ -25,6 +25,10 @@ adapters за портами `application.port.out.export`.
 | `StagedSlice`, `AvailableSlice` | Проверенный результат до и после атомарной локальной публикации |
 | `SliceInspection`, `SliceInspectionState` | Типизированный результат inspection для forward recovery |
 | `SliceDescriptor` | Неделимая retention-единица, которую delivery-layer может запретить удалять |
+| `ExportChangeDetector` | Чистая policy: revision/plan pre-gate, authoritative content-hash post-check и terminal progress |
+| `ExportService` | Оркестрация одного run от global single-flight до `COMPLETED`/`SKIPPED` |
+| `ExportRunRecoveryService` | Forward recovery активных checkpoints только из ledger и filesystem evidence |
+| `NoopExportObserver` | Default implementation operational event boundary без framework/logging зависимости |
 
 ## Инварианты
 
@@ -38,6 +42,39 @@ adapters за портами `application.port.out.export`.
 - State machine: `STARTED -> STAGED -> AVAILABLE -> COMPLETED`; из
   `STARTED` допустим `SKIPPED`, из active states — `FAILED`.
   `COMPLETED`, `SKIPPED`, `FAILED` terminal; states от `STAGED` требуют manifest hash.
+- Cheap pre-gate сравнивает exact ordered revisions и `planHash`; при полном
+  совпадении ledger row не создаётся. После materialization решение принимает
+  только per-artifact content hash из manifest.
+- При post-hash `SKIPPED` новые snapshot revisions сохраняются атомарно с
+  terminal status, но `lastSha256/lastSliceId` остаются от опубликованного среза.
+
+## Formation saga
+
+`ExportService` получает resolved `ExportPlan`, но не знает его config-origin.
+Он дешёво читает revisions/progress, захватывает DB-backed single-flight через
+`tryStart`, передаёт callback-stream напрямую от `SnapshotSliceReader` к
+`ArtifactSliceWriter` и фиксирует checkpoints строго после durable side effect:
+
+1. валидный staging + `_SUCCESS` → `STARTED -> STAGED`;
+2. atomic staging-to-final rename → `STAGED -> AVAILABLE`;
+3. progress из manifest → атомарный `AVAILABLE -> COMPLETED`.
+
+Если candidate byte-identical предыдущему срезу, staging удаляется и
+`STARTED -> SKIPPED` вместе с revision progress. Неизменившийся pre-gate
+возвращает `SKIPPED` без run id, потому что durable run не создавался.
+
+## Crash recovery
+
+`ExportRunRecoveryService` не имеет зависимости на `SnapshotSliceReader`,
+поэтому технически не может перечитать mutable canonical truth. Он проверяет
+`SliceInspection` и продвигает только подтверждённые durable факты:
+
+- `STARTED` + recoverable manifest дописывает marker и фиксирует `STAGED`;
+- `STAGED` + staging выполняет atomic publish; final после crash rename
+  распознаётся идемпотентно;
+- `AVAILABLE` восстанавливает progress из manifest coverage/hash и завершает run;
+- missing/partial staging удаляется и получает `FAILED`; corrupt/conflicting
+  evidence не перезаписывается и также получает `FAILED` + `RECOVERY_FAILED`.
 
 ## Границы ответственности
 
@@ -45,3 +82,5 @@ adapters за портами `application.port.out.export`.
 - Адаптер выводит пути из configured root/profile/immutable slice name.
 - `ExportRun` не описывает remote delivery. Его будущий владелец —
   `publish_ledger` из design 0011.
+- Operational events уходят через `ExportObserver`; application не импортирует
+  SLF4J/ECS и не выбирает logging adapter.
