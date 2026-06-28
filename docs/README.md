@@ -15,6 +15,7 @@
 | [output-mapping.md](output-mapping.md) | Конфигурируемое заполнение артефактов: провайдеры + трансформации, декларативные колонки (без хардкода) |
 | [extraction.md](extraction.md) | Извлечение/нормализация IOC, PSL/onion-классификация и тест-корпус (изоляция от артефактов проекта, case-table + golden) |
 | [ingestion.md](ingestion.md) | Стриминговый демон-инжест: детект, конечный автомат каталогов, JDBC truth, CSV-проекции, идемпотентность, жизненный цикл |
+| [sync.md](sync.md) | Remote fetch/publish: SMB transport, ledgers, atomic protocols, CLI, scheduler lifecycle и health |
 | [modularization.md](modularization.md) | Текущая многомодульная структура: Maven-реактор, platform/core/adapters/bootstrap и правила зависимостей |
 | [cross-cutting.md](cross-cutting.md) | Сквозные подсистемы (логирование, диагностика, ошибки) как самостоятельные модули за портами |
 | [diagnostics.md](diagnostics.md) | Диагностика обработки данных: каталог кодов в коде, данные→сообщение, Result/Notification, bridge в logging |

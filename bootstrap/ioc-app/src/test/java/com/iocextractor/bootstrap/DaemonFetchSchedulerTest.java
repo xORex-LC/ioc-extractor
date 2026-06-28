@@ -4,7 +4,10 @@ import com.iocextractor.application.port.in.sync.RemoteFetchResult;
 import com.iocextractor.application.sync.RemoteFetchSource;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -45,7 +48,7 @@ class DaemonFetchSchedulerTest {
                     entered.countDown();
                     await(release);
                     return new RemoteFetchResult(1, 0, 0);
-                }, registry(), Duration.ofHours(1));
+                }, registry(), healthState(), Duration.ofHours(1));
         Thread first = new Thread(scheduler::runOnce);
 
         first.start();
@@ -69,10 +72,27 @@ class DaemonFetchSchedulerTest {
         assertThat(scheduler.isRunning()).isFalse();
     }
 
+    @Test
+    void publishesLatestSourceResultToHealthState() {
+        SyncHealthState state = new SyncHealthState(
+                Clock.fixed(Instant.parse("2026-06-28T00:00:00Z"), ZoneOffset.UTC));
+        DaemonFetchScheduler scheduler = new DaemonFetchScheduler(
+                List.of(source("one")), command -> new RemoteFetchResult(2, 3, 0),
+                registry(), state, Duration.ofHours(1));
+
+        scheduler.runOnce();
+
+        assertThat(state.fetchSnapshots().get("one"))
+                .extracting(SyncHealthState.FetchSnapshot::fetched,
+                        SyncHealthState.FetchSnapshot::skipped,
+                        SyncHealthState.FetchSnapshot::failed)
+                .containsExactly(2, 3, 0);
+    }
+
     private DaemonFetchScheduler scheduler(
             com.iocextractor.application.port.in.sync.RemoteFetchUseCase useCase) {
         return new DaemonFetchScheduler(
-                List.of(source("one"), source("two")), useCase, registry(), Duration.ofHours(1));
+                List.of(source("one"), source("two")), useCase, registry(), healthState(), Duration.ofHours(1));
     }
 
     private RemoteFetchSource source(String id) {
@@ -81,6 +101,10 @@ class DaemonFetchSchedulerTest {
 
     private TransportRegistry registry() {
         return new TransportRegistry(List.of());
+    }
+
+    private SyncHealthState healthState() {
+        return new SyncHealthState(Clock.systemUTC());
     }
 
     private static void await(CountDownLatch latch) {

@@ -6,7 +6,10 @@ import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
 import com.iocextractor.application.sync.PublishTarget;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -65,7 +68,7 @@ class DaemonPublishSchedulerTest {
             }
         };
         DaemonPublishScheduler scheduler = new DaemonPublishScheduler(
-                List.of(target("one")), publisher, registry(), Duration.ofHours(1));
+                List.of(target("one")), publisher, registry(), healthState(), Duration.ofHours(1));
         Thread first = new Thread(scheduler::runOnce);
 
         first.start();
@@ -77,9 +80,25 @@ class DaemonPublishSchedulerTest {
         assertThat(attempts).hasValue(1);
     }
 
+    @Test
+    void publishesLatestTargetResultToHealthState() {
+        SyncHealthState state = new SyncHealthState(
+                Clock.fixed(Instant.parse("2026-06-28T00:00:00Z"), ZoneOffset.UTC));
+        DaemonPublishScheduler scheduler = new DaemonPublishScheduler(
+                List.of(target("one")), new RecordingPublisher(), registry(), state, Duration.ofHours(1));
+
+        scheduler.runOnce();
+
+        assertThat(state.publishSnapshots().get("one"))
+                .extracting(SyncHealthState.PublishSnapshot::profile,
+                        SyncHealthState.PublishSnapshot::succeeded,
+                        SyncHealthState.PublishSnapshot::failed)
+                .containsExactly("profile-one", 1, 0);
+    }
+
     private DaemonPublishScheduler scheduler(ArtifactPublishUseCase publisher) {
         return new DaemonPublishScheduler(
-                List.of(target("one"), target("two")), publisher, registry(), Duration.ofHours(1));
+                List.of(target("one"), target("two")), publisher, registry(), healthState(), Duration.ofHours(1));
     }
 
     private PublishTarget target(String id) {
@@ -88,6 +107,10 @@ class DaemonPublishSchedulerTest {
 
     private TransportRegistry registry() {
         return new TransportRegistry(List.of());
+    }
+
+    private SyncHealthState healthState() {
+        return new SyncHealthState(Clock.systemUTC());
     }
 
     private static ArtifactPublishResult empty() {

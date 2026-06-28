@@ -17,6 +17,11 @@
 > политика логирования фонового сервиса — в [logging.md](logging.md), таксономия
 > log events — в [logging-taxonomy.md](logging-taxonomy.md).
 
+Категория `SYNC` покрывает transport-neutral endpoint/auth/permission/not-found/transient
+ошибки, credential/config failures и несовпадение remote publish marker. SMB-типы не входят
+в diagnostic contract: адаптер переводит их в `RemoteErrorKind`, а полный опубликованный
+список генерируется в [diagnostic-catalog.md](diagnostic-catalog.md).
+
 ## Принцип разделения
 
 ```

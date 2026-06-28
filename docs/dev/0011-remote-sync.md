@@ -2,10 +2,10 @@
 
 ## Статус
 
-**Проектирование, не реализовано.** Ветка `feature/delivery/smb`. Документ
-фиксирует согласованные решения и открытые вопросы до начала реализации; код,
-основные доки (`architecture.md`, новый `sync.md`/`ingestion.md`) и конфиг
-обновляются по факту. Номер бэклога ING — TBD. **Hardening-проход после ревью завершён** (Findings F1–F5 + ref-1…9
+**Реализовано (S0–S8).** Ветка `feature/delivery/smb`. Transport-neutral fetch/publish,
+JDBC ledgers, verified slice discovery, SMB adapter, daemon lifecycle, CLI и health
+закрыты полным reactor gate; операторская документация — [sync.md](../sync.md).
+Номер бэклога ING — TBD. **Hardening-проход после ревью завершён** (Findings F1–F5 + ref-1…9
 закрыты): в 0011 — **F3** (доставка — отдельный `publish_ledger`, реш. 6), **ref-9** (publish
 byte-preserving, реш. 17), **F2** (slice-retention, реш. 18); остальное — в
 [0012](0012-streaming-dataframe-emission.md).
@@ -401,7 +401,7 @@ ioc:
 
 ## Следствия
 
-Планируемые (кода ещё нет):
+Реализованные следствия:
 
 - Новый модуль `adapters/adapter-transport-smb` (smbj в parent `dependencyManagement`).
 - Новые пакеты: `application/sync` (use-case), `port/in/sync`, `port/out/sync`

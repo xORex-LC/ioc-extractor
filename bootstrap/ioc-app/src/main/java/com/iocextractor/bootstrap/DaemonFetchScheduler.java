@@ -33,6 +33,7 @@ public final class DaemonFetchScheduler implements SmartLifecycle {
     private final List<RemoteFetchSource> sources;
     private final RemoteFetchUseCase fetcher;
     private final TransportRegistry transports;
+    private final SyncHealthState healthState;
     private final Duration interval;
     private final AtomicBoolean running = new AtomicBoolean();
 
@@ -43,10 +44,12 @@ public final class DaemonFetchScheduler implements SmartLifecycle {
     public DaemonFetchScheduler(List<RemoteFetchSource> sources,
                                 RemoteFetchUseCase fetcher,
                                 TransportRegistry transports,
+                                SyncHealthState healthState,
                                 Duration interval) {
         this.sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
         this.fetcher = Objects.requireNonNull(fetcher, "fetcher");
         this.transports = Objects.requireNonNull(transports, "transports");
+        this.healthState = Objects.requireNonNull(healthState, "healthState");
         this.interval = positive(interval, "interval");
     }
 
@@ -90,9 +93,17 @@ public final class DaemonFetchScheduler implements SmartLifecycle {
     }
 
     private void attempt(RemoteFetchSource source) {
+        LogEvents.info(log)
+                .action(EventAction.SYNC_FETCH_START)
+                .outcome(EventOutcome.UNKNOWN)
+                .field(LogField.IOC_SOURCE_ID, source.sourceId())
+                .field(LogField.IOC_SYNC_ENDPOINT, source.endpoint())
+                .message("scheduled remote fetch started")
+                .log();
         try {
             RemoteFetchResult result = fetcher.fetch(
                     new RemoteFetchCommand(Optional.of(source.sourceId()), false));
+            healthState.recordFetch(source.sourceId(), source.endpoint(), result);
             LogEvents.info(log)
                     .action(EventAction.SYNC_FETCH_COMPLETE)
                     .outcome(result.failed() == 0 ? EventOutcome.SUCCESS : EventOutcome.FAILURE)
@@ -103,6 +114,7 @@ public final class DaemonFetchScheduler implements SmartLifecycle {
                             + ", skipped=" + result.skipped() + ", failed=" + result.failed())
                     .log();
         } catch (RuntimeException failure) {
+            healthState.recordFetchFailure(source.sourceId(), source.endpoint(), failure);
             LogEvents.error(log)
                     .action(EventAction.SYNC_FETCH_COMPLETE)
                     .outcome(EventOutcome.FAILURE)

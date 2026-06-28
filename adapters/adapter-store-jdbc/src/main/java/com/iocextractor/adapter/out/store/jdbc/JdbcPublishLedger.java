@@ -109,6 +109,19 @@ public final class JdbcPublishLedger implements PublishLedger {
     }
 
     @Override
+    public List<PublishRecord> findAll() {
+        return jdbc.sql("""
+                        SELECT slice_id, target_id, profile, slice_name, manifest_sha256,
+                               endpoint, remote_path, status, attempts, last_error,
+                               remote_verification, created_at, updated_at
+                        FROM publish_ledger
+                        ORDER BY created_at, slice_id, target_id
+                        """)
+                .query(JdbcPublishLedger::map)
+                .list();
+    }
+
+    @Override
     public PublishRecord transition(String sliceId,
                                     String targetId,
                                     PublishStatus expected,

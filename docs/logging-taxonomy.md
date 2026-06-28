@@ -56,6 +56,9 @@
 | `ioc.export.profile` | имя неделимого export profile |
 | `ioc.export.slice.id` | immutable slice/run identity |
 | `ioc.export.revision` | максимальная canonical revision в записанном slice event |
+| `ioc.sync.endpoint` | логическое имя endpoint без host/share/credentials |
+| `ioc.sync.target` | логическое имя publish target |
+| `ioc.sync.files` | счётчик файлов текущей sync-операции |
 | `ioc.diagnostic.code` | если событие связано с Diagnostic |
 | `ioc.diagnostic.category` | если событие связано с Diagnostic |
 | `ioc.diagnostic.severity` | если событие связано с Diagnostic |
@@ -95,6 +98,10 @@ Per-item поля (`ioc.indicator.*`, `ioc.dedup.key`) не входят в ба
 | `export_slice_write` | artifact emission | staging data/manifest/marker записаны и проверены |
 | `export_complete` | artifact emission | formation run достиг terminal checkpoint |
 | `export_recover` | artifact emission | начата проверка incomplete durable run |
+| `sync_fetch_start` | remote sync | начат fetch одного configured source |
+| `sync_fetch_complete` | remote sync | fetch source завершён или изолирован с ошибкой |
+| `sync_publish_start` | remote sync | начат publish одного configured target |
+| `sync_publish_complete` | remote sync | publish target завершён или изолирован с ошибкой |
 | `diagnostic_emit` | diagnostics | Diagnostic опубликован в log stream |
 
 Следующие daemon actions добавляются только вместе с первым producer'ом события.

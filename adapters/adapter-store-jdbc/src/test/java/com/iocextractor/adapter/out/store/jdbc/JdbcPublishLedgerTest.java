@@ -72,6 +72,7 @@ class JdbcPublishLedgerTest {
             assertThat(failed.attempts()).isEqualTo(2);
             assertThat(failed.lastError()).isEqualTo("timeout");
             assertThat(ledger.findRetryable()).containsExactly(failed);
+            assertThat(ledger.findAll()).containsExactly(failed);
             assertThatThrownBy(() -> ledger.transition("slice-1", "target-a",
                     PublishStatus.PENDING, PublishStatus.SUCCEEDED, null, "ok"))
                     .isInstanceOf(IllegalArgumentException.class);

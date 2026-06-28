@@ -60,6 +60,7 @@ class SyncEnabledDaemonRuntimeModeTest {
                 .containsOnlyKeys("daemonFetchScheduler");
         assertThat(context.getBeansOfType(DaemonPublishScheduler.class))
                 .containsOnlyKeys("daemonPublishScheduler");
+        assertThat(context.containsBean("syncHealthIndicator")).isTrue();
         assertThat(context.getBean(SliceRetentionGuard.class))
                 .isInstanceOf(PublishLedgerSliceRetentionGuard.class);
         assertThat(context.getBean(DaemonPublishScheduler.class).getPhase())

@@ -363,6 +363,11 @@ class ArtifactPublishServiceTest {
         }
 
         @Override
+        public List<PublishRecord> findAll() {
+            return List.copyOf(records.values());
+        }
+
+        @Override
         public PublishRecord transition(String sliceId,
                                         String targetId,
                                         PublishStatus expected,

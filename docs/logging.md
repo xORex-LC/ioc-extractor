@@ -12,6 +12,12 @@ Operational logging для `oneshot` CLI и `daemon`/stream-режима.
 > через `event.action` и `ioc.*`. Дальнейшее расширение событий добавляется
 > рядом с новыми producer-ами.
 
+Remote sync использует ECS actions `sync_fetch_start|complete` и
+`sync_publish_start|complete` с логическими `ioc.source.id`, `ioc.sync.target`,
+`ioc.sync.endpoint`, `ioc.export.profile` и counters. Host/share/username/password не
+логируются; transport exceptions проходят через общую error taxonomy. Последнее состояние
+операций доступно в actuator `sync` health contributor — см. [sync.md](sync.md).
+
 ## Разделение моделей
 
 | Модель | Назначение | Пример | Где живёт |

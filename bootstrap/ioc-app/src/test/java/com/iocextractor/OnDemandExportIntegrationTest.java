@@ -1,13 +1,16 @@
 package com.iocextractor;
 
 import com.iocextractor.adapter.in.cli.IocRootCommand;
+import com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog;
 import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository;
+import com.iocextractor.adapter.out.store.jdbc.JdbcPublishLedger;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.export.ExportPlan;
 import com.iocextractor.application.export.ExportRunStatus;
 import com.iocextractor.application.export.ExportRunRecoveryService;
 import com.iocextractor.application.export.ExportService;
+import com.iocextractor.application.export.SliceDescriptor;
 import com.iocextractor.application.export.SliceManifest;
 import com.iocextractor.application.export.SnapshotArtifactMetadata;
 import com.iocextractor.application.export.SnapshotMetadata;
@@ -21,7 +24,18 @@ import com.iocextractor.application.port.out.export.ExportRunLedger;
 import com.iocextractor.application.port.out.export.SliceManifestCodec;
 import com.iocextractor.application.port.out.export.SnapshotRowConsumer;
 import com.iocextractor.application.port.out.export.SnapshotSliceReader;
+import com.iocextractor.application.port.out.sync.FileTransport;
+import com.iocextractor.application.sync.ArtifactPublishService;
+import com.iocextractor.application.sync.PublishAtomicallyRequest;
+import com.iocextractor.application.sync.PublishLedgerSliceRetentionGuard;
+import com.iocextractor.application.sync.PublishReceipt;
+import com.iocextractor.application.sync.PublishTarget;
+import com.iocextractor.application.sync.RemoteObject;
+import com.iocextractor.application.sync.Retrier;
+import com.iocextractor.application.sync.RetryPolicy;
+import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import com.iocextractor.bootstrap.ExportPlanCatalog;
+import com.iocextractor.bootstrap.LazyServiceStorage;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -33,12 +47,14 @@ import picocli.CommandLine.IFactory;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -106,6 +122,9 @@ class OnDemandExportIntegrationTest {
     @Autowired
     Clock clock;
 
+    @Autowired
+    LazyServiceStorage serviceStorage;
+
     @Test
     void canonicalWriteExportsGoldenSliceSkipsDuplicatesAndCatchesConcurrentCommit() throws Exception {
         var plan = plans.plans().stream()
@@ -135,6 +154,8 @@ class OnDemandExportIntegrationTest {
                 .isEqualTo(golden("golden/expected-export-masks.csv"));
         assertThat(Files.readString(slice.resolve("_SUCCESS"), StandardCharsets.US_ASCII))
                 .isEqualTo(sha256(manifestBytes) + "\n");
+
+        publishSliceIsIdempotentAndReleasesRetention(slice, manifest);
 
         int second = new CommandLine(rootCommand, commandFactory)
                 .execute("export", "--profile", "e2e-reputation");
@@ -185,6 +206,46 @@ class OnDemandExportIntegrationTest {
                 .contains("after-snapshot.example");
     }
 
+    private void publishSliceIsIdempotentAndReleasesRetention(Path slice, SliceManifest manifest)
+            throws Exception {
+        PublishTarget target = new PublishTarget(
+                "e2e-target", "local", "/published", "e2e-reputation");
+        JdbcPublishLedger ledger = new JdbcPublishLedger(serviceStorage.dataSource(), clock);
+        PublishLedgerSliceRetentionGuard guard = new PublishLedgerSliceRetentionGuard(
+                ledger, List.of(target));
+        SliceDescriptor descriptor = new SliceDescriptor(
+                manifest.sliceId(), manifest.profile(), slice.getFileName().toString(), manifest.createdAt());
+        LocalPublishTransport transport = new LocalPublishTransport(TEST_ROOT.resolve("remote"));
+        ArtifactPublishService publisher = new ArtifactPublishService(
+                new FileSystemCompletedSliceCatalog(EXPORT_ROOT, manifestCodec),
+                ledger,
+                transport,
+                List.of(target),
+                new Retrier(new RetryPolicy(
+                        1, java.time.Duration.ofMillis(1), 1.0d,
+                        java.time.Duration.ofMillis(1), false), ignored -> { }),
+                new CollectingDiagnosticSink(),
+                clock);
+
+        assertThat(guard.canDelete(descriptor)).isFalse();
+        var first = publisher.publish(new com.iocextractor.application.port.in.sync.ArtifactPublishCommand(
+                Optional.of("e2e-reputation"), false));
+        var duplicate = publisher.publish(new com.iocextractor.application.port.in.sync.ArtifactPublishCommand(
+                Optional.of("e2e-reputation"), false));
+
+        Path remoteSlice = TEST_ROOT.resolve("remote/local/published").resolve(slice.getFileName());
+        assertThat(first.succeeded()).isOne();
+        assertThat(duplicate.succeeded()).isOne();
+        assertThat(transport.publishCalls).isOne();
+        assertThat(guard.canDelete(descriptor)).isTrue();
+        assertThat(Files.readAllBytes(remoteSlice.resolve("manifest.json")))
+                .isEqualTo(Files.readAllBytes(slice.resolve("manifest.json")));
+        assertThat(Files.readAllBytes(remoteSlice.resolve("masks_list_generated.csv")))
+                .isEqualTo(Files.readAllBytes(slice.resolve("masks_list_generated.csv")));
+        assertThat(Files.readString(remoteSlice.resolve("_SUCCESS"), StandardCharsets.US_ASCII))
+                .isEqualTo(Files.readString(slice.resolve("_SUCCESS"), StandardCharsets.US_ASCII));
+    }
+
     private void writeMask(ExportPlan plan, String id, String mask) {
         var artifact = plan.artifacts().getFirst();
         LinkedHashMap<String, String> values = new LinkedHashMap<>();
@@ -215,6 +276,85 @@ class OnDemandExportIntegrationTest {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 is unavailable", impossible);
+        }
+    }
+
+    private static final class LocalPublishTransport implements FileTransport {
+        private final Path root;
+        private int publishCalls;
+
+        private LocalPublishTransport(Path root) {
+            this.root = root;
+        }
+
+        @Override
+        public List<RemoteObject> list(String endpoint, String remotePath) {
+            return List.of();
+        }
+
+        @Override
+        public Optional<RemoteObject> stat(String endpoint, String remotePath) {
+            Path path = resolve(endpoint, remotePath);
+            try {
+                return Files.exists(path)
+                        ? Optional.of(new RemoteObject(remotePath, Files.size(path), Files.getLastModifiedTime(path).toInstant()))
+                        : Optional.empty();
+            } catch (java.io.IOException failure) {
+                throw new java.io.UncheckedIOException(failure);
+            }
+        }
+
+        @Override
+        public void get(String endpoint, String remotePath, Path localDestination) {
+            try {
+                Files.copy(resolve(endpoint, remotePath), localDestination, StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.io.IOException failure) {
+                throw new java.io.UncheckedIOException(failure);
+            }
+        }
+
+        @Override
+        public void delete(String endpoint, String remotePath) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public PublishReceipt publishAtomically(PublishAtomicallyRequest request) {
+            publishCalls++;
+            Path destination = resolve(request.endpoint(), request.remotePath());
+            Path staging = destination.resolveSibling(destination.getFileName() + ".uploading");
+            try {
+                copyTree(request.localDirectory(), staging, request.commitMarkerName());
+                Files.createDirectories(destination.getParent());
+                Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
+                return new PublishReceipt(request.remotePath(), "local-e2e-verified");
+            } catch (java.io.IOException failure) {
+                throw new java.io.UncheckedIOException(failure);
+            }
+        }
+
+        private void copyTree(Path source, Path destination, String marker) throws java.io.IOException {
+            Files.createDirectories(destination);
+            try (var paths = Files.walk(source)) {
+                for (Path path : paths.filter(candidate -> !candidate.equals(source)).toList()) {
+                    Path relative = source.relativize(path);
+                    if (relative.toString().equals(marker)) {
+                        continue;
+                    }
+                    Path target = destination.resolve(relative);
+                    if (Files.isDirectory(path)) {
+                        Files.createDirectories(target);
+                    } else {
+                        Files.copy(path, target);
+                    }
+                }
+            }
+            Files.copy(source.resolve(marker), destination.resolve(marker));
+        }
+
+        private Path resolve(String endpoint, String remotePath) {
+            String relative = remotePath.startsWith("/") ? remotePath.substring(1) : remotePath;
+            return root.resolve(endpoint).resolve(relative).normalize();
         }
     }
 

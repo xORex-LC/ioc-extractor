@@ -56,8 +56,9 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
         Objects.requireNonNull(command, "command");
         FetchCounters counters = new FetchCounters();
         for (RemoteFetchSource source : selectedSources(command)) {
+            SourceMatchers matchers = compileMatchers(source);
             for (RemoteObject object : transport.list(source.endpoint(), source.remotePath())) {
-                if (!matches(source, object)) {
+                if (!matches(matchers, object)) {
                     counters.skipped++;
                     continue;
                 }
@@ -119,17 +120,21 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
             counters.failed++;
         } catch (RuntimeException failure) {
             cleanup(staging);
-            ledger.markFailed(identity, failure.getMessage(), clock.instant());
-            counters.failed++;
+            throw failure;
         }
     }
 
-    private boolean matches(RemoteFetchSource source, RemoteObject object) {
-        String leaf = leafName(object.path());
-        boolean included = source.include().isEmpty()
-                || source.include().stream().anyMatch(pattern -> glob(pattern).matches(Path.of(leaf)));
-        boolean excluded = source.exclude().stream().anyMatch(pattern -> glob(pattern).matches(Path.of(leaf)));
-        return included && !excluded;
+    private SourceMatchers compileMatchers(RemoteFetchSource source) {
+        return new SourceMatchers(
+                source.include().stream().map(this::glob).toList(),
+                source.exclude().stream().map(this::glob).toList());
+    }
+
+    private boolean matches(SourceMatchers matchers, RemoteObject object) {
+        Path leaf = Path.of(leafName(object.path()));
+        boolean accepted = matchers.included().isEmpty()
+                || matchers.included().stream().anyMatch(matcher -> matcher.matches(leaf));
+        return accepted && matchers.excluded().stream().noneMatch(matcher -> matcher.matches(leaf));
     }
 
     private PathMatcher glob(String pattern) {
@@ -223,5 +228,8 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
         private RemoteFetchResult toResult() {
             return new RemoteFetchResult(fetched, skipped, failed);
         }
+    }
+
+    private record SourceMatchers(List<PathMatcher> included, List<PathMatcher> excluded) {
     }
 }

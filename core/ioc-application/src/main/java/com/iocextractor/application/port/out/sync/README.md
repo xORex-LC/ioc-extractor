@@ -25,6 +25,7 @@ adapter-модулях.
   каталоги не превращаются в publish work; corruption должна всплывать явно.
 - `PublishLedger` — единственное durable состояние delivery saga; export run ledger
   не меняется при remote publish/recovery.
+- Полный `findAll` является read-only health/ops view; state transitions остаются CAS-командами.
 
 ## Зависимости
 

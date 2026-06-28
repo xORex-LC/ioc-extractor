@@ -26,7 +26,7 @@
 | `0008-stage-6-8-implementation-followups.md` | Ревью реализации этапов 6–8: устранённые находки + отложенный техдолг (D1 интеграция diagnostics, D3 ECS-типы; D2 закрыт этапом 9) |
 | `0009-modularization-granularity.md` | Гранулярность реактора (14 модулей, единый `ioc-domain`); coupling vs cross-cut; критерий выноса capability; `refang` — кандидат №1; защита границ слоями (Maven/Enforcer/ArchUnit), Modulith отложен |
 | `0010-health-actuator.md` | Health/Actuator по HTTP только в daemon (`DaemonWebEnvironmentPostProcessor` гейтит по `runtime.mode`), loopback-bind, прижатый пул Tomcat, systemd-hardening; задел под web driving-adapter (ING-8) |
-| `0011-remote-sync.md` | Двунаправленная синхронизация с внешними хранилищами (`ioc.sync`, SMB/smbj): транспорт за портом (`FileTransport`), вход → существующий inbox, выход → сформированные артефакты (агностично к output-mode из 0012); v1 = демон + CLI `ioc sync`. **Проектирование.** Открыто: граница транспорт-агностичности |
+| `0011-remote-sync.md` | Двунаправленная синхронизация с внешними хранилищами (`ioc.sync`, SMB/smbj): transport-neutral fetch → inbox и publish verified export slices, JDBC ledgers, daemon/CLI/health. **Реализовано (S0–S8).** |
 | `0012-streaming-dataframe-emission.md` | Реализованный Artifact Emission поверх БД-truth: atomic revision, strict streaming snapshot, immutable complete-slices + manifest/`_SUCCESS`, CAS saga/recovery, CLI/daemon cadence, health и slice retention. Готовый локальный контракт потребляется будущей доставкой 0011. **Реализовано (C0–C11)** |
 
 ## Формат

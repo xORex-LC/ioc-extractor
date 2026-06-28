@@ -47,6 +47,7 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Application | `application/ingest` | daemon ingestion orchestration (`IngestionService`) |
 | Application | `application/artifact` | storage-neutral artifact row identity, canonical artifact snapshots and ingest run recovery model |
 | Application | `application/maintenance` | retention reaper: `RetentionPolicy` (pure) + `RetentionService` |
+| Application | `application/sync`, `application/port/*/sync` | Transport-neutral fetch/publish use cases, retry/error policy и delivery ledgers/catalog ports |
 | Adapter (in) | `adapter/in/cli` | `IocRootCommand`, `ExtractCommand`, `CliRunner` (picocli) |
 | Adapter (out) | `adapter/out/regex` | `Re2jPatternEngine` (default), `JdkRegexPatternEngine` |
 | Adapter (out) | `adapter/out/source` | `TikaSourceReader` |
@@ -54,6 +55,7 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Adapter (out) | `adapter/out/lookup` | `CsvMaskLookupRepository`, `CsvArtifactLookupRepository` |
 | Adapter (in) | `adapter/in/ingest` | Spring Integration file-poll daemon, filesystem lifecycle, file ledger |
 | Adapter (out) | `adapter/out/maintenance` | `FileSystemRetentionStore` (reaper IO; в модуле `adapter-ingest`) |
+| Adapter (out) | `adapter/out/transport/smb` | SMB2/3 `FileTransport` на smbj; session/reconnect/atomic publish внутри адаптера |
 | Bootstrap | `bootstrap` | `IocProperties` (конфиг), `AppConfig` (composition root), daemon schedulers, `DaemonWebEnvironmentPostProcessor` (web only in daemon), health indicators |
 | Platform | `common` | `IocExtractorException` (`ioc-platform-errors`) |
 
@@ -90,6 +92,13 @@ read (SourceReader)
 | `PatternEngine` | domain SPI | Движок regex (RE2/J по умолчанию, JDK — замена) |
 | `IngestSourceUseCase` | driving (in) | Обработка одного daemon source unit |
 | `RunRetentionUseCase` / `RetentionStore` | driving (in) / driven (out) | Reaper растущих каталогов по возрасту/количеству (delete/archive) |
+| `RemoteFetchUseCase` / `ArtifactPublishUseCase` | driving (in) | Remote → inbox и verified export slice → targets |
+| `FileTransport` | driven (out) | Stateless remote file operations + atomic multi-file publish intent |
+| `RemoteFetchLedger` / `PublishLedger` | driven (out) | Fetch idempotency и независимая per-slice/per-target delivery saga |
+
+Remote sync не меняет extraction pipeline: fetch заканчивается в штатном inbox, а
+publish начинается только после локального export `_SUCCESS`. Подробный protocol и
+операторская модель — [sync.md](sync.md).
 
 ## Классификация сетевых масок
 

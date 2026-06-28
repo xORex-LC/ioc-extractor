@@ -37,6 +37,7 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
     private final List<PublishTarget> targets;
     private final ArtifactPublishUseCase publisher;
     private final TransportRegistry transports;
+    private final SyncHealthState healthState;
     private final Duration interval;
     private final AtomicBoolean running = new AtomicBoolean();
 
@@ -47,10 +48,12 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
     public DaemonPublishScheduler(List<PublishTarget> targets,
                                   ArtifactPublishUseCase publisher,
                                   TransportRegistry transports,
+                                  SyncHealthState healthState,
                                   Duration interval) {
         this.targets = List.copyOf(Objects.requireNonNull(targets, "targets"));
         this.publisher = Objects.requireNonNull(publisher, "publisher");
         this.transports = Objects.requireNonNull(transports, "transports");
+        this.healthState = Objects.requireNonNull(healthState, "healthState");
         this.interval = positive(interval, "interval");
     }
 
@@ -105,8 +108,18 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
     }
 
     private void attempt(PublishTarget target) {
+        LogEvents.info(log)
+                .action(EventAction.SYNC_PUBLISH_START)
+                .outcome(EventOutcome.UNKNOWN)
+                .field(LogField.IOC_SYNC_TARGET, target.targetId())
+                .field(LogField.IOC_SYNC_ENDPOINT, target.endpoint())
+                .field(LogField.IOC_EXPORT_PROFILE, target.exportProfile())
+                .message("scheduled remote publish started")
+                .log();
         try {
             ArtifactPublishResult result = publisher.publish(command(target));
+            healthState.recordPublish(
+                    target.targetId(), target.endpoint(), target.exportProfile(), result);
             LogEvents.info(log)
                     .action(EventAction.SYNC_PUBLISH_COMPLETE)
                     .outcome(result.failed() == 0 ? EventOutcome.SUCCESS : EventOutcome.FAILURE)
@@ -129,6 +142,8 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
     }
 
     private void logFailure(PublishTarget target, String message, RuntimeException failure) {
+        healthState.recordPublishFailure(
+                target.targetId(), target.endpoint(), target.exportProfile(), failure);
         LogEvents.error(log)
                 .action(EventAction.SYNC_PUBLISH_COMPLETE)
                 .outcome(EventOutcome.FAILURE)

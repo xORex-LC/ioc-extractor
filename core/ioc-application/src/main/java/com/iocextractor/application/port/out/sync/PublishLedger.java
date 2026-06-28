@@ -17,6 +17,9 @@ public interface PublishLedger {
 
     List<PublishRecord> findRetryable();
 
+    /** Returns the complete delivery read model for health and reconciliation tooling. */
+    List<PublishRecord> findAll();
+
     PublishRecord transition(String sliceId,
                              String targetId,
                              PublishStatus expected,

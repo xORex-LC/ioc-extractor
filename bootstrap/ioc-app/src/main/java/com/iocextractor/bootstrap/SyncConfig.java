@@ -21,6 +21,8 @@ import com.iocextractor.application.sync.RemoteFetchSource;
 import com.iocextractor.application.sync.Retrier;
 import com.iocextractor.application.sync.RetryPolicy;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -40,6 +42,11 @@ public class SyncConfig {
     @Bean
     public ValidateSyncSelectionUseCase validateSyncSelectionUseCase(IocProperties props) {
         return new SyncSelectionCatalog(props);
+    }
+
+    @Bean
+    public SyncHealthState syncHealthState(Clock clock) {
+        return new SyncHealthState(clock);
     }
 
     @Bean
@@ -146,9 +153,10 @@ public class SyncConfig {
     public DaemonFetchScheduler daemonFetchScheduler(
             RemoteFetchUseCase useCase,
             TransportRegistry transports,
+            SyncHealthState healthState,
             IocProperties props) {
         return new DaemonFetchScheduler(
-                fetchSources(props), useCase, transports, props.sync().fetch().interval());
+                fetchSources(props), useCase, transports, healthState, props.sync().fetch().interval());
     }
 
     @Bean
@@ -159,9 +167,27 @@ public class SyncConfig {
     public DaemonPublishScheduler daemonPublishScheduler(
             ArtifactPublishUseCase useCase,
             TransportRegistry transports,
+            SyncHealthState healthState,
             IocProperties props) {
         return new DaemonPublishScheduler(
-                publishTargets(props), useCase, transports, props.sync().publish().interval());
+                publishTargets(props), useCase, transports, healthState, props.sync().publish().interval());
+    }
+
+    @Bean("syncHealthIndicator")
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.sync.enabled:false}' == 'true' && "
+            + "('${ioc.sync.fetch.enabled:false}' == 'true' || "
+            + "'${ioc.sync.publish.enabled:false}' == 'true') && "
+            + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
+    public HealthIndicator syncHealthIndicator(
+            SyncHealthState state,
+            PublishLedger ledger,
+            CompletedSliceCatalog catalog,
+            ObjectProvider<SliceRetentionGuard> retentionGuard,
+            IocProperties props) {
+        return new SyncHealthIndicator(
+                fetchSources(props), publishTargets(props), state, ledger, catalog,
+                retentionGuard.getIfAvailable(() -> descriptor -> true));
     }
 
     private void rejectUnsupportedTransports(IocProperties props, int supportedCount) {

@@ -93,17 +93,18 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `platform-diagnostics-logging` | Bridge `DiagnosticSink` → LogEvent/SLF4J (`LoggingDiagnosticSink`); зависит на `platform-diagnostics` + `platform-observability` |
 | `platform-errors` | базовые ошибки/common-типы и трансляция; нижний слой для `DiagnosticException` |
 | `ioc-domain` | Refanger, IndicatorExtractor, SourceAttributor, MatchPolicy, модели, feature extraction |
-| `ioc-application` | Pipeline/ingest use cases; framework-free Artifact Emission model, cadence, formation/recovery saga и slice-retention policy; ports и IOC stages |
+| `ioc-application` | Pipeline/ingest use cases; framework-free Artifact Emission и Remote Sync models, retry/cadence, formation/delivery sagas, ports и policies |
 | `adapter-regex-re2j` | PatternEngine implementation (RE2J + JDK fallback) |
 | `adapter-source-tika` | SourceReader (Tika) |
 | `adapter-sink-csv` | IocSink + mapping, canonical CSV projection, callback-streaming immutable slices, integrity verification, atomic local publish и directory-level slice retention |
 | `adapter-manifest-json-jackson` | Deterministic versioned JSON codec for immutable slice manifests |
-| `adapter-store-jdbc` | Service/dataframe SQLite: canonical/revision storage, strict snapshot reader, ingest/export ledgers + progress, migrations, lookup и health |
+| `adapter-store-jdbc` | Service/dataframe SQLite: canonical/revision storage, strict snapshot reader, ingest/export/fetch/publish ledgers + progress, migrations, lookup и health |
+| `adapter-transport-smb` | smbj boundary: lazy SMB2/3 sessions, streaming get и atomic slice publish за `FileTransport` |
 | `adapter-lookup-csv` | artifact-aware `LookupRepository` for masks + hashes |
 | `adapter-psl` | HostClassifier (PSL/Guava) |
 | `adapter-ingest` | Watch ingest: `IngestSourceUseCase`(in), `SourceLifecycle`, file `IngestionLedger`; SourceFeed adapter-local (Spring Integration); `FileSystemRetentionStore` (reaper IO) |
-| `adapter-cli-picocli` | входной CLI: `extract`, lazy on-demand `export`, remote daemon `health` |
-| `ioc-app` (bootstrap) | composition root, `ioc.export` plan resolution/lazy graph, ECS export observer; cadence/export/slice-retention schedulers, conditional web и health |
+| `adapter-cli-picocli` | входной CLI: `extract`, lazy `export`, `sync fetch|publish|all`, remote daemon `health` |
+| `ioc-app` (bootstrap) | composition root, lazy export/sync graphs, transport registry; fetch/export/publish/retention schedulers, conditional web и health |
 
 ## Гранулярность
 

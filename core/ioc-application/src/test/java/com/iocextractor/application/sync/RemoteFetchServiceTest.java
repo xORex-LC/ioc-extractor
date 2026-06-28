@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RemoteFetchServiceTest {
 
@@ -156,6 +157,20 @@ class RemoteFetchServiceTest {
         assertThat(transport.listCalls).containsExactly("endpoint-one:/one");
     }
 
+    @Test
+    void unexpectedProgrammingFailureIsNotConvertedToFetchLedgerFailure() {
+        RemoteObject object = object("/share/a.htm", 10);
+        FakeTransport transport = new FakeTransport(List.of(object));
+        transport.unexpectedGetFailure = new IllegalArgumentException("adapter contract violation");
+        FakeLedger ledger = new FakeLedger();
+
+        assertThatThrownBy(() -> service(transport, ledger).fetch(new RemoteFetchCommand(false)))
+                .isSameAs(transport.unexpectedGetFailure);
+        assertThat(ledger.find(object.identity())).isEmpty();
+        assertThat(tempDir.resolve("a.htm")).doesNotExist();
+        assertThat(stagingFiles()).isEmpty();
+    }
+
     private RemoteFetchService service(FakeTransport transport, FakeLedger ledger) {
         return service(transport, ledger, new RemoteFetchSource(
                 "src", "endpoint", "/share", List.of("*"), List.of("*.part", ".*")));
@@ -195,6 +210,7 @@ class RemoteFetchServiceTest {
         private final List<String> listCalls = new java.util.ArrayList<>();
         private boolean failGet;
         private boolean writeThenFail;
+        private RuntimeException unexpectedGetFailure;
 
         private FakeTransport(List<RemoteObject> objects) {
             this.objects = List.copyOf(objects);
@@ -214,6 +230,9 @@ class RemoteFetchServiceTest {
         @Override
         public void get(String endpoint, String remotePath, Path localDestination) {
             getCalls++;
+            if (unexpectedGetFailure != null) {
+                throw unexpectedGetFailure;
+            }
             if (failGet) {
                 throw new RemoteTransportException(RemoteErrorKind.TRANSIENT, "download failed");
             }
