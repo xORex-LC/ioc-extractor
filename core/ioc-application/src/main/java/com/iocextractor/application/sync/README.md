@@ -16,6 +16,7 @@ value objects и политики, которые одинаковы для SMB/
 | `RemoteObject` / `RemoteObjectIdentity` | Metadata и fetch-ledger identity удалённого файла |
 | `RemoteFetchRecord` / `RemoteFetchStatus` | Durable состояние read-only fetch idempotency |
 | `PublishRecord` / `PublishStatus` | Durable per-slice/per-target publish saga state |
+| `CompletedSlice` | Verified local slice descriptor для publish worklist |
 | `PublishAtomicallyRequest` / `PublishReceipt` | Контракт толстого write-intent для публикации slice-каталога |
 
 ## Инварианты
@@ -26,9 +27,11 @@ value objects и политики, которые одинаковы для SMB/
 - Commit marker name — один безопасный leaf segment; remote path остаётся transport path.
 - `PublishRecord` key = `(sliceId, targetId)`; profile/sliceName/manifest/endpoint/path — immutable binding.
 - `RemoteObjectIdentity` key = remote `path + size + modifiedAt`; источник остаётся read-only.
+- `CompletedSlice` уже прошёл локальную integrity-chain проверку и содержит normalized
+  physical path только как payload для transport adapter.
 
 ## Зависимости
 
-**Зависит от:** JDK.
+**Зависит от:** JDK, `application.export` manifest model.
 
 **Не импортируется:** Spring, JDBC, smbj/transport libraries, adapters, bootstrap.

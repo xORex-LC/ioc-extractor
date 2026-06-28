@@ -13,6 +13,7 @@ adapter-модулях.
 | `FileTransport` | Stateless remote file operations и atomic publish intent |
 | `RemoteFetchLedger` | Durable idempotency ledger для read-only fetch |
 | `PublishLedger` | Durable per-slice/per-target publish saga ledger |
+| `CompletedSliceCatalog` | Read-only worklist verified local export slices для remote publish |
 
 ## Инварианты
 
@@ -20,9 +21,11 @@ adapter-модулях.
 - Raw `put`/`rename` не являются application API.
 - `publishAtomically` — единственная write-side операция с multi-file инвариантом.
 - `delete` существует только как seam для opt-in remote retention/cleanup, не для fetch claim.
+- `CompletedSliceCatalog` не является retention API: staging, incomplete и corrupt final
+  каталоги не превращаются в publish work; corruption должна всплывать явно.
 
 ## Зависимости
 
-**Зависит от:** `application.sync` value objects, JDK `Path`.
+**Зависит от:** `application.sync` value objects, `application.export` manifest model, JDK `Path`.
 
 **Не импортируется:** smbj, Spring, JDBC, adapters, bootstrap.
