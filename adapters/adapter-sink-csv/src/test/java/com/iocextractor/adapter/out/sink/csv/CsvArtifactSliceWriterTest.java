@@ -17,7 +17,6 @@ import com.iocextractor.application.export.SnapshotMetadata;
 import com.iocextractor.application.export.SnapshotRequest;
 import com.iocextractor.application.export.StagedSlice;
 import com.iocextractor.application.port.out.export.SliceManifestCodec;
-import com.iocextractor.application.port.out.export.SnapshotRowConsumer;
 import com.iocextractor.application.port.out.export.SnapshotSliceReader;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;

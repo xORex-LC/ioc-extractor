@@ -28,7 +28,7 @@ class RegexIndicatorExtractorTest {
 
         List<RawIndicator> result = extractor().extract(text);
 
-        assertThat(result).extracting(RawIndicator::type)
+        assertThat(result).extracting(indicator -> indicator.type())
                 .contains(IndicatorType.URL, IndicatorType.IPV4, IndicatorType.DOMAIN, IndicatorType.SHA256);
     }
 
@@ -36,9 +36,9 @@ class RegexIndicatorExtractorTest {
     void url_host_is_not_re_emitted_as_bare_domain() {
         List<RawIndicator> result = extractor().extract("go to https://evil.com/path now");
 
-        assertThat(result).extracting(RawIndicator::value)
+        assertThat(result).extracting(indicator -> indicator.value())
                 .containsExactly("https://evil.com/path");
-        assertThat(result).extracting(RawIndicator::type)
+        assertThat(result).extracting(indicator -> indicator.type())
                 .doesNotContain(IndicatorType.DOMAIN);
     }
 }

@@ -196,7 +196,7 @@ public class SyncConfig {
         }
         String unsupported = props.sync().endpoints().stream()
                 .filter(endpoint -> !"smb".equalsIgnoreCase(endpoint.transport()))
-                .map(IocProperties.Sync.Endpoint::transport)
+                .map(endpoint -> endpoint.transport())
                 .distinct()
                 .sorted()
                 .reduce((left, right) -> left + ", " + right)

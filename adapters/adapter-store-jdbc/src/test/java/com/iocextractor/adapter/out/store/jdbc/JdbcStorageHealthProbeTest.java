@@ -52,7 +52,7 @@ class JdbcStorageHealthProbeTest {
 
     private int currentServiceSchemaVersion() {
         return ServiceSchemaMigrations.sqlite().stream()
-                .mapToInt(SqliteSchemaMigration::version)
+                .mapToInt(migration -> migration.version())
                 .max()
                 .orElseThrow();
     }

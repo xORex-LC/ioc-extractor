@@ -62,13 +62,13 @@ public final class ExportHealthIndicator implements HealthIndicator {
         List<String> artifacts = plan.artifacts().stream()
                 .map(spec -> spec.artifactName()).toList();
         Map<String, ArtifactRevision> current = revisions.read(artifacts).stream()
-                .collect(Collectors.toMap(ArtifactRevision::artifactName, Function.identity()));
+                .collect(Collectors.toMap(revision -> revision.artifactName(), Function.identity()));
         Map<String, ExportProgress> exported = progress.findByProfile(profile).stream()
-                .collect(Collectors.toMap(ExportProgress::artifactName, Function.identity()));
+                .collect(Collectors.toMap(item -> item.artifactName(), Function.identity()));
         long lag = artifacts.stream().mapToLong(artifact -> Math.max(0,
                 current.getOrDefault(artifact, new ArtifactRevision(artifact, 0, null)).revision()
                         - Optional.ofNullable(exported.get(artifact))
-                        .map(ExportProgress::lastRevision).orElse(0L)))
+                        .map(item -> item.lastRevision()).orElse(0L)))
                 .sum();
         Optional<ExportRun> completed = runs.findLatest(profile, ExportRunStatus.COMPLETED);
         Optional<ExportRun> failed = runs.findLatest(profile, ExportRunStatus.FAILED);

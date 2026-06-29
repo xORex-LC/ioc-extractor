@@ -17,6 +17,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -195,7 +196,8 @@ class SyncCommandTest {
 
     private <T> org.springframework.beans.factory.ObjectProvider<T> provider(Class<T> type, T bean) {
         StaticListableBeanFactory beans = new StaticListableBeanFactory();
-        beans.addBean(type.getName(), bean);
+        String beanName = Objects.requireNonNull(type.getName(), "beanName");
+        beans.addBean(beanName, Objects.requireNonNull(bean, "bean"));
         return beans.getBeanProvider(type);
     }
 

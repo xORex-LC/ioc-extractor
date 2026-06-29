@@ -25,10 +25,10 @@ class TransportRegistryTest {
     void dispatchesByLogicalEndpointWithoutChangingPortArguments() {
         FakeTransport first = new FakeTransport();
         FakeTransport second = new FakeTransport();
-        TransportRegistry registry = new TransportRegistry(List.of(
-                binding("one", first), binding("two", second)));
-
-        registry.list("two", "/incoming");
+        try (TransportRegistry registry = new TransportRegistry(List.of(
+                binding("one", first), binding("two", second)))) {
+            registry.list("two", "/incoming");
+        }
 
         assertThat(first.calls).isEmpty();
         assertThat(second.calls).containsExactly("list:two:/incoming");
@@ -49,11 +49,11 @@ class TransportRegistryTest {
 
     @Test
     void unknownEndpointFailsBeforeAdapterResolution() {
-        TransportRegistry registry = new TransportRegistry(List.of(binding("known", new FakeTransport())));
-
-        assertThatThrownBy(() -> registry.get("unknown", "/a", tempDir.resolve("a")))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Unknown sync endpoint");
+        try (TransportRegistry registry = new TransportRegistry(List.of(binding("known", new FakeTransport())))) {
+            assertThatThrownBy(() -> registry.get("unknown", "/a", tempDir.resolve("a")))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Unknown sync endpoint");
+        }
     }
 
     private TransportRegistry.Binding binding(String endpoint, FakeTransport transport) {

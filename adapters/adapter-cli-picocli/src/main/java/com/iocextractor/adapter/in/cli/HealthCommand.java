@@ -135,7 +135,7 @@ public final class HealthCommand implements Callable<Integer> {
         }
         Map<String, Object> components = (Map<String, Object>) componentsRaw;
         int nameWidth = Math.max("COMPONENT".length(),
-                components.keySet().stream().mapToInt(String::length).max().orElse(9));
+                components.keySet().stream().mapToInt(name -> name.length()).max().orElse(9));
 
         System.out.println();
         System.out.printf("  %-" + nameWidth + "s  %-8s  %s%n", "COMPONENT", "STATUS", "DETAILS");

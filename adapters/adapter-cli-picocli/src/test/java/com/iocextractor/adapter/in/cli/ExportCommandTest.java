@@ -12,6 +12,7 @@ import picocli.CommandLine;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -76,7 +77,7 @@ class ExportCommandTest {
     private ExportCommand command(ValidateExportProfileUseCase validator,
                                   ExportArtifactsUseCase exporter) {
         StaticListableBeanFactory beans = new StaticListableBeanFactory();
-        beans.addBean("exporter", exporter);
+        beans.addBean("exporter", Objects.requireNonNull(exporter, "exporter"));
         return new ExportCommand(
                 validator,
                 beans.getBeanProvider(ExportArtifactsUseCase.class),

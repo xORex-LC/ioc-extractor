@@ -110,7 +110,7 @@ public final class SqliteUserVersionSchemaMigrator {
             return List.of();
         }
         List<SqliteSchemaMigration> sorted = source.stream()
-                .sorted(Comparator.comparingInt(SqliteSchemaMigration::version))
+                .sorted(Comparator.comparingInt(migration -> migration.version()))
                 .toList();
         for (int i = 0; i < sorted.size(); i++) {
             int expected = i + 1;
@@ -202,7 +202,7 @@ public final class SqliteUserVersionSchemaMigrator {
                 .map(line -> line.replaceFirst("--.*$", ""))
                 .collect(Collectors.joining("\n"));
         return Arrays.stream(cleaned.split(";"))
-                .map(String::strip)
+                .map(statement -> statement.strip())
                 .filter(statement -> !statement.isEmpty())
                 .toList();
     }

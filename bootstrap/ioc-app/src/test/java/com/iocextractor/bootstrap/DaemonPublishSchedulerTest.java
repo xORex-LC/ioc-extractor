@@ -90,9 +90,9 @@ class DaemonPublishSchedulerTest {
         scheduler.runOnce();
 
         assertThat(state.publishSnapshots().get("one"))
-                .extracting(SyncHealthState.PublishSnapshot::profile,
-                        SyncHealthState.PublishSnapshot::succeeded,
-                        SyncHealthState.PublishSnapshot::failed)
+                .extracting(snapshot -> snapshot.profile(),
+                        snapshot -> snapshot.succeeded(),
+                        snapshot -> snapshot.failed())
                 .containsExactly("profile-one", 1, 0);
     }
 

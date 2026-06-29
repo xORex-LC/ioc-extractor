@@ -49,7 +49,7 @@ class JdbcExportRunLedgerTest {
                 start.countDown();
 
                 assertThat(List.of(first.get(), second.get()))
-                        .filteredOn(Optional::isPresent)
+                        .filteredOn(optional -> optional.isPresent())
                         .hasSize(1);
                 assertThat(new JdbcExportRunLedger(dataSource, CLOCK).findIncomplete()).hasSize(1);
             }

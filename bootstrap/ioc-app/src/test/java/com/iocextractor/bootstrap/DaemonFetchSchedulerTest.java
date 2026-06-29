@@ -83,9 +83,9 @@ class DaemonFetchSchedulerTest {
         scheduler.runOnce();
 
         assertThat(state.fetchSnapshots().get("one"))
-                .extracting(SyncHealthState.FetchSnapshot::fetched,
-                        SyncHealthState.FetchSnapshot::skipped,
-                        SyncHealthState.FetchSnapshot::failed)
+                .extracting(snapshot -> snapshot.fetched(),
+                        snapshot -> snapshot.skipped(),
+                        snapshot -> snapshot.failed())
                 .containsExactly(2, 3, 0);
     }
 

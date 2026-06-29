@@ -107,7 +107,7 @@ class DataframeRecoveryIntegrationTest {
         assertThat(canonical.load("masks").rows()).hasSize(2);
         assertThat(Files.notExists(projectionPath)).isTrue();
         assertThat(runLedger.findIncompleteIngestRuns()).singleElement()
-                .extracting(IngestRun::status).isEqualTo(IngestRunStatus.DB_COMMITTED);
+                .extracting(incompleteRun -> incompleteRun.status()).isEqualTo(IngestRunStatus.DB_COMMITTED);
 
         // ---- startup recovery ----
         int recovered = new IngestRunRecoveryService(runLedger, projection).recover();

@@ -297,7 +297,7 @@ public final class JdbcExportRunLedger implements ExportRunLedger, ExportRunRead
         if (progress.isEmpty()) {
             throw new IllegalArgumentException("Terminal export progress must not be empty");
         }
-        if (new HashSet<>(progress.stream().map(ExportProgress::artifactName).toList()).size() != progress.size()) {
+        if (new HashSet<>(progress.stream().map(item -> item.artifactName()).toList()).size() != progress.size()) {
             throw new IllegalArgumentException("Terminal export progress artifacts must be unique");
         }
         return progress;

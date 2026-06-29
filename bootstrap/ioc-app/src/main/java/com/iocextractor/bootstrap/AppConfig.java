@@ -950,7 +950,7 @@ public class AppConfig {
         return props.sink().artifacts().stream()
                 .filter(artifact -> artifact.name().equals(name))
                 .findFirst()
-                .map(IocProperties.Sink.Artifact::path)
+                .map(artifact -> artifact.path())
                 .orElseThrow(() -> new IocExtractorException("Unknown artifact: " + name));
     }
 
@@ -974,7 +974,7 @@ public class AppConfig {
         for (IocProperties.Sink.Artifact artifact : props.sink().artifacts()) {
             if (artifact.enabled()) {
                 headers.put(artifact.name(),
-                        artifact.columns().stream().map(IocProperties.Sink.Artifact.Column::name).toList());
+                        artifact.columns().stream().map(column -> column.name()).toList());
             }
         }
         return headers;
@@ -1047,7 +1047,7 @@ public class AppConfig {
 
     private List<DataframeArtifactSchema> dataframeSchemas(IocProperties props) {
         return props.sink().artifacts().stream()
-                .filter(IocProperties.Sink.Artifact::enabled)
+                .filter(artifact -> artifact.enabled())
                 .map(artifact -> new DataframeArtifactSchema(
                         artifact.name(),
                         artifact.columns().stream()

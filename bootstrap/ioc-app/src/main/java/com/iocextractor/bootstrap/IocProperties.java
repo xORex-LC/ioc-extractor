@@ -172,14 +172,14 @@ public record IocProperties(
 
         public Sync {
             endpoints = List.copyOf(endpoints);
-            unique(endpoints.stream().map(Endpoint::name).toList(), "sync endpoint");
-            Set<String> endpointNames = new HashSet<>(endpoints.stream().map(Endpoint::name).toList());
+            unique(endpoints.stream().map(endpoint -> endpoint.name()).toList(), "sync endpoint");
+            Set<String> endpointNames = new HashSet<>(endpoints.stream().map(endpoint -> endpoint.name()).toList());
             fetch.validate(endpointNames);
             publish.validate(endpointNames);
         }
 
         void validateAgainst(Export export) {
-            Set<String> profiles = new HashSet<>(export.profiles().stream().map(Export.Profile::name).toList());
+            Set<String> profiles = new HashSet<>(export.profiles().stream().map(profile -> profile.name()).toList());
             for (Publish.Target target : publish.targets()) {
                 if (!profiles.contains(target.exportProfile())) {
                     throw new IllegalArgumentException("Unknown sync publish export profile: "
@@ -251,7 +251,7 @@ public record IocProperties(
             public Fetch {
                 positive(interval, "sync fetch interval");
                 sources = List.copyOf(sources);
-                unique(sources.stream().map(Source::name).toList(), "sync fetch source");
+                unique(sources.stream().map(source -> source.name()).toList(), "sync fetch source");
             }
 
             void validate(Set<String> endpointNames) {
@@ -287,7 +287,7 @@ public record IocProperties(
                 }
                 positive(interval, "sync publish interval");
                 targets = List.copyOf(targets);
-                unique(targets.stream().map(Target::name).toList(), "sync publish target");
+                unique(targets.stream().map(target -> target.name()).toList(), "sync publish target");
             }
 
             void validate(Set<String> endpointNames) {

@@ -72,7 +72,7 @@ class JdbcSnapshotSliceReaderTest {
                 "artifact:hashes", "row:3", "row:7", "end-artifact", "end");
         assertThat(result).isEqualTo(consumer.metadata);
         assertThat(result.artifacts())
-                .extracting(SnapshotArtifactMetadata::artifactName)
+                .extracting(metadata -> metadata.artifactName())
                 .containsExactly("masks", "hashes");
         assertThat(result.artifacts())
                 .extracting(metadata -> metadata.coverage().revision())
@@ -220,7 +220,7 @@ class JdbcSnapshotSliceReaderTest {
     }
 
     private ExportPlan plan(List<ExportArtifactSpec> artifacts) {
-        List<String> names = artifacts.stream().map(ExportArtifactSpec::artifactName).toList();
+        List<String> names = artifacts.stream().map(artifact -> artifact.artifactName()).toList();
         return new ExportPlan(
                 1,
                 new ExportProfile("reputation", ExportMode.COMPLETE, names),

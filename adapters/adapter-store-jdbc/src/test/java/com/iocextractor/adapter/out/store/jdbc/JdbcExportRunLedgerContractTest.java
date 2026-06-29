@@ -22,7 +22,7 @@ class JdbcExportRunLedgerContractTest extends ExportRunLedgerContractTest {
 
     @AfterEach
     void closeDataSources() {
-        dataSources.forEach(HikariDataSource::close);
+        dataSources.forEach(dataSource -> dataSource.close());
     }
 
     @Override

@@ -48,7 +48,7 @@ public final class SyncHealthIndicator implements HealthIndicator {
     public Health health() {
         try {
             Set<String> configuredTargets = Set.copyOf(
-                    targets.stream().map(PublishTarget::targetId).toList());
+                    targets.stream().map(target -> target.targetId()).toList());
             List<PublishRecord> records = ledger.findAll().stream()
                     .filter(record -> configuredTargets.contains(record.targetId()))
                     .toList();
@@ -152,7 +152,7 @@ public final class SyncHealthIndicator implements HealthIndicator {
 
     private long countPinnedSlices() {
         long pinned = 0;
-        for (String profile : targets.stream().map(PublishTarget::exportProfile).distinct().toList()) {
+        for (String profile : targets.stream().map(target -> target.exportProfile()).distinct().toList()) {
             for (CompletedSlice slice : catalog.listCompleted(profile)) {
                 SliceDescriptor descriptor = new SliceDescriptor(
                         slice.sliceId(), slice.profile(), slice.sliceName(), slice.manifest().createdAt());

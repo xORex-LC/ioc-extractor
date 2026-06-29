@@ -128,7 +128,7 @@ class JdbcArtifactRepositoriesTest {
         assertThat(written).isOne();
         assertThat(repository.load("masks").rows()).hasSize(1);
         assertThat(new JdbcArtifactRevisionReader(dataSource).read(List.of("masks")))
-                .extracting(ArtifactRevision::revision)
+                .extracting(revision -> revision.revision())
                 .containsExactly(1L);
     }
 

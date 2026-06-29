@@ -125,7 +125,7 @@ class DaemonIngestE2ETest {
     @Test
     void remote_fetch_lands_in_inbox_then_runs_the_normal_ingest_use_case() throws Exception {
         context.getBeansOfType(SourcePollingChannelAdapter.class).values()
-                .forEach(SourcePollingChannelAdapter::stop);
+                .forEach(adapter -> adapter.stop());
         byte[] sourceBytes;
         try (InputStream in = getClass().getClassLoader().getResourceAsStream("golden/source.html")) {
             sourceBytes = in.readAllBytes();

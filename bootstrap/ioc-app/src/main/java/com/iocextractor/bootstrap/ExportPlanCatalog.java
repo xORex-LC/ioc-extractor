@@ -90,7 +90,7 @@ public final class ExportPlanCatalog {
             List<ExportArtifactSpec> artifacts = configured.artifacts().stream()
                     .map(name -> artifact(configured.name(), name, sinkArtifacts, identities))
                     .toList();
-            List<String> fileNames = artifacts.stream().map(ExportArtifactSpec::fileName).toList();
+            List<String> fileNames = artifacts.stream().map(artifact -> artifact.fileName()).toList();
             if (fileNames.stream().distinct().count() != fileNames.size()) {
                 throw new IllegalArgumentException("Export profile has duplicate output file names: "
                         + configured.name());
@@ -143,8 +143,8 @@ public final class ExportPlanCatalog {
         if (identity == null) {
             throw new IllegalArgumentException("Export artifact has no identity definition: " + name);
         }
-        List<String> columns = sink.columns().stream().map(IocProperties.Sink.Artifact.Column::name).toList();
-        List<String> types = sink.columns().stream().map(IocProperties.Sink.Artifact.Column::type).toList();
+        List<String> columns = sink.columns().stream().map(column -> column.name()).toList();
+        List<String> types = sink.columns().stream().map(column -> column.type()).toList();
         Path file = Path.of(sink.path()).getFileName();
         if (file == null) {
             throw new IllegalArgumentException("Sink artifact path has no file name: " + sink.path());

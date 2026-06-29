@@ -131,7 +131,7 @@ public final class ExportService implements ExportArtifactsUseCase {
         ExportRun stagedRun = ledger.transition(started.runId(), ExportRunStatus.STARTED,
                 ExportRunStatus.STAGED, staged.manifestSha256(), null);
         sliceWriter.makeAvailable(stagedRun);
-        ExportRun available = ledger.transition(started.runId(), ExportRunStatus.STAGED,
+        ledger.transition(started.runId(), ExportRunStatus.STAGED,
                 ExportRunStatus.AVAILABLE, null, null);
         List<ExportProgress> completed = changeDetector.completedProgress(
                 staged.manifest(), clock.instant());

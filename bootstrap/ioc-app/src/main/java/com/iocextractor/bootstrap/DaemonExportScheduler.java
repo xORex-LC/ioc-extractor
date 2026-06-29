@@ -1,7 +1,6 @@
 package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.cadence.CadenceSource;
-import com.iocextractor.application.export.ArtifactRevision;
 import com.iocextractor.application.export.ExportPlan;
 import com.iocextractor.application.export.ExportProgress;
 import com.iocextractor.application.port.in.export.ExportArtifactsCommand;
@@ -115,13 +114,13 @@ public final class DaemonExportScheduler implements SmartLifecycle {
                 List<String> artifacts = plan.artifacts().stream()
                         .map(spec -> spec.artifactName()).toList();
                 Instant activity = revisionReader.read(artifacts).stream()
-                        .map(ArtifactRevision::changedAt)
+                        .map(revision -> revision.changedAt())
                         .filter(Objects::nonNull)
-                        .max(Instant::compareTo)
+                        .max((left, right) -> left.compareTo(right))
                         .orElse(null);
                 Instant checkpoint = progress.stream()
-                        .map(ExportProgress::updatedAt)
-                        .max(Instant::compareTo)
+                        .map(item -> item.updatedAt())
+                        .max((left, right) -> left.compareTo(right))
                         .orElse(null);
                 if (!cadence.isDue(activity, checkpoint)) {
                     return;

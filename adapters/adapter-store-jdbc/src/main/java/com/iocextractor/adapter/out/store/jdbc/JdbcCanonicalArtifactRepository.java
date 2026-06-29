@@ -226,7 +226,7 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
 
     private List<String> header(DataframeArtifactSchema schema) {
         return schema.columns().stream()
-                .map(DataframeColumn::name)
+                .map(column -> column.name())
                 .toList();
     }
 

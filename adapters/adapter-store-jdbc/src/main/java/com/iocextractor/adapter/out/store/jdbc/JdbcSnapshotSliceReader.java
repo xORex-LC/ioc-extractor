@@ -218,7 +218,7 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                 throw new IllegalArgumentException("Unknown dataframe artifact: " + artifact.artifactName());
             }
             Set<String> available = schema.columns().stream()
-                    .map(DataframeColumn::name)
+                    .map(column -> column.name())
                     .collect(Collectors.toCollection(LinkedHashSet::new));
             if (!available.containsAll(artifact.columns())) {
                 Set<String> unknown = new LinkedHashSet<>(artifact.columns());

@@ -41,7 +41,7 @@ class DataframeSchemaReconcilerTest {
                 column("url_match"))));
 
         assertThat(plan.changes())
-                .extracting(DataframeSchemaChange::kind)
+                .extracting(change -> change.kind())
                 .containsExactly(
                         DataframeSchemaChange.Kind.CREATE_TABLE,
                         DataframeSchemaChange.Kind.CREATE_TABLE,
@@ -62,7 +62,7 @@ class DataframeSchemaReconcilerTest {
         DataframeSchemaPlan plan = reconciler.reconcile(List.of(schema("masks", column("mask"), column("score"))));
 
         assertThat(plan.changes())
-                .extracting(DataframeSchemaChange::kind)
+                .extracting(change -> change.kind())
                 .containsExactly(DataframeSchemaChange.Kind.ADD_COLUMN);
         assertThat(columnNames("masks")).contains("score");
         assertThat(rowCount("masks")).isOne();
