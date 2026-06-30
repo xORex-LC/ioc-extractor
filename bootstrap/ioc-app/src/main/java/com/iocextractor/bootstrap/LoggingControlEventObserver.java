@@ -20,7 +20,7 @@ public final class LoggingControlEventObserver implements ControlEventObserver {
 
     @Override
     public void published(ControlEvent event) {
-        event(EventAction.EVENT_PUBLISH, event, EventOutcome.SUCCESS)
+        debugEvent(EventAction.EVENT_PUBLISH, event, EventOutcome.SUCCESS)
                 .message("control event published")
                 .log();
     }
@@ -28,14 +28,14 @@ public final class LoggingControlEventObserver implements ControlEventObserver {
     @Override
     public void publishFailed(ControlEvent event, RuntimeException failure) {
         Objects.requireNonNull(failure, "failure");
-        event(EventAction.EVENT_PUBLISH, event, EventOutcome.FAILURE)
+        errorEvent(EventAction.EVENT_PUBLISH, event, EventOutcome.FAILURE)
                 .message("control event publication failed")
                 .log(failure);
     }
 
     @Override
     public void dispatching(ControlEvent event, String handlerName) {
-        event(EventAction.EVENT_DISPATCH, event, EventOutcome.UNKNOWN)
+        debugEvent(EventAction.EVENT_DISPATCH, event, EventOutcome.UNKNOWN)
                 .field(LogField.IOC_EVENT_HANDLER, requireText(handlerName, "handlerName"))
                 .message("control event dispatch started")
                 .log();
@@ -44,24 +44,31 @@ public final class LoggingControlEventObserver implements ControlEventObserver {
     @Override
     public void dispatchFailed(ControlEvent event, String handlerName, RuntimeException failure) {
         Objects.requireNonNull(failure, "failure");
-        event(EventAction.EVENT_DISPATCH, event, EventOutcome.FAILURE)
+        errorEvent(EventAction.EVENT_DISPATCH, event, EventOutcome.FAILURE)
                 .field(LogField.IOC_EVENT_HANDLER, requireText(handlerName, "handlerName"))
                 .message("control event dispatch failed")
                 .log(failure);
     }
 
-    private LogEvent event(EventAction action, ControlEvent event, EventOutcome outcome) {
+    private LogEvent debugEvent(EventAction action, ControlEvent event, EventOutcome outcome) {
+        return event(LogEvents.debug(log), action, event, outcome);
+    }
+
+    private LogEvent errorEvent(EventAction action, ControlEvent event, EventOutcome outcome) {
+        return event(LogEvents.error(log), action, event, outcome);
+    }
+
+    private LogEvent event(LogEvent logEvent, EventAction action, ControlEvent event, EventOutcome outcome) {
         ControlEventMetadata metadata = Objects.requireNonNull(event, "event").metadata();
-        LogEvent logEvent = LogEvents.debug(log)
-                .action(action)
+        LogEvent enriched = logEvent.action(action)
                 .outcome(outcome)
                 .field(LogField.IOC_EVENT_ID, metadata.eventId())
                 .field(LogField.EVENT_TYPE, metadata.eventType())
                 .field(LogField.IOC_EVENT_VERSION, metadata.eventVersion())
                 .field(LogField.IOC_EVENT_CORRELATION_ID, metadata.correlationId());
         metadata.causation().ifPresent(causation ->
-                logEvent.field(LogField.IOC_EVENT_CAUSATION_ID, causation));
-        return logEvent;
+                enriched.field(LogField.IOC_EVENT_CAUSATION_ID, causation));
+        return enriched;
     }
 
     private String requireText(String value, String field) {

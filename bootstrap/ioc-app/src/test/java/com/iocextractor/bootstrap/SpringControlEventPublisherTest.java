@@ -12,7 +12,6 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SpringControlEventPublisherTest {
 
@@ -43,7 +42,7 @@ class SpringControlEventPublisherTest {
     }
 
     @Test
-    void observesAndRethrowsSpringPublicationFailure() {
+    void observesAndSwallowsSpringPublicationFailure() {
         RuntimeException failure = new IllegalStateException("publish failed");
         ApplicationEventPublisher failingPublisher = ignored -> {
             throw failure;
@@ -52,9 +51,9 @@ class SpringControlEventPublisherTest {
         SpringControlEventPublisher publisher = new SpringControlEventPublisher(failingPublisher, observer);
         ControlEvent event = event("event-1");
 
-        assertThatThrownBy(() -> publisher.publish(event))
-                .isSameAs(failure);
+        assertThatNoException().isThrownBy(() -> publisher.publish(event));
         assertThat(observer.failures).containsExactly(failure);
+        assertThat(observer.published).isEmpty();
     }
 
     private static ControlEvent event(String eventId) {

@@ -21,6 +21,7 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
     private final Object lock = new Object();
     private final ExecutorService workers;
     private final int maxQueuedPerKey;
+    private final KeyedSerialExecutorObserver observer;
     private final Map<WorkKey, KeyState> states = new HashMap<>();
 
     private boolean accepting = true;
@@ -28,11 +29,19 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
 
     /** Creates an executor with a per-key queue bound. */
     public BoundedKeyedSerialExecutor(ExecutorService workers, int maxQueuedPerKey) {
+        this(workers, maxQueuedPerKey, NoopKeyedSerialExecutorObserver.INSTANCE);
+    }
+
+    /** Creates an executor with a per-key queue bound and degradation observer. */
+    public BoundedKeyedSerialExecutor(ExecutorService workers,
+                                      int maxQueuedPerKey,
+                                      KeyedSerialExecutorObserver observer) {
         this.workers = Objects.requireNonNull(workers, "workers");
         if (maxQueuedPerKey < 0) {
             throw new IllegalArgumentException("maxQueuedPerKey must not be negative");
         }
         this.maxQueuedPerKey = maxQueuedPerKey;
+        this.observer = Objects.requireNonNull(observer, "observer");
     }
 
     @Override
@@ -40,24 +49,34 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(work, "work");
         Runnable firstWork = null;
+        WorkAdmission rejected = null;
         synchronized (lock) {
             if (!accepting) {
-                return WorkAdmission.rejected(key, 0);
-            }
-            KeyState state = states.computeIfAbsent(key, ignored -> new KeyState());
-            if (state.running) {
-                if (state.queue.size() >= maxQueuedPerKey) {
-                    return WorkAdmission.rejected(key, state.queue.size());
+                rejected = WorkAdmission.rejected(key, 0);
+            } else {
+                KeyState state = states.computeIfAbsent(key, ignored -> new KeyState());
+                if (state.running) {
+                    if (state.queue.size() >= maxQueuedPerKey) {
+                        rejected = WorkAdmission.rejected(key, state.queue.size());
+                    } else {
+                        state.queue.add(work);
+                        return WorkAdmission.accepted(key, state.queue.size());
+                    }
+                } else {
+                    state.running = true;
+                    runningTasks++;
+                    firstWork = work;
                 }
-                state.queue.add(work);
-                return WorkAdmission.accepted(key, state.queue.size());
             }
-            state.running = true;
-            runningTasks++;
-            firstWork = work;
         }
-        if (!dispatch(key, firstWork)) {
-            return WorkAdmission.rejected(key, 0);
+        if (rejected != null) {
+            observeRejected(rejected);
+            return rejected;
+        }
+        if (!dispatch(key, Objects.requireNonNull(firstWork, "firstWork"))) {
+            WorkAdmission dispatchRejected = WorkAdmission.rejected(key, 0);
+            observeRejected(dispatchRejected);
+            return dispatchRejected;
         }
         return WorkAdmission.accepted(key, 0);
     }
@@ -89,7 +108,8 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
             workers.execute(() -> runOne(key, work));
             return true;
         } catch (RejectedExecutionException failure) {
-            cancelRunning(key);
+            int abandonedWork = abandonKey(key, 1);
+            observeDispatchRejected(key, abandonedWork, failure);
             return false;
         }
     }
@@ -97,6 +117,8 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
     private void runOne(WorkKey key, Runnable work) {
         try {
             work.run();
+        } catch (RuntimeException failure) {
+            observeFailed(key, failure);
         } finally {
             runNext(key);
         }
@@ -119,23 +141,27 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
             }
         }
         if (!dispatch(key, next)) {
-            synchronized (lock) {
-                shutdownWorkersIfIdle();
-            }
+            shutdownIfIdle();
         }
     }
 
-    private void cancelRunning(WorkKey key) {
+    private int abandonKey(WorkKey key, int currentWork) {
         synchronized (lock) {
             KeyState state = states.get(key);
             if (state == null || !state.running) {
-                return;
+                return currentWork;
             }
+            int abandonedWork = currentWork + state.queue.size();
             state.running = false;
             runningTasks--;
-            if (state.queue.isEmpty()) {
-                states.remove(key);
-            }
+            states.remove(key);
+            shutdownWorkersIfIdle();
+            return abandonedWork;
+        }
+    }
+
+    private void shutdownIfIdle() {
+        synchronized (lock) {
             shutdownWorkersIfIdle();
         }
     }
@@ -143,6 +169,32 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
     private void shutdownWorkersIfIdle() {
         if (!accepting && runningTasks == 0) {
             workers.shutdown();
+        }
+    }
+
+    private void observeRejected(WorkAdmission admission) {
+        try {
+            observer.rejected(admission);
+        } catch (RuntimeException ignored) {
+            // Observability hooks must not change executor admission semantics.
+        }
+    }
+
+    private void observeFailed(WorkKey key, RuntimeException failure) {
+        try {
+            observer.failed(key, failure);
+        } catch (RuntimeException ignored) {
+            // Observability hooks must not block FIFO progress for the key.
+        }
+    }
+
+    private void observeDispatchRejected(WorkKey key,
+                                         int abandonedWork,
+                                         RejectedExecutionException failure) {
+        try {
+            observer.dispatchRejected(key, abandonedWork, failure);
+        } catch (RuntimeException ignored) {
+            // Accepted in-memory work is recovered by callers through reconcile/backstop paths.
         }
     }
 

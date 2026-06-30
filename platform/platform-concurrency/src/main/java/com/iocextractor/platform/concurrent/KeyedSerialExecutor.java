@@ -7,6 +7,11 @@ import java.time.Duration;
  *
  * <p>Implementations are in-memory coordination primitives. They do not provide durable delivery,
  * acknowledgements, redelivery or dead-letter queues.</p>
+ *
+ * <p>Submitted work remains responsible for business error handling, including marking any
+ * durable ledger state. The executor only serializes accepted work and reports degradation signals
+ * through {@link KeyedSerialExecutorObserver}; callers route rejected submissions to a
+ * reconcile/backstop path.</p>
  */
 public interface KeyedSerialExecutor extends AutoCloseable {
 

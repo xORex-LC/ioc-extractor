@@ -5,10 +5,12 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -79,7 +81,8 @@ class BoundedKeyedSerialExecutorTest {
 
     @Test
     void rejectsOverflowForSaturatedKeyWithoutBlockingOtherKeys() throws InterruptedException {
-        BoundedKeyedSerialExecutor executor = executor(2, 1);
+        RecordingObserver observer = new RecordingObserver();
+        BoundedKeyedSerialExecutor executor = executor(2, 1, observer);
         CountDownLatch firstStarted = new CountDownLatch(1);
         CountDownLatch releaseFirst = new CountDownLatch(1);
         CountDownLatch acceptedOtherKey = new CountDownLatch(1);
@@ -94,6 +97,7 @@ class BoundedKeyedSerialExecutorTest {
 
         assertThat(rejected.status()).isEqualTo(WorkAdmissionStatus.REJECTED);
         assertThat(rejected.queuedDepth()).isEqualTo(1);
+        assertThat(observer.rejections).containsExactly(rejected);
         assertThat(otherKey.accepted()).isTrue();
         assertThat(acceptedOtherKey.await(1, TimeUnit.SECONDS)).isTrue();
         releaseFirst.countDown();
@@ -115,9 +119,66 @@ class BoundedKeyedSerialExecutorTest {
         assertThat(executor.awaitTermination(Duration.ofSeconds(1))).isTrue();
     }
 
+    @Test
+    void observesUnhandledWorkFailureAndContinuesKey() throws InterruptedException {
+        RecordingObserver observer = new RecordingObserver();
+        BoundedKeyedSerialExecutor executor = executor(1, 8, observer);
+        WorkKey key = WorkKey.of("endpoint-a");
+        RuntimeException failure = new IllegalStateException("work failed");
+        CountDownLatch firstStarted = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        CountDownLatch secondFinished = new CountDownLatch(1);
+
+        executor.submit(key, () -> {
+            firstStarted.countDown();
+            await(releaseFirst);
+            throw failure;
+        });
+        assertThat(firstStarted.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(executor.submit(key, secondFinished::countDown).accepted()).isTrue();
+
+        releaseFirst.countDown();
+
+        assertThat(observer.failureObserved.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(secondFinished.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(observer.failures).containsExactly(failure);
+    }
+
+    @Test
+    void abandonsAndObservesQueuedWorkWhenWorkerRejectsDuringDrain() throws InterruptedException {
+        RecordingObserver observer = new RecordingObserver();
+        workers = new RejectingAfterFirstExecuteExecutorService();
+        BoundedKeyedSerialExecutor executor = new BoundedKeyedSerialExecutor(workers, 8, observer);
+        WorkKey key = WorkKey.of("endpoint-a");
+        CountDownLatch firstStarted = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+
+        assertThat(executor.submit(key, () -> blockingSignal(
+                firstStarted, releaseFirst, new CountDownLatch(0))).accepted()).isTrue();
+        assertThat(firstStarted.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(executor.submit(key, () -> { }).accepted()).isTrue();
+        assertThat(executor.submit(key, () -> { }).accepted()).isTrue();
+
+        releaseFirst.countDown();
+
+        assertThat(observer.dispatchRejectedObserved.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(observer.dispatchRejections).singleElement()
+                .satisfies(rejection -> {
+                    assertThat(rejection.key()).isEqualTo(key);
+                    assertThat(rejection.abandonedWork()).isEqualTo(2);
+                    assertThat(rejection.failure()).isInstanceOf(RejectedExecutionException.class);
+                });
+    }
+
     private BoundedKeyedSerialExecutor executor(int workerCount, int maxQueuedPerKey) {
+        return executor(workerCount, maxQueuedPerKey, NoopKeyedSerialExecutorObserver.INSTANCE);
+    }
+
+    private BoundedKeyedSerialExecutor executor(int workerCount,
+                                               int maxQueuedPerKey,
+                                               KeyedSerialExecutorObserver observer) {
         workers = Executors.newFixedThreadPool(workerCount);
-        return new BoundedKeyedSerialExecutor(workers, maxQueuedPerKey);
+        return new BoundedKeyedSerialExecutor(workers, maxQueuedPerKey, observer);
     }
 
     private void trackedBlockingWork(AtomicInteger running,
@@ -164,6 +225,74 @@ class BoundedKeyedSerialExecutorTest {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new AssertionError(interrupted);
+        }
+    }
+
+    private static final class RecordingObserver implements KeyedSerialExecutorObserver {
+        private final CountDownLatch failureObserved = new CountDownLatch(1);
+        private final CountDownLatch dispatchRejectedObserved = new CountDownLatch(1);
+        private final List<WorkAdmission> rejections = new CopyOnWriteArrayList<>();
+        private final List<RuntimeException> failures = new CopyOnWriteArrayList<>();
+        private final List<DispatchRejection> dispatchRejections = new CopyOnWriteArrayList<>();
+
+        @Override
+        public void rejected(WorkAdmission admission) {
+            rejections.add(admission);
+        }
+
+        @Override
+        public void failed(WorkKey key, RuntimeException failure) {
+            failures.add(failure);
+            failureObserved.countDown();
+        }
+
+        @Override
+        public void dispatchRejected(WorkKey key, int abandonedWork, RejectedExecutionException failure) {
+            dispatchRejections.add(new DispatchRejection(key, abandonedWork, failure));
+            dispatchRejectedObserved.countDown();
+        }
+    }
+
+    private record DispatchRejection(WorkKey key,
+                                     int abandonedWork,
+                                     RejectedExecutionException failure) {
+    }
+
+    private static final class RejectingAfterFirstExecuteExecutorService extends AbstractExecutorService {
+        private final ExecutorService delegate = Executors.newSingleThreadExecutor();
+        private final AtomicInteger executions = new AtomicInteger();
+
+        @Override
+        public void shutdown() {
+            delegate.shutdown();
+        }
+
+        @Override
+        public List<Runnable> shutdownNow() {
+            return delegate.shutdownNow();
+        }
+
+        @Override
+        public boolean isShutdown() {
+            return delegate.isShutdown();
+        }
+
+        @Override
+        public boolean isTerminated() {
+            return delegate.isTerminated();
+        }
+
+        @Override
+        public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
+            return delegate.awaitTermination(timeout, unit);
+        }
+
+        @Override
+        public void execute(Runnable command) {
+            if (executions.incrementAndGet() > 1) {
+                throw new RejectedExecutionException("dispatch rejected");
+            }
+            delegate.execute(command);
         }
     }
 }

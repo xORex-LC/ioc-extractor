@@ -30,7 +30,6 @@ public final class SpringControlEventPublisher implements ControlEventPublisher 
             observePublished(event);
         } catch (RuntimeException failure) {
             observePublishFailed(event, failure);
-            throw failure;
         }
     }
 
@@ -46,7 +45,7 @@ public final class SpringControlEventPublisher implements ControlEventPublisher 
         try {
             observer.publishFailed(event, publishFailure);
         } catch (RuntimeException observerFailure) {
-            publishFailure.addSuppressed(observerFailure);
+            log.warn("control event observer failed after publication failure", observerFailure);
         }
     }
 }
