@@ -14,7 +14,7 @@ transport adapters или durable delivery. Это общий concurrency toolki
 | Подпапка / файл | Назначение |
 |---|---|
 | `pom.xml` | Maven module descriptor |
-| `src/main/java/com/iocextractor/platform/concurrent/` | Concurrency contracts and implementations |
+| `src/main/java/com/iocextractor/platform/concurrent/` | `KeyedSerialExecutor`, bounded implementation and admission value objects |
 | `src/test/java/com/iocextractor/platform/concurrent/` | Concurrency tests |
 
 ## Зависимости

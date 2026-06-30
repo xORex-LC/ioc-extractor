@@ -95,6 +95,18 @@ class ArchitectureTest {
             .allowEmptyShould(true);
 
     @ArchTest
+    static final ArchRule platform_concurrency_is_framework_free_and_event_free = noClasses()
+            .that().resideInAPackage("..platform.concurrent..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "..domain..", "..application..", "..adapter..", "..bootstrap..",
+                    "..platform.events..", "org.springframework..", "org.slf4j..",
+                    "ch.qos.logback..", "com.fasterxml.jackson..",
+                    "org.springframework.integration..", "org.springframework.amqp..",
+                    "org.apache.kafka..", "com.rabbitmq..", "jakarta.jms..",
+                    "javax.jms..", "org.apache.camel..")
+            .allowEmptyShould(true);
+
+    @ArchTest
     static final ArchRule core_does_not_use_spring_event_types = noClasses()
             .that().resideInAnyPackage("..domain..", "..application..")
             .should().dependOnClassesThat().resideInAnyPackage("org.springframework.context..");
