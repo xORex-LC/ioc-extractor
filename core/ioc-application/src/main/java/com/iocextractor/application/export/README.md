@@ -29,6 +29,7 @@ adapters за портами `application.port.out.export`.
 | `SliceRetentionService` | Profile-scoped age/count selection и guard check непосредственно перед delete |
 | `StandaloneSliceRetentionGuard` | Fail-open composition, когда remote delivery targets отсутствуют |
 | `ExportChangeDetector` | Чистая policy: revision/plan pre-gate, authoritative content-hash post-check и terminal progress |
+| `SliceCompleted` | Control event после durable `AVAILABLE -> COMPLETED`, payload только для callback lookup |
 | `ExportService` | Оркестрация одного run от global single-flight до `COMPLETED`/`SKIPPED` |
 | `ExportRunRecoveryService` | Forward recovery активных checkpoints только из ledger и filesystem evidence |
 | `NoopExportObserver` | Default implementation operational event boundary без framework/logging зависимости |
@@ -50,6 +51,8 @@ adapters за портами `application.port.out.export`.
   только per-artifact content hash из manifest.
 - При post-hash `SKIPPED` новые snapshot revisions сохраняются атомарно с
   terminal status, но `lastSha256/lastSliceId` остаются от опубликованного среза.
+- `SliceCompleted` публикуется только после durable `COMPLETED`; `SKIPPED` не
+  создаёт delivery event.
 
 ## Formation saga
 
@@ -91,8 +94,8 @@ Operation lease удерживается и formation, и standalone startup rec
 - Адаптер выводит пути из configured root/profile/immutable slice name.
 - `ExportRun` не описывает remote delivery. Его будущий владелец —
   `publish_ledger` из design 0011.
-- Operational events уходят через `ExportObserver`; application не импортирует
-  SLF4J/ECS и не выбирает logging adapter.
+- Operational events уходят через `ExportObserver` и `ControlEventPublisher`;
+  application не импортирует SLF4J/ECS, Spring и не выбирает logging/delivery adapter.
 
 ## Slice retention
 

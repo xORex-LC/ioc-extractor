@@ -3,6 +3,7 @@ package com.iocextractor.application.sync;
 import com.iocextractor.application.port.in.sync.ArtifactPublishCommand;
 import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
+import com.iocextractor.application.port.in.sync.PublishCompletedSliceCommand;
 import com.iocextractor.application.port.out.sync.CompletedSliceCatalog;
 import com.iocextractor.application.port.out.sync.FileTransport;
 import com.iocextractor.application.port.out.sync.PublishLedger;
@@ -63,6 +64,29 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
                 (slice, target, counters) -> publishPair(slice, target, command.dryRun(), counters));
     }
 
+    @Override
+    public ArtifactPublishResult publishCompletedSlice(PublishCompletedSliceCommand command) {
+        Objects.requireNonNull(command, "command");
+        PublishCounters counters = new PublishCounters();
+        Optional<CompletedSlice> found = sliceCatalog.find(command.profile(), command.sliceName());
+        if (found.isEmpty()) {
+            return counters.toResult();
+        }
+        CompletedSlice slice = found.orElseThrow();
+        if (!slice.sliceId().equals(command.sliceId())) {
+            throw new IllegalStateException("Completed slice id does not match requested event");
+        }
+        List<PublishTarget> profileTargets = targetsForProfile(command.profile(), command.target(), command.endpoint());
+        if (profileTargets.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Selected sync publish target does not belong to profile: " + command.profile());
+        }
+        for (PublishTarget target : profileTargets) {
+            publishPair(slice, target, false, counters);
+        }
+        return counters.toResult();
+    }
+
     private ArtifactPublishResult forEachSelectedPair(ArtifactPublishCommand command, PairAction action) {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(action, "action");
@@ -121,20 +145,32 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
     }
 
     private List<PublishTarget> targetsForProfile(String profile, ArtifactPublishCommand command) {
-        return selectedTargets(command).stream()
+        return selectedTargets(command.target(), command.endpoint()).stream()
                 .filter(target -> target.exportProfile().equals(profile))
                 .toList();
     }
 
     private List<PublishTarget> selectedTargets(ArtifactPublishCommand command) {
-        if (command.target().isEmpty() && command.endpoint().isEmpty()) {
+        return selectedTargets(command.target(), command.endpoint());
+    }
+
+    private List<PublishTarget> targetsForProfile(String profile,
+                                                  Optional<String> selectedTarget,
+                                                  Optional<String> selectedEndpoint) {
+        return selectedTargets(selectedTarget, selectedEndpoint).stream()
+                .filter(target -> target.exportProfile().equals(profile))
+                .toList();
+    }
+
+    private List<PublishTarget> selectedTargets(Optional<String> selectedTarget, Optional<String> selectedEndpoint) {
+        if (selectedTarget.isEmpty() && selectedEndpoint.isEmpty()) {
             return targets;
         }
         List<PublishTarget> matches = targets.stream()
-                .filter(target -> command.target()
+                .filter(target -> selectedTarget
                         .map(selected -> target.targetId().equals(selected))
                         .orElse(true))
-                .filter(target -> command.endpoint()
+                .filter(target -> selectedEndpoint
                         .map(endpoint -> target.endpoint().equals(endpoint))
                         .orElse(true))
                 .toList();

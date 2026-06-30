@@ -56,6 +56,25 @@ class FileSystemCompletedSliceCatalogTest {
         var catalog = new FileSystemCompletedSliceCatalog(tempDir, new TestCodec());
 
         assertThat(catalog.listCompleted("missing")).isEmpty();
+        assertThat(catalog.find("missing", "slice-one")).isEmpty();
+    }
+
+    @Test
+    void findsOneCompletedSliceByNameWithoutScanningSiblings() throws Exception {
+        TestCodec codec = new TestCodec();
+        Path wanted = createSlice(codec, "reputation", "slice-one", true);
+        Path corrupt = createSlice(codec, "reputation", "corrupt", true);
+        Files.writeString(corrupt.resolve("masks.csv"), "tampered", StandardCharsets.UTF_8);
+        var catalog = new FileSystemCompletedSliceCatalog(tempDir, codec);
+
+        assertThat(catalog.find("reputation", "slice-one"))
+                .hasValueSatisfying(item -> {
+                    assertThat(item.sliceId()).isEqualTo("slice-one");
+                    assertThat(item.directory()).isEqualTo(wanted.toAbsolutePath().normalize());
+                });
+        assertThatThrownBy(() -> catalog.listCompleted("reputation"))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("completed export slices");
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.iocextractor.bootstrap;
 import com.iocextractor.application.port.in.sync.ArtifactPublishCommand;
 import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
+import com.iocextractor.application.port.in.sync.PublishCompletedSliceCommand;
 import com.iocextractor.application.port.out.sync.FileTransport;
 import com.iocextractor.application.sync.PublishAtomicallyRequest;
 import com.iocextractor.application.sync.PublishReceipt;
@@ -70,6 +71,11 @@ class DaemonPublishSchedulerTest {
                 attempts.incrementAndGet();
                 entered.countDown();
                 await(release);
+                return empty();
+            }
+
+            @Override
+            public ArtifactPublishResult publishCompletedSlice(PublishCompletedSliceCommand command) {
                 return empty();
             }
         };
@@ -172,6 +178,12 @@ class DaemonPublishSchedulerTest {
                 throw new IllegalStateException("unreachable");
             }
             return new ArtifactPublishResult(0, 1, 0, 0);
+        }
+
+        @Override
+        public ArtifactPublishResult publishCompletedSlice(PublishCompletedSliceCommand command) {
+            return publish(new ArtifactPublishCommand(
+                    Optional.of(command.profile()), command.target(), command.endpoint(), false));
         }
     }
 

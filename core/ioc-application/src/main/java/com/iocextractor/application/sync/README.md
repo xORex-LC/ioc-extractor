@@ -21,7 +21,7 @@ value objects и политики, которые одинаковы для SMB/
 | `CompletedSlice` | Verified local slice descriptor для publish worklist |
 | `PublishAtomicallyRequest` / `PublishReceipt` | Контракт толстого write-intent для публикации slice-каталога |
 | `RemoteFetchService` | Use case: read-only remote list/get → atomic local inbox landing |
-| `ArtifactPublishService` | Use case: reconcile completed slices × targets и publish через ledger |
+| `ArtifactPublishService` | Use case: reconcile completed slices × targets, publish и slice-specific event fast-path через ledger |
 | `PublishLedgerSliceRetentionGuard` | Delivery-aware veto для slice retention |
 
 ## Инварианты
@@ -38,6 +38,8 @@ value objects и политики, которые одинаковы для SMB/
   `PublishLedger`, а local slice catalog остаётся read-only.
 - Missing publish pairs materialize before remote write; `FAILED` remains retryable,
   `ABANDONED` and `SUCCEEDED` are terminal for retention.
+- Slice-specific publish validates event `sliceId` against verified catalog evidence
+  before touching the remote target.
 - Отдельная `reconcile`-операция materializes missing pairs без remote I/O; dry-run
   только считает hypothetical/существующие состояния и не пишет ledger.
 - Source/target filters позволяют daemon изолировать ошибку одного endpoint и продолжить

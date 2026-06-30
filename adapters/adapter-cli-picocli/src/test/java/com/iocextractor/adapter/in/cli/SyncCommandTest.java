@@ -3,6 +3,7 @@ package com.iocextractor.adapter.in.cli;
 import com.iocextractor.application.port.in.sync.ArtifactPublishCommand;
 import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
+import com.iocextractor.application.port.in.sync.PublishCompletedSliceCommand;
 import com.iocextractor.application.port.in.sync.RemoteFetchCommand;
 import com.iocextractor.application.port.in.sync.RemoteFetchResult;
 import com.iocextractor.application.port.in.sync.RemoteFetchUseCase;
@@ -152,6 +153,11 @@ class SyncCommandTest {
                 calls.add("publish");
                 return new ArtifactPublishResult(0, 1, 0, 0);
             }
+
+            @Override
+            public ArtifactPublishResult publishCompletedSlice(PublishCompletedSliceCommand command) {
+                throw new UnsupportedOperationException("publishCompletedSlice is not used by CLI");
+            }
         };
         SyncAllCommand command = new SyncAllCommand(
                 validator,
@@ -190,6 +196,11 @@ class SyncCommandTest {
             @Override
             public ArtifactPublishResult publish(ArtifactPublishCommand command) {
                 return result;
+            }
+
+            @Override
+            public ArtifactPublishResult publishCompletedSlice(PublishCompletedSliceCommand command) {
+                throw new UnsupportedOperationException("publishCompletedSlice is not used by CLI");
             }
         };
     }

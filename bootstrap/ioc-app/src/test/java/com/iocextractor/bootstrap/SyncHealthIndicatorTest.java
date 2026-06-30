@@ -7,6 +7,7 @@ import com.iocextractor.application.export.SliceArtifactManifest;
 import com.iocextractor.application.export.SliceManifest;
 import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
 import com.iocextractor.application.port.in.sync.RemoteFetchResult;
+import com.iocextractor.application.port.out.sync.CompletedSliceCatalog;
 import com.iocextractor.application.port.out.sync.PublishLedger;
 import com.iocextractor.application.sync.CompletedSlice;
 import com.iocextractor.application.sync.PublishRecord;
@@ -52,7 +53,7 @@ class SyncHealthIndicatorTest {
                 List.of(new PublishTarget("delivery", "primary", "/out", "reputation")),
                 state,
                 ledger(records),
-                profile -> List.of(pinned, released),
+                catalog(List.of(pinned, released)),
                 descriptor -> descriptor.sliceId().equals("released"));
 
         var health = indicator.health();
@@ -81,7 +82,7 @@ class SyncHealthIndicatorTest {
                 List.of(new PublishTarget("delivery", "primary", "/out", "reputation")),
                 new SyncHealthState(Clock.fixed(NOW, ZoneOffset.UTC)),
                 ledger(List.of()),
-                profile -> List.of(),
+                catalog(List.of()),
                 descriptor -> false);
 
         var health = indicator.health();
@@ -134,6 +135,25 @@ class SyncHealthIndicatorTest {
                                             String lastError,
                                             String remoteVerification) {
                 throw new UnsupportedOperationException();
+            }
+        };
+    }
+
+    private CompletedSliceCatalog catalog(List<CompletedSlice> slices) {
+        return new CompletedSliceCatalog() {
+            @Override
+            public List<CompletedSlice> listCompleted(String profile) {
+                return slices.stream()
+                        .filter(slice -> slice.profile().equals(profile))
+                        .toList();
+            }
+
+            @Override
+            public Optional<CompletedSlice> find(String profile, String sliceName) {
+                return slices.stream()
+                        .filter(slice -> slice.profile().equals(profile))
+                        .filter(slice -> slice.sliceName().equals(sliceName))
+                        .findFirst();
             }
         };
     }

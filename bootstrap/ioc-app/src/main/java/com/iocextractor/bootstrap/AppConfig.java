@@ -129,6 +129,7 @@ import com.iocextractor.domain.refang.ReplacementRefanger;
 import com.iocextractor.domain.refang.Refanger;
 import com.iocextractor.observability.diagnostics.LoggingDiagnosticSink;
 import com.iocextractor.observability.logging.LoggingPipelineObserver;
+import com.iocextractor.platform.events.ControlEventPublisher;
 import com.zaxxer.hikari.HikariDataSource;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.QuoteMode;
@@ -636,12 +637,13 @@ public class AppConfig {
             ExportRunRecoveryService exportRunRecoveryService,
             ExportOperationGuard exportOperationGuard,
             ExportObserver exportObserver,
+            ControlEventPublisher controlEventPublisher,
             Clock clock) {
         return new ExportService(
                 plans.plans(), artifactRevisionReader, exportProgressStore, exportRunLedger,
                 snapshotSliceReader, artifactSliceWriter,
                 exportRunRecoveryService, exportOperationGuard, new ExportChangeDetector(),
-                exportObserver, clock, () -> java.util.UUID.randomUUID().toString());
+                exportObserver, controlEventPublisher, clock, () -> java.util.UUID.randomUUID().toString());
     }
 
     @Bean

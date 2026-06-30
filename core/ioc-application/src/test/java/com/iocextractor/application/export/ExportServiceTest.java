@@ -1,6 +1,7 @@
 package com.iocextractor.application.export;
 
 import com.iocextractor.application.port.in.export.ExportArtifactsCommand;
+import com.iocextractor.platform.events.RecordingControlEventPublisher;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -44,8 +45,9 @@ class ExportServiceTest {
         var writer = new ExportFixtures.FakeWriter();
         var snapshot = new ExportFixtures.CountingSnapshotReader();
         var observer = new ExportFixtures.RecordingObserver();
+        var events = new RecordingControlEventPublisher();
         ExportService service = service(ledger, writer, snapshot,
-                List.of(new ArtifactRevision("masks", 1, NOW)), List.of(), observer);
+                List.of(new ArtifactRevision("masks", 1, NOW)), List.of(), observer, events);
 
         var result = service.export(new ExportArtifactsCommand("reputation"));
 
@@ -61,6 +63,15 @@ class ExportServiceTest {
         assertThat(snapshot.calls).hasValue(1);
         assertThat(observer.events).containsExactly(
                 "started:STARTED", "written:run-new", "completed:COMPLETED");
+        assertThat(events.events()).singleElement()
+                .isInstanceOfSatisfying(SliceCompleted.class, event -> {
+                    assertThat(event.profile()).isEqualTo("reputation");
+                    assertThat(event.sliceId()).isEqualTo("run-new");
+                    assertThat(event.sliceName()).isEqualTo("20260628T000000Z__run-new");
+                    assertThat(event.manifestSha256()).isEqualTo(ExportFixtures.MANIFEST);
+                    assertThat(event.metadata().eventType()).isEqualTo(SliceCompleted.EVENT_TYPE);
+                    assertThat(event.metadata().correlationId()).isEqualTo("run-new");
+                });
     }
 
     @Test
@@ -69,10 +80,11 @@ class ExportServiceTest {
         var writer = new ExportFixtures.FakeWriter();
         writer.revision = 7;
         var snapshot = new ExportFixtures.CountingSnapshotReader();
+        var events = new RecordingControlEventPublisher();
         ExportProgress prior = ExportFixtures.progress(4, CONTENT, "slice-old", plan.planHash());
         ExportService service = service(ledger, writer, snapshot,
                 List.of(new ArtifactRevision("masks", 7, NOW)), List.of(prior),
-                new ExportFixtures.RecordingObserver());
+                new ExportFixtures.RecordingObserver(), events);
 
         var result = service.export(new ExportArtifactsCommand("reputation"));
 
@@ -84,6 +96,7 @@ class ExportServiceTest {
             assertThat(progress.lastSliceId()).isEqualTo("slice-old");
             assertThat(progress.lastSha256()).isEqualTo(CONTENT);
         });
+        assertThat(events.events()).isEmpty();
     }
 
     @Test
@@ -158,5 +171,17 @@ class ExportServiceTest {
         return new ExportService(List.of(plan), artifacts -> revisions, profile -> progress,
                 ledger, snapshot, writer, () -> 0, () -> () -> { },
                 new ExportChangeDetector(), observer, clock, () -> "run-new");
+    }
+
+    private ExportService service(ExportFixtures.FakeLedger ledger,
+                                  ExportFixtures.FakeWriter writer,
+                                  ExportFixtures.CountingSnapshotReader snapshot,
+                                  List<ArtifactRevision> revisions,
+                                  List<ExportProgress> progress,
+                                  ExportFixtures.RecordingObserver observer,
+                                  RecordingControlEventPublisher events) {
+        return new ExportService(List.of(plan), artifacts -> revisions, profile -> progress,
+                ledger, snapshot, writer, () -> 0, () -> () -> { },
+                new ExportChangeDetector(), observer, events, clock, () -> "run-new");
     }
 }

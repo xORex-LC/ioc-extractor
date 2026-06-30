@@ -117,6 +117,45 @@ class ArtifactPublishServiceTest {
     }
 
     @Test
+    void publishesOneCompletedSliceWithoutScanningProfile() throws Exception {
+        CompletedSlice selected = slice("reputation", "slice-one", "20260628T000000Z__slice-one");
+        CompletedSlice corruptSibling = slice("reputation", "slice-two", "20260628T000000Z__slice-two");
+        FakeCatalog catalog = catalog(selected, corruptSibling);
+        catalog.failListCompleted = true;
+        FakeLedger ledger = new FakeLedger();
+        FakeTransport transport = new FakeTransport();
+
+        var result = service(catalog, ledger, transport, targets("reputation"), diagnostics())
+                .publishCompletedSlice(new com.iocextractor.application.port.in.sync.PublishCompletedSliceCommand(
+                        "reputation", "slice-one", "20260628T000000Z__slice-one",
+                        "target-a", "endpoint-a", "corr-1", "event-1"));
+
+        assertThat(result.succeeded()).isOne();
+        assertThat(transport.published).containsExactly("endpoint-a:/remote/a/20260628T000000Z__slice-one");
+        assertThat(catalog.listCalls).isZero();
+        assertThat(catalog.findCalls).isOne();
+    }
+
+    @Test
+    void repeatedCompletedSliceEventIsIdempotentThroughLedger() throws Exception {
+        CompletedSlice selected = slice("reputation", "slice-one", "20260628T000000Z__slice-one");
+        FakeLedger ledger = new FakeLedger();
+        FakeTransport transport = new FakeTransport();
+        ArtifactPublishService service = service(
+                catalog(selected), ledger, transport, List.of(targetA("reputation")), diagnostics());
+        var command = new com.iocextractor.application.port.in.sync.PublishCompletedSliceCommand(
+                "reputation", "slice-one", "20260628T000000Z__slice-one",
+                "target-a", "endpoint-a", "corr-1", "event-1");
+
+        service.publishCompletedSlice(command);
+        var result = service.publishCompletedSlice(command);
+
+        assertThat(result.succeeded()).isOne();
+        assertThat(ledger.records()).hasSize(1);
+        assertThat(transport.published).containsExactly("endpoint-a:/remote/a/20260628T000000Z__slice-one");
+    }
+
+    @Test
     void failureOfOneTargetDoesNotBlockAnotherTarget() throws Exception {
         CompletedSlice slice = slice("reputation", "slice-one");
         FakeLedger ledger = new FakeLedger();
@@ -223,12 +262,8 @@ class ArtifactPublishServiceTest {
                 CLOCK);
     }
 
-    private CompletedSliceCatalog catalog(CompletedSlice... slices) {
-        Map<String, List<CompletedSlice>> byProfile = new LinkedHashMap<>();
-        for (CompletedSlice slice : slices) {
-            byProfile.computeIfAbsent(slice.profile(), ignored -> new ArrayList<>()).add(slice);
-        }
-        return profile -> byProfile.getOrDefault(profile, List.of());
+    private FakeCatalog catalog(CompletedSlice... slices) {
+        return new FakeCatalog(slices);
     }
 
     private CollectingDiagnosticSink diagnostics() {
@@ -248,6 +283,10 @@ class ArtifactPublishServiceTest {
     }
 
     private CompletedSlice slice(String profile, String sliceId) throws Exception {
+        return slice(profile, sliceId, sliceId);
+    }
+
+    private CompletedSlice slice(String profile, String sliceId, String sliceName) throws Exception {
         Path directory = tempDir.resolve(profile).resolve(sliceId);
         Files.createDirectories(directory);
         SliceManifest manifest = new SliceManifest(
@@ -268,7 +307,7 @@ class ArtifactPublishServiceTest {
                         HASH,
                         HASH,
                         HASH)));
-        return new CompletedSlice(sliceId, profile, sliceId, HASH, directory, manifest);
+        return new CompletedSlice(sliceId, profile, sliceName, HASH, directory, manifest);
     }
 
     private PublishRecord pending(String sliceId, PublishTarget target) {
@@ -330,6 +369,36 @@ class ArtifactPublishServiceTest {
             }
             published.add(request.endpoint() + ":" + request.remotePath());
             return new PublishReceipt(request.remotePath(), "published " + request.remotePath());
+        }
+    }
+
+    private static final class FakeCatalog implements CompletedSliceCatalog {
+        private final Map<String, List<CompletedSlice>> byProfile = new LinkedHashMap<>();
+        private boolean failListCompleted;
+        private int listCalls;
+        private int findCalls;
+
+        private FakeCatalog(CompletedSlice... slices) {
+            for (CompletedSlice slice : slices) {
+                byProfile.computeIfAbsent(slice.profile(), ignored -> new ArrayList<>()).add(slice);
+            }
+        }
+
+        @Override
+        public List<CompletedSlice> listCompleted(String profile) {
+            listCalls++;
+            if (failListCompleted) {
+                throw new IllegalStateException("full scan should not run");
+            }
+            return byProfile.getOrDefault(profile, List.of());
+        }
+
+        @Override
+        public Optional<CompletedSlice> find(String profile, String sliceName) {
+            findCalls++;
+            return byProfile.getOrDefault(profile, List.of()).stream()
+                    .filter(slice -> slice.sliceName().equals(sliceName))
+                    .findFirst();
         }
     }
 

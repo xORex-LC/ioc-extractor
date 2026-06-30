@@ -11,6 +11,8 @@ import com.iocextractor.application.port.out.export.ExportOperationGuard;
 import com.iocextractor.application.port.out.export.ExportProgressStore;
 import com.iocextractor.application.port.out.export.ExportRunLedger;
 import com.iocextractor.application.port.out.export.SnapshotSliceReader;
+import com.iocextractor.platform.events.ControlEventPublisher;
+import com.iocextractor.platform.events.NoopControlEventPublisher;
 
 import java.time.Clock;
 import java.time.ZoneOffset;
@@ -45,6 +47,7 @@ public final class ExportService implements ExportArtifactsUseCase {
     private final ExportOperationGuard operationGuard;
     private final ExportChangeDetector changeDetector;
     private final ExportObserver observer;
+    private final ControlEventPublisher eventPublisher;
     private final Clock clock;
     private final Supplier<String> runIds;
 
@@ -76,6 +79,24 @@ public final class ExportService implements ExportArtifactsUseCase {
                          ExportObserver observer,
                          Clock clock,
                          Supplier<String> runIds) {
+        this(plans, revisionReader, progressStore, ledger, snapshotReader, sliceWriter, recovery,
+                operationGuard, changeDetector, observer, NoopControlEventPublisher.INSTANCE, clock, runIds);
+    }
+
+    /** Creates an export orchestrator with explicit policy, observer, event publisher and run-id source. */
+    public ExportService(Collection<ExportPlan> plans,
+                         ArtifactRevisionReader revisionReader,
+                         ExportProgressStore progressStore,
+                         ExportRunLedger ledger,
+                         SnapshotSliceReader snapshotReader,
+                         ArtifactSliceWriter sliceWriter,
+                         RecoverExportUseCase recovery,
+                         ExportOperationGuard operationGuard,
+                         ExportChangeDetector changeDetector,
+                         ExportObserver observer,
+                         ControlEventPublisher eventPublisher,
+                         Clock clock,
+                         Supplier<String> runIds) {
         this.plans = index(plans);
         this.revisionReader = Objects.requireNonNull(revisionReader, "revisionReader");
         this.progressStore = Objects.requireNonNull(progressStore, "progressStore");
@@ -86,6 +107,7 @@ public final class ExportService implements ExportArtifactsUseCase {
         this.operationGuard = Objects.requireNonNull(operationGuard, "operationGuard");
         this.changeDetector = Objects.requireNonNull(changeDetector, "changeDetector");
         this.observer = Objects.requireNonNull(observer, "observer");
+        this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.runIds = Objects.requireNonNull(runIds, "runIds");
     }
@@ -138,6 +160,7 @@ public final class ExportService implements ExportArtifactsUseCase {
         ExportRun terminal = ledger.finish(started.runId(), ExportRunStatus.AVAILABLE,
                 ExportRunStatus.COMPLETED, completed);
         observer.completed(terminal);
+        eventPublisher.publish(SliceCompleted.from(terminal));
         return result(terminal);
     }
 

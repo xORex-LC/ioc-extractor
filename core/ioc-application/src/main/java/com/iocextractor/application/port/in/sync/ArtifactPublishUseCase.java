@@ -8,4 +8,7 @@ public interface ArtifactPublishUseCase {
 
     /** Reconciles and attempts all selected retryable publish pairs. */
     ArtifactPublishResult publish(ArtifactPublishCommand command);
+
+    /** Attempts publish for one already known completed slice without scanning the profile. */
+    ArtifactPublishResult publishCompletedSlice(PublishCompletedSliceCommand command);
 }

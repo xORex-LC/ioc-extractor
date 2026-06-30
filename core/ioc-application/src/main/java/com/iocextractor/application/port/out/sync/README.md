@@ -23,6 +23,9 @@ adapter-модулях.
 - `delete` существует только как seam для opt-in remote retention/cleanup, не для fetch claim.
 - `CompletedSliceCatalog` не является retention API: staging, incomplete и corrupt final
   каталоги не превращаются в publish work; corruption должна всплывать явно.
+- `CompletedSliceCatalog.find(profile, sliceName)` проверяет один immutable slice
+  без полного scan профиля; `sliceName` — filesystem lookup key, `sliceId` остаётся
+  durable delivery key.
 - `PublishLedger` — единственное durable состояние delivery saga; export run ledger
   не меняется при remote publish/recovery.
 - Полный `findAll` является read-only health/ops view; state transitions остаются CAS-командами.

@@ -21,6 +21,9 @@ import com.iocextractor.application.sync.RemoteFetchSource;
 import com.iocextractor.application.sync.Retrier;
 import com.iocextractor.application.sync.RetryPolicy;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.platform.concurrent.BoundedKeyedSerialExecutor;
+import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
+import com.iocextractor.platform.events.ControlEventObserver;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -34,10 +37,13 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.Executors;
 
 /** Composition root segment for remote sync transports, use cases and daemon lifecycle. */
 @Configuration
 public class SyncConfig {
+
+    private static final int DEFAULT_PUBLISH_QUEUE_PER_ENDPOINT = 64;
 
     @Bean
     public ValidateSyncSelectionUseCase validateSyncSelectionUseCase(IocProperties props) {
@@ -171,6 +177,39 @@ public class SyncConfig {
             IocProperties props) {
         return new DaemonPublishScheduler(
                 publishTargets(props), useCase, transports, healthState, props.sync().publish().interval());
+    }
+
+    @Bean(destroyMethod = "close")
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.sync.enabled:false}' == 'true' && "
+            + "'${ioc.sync.publish.enabled:false}' == 'true' && "
+            + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
+    public KeyedSerialExecutor syncPublishKeyedExecutor(IocProperties props) {
+        int workers = Math.max(1, (int) publishTargets(props).stream()
+                .map(PublishTarget::endpoint)
+                .distinct()
+                .count());
+        return new BoundedKeyedSerialExecutor(
+                Executors.newFixedThreadPool(workers, runnable -> {
+                    Thread thread = new Thread(runnable, "ioc-sync-publish-worker");
+                    thread.setDaemon(false);
+                    return thread;
+                }),
+                DEFAULT_PUBLISH_QUEUE_PER_ENDPOINT);
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.sync.enabled:false}' == 'true' && "
+            + "'${ioc.sync.publish.enabled:false}' == 'true' && "
+            + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
+    public SliceCompletedPublishListener sliceCompletedPublishListener(
+            ArtifactPublishUseCase useCase,
+            KeyedSerialExecutor syncPublishKeyedExecutor,
+            ControlEventObserver observer,
+            IocProperties props) {
+        return new SliceCompletedPublishListener(
+                useCase, syncPublishKeyedExecutor, observer, publishTargets(props));
     }
 
     @Bean("syncHealthIndicator")

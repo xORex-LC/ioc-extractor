@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Filesystem-backed publish worklist over verified immutable export slice directories.
@@ -44,24 +45,50 @@ public final class FileSystemCompletedSliceCatalog implements CompletedSliceCata
             List<Path> paths = children.sorted().toList();
             List<CompletedSlice> slices = new ArrayList<>(paths.size());
             for (Path path : paths) {
-                requirePhysicalDirectory(path);
-                VerifiedSlice verified = verifier.verifyAvailable(path);
-                if (!verified.manifest().profile().equals(profileSegment)) {
-                    throw new InvalidSliceException("manifest profile does not match parent directory");
-                }
-                slices.add(new CompletedSlice(
-                        verified.manifest().sliceId(),
-                        profileSegment,
-                        path.getFileName().toString(),
-                        verified.manifestSha256(),
-                        path,
-                        verified.manifest()));
+                slices.add(verify(profileSegment, path));
             }
             return List.copyOf(slices);
         } catch (IOException | InvalidSliceException failure) {
             throw new IocExtractorException(
                     "Failed to discover completed export slices for profile " + profileSegment, failure);
         }
+    }
+
+    @Override
+    public Optional<CompletedSlice> find(String profile, String sliceName) {
+        String profileSegment = segment(profile, "profile");
+        String sliceSegment = segment(sliceName, "sliceName");
+        Path profileDir = root.resolve(profileSegment);
+        if (!Files.exists(profileDir, LinkOption.NOFOLLOW_LINKS)) {
+            return Optional.empty();
+        }
+        Path sliceDir = profileDir.resolve(sliceSegment);
+        if (!Files.exists(sliceDir, LinkOption.NOFOLLOW_LINKS)) {
+            return Optional.empty();
+        }
+        try {
+            requirePhysicalDirectory(profileDir);
+            return Optional.of(verify(profileSegment, sliceDir));
+        } catch (InvalidSliceException failure) {
+            throw new IocExtractorException(
+                    "Failed to discover completed export slice " + profileSegment + "/" + sliceSegment,
+                    failure);
+        }
+    }
+
+    private CompletedSlice verify(String profileSegment, Path path) {
+        requirePhysicalDirectory(path);
+        VerifiedSlice verified = verifier.verifyAvailable(path);
+        if (!verified.manifest().profile().equals(profileSegment)) {
+            throw new InvalidSliceException("manifest profile does not match parent directory");
+        }
+        return new CompletedSlice(
+                verified.manifest().sliceId(),
+                profileSegment,
+                path.getFileName().toString(),
+                verified.manifestSha256(),
+                path,
+                verified.manifest());
     }
 
     private void requirePhysicalDirectory(Path path) {
