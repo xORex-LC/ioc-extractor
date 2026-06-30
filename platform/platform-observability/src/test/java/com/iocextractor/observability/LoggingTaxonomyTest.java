@@ -41,6 +41,8 @@ class LoggingTaxonomyTest {
                         "sync_publish_complete",
                         "remote_fetch",
                         "remote_publish",
+                        "event_publish",
+                        "event_dispatch",
                         "diagnostic_emit")
                 .doesNotHaveDuplicates();
     }
@@ -70,6 +72,11 @@ class LoggingTaxonomyTest {
                         "ioc.export.profile",
                         "ioc.export.slice.id",
                         "ioc.export.revision",
+                        "ioc.event.id",
+                        "ioc.event.version",
+                        "ioc.event.correlation_id",
+                        "ioc.event.causation_id",
+                        "ioc.event.handler",
                         "ioc.sync.endpoint",
                         "ioc.sync.files",
                         "ioc.sync.target",

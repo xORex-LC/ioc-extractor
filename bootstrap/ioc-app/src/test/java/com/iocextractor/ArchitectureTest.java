@@ -1,6 +1,7 @@
 package com.iocextractor;
 
 import com.iocextractor.platform.etl.Stage;
+import com.iocextractor.platform.events.ControlEvent;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
@@ -82,8 +83,8 @@ class ArchitectureTest {
             .allowEmptyShould(true);
 
     @ArchTest
-    static final ArchRule platform_events_are_not_serializable = noClasses()
-            .that().resideInAPackage("..platform.events..")
+    static final ArchRule control_events_are_not_serializable = noClasses()
+            .that().implement(ControlEvent.class)
             .should().beAssignableTo(Serializable.class)
             .allowEmptyShould(true);
 

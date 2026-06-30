@@ -33,6 +33,8 @@ public enum EventAction {
     SYNC_PUBLISH_COMPLETE("sync_publish_complete"),
     REMOTE_FETCH("remote_fetch"),
     REMOTE_PUBLISH("remote_publish"),
+    EVENT_PUBLISH("event_publish"),
+    EVENT_DISPATCH("event_dispatch"),
     DIAGNOSTIC_EMIT("diagnostic_emit");
 
     private final String value;
