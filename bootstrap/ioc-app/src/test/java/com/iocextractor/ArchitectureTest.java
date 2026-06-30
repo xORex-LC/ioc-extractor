@@ -6,6 +6,8 @@ import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
 
+import java.io.Serializable;
+
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
@@ -66,6 +68,36 @@ class ArchitectureTest {
                     "..observability..", "org.springframework..", "org.slf4j..",
                     "ch.qos.logback..", "info.picocli..", "org.apache.tika..",
                     "org.apache.commons.csv..");
+
+    @ArchTest
+    static final ArchRule platform_events_is_framework_free_and_not_a_broker = noClasses()
+            .that().resideInAPackage("..platform.events..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "..domain..", "..application..", "..adapter..", "..bootstrap..",
+                    "..platform.concurrent..", "org.springframework..", "org.slf4j..",
+                    "ch.qos.logback..", "java.io..", "com.fasterxml.jackson..",
+                    "org.springframework.integration..", "org.springframework.amqp..",
+                    "org.apache.kafka..", "com.rabbitmq..", "jakarta.jms..",
+                    "javax.jms..", "org.apache.camel..")
+            .allowEmptyShould(true);
+
+    @ArchTest
+    static final ArchRule platform_events_are_not_serializable = noClasses()
+            .that().resideInAPackage("..platform.events..")
+            .should().beAssignableTo(Serializable.class)
+            .allowEmptyShould(true);
+
+    @ArchTest
+    static final ArchRule keyed_execution_is_not_part_of_platform_events = noClasses()
+            .that().resideInAPackage("..platform.events..")
+            .should().haveSimpleNameContaining("KeyedSerialExecutor")
+            .orShould().haveSimpleNameContaining("SingleFlight")
+            .allowEmptyShould(true);
+
+    @ArchTest
+    static final ArchRule core_does_not_use_spring_event_types = noClasses()
+            .that().resideInAnyPackage("..domain..", "..application..")
+            .should().dependOnClassesThat().resideInAnyPackage("org.springframework.context..");
 
     @ArchTest
     static final ArchRule application_pipeline_is_framework_and_adapter_free = noClasses()

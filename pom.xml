@@ -36,6 +36,8 @@
         <module>platform/platform-errors</module>
         <module>platform/platform-diagnostics</module>
         <module>platform/platform-etl</module>
+        <module>platform/platform-events</module>
+        <module>platform/platform-concurrency</module>
         <module>platform/platform-observability</module>
         <module>platform/platform-diagnostics-logging</module>
         <module>core/ioc-domain</module>
@@ -113,6 +115,16 @@
             <dependency>
                 <groupId>com.iocextractor</groupId>
                 <artifactId>ioc-platform-etl</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-platform-events</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-platform-concurrency</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
