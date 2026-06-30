@@ -3,15 +3,21 @@ package com.iocextractor.bootstrap;
 import com.iocextractor.application.port.in.sync.ArtifactPublishCommand;
 import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
+import com.iocextractor.application.port.out.sync.FileTransport;
+import com.iocextractor.application.sync.PublishAtomicallyRequest;
+import com.iocextractor.application.sync.PublishReceipt;
 import com.iocextractor.application.sync.PublishTarget;
+import com.iocextractor.application.sync.RemoteObject;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -96,6 +102,20 @@ class DaemonPublishSchedulerTest {
                 .containsExactly("profile-one", 1, 0);
     }
 
+    @Test
+    void closesIdleTransportsAfterCycleFailure() {
+        AtomicInteger idleCloseCalls = new AtomicInteger();
+        RecordingPublisher publisher = new RecordingPublisher();
+        publisher.failFirstTargetOnce = true;
+        DaemonPublishScheduler scheduler = new DaemonPublishScheduler(
+                List.of(target("one")), publisher, registry(idleCloseCalls::incrementAndGet),
+                healthState(), Duration.ofHours(1));
+
+        scheduler.runOnce();
+
+        assertThat(idleCloseCalls).hasValue(1);
+    }
+
     private DaemonPublishScheduler scheduler(ArtifactPublishUseCase publisher) {
         return new DaemonPublishScheduler(
                 List.of(target("one"), target("two")), publisher, registry(), healthState(), Duration.ofHours(1));
@@ -107,6 +127,12 @@ class DaemonPublishSchedulerTest {
 
     private TransportRegistry registry() {
         return new TransportRegistry(List.of());
+    }
+
+    private TransportRegistry registry(Runnable idleMaintenance) {
+        NoopTransport transport = new NoopTransport();
+        return new TransportRegistry(List.of(new TransportRegistry.Binding(
+                "endpoint-one", transport, idleMaintenance, transport)));
     }
 
     private SyncHealthState healthState() {
@@ -146,6 +172,35 @@ class DaemonPublishSchedulerTest {
                 throw new IllegalStateException("unreachable");
             }
             return new ArtifactPublishResult(0, 1, 0, 0);
+        }
+    }
+
+    private static final class NoopTransport implements FileTransport, AutoCloseable {
+        @Override
+        public List<RemoteObject> list(String endpoint, String remotePath) {
+            return List.of();
+        }
+
+        @Override
+        public Optional<RemoteObject> stat(String endpoint, String remotePath) {
+            return Optional.empty();
+        }
+
+        @Override
+        public void get(String endpoint, String remotePath, Path localDestination) {
+        }
+
+        @Override
+        public void delete(String endpoint, String remotePath) {
+        }
+
+        @Override
+        public PublishReceipt publishAtomically(PublishAtomicallyRequest request) {
+            return new PublishReceipt("unused", "unused");
+        }
+
+        @Override
+        public void close() {
         }
     }
 }

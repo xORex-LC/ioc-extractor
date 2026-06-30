@@ -1,15 +1,21 @@
 package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.port.in.sync.RemoteFetchResult;
+import com.iocextractor.application.port.out.sync.FileTransport;
+import com.iocextractor.application.sync.PublishAtomicallyRequest;
+import com.iocextractor.application.sync.PublishReceipt;
 import com.iocextractor.application.sync.RemoteFetchSource;
+import com.iocextractor.application.sync.RemoteObject;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -89,6 +95,23 @@ class DaemonFetchSchedulerTest {
                 .containsExactly(2, 3, 0);
     }
 
+    @Test
+    void closesIdleTransportsAfterCycleFailure() {
+        AtomicInteger idleCloseCalls = new AtomicInteger();
+        DaemonFetchScheduler scheduler = new DaemonFetchScheduler(
+                List.of(source("one")),
+                command -> {
+                    throw new IllegalStateException("unreachable");
+                },
+                registry(idleCloseCalls::incrementAndGet),
+                healthState(),
+                Duration.ofHours(1));
+
+        scheduler.runOnce();
+
+        assertThat(idleCloseCalls).hasValue(1);
+    }
+
     private DaemonFetchScheduler scheduler(
             com.iocextractor.application.port.in.sync.RemoteFetchUseCase useCase) {
         return new DaemonFetchScheduler(
@@ -103,6 +126,12 @@ class DaemonFetchSchedulerTest {
         return new TransportRegistry(List.of());
     }
 
+    private TransportRegistry registry(Runnable idleMaintenance) {
+        NoopTransport transport = new NoopTransport();
+        return new TransportRegistry(List.of(new TransportRegistry.Binding(
+                "endpoint-one", transport, idleMaintenance, transport)));
+    }
+
     private SyncHealthState healthState() {
         return new SyncHealthState(Clock.systemUTC());
     }
@@ -113,6 +142,35 @@ class DaemonFetchSchedulerTest {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(interrupted);
+        }
+    }
+
+    private static final class NoopTransport implements FileTransport, AutoCloseable {
+        @Override
+        public List<RemoteObject> list(String endpoint, String remotePath) {
+            return List.of();
+        }
+
+        @Override
+        public Optional<RemoteObject> stat(String endpoint, String remotePath) {
+            return Optional.empty();
+        }
+
+        @Override
+        public void get(String endpoint, String remotePath, Path localDestination) {
+        }
+
+        @Override
+        public void delete(String endpoint, String remotePath) {
+        }
+
+        @Override
+        public PublishReceipt publishAtomically(PublishAtomicallyRequest request) {
+            return new PublishReceipt("unused", "unused");
+        }
+
+        @Override
+        public void close() {
         }
     }
 }

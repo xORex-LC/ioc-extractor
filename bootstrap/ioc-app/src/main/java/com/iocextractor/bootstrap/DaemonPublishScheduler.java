@@ -16,10 +16,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Daemon lifecycle boundary for restart-safe publish reconciliation and delivery attempts.
@@ -32,17 +28,12 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
     public static final int PHASE = 150;
 
     private static final Logger log = LoggerFactory.getLogger(DaemonPublishScheduler.class);
-    private static final Duration STOP_TIMEOUT = Duration.ofSeconds(5);
 
     private final List<PublishTarget> targets;
     private final ArtifactPublishUseCase publisher;
     private final TransportRegistry transports;
     private final SyncHealthState healthState;
-    private final Duration interval;
-    private final AtomicBoolean running = new AtomicBoolean();
-
-    private volatile boolean active;
-    private ScheduledExecutorService executor;
+    private final PeriodicDaemonCycle cycle;
 
     /** Creates one sequential publish scheduler over the configured target order. */
     public DaemonPublishScheduler(List<PublishTarget> targets,
@@ -54,23 +45,16 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
         this.publisher = Objects.requireNonNull(publisher, "publisher");
         this.transports = Objects.requireNonNull(transports, "transports");
         this.healthState = Objects.requireNonNull(healthState, "healthState");
-        this.interval = positive(interval, "interval");
+        this.cycle = new PeriodicDaemonCycle("ioc-sync-publish-scheduler", interval, this::runCycle);
     }
 
     @Override
-    public synchronized void start() {
-        if (active) {
+    public void start() {
+        if (cycle.isRunning()) {
             return;
         }
         reconcileBeforeScheduling();
-        executor = Executors.newSingleThreadScheduledExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "ioc-sync-publish-scheduler");
-            thread.setDaemon(false);
-            return thread;
-        });
-        executor.scheduleWithFixedDelay(
-                this::runOnce, interval.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS);
-        active = true;
+        cycle.start();
     }
 
     private void reconcileBeforeScheduling() {
@@ -85,9 +69,10 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
 
     /** Executes one non-overlapping publish cycle and isolates failures by target. */
     public void runOnce() {
-        if (!running.compareAndSet(false, true)) {
-            return;
-        }
+        cycle.runOnce();
+    }
+
+    private void runCycle() {
         try {
             for (PublishTarget target : targets) {
                 attempt(target);
@@ -96,13 +81,11 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
             try {
                 transports.closeIdle();
             } catch (RuntimeException failure) {
-                LogEvents.warn(log)
-                        .action(EventAction.MAINTENANCE)
-                        .outcome(EventOutcome.FAILURE)
-                        .message("sync transport idle cleanup failed")
-                        .log(failure);
-            } finally {
-                running.set(false);
+                    LogEvents.warn(log)
+                            .action(EventAction.MAINTENANCE)
+                            .outcome(EventOutcome.FAILURE)
+                            .message("sync transport idle cleanup failed")
+                            .log(failure);
             }
         }
     }
@@ -155,27 +138,13 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
     }
 
     @Override
-    public synchronized void stop() {
-        active = false;
-        if (executor == null) {
-            return;
-        }
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(STOP_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
-                executor.shutdownNow();
-            }
-        } catch (InterruptedException interrupted) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
-        } finally {
-            executor = null;
-        }
+    public void stop() {
+        cycle.stop();
     }
 
     @Override
     public boolean isRunning() {
-        return active;
+        return cycle.isRunning();
     }
 
     @Override
@@ -183,11 +152,4 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
         return PHASE;
     }
 
-    private static Duration positive(Duration value, String field) {
-        Objects.requireNonNull(value, field);
-        if (value.isZero() || value.isNegative()) {
-            throw new IllegalArgumentException(field + " must be positive");
-        }
-        return value;
-    }
 }
