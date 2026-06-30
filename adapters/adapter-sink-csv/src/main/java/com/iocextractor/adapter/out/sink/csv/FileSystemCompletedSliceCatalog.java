@@ -4,11 +4,16 @@ import com.iocextractor.application.port.out.export.SliceManifestCodec;
 import com.iocextractor.application.port.out.sync.CompletedSliceCatalog;
 import com.iocextractor.application.sync.CompletedSlice;
 import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.codes.SyncDiagnosticCodes;
+import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -21,11 +26,23 @@ public final class FileSystemCompletedSliceCatalog implements CompletedSliceCata
 
     private final Path root;
     private final SliceTreeVerifier verifier;
+    private final DiagnosticSink diagnosticSink;
+    private final DiagnosticFactory diagnosticFactory;
 
     /** Creates a catalog rooted at the same export directory as the slice writer. */
     public FileSystemCompletedSliceCatalog(Path root, SliceManifestCodec codec) {
+        this(root, codec, NoopDiagnosticSink.INSTANCE, new DiagnosticFactory(Clock.systemUTC()));
+    }
+
+    /** Creates a catalog with explicit diagnostics for skipped invalid slices. */
+    public FileSystemCompletedSliceCatalog(Path root,
+                                           SliceManifestCodec codec,
+                                           DiagnosticSink diagnosticSink,
+                                           DiagnosticFactory diagnosticFactory) {
         this.root = Objects.requireNonNull(root, "root").toAbsolutePath().normalize();
         this.verifier = new SliceTreeVerifier(codec);
+        this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
+        this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
     }
 
     @Override
@@ -45,10 +62,14 @@ public final class FileSystemCompletedSliceCatalog implements CompletedSliceCata
             List<Path> paths = children.sorted().toList();
             List<CompletedSlice> slices = new ArrayList<>(paths.size());
             for (Path path : paths) {
-                slices.add(verify(profileSegment, path));
+                try {
+                    slices.add(verify(profileSegment, path));
+                } catch (InvalidSliceException failure) {
+                    emitInvalidSlice(profileSegment, path.getFileName().toString(), failure);
+                }
             }
             return List.copyOf(slices);
-        } catch (IOException | InvalidSliceException failure) {
+        } catch (IOException failure) {
             throw new IocExtractorException(
                     "Failed to discover completed export slices for profile " + profileSegment, failure);
         }
@@ -89,6 +110,15 @@ public final class FileSystemCompletedSliceCatalog implements CompletedSliceCata
                 verified.manifestSha256(),
                 path,
                 verified.manifest());
+    }
+
+    private void emitInvalidSlice(String profileSegment, String sliceName, InvalidSliceException failure) {
+        diagnosticSink.emit(diagnosticFactory.create(SyncDiagnosticCodes.LOCAL_SLICE_INVALID)
+                .with("profile", profileSegment)
+                .with("sliceName", sliceName)
+                .with("reason", Objects.toString(failure.getMessage(), failure.getClass().getSimpleName()))
+                .cause(failure)
+                .build());
     }
 
     private void requirePhysicalDirectory(Path path) {

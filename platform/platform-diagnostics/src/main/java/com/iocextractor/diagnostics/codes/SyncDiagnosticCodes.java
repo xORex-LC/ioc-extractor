@@ -18,6 +18,8 @@ public enum SyncDiagnosticCodes implements DiagnosticCode {
             "Transient transport failure on sync endpoint {endpoint}: {reason}"),
     PUBLISH_VERIFY_FAILED(DiagnosticSeverity.ERROR, "sync.publish-verify-failed",
             "Published slice {sliceId} for target {targetId} failed verification: {reason}"),
+    LOCAL_SLICE_INVALID(DiagnosticSeverity.ERROR, "sync.local-slice-invalid",
+            "Local export slice {profile}/{sliceName} is invalid and was skipped: {reason}"),
     ENDPOINT_UNKNOWN(DiagnosticSeverity.FATAL, "sync.endpoint-unknown",
             "Sync configuration references unknown endpoint {endpoint} from {owner}"),
     CREDENTIAL_MISSING(DiagnosticSeverity.FATAL, "sync.credential-missing",

@@ -228,10 +228,11 @@ class OnDemandExportIntegrationTest {
                 clock);
 
         assertThat(guard.canDelete(descriptor)).isFalse();
-        var first = publisher.publish(new com.iocextractor.application.port.in.sync.ArtifactPublishCommand(
-                Optional.of("e2e-reputation"), false));
-        var duplicate = publisher.publish(new com.iocextractor.application.port.in.sync.ArtifactPublishCommand(
-                Optional.of("e2e-reputation"), false));
+        var command = new com.iocextractor.application.port.in.sync.ArtifactPublishCommand(
+                Optional.of("e2e-reputation"), false);
+        publisher.reconcile(command);
+        var first = publisher.publish(command);
+        var duplicate = publisher.publish(command);
 
         Path remoteSlice = TEST_ROOT.resolve("remote/local/published").resolve(slice.getFileName());
         assertThat(first.succeeded()).isOne();

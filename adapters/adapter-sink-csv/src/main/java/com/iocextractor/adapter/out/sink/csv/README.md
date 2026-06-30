@@ -85,8 +85,9 @@ corruption была видима оператору. Перед recursive delete
 остаётся отдельным от retention API: он только перечисляет verified final slices
 для remote delivery и возвращает `CompletedSlice` с локальным каталогом,
 manifest SHA-256 и decoded manifest. `.staging` не входит в область поиска;
-incomplete/corrupt final не становится pending work и завершает discovery
-ошибкой, чтобы delivery не публиковал сомнительные bytes.
+incomplete/corrupt final не становится pending work. Profile discovery
+пропускает такой каталог с diagnostic, чтобы один плохой sibling не блокировал
+остальной профиль; точечный `find(profile, sliceName)` остаётся strict.
 
 ## Инварианты и ошибки
 

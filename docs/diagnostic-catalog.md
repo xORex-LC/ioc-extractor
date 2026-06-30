@@ -42,6 +42,7 @@ Generated from `DiagnosticCatalogs`.
 | `SYNC.REMOTE_NOT_FOUND` | SYNC | WARN | `sync.remote-not-found` | Remote path {path} was not found on sync endpoint {endpoint} |
 | `SYNC.TRANSPORT_TRANSIENT` | SYNC | WARN | `sync.transport-transient` | Transient transport failure on sync endpoint {endpoint}: {reason} |
 | `SYNC.PUBLISH_VERIFY_FAILED` | SYNC | ERROR | `sync.publish-verify-failed` | Published slice {sliceId} for target {targetId} failed verification: {reason} |
+| `SYNC.LOCAL_SLICE_INVALID` | SYNC | ERROR | `sync.local-slice-invalid` | Local export slice {profile}/{sliceName} is invalid and was skipped: {reason} |
 | `SYNC.ENDPOINT_UNKNOWN` | SYNC | FATAL | `sync.endpoint-unknown` | Sync configuration references unknown endpoint {endpoint} from {owner} |
 | `SYNC.CREDENTIAL_MISSING` | SYNC | FATAL | `sync.credential-missing` | Sync endpoint {endpoint} is missing required credential {credential} |
 | `PIPELINE.STAGE_FAILED` | PIPELINE | ERROR | `pipeline.stage-failed` | Pipeline stage {stage} failed: {reason} |

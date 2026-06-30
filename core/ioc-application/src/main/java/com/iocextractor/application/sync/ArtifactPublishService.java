@@ -60,8 +60,16 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
 
     @Override
     public ArtifactPublishResult publish(ArtifactPublishCommand command) {
-        return forEachSelectedPair(command,
-                (slice, target, counters) -> publishPair(slice, target, command.dryRun(), counters));
+        Objects.requireNonNull(command, "command");
+        if (command.dryRun()) {
+            return reconcile(command);
+        }
+        PublishCounters counters = new PublishCounters();
+        countNonRetryableRecords(command, counters);
+        for (PublishRecord record : selectedRetryableRecords(command)) {
+            findSlice(record, counters).ifPresent(slice -> apply(record, slice, false, counters));
+        }
+        return counters.toResult();
     }
 
     @Override
@@ -106,6 +114,33 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
         return counters.toResult();
     }
 
+    private List<PublishRecord> selectedRetryableRecords(ArtifactPublishCommand command) {
+        List<String> profiles = selectedProfiles(command);
+        List<PublishTarget> selected = selectedTargets(command);
+        return ledger.findRetryable().stream()
+                .filter(record -> profiles.contains(record.profile()))
+                .filter(record -> selected.stream().anyMatch(target -> matches(record, target)))
+                .toList();
+    }
+
+    private void countNonRetryableRecords(ArtifactPublishCommand command, PublishCounters counters) {
+        List<String> profiles = selectedProfiles(command);
+        List<PublishTarget> selected = selectedTargets(command);
+        ledger.findAll().stream()
+                .filter(record -> record.status() == PublishStatus.SUCCEEDED
+                        || record.status() == PublishStatus.ABANDONED
+                        || record.status() == PublishStatus.IN_PROGRESS)
+                .filter(record -> profiles.contains(record.profile()))
+                .filter(record -> selected.stream().anyMatch(target -> matches(record, target)))
+                .forEach(record -> countState(record, counters));
+    }
+
+    private boolean matches(PublishRecord record, PublishTarget target) {
+        return record.targetId().equals(target.targetId())
+                && record.endpoint().equals(target.endpoint())
+                && record.profile().equals(target.exportProfile());
+    }
+
     private void reconcilePair(CompletedSlice slice,
                                PublishTarget target,
                                boolean dryRun,
@@ -128,6 +163,30 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
             return;
         }
         apply(record.orElseThrow(), slice, dryRun, counters);
+    }
+
+    private Optional<CompletedSlice> findSlice(PublishRecord record, PublishCounters counters) {
+        Optional<CompletedSlice> found;
+        try {
+            found = sliceCatalog.find(record.profile(), record.sliceName());
+        } catch (RuntimeException failure) {
+            emitLocalSliceInvalid(record, failureReason(failure.getMessage()), failure);
+            counters.failed++;
+            return Optional.empty();
+        }
+        if (found.isEmpty()) {
+            emitLocalSliceInvalid(record, "local slice is missing", null);
+            counters.failed++;
+            return Optional.empty();
+        }
+        CompletedSlice slice = found.orElseThrow();
+        if (!slice.sliceId().equals(record.sliceId())
+                || !slice.manifestSha256().equals(record.manifestSha256())) {
+            emitLocalSliceInvalid(record, "local slice no longer matches publish ledger binding", null);
+            counters.failed++;
+            return Optional.empty();
+        }
+        return Optional.of(slice);
     }
 
     private List<String> selectedProfiles(ArtifactPublishCommand command) {
@@ -320,6 +379,19 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
                 .with("targetId", record.targetId())
                 .with("reason", reason)
                 .build());
+    }
+
+    private void emitLocalSliceInvalid(PublishRecord record, String reason, RuntimeException failure) {
+        var builder = Diagnostic.builder(SyncDiagnosticCodes.LOCAL_SLICE_INVALID, clock)
+                .with("profile", record.profile())
+                .with("sliceName", record.sliceName())
+                .with("sliceId", record.sliceId())
+                .with("targetId", record.targetId())
+                .with("reason", reason);
+        if (failure != null) {
+            builder.cause(failure);
+        }
+        diagnostics.emit(builder.build());
     }
 
     private static final class PublishCounters {

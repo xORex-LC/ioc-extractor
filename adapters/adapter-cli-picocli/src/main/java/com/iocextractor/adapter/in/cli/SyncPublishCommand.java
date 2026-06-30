@@ -55,9 +55,17 @@ public final class SyncPublishCommand implements Callable<Integer> {
         ArtifactPublishCommand command = command();
         validator.validatePublish(command);
         ArtifactPublishUseCase publisher = requireUseCase();
-        ArtifactPublishResult result = publisher.publish(command);
+        ArtifactPublishResult result = command.dryRun()
+                ? publisher.reconcile(command)
+                : publishAfterReconcile(publisher, command);
         render(result);
         return result.failed() == 0 ? 0 : 1;
+    }
+
+    private ArtifactPublishResult publishAfterReconcile(ArtifactPublishUseCase publisher,
+                                                        ArtifactPublishCommand command) {
+        publisher.reconcile(command);
+        return publisher.publish(command);
     }
 
     ArtifactPublishCommand command() {

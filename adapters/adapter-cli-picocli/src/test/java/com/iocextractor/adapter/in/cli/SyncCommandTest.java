@@ -145,7 +145,8 @@ class SyncCommandTest {
         ArtifactPublishUseCase publisher = new ArtifactPublishUseCase() {
             @Override
             public ArtifactPublishResult reconcile(ArtifactPublishCommand command) {
-                throw new UnsupportedOperationException("reconcile is not used by CLI");
+                calls.add("reconcile");
+                return new ArtifactPublishResult(1, 0, 0, 0);
             }
 
             @Override
@@ -168,7 +169,7 @@ class SyncCommandTest {
 
         assertThat(exit).isZero();
         assertThat(validator.calls).containsExactly("fetch:*:*:false", "publish:*:*:*:false");
-        assertThat(calls).containsExactly("fetch", "publish");
+        assertThat(calls).containsExactly("fetch", "reconcile", "publish");
     }
 
     private CommandLine commandLine(Object command, StringWriter output) {

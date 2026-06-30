@@ -6,14 +6,19 @@ import com.iocextractor.application.export.ExportMode;
 import com.iocextractor.application.export.SliceArtifactManifest;
 import com.iocextractor.application.export.SliceManifest;
 import com.iocextractor.application.port.out.export.SliceManifestCodec;
-import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.codes.SyncDiagnosticCodes;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,6 +30,7 @@ class FileSystemCompletedSliceCatalogTest {
 
     private static final Instant CREATED = Instant.parse("2026-06-28T00:00:00Z");
     private static final String HASH = "a".repeat(64);
+    private static final Clock CLOCK = Clock.fixed(CREATED, ZoneOffset.UTC);
 
     @TempDir
     Path tempDir;
@@ -65,39 +71,53 @@ class FileSystemCompletedSliceCatalogTest {
         Path wanted = createSlice(codec, "reputation", "slice-one", true);
         Path corrupt = createSlice(codec, "reputation", "corrupt", true);
         Files.writeString(corrupt.resolve("masks.csv"), "tampered", StandardCharsets.UTF_8);
-        var catalog = new FileSystemCompletedSliceCatalog(tempDir, codec);
+        List<Diagnostic> diagnostics = new ArrayList<>();
+        var catalog = catalog(codec, diagnostics);
 
         assertThat(catalog.find("reputation", "slice-one"))
                 .hasValueSatisfying(item -> {
                     assertThat(item.sliceId()).isEqualTo("slice-one");
                     assertThat(item.directory()).isEqualTo(wanted.toAbsolutePath().normalize());
                 });
-        assertThatThrownBy(() -> catalog.listCompleted("reputation"))
-                .isInstanceOf(IocExtractorException.class)
-                .hasMessageContaining("completed export slices");
+        assertThat(catalog.listCompleted("reputation"))
+                .singleElement()
+                .extracting(item -> item.sliceId())
+                .isEqualTo("slice-one");
+        assertThat(diagnostics).singleElement().satisfies(diagnostic -> {
+            assertThat(diagnostic.code()).isEqualTo(SyncDiagnosticCodes.LOCAL_SLICE_INVALID);
+            assertThat(diagnostic.context())
+                    .containsEntry("profile", "reputation")
+                    .containsEntry("sliceName", "corrupt");
+        });
     }
 
     @Test
-    void corruptFinalSliceSurfacesAndIsNotPublished() throws Exception {
+    void corruptFinalSliceIsSkippedAndDiagnosed() throws Exception {
         TestCodec codec = new TestCodec();
         Path slice = createSlice(codec, "reputation", "corrupt", true);
         Files.writeString(slice.resolve("masks.csv"), "tampered", StandardCharsets.UTF_8);
-        var catalog = new FileSystemCompletedSliceCatalog(tempDir, codec);
+        List<Diagnostic> diagnostics = new ArrayList<>();
+        var catalog = catalog(codec, diagnostics);
 
-        assertThatThrownBy(() -> catalog.listCompleted("reputation"))
-                .isInstanceOf(IocExtractorException.class)
-                .hasMessageContaining("completed export slices");
+        assertThat(catalog.listCompleted("reputation")).isEmpty();
+        assertThat(diagnostics).singleElement().satisfies(diagnostic -> {
+            assertThat(diagnostic.code()).isEqualTo(SyncDiagnosticCodes.LOCAL_SLICE_INVALID);
+            assertThat(diagnostic.context()).containsEntry("sliceName", slice.getFileName().toString());
+        });
     }
 
     @Test
     void incompleteFinalSliceDoesNotBecomePendingWork() throws Exception {
         TestCodec codec = new TestCodec();
         createSlice(codec, "reputation", "incomplete", false);
-        var catalog = new FileSystemCompletedSliceCatalog(tempDir, codec);
+        List<Diagnostic> diagnostics = new ArrayList<>();
+        var catalog = catalog(codec, diagnostics);
 
-        assertThatThrownBy(() -> catalog.listCompleted("reputation"))
-                .isInstanceOf(IocExtractorException.class)
-                .hasMessageContaining("completed export slices");
+        assertThat(catalog.listCompleted("reputation")).isEmpty();
+        assertThat(diagnostics).singleElement().satisfies(diagnostic -> {
+            assertThat(diagnostic.code()).isEqualTo(SyncDiagnosticCodes.LOCAL_SLICE_INVALID);
+            assertThat(diagnostic.context()).containsEntry("sliceName", "incomplete");
+        });
     }
 
     @Test
@@ -110,9 +130,7 @@ class FileSystemCompletedSliceCatalogTest {
         assertThatThrownBy(() -> catalog.listCompleted("../reputation"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("profile");
-        assertThatThrownBy(() -> catalog.listCompleted("reputation"))
-                .isInstanceOf(IocExtractorException.class)
-                .hasMessageContaining("completed export slices");
+        assertThat(catalog.listCompleted("reputation")).isEmpty();
     }
 
     @Test
@@ -147,6 +165,11 @@ class FileSystemCompletedSliceCatalogTest {
                     SliceHashes.sha256(manifestBytes) + "\n", StandardCharsets.US_ASCII);
         }
         return directory;
+    }
+
+    private FileSystemCompletedSliceCatalog catalog(TestCodec codec, List<Diagnostic> diagnostics) {
+        return new FileSystemCompletedSliceCatalog(
+                tempDir, codec, diagnostics::add, new DiagnosticFactory(CLOCK));
     }
 
     private static final class TestCodec implements SliceManifestCodec {

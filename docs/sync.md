@@ -78,7 +78,9 @@ download/move не оставляет include-visible partial file и безоп
 
 Worklist строится `CompletedSliceCatalog` только из каталогов, прошедших цепочку
 `_SUCCESS → manifest hash → manifest decode → artifact size/hash → exact membership`.
-Staging/incomplete игнорируются, corruption возвращается как ошибка.
+Staging игнорируется. Incomplete/corrupt final не превращается в publish work:
+profile discovery пропускает такой каталог с `SYNC.LOCAL_SLICE_INVALID`, а
+точечный lookup для уже известной ledger-pair остаётся строгим.
 
 Для каждой пары `(slice_id, target_id)` `publish_ledger` хранит независимую сагу:
 
@@ -108,11 +110,14 @@ targets, чтобы retention не обогнал discovery. Оба sync schedul
 
 ### Текущая cadence-модель и известный долг
 
-Реализация v1 сознательно построена как polling/reconcile loop:
+Реализация v1 начиналась как polling/reconcile loop, но publish-контур уже
+разделён на discovery и DB-driven execution:
 
 ```text
 fetch interval  ──▶ remote list ──▶ ledger diff ──▶ download new identities
-publish interval──▶ local slice catalog × ledger ──▶ publish pending/failed pairs
+export complete ──▶ SliceCompleted event ──▶ publish concrete slice
+publish startup ─▶ local slice catalog × ledger ──▶ materialize missing pairs
+publish interval──▶ publish_ledger.findRetryable ──▶ publish pending/failed pairs
 ```
 
 Эта модель restart-safe: если процесс упал между discovery, remote commit и ledger update,

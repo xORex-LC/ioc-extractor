@@ -22,7 +22,8 @@ adapter-модулях.
 - `publishAtomically` — единственная write-side операция с multi-file инвариантом.
 - `delete` существует только как seam для opt-in remote retention/cleanup, не для fetch claim.
 - `CompletedSliceCatalog` не является retention API: staging, incomplete и corrupt final
-  каталоги не превращаются в publish work; corruption должна всплывать явно.
+  каталоги не превращаются в publish work; discovery сообщает corruption diagnostic,
+  а точечный `find` остаётся strict.
 - `CompletedSliceCatalog.find(profile, sliceName)` проверяет один immutable slice
   без полного scan профиля; `sliceName` — filesystem lookup key, `sliceId` остаётся
   durable delivery key.

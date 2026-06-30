@@ -20,6 +20,7 @@ import com.iocextractor.application.sync.RemoteFetchService;
 import com.iocextractor.application.sync.RemoteFetchSource;
 import com.iocextractor.application.sync.Retrier;
 import com.iocextractor.application.sync.RetryPolicy;
+import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.platform.concurrent.BoundedKeyedSerialExecutor;
 import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
@@ -93,8 +94,12 @@ public class SyncConfig {
     @Bean
     @Lazy
     @ConditionalOnProperty(prefix = "ioc.sync", name = "enabled", havingValue = "true")
-    public CompletedSliceCatalog completedSliceCatalog(IocProperties props, SliceManifestCodec codec) {
-        return new FileSystemCompletedSliceCatalog(Path.of(props.export().root()), codec);
+    public CompletedSliceCatalog completedSliceCatalog(IocProperties props,
+                                                       SliceManifestCodec codec,
+                                                       DiagnosticSink diagnostics,
+                                                       Clock clock) {
+        return new FileSystemCompletedSliceCatalog(
+                Path.of(props.export().root()), codec, diagnostics, new DiagnosticFactory(clock));
     }
 
     @Bean

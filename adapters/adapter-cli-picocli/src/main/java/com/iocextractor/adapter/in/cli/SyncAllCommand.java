@@ -73,9 +73,17 @@ public final class SyncAllCommand implements Callable<Integer> {
         ArtifactPublishUseCase publisher = requirePublishUseCase();
 
         RemoteFetchResult fetchResult = fetcher.fetch(fetchCommand);
-        ArtifactPublishResult publishResult = publisher.publish(publishCommand);
+        ArtifactPublishResult publishResult = publishCommand.dryRun()
+                ? publisher.reconcile(publishCommand)
+                : publishAfterReconcile(publisher, publishCommand);
         render(fetchResult, publishResult);
         return fetchResult.failed() == 0 && publishResult.failed() == 0 ? 0 : 1;
+    }
+
+    private ArtifactPublishResult publishAfterReconcile(ArtifactPublishUseCase publisher,
+                                                        ArtifactPublishCommand command) {
+        publisher.reconcile(command);
+        return publisher.publish(command);
     }
 
     private Optional<String> optional(String value) {

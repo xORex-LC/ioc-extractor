@@ -7,6 +7,7 @@ import com.iocextractor.application.export.SliceArtifactManifest;
 import com.iocextractor.application.export.SliceDescriptor;
 import com.iocextractor.application.export.SliceManifest;
 import com.iocextractor.application.port.in.sync.ArtifactPublishCommand;
+import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
 import com.iocextractor.application.port.out.sync.CompletedSliceCatalog;
 import com.iocextractor.application.port.out.sync.FileTransport;
 import com.iocextractor.application.port.out.sync.PublishLedger;
@@ -45,8 +46,9 @@ class ArtifactPublishServiceTest {
         FakeLedger ledger = new FakeLedger();
         FakeTransport transport = new FakeTransport();
 
-        var result = service(catalog(slice), ledger, transport, targets("reputation"), diagnostics())
-                .publish(new ArtifactPublishCommand(Optional.empty(), false));
+        var result = publishAfterReconcile(
+                service(catalog(slice), ledger, transport, targets("reputation"), diagnostics()),
+                new ArtifactPublishCommand(Optional.empty(), false));
 
         assertThat(result.succeeded()).isEqualTo(2);
         assertThat(ledger.records()).hasSize(2)
@@ -73,6 +75,25 @@ class ArtifactPublishServiceTest {
     }
 
     @Test
+    void publishesRetryableLedgerRecordsWithoutListingProfile() throws Exception {
+        CompletedSlice slice = slice("reputation", "slice-one");
+        FakeCatalog catalog = catalog(slice);
+        catalog.failListCompleted = true;
+        FakeLedger ledger = new FakeLedger();
+        ledger.ensurePending(pending("slice-one", targetA("reputation")));
+        FakeTransport transport = new FakeTransport();
+
+        var result = service(catalog, ledger, transport, targets("reputation"), diagnostics())
+                .publish(new ArtifactPublishCommand(
+                        Optional.of("reputation"), Optional.of("target-a"), false));
+
+        assertThat(result.succeeded()).isOne();
+        assertThat(catalog.listCalls).isZero();
+        assertThat(catalog.findCalls).isOne();
+        assertThat(transport.published).containsExactly("endpoint-a:/remote/a/slice-one");
+    }
+
+    @Test
     void dryRunDoesNotCreateLedgerPairsOrPublish() throws Exception {
         CompletedSlice slice = slice("reputation", "slice-one");
         FakeLedger ledger = new FakeLedger();
@@ -92,9 +113,9 @@ class ArtifactPublishServiceTest {
         FakeLedger ledger = new FakeLedger();
         FakeTransport transport = new FakeTransport();
 
-        var result = service(catalog(slice), ledger, transport, targets("reputation"), diagnostics())
-                .publish(new ArtifactPublishCommand(
-                        Optional.of("reputation"), Optional.of("target-b"), false));
+        var result = publishAfterReconcile(
+                service(catalog(slice), ledger, transport, targets("reputation"), diagnostics()),
+                new ArtifactPublishCommand(Optional.of("reputation"), Optional.of("target-b"), false));
 
         assertThat(result.succeeded()).isOne();
         assertThat(ledger.records()).extracting(PublishRecord::targetId).containsExactly("target-b");
@@ -107,9 +128,9 @@ class ArtifactPublishServiceTest {
         FakeLedger ledger = new FakeLedger();
         FakeTransport transport = new FakeTransport();
 
-        var result = service(catalog(slice), ledger, transport, targets("reputation"), diagnostics())
-                .publish(new ArtifactPublishCommand(
-                        Optional.empty(), Optional.empty(), Optional.of("endpoint-a"), false));
+        var result = publishAfterReconcile(
+                service(catalog(slice), ledger, transport, targets("reputation"), diagnostics()),
+                new ArtifactPublishCommand(Optional.empty(), Optional.empty(), Optional.of("endpoint-a"), false));
 
         assertThat(result.succeeded()).isOne();
         assertThat(ledger.records()).extracting(PublishRecord::targetId).containsExactly("target-a");
@@ -162,8 +183,9 @@ class ArtifactPublishServiceTest {
         FakeTransport transport = new FakeTransport();
         transport.failPublishForEndpoint = "endpoint-a";
 
-        var result = service(catalog(slice), ledger, transport, targets("reputation"), diagnostics())
-                .publish(new ArtifactPublishCommand(Optional.of("reputation"), false));
+        var result = publishAfterReconcile(
+                service(catalog(slice), ledger, transport, targets("reputation"), diagnostics()),
+                new ArtifactPublishCommand(Optional.of("reputation"), false));
 
         assertThat(result.succeeded()).isEqualTo(1);
         assertThat(result.failed()).isEqualTo(1);
@@ -182,7 +204,10 @@ class ArtifactPublishServiceTest {
         ArtifactPublishService service = service(
                 catalog(slice), ledger, transport, List.of(targetA("reputation")), diagnostics());
 
-        assertThatThrownBy(() -> service.publish(new ArtifactPublishCommand(Optional.empty(), false)))
+        ArtifactPublishCommand command = new ArtifactPublishCommand(Optional.empty(), false);
+        service.reconcile(command);
+
+        assertThatThrownBy(() -> service.publish(command))
                 .isSameAs(transport.unexpectedPublishFailure);
         assertThat(ledger.find("slice-one", "target-a"))
                 .hasValueSatisfying(record -> assertThat(record.status()).isEqualTo(PublishStatus.IN_PROGRESS));
@@ -195,8 +220,9 @@ class ArtifactPublishServiceTest {
         FakeTransport transport = new FakeTransport();
         transport.remoteMarkers.put("endpoint-a:/remote/a/slice-one/_SUCCESS", HASH);
 
-        var result = service(catalog(slice), ledger, transport, List.of(targetA("reputation")), diagnostics())
-                .publish(new ArtifactPublishCommand(Optional.empty(), false));
+        var result = publishAfterReconcile(
+                service(catalog(slice), ledger, transport, List.of(targetA("reputation")), diagnostics()),
+                new ArtifactPublishCommand(Optional.empty(), false));
 
         assertThat(result.succeeded()).isEqualTo(1);
         assertThat(transport.published).isEmpty();
@@ -214,8 +240,9 @@ class ArtifactPublishServiceTest {
         CollectingDiagnosticSink diagnostics = diagnostics();
         transport.remoteMarkers.put("endpoint-a:/remote/a/slice-one/_SUCCESS", "b".repeat(64));
 
-        var result = service(catalog(slice), ledger, transport, List.of(targetA("reputation")), diagnostics)
-                .publish(new ArtifactPublishCommand(Optional.empty(), false));
+        var result = publishAfterReconcile(
+                service(catalog(slice), ledger, transport, List.of(targetA("reputation")), diagnostics),
+                new ArtifactPublishCommand(Optional.empty(), false));
 
         assertThat(result.failed()).isEqualTo(1);
         assertThat(ledger.find("slice-one", "target-a")).hasValueSatisfying(record ->
@@ -264,6 +291,12 @@ class ArtifactPublishServiceTest {
 
     private FakeCatalog catalog(CompletedSlice... slices) {
         return new FakeCatalog(slices);
+    }
+
+    private ArtifactPublishResult publishAfterReconcile(ArtifactPublishService service,
+                                                        ArtifactPublishCommand command) {
+        service.reconcile(command);
+        return service.publish(command);
     }
 
     private CollectingDiagnosticSink diagnostics() {
