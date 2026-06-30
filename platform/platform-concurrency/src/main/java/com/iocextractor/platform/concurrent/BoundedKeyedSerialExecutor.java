@@ -74,9 +74,9 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
             return rejected;
         }
         if (!dispatch(key, Objects.requireNonNull(firstWork, "firstWork"))) {
-            WorkAdmission dispatchRejected = WorkAdmission.rejected(key, 0);
-            observeRejected(dispatchRejected);
-            return dispatchRejected;
+            // dispatch() already signalled observer.dispatchRejected on its failure path; do not
+            // also fire observer.rejected here (that channel is for admission/shutdown rejections).
+            return WorkAdmission.rejected(key, 0);
         }
         return WorkAdmission.accepted(key, 0);
     }
