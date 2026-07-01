@@ -18,10 +18,11 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 ```
 
 - `platform` содержит переиспользуемые подсистемы: errors, diagnostics,
-  generic ETL kernel, observability and diagnostics-logging bridge.
+  generic ETL kernel, observability, control-event contracts, keyed concurrency
+  primitives and diagnostics-logging bridge.
 - `domain` не зависит от application/adapters/bootstrap/platform и не тянет
   фреймворки или IO-библиотеки.
-- `application` зависит от `domain`, `platform-etl` and diagnostics contracts.
+- `application` зависит от `domain`, `platform-etl`, `platform-events` and diagnostics contracts.
 - `adapter` и `bootstrap` зависят внутрь; здесь — и только здесь — живут
   фреймворки и внешние библиотеки (Spring, Tika, RE2/J, commons-csv, picocli).
 - Внутренние слои **никогда** не импортируют из внешних.
@@ -39,6 +40,8 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Platform | `platform/etl` | `Envelope`, `EnvelopeMeta`, `Stage`, `StageId`, `Pipeline`, `PipelineRunner` |
 | Platform | `diagnostics` | Diagnostic model, catalog, `Result`/`Notification`, `FailurePolicy`, sink ports |
 | Platform | `observability` | MDC/log event helpers and logging taxonomy |
+| Platform | `events` | Framework-free control-event marker, metadata envelope, publish port and observers; no broker/delivery mechanics |
+| Platform | `concurrent` | In-memory keyed single-flight executor, observer hooks and health snapshots |
 | Application | `application/port/in` | `ExtractIocsUseCase`, `ExtractionCommand`, `ExtractionResult` (driving) |
 | Application | `application/port/out` | `SourceReader`, `IocSink`, `LookupRepository`, ingestion/artifact-storage ports, `RetentionStore` (driven) |
 | Application | `application/pipeline/payload` | IOC-specific payload records between stages |
@@ -47,7 +50,7 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Application | `application/ingest` | daemon ingestion orchestration (`IngestionService`) |
 | Application | `application/artifact` | storage-neutral artifact row identity, canonical artifact snapshots and ingest run recovery model |
 | Application | `application/maintenance` | retention reaper: `RetentionPolicy` (pure) + `RetentionService` |
-| Application | `application/sync`, `application/port/*/sync` | Transport-neutral fetch/publish use cases, retry/error policy и delivery ledgers/catalog ports |
+| Application | `application/sync`, `application/port/*/sync` | Transport-neutral fetch/publish use cases, remote source monitor, control events, retry/error policy и delivery ledgers/catalog ports |
 | Adapter (in) | `adapter/in/cli` | `IocRootCommand`, `ExtractCommand`, `CliRunner` (picocli) |
 | Adapter (out) | `adapter/out/regex` | `Re2jPatternEngine` (default), `JdkRegexPatternEngine` |
 | Adapter (out) | `adapter/out/source` | `TikaSourceReader` |
@@ -93,6 +96,7 @@ read (SourceReader)
 | `IngestSourceUseCase` | driving (in) | Обработка одного daemon source unit |
 | `RunRetentionUseCase` / `RetentionStore` | driving (in) / driven (out) | Reaper растущих каталогов по возрасту/количеству (delete/archive) |
 | `RemoteFetchUseCase` / `ArtifactPublishUseCase` | driving (in) | Remote → inbox и verified export slice → targets |
+| `ControlEventPublisher` | platform driving port | Publish-only control-plane notification; delivery adapter живёт в bootstrap |
 | `FileTransport` | driven (out) | Stateless remote file operations + atomic multi-file publish intent |
 | `RemoteFetchLedger` / `PublishLedger` | driven (out) | Fetch idempotency и независимая per-slice/per-target delivery saga |
 

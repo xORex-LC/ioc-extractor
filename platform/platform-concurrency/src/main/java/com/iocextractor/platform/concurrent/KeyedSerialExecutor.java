@@ -18,6 +18,11 @@ public interface KeyedSerialExecutor extends AutoCloseable {
     /** Attempts to submit one unit of work for the given key. */
     WorkAdmission submit(WorkKey key, Runnable work);
 
+    /** Returns a read-only point-in-time snapshot for health/diagnostics. */
+    default KeyedSerialExecutorSnapshot snapshot() {
+        return KeyedSerialExecutorSnapshot.empty();
+    }
+
     /** Stops accepting new work and lets already accepted work drain. */
     void shutdown();
 

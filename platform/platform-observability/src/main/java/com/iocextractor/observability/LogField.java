@@ -34,6 +34,12 @@ public enum LogField {
     IOC_SYNC_ENDPOINT("ioc.sync.endpoint"),
     IOC_SYNC_FILES("ioc.sync.files"),
     IOC_SYNC_TARGET("ioc.sync.target"),
+    IOC_SYNC_KEY("ioc.sync.key"),
+    IOC_SYNC_QUEUE_DEPTH("ioc.sync.queue_depth"),
+    IOC_SYNC_RUNNING("ioc.sync.running"),
+    IOC_SYNC_OLDEST_AGE("ioc.sync.oldest_age"),
+    IOC_SYNC_SHED_TO_RECONCILE("ioc.sync.shed_to_reconcile"),
+    IOC_SYNC_ABANDONED_WORK("ioc.sync.abandoned_work"),
     IOC_DIAGNOSTIC_CODE("ioc.diagnostic.code"),
     IOC_DIAGNOSTIC_CATEGORY("ioc.diagnostic.category"),
     IOC_DIAGNOSTIC_SEVERITY("ioc.diagnostic.severity");

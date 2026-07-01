@@ -2,6 +2,8 @@ package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
 import com.iocextractor.application.port.in.sync.RemoteFetchResult;
+import com.iocextractor.platform.concurrent.WorkAdmission;
+import com.iocextractor.platform.concurrent.WorkKey;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -18,6 +20,7 @@ public final class SyncHealthState {
     private final Clock clock;
     private final ConcurrentHashMap<String, FetchSnapshot> fetchBySource = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, PublishSnapshot> publishByTarget = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, KeyedExecutorSignal> executorByKey = new ConcurrentHashMap<>();
 
     /** Creates runtime state timestamped by the injected application clock. */
     public SyncHealthState(Clock clock) {
@@ -54,6 +57,44 @@ public final class SyncHealthState {
                 endpoint, profile, clock.instant(), 0, 0, 1, 0, failureMessage(failure)));
     }
 
+    /** Records admission shedding for one in-memory executor key. */
+    public void recordKeyedRejection(WorkAdmission admission) {
+        Objects.requireNonNull(admission, "admission");
+        executorByKey.compute(admission.key().value(), (ignored, previous) -> new KeyedExecutorSignal(
+                clock.instant(),
+                true,
+                admission.queuedDepth(),
+                previous == null ? 0 : previous.abandonedWork(),
+                previous == null ? null : previous.lastDispatchFailure(),
+                previous == null ? null : previous.error()));
+    }
+
+    /** Records an accepted work item failure for one in-memory executor key. */
+    public void recordKeyedFailure(WorkKey key, RuntimeException failure) {
+        Objects.requireNonNull(key, "key");
+        executorByKey.compute(key.value(), (ignored, previous) -> new KeyedExecutorSignal(
+                clock.instant(),
+                previous != null && previous.shedToReconcile(),
+                previous == null ? 0 : previous.rejectedQueuedDepth(),
+                previous == null ? 0 : previous.abandonedWork(),
+                previous == null ? null : previous.lastDispatchFailure(),
+                failureMessage(failure)));
+    }
+
+    /** Records backing executor rejection after work had already been accepted. */
+    public void recordKeyedDispatchRejected(WorkKey key,
+                                            int abandonedWork,
+                                            RuntimeException failure) {
+        Objects.requireNonNull(key, "key");
+        executorByKey.compute(key.value(), (ignored, previous) -> new KeyedExecutorSignal(
+                clock.instant(),
+                true,
+                previous == null ? 0 : previous.rejectedQueuedDepth(),
+                abandonedWork,
+                failureMessage(failure),
+                previous == null ? null : previous.error()));
+    }
+
     /** Returns a stable, key-sorted copy for one health read. */
     public Map<String, FetchSnapshot> fetchSnapshots() {
         return Collections.unmodifiableMap(new LinkedHashMap<>(new TreeMap<>(fetchBySource)));
@@ -62,6 +103,11 @@ public final class SyncHealthState {
     /** Returns a stable, key-sorted copy for one health read. */
     public Map<String, PublishSnapshot> publishSnapshots() {
         return Collections.unmodifiableMap(new LinkedHashMap<>(new TreeMap<>(publishByTarget)));
+    }
+
+    /** Returns a stable, key-sorted copy of executor degradation signals. */
+    public Map<String, KeyedExecutorSignal> keyedExecutorSignals() {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(new TreeMap<>(executorByKey)));
     }
 
     private String failureMessage(RuntimeException failure) {
@@ -88,5 +134,14 @@ public final class SyncHealthState {
                                   int failed,
                                   int abandoned,
                                   String error) {
+    }
+
+    /** Latest degradation signal for one in-memory keyed executor lane. */
+    public record KeyedExecutorSignal(Instant updatedAt,
+                                      boolean shedToReconcile,
+                                      int rejectedQueuedDepth,
+                                      int abandonedWork,
+                                      String lastDispatchFailure,
+                                      String error) {
     }
 }

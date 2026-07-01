@@ -12,11 +12,15 @@ Operational logging для `oneshot` CLI и `daemon`/stream-режима.
 > через `event.action` и `ioc.*`. Дальнейшее расширение событий добавляется
 > рядом с новыми producer-ами.
 
-Remote sync использует ECS actions `sync_fetch_start|complete` и
-`sync_publish_start|complete` с логическими `ioc.source.id`, `ioc.sync.target`,
-`ioc.sync.endpoint`, `ioc.export.profile` и counters. Host/share/username/password не
-логируются; transport exceptions проходят через общую error taxonomy. Последнее состояние
-операций доступно в actuator `sync` health contributor — см. [sync.md](sync.md).
+Remote sync использует ECS actions `sync_fetch_start|complete`,
+`sync_publish_start|complete`, `sync_work_admission`, `sync_work_dispatch`,
+`event_publish` и `event_dispatch` с логическими `ioc.source.id`,
+`ioc.sync.target`, `ioc.sync.endpoint`, `ioc.sync.key`, `ioc.export.profile` и
+counters. Успешные event publish/dispatch сигналы остаются `DEBUG`; сбои publish,
+dispatch и keyed executor degradation пишутся на `WARN`/`ERROR`, чтобы fire-and-observe
+контракт не делал ошибки невидимыми. Host/share/username/password не логируются;
+transport exceptions проходят через общую error taxonomy. Последнее состояние операций
+доступно в actuator `sync` health contributor — см. [sync.md](sync.md).
 
 ## Разделение моделей
 
@@ -59,6 +63,7 @@ dead-letter sidecar или JSONL.
 | Diagnostics bridge | diagnostic result rendered as log event | `LoggingDiagnosticSink` |
 | Export observer (bootstrap) | formation checkpoints/recovery, profile/slice/revision | `ExportObserver` → SLF4J + MDC |
 | Export schedulers (bootstrap) | cadence failures, slice-retention sweep/blocks | `LogEvent` helper; ошибка tick не останавливает daemon |
+| Event/sync observers (bootstrap) | control-event publish/dispatch и keyed executor degradation | `ControlEventObserver`, `KeyedSerialExecutorObserver` |
 
 ## Границы ответственности
 

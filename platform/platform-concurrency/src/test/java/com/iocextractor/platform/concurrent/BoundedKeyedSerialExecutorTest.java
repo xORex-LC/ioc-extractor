@@ -145,6 +145,28 @@ class BoundedKeyedSerialExecutorTest {
     }
 
     @Test
+    void snapshotsRunningKeysQueueDepthAndOldestAge() throws InterruptedException {
+        BoundedKeyedSerialExecutor executor = executor(1, 8);
+        WorkKey key = WorkKey.of("endpoint-a");
+        CountDownLatch firstStarted = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+
+        executor.submit(key, () -> blockingSignal(firstStarted, releaseFirst, new CountDownLatch(0)));
+        assertThat(firstStarted.await(1, TimeUnit.SECONDS)).isTrue();
+        executor.submit(key, () -> { });
+
+        KeyedSerialExecutorSnapshot snapshot = executor.snapshot();
+
+        assertThat(snapshot.keys()).singleElement().satisfies(lane -> {
+            assertThat(lane.key()).isEqualTo(key);
+            assertThat(lane.running()).isTrue();
+            assertThat(lane.queuedDepth()).isEqualTo(1);
+            assertThat(lane.oldestAge()).isGreaterThanOrEqualTo(Duration.ZERO);
+        });
+        releaseFirst.countDown();
+    }
+
+    @Test
     void abandonsAndObservesQueuedWorkWhenWorkerRejectsDuringDrain() throws InterruptedException {
         RecordingObserver observer = new RecordingObserver();
         workers = new RejectingAfterFirstExecuteExecutorService();

@@ -210,7 +210,7 @@ public class SyncConfig {
             + "('${ioc.sync.fetch.enabled:false}' == 'true' || "
             + "'${ioc.sync.publish.enabled:false}' == 'true') && "
             + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
-    public KeyedSerialExecutor syncKeyedExecutor(IocProperties props) {
+    public KeyedSerialExecutor syncKeyedExecutor(IocProperties props, SyncHealthState healthState) {
         long fetchEndpoints = fetchSources(props).stream()
                 .map(RemoteFetchSource::endpoint)
                 .distinct()
@@ -226,7 +226,8 @@ public class SyncConfig {
                     thread.setDaemon(false);
                     return thread;
                 }),
-                DEFAULT_SYNC_QUEUE_PER_ENDPOINT);
+                DEFAULT_SYNC_QUEUE_PER_ENDPOINT,
+                new SyncKeyedExecutorObserver(healthState));
     }
 
     @Bean
@@ -266,10 +267,12 @@ public class SyncConfig {
             SyncHealthState state,
             PublishLedger ledger,
             CompletedSliceCatalog catalog,
+            KeyedSerialExecutor syncKeyedExecutor,
             ObjectProvider<SliceRetentionGuard> retentionGuard,
             IocProperties props) {
         return new SyncHealthIndicator(
                 fetchSources(props), publishTargets(props), state, ledger, catalog,
+                syncKeyedExecutor::snapshot,
                 retentionGuard.getIfAvailable(() -> descriptor -> true));
     }
 

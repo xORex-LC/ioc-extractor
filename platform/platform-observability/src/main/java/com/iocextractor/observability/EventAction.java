@@ -31,6 +31,8 @@ public enum EventAction {
     SYNC_FETCH_COMPLETE("sync_fetch_complete"),
     SYNC_PUBLISH_START("sync_publish_start"),
     SYNC_PUBLISH_COMPLETE("sync_publish_complete"),
+    SYNC_WORK_ADMISSION("sync_work_admission"),
+    SYNC_WORK_DISPATCH("sync_work_dispatch"),
     REMOTE_FETCH("remote_fetch"),
     REMOTE_PUBLISH("remote_publish"),
     EVENT_PUBLISH("event_publish"),

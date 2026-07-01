@@ -18,9 +18,13 @@
 > log events — в [logging-taxonomy.md](logging-taxonomy.md).
 
 Категория `SYNC` покрывает transport-neutral endpoint/auth/permission/not-found/transient
-ошибки, credential/config failures и несовпадение remote publish marker. SMB-типы не входят
-в diagnostic contract: адаптер переводит их в `RemoteErrorKind`, а полный опубликованный
-список генерируется в [diagnostic-catalog.md](diagnostic-catalog.md).
+ошибки, credential/config failures, несовпадение remote publish marker и валидацию
+локального completed slice discovery. SMB-типы не входят в diagnostic contract:
+адаптер переводит их в `RemoteErrorKind`, а полный опубликованный список генерируется
+в [diagnostic-catalog.md](diagnostic-catalog.md). Control-plane события ADR 0013 пока
+не получают отдельную категорию `EVENTS`: publish/dispatch/admission являются
+operational log/health signals, а не самостоятельными диагностическими кодами обработки
+данных.
 
 ## Принцип разделения
 

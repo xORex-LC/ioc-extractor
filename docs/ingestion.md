@@ -303,11 +303,12 @@ Formation state хранится в service DB отдельно от `ingest_run
 final directories, применяет age/count отдельно по profile и повторно спрашивает
 delivery guard перед recursive delete; `.staging` остаётся собственностью recovery.
 
-Remote sync не вводит второй ingest pipeline. Fetch атомарно кладёт файл в тот же
-`ioc.ingestion.dirs.inbox`, после чего действуют обычные claim, run-ledger и canonical
-write. Обратный поток берёт только completed export slices; его `publish_ledger` не
-мутирует `ingest_run` или `export_run`. Protocol, CLI и lifecycle описаны в
-[sync.md](sync.md).
+Remote sync не вводит второй ingest pipeline. `RemoteSourceMonitor` обнаруживает
+remote identities и публикует control event; fetch execution атомарно кладёт файл в
+тот же `ioc.ingestion.dirs.inbox`, после чего действуют обычные claim, run-ledger и
+canonical write. Обратный поток берёт только completed export slices; его
+`publish_ledger` не мутирует `ingest_run` или `export_run`. Protocol, CLI и lifecycle
+описаны в [sync.md](sync.md).
 
 ## 9. Ошибки, ретраи, dead-letter
 

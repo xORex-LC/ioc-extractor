@@ -1,8 +1,12 @@
 package com.iocextractor.platform.concurrent;
 
 import java.time.Duration;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
@@ -22,6 +26,7 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
     private final ExecutorService workers;
     private final int maxQueuedPerKey;
     private final KeyedSerialExecutorObserver observer;
+    private final Clock clock;
     private final Map<WorkKey, KeyState> states = new HashMap<>();
 
     private boolean accepting = true;
@@ -36,18 +41,28 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
     public BoundedKeyedSerialExecutor(ExecutorService workers,
                                       int maxQueuedPerKey,
                                       KeyedSerialExecutorObserver observer) {
+        this(workers, maxQueuedPerKey, observer, Clock.systemUTC());
+    }
+
+    /** Creates an executor with an explicit clock for deterministic snapshots. */
+    public BoundedKeyedSerialExecutor(ExecutorService workers,
+                                      int maxQueuedPerKey,
+                                      KeyedSerialExecutorObserver observer,
+                                      Clock clock) {
         this.workers = Objects.requireNonNull(workers, "workers");
         if (maxQueuedPerKey < 0) {
             throw new IllegalArgumentException("maxQueuedPerKey must not be negative");
         }
         this.maxQueuedPerKey = maxQueuedPerKey;
         this.observer = Objects.requireNonNull(observer, "observer");
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     @Override
     public WorkAdmission submit(WorkKey key, Runnable work) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(work, "work");
+        Instant submittedAt = clock.instant();
         Runnable firstWork = null;
         WorkAdmission rejected = null;
         synchronized (lock) {
@@ -59,11 +74,12 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
                     if (state.queue.size() >= maxQueuedPerKey) {
                         rejected = WorkAdmission.rejected(key, state.queue.size());
                     } else {
-                        state.queue.add(work);
+                        state.queue.add(new QueuedWork(work, submittedAt));
                         return WorkAdmission.accepted(key, state.queue.size());
                     }
                 } else {
                     state.running = true;
+                    state.runningSince = submittedAt;
                     runningTasks++;
                     firstWork = work;
                 }
@@ -79,6 +95,24 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
             return WorkAdmission.rejected(key, 0);
         }
         return WorkAdmission.accepted(key, 0);
+    }
+
+    @Override
+    public KeyedSerialExecutorSnapshot snapshot() {
+        Instant now = clock.instant();
+        synchronized (lock) {
+            var snapshots = new ArrayList<KeyedWorkSnapshot>(states.size());
+            for (Map.Entry<WorkKey, KeyState> entry : states.entrySet()) {
+                KeyState state = entry.getValue();
+                snapshots.add(new KeyedWorkSnapshot(
+                        entry.getKey(),
+                        state.queue.size(),
+                        state.running,
+                        Duration.between(oldestAcceptedAt(state), now)));
+            }
+            snapshots.sort(Comparator.comparing(snapshot -> snapshot.key().value()));
+            return new KeyedSerialExecutorSnapshot(snapshots);
+        }
     }
 
     @Override
@@ -125,7 +159,7 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
     }
 
     private void runNext(WorkKey key) {
-        Runnable next;
+        QueuedWork next;
         synchronized (lock) {
             KeyState state = states.get(key);
             if (state == null) {
@@ -139,8 +173,9 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
                 shutdownWorkersIfIdle();
                 return;
             }
+            state.runningSince = clock.instant();
         }
-        if (!dispatch(key, next)) {
+        if (!dispatch(key, next.work())) {
             shutdownIfIdle();
         }
     }
@@ -199,7 +234,27 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
     }
 
     private static final class KeyState {
-        private final Queue<Runnable> queue = new ArrayDeque<>();
+        private final Queue<QueuedWork> queue = new ArrayDeque<>();
+        private Instant runningSince;
         private boolean running;
+    }
+
+    private Instant oldestAcceptedAt(KeyState state) {
+        if (state.runningSince != null) {
+            return state.runningSince;
+        }
+        QueuedWork queued = state.queue.peek();
+        if (queued != null) {
+            return queued.submittedAt();
+        }
+        return clock.instant();
+    }
+
+    private record QueuedWork(Runnable work, Instant submittedAt) {
+
+        private QueuedWork {
+            work = Objects.requireNonNull(work, "work");
+            submittedAt = Objects.requireNonNull(submittedAt, "submittedAt");
+        }
     }
 }

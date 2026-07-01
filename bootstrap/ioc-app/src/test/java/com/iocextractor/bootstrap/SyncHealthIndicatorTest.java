@@ -15,12 +15,17 @@ import com.iocextractor.application.sync.PublishRecord;
 import com.iocextractor.application.sync.PublishStatus;
 import com.iocextractor.application.sync.PublishTarget;
 import com.iocextractor.application.sync.RemoteFetchSource;
+import com.iocextractor.platform.concurrent.KeyedSerialExecutorSnapshot;
+import com.iocextractor.platform.concurrent.KeyedWorkSnapshot;
+import com.iocextractor.platform.concurrent.WorkAdmission;
+import com.iocextractor.platform.concurrent.WorkKey;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.actuate.health.Status;
 
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -93,6 +98,40 @@ class SyncHealthIndicatorTest {
         Map<String, Map<String, Object>> targets =
                 (Map<String, Map<String, Object>>) health.getDetails().get("publishTargets");
         assertThat(targets.get("delivery")).containsEntry("status", "NEVER_RUN");
+    }
+
+    @Test
+    void reportsKeyedExecutorLiveStateAndDegradationSignals() {
+        SyncHealthState state = new SyncHealthState(Clock.fixed(NOW, ZoneOffset.UTC));
+        WorkKey key = WorkKey.of("primary");
+        state.recordKeyedRejection(WorkAdmission.rejected(key, 64));
+        SyncHealthIndicator indicator = new SyncHealthIndicator(
+                List.of(new RemoteFetchSource(
+                        "incoming", "primary", "/in", List.of("*"), List.of())),
+                List.of(new PublishTarget("delivery", "primary", "/out", "reputation")),
+                state,
+                ledger(List.of()),
+                catalog(List.of()),
+                () -> new KeyedSerialExecutorSnapshot(List.of(
+                        new KeyedWorkSnapshot(key, 3, true, Duration.ofSeconds(5)))),
+                descriptor -> false);
+
+        var health = indicator.health();
+
+        assertThat(health.getStatus()).isEqualTo(Status.DOWN);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> keyedExecutor =
+                (Map<String, Object>) health.getDetails().get("keyedExecutor");
+        assertThat(keyedExecutor.get("runningKeys")).isEqualTo(List.of("primary"));
+        @SuppressWarnings("unchecked")
+        Map<String, Map<String, Object>> keys =
+                (Map<String, Map<String, Object>>) keyedExecutor.get("keys");
+        assertThat(keys.get("primary"))
+                .containsEntry("running", true)
+                .containsEntry("queueDepth", 3)
+                .containsEntry("oldestAgeMs", 5000L)
+                .containsEntry("shedToReconcile", true)
+                .containsEntry("rejectedQueuedDepth", 64);
     }
 
     private PublishLedger ledger(List<PublishRecord> records) {
