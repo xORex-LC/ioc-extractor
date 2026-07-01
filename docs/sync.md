@@ -68,11 +68,13 @@ identity равен `(path, size, modifiedAt)` и хранится в `remote_fe
 Daemon-путь разделяет detection и execution:
 
 1. `RemoteSourceMonitor` делает `list`, include/exclude filtering и отсекает уже
-   `FETCHED` identities.
+   `FETCHED` и process-local in-flight identities.
 2. Найденная bounded batch публикуется как control event `RemoteChangeBatchDetected`
    без содержимого файлов.
 3. Bootstrap listener превращает событие в `FetchRemoteObjectsCommand` и ставит
-   work в keyed executor по endpoint.
+   work в keyed executor по endpoint. Перед admission identity атомарно claim-ится в
+   in-flight registry и освобождается после success/failure/rejection; поэтому медленная
+   загрузка не переэмитится на каждом monitor tick.
 4. `RemoteFetchService` скачивает уже переданные identities без повторного `list`.
 5. `get` пишет в скрытый `inbox/.sync-staging/*.part`.
 6. После close/fsync файл атомарно перемещается в финальное inbox-имя.
@@ -169,8 +171,10 @@ Daemon actuator contributor `sync` публикует:
 Последние scheduler outcomes хранятся только в памяти процесса и после restart снова
 имеют `NEVER_RUN`; backlog и delivery terminal state остаются durable. Failed outcome
 или `FAILED` pair переводит sync contributor в `DOWN`; отсутствие первого запуска — нет.
-Executor shed/failure также делает contributor `DOWN`, потому что correctness зависит от
-следующего reconcile/backstop. ECS actions: `sync_fetch_start|complete`,
+Восстановимый executor shed остаётся видимым в details и `WARN`, но сам по себе не переводит
+contributor в `DOWN`: correctness сохраняет reconcile/backstop. Work/dispatch failure переводит
+health в `DOWN`; transient executor-сигнал очищается после следующего успешного work-item того же
+endpoint. ECS actions: `sync_fetch_start|complete`,
 `sync_publish_start|complete`, `sync_work_admission`, `sync_work_dispatch`;
 поля не содержат host/share/username/password. Полный каталог ошибок —
 [diagnostic-catalog.md](diagnostic-catalog.md).

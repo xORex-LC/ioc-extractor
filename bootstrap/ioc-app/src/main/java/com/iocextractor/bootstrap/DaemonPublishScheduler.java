@@ -117,8 +117,15 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
             }
         });
         if (!admission.accepted()) {
-            logFailure(target, "scheduled remote publish target rejected", new IllegalStateException(
-                    "scheduled publish work rejected for endpoint " + target.endpoint()));
+            LogEvents.warn(log)
+                    .action(EventAction.SYNC_WORK_ADMISSION)
+                    .outcome(EventOutcome.FAILURE)
+                    .field(LogField.IOC_SYNC_TARGET, target.targetId())
+                    .field(LogField.IOC_SYNC_ENDPOINT, target.endpoint())
+                    .field(LogField.IOC_EXPORT_PROFILE, target.exportProfile())
+                    .field(LogField.IOC_SYNC_SHED_TO_RECONCILE, true)
+                    .message("scheduled remote publish shed to next reconcile cycle")
+                    .log();
             return;
         }
         awaitCompletion(completed);

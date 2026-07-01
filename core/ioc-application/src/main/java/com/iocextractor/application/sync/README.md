@@ -14,6 +14,7 @@ value objects и политики, которые одинаковы для SMB/
 | `RemoteTransportException` | Исключение, через которое adapters сообщают нейтральный remote error |
 | `RetryPolicy` / `Retrier` | Micro-retry executor для `RETRY_NOW` ошибок |
 | `RemoteObject` / `RemoteObjectIdentity` | Metadata и fetch-ledger identity удалённого файла |
+| `RemoteFetchInFlightRegistry` | Process-local suppression повторной эмиссии уже поставленных в очередь identity |
 | `RemoteFetchSource` | Transport-neutral configured read-only source |
 | `RemoteFetchRecord` / `RemoteFetchStatus` | Durable состояние read-only fetch idempotency |
 | `PublishRecord` / `PublishStatus` | Durable per-slice/per-target publish saga state |

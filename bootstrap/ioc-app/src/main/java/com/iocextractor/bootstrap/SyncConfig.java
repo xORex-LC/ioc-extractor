@@ -17,6 +17,7 @@ import com.iocextractor.application.sync.ArtifactPublishService;
 import com.iocextractor.application.sync.PublishLedgerSliceRetentionGuard;
 import com.iocextractor.application.sync.PublishTarget;
 import com.iocextractor.application.sync.RemoteFetchService;
+import com.iocextractor.application.sync.RemoteFetchInFlightRegistry;
 import com.iocextractor.application.sync.RemoteFetchSource;
 import com.iocextractor.application.sync.RemoteSourceMonitor;
 import com.iocextractor.application.sync.Retrier;
@@ -139,10 +140,20 @@ public class SyncConfig {
     public RemoteSourceMonitor remoteSourceMonitor(
             TransportRegistry transports,
             RemoteFetchLedger ledger,
+            RemoteFetchInFlightRegistry inFlight,
             IocProperties props,
             Clock clock) {
         return new RemoteSourceMonitor(
-                transports, ledger, fetchSources(props), DEFAULT_FETCH_BATCH_SIZE, clock);
+                transports, ledger, inFlight, fetchSources(props), DEFAULT_FETCH_BATCH_SIZE, clock);
+    }
+
+    @Bean
+    @Lazy
+    @ConditionalOnExpression("'${ioc.sync.enabled:false}' == 'true' && "
+            + "'${ioc.sync.fetch.enabled:false}' == 'true' && "
+            + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
+    public RemoteFetchInFlightRegistry remoteFetchInFlightRegistry() {
+        return new RemoteFetchInFlightRegistry();
     }
 
     @Bean
@@ -253,8 +264,10 @@ public class SyncConfig {
             RemoteFetchUseCase useCase,
             KeyedSerialExecutor syncKeyedExecutor,
             ControlEventObserver observer,
-            SyncHealthState healthState) {
-        return new RemoteChangeFetchListener(useCase, syncKeyedExecutor, observer, healthState);
+            SyncHealthState healthState,
+            RemoteFetchInFlightRegistry inFlight) {
+        return new RemoteChangeFetchListener(
+                useCase, syncKeyedExecutor, observer, healthState, inFlight);
     }
 
     @Bean("syncHealthIndicator")

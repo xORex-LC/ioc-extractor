@@ -27,14 +27,6 @@ final class RemoteFetchSources {
         return matches;
     }
 
-    static boolean matches(RemoteFetchSource source, RemoteObject object) {
-        SourceMatchers matchers = compileMatchers(source);
-        Path leaf = Path.of(leafName(object.path()));
-        boolean accepted = matchers.included().isEmpty()
-                || matchers.included().stream().anyMatch(matcher -> matcher.matches(leaf));
-        return accepted && matchers.excluded().stream().noneMatch(matcher -> matcher.matches(leaf));
-    }
-
     static String leafName(String remotePath) {
         int slash = Math.max(remotePath.lastIndexOf('/'), remotePath.lastIndexOf('\\'));
         String leaf = slash >= 0 ? remotePath.substring(slash + 1) : remotePath;
@@ -45,7 +37,7 @@ final class RemoteFetchSources {
         return leaf;
     }
 
-    private static SourceMatchers compileMatchers(RemoteFetchSource source) {
+    static SourceMatchers compileMatchers(RemoteFetchSource source) {
         return new SourceMatchers(
                 source.include().stream().map(RemoteFetchSources::glob).toList(),
                 source.exclude().stream().map(RemoteFetchSources::glob).toList());
@@ -55,6 +47,13 @@ final class RemoteFetchSources {
         return FileSystems.getDefault().getPathMatcher("glob:" + pattern);
     }
 
-    private record SourceMatchers(List<PathMatcher> included, List<PathMatcher> excluded) {
+    record SourceMatchers(List<PathMatcher> included, List<PathMatcher> excluded) {
+
+        boolean matches(RemoteObject object) {
+            Path leaf = Path.of(leafName(object.path()));
+            boolean accepted = included.isEmpty()
+                    || included.stream().anyMatch(matcher -> matcher.matches(leaf));
+            return accepted && excluded.stream().noneMatch(matcher -> matcher.matches(leaf));
+        }
     }
 }

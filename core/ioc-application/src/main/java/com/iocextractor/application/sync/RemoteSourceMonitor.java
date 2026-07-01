@@ -20,6 +20,7 @@ public final class RemoteSourceMonitor {
 
     private final FileTransport transport;
     private final RemoteFetchLedger ledger;
+    private final RemoteFetchInFlightRegistry inFlight;
     private final List<RemoteFetchSource> sources;
     private final int maxBatchSize;
     private final Clock clock;
@@ -27,11 +28,13 @@ public final class RemoteSourceMonitor {
     /** Creates a monitor with a bounded event batch size. */
     public RemoteSourceMonitor(FileTransport transport,
                                RemoteFetchLedger ledger,
+                               RemoteFetchInFlightRegistry inFlight,
                                List<RemoteFetchSource> sources,
                                int maxBatchSize,
                                Clock clock) {
         this.transport = Objects.requireNonNull(transport, "transport");
         this.ledger = Objects.requireNonNull(ledger, "ledger");
+        this.inFlight = Objects.requireNonNull(inFlight, "inFlight");
         this.sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
         if (maxBatchSize <= 0) {
             throw new IllegalArgumentException("maxBatchSize must be positive");
@@ -51,9 +54,10 @@ public final class RemoteSourceMonitor {
     }
 
     private void detectSource(RemoteFetchSource source, List<RemoteChangeBatchDetected> events) {
+        RemoteFetchSources.SourceMatchers matchers = RemoteFetchSources.compileMatchers(source);
         List<RemoteObject> batch = new ArrayList<>(maxBatchSize);
         for (RemoteObject object : transport.list(source.endpoint(), source.remotePath())) {
-            if (!RemoteFetchSources.matches(source, object) || fetched(object)) {
+            if (!matchers.matches(object) || fetched(object) || inFlight.contains(object.identity())) {
                 continue;
             }
             batch.add(object);

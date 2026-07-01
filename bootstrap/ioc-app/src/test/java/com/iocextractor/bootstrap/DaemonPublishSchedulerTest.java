@@ -170,6 +170,18 @@ class DaemonPublishSchedulerTest {
         assertThat(publisher.operations).containsExactly("reconcile:profile-one", "publish:one");
     }
 
+    @Test
+    void rejectedAdmissionIsShedWithoutRecordingPublishFailure() {
+        SyncHealthState state = healthState();
+        DaemonPublishScheduler scheduler = new DaemonPublishScheduler(
+                List.of(target("one")), new RecordingPublisher(), registry(), state,
+                new RejectingKeyedExecutor(), Duration.ofHours(1));
+
+        scheduler.runOnce();
+
+        assertThat(state.publishSnapshots()).isEmpty();
+    }
+
     private DaemonPublishScheduler scheduler(ArtifactPublishUseCase publisher) {
         return new DaemonPublishScheduler(
                 List.of(target("one"), target("two")), publisher, registry(), healthState(),
@@ -254,6 +266,26 @@ class DaemonPublishSchedulerTest {
         public WorkAdmission submit(WorkKey key, Runnable work) {
             work.run();
             return WorkAdmission.accepted(key, 0);
+        }
+
+        @Override
+        public void shutdown() {
+        }
+
+        @Override
+        public boolean awaitTermination(Duration timeout) {
+            return true;
+        }
+
+        @Override
+        public void close() {
+        }
+    }
+
+    private static final class RejectingKeyedExecutor implements KeyedSerialExecutor {
+        @Override
+        public WorkAdmission submit(WorkKey key, Runnable work) {
+            return WorkAdmission.rejected(key, 0);
         }
 
         @Override

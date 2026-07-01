@@ -10,6 +10,10 @@ import java.util.concurrent.RejectedExecutionException;
  */
 public interface KeyedSerialExecutorObserver {
 
+    /** Called when accepted work completes normally. */
+    default void completed(WorkKey key) {
+    }
+
     /** Called when new work is rejected by admission control or shutdown. */
     default void rejected(WorkAdmission admission) {
     }

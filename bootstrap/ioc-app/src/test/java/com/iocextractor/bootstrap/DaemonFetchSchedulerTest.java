@@ -8,6 +8,7 @@ import com.iocextractor.application.sync.PublishReceipt;
 import com.iocextractor.application.sync.RemoteChangeBatchDetected;
 import com.iocextractor.application.sync.RemoteFetchRecord;
 import com.iocextractor.application.sync.RemoteFetchSource;
+import com.iocextractor.application.sync.RemoteFetchInFlightRegistry;
 import com.iocextractor.application.sync.RemoteFetchStatus;
 import com.iocextractor.application.sync.RemoteObject;
 import com.iocextractor.application.sync.RemoteObjectIdentity;
@@ -144,7 +145,8 @@ class DaemonFetchSchedulerTest {
         List<RemoteFetchSource> configuredSources = List.of(sources);
         return new DaemonFetchScheduler(
                 configuredSources,
-                new RemoteSourceMonitor(transport, new FakeLedger(), configuredSources, 10, CLOCK),
+                new RemoteSourceMonitor(transport, new FakeLedger(), new RemoteFetchInFlightRegistry(),
+                        configuredSources, 10, CLOCK),
                 publisher,
                 registry(),
                 healthState(),
@@ -152,7 +154,8 @@ class DaemonFetchSchedulerTest {
     }
 
     private RemoteSourceMonitor monitor(FileTransport transport, RemoteFetchSource... sources) {
-        return new RemoteSourceMonitor(transport, new FakeLedger(), List.of(sources), 10, CLOCK);
+        return new RemoteSourceMonitor(transport, new FakeLedger(), new RemoteFetchInFlightRegistry(),
+                List.of(sources), 10, CLOCK);
     }
 
     private RemoteFetchSource source(String id) {

@@ -51,6 +51,22 @@ class SyncKeyedExecutorObserverTest {
                 });
     }
 
+    @Test
+    void clearsTransientDegradationAfterSuccessfulWork() {
+        var appender = appender();
+        SyncHealthState healthState = new SyncHealthState(
+                Clock.fixed(Instant.parse("2026-06-30T12:00:00Z"), ZoneOffset.UTC));
+        SyncKeyedExecutorObserver observer = new SyncKeyedExecutorObserver(healthState);
+        WorkKey key = WorkKey.of("endpoint-a");
+        observer.rejected(WorkAdmission.rejected(key, 64));
+
+        observer.completed(key);
+
+        assertThat(healthState.keyedExecutorSignals()).isEmpty();
+        assertThat(appender.list).extracting(ILoggingEvent::getLevel)
+                .containsExactly(Level.WARN, Level.DEBUG);
+    }
+
     private ListAppender<ILoggingEvent> appender() {
         logger.detachAndStopAllAppenders();
         logger.setAdditive(false);

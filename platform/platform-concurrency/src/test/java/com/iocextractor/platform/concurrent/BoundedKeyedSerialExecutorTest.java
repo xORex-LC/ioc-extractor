@@ -145,6 +145,18 @@ class BoundedKeyedSerialExecutorTest {
     }
 
     @Test
+    void observesNormalCompletionForRecoveredKey() throws InterruptedException {
+        RecordingObserver observer = new RecordingObserver();
+        BoundedKeyedSerialExecutor executor = executor(1, 8, observer);
+        WorkKey key = WorkKey.of("endpoint-a");
+
+        executor.submit(key, () -> { });
+
+        assertThat(observer.completionObserved.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(observer.completions).containsExactly(key);
+    }
+
+    @Test
     void snapshotsRunningKeysQueueDepthAndOldestAge() throws InterruptedException {
         BoundedKeyedSerialExecutor executor = executor(1, 8);
         WorkKey key = WorkKey.of("endpoint-a");
@@ -251,11 +263,19 @@ class BoundedKeyedSerialExecutorTest {
     }
 
     private static final class RecordingObserver implements KeyedSerialExecutorObserver {
+        private final CountDownLatch completionObserved = new CountDownLatch(1);
         private final CountDownLatch failureObserved = new CountDownLatch(1);
         private final CountDownLatch dispatchRejectedObserved = new CountDownLatch(1);
         private final List<WorkAdmission> rejections = new CopyOnWriteArrayList<>();
+        private final List<WorkKey> completions = new CopyOnWriteArrayList<>();
         private final List<RuntimeException> failures = new CopyOnWriteArrayList<>();
         private final List<DispatchRejection> dispatchRejections = new CopyOnWriteArrayList<>();
+
+        @Override
+        public void completed(WorkKey key) {
+            completions.add(key);
+            completionObserved.countDown();
+        }
 
         @Override
         public void rejected(WorkAdmission admission) {

@@ -63,7 +63,8 @@ class RemoteSourceMonitorTest {
         RemoteFetchSource two = source("two", "endpoint-two", "/two");
         FakeTransport transport = new FakeTransport(List.of(object("/two/a.htm", 1)));
         RemoteSourceMonitor monitor = new RemoteSourceMonitor(
-                transport, new FakeLedger(), List.of(one, two), 10, CLOCK);
+                transport, new FakeLedger(), new RemoteFetchInFlightRegistry(),
+                List.of(one, two), 10, CLOCK);
 
         List<RemoteChangeBatchDetected> events = monitor.detect(new RemoteFetchCommand(
                 Optional.of("two"), Optional.empty(), false));
@@ -74,9 +75,30 @@ class RemoteSourceMonitorTest {
         assertThat(transport.listCalls).containsExactly("endpoint-two:/two");
     }
 
+    @Test
+    void suppressesClaimedIdentityUntilExecutionReleasesIt() {
+        RemoteObject object = object("/incoming/slow.htm", 1);
+        FakeTransport transport = new FakeTransport(List.of(object));
+        RemoteFetchInFlightRegistry inFlight = new RemoteFetchInFlightRegistry();
+        RemoteSourceMonitor monitor = new RemoteSourceMonitor(
+                transport, new FakeLedger(), inFlight,
+                List.of(source("source", "endpoint", "/incoming")), 10, CLOCK);
+        List<RemoteChangeBatchDetected> first = monitor.detect(new RemoteFetchCommand(false));
+        inFlight.claim(first.getFirst().objects());
+
+        List<RemoteChangeBatchDetected> whileInFlight = monitor.detect(new RemoteFetchCommand(false));
+        inFlight.release(first.getFirst().objects());
+        List<RemoteChangeBatchDetected> afterRelease = monitor.detect(new RemoteFetchCommand(false));
+
+        assertThat(whileInFlight).isEmpty();
+        assertThat(afterRelease).singleElement()
+                .satisfies(event -> assertThat(event.objects()).containsExactly(object));
+    }
+
     private RemoteSourceMonitor monitor(FakeTransport transport, FakeLedger ledger, int maxBatchSize) {
         return new RemoteSourceMonitor(
-                transport, ledger, List.of(source("source", "endpoint", "/incoming")),
+                transport, ledger, new RemoteFetchInFlightRegistry(),
+                List.of(source("source", "endpoint", "/incoming")),
                 maxBatchSize, CLOCK);
     }
 

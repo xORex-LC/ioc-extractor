@@ -101,7 +101,7 @@ class SyncHealthIndicatorTest {
     }
 
     @Test
-    void reportsKeyedExecutorLiveStateAndDegradationSignals() {
+    void reportsRecoverableKeyedShedWithoutMakingHealthDown() {
         SyncHealthState state = new SyncHealthState(Clock.fixed(NOW, ZoneOffset.UTC));
         WorkKey key = WorkKey.of("primary");
         state.recordKeyedRejection(WorkAdmission.rejected(key, 64));
@@ -118,7 +118,7 @@ class SyncHealthIndicatorTest {
 
         var health = indicator.health();
 
-        assertThat(health.getStatus()).isEqualTo(Status.DOWN);
+        assertThat(health.getStatus()).isEqualTo(Status.UP);
         @SuppressWarnings("unchecked")
         Map<String, Object> keyedExecutor =
                 (Map<String, Object>) health.getDetails().get("keyedExecutor");
@@ -132,6 +132,18 @@ class SyncHealthIndicatorTest {
                 .containsEntry("oldestAgeMs", 5000L)
                 .containsEntry("shedToReconcile", true)
                 .containsEntry("rejectedQueuedDepth", 64);
+    }
+
+    @Test
+    void clearsKeyedDegradationSignalAfterSuccessfulWork() {
+        SyncHealthState state = new SyncHealthState(Clock.fixed(NOW, ZoneOffset.UTC));
+        WorkKey key = WorkKey.of("primary");
+        state.recordKeyedRejection(WorkAdmission.rejected(key, 64));
+
+        boolean recovered = state.recordKeyedSuccess(key);
+
+        assertThat(recovered).isTrue();
+        assertThat(state.keyedExecutorSignals()).isEmpty();
     }
 
     private PublishLedger ledger(List<PublishRecord> records) {

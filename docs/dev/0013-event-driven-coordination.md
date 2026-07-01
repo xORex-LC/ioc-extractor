@@ -360,11 +360,14 @@ message-store/wiretap решают проблемы, которых нет; obse
     (работает и для будущего S3/SFTP).
     **Состояние fingerprint-кэша монитора — latency-оптимизация, НЕ source of truth.** Форма (Q4) —
     in-memory **set of `RemoteObjectIdentity(path,size,mtime)`** (= ключ fetch-ledger, нового identity
-    не вводим); detection = **set-diff** → bounded-батчи; без агрегированного хэша листинга. Кэш —
-    in-memory (durable monitor state — отложенный seam). На рестарте монитор вправе **переэмитить**
-    уже известные identities; безопасность повторной эмиссии обязан обеспечить **ledger как
-    Idempotent Receiver** (fetch-ledger по `RemoteObjectIdentity` отсечёт дубли). Корректность
-    держится на ledger, не на кэше.
+    не вводим); detection = **set-diff** → bounded-батчи; без агрегированного хэша листинга. В v1 это
+    **in-flight registry**, общий для monitor и listener: identity атомарно claim-ится listener-ом
+    непосредственно перед admission в keyed executor, а monitor исключает claimed identity из
+    следующих тиков. Claim ставится не до publish, иначе потерянный dispatch подавил бы повторную
+    детекцию. После success/failure/rejection identity освобождается; `FETCHED` окончательно отсекает
+    durable ledger. Registry — in-memory (durable monitor state — отложенный seam). На рестарте
+    монитор вправе **переэмитить** уже известные identities; безопасность повторной эмиссии обязан
+    обеспечить **ledger как Idempotent Receiver**. Корректность держится на ledger, не на registry.
 
 **Асимметрия осознанная.** «Держать открытую сессию-watcher» отвергнуто: именно простаивающая
 открытая SMB-сессия и протухает (тот самый `Read timed out`). Smart-poll переиспользует и
@@ -1229,6 +1232,8 @@ publish/fetch-поведение и финальную документацию.
   без регресса поведения;
 - listener в bootstrap принимает `RemoteChangeBatchDetected` и ставит work в keyed executor по
   `endpoint`;
+- общий process-local in-flight registry claim-ит identity перед admission и освобождает после
+  success/failure/rejection, чтобы медленный endpoint не получал дубли каждого monitor tick;
 - монитор запускается через `PeriodicDaemonCycle`, не через Spring Integration;
 - до включения listener'а реализовать per-key high/low-water policy поверх `KeyedSerialExecutorObserver`:
   `depth >= high-water` или `oldest-age >= max-age` переводит key в shed-to-reconcile, ниже low-water

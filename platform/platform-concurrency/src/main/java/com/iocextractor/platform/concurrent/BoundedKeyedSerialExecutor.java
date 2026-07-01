@@ -151,6 +151,7 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
     private void runOne(WorkKey key, Runnable work) {
         try {
             work.run();
+            observeCompleted(key);
         } catch (RuntimeException failure) {
             observeFailed(key, failure);
         } finally {
@@ -212,6 +213,14 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
             observer.rejected(admission);
         } catch (RuntimeException ignored) {
             // Observability hooks must not change executor admission semantics.
+        }
+    }
+
+    private void observeCompleted(WorkKey key) {
+        try {
+            observer.completed(key);
+        } catch (RuntimeException ignored) {
+            // Observability hooks must not block FIFO progress for the key.
         }
     }
 

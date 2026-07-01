@@ -5,6 +5,7 @@ import com.iocextractor.application.port.in.sync.RemoteFetchCommand;
 import com.iocextractor.application.port.in.sync.RemoteFetchResult;
 import com.iocextractor.application.port.in.sync.RemoteFetchUseCase;
 import com.iocextractor.application.sync.RemoteChangeBatchDetected;
+import com.iocextractor.application.sync.RemoteFetchInFlightRegistry;
 import com.iocextractor.application.sync.RemoteObject;
 import com.iocextractor.observability.LogField;
 import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
@@ -34,7 +35,7 @@ class RemoteChangeFetchListenerTest {
         RecordingObserver observer = new RecordingObserver();
         SyncHealthState healthState = new SyncHealthState(java.time.Clock.systemUTC());
         RemoteChangeFetchListener listener = new RemoteChangeFetchListener(
-                fetcher, executor, observer, healthState);
+                fetcher, executor, observer, healthState, new RemoteFetchInFlightRegistry());
         RemoteChangeBatchDetected event = event();
 
         listener.onRemoteChangeBatchDetected(event);
@@ -69,16 +70,43 @@ class RemoteChangeFetchListenerTest {
         RecordingFetcher fetcher = new RecordingFetcher();
         RecordingObserver observer = new RecordingObserver();
         SyncHealthState healthState = new SyncHealthState(java.time.Clock.systemUTC());
+        RemoteFetchInFlightRegistry inFlight = new RemoteFetchInFlightRegistry();
         RemoteChangeFetchListener listener = new RemoteChangeFetchListener(
-                fetcher, new RejectingKeyedExecutor(), observer, healthState);
+                fetcher, new RejectingKeyedExecutor(), observer, healthState, inFlight);
+        RemoteChangeBatchDetected event = event();
 
-        listener.onRemoteChangeBatchDetected(event());
+        listener.onRemoteChangeBatchDetected(event);
 
         assertThat(fetcher.commands).isEmpty();
         assertThat(observer.failures).singleElement()
                 .satisfies(failure -> assertThat(failure).hasMessageContaining("endpoint-a"));
-        assertThat(healthState.fetchSnapshots().get("source-a").error())
-                .contains("remote fetch work rejected");
+        assertThat(healthState.fetchSnapshots()).isEmpty();
+        assertThat(event.objects()).allSatisfy(object ->
+                assertThat(inFlight.contains(object.identity())).isFalse());
+    }
+
+    @Test
+    void keepsObjectsClaimedWhileQueuedAndReleasesThemAfterExecution() {
+        RecordingFetcher fetcher = new RecordingFetcher();
+        DeferringKeyedExecutor executor = new DeferringKeyedExecutor();
+        RemoteFetchInFlightRegistry inFlight = new RemoteFetchInFlightRegistry();
+        RemoteChangeBatchDetected event = event();
+        RemoteChangeFetchListener listener = new RemoteChangeFetchListener(
+                fetcher, executor, new RecordingObserver(),
+                new SyncHealthState(java.time.Clock.systemUTC()), inFlight);
+
+        listener.onRemoteChangeBatchDetected(event);
+
+        assertThat(event.objects()).allSatisfy(object ->
+                assertThat(inFlight.contains(object.identity())).isTrue());
+        listener.onRemoteChangeBatchDetected(event);
+        assertThat(executor.submissions).isEqualTo(1);
+
+        executor.runPending();
+
+        assertThat(fetcher.commands).hasSize(1);
+        assertThat(event.objects()).allSatisfy(object ->
+                assertThat(inFlight.contains(object.identity())).isFalse());
     }
 
     private RemoteChangeBatchDetected event() {
@@ -165,6 +193,35 @@ class RemoteChangeFetchListenerTest {
         @Override
         public WorkAdmission submit(WorkKey key, Runnable work) {
             return WorkAdmission.rejected(key, 0);
+        }
+
+        @Override
+        public void shutdown() {
+        }
+
+        @Override
+        public boolean awaitTermination(Duration timeout) {
+            return true;
+        }
+
+        @Override
+        public void close() {
+        }
+    }
+
+    private static final class DeferringKeyedExecutor implements KeyedSerialExecutor {
+        private Runnable pending;
+        private int submissions;
+
+        @Override
+        public WorkAdmission submit(WorkKey key, Runnable work) {
+            pending = work;
+            submissions++;
+            return WorkAdmission.accepted(key, 0);
+        }
+
+        private void runPending() {
+            pending.run();
         }
 
         @Override

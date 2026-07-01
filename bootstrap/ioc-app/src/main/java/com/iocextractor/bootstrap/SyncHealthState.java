@@ -69,6 +69,12 @@ public final class SyncHealthState {
                 previous == null ? null : previous.error()));
     }
 
+    /** Clears transient executor degradation after the key completes later work normally. */
+    public boolean recordKeyedSuccess(WorkKey key) {
+        Objects.requireNonNull(key, "key");
+        return executorByKey.remove(key.value()) != null;
+    }
+
     /** Records an accepted work item failure for one in-memory executor key. */
     public void recordKeyedFailure(WorkKey key, RuntimeException failure) {
         Objects.requireNonNull(key, "key");

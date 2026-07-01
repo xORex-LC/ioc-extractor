@@ -241,8 +241,7 @@ public final class SyncHealthIndicator implements HealthIndicator {
     }
 
     private boolean failed(SyncHealthState.KeyedExecutorSignal signal) {
-        return signal.shedToReconcile()
-                || signal.lastDispatchFailure() != null
+        return signal.lastDispatchFailure() != null
                 || signal.error() != null;
     }
 

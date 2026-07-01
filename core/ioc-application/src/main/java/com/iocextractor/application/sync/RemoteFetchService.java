@@ -55,8 +55,9 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
         Objects.requireNonNull(command, "command");
         FetchCounters counters = new FetchCounters();
         for (RemoteFetchSource source : RemoteFetchSources.selected(sources, command)) {
+            RemoteFetchSources.SourceMatchers matchers = RemoteFetchSources.compileMatchers(source);
             for (RemoteObject object : transport.list(source.endpoint(), source.remotePath())) {
-                if (!RemoteFetchSources.matches(source, object)) {
+                if (!matchers.matches(object)) {
                     counters.skipped++;
                     continue;
                 }

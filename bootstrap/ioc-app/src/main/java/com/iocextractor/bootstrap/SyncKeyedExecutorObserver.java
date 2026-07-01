@@ -25,6 +25,20 @@ public final class SyncKeyedExecutorObserver implements KeyedSerialExecutorObser
     }
 
     @Override
+    public void completed(WorkKey key) {
+        Objects.requireNonNull(key, "key");
+        if (healthState.recordKeyedSuccess(key)) {
+            LogEvents.debug(log)
+                    .action(EventAction.SYNC_WORK_DISPATCH)
+                    .outcome(EventOutcome.SUCCESS)
+                    .field(LogField.IOC_SYNC_KEY, key.value())
+                    .field(LogField.IOC_SYNC_SHED_TO_RECONCILE, false)
+                    .message("sync keyed work recovered after degradation")
+                    .log();
+        }
+    }
+
+    @Override
     public void rejected(WorkAdmission admission) {
         Objects.requireNonNull(admission, "admission");
         healthState.recordKeyedRejection(admission);
