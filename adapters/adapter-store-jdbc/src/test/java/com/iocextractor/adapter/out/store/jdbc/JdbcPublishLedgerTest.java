@@ -11,6 +11,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -99,6 +100,51 @@ class JdbcPublishLedgerTest {
                     PublishStatus.SUCCEEDED, PublishStatus.FAILED, "late", null))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("Illegal publish ledger transition");
+        }
+    }
+
+    @Test
+    void staleInProgressRowsAreRecoverableButFreshRowsAreNot() {
+        try (HikariDataSource dataSource = dataSource("publish-stale-in-progress.db")) {
+            migrate(dataSource);
+            MutableClock clock = new MutableClock(NOW);
+            JdbcPublishLedger ledger = new JdbcPublishLedger(dataSource, clock);
+            ledger.ensurePending(pending("slice-old", "target-a"));
+            ledger.transition("slice-old", "target-a", PublishStatus.PENDING, PublishStatus.IN_PROGRESS,
+                    null, null);
+            clock.advanceSeconds(600);
+            ledger.ensurePending(pending("slice-fresh", "target-a"));
+            PublishRecord fresh = ledger.transition(
+                    "slice-fresh", "target-a", PublishStatus.PENDING, PublishStatus.IN_PROGRESS,
+                    null, null);
+
+            assertThat(ledger.findRetryable(NOW.plusSeconds(300)))
+                    .extracting(PublishRecord::sliceId)
+                    .containsExactly("slice-old");
+            assertThat(ledger.findRetryable(NOW.plusSeconds(601))).contains(fresh);
+        }
+    }
+
+    @Test
+    void countsStatusesWithSelectionFilters() {
+        try (HikariDataSource dataSource = dataSource("publish-counts.db")) {
+            migrate(dataSource);
+            JdbcPublishLedger ledger = new JdbcPublishLedger(dataSource, Clock.fixed(NOW, ZoneOffset.UTC));
+            ledger.ensurePending(pending("slice-pending", "target-a"));
+            ledger.ensurePending(pending("slice-done", "target-a"));
+            ledger.transition("slice-done", "target-a", PublishStatus.PENDING, PublishStatus.IN_PROGRESS,
+                    null, null);
+            ledger.transition("slice-done", "target-a", PublishStatus.IN_PROGRESS, PublishStatus.SUCCEEDED,
+                    null, "ok");
+            ledger.ensurePending(pending("slice-other", "target-b"));
+
+            var counts = ledger.countByStatus(
+                    Optional.of("profile"), Optional.of("target-a"), Optional.of("dist"));
+
+            assertThat(counts.pending()).isOne();
+            assertThat(counts.succeeded()).isOne();
+            assertThat(counts.failed()).isZero();
+            assertThat(counts.abandoned()).isZero();
         }
     }
 

@@ -538,6 +538,14 @@ bootstrap-реализация), иначе платформенное ядро 
   (когда транспорт научится мультиплексировать). Правило (single-writer): ключ = ресурс, конкурентная
   запись которого ломает инвариант. Обобщает текущий **глобальный** `running`-CAS планировщиков в
   **per-key single-flight**.
+- **Single-flight защищает boundary исполнения, а не только event-listener.** Все локальные пути,
+  которые могут выполнить remote publish для endpoint — event fast-path, periodic reconcile/publish,
+  manual/ops bridge если он появится в daemon graph — должны входить через один и тот же
+  `KeyedSerialExecutor`. Иначе появляется обход single-flight: fast-path и scheduler могут
+  одновременно вести одну `(slice,target)` пару, ledger CAS сохранит данные, но telemetry/health
+  увидят ложный conflict. Reconcile/discovery без remote write может оставаться синхронным только до
+  hand-off и выполняется **один раз на export profile**, а не per target; execution retryable work
+  идёт через keyed boundary.
 - **НЕ «drop при занятом ключе».** Сигнал нельзя терять: второй `SliceCompleted` по тому же
   `targetId` — это **новый slice**, не дубль. Контракт: *«no overlap per key; сигналы либо
   **FIFO-очередь** по ключу, либо coalescing **с гарантированным rerun** — но без потери факта,
@@ -1113,6 +1121,9 @@ publish/fetch-поведение и финальную документацию.
 - реализовать `find` в `FileSystemCompletedSliceCatalog` без полного scan профиля;
 - listener в bootstrap принимает `SliceCompleted`, разворачивает targets профиля и ставит работу в
   keyed executor по `endpoint`;
+- periodic publish path использует **тот же** keyed executor по `endpoint`, что и listener fast-path;
+  scheduler может синхронно ждать completion work-item, но не имеет права вызывать remote publish
+  use-case в обход single-flight;
 - listener/worker wiring включается только в daemon-capable runtime path; в `oneshot`/manual export
   событие может публиковаться как факт, но background enqueue должен быть no-op;
 - обработать `WorkAdmission.REJECTED` и `dispatchRejected` как shed-to-reconcile signal:
@@ -1151,7 +1162,8 @@ publish/fetch-поведение и финальную документацию.
 
 **Текущий код:**
 
-- `ArtifactPublishService.reconcile()` и `publish()` оба идут через `CompletedSliceCatalog.listCompleted`;
+- `ArtifactPublishService.reconcile()` идёт через `CompletedSliceCatalog.listCompletedSliceNames`
+  один раз на profile и делает anti-join по `publish_ledger`; `publish()` гонит retryable ledger rows;
 - `JdbcPublishLedger.findRetryable()` уже умеет выбирать `PENDING`/`FAILED`;
 - discovery новых срезов пока завязан на полный scan catalog.
 
@@ -1282,7 +1294,7 @@ publish/fetch-поведение и финальную документацию.
 - событие `SliceCompleted` приводит к publish command handler;
 - потерянное событие восстанавливается через reconcile;
 - `SKIPPED` export не запускает publish;
-- keyed executor не допускает overlap per endpoint;
+- keyed executor не допускает overlap per endpoint между event fast-path и periodic publish path;
 - corrupt slice не блокирует reconcile профиля;
 - core остаётся framework-free;
 - `platform-events` остаётся anti-broker.

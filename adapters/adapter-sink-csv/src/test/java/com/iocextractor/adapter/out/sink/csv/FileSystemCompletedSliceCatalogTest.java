@@ -6,6 +6,7 @@ import com.iocextractor.application.export.ExportMode;
 import com.iocextractor.application.export.SliceArtifactManifest;
 import com.iocextractor.application.export.SliceManifest;
 import com.iocextractor.application.port.out.export.SliceManifestCodec;
+import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.SyncDiagnosticCodes;
@@ -88,6 +89,56 @@ class FileSystemCompletedSliceCatalogTest {
             assertThat(diagnostic.context())
                     .containsEntry("profile", "reputation")
                     .containsEntry("sliceName", "corrupt");
+        });
+    }
+
+    @Test
+    void listsSliceNamesWithoutVerifyingPayload() throws Exception {
+        TestCodec codec = new TestCodec();
+        createSlice(codec, "reputation", "slice-one", true);
+        Path corrupt = createSlice(codec, "reputation", "corrupt", true);
+        Files.writeString(corrupt.resolve("masks.csv"), "tampered", StandardCharsets.UTF_8);
+        List<Diagnostic> diagnostics = new ArrayList<>();
+        var catalog = catalog(codec, diagnostics);
+
+        assertThat(catalog.listCompletedSliceNames("reputation"))
+                .containsExactly("corrupt", "slice-one");
+        assertThat(diagnostics).isEmpty();
+    }
+
+    @Test
+    void sliceNameDiscoverySkipsAndDiagnosesNonCompletedChildren() throws Exception {
+        TestCodec codec = new TestCodec();
+        createSlice(codec, "reputation", "slice-one", true);
+        Files.writeString(tempDir.resolve("reputation/not-a-slice.txt"), "data");
+        Files.createDirectories(tempDir.resolve("reputation/unfinished"));
+        List<Diagnostic> diagnostics = new ArrayList<>();
+        var catalog = catalog(codec, diagnostics);
+
+        assertThat(catalog.listCompletedSliceNames("reputation"))
+                .containsExactly("slice-one");
+        assertThat(diagnostics)
+                .extracting(diagnostic -> diagnostic.context().get("sliceName"))
+                .containsExactly("not-a-slice.txt", "unfinished");
+        assertThat(diagnostics)
+                .allSatisfy(diagnostic -> assertThat(diagnostic.code())
+                        .isEqualTo(SyncDiagnosticCodes.LOCAL_SLICE_INVALID));
+    }
+
+    @Test
+    void strictFindDiagnosesCorruptSlice() throws Exception {
+        TestCodec codec = new TestCodec();
+        Path corrupt = createSlice(codec, "reputation", "corrupt", true);
+        Files.writeString(corrupt.resolve("masks.csv"), "tampered", StandardCharsets.UTF_8);
+        List<Diagnostic> diagnostics = new ArrayList<>();
+        var catalog = catalog(codec, diagnostics);
+
+        assertThatThrownBy(() -> catalog.find("reputation", "corrupt"))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("completed export slice");
+        assertThat(diagnostics).singleElement().satisfies(diagnostic -> {
+            assertThat(diagnostic.code()).isEqualTo(SyncDiagnosticCodes.LOCAL_SLICE_INVALID);
+            assertThat(diagnostic.context()).containsEntry("sliceName", corrupt.getFileName().toString());
         });
     }
 

@@ -56,6 +56,12 @@
 | `ioc.export.profile` | имя неделимого export profile |
 | `ioc.export.slice.id` | immutable slice/run identity |
 | `ioc.export.revision` | максимальная canonical revision в записанном slice event |
+| `ioc.event.id` | stable control-event id при event hand-off |
+| `ioc.event.type` | stable project event type, не ECS `event.type` |
+| `ioc.event.version` | версия payload contract control-event |
+| `ioc.event.correlation_id` | correlation id control-event |
+| `ioc.event.causation_id` | event/command id, вызвавший текущий event, если есть |
+| `ioc.event.handler` | имя локального handler/listener |
 | `ioc.sync.endpoint` | логическое имя endpoint без host/share/credentials |
 | `ioc.sync.target` | логическое имя publish target |
 | `ioc.sync.files` | счётчик файлов текущей sync-операции |

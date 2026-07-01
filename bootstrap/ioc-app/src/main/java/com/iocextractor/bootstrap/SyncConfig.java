@@ -179,9 +179,11 @@ public class SyncConfig {
             ArtifactPublishUseCase useCase,
             TransportRegistry transports,
             SyncHealthState healthState,
+            KeyedSerialExecutor syncPublishKeyedExecutor,
             IocProperties props) {
         return new DaemonPublishScheduler(
-                publishTargets(props), useCase, transports, healthState, props.sync().publish().interval());
+                publishTargets(props), useCase, transports, healthState,
+                syncPublishKeyedExecutor, props.sync().publish().interval());
     }
 
     @Bean(destroyMethod = "close")

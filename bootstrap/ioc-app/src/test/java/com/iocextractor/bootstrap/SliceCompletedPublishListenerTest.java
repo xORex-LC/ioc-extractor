@@ -12,11 +12,15 @@ import com.iocextractor.platform.concurrent.WorkKey;
 import com.iocextractor.platform.events.ControlEvent;
 import com.iocextractor.platform.events.ControlEventMetadata;
 import com.iocextractor.platform.events.ControlEventObserver;
+import com.iocextractor.observability.LogField;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -49,6 +53,17 @@ class SliceCompletedPublishListenerTest {
         });
         assertThat(observer.dispatching).containsExactly(event, event);
         assertThat(observer.failures).isEmpty();
+        assertThat(publisher.mdcSnapshots).allSatisfy(mdc -> {
+            assertThat(mdc)
+                    .containsEntry(LogField.IOC_RUN_ID.key(), "corr-1")
+                    .containsEntry(LogField.IOC_EVENT_ID.key(), "event-1")
+                    .containsEntry(LogField.IOC_EVENT_TYPE.key(), SliceCompleted.EVENT_TYPE)
+                    .containsEntry(LogField.IOC_EVENT_CORRELATION_ID.key(), "corr-1")
+                    .containsEntry(LogField.IOC_EVENT_HANDLER.key(), "SliceCompletedPublishListener")
+                    .containsEntry(LogField.IOC_EXPORT_PROFILE.key(), "reputation")
+                    .containsEntry(LogField.IOC_EXPORT_SLICE_ID.key(), "slice-1");
+        });
+        assertThat(MDC.get(LogField.IOC_EVENT_ID.key())).isNull();
     }
 
     @Test
@@ -81,6 +96,7 @@ class SliceCompletedPublishListenerTest {
 
     private static final class RecordingPublisher implements ArtifactPublishUseCase {
         private final List<PublishCompletedSliceCommand> commands = new ArrayList<>();
+        private final List<Map<String, String>> mdcSnapshots = new ArrayList<>();
 
         @Override
         public ArtifactPublishResult reconcile(ArtifactPublishCommand command) {
@@ -95,6 +111,7 @@ class SliceCompletedPublishListenerTest {
         @Override
         public ArtifactPublishResult publishCompletedSlice(PublishCompletedSliceCommand command) {
             commands.add(command);
+            mdcSnapshots.add(new LinkedHashMap<>(MDC.getCopyOfContextMap()));
             return new ArtifactPublishResult(0, 1, 0, 0);
         }
     }

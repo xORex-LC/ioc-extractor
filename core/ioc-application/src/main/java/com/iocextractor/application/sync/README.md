@@ -17,6 +17,7 @@ value objects и политики, которые одинаковы для SMB/
 | `RemoteFetchSource` | Transport-neutral configured read-only source |
 | `RemoteFetchRecord` / `RemoteFetchStatus` | Durable состояние read-only fetch idempotency |
 | `PublishRecord` / `PublishStatus` | Durable per-slice/per-target publish saga state |
+| `PublishLedgerStatusCounts` | Aggregated delivery state counts для hot publish loop |
 | `PublishTarget` | Transport-neutral configured delivery target для export profile |
 | `CompletedSlice` | Verified local slice descriptor для publish worklist |
 | `PublishAtomicallyRequest` / `PublishReceipt` | Контракт толстого write-intent для публикации slice-каталога |
@@ -37,11 +38,13 @@ value objects и политики, которые одинаковы для SMB/
 - `ArtifactPublishService` не мутирует `export_run`: состояние доставки живёт только в
   `PublishLedger`, а local slice catalog остаётся read-only.
 - Missing publish pairs materialize before remote write; `FAILED` remains retryable,
-  `ABANDONED` and `SUCCEEDED` are terminal for retention.
+  stale `IN_PROGRESS` is recoverable, `ABANDONED` and `SUCCEEDED` are terminal for retention.
 - Slice-specific publish validates event `sliceId` against verified catalog evidence
   before touching the remote target.
-- Отдельная `reconcile`-операция materializes missing pairs без remote I/O; dry-run
-  только считает hypothetical/существующие состояния и не пишет ledger.
+- Отдельная `reconcile`-операция materializes missing pairs без remote I/O: сначала
+  делает lightweight listing имён срезов, затем anti-join с `publish_ledger`, и
+  верифицирует только missing slice names. Dry-run только считает hypothetical/
+  существующие состояния и не пишет ledger.
 - Source/target filters позволяют daemon изолировать ошибку одного endpoint и продолжить
   остальные элементы конфигурационного порядка.
 - Existing remote `_SUCCESS` with matching manifest hash is forward recovery to

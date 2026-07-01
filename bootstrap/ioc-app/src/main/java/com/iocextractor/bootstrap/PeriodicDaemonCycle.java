@@ -1,5 +1,11 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.observability.EventAction;
+import com.iocextractor.observability.EventOutcome;
+import com.iocextractor.observability.logging.LogEvents;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.Executors;
@@ -15,6 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 final class PeriodicDaemonCycle {
 
+    private static final Logger log = LoggerFactory.getLogger(PeriodicDaemonCycle.class);
     private static final Duration STOP_TIMEOUT = Duration.ofSeconds(5);
 
     private final String threadName;
@@ -50,6 +57,12 @@ final class PeriodicDaemonCycle {
         }
         try {
             task.run();
+        } catch (RuntimeException failure) {
+            LogEvents.error(log)
+                    .action(EventAction.MAINTENANCE)
+                    .outcome(EventOutcome.FAILURE)
+                    .message("periodic daemon cycle failed")
+                    .log(failure);
         } finally {
             running.set(false);
         }

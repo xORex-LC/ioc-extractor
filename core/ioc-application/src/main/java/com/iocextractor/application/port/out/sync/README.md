@@ -27,8 +27,13 @@ adapter-модулях.
 - `CompletedSliceCatalog.find(profile, sliceName)` проверяет один immutable slice
   без полного scan профиля; `sliceName` — filesystem lookup key, `sliceId` остаётся
   durable delivery key.
+- `CompletedSliceCatalog.listCompletedSliceNames(profile)` — lightweight discovery
+  seam: имена completed-candidate каталогов без payload verification; перед delivery work
+  обязателен `find`, а мусорные children должны быть operator-visible через diagnostics.
 - `PublishLedger` — единственное durable состояние delivery saga; export run ledger
   не меняется при remote publish/recovery.
+- `PublishLedger.findRetryable(staleBefore)` возвращает `PENDING`/`FAILED` и stale
+  `IN_PROGRESS`; aggregate status counts не требуют `findAll`.
 - Полный `findAll` является read-only health/ops view; state transitions остаются CAS-командами.
 
 ## Зависимости

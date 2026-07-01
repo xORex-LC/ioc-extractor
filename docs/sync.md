@@ -94,7 +94,9 @@ PENDING|IN_PROGRESS|FAILED ─▶ ABANDONED
 копирует slice byte-for-byte во временный remote-каталог и делает `_SUCCESS`
 последней commit-точкой. Если после crash remote marker уже существует и совпадает с
 manifest hash, ledger восстанавливается вперёд в `SUCCEEDED`; mismatch даёт
-`SYNC.PUBLISH_VERIFY_FAILED`.
+`SYNC.PUBLISH_VERIFY_FAILED`. Зависший `IN_PROGRESS` старше recovery cutoff также
+попадает в retryable read model: повторная попытка безопасна, потому что сначала
+проверяется remote `_SUCCESS`.
 
 Slice retention блокирует каталог, пока хотя бы для одного настроенного target нет
 terminal pair, включая ещё не materialized row. Поэтому max-count остаётся best-effort
@@ -103,10 +105,14 @@ terminal pair, включая ещё не materialized row. Поэтому max-c
 ## Daemon lifecycle
 
 Порядок `SmartLifecycle`: fetch `50` → export `100` → publish `150` → slice retention
-`200`. Publish до запуска periodic executor синхронно reconciles completed slices ×
-targets, чтобы retention не обогнал discovery. Оба sync scheduler последовательны,
-имеют overlap guard, изолируют ошибку одного source/target и используют следующий tick
-как macro retry. Shutdown завершает executor и закрывает idle transport sessions.
+`200`. Publish до запуска periodic executor и на каждом periodic tick reconciles
+completed slices × targets один раз на export profile, чтобы retention не обогнал discovery и потерянный
+`SliceCompleted` не ждал restart. Periodic publish execution проходит через тот же
+keyed executor по endpoint, что и `SliceCompleted` fast-path; scheduler ждёт completion
+work-item перед idle-cleanup, поэтому fast-path и backstop не публикуют один endpoint
+параллельно. Оба sync scheduler последовательны, имеют overlap guard, изолируют ошибку одного
+source/target и используют следующий tick как macro retry. Shutdown завершает executor и закрывает
+idle transport sessions.
 
 ### Текущая cadence-модель и известный долг
 
@@ -116,7 +122,7 @@ targets, чтобы retention не обогнал discovery. Оба sync schedul
 ```text
 fetch interval  ──▶ remote list ──▶ ledger diff ──▶ download new identities
 export complete ──▶ SliceCompleted event ──▶ publish concrete slice
-publish startup ─▶ local slice catalog × ledger ──▶ materialize missing pairs
+publish reconcile▶ per-profile dir-listing × publish_ledger anti-join ──▶ verify only missing slices
 publish interval──▶ publish_ledger.findRetryable ──▶ publish pending/failed pairs
 ```
 

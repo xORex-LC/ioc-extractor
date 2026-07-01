@@ -26,6 +26,7 @@ public enum LogField {
     IOC_EXPORT_SLICE_ID("ioc.export.slice.id"),
     IOC_EXPORT_REVISION("ioc.export.revision"),
     IOC_EVENT_ID("ioc.event.id"),
+    IOC_EVENT_TYPE("ioc.event.type"),
     IOC_EVENT_VERSION("ioc.event.version"),
     IOC_EVENT_CORRELATION_ID("ioc.event.correlation_id"),
     IOC_EVENT_CAUSATION_ID("ioc.event.causation_id"),

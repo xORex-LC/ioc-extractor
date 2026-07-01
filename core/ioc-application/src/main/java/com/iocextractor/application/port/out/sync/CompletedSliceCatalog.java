@@ -20,6 +20,18 @@ public interface CompletedSliceCatalog {
     List<CompletedSlice> listCompleted(String profile);
 
     /**
+     * Lists immutable final slice directory names without verifying each slice payload.
+     *
+     * <p>This is a discovery seam for reconcile loops: callers must still use {@link #find(String, String)}
+     * before creating delivery work for a previously unknown slice.</p>
+     */
+    default List<String> listCompletedSliceNames(String profile) {
+        return listCompleted(profile).stream()
+                .map(CompletedSlice::sliceName)
+                .toList();
+    }
+
+    /**
      * Finds one verified final slice by profile and slice directory name.
      *
      * <p>The lookup key is {@code sliceName}, not {@code sliceId}: local immutable slice directories

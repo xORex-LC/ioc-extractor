@@ -73,6 +73,7 @@ class LoggingTaxonomyTest {
                         "ioc.export.slice.id",
                         "ioc.export.revision",
                         "ioc.event.id",
+                        "ioc.event.type",
                         "ioc.event.version",
                         "ioc.event.correlation_id",
                         "ioc.event.causation_id",

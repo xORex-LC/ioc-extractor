@@ -86,8 +86,10 @@ corruption была видима оператору. Перед recursive delete
 для remote delivery и возвращает `CompletedSlice` с локальным каталогом,
 manifest SHA-256 и decoded manifest. `.staging` не входит в область поиска;
 incomplete/corrupt final не становится pending work. Profile discovery
-пропускает такой каталог с diagnostic, чтобы один плохой sibling не блокировал
-остальной профиль; точечный `find(profile, sliceName)` остаётся strict.
+может получить только имена completed-candidate каталогов (`physical directory` + `_SUCCESS`)
+без manifest/artifact rehash; мусорные children диагностируются как `SYNC.LOCAL_SLICE_INVALID`,
+а deep verify выполняется при точечном `find(profile, sliceName)`. Это позволяет reconcile делать
+anti-join и не перечитывать payload уже известных срезов.
 
 ## Инварианты и ошибки
 

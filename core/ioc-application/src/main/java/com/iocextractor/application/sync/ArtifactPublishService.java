@@ -26,6 +26,7 @@ import java.util.Optional;
 public final class ArtifactPublishService implements ArtifactPublishUseCase {
 
     private static final String SUCCESS_MARKER = "_SUCCESS";
+    private static final java.time.Duration IN_PROGRESS_RECOVERY_TIMEOUT = java.time.Duration.ofMinutes(5);
 
     private final CompletedSliceCatalog sliceCatalog;
     private final PublishLedger ledger;
@@ -54,8 +55,17 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
 
     @Override
     public ArtifactPublishResult reconcile(ArtifactPublishCommand command) {
-        return forEachSelectedPair(command,
-                (slice, target, counters) -> reconcilePair(slice, target, command.dryRun(), counters));
+        Objects.requireNonNull(command, "command");
+        PublishCounters counters = new PublishCounters();
+        for (String profile : selectedProfiles(command)) {
+            List<PublishTarget> profileTargets = targetsForProfile(profile, command);
+            if (profileTargets.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Selected sync publish target does not belong to profile: " + profile);
+            }
+            reconcileProfile(profile, profileTargets, command.dryRun(), counters);
+        }
+        return counters.toResult();
     }
 
     @Override
@@ -65,8 +75,9 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
             return reconcile(command);
         }
         PublishCounters counters = new PublishCounters();
-        countNonRetryableRecords(command, counters);
-        for (PublishRecord record : selectedRetryableRecords(command)) {
+        List<PublishRecord> retryable = selectedRetryableRecords(command);
+        countKnownNonRetryableRecords(command, retryable, counters);
+        for (PublishRecord record : retryable) {
             findSlice(record, counters).ifPresent(slice -> apply(record, slice, false, counters));
         }
         return counters.toResult();
@@ -95,44 +106,64 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
         return counters.toResult();
     }
 
-    private ArtifactPublishResult forEachSelectedPair(ArtifactPublishCommand command, PairAction action) {
-        Objects.requireNonNull(command, "command");
-        Objects.requireNonNull(action, "action");
-        PublishCounters counters = new PublishCounters();
-        for (String profile : selectedProfiles(command)) {
-            List<PublishTarget> profileTargets = targetsForProfile(profile, command);
-            if (profileTargets.isEmpty()) {
-                throw new IllegalArgumentException(
-                        "Selected sync publish target does not belong to profile: " + profile);
-            }
-            for (CompletedSlice slice : sliceCatalog.listCompleted(profile)) {
-                for (PublishTarget target : profileTargets) {
-                    action.accept(slice, target, counters);
+    private void reconcileProfile(String profile,
+                                  List<PublishTarget> profileTargets,
+                                  boolean dryRun,
+                                  PublishCounters counters) {
+        for (String sliceName : sliceCatalog.listCompletedSliceNames(profile)) {
+            List<PublishRecord> existing = ledger.findBySliceName(profile, sliceName);
+            for (PublishRecord record : existing) {
+                if (profileTargets.stream().anyMatch(target -> matches(record, target))) {
+                    countState(record, counters);
                 }
             }
+            List<PublishTarget> missingTargets = profileTargets.stream()
+                    .filter(target -> existing.stream().noneMatch(record -> matches(record, target)))
+                    .toList();
+            if (missingTargets.isEmpty()) {
+                continue;
+            }
+            Optional<CompletedSlice> slice = findSliceForDiscovery(profile, sliceName, counters);
+            if (slice.isEmpty()) {
+                continue;
+            }
+            for (PublishTarget target : missingTargets) {
+                reconcilePair(slice.orElseThrow(), target, dryRun, counters);
+            }
         }
-        return counters.toResult();
+    }
+
+    private Optional<CompletedSlice> findSliceForDiscovery(String profile,
+                                                           String sliceName,
+                                                           PublishCounters counters) {
+        try {
+            return sliceCatalog.find(profile, sliceName);
+        } catch (RuntimeException failure) {
+            counters.failed++;
+            return Optional.empty();
+        }
     }
 
     private List<PublishRecord> selectedRetryableRecords(ArtifactPublishCommand command) {
         List<String> profiles = selectedProfiles(command);
         List<PublishTarget> selected = selectedTargets(command);
-        return ledger.findRetryable().stream()
+        return ledger.findRetryable(clock.instant().minus(IN_PROGRESS_RECOVERY_TIMEOUT)).stream()
                 .filter(record -> profiles.contains(record.profile()))
                 .filter(record -> selected.stream().anyMatch(target -> matches(record, target)))
                 .toList();
     }
 
-    private void countNonRetryableRecords(ArtifactPublishCommand command, PublishCounters counters) {
-        List<String> profiles = selectedProfiles(command);
-        List<PublishTarget> selected = selectedTargets(command);
-        ledger.findAll().stream()
-                .filter(record -> record.status() == PublishStatus.SUCCEEDED
-                        || record.status() == PublishStatus.ABANDONED
-                        || record.status() == PublishStatus.IN_PROGRESS)
-                .filter(record -> profiles.contains(record.profile()))
-                .filter(record -> selected.stream().anyMatch(target -> matches(record, target)))
-                .forEach(record -> countState(record, counters));
+    private void countKnownNonRetryableRecords(ArtifactPublishCommand command,
+                                               List<PublishRecord> retryable,
+                                               PublishCounters counters) {
+        PublishLedgerStatusCounts counts =
+                ledger.countByStatus(command.profile(), command.target(), command.endpoint());
+        long staleInProgress = retryable.stream()
+                .filter(record -> record.status() == PublishStatus.IN_PROGRESS)
+                .count();
+        counters.pending += toInt(Math.max(0L, counts.inProgress() - staleInProgress));
+        counters.succeeded += toInt(counts.succeeded());
+        counters.abandoned += toInt(counts.abandoned());
     }
 
     private boolean matches(PublishRecord record, PublishTarget target) {
@@ -347,6 +378,13 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
         return reason == null || reason.isBlank() ? "remote publish failed without detail" : reason;
     }
 
+    private int toInt(long value) {
+        if (value > Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        return (int) value;
+    }
+
     private PublishRecord moveToInProgress(PublishRecord record) {
         if (record.status() == PublishStatus.IN_PROGRESS) {
             return record;
@@ -403,11 +441,6 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
         private ArtifactPublishResult toResult() {
             return new ArtifactPublishResult(pending, succeeded, failed, abandoned);
         }
-    }
-
-    @FunctionalInterface
-    private interface PairAction {
-        void accept(CompletedSlice slice, PublishTarget target, PublishCounters counters);
     }
 
     private record RemoteMarker(boolean present, String content) {

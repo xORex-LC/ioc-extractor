@@ -8,6 +8,8 @@ import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
 import com.iocextractor.platform.concurrent.WorkAdmission;
 import com.iocextractor.platform.concurrent.WorkKey;
 import com.iocextractor.platform.events.ControlEventObserver;
+import com.iocextractor.observability.LogField;
+import com.iocextractor.observability.MdcScope;
 import org.springframework.context.event.EventListener;
 
 import java.util.List;
@@ -48,7 +50,11 @@ public final class SliceCompletedPublishListener {
     }
 
     private void submit(SliceCompleted event, PublishTarget target) {
-        WorkAdmission admission = executor.submit(WorkKey.of(target.endpoint()), () -> publish(event, target));
+        WorkAdmission admission = executor.submit(WorkKey.of(target.endpoint()), () -> {
+            try (var ignored = mdc(event, target)) {
+                publish(event, target);
+            }
+        });
         if (!admission.accepted()) {
             observer.dispatchFailed(event, HANDLER, new IllegalStateException(
                     "slice publish work rejected for endpoint " + target.endpoint()));
@@ -70,5 +76,20 @@ public final class SliceCompletedPublishListener {
             observer.dispatchFailed(event, HANDLER, failure);
             throw failure;
         }
+    }
+
+    private MdcScope mdc(SliceCompleted event, PublishTarget target) {
+        return MdcScope.open()
+                .put(LogField.IOC_RUN_ID, event.metadata().correlationId())
+                .put(LogField.IOC_EVENT_ID, event.metadata().eventId())
+                .put(LogField.IOC_EVENT_TYPE, event.metadata().eventType())
+                .put(LogField.IOC_EVENT_VERSION, event.metadata().eventVersion())
+                .put(LogField.IOC_EVENT_CORRELATION_ID, event.metadata().correlationId())
+                .put(LogField.IOC_EVENT_CAUSATION_ID, event.metadata().causationId())
+                .put(LogField.IOC_EVENT_HANDLER, HANDLER)
+                .put(LogField.IOC_EXPORT_PROFILE, event.profile())
+                .put(LogField.IOC_EXPORT_SLICE_ID, event.sliceId())
+                .put(LogField.IOC_SYNC_TARGET, target.targetId())
+                .put(LogField.IOC_SYNC_ENDPOINT, target.endpoint());
     }
 }

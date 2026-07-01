@@ -76,6 +76,39 @@ public final class FileSystemCompletedSliceCatalog implements CompletedSliceCata
     }
 
     @Override
+    public List<String> listCompletedSliceNames(String profile) {
+        String profileSegment = segment(profile, "profile");
+        Path profileDir = root.resolve(profileSegment);
+        if (!Files.exists(profileDir, LinkOption.NOFOLLOW_LINKS)) {
+            return List.of();
+        }
+        try {
+            requirePhysicalDirectory(profileDir);
+        } catch (InvalidSliceException failure) {
+            throw new IocExtractorException(
+                    "Failed to discover completed export slices for profile " + profileSegment, failure);
+        }
+        try (var children = Files.list(profileDir)) {
+            List<Path> paths = children.sorted().toList();
+            List<String> sliceNames = new ArrayList<>(paths.size());
+            for (Path path : paths) {
+                String sliceName = path.getFileName().toString();
+                try {
+                    requirePhysicalDirectory(path);
+                    requireSuccessMarker(path);
+                    sliceNames.add(sliceName);
+                } catch (InvalidSliceException failure) {
+                    emitInvalidSlice(profileSegment, sliceName, failure);
+                }
+            }
+            return List.copyOf(sliceNames);
+        } catch (IOException failure) {
+            throw new IocExtractorException(
+                    "Failed to discover completed export slices for profile " + profileSegment, failure);
+        }
+    }
+
+    @Override
     public Optional<CompletedSlice> find(String profile, String sliceName) {
         String profileSegment = segment(profile, "profile");
         String sliceSegment = segment(sliceName, "sliceName");
@@ -91,6 +124,7 @@ public final class FileSystemCompletedSliceCatalog implements CompletedSliceCata
             requirePhysicalDirectory(profileDir);
             return Optional.of(verify(profileSegment, sliceDir));
         } catch (InvalidSliceException failure) {
+            emitInvalidSlice(profileSegment, sliceSegment, failure);
             throw new IocExtractorException(
                     "Failed to discover completed export slice " + profileSegment + "/" + sliceSegment,
                     failure);
@@ -124,6 +158,13 @@ public final class FileSystemCompletedSliceCatalog implements CompletedSliceCata
     private void requirePhysicalDirectory(Path path) {
         if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(path)) {
             throw new InvalidSliceException("slice path is not a physical directory: " + path);
+        }
+    }
+
+    private void requireSuccessMarker(Path path) {
+        Path marker = path.resolve(SliceTreeVerifier.SUCCESS_FILE);
+        if (!Files.isRegularFile(marker, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(marker)) {
+            throw new InvalidSliceException("completed slice has no physical _SUCCESS marker");
         }
     }
 

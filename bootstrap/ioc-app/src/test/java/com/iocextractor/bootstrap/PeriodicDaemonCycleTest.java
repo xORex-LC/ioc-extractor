@@ -43,6 +43,21 @@ class PeriodicDaemonCycleTest {
         assertThat(cycle.isRunning()).isFalse();
     }
 
+    @Test
+    void unexpectedFailureDoesNotDisableNextCycle() {
+        AtomicInteger calls = new AtomicInteger();
+        PeriodicDaemonCycle cycle = new PeriodicDaemonCycle("test-cycle", Duration.ofHours(1), () -> {
+            if (calls.incrementAndGet() == 1) {
+                throw new IllegalStateException("boom");
+            }
+        });
+
+        cycle.runOnce();
+        cycle.runOnce();
+
+        assertThat(calls).hasValue(2);
+    }
+
     private static void await(CountDownLatch latch) {
         try {
             latch.await();

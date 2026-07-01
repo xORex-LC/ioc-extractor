@@ -8,14 +8,21 @@ import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
 import com.iocextractor.observability.logging.LogEvents;
+import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
+import com.iocextractor.platform.concurrent.WorkAdmission;
+import com.iocextractor.platform.concurrent.WorkKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * Daemon lifecycle boundary for restart-safe publish reconciliation and delivery attempts.
@@ -33,6 +40,7 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
     private final ArtifactPublishUseCase publisher;
     private final TransportRegistry transports;
     private final SyncHealthState healthState;
+    private final KeyedSerialExecutor executor;
     private final PeriodicDaemonCycle cycle;
 
     /** Creates one sequential publish scheduler over the configured target order. */
@@ -40,11 +48,13 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
                                   ArtifactPublishUseCase publisher,
                                   TransportRegistry transports,
                                   SyncHealthState healthState,
+                                  KeyedSerialExecutor executor,
                                   Duration interval) {
         this.targets = List.copyOf(Objects.requireNonNull(targets, "targets"));
         this.publisher = Objects.requireNonNull(publisher, "publisher");
         this.transports = Objects.requireNonNull(transports, "transports");
         this.healthState = Objects.requireNonNull(healthState, "healthState");
+        this.executor = Objects.requireNonNull(executor, "executor");
         this.cycle = new PeriodicDaemonCycle("ioc-sync-publish-scheduler", interval, this::runCycle);
     }
 
@@ -58,11 +68,17 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
     }
 
     private void reconcileBeforeScheduling() {
-        for (PublishTarget target : targets) {
+        reconcileProfiles("startup publish reconciliation failed");
+    }
+
+    private void reconcileProfiles(String failureMessage) {
+        for (Map.Entry<String, List<PublishTarget>> entry : targetsByProfile().entrySet()) {
             try {
-                publisher.reconcile(command(target));
+                publisher.reconcile(reconcileCommand(entry.getKey()));
             } catch (RuntimeException failure) {
-                logFailure(target, "startup publish reconciliation failed", failure);
+                for (PublishTarget target : entry.getValue()) {
+                    logFailure(target, failureMessage, failure);
+                }
             }
         }
     }
@@ -74,6 +90,7 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
 
     private void runCycle() {
         try {
+            reconcileProfiles("scheduled remote publish reconciliation failed");
             for (PublishTarget target : targets) {
                 attempt(target);
             }
@@ -81,16 +98,33 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
             try {
                 transports.closeIdle();
             } catch (RuntimeException failure) {
-                    LogEvents.warn(log)
-                            .action(EventAction.MAINTENANCE)
-                            .outcome(EventOutcome.FAILURE)
-                            .message("sync transport idle cleanup failed")
-                            .log(failure);
+                LogEvents.warn(log)
+                        .action(EventAction.MAINTENANCE)
+                        .outcome(EventOutcome.FAILURE)
+                        .message("sync transport idle cleanup failed")
+                        .log(failure);
             }
         }
     }
 
     private void attempt(PublishTarget target) {
+        CountDownLatch completed = new CountDownLatch(1);
+        WorkAdmission admission = executor.submit(WorkKey.of(target.endpoint()), () -> {
+            try {
+                attemptOnExecutor(target);
+            } finally {
+                completed.countDown();
+            }
+        });
+        if (!admission.accepted()) {
+            logFailure(target, "scheduled remote publish target rejected", new IllegalStateException(
+                    "scheduled publish work rejected for endpoint " + target.endpoint()));
+            return;
+        }
+        awaitCompletion(completed);
+    }
+
+    private void attemptOnExecutor(PublishTarget target) {
         LogEvents.info(log)
                 .action(EventAction.SYNC_PUBLISH_START)
                 .outcome(EventOutcome.UNKNOWN)
@@ -119,9 +153,37 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
         }
     }
 
+    private void awaitCompletion(CountDownLatch completed) {
+        boolean interrupted = false;
+        while (true) {
+            try {
+                completed.await();
+                break;
+            } catch (InterruptedException ignored) {
+                interrupted = true;
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private ArtifactPublishCommand command(PublishTarget target) {
         return new ArtifactPublishCommand(
                 Optional.of(target.exportProfile()), Optional.of(target.targetId()), false);
+    }
+
+    private ArtifactPublishCommand reconcileCommand(String profile) {
+        return new ArtifactPublishCommand(Optional.of(profile), false);
+    }
+
+    private Map<String, List<PublishTarget>> targetsByProfile() {
+        Map<String, List<PublishTarget>> grouped = new LinkedHashMap<>();
+        for (PublishTarget target : targets) {
+            grouped.computeIfAbsent(target.exportProfile(), ignored -> new ArrayList<>())
+                    .add(target);
+        }
+        return grouped;
     }
 
     private void logFailure(PublishTarget target, String message, RuntimeException failure) {

@@ -75,6 +75,29 @@ class ArtifactPublishServiceTest {
     }
 
     @Test
+    void reconcileDiscoversMissingPairsWithoutRehashingKnownSlices() throws Exception {
+        CompletedSlice known = slice("reputation", "slice-known");
+        CompletedSlice missing = slice("reputation", "slice-missing");
+        FakeCatalog catalog = catalog(known, missing);
+        catalog.failListCompleted = true;
+        FakeLedger ledger = new FakeLedger();
+        ledger.ensurePending(pending("slice-known", targetA("reputation")));
+        FakeTransport transport = new FakeTransport();
+
+        var result = service(catalog, ledger, transport, List.of(targetA("reputation")), diagnostics())
+                .reconcile(new ArtifactPublishCommand(Optional.of("reputation"), false));
+
+        assertThat(result.pending()).isEqualTo(2);
+        assertThat(catalog.listCalls).isZero();
+        assertThat(catalog.listNameCalls).isOne();
+        assertThat(catalog.findCalls).isOne();
+        assertThat(ledger.records()).extracting(PublishRecord::sliceId)
+                .containsExactly("slice-known", "slice-missing");
+        assertThat(transport.published).isEmpty();
+    }
+
+
+    @Test
     void publishesRetryableLedgerRecordsWithoutListingProfile() throws Exception {
         CompletedSlice slice = slice("reputation", "slice-one");
         FakeCatalog catalog = catalog(slice);
@@ -90,7 +113,27 @@ class ArtifactPublishServiceTest {
         assertThat(result.succeeded()).isOne();
         assertThat(catalog.listCalls).isZero();
         assertThat(catalog.findCalls).isOne();
+        assertThat(ledger.findAllCalls).isZero();
+        assertThat(ledger.countByStatusCalls).isOne();
         assertThat(transport.published).containsExactly("endpoint-a:/remote/a/slice-one");
+    }
+
+    @Test
+    void staleInProgressRecordIsRecoveredByPeriodicPublish() throws Exception {
+        CompletedSlice slice = slice("reputation", "slice-one");
+        FakeLedger ledger = new FakeLedger();
+        ledger.ensurePending(pending("slice-one", targetA("reputation")));
+        ledger.forceStatusUpdatedAt(
+                "slice-one", "target-a", PublishStatus.IN_PROGRESS, NOW.minusSeconds(600));
+        FakeTransport transport = new FakeTransport();
+
+        var result = service(catalog(slice), ledger, transport, List.of(targetA("reputation")), diagnostics())
+                .publish(new ArtifactPublishCommand(Optional.of("reputation"), false));
+
+        assertThat(result.succeeded()).isOne();
+        assertThat(transport.published).containsExactly("endpoint-a:/remote/a/slice-one");
+        assertThat(ledger.find("slice-one", "target-a")).hasValueSatisfying(record ->
+                assertThat(record.status()).isEqualTo(PublishStatus.SUCCEEDED));
     }
 
     @Test
@@ -409,6 +452,7 @@ class ArtifactPublishServiceTest {
         private final Map<String, List<CompletedSlice>> byProfile = new LinkedHashMap<>();
         private boolean failListCompleted;
         private int listCalls;
+        private int listNameCalls;
         private int findCalls;
 
         private FakeCatalog(CompletedSlice... slices) {
@@ -427,6 +471,14 @@ class ArtifactPublishServiceTest {
         }
 
         @Override
+        public List<String> listCompletedSliceNames(String profile) {
+            listNameCalls++;
+            return byProfile.getOrDefault(profile, List.of()).stream()
+                    .map(CompletedSlice::sliceName)
+                    .toList();
+        }
+
+        @Override
         public Optional<CompletedSlice> find(String profile, String sliceName) {
             findCalls++;
             return byProfile.getOrDefault(profile, List.of()).stream()
@@ -437,6 +489,8 @@ class ArtifactPublishServiceTest {
 
     private static final class FakeLedger implements PublishLedger {
         private final Map<String, PublishRecord> records = new LinkedHashMap<>();
+        private int findAllCalls;
+        private int countByStatusCalls;
 
         @Override
         public PublishRecord ensurePending(PublishRecord pending) {
@@ -457,6 +511,14 @@ class ArtifactPublishServiceTest {
         }
 
         @Override
+        public List<PublishRecord> findBySliceName(String profile, String sliceName) {
+            return records.values().stream()
+                    .filter(record -> record.profile().equals(profile))
+                    .filter(record -> record.sliceName().equals(sliceName))
+                    .toList();
+        }
+
+        @Override
         public List<PublishRecord> findRetryable() {
             return records.values().stream()
                     .filter(record -> record.status() == PublishStatus.PENDING
@@ -465,7 +527,43 @@ class ArtifactPublishServiceTest {
         }
 
         @Override
+        public List<PublishRecord> findRetryable(Instant staleInProgressBefore) {
+            return records.values().stream()
+                    .filter(record -> record.status() == PublishStatus.PENDING
+                            || record.status() == PublishStatus.FAILED
+                            || (record.status() == PublishStatus.IN_PROGRESS
+                            && record.updatedAt().isBefore(staleInProgressBefore)))
+                    .toList();
+        }
+
+        @Override
+        public PublishLedgerStatusCounts countByStatus(Optional<String> profile,
+                                                       Optional<String> targetId,
+                                                       Optional<String> endpoint) {
+            countByStatusCalls++;
+            long[] statusCounts = records.values().stream()
+                    .filter(record -> profile.map(record.profile()::equals).orElse(true))
+                    .filter(record -> targetId.map(record.targetId()::equals).orElse(true))
+                    .filter(record -> endpoint.map(record.endpoint()::equals).orElse(true))
+                    .collect(
+                            () -> new long[PublishStatus.values().length],
+                            (counts, record) -> counts[record.status().ordinal()]++,
+                            (left, right) -> {
+                                for (int i = 0; i < left.length; i++) {
+                                    left[i] += right[i];
+                                }
+                            });
+            return new PublishLedgerStatusCounts(
+                    statusCounts[PublishStatus.PENDING.ordinal()],
+                    statusCounts[PublishStatus.IN_PROGRESS.ordinal()],
+                    statusCounts[PublishStatus.SUCCEEDED.ordinal()],
+                    statusCounts[PublishStatus.FAILED.ordinal()],
+                    statusCounts[PublishStatus.ABANDONED.ordinal()]);
+        }
+
+        @Override
         public List<PublishRecord> findAll() {
+            findAllCalls++;
             return List.copyOf(records.values());
         }
 
@@ -504,12 +602,19 @@ class ArtifactPublishServiceTest {
         }
 
         private void forceStatus(String sliceId, String targetId, PublishStatus status) {
+            forceStatusUpdatedAt(sliceId, targetId, status, NOW);
+        }
+
+        private void forceStatusUpdatedAt(String sliceId,
+                                          String targetId,
+                                          PublishStatus status,
+                                          Instant updatedAt) {
             PublishRecord current = find(sliceId, targetId).orElseThrow();
             records.put(key(sliceId, targetId), new PublishRecord(
                     current.sliceId(), current.targetId(), current.profile(), current.sliceName(),
                     current.manifestSha256(), current.endpoint(), current.remotePath(), status,
                     current.attempts(), current.lastError(), current.remoteVerification(),
-                    current.createdAt(), NOW));
+                    current.createdAt(), updatedAt));
         }
 
         private String key(String sliceId, String targetId) {

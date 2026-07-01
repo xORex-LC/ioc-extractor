@@ -9,6 +9,7 @@ import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
 import com.iocextractor.application.port.in.sync.RemoteFetchResult;
 import com.iocextractor.application.port.out.sync.CompletedSliceCatalog;
 import com.iocextractor.application.port.out.sync.PublishLedger;
+import com.iocextractor.application.sync.PublishLedgerStatusCounts;
 import com.iocextractor.application.sync.CompletedSlice;
 import com.iocextractor.application.sync.PublishRecord;
 import com.iocextractor.application.sync.PublishStatus;
@@ -120,6 +121,18 @@ class SyncHealthIndicatorTest {
                         .filter(record -> record.status() == PublishStatus.PENDING
                                 || record.status() == PublishStatus.FAILED)
                         .toList();
+            }
+
+            @Override
+            public List<PublishRecord> findRetryable(Instant staleInProgressBefore) {
+                return findRetryable();
+            }
+
+            @Override
+            public PublishLedgerStatusCounts countByStatus(Optional<String> profile,
+                                                           Optional<String> targetId,
+                                                           Optional<String> endpoint) {
+                throw new UnsupportedOperationException();
             }
 
             @Override

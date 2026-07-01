@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.port.out.sync.PublishLedger;
+import com.iocextractor.application.sync.PublishLedgerStatusCounts;
 import com.iocextractor.application.sync.PublishRecord;
 import com.iocextractor.application.sync.PublishStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -8,6 +9,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import javax.sql.DataSource;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -95,6 +97,22 @@ public final class JdbcPublishLedger implements PublishLedger {
     }
 
     @Override
+    public List<PublishRecord> findBySliceName(String profile, String sliceName) {
+        return jdbc.sql("""
+                        SELECT slice_id, target_id, profile, slice_name, manifest_sha256,
+                               endpoint, remote_path, status, attempts, last_error,
+                               remote_verification, created_at, updated_at
+                        FROM publish_ledger
+                        WHERE profile = :profile AND slice_name = :slice_name
+                        ORDER BY target_id
+                        """)
+                .param("profile", requireText(profile, "profile"))
+                .param("slice_name", requireText(sliceName, "sliceName"))
+                .query(JdbcPublishLedger::map)
+                .list();
+    }
+
+    @Override
     public List<PublishRecord> findRetryable() {
         return jdbc.sql("""
                         SELECT slice_id, target_id, profile, slice_name, manifest_sha256,
@@ -106,6 +124,55 @@ public final class JdbcPublishLedger implements PublishLedger {
                         """)
                 .query(JdbcPublishLedger::map)
                 .list();
+    }
+
+    @Override
+    public List<PublishRecord> findRetryable(Instant staleInProgressBefore) {
+        return jdbc.sql("""
+                        SELECT slice_id, target_id, profile, slice_name, manifest_sha256,
+                               endpoint, remote_path, status, attempts, last_error,
+                               remote_verification, created_at, updated_at
+                        FROM publish_ledger
+                        WHERE status IN ('PENDING', 'FAILED')
+                           OR (status = 'IN_PROGRESS' AND updated_at < :stale_before)
+                        ORDER BY created_at, slice_id, target_id
+                        """)
+                .param("stale_before", Objects.requireNonNull(staleInProgressBefore, "staleInProgressBefore")
+                        .toString())
+                .query(JdbcPublishLedger::map)
+                .list();
+    }
+
+    @Override
+    public PublishLedgerStatusCounts countByStatus(Optional<String> profile,
+                                                   Optional<String> targetId,
+                                                   Optional<String> endpoint) {
+        Optional<String> selectedProfile = profile.map(value -> requireText(value, "profile"));
+        Optional<String> selectedTarget = targetId.map(value -> requireText(value, "targetId"));
+        Optional<String> selectedEndpoint = endpoint.map(value -> requireText(value, "endpoint"));
+        EnumMap<PublishStatus, Long> counts = new EnumMap<>(PublishStatus.class);
+        jdbc.sql("""
+                        SELECT status, COUNT(*) AS count
+                        FROM publish_ledger
+                        WHERE (:profile IS NULL OR profile = :profile)
+                          AND (:target_id IS NULL OR target_id = :target_id)
+                          AND (:endpoint IS NULL OR endpoint = :endpoint)
+                        GROUP BY status
+                        """)
+                .param("profile", selectedProfile.orElse(null))
+                .param("target_id", selectedTarget.orElse(null))
+                .param("endpoint", selectedEndpoint.orElse(null))
+                .query((rs, rowNum) -> {
+                    counts.put(PublishStatus.valueOf(rs.getString("status")), rs.getLong("count"));
+                    return rowNum;
+                })
+                .list();
+        return new PublishLedgerStatusCounts(
+                counts.getOrDefault(PublishStatus.PENDING, 0L),
+                counts.getOrDefault(PublishStatus.IN_PROGRESS, 0L),
+                counts.getOrDefault(PublishStatus.SUCCEEDED, 0L),
+                counts.getOrDefault(PublishStatus.FAILED, 0L),
+                counts.getOrDefault(PublishStatus.ABANDONED, 0L));
     }
 
     @Override
