@@ -1,5 +1,6 @@
 package com.iocextractor.application.sync;
 
+import com.iocextractor.application.port.in.sync.FetchRemoteObjectsCommand;
 import com.iocextractor.application.port.in.sync.RemoteFetchCommand;
 import com.iocextractor.application.port.in.sync.RemoteFetchResult;
 import com.iocextractor.application.port.in.sync.RemoteFetchUseCase;
@@ -9,10 +10,8 @@ import com.iocextractor.application.port.out.sync.RemoteFetchLedger;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.PathMatcher;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
@@ -55,10 +54,9 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
     public RemoteFetchResult fetch(RemoteFetchCommand command) {
         Objects.requireNonNull(command, "command");
         FetchCounters counters = new FetchCounters();
-        for (RemoteFetchSource source : selectedSources(command)) {
-            SourceMatchers matchers = compileMatchers(source);
+        for (RemoteFetchSource source : RemoteFetchSources.selected(sources, command)) {
             for (RemoteObject object : transport.list(source.endpoint(), source.remotePath())) {
-                if (!matches(matchers, object)) {
+                if (!RemoteFetchSources.matches(source, object)) {
                     counters.skipped++;
                     continue;
                 }
@@ -68,19 +66,15 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
         return counters.toResult();
     }
 
-    private List<RemoteFetchSource> selectedSources(RemoteFetchCommand command) {
-        List<RemoteFetchSource> matches = sources.stream()
-                .filter(source -> command.source()
-                        .map(selected -> source.sourceId().equals(selected))
-                        .orElse(true))
-                .filter(source -> command.endpoint()
-                        .map(selected -> source.endpoint().equals(selected))
-                        .orElse(true))
-                .toList();
-        if (matches.isEmpty()) {
-            throw new IllegalArgumentException("No sync fetch source matches selection");
+    @Override
+    public RemoteFetchResult fetch(FetchRemoteObjectsCommand command) {
+        Objects.requireNonNull(command, "command");
+        RemoteFetchSource source = source(command);
+        FetchCounters counters = new FetchCounters();
+        for (RemoteObject object : command.objects()) {
+            fetchOne(source, object, command.dryRun(), counters);
         }
-        return matches;
+        return counters.toResult();
     }
 
     private void fetchOne(RemoteFetchSource source, RemoteObject object, boolean dryRun, FetchCounters counters) {
@@ -124,25 +118,18 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
         }
     }
 
-    private SourceMatchers compileMatchers(RemoteFetchSource source) {
-        return new SourceMatchers(
-                source.include().stream().map(this::glob).toList(),
-                source.exclude().stream().map(this::glob).toList());
-    }
-
-    private boolean matches(SourceMatchers matchers, RemoteObject object) {
-        Path leaf = Path.of(leafName(object.path()));
-        boolean accepted = matchers.included().isEmpty()
-                || matchers.included().stream().anyMatch(matcher -> matcher.matches(leaf));
-        return accepted && matchers.excluded().stream().noneMatch(matcher -> matcher.matches(leaf));
-    }
-
-    private PathMatcher glob(String pattern) {
-        return FileSystems.getDefault().getPathMatcher("glob:" + pattern);
+    private RemoteFetchSource source(FetchRemoteObjectsCommand command) {
+        return sources.stream()
+                .filter(source -> source.sourceId().equals(command.source()))
+                .filter(source -> source.endpoint().equals(command.endpoint()))
+                .filter(source -> source.remotePath().equals(command.remotePath()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No sync fetch source matches detected batch: " + command.source()));
     }
 
     private Path finalPathFor(RemoteObject object) {
-        String leaf = leafName(object.path());
+        String leaf = RemoteFetchSources.leafName(object.path());
         Path candidate = inbox.resolve(leaf).normalize();
         if (!candidate.getParent().equals(inbox)) {
             throw new IllegalArgumentException("remote object leaf escapes inbox: " + object.path());
@@ -159,16 +146,6 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
             throw new IllegalStateException("Inbox file already exists for remote identity: " + suffixedCandidate);
         }
         return suffixedCandidate;
-    }
-
-    private String leafName(String remotePath) {
-        int slash = Math.max(remotePath.lastIndexOf('/'), remotePath.lastIndexOf('\\'));
-        String leaf = slash >= 0 ? remotePath.substring(slash + 1) : remotePath;
-        if (leaf.isBlank() || leaf.equals(".") || leaf.equals("..")
-                || leaf.contains("/") || leaf.contains("\\")) {
-            throw new IllegalArgumentException("remote path must end with one safe file name: " + remotePath);
-        }
-        return leaf;
     }
 
     private String suffix(String leaf, RemoteObjectIdentity identity) {
@@ -230,6 +207,4 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
         }
     }
 
-    private record SourceMatchers(List<PathMatcher> included, List<PathMatcher> excluded) {
-    }
 }

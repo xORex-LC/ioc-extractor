@@ -18,6 +18,7 @@ import com.iocextractor.application.sync.PublishLedgerSliceRetentionGuard;
 import com.iocextractor.application.sync.PublishTarget;
 import com.iocextractor.application.sync.RemoteFetchService;
 import com.iocextractor.application.sync.RemoteFetchSource;
+import com.iocextractor.application.sync.RemoteSourceMonitor;
 import com.iocextractor.application.sync.Retrier;
 import com.iocextractor.application.sync.RetryPolicy;
 import com.iocextractor.diagnostics.DiagnosticFactory;
@@ -25,6 +26,7 @@ import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.platform.concurrent.BoundedKeyedSerialExecutor;
 import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
 import com.iocextractor.platform.events.ControlEventObserver;
+import com.iocextractor.platform.events.ControlEventPublisher;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -44,7 +46,8 @@ import java.util.concurrent.Executors;
 @Configuration
 public class SyncConfig {
 
-    private static final int DEFAULT_PUBLISH_QUEUE_PER_ENDPOINT = 64;
+    private static final int DEFAULT_SYNC_QUEUE_PER_ENDPOINT = 64;
+    private static final int DEFAULT_FETCH_BATCH_SIZE = 128;
 
     @Bean
     public ValidateSyncSelectionUseCase validateSyncSelectionUseCase(IocProperties props) {
@@ -131,6 +134,20 @@ public class SyncConfig {
     @Bean
     @Lazy
     @ConditionalOnExpression("'${ioc.sync.enabled:false}' == 'true' && "
+            + "'${ioc.sync.fetch.enabled:false}' == 'true' && "
+            + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
+    public RemoteSourceMonitor remoteSourceMonitor(
+            TransportRegistry transports,
+            RemoteFetchLedger ledger,
+            IocProperties props,
+            Clock clock) {
+        return new RemoteSourceMonitor(
+                transports, ledger, fetchSources(props), DEFAULT_FETCH_BATCH_SIZE, clock);
+    }
+
+    @Bean
+    @Lazy
+    @ConditionalOnExpression("'${ioc.sync.enabled:false}' == 'true' && "
             + "'${ioc.sync.publish.enabled:false}' == 'true' && "
             + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
     public ArtifactPublishUseCase artifactPublishUseCase(
@@ -162,12 +179,13 @@ public class SyncConfig {
             + "'${ioc.sync.fetch.enabled:false}' == 'true' && "
             + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
     public DaemonFetchScheduler daemonFetchScheduler(
-            RemoteFetchUseCase useCase,
+            RemoteSourceMonitor monitor,
+            ControlEventPublisher eventPublisher,
             TransportRegistry transports,
             SyncHealthState healthState,
             IocProperties props) {
         return new DaemonFetchScheduler(
-                fetchSources(props), useCase, transports, healthState, props.sync().fetch().interval());
+                fetchSources(props), monitor, eventPublisher, transports, healthState, props.sync().fetch().interval());
     }
 
     @Bean
@@ -189,20 +207,26 @@ public class SyncConfig {
     @Bean(destroyMethod = "close")
     @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
             + "'${ioc.sync.enabled:false}' == 'true' && "
-            + "'${ioc.sync.publish.enabled:false}' == 'true' && "
+            + "('${ioc.sync.fetch.enabled:false}' == 'true' || "
+            + "'${ioc.sync.publish.enabled:false}' == 'true') && "
             + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
-    public KeyedSerialExecutor syncPublishKeyedExecutor(IocProperties props) {
-        int workers = Math.max(1, (int) publishTargets(props).stream()
+    public KeyedSerialExecutor syncKeyedExecutor(IocProperties props) {
+        long fetchEndpoints = fetchSources(props).stream()
+                .map(RemoteFetchSource::endpoint)
+                .distinct()
+                .count();
+        long publishEndpoints = publishTargets(props).stream()
                 .map(PublishTarget::endpoint)
                 .distinct()
-                .count());
+                .count();
+        int workers = Math.max(1, (int) Math.max(fetchEndpoints, publishEndpoints));
         return new BoundedKeyedSerialExecutor(
                 Executors.newFixedThreadPool(workers, runnable -> {
-                    Thread thread = new Thread(runnable, "ioc-sync-publish-worker");
+                    Thread thread = new Thread(runnable, "ioc-sync-worker");
                     thread.setDaemon(false);
                     return thread;
                 }),
-                DEFAULT_PUBLISH_QUEUE_PER_ENDPOINT);
+                DEFAULT_SYNC_QUEUE_PER_ENDPOINT);
     }
 
     @Bean
@@ -212,11 +236,24 @@ public class SyncConfig {
             + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
     public SliceCompletedPublishListener sliceCompletedPublishListener(
             ArtifactPublishUseCase useCase,
-            KeyedSerialExecutor syncPublishKeyedExecutor,
+            KeyedSerialExecutor syncKeyedExecutor,
             ControlEventObserver observer,
             IocProperties props) {
         return new SliceCompletedPublishListener(
-                useCase, syncPublishKeyedExecutor, observer, publishTargets(props));
+                useCase, syncKeyedExecutor, observer, publishTargets(props));
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.sync.enabled:false}' == 'true' && "
+            + "'${ioc.sync.fetch.enabled:false}' == 'true' && "
+            + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
+    public RemoteChangeFetchListener remoteChangeFetchListener(
+            RemoteFetchUseCase useCase,
+            KeyedSerialExecutor syncKeyedExecutor,
+            ControlEventObserver observer,
+            SyncHealthState healthState) {
+        return new RemoteChangeFetchListener(useCase, syncKeyedExecutor, observer, healthState);
     }
 
     @Bean("syncHealthIndicator")

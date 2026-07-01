@@ -2,12 +2,14 @@ package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.port.in.sync.RemoteFetchCommand;
 import com.iocextractor.application.port.in.sync.RemoteFetchResult;
-import com.iocextractor.application.port.in.sync.RemoteFetchUseCase;
+import com.iocextractor.application.sync.RemoteChangeBatchDetected;
 import com.iocextractor.application.sync.RemoteFetchSource;
+import com.iocextractor.application.sync.RemoteSourceMonitor;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
 import com.iocextractor.observability.logging.LogEvents;
+import com.iocextractor.platform.events.ControlEventPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
@@ -26,19 +28,22 @@ public final class DaemonFetchScheduler implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(DaemonFetchScheduler.class);
 
     private final List<RemoteFetchSource> sources;
-    private final RemoteFetchUseCase fetcher;
+    private final RemoteSourceMonitor monitor;
+    private final ControlEventPublisher eventPublisher;
     private final TransportRegistry transports;
     private final SyncHealthState healthState;
     private final PeriodicDaemonCycle cycle;
 
     /** Creates one sequential fetch scheduler over the configured source order. */
     public DaemonFetchScheduler(List<RemoteFetchSource> sources,
-                                RemoteFetchUseCase fetcher,
+                                RemoteSourceMonitor monitor,
+                                ControlEventPublisher eventPublisher,
                                 TransportRegistry transports,
                                 SyncHealthState healthState,
                                 Duration interval) {
         this.sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
-        this.fetcher = Objects.requireNonNull(fetcher, "fetcher");
+        this.monitor = Objects.requireNonNull(monitor, "monitor");
+        this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher");
         this.transports = Objects.requireNonNull(transports, "transports");
         this.healthState = Objects.requireNonNull(healthState, "healthState");
         this.cycle = new PeriodicDaemonCycle("ioc-sync-fetch-scheduler", interval, this::runCycle);
@@ -81,17 +86,20 @@ public final class DaemonFetchScheduler implements SmartLifecycle {
                 .message("scheduled remote fetch started")
                 .log();
         try {
-            RemoteFetchResult result = fetcher.fetch(
+            List<RemoteChangeBatchDetected> events = monitor.detect(
                     new RemoteFetchCommand(Optional.of(source.sourceId()), false));
-            healthState.recordFetch(source.sourceId(), source.endpoint(), result);
+            events.forEach(eventPublisher::publish);
+            int detected = events.stream().mapToInt(event -> event.objects().size()).sum();
+            if (events.isEmpty()) {
+                healthState.recordFetch(source.sourceId(), source.endpoint(), new RemoteFetchResult(0, 0, 0));
+            }
             LogEvents.info(log)
                     .action(EventAction.SYNC_FETCH_COMPLETE)
-                    .outcome(result.failed() == 0 ? EventOutcome.SUCCESS : EventOutcome.FAILURE)
+                    .outcome(EventOutcome.SUCCESS)
                     .field(LogField.IOC_SOURCE_ID, source.sourceId())
                     .field(LogField.IOC_SYNC_ENDPOINT, source.endpoint())
-                    .field(LogField.IOC_SYNC_FILES, result.fetched())
-                    .message("scheduled remote fetch completed: fetched=" + result.fetched()
-                            + ", skipped=" + result.skipped() + ", failed=" + result.failed())
+                    .field(LogField.IOC_SYNC_FILES, detected)
+                    .message("scheduled remote fetch detection completed: detected=" + detected)
                     .log();
         } catch (RuntimeException failure) {
             healthState.recordFetchFailure(source.sourceId(), source.endpoint(), failure);

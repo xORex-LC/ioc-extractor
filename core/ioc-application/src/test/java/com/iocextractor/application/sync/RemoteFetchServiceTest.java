@@ -1,5 +1,6 @@
 package com.iocextractor.application.sync;
 
+import com.iocextractor.application.port.in.sync.FetchRemoteObjectsCommand;
 import com.iocextractor.application.port.in.sync.RemoteFetchCommand;
 import com.iocextractor.application.port.out.sync.FileTransport;
 import com.iocextractor.application.port.out.sync.RemoteFetchLedger;
@@ -155,6 +156,23 @@ class RemoteFetchServiceTest {
 
         assertThat(result.fetched()).isOne();
         assertThat(transport.listCalls).containsExactly("endpoint-one:/one");
+    }
+
+    @Test
+    void detectedObjectFetchDoesNotListRemoteSourceAgain() throws Exception {
+        RemoteObject object = object("/share/a.htm", 10);
+        FakeTransport transport = new FakeTransport(List.of());
+        FakeLedger ledger = new FakeLedger();
+
+        var result = service(transport, ledger).fetch(new FetchRemoteObjectsCommand(
+                "src", "endpoint", "/share", List.of(object), false));
+
+        assertThat(result.fetched()).isOne();
+        assertThat(transport.listCalls).isEmpty();
+        assertThat(transport.getCalls).isOne();
+        assertThat(tempDir.resolve("a.htm")).hasContent("content:/share/a.htm");
+        assertThat(ledger.find(object.identity()))
+                .hasValueSatisfying(record -> assertThat(record.status()).isEqualTo(RemoteFetchStatus.FETCHED));
     }
 
     @Test
