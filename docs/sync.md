@@ -49,7 +49,6 @@ ioc:
           exclude: ["*.part", ".*"]
     publish:
       enabled: true
-      trigger: on-new-output
       interval: 5m
       targets:
         - name: reputation-delivery

@@ -73,7 +73,6 @@ ioc:
   #         exclude: [ "*.tmp", "*.part", ".*" ]
   #   publish:
   #     enabled: true
-  #     trigger: on-new-output          # on-new-output | interval | both
   #     interval: 5m
   #     targets:
   #       - name: reputation-delivery

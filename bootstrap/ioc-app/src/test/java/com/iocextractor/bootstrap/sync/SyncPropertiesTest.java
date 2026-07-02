@@ -62,12 +62,7 @@ class SyncPropertiesTest {
     }
 
     @Test
-    void rejectsInvalidTriggerAndRetryNumbers() throws Exception {
-        assertThatThrownBy(() -> new IocProperties.Sync.Publish(true, "watch",
-                java.time.Duration.ofMinutes(1), List.of()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Unsupported sync publish trigger");
-
+    void rejectsInvalidRetryNumbers() throws Exception {
         assertThatThrownBy(() -> new IocProperties.Sync.Retry(0,
                 java.time.Duration.ofSeconds(1), 2.0d, java.time.Duration.ofSeconds(5), false))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -112,8 +107,7 @@ class SyncPropertiesTest {
                         java.time.Duration.ofSeconds(30), true),
                 endpoints,
                 new IocProperties.Sync.Fetch(false, java.time.Duration.ofMinutes(1), sources),
-                new IocProperties.Sync.Publish(false, "on-new-output",
-                        java.time.Duration.ofMinutes(5), targets));
+                new IocProperties.Sync.Publish(false, java.time.Duration.ofMinutes(5), targets));
     }
 
     private IocProperties.Sync.Endpoint endpoint(String name) {

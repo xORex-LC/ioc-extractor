@@ -10,6 +10,10 @@ JDBC ledgers, verified slice discovery, SMB adapter, daemon lifecycle, CLI и he
 byte-preserving, реш. 17), **F2** (slice-retention, реш. 18); остальное — в
 [0012](0012-streaming-dataframe-emission.md).
 
+> **Superseded:** варианты `publish.trigger` ниже сохраняются как история проектирования.
+> Реализованный контракт после [0013](0013-event-driven-coordination.md) не имеет этой ручки:
+> event fast-path всегда дополняется обязательным periodic reconcile/backstop.
+
 ## Контекст
 
 Нужна двунаправленная синхронизация с внешними хранилищами:

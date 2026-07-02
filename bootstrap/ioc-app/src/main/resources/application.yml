@@ -281,7 +281,6 @@ ioc:
       sources: []
     publish:
       enabled: false
-      trigger: on-new-output
       interval: 5m
       targets: []
 
@@ -366,7 +365,6 @@ ioc:
           exclude: [ "*.tmp", "*.part", ".*" ]
     publish:
       enabled: true
-      trigger: on-new-output
       interval: 5m
       targets:
         - name: reputation-delivery

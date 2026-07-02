@@ -288,14 +288,10 @@ public record IocProperties(
         }
 
         public record Publish(boolean enabled,
-                              @NotBlank String trigger,
                               @NotNull Duration interval,
                               @NotNull @Valid List<Target> targets) {
 
             public Publish {
-                if (!Set.of("on-new-output", "interval", "both").contains(trigger)) {
-                    throw new IllegalArgumentException("Unsupported sync publish trigger: " + trigger);
-                }
                 positive(interval, "sync publish interval");
                 targets = List.copyOf(targets);
                 unique(targets.stream().map(target -> target.name()).toList(), "sync publish target");

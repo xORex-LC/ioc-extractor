@@ -11,6 +11,7 @@ import com.iocextractor.application.port.in.sync.ArtifactPublishExecutionResult;
 import com.iocextractor.application.port.out.sync.CompletedSliceCatalog;
 import com.iocextractor.application.port.out.sync.FileTransport;
 import com.iocextractor.application.port.out.sync.PublishLedger;
+import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.codes.SyncDiagnosticCodes;
 import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import org.junit.jupiter.api.Test;
@@ -298,6 +299,41 @@ class ArtifactPublishServiceTest {
                     assertThat(diagnostic.context()).containsEntry("sliceId", "slice-one")
                             .containsEntry("targetId", "target-a");
                 });
+    }
+
+    @Test
+    void doesNotDuplicateCatalogOwnedCorruptionDiagnostic() throws Exception {
+        CompletedSlice slice = slice("reputation", "slice-one");
+        FakeLedger ledger = new FakeLedger();
+        ledger.ensurePending(pending("slice-one", targetA("reputation")));
+        CollectingDiagnosticSink diagnostics = diagnostics();
+        CompletedSliceCatalog catalog = new CompletedSliceCatalog() {
+            @Override
+            public List<CompletedSlice> listCompleted(String profile) {
+                return List.of(slice);
+            }
+
+            @Override
+            public Optional<CompletedSlice> find(String profile, String sliceName) {
+                diagnostics.emit(Diagnostic.builder(SyncDiagnosticCodes.LOCAL_SLICE_INVALID, CLOCK)
+                        .with("profile", profile)
+                        .with("sliceName", sliceName)
+                        .with("reason", "manifest checksum mismatch")
+                        .build());
+                throw new IllegalStateException("manifest checksum mismatch");
+            }
+        };
+
+        var result = service(catalog, ledger, new FakeTransport(),
+                List.of(targetA("reputation")), diagnostics)
+                .publish(new ArtifactPublishCommand(Optional.of("reputation"), false));
+
+        assertThat(result.attempted()).isOne();
+        assertThat(result.failed()).isOne();
+        assertThat(diagnostics.diagnostics())
+                .singleElement()
+                .satisfies(diagnostic -> assertThat(diagnostic.code())
+                        .isEqualTo(SyncDiagnosticCodes.LOCAL_SLICE_INVALID));
     }
 
     @Test

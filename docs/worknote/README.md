@@ -11,3 +11,8 @@
 
 - [storage-layer.md](storage-layer.md) — слой хранилища (ING-4): SQLite/JDBC,
   разделение бизнес/служебных схем, CSV как проекция.
+- [sync-hardening-issues.md](sync-hardening-issues.md) — временный issues-список
+  по sync/event-coordination после реализации 0013 (S0–S8): лог-altitude,
+  SMB-таймауты (SO_TIMEOUT-reaper), классификация транзиентов, health-`findAll`,
+  мёртвый `publish.trigger`, CHANGE_NOTIFY-investigate.
+  Удаляется после закрытия всех пунктов.

@@ -95,7 +95,7 @@ class SyncSelectionCatalogTest {
                 new IocProperties.Sync.Fetch(true, Duration.ofMinutes(1), List.of(
                         new IocProperties.Sync.Fetch.Source(
                                 "incoming", "primary", "/incoming", List.of("*.htm"), List.of("*.part")))),
-                new IocProperties.Sync.Publish(true, "both", Duration.ofMinutes(5), List.of(
+                new IocProperties.Sync.Publish(true, Duration.ofMinutes(5), List.of(
                         new IocProperties.Sync.Publish.Target(
                                 "delivery", "primary", "/out", "reputation-lists"))));
     }

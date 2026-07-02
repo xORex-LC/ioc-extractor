@@ -188,19 +188,18 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
         try {
             found = sliceCatalog.find(record.profile(), record.sliceName());
         } catch (RuntimeException failure) {
-            emitLocalSliceInvalid(record, failureReason(failure.getMessage()), failure);
             counters.failed++;
             return Optional.empty();
         }
         if (found.isEmpty()) {
-            emitLocalSliceInvalid(record, "local slice is missing", null);
+            emitLocalSliceInvalid(record, "local slice is missing");
             counters.failed++;
             return Optional.empty();
         }
         CompletedSlice slice = found.orElseThrow();
         if (!slice.sliceId().equals(record.sliceId())
                 || !slice.manifestSha256().equals(record.manifestSha256())) {
-            emitLocalSliceInvalid(record, "local slice no longer matches publish ledger binding", null);
+            emitLocalSliceInvalid(record, "local slice no longer matches publish ledger binding");
             counters.failed++;
             return Optional.empty();
         }
@@ -407,16 +406,13 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
                 .build());
     }
 
-    private void emitLocalSliceInvalid(PublishRecord record, String reason, RuntimeException failure) {
+    private void emitLocalSliceInvalid(PublishRecord record, String reason) {
         var builder = Diagnostic.builder(SyncDiagnosticCodes.LOCAL_SLICE_INVALID, clock)
                 .with("profile", record.profile())
                 .with("sliceName", record.sliceName())
                 .with("sliceId", record.sliceId())
                 .with("targetId", record.targetId())
                 .with("reason", reason);
-        if (failure != null) {
-            builder.cause(failure);
-        }
         diagnostics.emit(builder.build());
     }
 
