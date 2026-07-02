@@ -228,7 +228,8 @@ public record IocProperties(
                               @NotBlank String password,
                               boolean encrypt,
                               Duration connectTimeout,
-                              Duration readTimeout,
+                              Duration requestTimeout,
+                              @Deprecated Duration readTimeout,
                               Duration idleTimeout) {
 
                 public Smb {
@@ -237,8 +238,18 @@ public record IocProperties(
                     username = requireText(username, "sync SMB username");
                     password = requireText(password, "sync SMB password");
                     optionalPositive(connectTimeout, "sync SMB connectTimeout");
+                    optionalPositive(requestTimeout, "sync SMB requestTimeout");
                     optionalPositive(readTimeout, "sync SMB readTimeout");
                     optionalPositive(idleTimeout, "sync SMB idleTimeout");
+                    if (requestTimeout != null && readTimeout != null) {
+                        throw new IllegalArgumentException(
+                                "sync SMB requestTimeout and legacy readTimeout must not both be configured");
+                    }
+                }
+
+                /** Returns the new request timeout or the deprecated read-timeout alias. */
+                public Duration effectiveRequestTimeout() {
+                    return requestTimeout != null ? requestTimeout : readTimeout;
                 }
 
             }

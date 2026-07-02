@@ -60,7 +60,7 @@ ioc:
   #         password: ${SMB_PASSWORD}
   #         encrypt: true
   #         connect-timeout: 10s
-  #         read-timeout: 30s
+  #         request-timeout: 30s
   #         idle-timeout: 5m
   #   fetch:
   #     enabled: true

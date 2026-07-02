@@ -77,9 +77,23 @@ class SyncPropertiesTest {
     @Test
     void rejectsIncompleteSmbCredentialsAfterBinding() {
         assertThatThrownBy(() -> new IocProperties.Sync.Endpoint.Smb(
-                "server", "share", null, "user", "", true, null, null, null))
+                "server", "share", null, "user", "", true, null, null, null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("password");
+    }
+
+    @Test
+    void acceptsLegacyReadTimeoutAliasButRejectsAmbiguousTimeouts() {
+        var legacy = new IocProperties.Sync.Endpoint.Smb(
+                "server", "share", null, "user", "secret", true,
+                null, null, java.time.Duration.ofSeconds(45), null);
+
+        assertThat(legacy.effectiveRequestTimeout()).isEqualTo(java.time.Duration.ofSeconds(45));
+        assertThatThrownBy(() -> new IocProperties.Sync.Endpoint.Smb(
+                "server", "share", null, "user", "secret", true,
+                null, java.time.Duration.ofSeconds(30), java.time.Duration.ofSeconds(45), null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not both be configured");
     }
 
     private IocProperties defaults() throws Exception {
@@ -105,7 +119,7 @@ class SyncPropertiesTest {
     private IocProperties.Sync.Endpoint endpoint(String name) {
         return new IocProperties.Sync.Endpoint(name, "smb",
                 new IocProperties.Sync.Endpoint.Smb("server", "share", null,
-                        "user", "secret", true, null, null, null));
+                        "user", "secret", true, null, null, null, null));
     }
 
     private IocProperties.Sync.Fetch.Source source(String name, String endpoint) {

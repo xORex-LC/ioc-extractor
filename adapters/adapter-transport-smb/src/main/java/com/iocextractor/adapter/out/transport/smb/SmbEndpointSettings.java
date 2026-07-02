@@ -19,7 +19,7 @@ public final class SmbEndpointSettings {
     private final char[] password;
     private final boolean encrypt;
     private final Duration connectTimeout;
-    private final Duration readTimeout;
+    private final Duration requestTimeout;
     private final Duration idleTimeout;
 
     public SmbEndpointSettings(String name,
@@ -30,7 +30,7 @@ public final class SmbEndpointSettings {
                                char[] password,
                                boolean encrypt,
                                Duration connectTimeout,
-                               Duration readTimeout,
+                               Duration requestTimeout,
                                Duration idleTimeout) {
         this.name = requireText(name, "name");
         this.host = requireText(host, "host");
@@ -43,7 +43,7 @@ public final class SmbEndpointSettings {
         this.password = Arrays.copyOf(password, password.length);
         this.encrypt = encrypt;
         this.connectTimeout = requirePositive(connectTimeout, "connectTimeout");
-        this.readTimeout = requirePositive(readTimeout, "readTimeout");
+        this.requestTimeout = requirePositive(requestTimeout, "requestTimeout");
         this.idleTimeout = requirePositive(idleTimeout, "idleTimeout");
     }
 
@@ -87,9 +87,9 @@ public final class SmbEndpointSettings {
         return connectTimeout;
     }
 
-    /** Returns the SMB read/write timeout. */
-    public Duration readTimeout() {
-        return readTimeout;
+    /** Returns the timeout applied to each SMB read, write or transact request. */
+    public Duration requestTimeout() {
+        return requestTimeout;
     }
 
     /** Returns the idle timeout after which cached sessions may be closed. */
@@ -108,7 +108,7 @@ public final class SmbEndpointSettings {
                 + ", password=<redacted>"
                 + ", encrypt=" + encrypt
                 + ", connectTimeout=" + connectTimeout
-                + ", readTimeout=" + readTimeout
+                + ", requestTimeout=" + requestTimeout
                 + ", idleTimeout=" + idleTimeout
                 + ']';
     }

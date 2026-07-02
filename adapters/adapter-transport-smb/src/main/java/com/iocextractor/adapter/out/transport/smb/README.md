@@ -9,6 +9,7 @@ SMB-сессии, handles или типы transport-библиотеки.
 |---|---|
 | `SmbFileTransport` | Реализация transport-neutral `FileTransport`: `list`, `stat`, `get`, `delete`, `publishAtomically`. |
 | `SmbEndpointSettings` | Immutable-настройки endpoint с маскированием credentials. |
+| `ConnectTimeoutSocketFactory` | Ограничивает TCP connect через `Socket.connect(timeout)`. |
 | `SmbjShareClientFactory` | Создаёт SMBJ client/session/share для endpoint. |
 | `SmbjShareClient` | Тонкая обёртка над SMBJ `DiskShare`, работающая в терминах путей и файлов. |
 | `SmbExceptionMapper` | Переводит SMBJ/IO ошибки в `RemoteErrorKind`. |
@@ -27,8 +28,11 @@ SMB-сессии, handles или типы transport-библиотеки.
   разные endpoints могут обслуживаться параллельно.
 - Transient/unreachable failure инвалидирует cached client; следующий macro/micro retry
   открывает новое соединение. Bootstrap вызывает `closeIdle`, shutdown закрывает все clients.
+- `connectTimeout` ограничивает TCP dial, `requestTimeout` — отдельный SMB
+  read/write/transact request, `idleTimeout` — жизнь неиспользуемого cached client.
+  Reader socket работает с `SO_TIMEOUT=0`, поэтому простой не уничтожает живое соединение.
 
 ## Тестирование
 
 Unit-тесты используют fake `SmbShareClient` без SMB-сервера и проверяют атомарность
-publish-протокола, idempotency, reconnect-on-transient и taxonomy mapping.
+publish-протокола, idempotency, reconnect-on-transient, timeout wiring и taxonomy mapping.

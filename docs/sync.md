@@ -35,6 +35,9 @@ ioc:
           username: ${SMB_USER}
           password: ${SMB_PASSWORD}
           encrypt: true
+          connect-timeout: 10s
+          request-timeout: 30s
+          idle-timeout: 5m
     fetch:
       enabled: true
       interval: 1m
@@ -59,6 +62,13 @@ ioc:
 валидируются при binding; неизвестный transport отклоняется до первой операции.
 SMB-соединение создаётся лениво и переиспользуется внутри endpoint; credentials не
 входят в `toString()` и operational logs.
+
+`connect-timeout` ограничивает TCP connect (DNS resolution не входит в гарантированный
+wall-clock deadline), `request-timeout` ограничивает один SMB read/write/transact
+request, а `idle-timeout` определяет, сколько держать неиспользуемый cached client.
+Reader socket использует внутренний `SO_TIMEOUT=0`: живое соединение не закрывается
+только из-за отсутствия входящих пакетов. Устаревший `read-timeout` временно принимается
+как alias `request-timeout`; задавать оба значения одновременно запрещено.
 
 ## Fetch: remote → inbox
 

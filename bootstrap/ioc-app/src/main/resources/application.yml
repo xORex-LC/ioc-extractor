@@ -257,7 +257,7 @@ ioc:
   # Disabled by default. Endpoint names are shared by fetch and publish, but
   # source and target paths stay independent. Secrets are supplied through env
   # placeholders in external configs; do not commit plain credentials. Optional
-  # SMB connect-timeout/read-timeout/idle-timeout default to 10s/30s/5m. The
+  # SMB connect-timeout/request-timeout/idle-timeout default to 10s/30s/5m. The
   # inactive `smb-example` document at the end shows the complete configuration.
   sync:
     enabled: false
@@ -346,7 +346,7 @@ ioc:
           password: ${SMB_PASSWORD}
           encrypt: true
           connect-timeout: 10s
-          read-timeout: 30s
+          request-timeout: 30s
           idle-timeout: 5m
     fetch:
       enabled: true

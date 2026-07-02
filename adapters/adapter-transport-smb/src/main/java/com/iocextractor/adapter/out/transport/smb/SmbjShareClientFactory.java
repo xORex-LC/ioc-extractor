@@ -14,11 +14,7 @@ final class SmbjShareClientFactory implements SmbShareClientFactory {
 
     @Override
     public SmbShareClient open(SmbEndpointSettings settings) {
-        SmbConfig config = SmbConfig.builder()
-                .withEncryptData(settings.encrypt())
-                .withSoTimeout(settings.connectTimeout().toMillis(), TimeUnit.MILLISECONDS)
-                .withTimeout(settings.readTimeout().toMillis(), TimeUnit.MILLISECONDS)
-                .build();
+        SmbConfig config = config(settings);
         SMBClient client = new SMBClient(config);
         try {
             Connection connection = client.connect(settings.host());
@@ -35,5 +31,14 @@ final class SmbjShareClientFactory implements SmbShareClientFactory {
             client.close();
             throw SmbExceptionMapper.map(failure, "connect", settings.name());
         }
+    }
+
+    static SmbConfig config(SmbEndpointSettings settings) {
+        return SmbConfig.builder()
+                .withEncryptData(settings.encrypt())
+                .withSocketFactory(new ConnectTimeoutSocketFactory(settings.connectTimeout()))
+                .withSoTimeout(0)
+                .withTimeout(settings.requestTimeout().toMillis(), TimeUnit.MILLISECONDS)
+                .build();
     }
 }
