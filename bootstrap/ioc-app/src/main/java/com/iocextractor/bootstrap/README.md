@@ -28,7 +28,8 @@ Composition root и конфигурация. Единственное мест�
 | `DaemonExportScheduler.java` | Recovery-before-start, cadence polling, sequential profiles и overlap guard |
 | `PeriodicDaemonCycle.java` | Общий lifecycle/overlap wrapper для fixed-delay daemon loops |
 | `TransportRegistry.java` | Lazy endpoint → transport dispatch и adapter lifecycle без утечки transport types в core |
-| `DaemonFetchScheduler.java` | Fixed-delay source-isolated remote fetch, overlap guard и controlled shutdown |
+| `RemoteFetchDetectionCoordinator.java` | Coalescing/single-flight remote source detection for periodic and optional push triggers |
+| `DaemonFetchScheduler.java` | Fixed-delay source-isolated PERIODIC trigger source for remote fetch detection |
 | `DaemonPublishScheduler.java` | Startup reconcile, endpoint-keyed periodic publish и lifecycle phase 150 |
 | `SyncHealthState.java` | Thread-safe latest scheduler outcomes per source/target |
 | `SyncHealthIndicator.java` | Actuator view: last runs, durable publish backlog, endpoint summary и pinned slices |
@@ -94,6 +95,12 @@ export formation — 100, publish — 150, slice retention — 200. Publish `sta
 создаёт недостающие `(slice,target)` ledger pairs без remote writes до запуска periodic loop.
 Periodic publish tick повторяет этот reconcile как correctness backstop один раз на export profile,
 затем гонит retryable ledger state через тот же keyed executor по endpoint, что и event fast-path.
+Fetch detection now goes through `RemoteFetchDetectionCoordinator`: periodic ticks
+and optional remote push signals request the same `RemoteSourceMonitor.detect(source)`
+path. The coordinator coalesces push storms with trailing debounce, prevents overlap
+per source, records detection/watch health and owns post-detection transport
+`closeIdle()` maintenance. `DaemonFetchScheduler` only emits `PERIODIC` triggers.
+
 Оба sync scheduler используют fixed delay, локальный overlap guard, последовательный обход и
 изоляцию ошибок per source/target; следующий tick является macro retry. При активном daemon publish
 событие `SliceCompleted` дополнительно разворачивается в per-target команды через этот keyed

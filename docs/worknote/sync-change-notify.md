@@ -137,9 +137,23 @@ watch-сигналами и `RemoteSourceMonitor`. Это не новый broker
   `RemoteChangeBatchDetected`, coordinator передаёт их в `ControlEventPublisher`;
 - ошибки detection пишутся в `SyncHealthState` так же, как сейчас делает
   `DaemonFetchScheduler`.
-- `STARTUP` и `RECONNECT_RECOVERY` причины делают обычный detect сразу после
-  старта/успешного восстановления watcher'а: это закрывает файлы, появившиеся
-  до установки watch'а или во время downtime демона/watch-сессии.
+- успешный и no-op outcome detection тоже пишет coordinator: когда
+  `DaemonFetchScheduler` станет только источником `PERIODIC` trigger'ов, он уже
+  не знает результата detect'а и не должен обновлять health от имени
+  coordinator'а.
+- `STARTUP` и `WATCH_ESTABLISHED` причины делают обычный detect сразу после
+  старта/установки watch-сессии. `WATCH_ESTABLISHED` вызывается после любого
+  успешного открытия watch'а: initial open, recovery после сбоя и плановый
+  lease re-open. Это закрывает файлы, появившиеся до установки watch'а, во
+  время downtime демона/watch-сессии или в коротком окне между плановым close и
+  новым `watchAsync`.
+- `transports.closeIdle()` после перехода scheduler'а на async trigger больше
+  не принадлежит `DaemonFetchScheduler` как outcome-владельцу. V1-владелец:
+  coordinator вызывает `closeIdle` после завершённого detect'а; при
+  необходимости отдельный maintenance timer может оставить эту операцию чисто
+  временным обслуживанием. `SmbFileTransport.closeIdle()` lock-guarded и
+  закрывает только клиентов старше `idle-timeout`, поэтому он не должен ломать
+  активный detect.
 - сбой `ControlEventPublisher.publish()` не ломает watcher/coordinator и не
   превращает push в correctness path: ошибка observe/log, следующий periodic
   detect остаётся backstop.
@@ -163,6 +177,9 @@ PERIODIC)`. Watcher вызывает тот же `trigger(source, PUSH)`. Так
 - Цикл: open directory handle → `watchAsync` → await → `signal.run()` →
   перевзвод. Overflow — тоже сигнал. `signal.run()` обязан быть быстрым:
   только поставить trigger в coordinator, не делать listing/fetch в watcher thread.
+- После успешного открытия или переоткрытия watch-сессии watcher вызывает
+  `coordinator.trigger(source, WATCH_ESTABLISHED)`. Это относится и к плановой
+  ротации по `max-watch-session-age`, не только к recovery после ошибки.
 - Любая ошибка (разрыв, `STATUS_*`, `TransportException`) → закрыть
   handle/клиент → backoff-реконнект. Используем значения backoff/multiplier/
   maxBackoff/jitter из `RetryPolicy`, но **не** `maxAttempts`: watcher в daemon
@@ -209,6 +226,10 @@ ioc:
   не работает — это уже существующий fetch health outcome.
 - **Debounce/coalescing** (~2–5s, конфигурируемо): запись файла порождает
   пачку уведомлений (ADDED + серия MODIFIED); один detect на пачку достаточен.
+  V1 использует trailing-only debounce: одиночный файл получает задержку на
+  `debounce`, зато модель проще и не требует leading-edge/trailing-suppress
+  автомата. Leading-edge можно добавить позже как latency-optimization, не как
+  correctness requirement.
 - **Single-flight detect:** реализуется coordinator'ом, не watcher'ом.
 - **Resource budget:** каждый active watcher держит SMB connection/session/share,
   directory handle и worker. Health показывает active watcher count; thread names
@@ -271,6 +292,15 @@ watch-клиент получает отдельный lease-timeout (напри
 трактуется как **плановый re-arm/reconnect**, а не как ошибка transport:
 DEBUG/INFO + счётчик re-arm, без `DOWN`.
 
+**Результат S0 на текущем Samba-стенде (2026-07-02):**
+
+- pending `Directory.watchAsync()` пережил 65 секунд тишины при
+  `request-timeout=30s`;
+- после idle-периода создание файла доставило notify;
+- для текущего стенда отдельный публичный watch-timeout не нужен, но internal
+  seam под отдельный watch config остаётся до проверки Windows Server/реальной
+  сети.
+
 **Стендовый критерий:**
 
 - idle watch без изменений живёт минимум `2 × request-timeout`;
@@ -289,6 +319,9 @@ firewall/NAT может выкинуть TCP state так, что клиент �
 периодически закрывает directory/share/client и открывает watch заново
 (`max-watch-session-age`, internal default до стенда). Echo/no-op не вводим в
 v1: он мультиплексирует служебный IO с long-poll session и усложняет lifecycle.
+Любой успешный re-open, включая плановый lease re-open, обязан вызвать
+`WATCH_ESTABLISHED` detect: между close старой сессии и новым `watchAsync`
+есть окно потерянных событий.
 
 **Стендовый критерий:**
 
@@ -313,6 +346,8 @@ overflow, delete/rename или status с семантикой `STATUS_NOTIFY_ENU
 
 - create final included file;
 - create temp/excluded file → rename to included final;
+- create included file and keep writing for N seconds after `ACTION_ADDED`
+  (partial-fetch risk);
 - append/modify existing file;
 - delete file;
 - rename old/new;
@@ -324,6 +359,17 @@ Samba-стенд обязателен для go/no-go реализации. Wind
 check перед формулировкой production-ready; до него capability документируется
 как optional accelerator с server-dependent semantics.
 
+**Результат S0 на текущем Samba-стенде (2026-07-02):**
+
+- create final file: `FILE_ACTION_ADDED`;
+- overwrite/append-style write: `FILE_ACTION_MODIFIED`;
+- same-directory rename `.tmp -> .txt`: пара
+  `FILE_ACTION_RENAMED_OLD_NAME` + `FILE_ACTION_RENAMED_NEW_NAME`;
+- для smbj `DiskEntry.rename(...)` target должен быть share-root relative path
+  в SMB-формате (`send\\dir\\file.txt`); простое имя переносит файл в root
+  share. Это важно для тестов/будущих SMB-операций, watcher payload всё равно
+  остаётся только doorbell.
+
 ## 6a. Митигация рисков
 
 | Риск | Решение / митигация |
@@ -333,9 +379,10 @@ check перед формулировкой production-ready; до него capa
 | Shutdown зависает на pending notify | `RemoteChangeWatch.close()` обязан отменять future, закрывать directory/share/client и ждать worker bounded timeout. Interrupt восстанавливается; после timeout — WARN и продолжение shutdown. Никаких неограниченных `await/get`. |
 | Overflow приходит не как пустой список, а как SMB status/exception | Adapter treats both forms as doorbell: empty notify list, explicit `STATUS_NOTIFY_ENUM_DIR`, or mapped exception with that status all call `signal.run()` and re-arm. Стенд фиксирует фактическое поведение smbj/Samba/Windows. |
 | Event storm при дозаписи большого файла | Coordinator debounce + single-flight + trailing rerun. Много notify превращаются максимум в один scheduled detect и один trailing detect после running detect. |
+| Push чаще ловит файл в середине записи | Риск не новый, но push делает окно вероятнее: `ACTION_ADDED` приходит сразу, пока producer ещё пишет. V1 mitigation: producer convention `*.tmp`/`*.part` + atomic rename, include/exclude, trailing-only debounce, identity `(path,size,mtime)` и in-flight/ledger idempotency. Если файл всё же скачан частично, дописанный файл становится новой identity и будет повторно обнаружен; тестовый стенд должен проверить long write after ADDED. |
 | Push включён для unsupported transport | Fail-fast при startup/wiring. Не должно быть тихого downgrade, потому что оператор явно включил capability. |
 | Remote path/ACL не позволяют открыть watch | Runtime watch state `RECONNECTING/DEGRADED`, polling остаётся backstop. Если periodic listing тоже не работает, health деградирует через существующую fetch policy. |
-| Файлы появились до старта демона или во время downtime watch'а | `STARTUP` и `RECONNECT_RECOVERY` trigger запускают обычный detect сразу после старта/успешного reconnect. |
+| Файлы появились до старта демона, во время downtime watch'а или в окне планового lease re-open | `STARTUP` и `WATCH_ESTABLISHED` trigger запускают обычный detect сразу после старта, recovery reconnect и планового re-open. |
 | `ControlEventPublisher.publish()` падает при signal-triggered detect | Publish failure observe/log, но watcher/coordinator продолжают жить. Correctness остаётся за periodic detect + ledger/in-flight idempotency. |
 | Watcher thread задерживает re-arm из-за listing/fetch | Watcher callback только enqueue в coordinator. Listing/fetch идут вне SMBJ watch loop. |
 | Samba и Windows Server отличаются по notify semantics | Интеграционный профиль: Samba обязателен для spike, Windows Server — manual/staging check перед объявлением production-ready. До Windows-проверки capability остаётся documented as SMB server dependent. |
@@ -368,13 +415,16 @@ check перед формулировкой production-ready; до него capa
 1. **Порт + coordinator каркас.** `RemoteChangeSignalSource`/`RemoteChangeWatch`,
    `RemoteFetchDetectionCoordinator`, coalescing/single-flight detect,
    config-binding (`change-notify.enabled/debounce`), health-поля; unit-тесты
-   на fake-источнике, включая `STARTUP`, `RECONNECT_RECOVERY`, publisher failure
-   и trailing rerun. Коммит: `FEATURE: add optional remote change signal port`.
+   на fake-источнике, включая `STARTUP`, `WATCH_ESTABLISHED` после reconnect и
+   планового re-open, запись success/no-op/failure outcome в `SyncHealthState`,
+   владение `closeIdle` после завершённого detect, publisher failure и
+   trailing rerun. Коммит: `FEATURE: add optional remote change signal port`.
 2. **SMB watcher.** `SmbChangeNotifyWatcher`: выделенный клиент, быстрый
    callback в coordinator, re-arm loop, overflow/status handling,
    infinite capped backoff-reconnect, bounded shutdown, credential wiping,
-   ACL/path error mapping; adapter contract test против стенда (профиль,
-   в CI по умолчанию skip). Коммит:
+   ACL/path error mapping, planful lease re-open с `WATCH_ESTABLISHED` trigger;
+   adapter contract test против стенда (профиль, в CI по умолчанию skip).
+   Коммит:
    `FEATURE: push remote change detection over SMB CHANGE_NOTIFY`.
 3. **Доки.** `docs/sync.md` (+ ADR 0013 superseded-note к реш. 11), закрытие
    SYNC-10, удаление этой worknote. Коммит: `DOCS: document CHANGE_NOTIFY push capability`.

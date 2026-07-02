@@ -70,13 +70,15 @@ public final class SyncHealthIndicator implements HealthIndicator {
             PublishLedgerHealthSummary durable = ledger.healthSummary(configuredTargets);
             PublishLedgerStatusCounts totals = durable.totals();
             Map<String, SyncHealthState.FetchSnapshot> fetches = state.fetchSnapshots();
+            Map<String, SyncHealthState.FetchDetectionSnapshot> detections = state.fetchDetectionSnapshots();
             Map<String, SyncHealthState.PublishSnapshot> publishes = state.publishSnapshots();
             Map<String, SyncHealthState.KeyedExecutorSignal> executorSignals = state.keyedExecutorSignals();
+            Map<String, SyncHealthState.RemoteChangeWatchSnapshot> watches = state.remoteChangeWatchSnapshots();
             long pending = totals.pending();
             long inProgress = totals.inProgress();
             long failed = totals.failed();
             long pinned = countPinnedSlices();
-            SyncOperationalStatus status = overallStatus(failed, fetches, publishes, executorSignals);
+            SyncOperationalStatus status = overallStatus(failed, fetches, detections, publishes, executorSignals, watches);
             Health.Builder builder = switch (status) {
                 case UP -> Health.up();
                 case DEGRADED -> Health.status(new Status("DEGRADED"));
@@ -84,13 +86,15 @@ public final class SyncHealthIndicator implements HealthIndicator {
             };
             return builder
                     .withDetail("fetchSources", fetchDetails(fetches))
+                    .withDetail("fetchDetection", detectionDetails(detections))
+                    .withDetail("remoteChangeWatch", watchDetails(watches))
                     .withDetail("publishTargets", publishDetails(publishes))
                     .withDetail("publishPending", pending)
                     .withDetail("publishInProgress", inProgress)
                     .withDetail("publishFailed", failed)
                     .withDetail("retentionPinnedSlices", pinned)
                     .withDetail("keyedExecutor", keyedExecutorDetails(executorSignals))
-                    .withDetail("endpoints", endpointDetails(fetches, publishes, durable.byEndpoint()))
+                    .withDetail("endpoints", endpointDetails(fetches, detections, watches, publishes, durable.byEndpoint()))
                     .build();
         } catch (RuntimeException failure) {
             return Health.down(failure).build();
@@ -118,6 +122,56 @@ public final class SyncHealthIndicator implements HealthIndicator {
                     : publishDetail(snapshot));
         }
         return details;
+    }
+
+    private Map<String, Object> detectionDetails(Map<String, SyncHealthState.FetchDetectionSnapshot> snapshots) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        for (RemoteFetchSource source : sources) {
+            SyncHealthState.FetchDetectionSnapshot snapshot = snapshots.get(source.sourceId());
+            details.put(source.sourceId(), snapshot == null
+                    ? Map.of("endpoint", source.endpoint(), "status", "NEVER_RUN")
+                    : detectionDetail(snapshot));
+        }
+        return details;
+    }
+
+    private Map<String, Object> detectionDetail(SyncHealthState.FetchDetectionSnapshot snapshot) {
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("endpoint", snapshot.endpoint());
+        detail.put("lastCompletedAt", snapshot.completedAt().toString());
+        detail.put("reason", snapshot.reason());
+        detail.put("detectedObjects", snapshot.detectedObjects());
+        detail.put("coalescedSignals", snapshot.coalescedSignals());
+        detail.put("status", snapshot.status().name());
+        if (snapshot.error() != null) {
+            detail.put("error", snapshot.error());
+        }
+        return detail;
+    }
+
+    private Map<String, Object> watchDetails(Map<String, SyncHealthState.RemoteChangeWatchSnapshot> snapshots) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        for (RemoteFetchSource source : sources) {
+            SyncHealthState.RemoteChangeWatchSnapshot snapshot = snapshots.get(source.sourceId());
+            details.put(source.sourceId(), snapshot == null
+                    ? Map.of("endpoint", source.endpoint(), "status", "DISABLED")
+                    : watchDetail(snapshot));
+        }
+        return details;
+    }
+
+    private Map<String, Object> watchDetail(SyncHealthState.RemoteChangeWatchSnapshot snapshot) {
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("endpoint", snapshot.endpoint());
+        detail.put("updatedAt", snapshot.updatedAt().toString());
+        detail.put("status", snapshot.status().name());
+        detail.put("signals", snapshot.signals());
+        detail.put("reconnects", snapshot.reconnects());
+        detail.put("reArms", snapshot.reArms());
+        if (snapshot.error() != null) {
+            detail.put("error", snapshot.error());
+        }
+        return detail;
     }
 
     private Map<String, Object> fetchDetail(SyncHealthState.FetchSnapshot snapshot) {
@@ -152,6 +206,8 @@ public final class SyncHealthIndicator implements HealthIndicator {
 
     private Map<String, Object> endpointDetails(
             Map<String, SyncHealthState.FetchSnapshot> fetches,
+            Map<String, SyncHealthState.FetchDetectionSnapshot> detections,
+            Map<String, SyncHealthState.RemoteChangeWatchSnapshot> watches,
             Map<String, SyncHealthState.PublishSnapshot> publishes,
             Map<String, PublishLedgerStatusCounts> durableByEndpoint) {
         Set<String> endpoints = new LinkedHashSet<>();
@@ -160,8 +216,11 @@ public final class SyncHealthIndicator implements HealthIndicator {
         Map<String, Object> details = new LinkedHashMap<>();
         for (String endpoint : endpoints) {
             boolean hasRun = fetches.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint))
+                    || detections.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint))
+                    || watches.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint))
                     || publishes.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint));
-            SyncOperationalStatus endpointStatus = endpointStatus(endpoint, fetches, publishes, durableByEndpoint);
+            SyncOperationalStatus endpointStatus = endpointStatus(endpoint, fetches, detections, watches, publishes,
+                    durableByEndpoint);
             details.put(endpoint, endpointStatus == null ? hasRun ? "UP" : "UNKNOWN" : endpointStatus.name());
         }
         return details;
@@ -237,15 +296,21 @@ public final class SyncHealthIndicator implements HealthIndicator {
     private SyncOperationalStatus overallStatus(
             long durableFailures,
             Map<String, SyncHealthState.FetchSnapshot> fetches,
+            Map<String, SyncHealthState.FetchDetectionSnapshot> detections,
             Map<String, SyncHealthState.PublishSnapshot> publishes,
-            Map<String, SyncHealthState.KeyedExecutorSignal> executorSignals) {
+            Map<String, SyncHealthState.KeyedExecutorSignal> executorSignals,
+            Map<String, SyncHealthState.RemoteChangeWatchSnapshot> watches) {
         if (durableFailures > 0
                 || fetches.values().stream().anyMatch(snapshot -> snapshot.status() == SyncOperationalStatus.DOWN)
+                || detections.values().stream().anyMatch(snapshot -> snapshot.status() == SyncOperationalStatus.DOWN)
                 || publishes.values().stream().anyMatch(snapshot -> snapshot.status() == SyncOperationalStatus.DOWN)
                 || executorSignals.values().stream().anyMatch(this::failed)) {
             return SyncOperationalStatus.DOWN;
         }
         if (fetches.values().stream().anyMatch(snapshot -> snapshot.status() == SyncOperationalStatus.DEGRADED)
+                || detections.values().stream().anyMatch(snapshot -> snapshot.status() == SyncOperationalStatus.DEGRADED)
+                || watches.values().stream().anyMatch(snapshot ->
+                snapshot.status() == RemoteChangeWatchStatus.RECONNECTING)
                 || publishes.values().stream().anyMatch(snapshot -> snapshot.status() == SyncOperationalStatus.DEGRADED)) {
             return SyncOperationalStatus.DEGRADED;
         }
@@ -255,11 +320,15 @@ public final class SyncHealthIndicator implements HealthIndicator {
     private SyncOperationalStatus endpointStatus(
             String endpoint,
             Map<String, SyncHealthState.FetchSnapshot> fetches,
+            Map<String, SyncHealthState.FetchDetectionSnapshot> detections,
+            Map<String, SyncHealthState.RemoteChangeWatchSnapshot> watches,
             Map<String, SyncHealthState.PublishSnapshot> publishes,
             Map<String, PublishLedgerStatusCounts> durableByEndpoint) {
         if (durableByEndpoint.getOrDefault(endpoint,
                 new PublishLedgerStatusCounts(0, 0, 0, 0, 0)).failed() > 0
                 || fetches.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint)
+                && snapshot.status() == SyncOperationalStatus.DOWN)
+                || detections.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint)
                 && snapshot.status() == SyncOperationalStatus.DOWN)
                 || publishes.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint)
                 && snapshot.status() == SyncOperationalStatus.DOWN)) {
@@ -267,6 +336,10 @@ public final class SyncHealthIndicator implements HealthIndicator {
         }
         if (fetches.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint)
                 && snapshot.status() == SyncOperationalStatus.DEGRADED)
+                || detections.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint)
+                && snapshot.status() == SyncOperationalStatus.DEGRADED)
+                || watches.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint)
+                && snapshot.status() == RemoteChangeWatchStatus.RECONNECTING)
                 || publishes.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint)
                 && snapshot.status() == SyncOperationalStatus.DEGRADED)) {
             return SyncOperationalStatus.DEGRADED;

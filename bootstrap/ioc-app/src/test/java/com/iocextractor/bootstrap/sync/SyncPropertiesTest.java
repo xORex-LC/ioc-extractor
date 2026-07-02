@@ -8,6 +8,7 @@ import org.springframework.boot.context.properties.source.ConfigurationPropertyS
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.core.io.ClassPathResource;
 
+import java.time.Duration;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -87,6 +88,23 @@ class SyncPropertiesTest {
                 .hasMessageContaining("requestTimeout");
     }
 
+    @Test
+    void bindsChangeNotifyDefaultsAndExplicitDebounce() throws Exception {
+        IocProperties properties = defaults();
+        IocProperties.Sync.Fetch.Source disabled = source("disabled", "known");
+        IocProperties.Sync.Fetch.Source enabled = new IocProperties.Sync.Fetch.Source(
+                "enabled", "known", "/incoming", List.of("*.htm"), List.of("*.part"),
+                new IocProperties.Sync.Fetch.Source.ChangeNotify(true, Duration.ofSeconds(5)));
+
+        IocProperties.Sync sync = sync(List.of(endpoint("known")), List.of(disabled, enabled), List.of());
+
+        IocProperties.Sync.Fetch fetch = withSync(properties, sync).sync().fetch();
+        assertThat(fetch.sources().getFirst().changeNotify().enabled()).isFalse();
+        assertThat(fetch.sources().getFirst().changeNotify().debounce()).isEqualTo(Duration.ofSeconds(3));
+        assertThat(fetch.sources().get(1).changeNotify().enabled()).isTrue();
+        assertThat(fetch.sources().get(1).changeNotify().debounce()).isEqualTo(Duration.ofSeconds(5));
+    }
+
     private IocProperties defaults() throws Exception {
         var source = new YamlPropertySourceLoader()
                 .load("defaults", new ClassPathResource("application.yml")).getFirst();
@@ -114,7 +132,7 @@ class SyncPropertiesTest {
 
     private IocProperties.Sync.Fetch.Source source(String name, String endpoint) {
         return new IocProperties.Sync.Fetch.Source(name, endpoint, "/incoming",
-                List.of("*.htm"), List.of("*.part"));
+                List.of("*.htm"), List.of("*.part"), null);
     }
 
     private IocProperties.Sync.Publish.Target target(String name, String endpoint, String profile) {

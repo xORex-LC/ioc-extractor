@@ -268,7 +268,8 @@ public record IocProperties(
                                  @NotBlank String endpoint,
                                  @NotBlank String remotePath,
                                  @NotNull List<String> include,
-                                 @NotNull List<String> exclude) {
+                                 @NotNull List<String> exclude,
+                                 @Valid ChangeNotify changeNotify) {
 
                 public Source {
                     name = requireText(name, "sync fetch source name");
@@ -276,6 +277,21 @@ public record IocProperties(
                     remotePath = requireText(remotePath, "sync fetch source remotePath");
                     include = List.copyOf(include);
                     exclude = List.copyOf(exclude);
+                    changeNotify = changeNotify == null ? ChangeNotify.disabled() : changeNotify;
+                }
+
+                public record ChangeNotify(boolean enabled, Duration debounce) {
+
+                    private static final Duration DEFAULT_DEBOUNCE = Duration.ofSeconds(3);
+
+                    public ChangeNotify {
+                        debounce = debounce == null ? DEFAULT_DEBOUNCE : debounce;
+                        positive(debounce, "sync fetch changeNotify debounce");
+                    }
+
+                    static ChangeNotify disabled() {
+                        return new ChangeNotify(false, DEFAULT_DEBOUNCE);
+                    }
                 }
             }
         }

@@ -41,7 +41,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 /** Composition root segment for remote sync transports, use cases and daemon lifecycle. */
 @Configuration
@@ -147,6 +149,21 @@ public class SyncConfig {
                 transports, ledger, inFlight, fetchSources(props), DEFAULT_FETCH_BATCH_SIZE, clock);
     }
 
+    @Bean(destroyMethod = "close")
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.sync.enabled:false}' == 'true' && "
+            + "'${ioc.sync.fetch.enabled:false}' == 'true' && "
+            + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
+    public RemoteFetchDetectionCoordinator remoteFetchDetectionCoordinator(
+            RemoteSourceMonitor monitor,
+            ControlEventPublisher eventPublisher,
+            TransportRegistry transports,
+            SyncHealthState healthState,
+            IocProperties props) {
+        return new RemoteFetchDetectionCoordinator(
+                fetchSources(props), monitor, eventPublisher, transports, healthState, fetchDebounces(props));
+    }
+
     @Bean
     @Lazy
     @ConditionalOnExpression("'${ioc.sync.enabled:false}' == 'true' && "
@@ -190,13 +207,10 @@ public class SyncConfig {
             + "'${ioc.sync.fetch.enabled:false}' == 'true' && "
             + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
     public DaemonFetchScheduler daemonFetchScheduler(
-            RemoteSourceMonitor monitor,
-            ControlEventPublisher eventPublisher,
-            TransportRegistry transports,
-            SyncHealthState healthState,
+            RemoteFetchDetectionCoordinator detectionCoordinator,
             IocProperties props) {
         return new DaemonFetchScheduler(
-                fetchSources(props), monitor, eventPublisher, transports, healthState, props.sync().fetch().interval());
+                fetchSources(props), detectionCoordinator, props.sync().fetch().interval());
     }
 
     @Bean
@@ -323,6 +337,13 @@ public class SyncConfig {
                         source.name(), source.endpoint(), source.remotePath(),
                         source.include(), source.exclude()))
                 .toList();
+    }
+
+    private Map<String, Duration> fetchDebounces(IocProperties props) {
+        return props.sync().fetch().sources().stream()
+                .collect(Collectors.toUnmodifiableMap(
+                        IocProperties.Sync.Fetch.Source::name,
+                        source -> source.changeNotify().debounce()));
     }
 
     private List<PublishTarget> publishTargets(IocProperties props) {

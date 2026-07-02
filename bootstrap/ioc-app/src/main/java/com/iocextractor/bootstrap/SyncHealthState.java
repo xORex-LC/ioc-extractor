@@ -20,8 +20,10 @@ public final class SyncHealthState {
     private final Clock clock;
     private final SyncOperationalOutcomePolicy outcomePolicy;
     private final ConcurrentHashMap<String, FetchSnapshot> fetchBySource = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, FetchDetectionSnapshot> detectionBySource = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, PublishSnapshot> publishByTarget = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, KeyedExecutorSignal> executorByKey = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, RemoteChangeWatchSnapshot> watchBySource = new ConcurrentHashMap<>();
 
     /** Creates runtime state timestamped by the injected application clock. */
     public SyncHealthState(Clock clock) {
@@ -41,6 +43,73 @@ public final class SyncHealthState {
     public void recordFetchFailure(String source, String endpoint, RuntimeException failure) {
         fetchBySource.put(source, new FetchSnapshot(
                 endpoint, clock.instant(), 0, 0, 1, outcomePolicy.classify(failure), failureMessage(failure)));
+    }
+
+    /** Records a completed remote source detection run. */
+    public void recordFetchDetection(String source, String endpoint, String reason, int detectedObjects) {
+        detectionBySource.compute(source, (ignored, previous) -> new FetchDetectionSnapshot(
+                endpoint, clock.instant(), reason, Math.max(0, detectedObjects),
+                previous == null ? 0 : previous.coalescedSignals(),
+                SyncOperationalStatus.UP, null));
+    }
+
+    /** Records a remote source detection run failure. */
+    public void recordFetchDetectionFailure(String source,
+                                            String endpoint,
+                                            String reason,
+                                            RuntimeException failure) {
+        detectionBySource.compute(source, (ignored, previous) -> new FetchDetectionSnapshot(
+                endpoint, clock.instant(), reason, 0,
+                previous == null ? 0 : previous.coalescedSignals(),
+                outcomePolicy.classify(failure), failureMessage(failure)));
+    }
+
+    /** Records a signal that was coalesced into an already scheduled or running detection. */
+    public void recordFetchDetectionCoalesced(String source, String endpoint) {
+        detectionBySource.compute(source, (ignored, previous) -> new FetchDetectionSnapshot(
+                endpoint, previous == null ? clock.instant() : previous.completedAt(),
+                previous == null ? "UNKNOWN" : previous.reason(),
+                previous == null ? 0 : previous.detectedObjects(),
+                previous == null ? 1 : previous.coalescedSignals() + 1,
+                previous == null ? SyncOperationalStatus.UP : previous.status(),
+                previous == null ? null : previous.error()));
+    }
+
+    /** Records an active optional remote change watch. */
+    public void recordRemoteChangeWatchEstablished(String source, String endpoint) {
+        watchBySource.compute(source, (ignored, previous) -> new RemoteChangeWatchSnapshot(
+                endpoint, clock.instant(), RemoteChangeWatchStatus.ACTIVE,
+                previous == null ? 0 : previous.signals(),
+                previous == null ? 0 : previous.reconnects(),
+                previous == null ? 0 : previous.reArms() + 1,
+                null));
+    }
+
+    /** Records an optional remote change watch signal. */
+    public void recordRemoteChangeWatchSignal(String source, String endpoint) {
+        watchBySource.compute(source, (ignored, previous) -> new RemoteChangeWatchSnapshot(
+                endpoint, clock.instant(),
+                previous == null ? RemoteChangeWatchStatus.ACTIVE : previous.status(),
+                previous == null ? 1 : previous.signals() + 1,
+                previous == null ? 0 : previous.reconnects(),
+                previous == null ? 0 : previous.reArms(),
+                previous == null ? null : previous.error()));
+    }
+
+    /** Records an optional remote change watch entering reconnect/degraded state. */
+    public void recordRemoteChangeWatchFailure(String source, String endpoint, RuntimeException failure) {
+        watchBySource.compute(source, (ignored, previous) -> new RemoteChangeWatchSnapshot(
+                endpoint, clock.instant(), RemoteChangeWatchStatus.RECONNECTING,
+                previous == null ? 0 : previous.signals(),
+                previous == null ? 1 : previous.reconnects() + 1,
+                previous == null ? 0 : previous.reArms(),
+                failureMessage(failure)));
+    }
+
+    /** Records that remote change watch is disabled for one source. */
+    public void recordRemoteChangeWatchDisabled(String source, String endpoint) {
+        watchBySource.put(source, new RemoteChangeWatchSnapshot(
+                endpoint, clock.instant(), RemoteChangeWatchStatus.DISABLED, 0, 0, 0, null));
     }
 
     /** Records a completed target publish, including failed ledger pairs. */
@@ -111,6 +180,11 @@ public final class SyncHealthState {
         return Collections.unmodifiableMap(new LinkedHashMap<>(new TreeMap<>(fetchBySource)));
     }
 
+    /** Returns a stable, key-sorted copy of latest detection outcomes. */
+    public Map<String, FetchDetectionSnapshot> fetchDetectionSnapshots() {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(new TreeMap<>(detectionBySource)));
+    }
+
     /** Returns a stable, key-sorted copy for one health read. */
     public Map<String, PublishSnapshot> publishSnapshots() {
         return Collections.unmodifiableMap(new LinkedHashMap<>(new TreeMap<>(publishByTarget)));
@@ -119,6 +193,11 @@ public final class SyncHealthState {
     /** Returns a stable, key-sorted copy of executor degradation signals. */
     public Map<String, KeyedExecutorSignal> keyedExecutorSignals() {
         return Collections.unmodifiableMap(new LinkedHashMap<>(new TreeMap<>(executorByKey)));
+    }
+
+    /** Returns a stable, key-sorted copy of optional remote change watch state. */
+    public Map<String, RemoteChangeWatchSnapshot> remoteChangeWatchSnapshots() {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(new TreeMap<>(watchBySource)));
     }
 
     private String failureMessage(RuntimeException failure) {
@@ -135,6 +214,16 @@ public final class SyncHealthState {
                                 int failed,
                                 SyncOperationalStatus status,
                                 String error) {
+    }
+
+    /** Latest detection outcome for one configured source. */
+    public record FetchDetectionSnapshot(String endpoint,
+                                         Instant completedAt,
+                                         String reason,
+                                         int detectedObjects,
+                                         long coalescedSignals,
+                                         SyncOperationalStatus status,
+                                         String error) {
     }
 
     /** Latest publish outcome for one configured target/profile binding. */
@@ -156,5 +245,15 @@ public final class SyncHealthState {
                                       int abandonedWork,
                                       String lastDispatchFailure,
                                       String error) {
+    }
+
+    /** Latest optional remote change watch state for one configured source. */
+    public record RemoteChangeWatchSnapshot(String endpoint,
+                                            Instant updatedAt,
+                                            RemoteChangeWatchStatus status,
+                                            long signals,
+                                            long reconnects,
+                                            long reArms,
+                                            String error) {
     }
 }

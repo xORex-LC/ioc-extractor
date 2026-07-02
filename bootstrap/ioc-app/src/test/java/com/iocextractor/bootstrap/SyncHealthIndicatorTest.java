@@ -168,6 +168,36 @@ class SyncHealthIndicatorTest {
         assertThat(indicator.health().getStatus()).isEqualTo(Status.UP);
     }
 
+    @Test
+    void reportsDetectionAndRemoteChangeWatchStateAsDegradedNotDown() {
+        SyncHealthState state = new SyncHealthState(Clock.fixed(NOW, ZoneOffset.UTC));
+        SyncHealthIndicator indicator = new SyncHealthIndicator(
+                List.of(new RemoteFetchSource(
+                        "incoming", "primary", "/in", List.of("*"), List.of())),
+                List.of(), state, ledger(List.of()), catalog(List.of()), descriptor -> false);
+        state.recordFetchDetection("incoming", "primary", "PUSH", 3);
+        state.recordRemoteChangeWatchFailure("incoming", "primary",
+                new IllegalStateException("watch disconnected"));
+
+        var health = indicator.health();
+
+        assertThat(health.getStatus()).isEqualTo(new Status("DEGRADED"));
+        @SuppressWarnings("unchecked")
+        Map<String, Map<String, Object>> detection =
+                (Map<String, Map<String, Object>>) health.getDetails().get("fetchDetection");
+        assertThat(detection.get("incoming"))
+                .containsEntry("reason", "PUSH")
+                .containsEntry("detectedObjects", 3)
+                .containsEntry("status", "UP");
+        @SuppressWarnings("unchecked")
+        Map<String, Map<String, Object>> watch =
+                (Map<String, Map<String, Object>>) health.getDetails().get("remoteChangeWatch");
+        assertThat(watch.get("incoming"))
+                .containsEntry("status", "RECONNECTING")
+                .containsEntry("reconnects", 1L)
+                .containsEntry("error", "watch disconnected");
+    }
+
     private PublishLedger ledger(List<PublishRecord> records) {
         return new PublishLedger() {
             @Override
