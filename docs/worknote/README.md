@@ -14,10 +14,5 @@
 - [sync-hardening-issues.md](sync-hardening-issues.md) — временный issues-список
   по sync/event-coordination после реализации 0013 (S0–S8): лог-altitude,
   SMB-таймауты (SO_TIMEOUT-reaper), классификация транзиентов, health-`findAll`,
-  мёртвый `publish.trigger`, CHANGE_NOTIFY-investigate.
+  мёртвый `publish.trigger`.
   Удаляется после закрытия всех пунктов.
-- [sync-change-notify.md](sync-change-notify.md) — design-note спайка H6
-  (SYNC-10): SMB2 CHANGE_NOTIFY как optional push для fetch — doorbell-модель
-  (сигнал → `detect`, без targeted stat), порт `RemoteChangeSignalSource`,
-  lifecycle/re-arm/overflow, решение по удалениям и retention-watch-item,
-  go/no-go вопросы стенда.

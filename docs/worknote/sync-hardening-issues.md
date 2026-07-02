@@ -25,7 +25,7 @@ reconcile, MDC-проброс и т.д.) — **закрыты** и здесь н
 | ~~SYNC-7~~ | ~~Индекс `(profile, slice_name)` под `findBySliceName`~~ | Low | ✅ закрыт |
 | ~~SYNC-8~~ | ~~Двойная эмиссия `LOCAL_SLICE_INVALID`~~ | Low | ✅ закрыт |
 | SYNC-9 | Watch-item: leak claim'а in-flight-реестра при abandon работы (сейчас недостижим) | Note | открыт |
-| SYNC-10 | CHANGE_NOTIFY поддержан smbj 0.14; design-note готова ([sync-change-notify.md](sync-change-notify.md)), дальше стендовый прототип (go/no-go) | Design | design готов / стенд |
+| ~~SYNC-10~~ | ~~SMB2 CHANGE_NOTIFY optional push для fetch~~ | Design | ✅ закрыт |
 | ~~SYNC-11~~ | ~~Actuator health материализовал весь `publish_ledger` через `findAll`~~ | Medium | ✅ закрыт |
 | ~~SYNC-6~~ | ~~Гонка periodic↔fast-path publish~~ | — | ✅ закрыт |
 
@@ -220,40 +220,25 @@ Periodic-reconcile зовёт `findBySliceName(profile, sliceName)` на каж�
 
 ## SYNC-10 — Optional push: SMB2 CHANGE_NOTIFY
 
-Потребительская сторона fetch уже полностью event-driven
-(`RemoteChangeFetchListener` + `FetchRemoteObjectsCommand` реагируют мгновенно,
-без таймера); опрос нужен только чтобы **произвести** событие. Истинный push =
-CHANGE_NOTIFY: watch в `adapter-transport-smb` → notification → targeted `stat`
-изменённого файла (notification не несёт size/mtime для identity) → тот же
-`RemoteChangeBatchDetected`. Backstop-опрос остаётся (watch срывается,
-server-side overflow) — push строго аддитивен (ADR 0013, реш. 11/Q9).
+Закрыто как optional latency accelerator, а не correctness path. Итоговая модель:
+`SmbChangeNotifyWatcher` в `adapter-transport-smb` держит выделенный SMB client/
+session/share/directory handle и отдаёт только doorbell callback. Bootstrap
+`RemoteChangeWatchLifecycle` владеет start/stop, fail-fast wiring, reconnect/
+cancel/re-arm и передаёт сигнал в `RemoteFetchDetectionCoordinator`. Любой notify,
+overflow или успешное открытие watch-сессии запускает обычный
+`RemoteSourceMonitor.detect(source)`, который переиспользует listing/matching/
+in-flight dedup/ledger idempotency и публикует существующий
+`RemoteChangeBatchDetected`.
 
-**Проверка закрыта положительно:** smbj 0.14 предоставляет публичный
-`Directory.watchAsync(Set<SMB2CompletionFilter>, boolean)` и
-`SMB2ChangeNotifyResponse#getFileNotifyInfoList()`. Ответ содержит action/path,
-но не полную `RemoteObjectIdentity`, поэтому targeted `stat` после notification
-остаётся необходимым.
+Почему не targeted `stat`: уведомление SMBJ содержит action/path, но delete/overflow
+и server-specific semantics делают targeted path оптимизацией, а не корректной базой.
+Doorbell-модель проще, сохраняет один detection path и не добавляет новый источник
+истины. Polling остаётся обязательным backstop.
 
-**Целевая граница:** не добавлять watch в общий `FileTransport` — не каждый
-transport имеет push-семантику. Завести отдельный optional port
-`RemoteChangeSignalSource`; SMB adapter реализует его, bootstrap владеет lifecycle,
-reconnect/cancel/re-arm, application делает targeted stat и публикует существующий
-`RemoteChangeBatchDetected`. Watch одноразовый и должен перевзводиться после каждого
-ответа. Overflow, разрыв watch и рестарт восстанавливаются polling-backstop.
-
-Зависимость: сначала SYNC-2 — долгоживущий watch бессмысленен, пока SO_TIMEOUT
-убивает reader через 10 секунд. Реализация CHANGE_NOTIFY — отдельный design-spike,
-не часть timeout bugfix.
-
-**Design-note готова:** [sync-change-notify.md](sync-change-notify.md). Ключевое
-уточнение относительно формулировки выше: вместо targeted `stat` принята
-**doorbell-модель** — любой ответ watch'а (включая overflow и delete) только
-триггерит `RemoteSourceMonitor.detect(source)`, который переиспользует
-существующий listing/матчинг/дедуп и публикует тот же `RemoteChangeBatchDetected`.
-Targeted stat остаётся отложенной оптимизацией для больших каталогов. Там же:
-решение не чистить `remote_fetch` ledger по delete-событиям (retention по
-возрасту как watch-item) и go/no-go вопросы стенда (pending vs `request-timeout`,
-keepalive, Samba/Windows).
+Проверка spike закрыта положительно: smbj 0.14 предоставляет публичный
+`Directory.watchAsync(Set<SMB2CompletionFilter>, boolean)`, pending watch на текущем
+Samba-стенде пережил idle дольше `request-timeout`, create/modify/rename доставляют
+notify. Опубликованная документация перенесена в [../sync.md](../sync.md).
 
 ## SYNC-11 — Health грузит весь исторический ledger на каждый запрос
 
@@ -380,3 +365,9 @@ SYNC-5/7/8 и задаёт границу SYNC-10; SYNC-9 остаётся от�
   **Следствие:** смягчать `JdbcPublishLedger.compatible()` (прежний вариант 2)
   теперь НЕ нужно и НЕ следует — это ослабило бы CAS-контроль без существующей
   гонки.
+- ✅ **SYNC-10 — SMB2 CHANGE_NOTIFY.** Закрыт как optional latency accelerator:
+  `RemoteChangeSignalSource` port + bootstrap `RemoteChangeWatchLifecycle` +
+  SMB `SmbChangeNotifyWatcher`. Watcher отдаёт только doorbell, а correctness
+  остаётся за `RemoteSourceMonitor.detect`, in-flight/ledger idempotency и
+  periodic polling/reconcile. Опубликованная документация перенесена в
+  [../sync.md](../sync.md); временная worknote удалена.

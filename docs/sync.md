@@ -126,7 +126,9 @@ terminal pair, включая ещё не materialized row. Поэтому max-c
 ## Daemon lifecycle
 
 Порядок `SmartLifecycle`: fetch `50` → export `100` → publish `150` → slice retention
-`200`. Publish до запуска periodic executor и на каждом periodic tick reconciles
+`200`. Fetch watch lifecycle (`CHANGE_NOTIFY`, если включён) стартует перед periodic
+fetch scheduler и на каждом успешном открытии watch-сессии запускает обычный
+detection (`WATCH_ESTABLISHED`). Publish до запуска periodic executor и на каждом periodic tick reconciles
 completed slices × targets один раз на export profile, чтобы retention не обогнал discovery и потерянный
 `SliceCompleted` не ждал restart. Periodic publish execution проходит через тот же
 keyed executor по endpoint, что и `SliceCompleted` fast-path; scheduler ждёт completion
@@ -143,16 +145,57 @@ windows. `platform-events` задаёт только framework-free event contra
 port; текущая доставка — Spring bridge в `bootstrap`, а не встроенный брокер.
 
 ```text
-fetch interval  ──▶ RemoteSourceMonitor ──▶ RemoteChangeBatchDetected ──▶ endpoint-keyed fetch
-export complete ──▶ SliceCompleted event ──▶ publish concrete slice
-publish reconcile▶ per-profile dir-listing × publish_ledger anti-join ──▶ verify only missing slices
-publish interval──▶ publish_ledger.findRetryable ──▶ publish pending/failed pairs
+fetch interval      ──▶ RemoteSourceMonitor ──▶ RemoteChangeBatchDetected ──▶ endpoint-keyed fetch
+SMB CHANGE_NOTIFY   ──▶ doorbell debounce ─────▶ same RemoteSourceMonitor.detect(source)
+watch established   ──▶ recovery detect ───────▶ same RemoteSourceMonitor.detect(source)
+export complete     ──▶ SliceCompleted event ──▶ publish concrete slice
+publish reconcile   ──▶ per-profile dir-listing × publish_ledger anti-join ──▶ verify only missing slices
+publish interval    ──▶ publish_ledger.findRetryable ──▶ publish pending/failed pairs
 ```
 
 Модель restart-safe: если процесс упал между discovery, remote commit и ledger update,
 следующий tick снова сверит durable state и доведёт незавершённую работу. Поэтому отсутствие
 новых файлов/срезов не является ошибкой: tick может закончиться `skipped`/already-`SUCCEEDED`
 и оставить health `UP`.
+
+### Optional SMB CHANGE_NOTIFY
+
+Для fetch-source можно включить transport-native push:
+
+```yaml
+ioc:
+  sync:
+    fetch:
+      sources:
+        - name: incoming-ioc
+          endpoint: delivery-share
+          remote-path: /incoming
+          include: [ "*.htm", "*.html", "*.docx" ]
+          exclude: [ "*.tmp", "*.part", ".*" ]
+          change-notify:
+            enabled: true
+            debounce: 3s
+```
+
+Это **accelerator**, а не новый источник корректности. SMB watcher держит выделенный
+client/session/share/directory handle и вызывает только doorbell callback. Он не передаёт
+имена файлов, не делает `stat`, не скачивает данные и не заменяет polling. Любой сигнал,
+overflow или успешное переоткрытие watch-сессии приводит к обычному
+`RemoteSourceMonitor.detect(source)`, где сохраняются include/exclude, in-flight dedup,
+ledger idempotency и bounded batch.
+
+Watcher бесконечно reconnect'ится с capped backoff из `ioc.sync.retry`, но игнорирует
+`max-attempts`: daemon-watch является long-running capability. Pending `watchAsync`
+закрывается bounded shutdown; плановый lease re-open выполняется периодически и тоже
+запускает `WATCH_ESTABLISHED` recovery-detect, чтобы закрыть окно между close и новым watch.
+Trailing debounce выбран как v1 trade-off: одиночный файл получает задержку `debounce`,
+зато серия `ADDED/MODIFIED/RENAMED` сворачивается в один detect без сложного автомата.
+
+Практический риск push-модели — файл может быть замечен во время записи. Базовая
+защита остаётся прежней: producer convention `*.tmp`/`*.part` + atomic rename,
+exclude rules, debounce и identity `(path,size,mtime)`. Если файл всё-таки был
+скачан частично, дописанная версия становится новой identity и будет обнаружена
+следующим detection/backstop.
 
 ## CLI
 
@@ -176,6 +219,8 @@ Daemon actuator contributor `sync` публикует:
 - `retentionPinnedSlices`;
 - keyed executor state: running keys, queue depth per key, oldest age и последние
   shed/failure/dispatch-rejected сигналы;
+- fetch detection state и remote change watch state: active/reconnecting/disabled,
+  re-arm count, signal count, reconnect count и last error;
 - summary `UP|DEGRADED|DOWN|UNKNOWN` по endpoint.
 
 Последние scheduler outcomes хранятся только в памяти процесса и после restart снова
@@ -195,6 +240,9 @@ endpoint. ECS actions: `sync_fetch_start|complete`,
 ## Границы v1
 
 - только SMB transport; новый протокол добавляется отдельным adapter-модулем;
+- `CHANGE_NOTIFY` доступен только для SMB endpoint и остаётся optional. Если transport
+  не предоставляет `RemoteChangeSignalSource`, включённый `change-notify` fail-fast'ит
+  при startup, а не молча деградирует в polling;
 - fetch не удаляет remote source, publish не выполняет remote retention;
 - нет активной startup auth/write probe: endpoint status появляется после операции;
 - provisioning share/ACL и ротация динамических credentials остаются внешними задачами.

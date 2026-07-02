@@ -610,6 +610,13 @@ shared pool.
 
 ### 11. YAGNI-seam'ы: сериализация, DLQ, durable outbox, CHANGE_NOTIFY — зарезервированы, не строим
 
+> **Superseded note (2026-07-03):** часть про SMB2 `CHANGE_NOTIFY` больше не является
+> текущим состоянием реализации. После отдельного spike `CHANGE_NOTIFY` приземлён как
+> optional SMB adapter capability (`RemoteChangeSignalSource`) и latency accelerator для
+> fetch. Это не меняет базовое решение ADR: `platform-events` не стал брокером, polling/
+> reconcile остаётся correctness backstop, а delivery/watch lifecycle живёт за adapter/
+> bootstrap границей.
+
 Сознательно **не реализуем** сейчас. Ключевое: все они — **концерны адаптера доставки за
 границей `ControlEventPublisher`** (реш. 2), а **не** внутренности `platform-events`. Когда
 понадобятся — добавляем adapter (outbox / RabbitMQ / Kafka), ядро событий не трогаем (OCP). Порт/
@@ -852,7 +859,8 @@ index + OS file-lease для recovery-ownership), но fetch/publish-испол�
 - **Durable outbox/DLQ/сериализация сейчас** — реш. 7/11: correctness держит reconcile-over-ledgers;
   durable-инфраструктура — YAGNI до реальной потребности, seam зарезервирован.
 - **Истинный push (CHANGE_NOTIFY) в v1** — реш. 11: SMB-специфичный хрупкий watch-lifecycle;
-  оптимизация латентности, не основа корректности.
+  оптимизация латентности, не основа корректности. **Superseded 2026-07-03:** реализован
+  отдельным optional SMB adapter capability после spike; polling/reconcile остались backstop.
 - **Самодельный брокер внутри `platform-events`** («мини-RMQ»: своя durable-очередь, redelivery,
   DLQ, сериализация, роутинг) — реш. 2/11: ядро задаёт только event model + publishing contract;
   доставочная механика — адаптер за `ControlEventPublisher`. Строить брокер внутри — переусложнение

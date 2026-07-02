@@ -363,6 +363,9 @@ ioc:
           remote-path: /incoming
           include: [ "*.htm", "*.html", "*.docx" ]
           exclude: [ "*.tmp", "*.part", ".*" ]
+          change-notify:
+            enabled: false
+            debounce: 3s
     publish:
       enabled: true
       interval: 5m
