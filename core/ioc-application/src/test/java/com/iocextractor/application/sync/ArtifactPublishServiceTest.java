@@ -7,7 +7,7 @@ import com.iocextractor.application.export.SliceArtifactManifest;
 import com.iocextractor.application.export.SliceDescriptor;
 import com.iocextractor.application.export.SliceManifest;
 import com.iocextractor.application.port.in.sync.ArtifactPublishCommand;
-import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
+import com.iocextractor.application.port.in.sync.ArtifactPublishExecutionResult;
 import com.iocextractor.application.port.out.sync.CompletedSliceCatalog;
 import com.iocextractor.application.port.out.sync.FileTransport;
 import com.iocextractor.application.port.out.sync.PublishLedger;
@@ -114,7 +114,7 @@ class ArtifactPublishServiceTest {
         assertThat(catalog.listCalls).isZero();
         assertThat(catalog.findCalls).isOne();
         assertThat(ledger.findAllCalls).isZero();
-        assertThat(ledger.countByStatusCalls).isOne();
+        assertThat(ledger.countByStatusCalls).isZero();
         assertThat(transport.published).containsExactly("endpoint-a:/remote/a/slice-one");
     }
 
@@ -143,7 +143,7 @@ class ArtifactPublishServiceTest {
         FakeTransport transport = new FakeTransport();
 
         var result = service(catalog(slice), ledger, transport, targets("reputation"), diagnostics())
-                .publish(new ArtifactPublishCommand(Optional.empty(), true));
+                .reconcile(new ArtifactPublishCommand(Optional.empty(), true));
 
         assertThat(result.pending()).isEqualTo(2);
         assertThat(ledger.records()).isEmpty();
@@ -214,7 +214,7 @@ class ArtifactPublishServiceTest {
         service.publishCompletedSlice(command);
         var result = service.publishCompletedSlice(command);
 
-        assertThat(result.succeeded()).isOne();
+        assertThat(result).isEqualTo(ArtifactPublishExecutionResult.empty());
         assertThat(ledger.records()).hasSize(1);
         assertThat(transport.published).containsExactly("endpoint-a:/remote/a/20260628T000000Z__slice-one");
     }
@@ -268,6 +268,7 @@ class ArtifactPublishServiceTest {
                 new ArtifactPublishCommand(Optional.empty(), false));
 
         assertThat(result.succeeded()).isEqualTo(1);
+        assertThat(result.recovered()).isEqualTo(1);
         assertThat(transport.published).isEmpty();
         assertThat(ledger.find("slice-one", "target-a")).hasValueSatisfying(record -> {
             assertThat(record.status()).isEqualTo(PublishStatus.SUCCEEDED);
@@ -336,8 +337,8 @@ class ArtifactPublishServiceTest {
         return new FakeCatalog(slices);
     }
 
-    private ArtifactPublishResult publishAfterReconcile(ArtifactPublishService service,
-                                                        ArtifactPublishCommand command) {
+    private ArtifactPublishExecutionResult publishAfterReconcile(ArtifactPublishService service,
+                                                                 ArtifactPublishCommand command) {
         service.reconcile(command);
         return service.publish(command);
     }

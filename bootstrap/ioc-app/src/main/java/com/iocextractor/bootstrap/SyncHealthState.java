@@ -1,6 +1,6 @@
 package com.iocextractor.bootstrap;
 
-import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
+import com.iocextractor.application.port.in.sync.ArtifactPublishExecutionResult;
 import com.iocextractor.application.port.in.sync.RemoteFetchResult;
 import com.iocextractor.platform.concurrent.WorkAdmission;
 import com.iocextractor.platform.concurrent.WorkKey;
@@ -41,11 +41,11 @@ public final class SyncHealthState {
     }
 
     /** Records a completed target publish, including failed ledger pairs. */
-    public void recordPublish(String target, String endpoint, String profile, ArtifactPublishResult result) {
+    public void recordPublish(String target, String endpoint, String profile, ArtifactPublishExecutionResult result) {
         Objects.requireNonNull(result, "result");
         publishByTarget.put(target, new PublishSnapshot(
-                endpoint, profile, clock.instant(), result.pending(), result.succeeded(),
-                result.failed(), result.abandoned(), null));
+                endpoint, profile, clock.instant(), result.attempted(), result.succeeded(),
+                result.recovered(), result.failed(), null));
     }
 
     /** Records a target-level publish failure that produced no result counters. */
@@ -54,7 +54,7 @@ public final class SyncHealthState {
                                      String profile,
                                      RuntimeException failure) {
         publishByTarget.put(target, new PublishSnapshot(
-                endpoint, profile, clock.instant(), 0, 0, 1, 0, failureMessage(failure)));
+                endpoint, profile, clock.instant(), 0, 0, 0, 1, failureMessage(failure)));
     }
 
     /** Records admission shedding for one in-memory executor key. */
@@ -135,10 +135,10 @@ public final class SyncHealthState {
     public record PublishSnapshot(String endpoint,
                                   String profile,
                                   Instant completedAt,
-                                  int pending,
+                                  int attempted,
                                   int succeeded,
+                                  int recovered,
                                   int failed,
-                                  int abandoned,
                                   String error) {
     }
 

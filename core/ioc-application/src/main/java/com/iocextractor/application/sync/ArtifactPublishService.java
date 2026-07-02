@@ -1,6 +1,7 @@
 package com.iocextractor.application.sync;
 
 import com.iocextractor.application.port.in.sync.ArtifactPublishCommand;
+import com.iocextractor.application.port.in.sync.ArtifactPublishExecutionResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
 import com.iocextractor.application.port.in.sync.PublishCompletedSliceCommand;
@@ -56,7 +57,7 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
     @Override
     public ArtifactPublishResult reconcile(ArtifactPublishCommand command) {
         Objects.requireNonNull(command, "command");
-        PublishCounters counters = new PublishCounters();
+        LedgerCounters counters = new LedgerCounters();
         for (String profile : selectedProfiles(command)) {
             List<PublishTarget> profileTargets = targetsForProfile(profile, command);
             if (profileTargets.isEmpty()) {
@@ -69,24 +70,24 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
     }
 
     @Override
-    public ArtifactPublishResult publish(ArtifactPublishCommand command) {
+    public ArtifactPublishExecutionResult publish(ArtifactPublishCommand command) {
         Objects.requireNonNull(command, "command");
         if (command.dryRun()) {
-            return reconcile(command);
+            return ArtifactPublishExecutionResult.empty();
         }
-        PublishCounters counters = new PublishCounters();
+        ExecutionCounters counters = new ExecutionCounters();
         List<PublishRecord> retryable = selectedRetryableRecords(command);
-        countKnownNonRetryableRecords(command, retryable, counters);
         for (PublishRecord record : retryable) {
-            findSlice(record, counters).ifPresent(slice -> apply(record, slice, false, counters));
+            counters.attempted++;
+            findSlice(record, counters).ifPresent(slice -> apply(record, slice, false, true, counters));
         }
         return counters.toResult();
     }
 
     @Override
-    public ArtifactPublishResult publishCompletedSlice(PublishCompletedSliceCommand command) {
+    public ArtifactPublishExecutionResult publishCompletedSlice(PublishCompletedSliceCommand command) {
         Objects.requireNonNull(command, "command");
-        PublishCounters counters = new PublishCounters();
+        ExecutionCounters counters = new ExecutionCounters();
         Optional<CompletedSlice> found = sliceCatalog.find(command.profile(), command.sliceName());
         if (found.isEmpty()) {
             return counters.toResult();
@@ -109,7 +110,7 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
     private void reconcileProfile(String profile,
                                   List<PublishTarget> profileTargets,
                                   boolean dryRun,
-                                  PublishCounters counters) {
+                                  LedgerCounters counters) {
         for (String sliceName : sliceCatalog.listCompletedSliceNames(profile)) {
             List<PublishRecord> existing = ledger.findBySliceName(profile, sliceName);
             for (PublishRecord record : existing) {
@@ -135,7 +136,7 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
 
     private Optional<CompletedSlice> findSliceForDiscovery(String profile,
                                                            String sliceName,
-                                                           PublishCounters counters) {
+                                                           LedgerCounters counters) {
         try {
             return sliceCatalog.find(profile, sliceName);
         } catch (RuntimeException failure) {
@@ -153,19 +154,6 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
                 .toList();
     }
 
-    private void countKnownNonRetryableRecords(ArtifactPublishCommand command,
-                                               List<PublishRecord> retryable,
-                                               PublishCounters counters) {
-        PublishLedgerStatusCounts counts =
-                ledger.countByStatus(command.profile(), command.target(), command.endpoint());
-        long staleInProgress = retryable.stream()
-                .filter(record -> record.status() == PublishStatus.IN_PROGRESS)
-                .count();
-        counters.pending += toInt(Math.max(0L, counts.inProgress() - staleInProgress));
-        counters.succeeded += toInt(counts.succeeded());
-        counters.abandoned += toInt(counts.abandoned());
-    }
-
     private boolean matches(PublishRecord record, PublishTarget target) {
         return record.targetId().equals(target.targetId())
                 && record.endpoint().equals(target.endpoint())
@@ -175,7 +163,7 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
     private void reconcilePair(CompletedSlice slice,
                                PublishTarget target,
                                boolean dryRun,
-                               PublishCounters counters) {
+                               LedgerCounters counters) {
         Optional<PublishRecord> record = resolveRecord(slice, target, dryRun);
         if (record.isEmpty()) {
             counters.pending++;
@@ -187,16 +175,15 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
     private void publishPair(CompletedSlice slice,
                              PublishTarget target,
                              boolean dryRun,
-                             PublishCounters counters) {
+                             ExecutionCounters counters) {
         Optional<PublishRecord> record = resolveRecord(slice, target, dryRun);
         if (record.isEmpty()) {
-            counters.pending++;
             return;
         }
-        apply(record.orElseThrow(), slice, dryRun, counters);
+        apply(record.orElseThrow(), slice, dryRun, false, counters);
     }
 
-    private Optional<CompletedSlice> findSlice(PublishRecord record, PublishCounters counters) {
+    private Optional<CompletedSlice> findSlice(PublishRecord record, ExecutionCounters counters) {
         Optional<CompletedSlice> found;
         try {
             found = sliceCatalog.find(record.profile(), record.sliceName());
@@ -288,7 +275,7 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
         return Optional.of(ledger.ensurePending(pending));
     }
 
-    private void countState(PublishRecord record, PublishCounters counters) {
+    private void countState(PublishRecord record, LedgerCounters counters) {
         switch (record.status()) {
             case SUCCEEDED -> counters.succeeded++;
             case ABANDONED -> counters.abandoned++;
@@ -297,20 +284,27 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
         }
     }
 
-    private void apply(PublishRecord record, CompletedSlice slice, boolean dryRun, PublishCounters counters) {
+    private void apply(PublishRecord record,
+                       CompletedSlice slice,
+                       boolean dryRun,
+                       boolean attemptAlreadyCounted,
+                       ExecutionCounters counters) {
         switch (record.status()) {
-            case SUCCEEDED -> counters.succeeded++;
-            case ABANDONED -> counters.abandoned++;
-            case IN_PROGRESS, PENDING, FAILED -> publishRetryable(record, slice, dryRun, counters);
+            case SUCCEEDED, ABANDONED -> { }
+            case IN_PROGRESS, PENDING, FAILED -> {
+                if (!attemptAlreadyCounted) {
+                    counters.attempted++;
+                }
+                publishRetryable(record, slice, dryRun, counters);
+            }
         }
     }
 
     private void publishRetryable(PublishRecord record,
                                   CompletedSlice slice,
                                   boolean dryRun,
-                                  PublishCounters counters) {
+                                  ExecutionCounters counters) {
         if (dryRun) {
-            counters.pending++;
             return;
         }
         PublishRecord inProgress = moveToInProgress(record);
@@ -331,10 +325,11 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
     private void recoverExistingCommit(PublishRecord record,
                                        CompletedSlice slice,
                                        RemoteMarker marker,
-                                       PublishCounters counters) {
+                                       ExecutionCounters counters) {
         if (marker.matches(slice.manifestSha256())) {
             markSucceeded(record,
                     "remote marker matched existing manifest " + slice.manifestSha256(), counters);
+            counters.recovered++;
             return;
         }
         String reason = "remote _SUCCESS mismatch";
@@ -344,7 +339,7 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
 
     private void publishNewSlice(PublishRecord record,
                                  CompletedSlice slice,
-                                 PublishCounters counters) {
+                                 ExecutionCounters counters) {
         PublishReceipt receipt;
         try {
             receipt = retrier.execute(() -> transport.publishAtomically(
@@ -359,7 +354,7 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
 
     private void markSucceeded(PublishRecord record,
                                String remoteVerification,
-                               PublishCounters counters) {
+                               ExecutionCounters counters) {
         ledger.transition(record.sliceId(), record.targetId(),
                 PublishStatus.IN_PROGRESS, PublishStatus.SUCCEEDED, null, remoteVerification);
         counters.succeeded++;
@@ -368,7 +363,7 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
     private void markFailed(PublishRecord record,
                             String reason,
                             String remoteVerification,
-                            PublishCounters counters) {
+                            ExecutionCounters counters) {
         ledger.transition(record.sliceId(), record.targetId(),
                 PublishStatus.IN_PROGRESS, PublishStatus.FAILED, failureReason(reason), remoteVerification);
         counters.failed++;
@@ -376,13 +371,6 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
 
     private String failureReason(String reason) {
         return reason == null || reason.isBlank() ? "remote publish failed without detail" : reason;
-    }
-
-    private int toInt(long value) {
-        if (value > Integer.MAX_VALUE) {
-            return Integer.MAX_VALUE;
-        }
-        return (int) value;
     }
 
     private PublishRecord moveToInProgress(PublishRecord record) {
@@ -432,7 +420,7 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
         diagnostics.emit(builder.build());
     }
 
-    private static final class PublishCounters {
+    private static final class LedgerCounters {
         private int pending;
         private int succeeded;
         private int failed;
@@ -440,6 +428,17 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
 
         private ArtifactPublishResult toResult() {
             return new ArtifactPublishResult(pending, succeeded, failed, abandoned);
+        }
+    }
+
+    private static final class ExecutionCounters {
+        private int attempted;
+        private int succeeded;
+        private int recovered;
+        private int failed;
+
+        private ArtifactPublishExecutionResult toResult() {
+            return new ArtifactPublishExecutionResult(attempted, succeeded, recovered, failed);
         }
     }
 

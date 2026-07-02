@@ -1,6 +1,7 @@
 package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.port.in.sync.ArtifactPublishCommand;
+import com.iocextractor.application.port.in.sync.ArtifactPublishExecutionResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
 import com.iocextractor.application.port.in.sync.PublishCompletedSliceCommand;
@@ -85,16 +86,16 @@ class DaemonPublishSchedulerTest {
             }
 
             @Override
-            public ArtifactPublishResult publish(ArtifactPublishCommand command) {
+            public ArtifactPublishExecutionResult publish(ArtifactPublishCommand command) {
                 attempts.incrementAndGet();
                 entered.countDown();
                 await(release);
-                return empty();
+                return emptyExecution();
             }
 
             @Override
-            public ArtifactPublishResult publishCompletedSlice(PublishCompletedSliceCommand command) {
-                return empty();
+            public ArtifactPublishExecutionResult publishCompletedSlice(PublishCompletedSliceCommand command) {
+                return emptyExecution();
             }
         };
         DaemonPublishScheduler scheduler = new DaemonPublishScheduler(
@@ -214,6 +215,10 @@ class DaemonPublishSchedulerTest {
         return new ArtifactPublishResult(0, 0, 0, 0);
     }
 
+    private static ArtifactPublishExecutionResult emptyExecution() {
+        return ArtifactPublishExecutionResult.empty();
+    }
+
     private static void await(CountDownLatch latch) {
         try {
             latch.await();
@@ -240,7 +245,7 @@ class DaemonPublishSchedulerTest {
         }
 
         @Override
-        public ArtifactPublishResult publish(ArtifactPublishCommand command) {
+        public ArtifactPublishExecutionResult publish(ArtifactPublishCommand command) {
             String target = command.target().orElseThrow();
             published.add(target);
             operations.add("publish:" + target);
@@ -251,11 +256,11 @@ class DaemonPublishSchedulerTest {
                 failFirstTargetOnce = false;
                 throw new IllegalStateException("unreachable");
             }
-            return new ArtifactPublishResult(0, 1, 0, 0);
+            return new ArtifactPublishExecutionResult(1, 1, 0, 0);
         }
 
         @Override
-        public ArtifactPublishResult publishCompletedSlice(PublishCompletedSliceCommand command) {
+        public ArtifactPublishExecutionResult publishCompletedSlice(PublishCompletedSliceCommand command) {
             return publish(new ArtifactPublishCommand(
                     Optional.of(command.profile()), command.target(), command.endpoint(), false));
         }

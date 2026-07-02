@@ -5,7 +5,7 @@ import com.iocextractor.application.export.ExportFormat;
 import com.iocextractor.application.export.ExportMode;
 import com.iocextractor.application.export.SliceArtifactManifest;
 import com.iocextractor.application.export.SliceManifest;
-import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
+import com.iocextractor.application.port.in.sync.ArtifactPublishExecutionResult;
 import com.iocextractor.application.port.in.sync.RemoteFetchResult;
 import com.iocextractor.application.port.out.sync.CompletedSliceCatalog;
 import com.iocextractor.application.port.out.sync.PublishLedger;
@@ -47,7 +47,7 @@ class SyncHealthIndicatorTest {
         SyncHealthState state = new SyncHealthState(Clock.fixed(NOW, ZoneOffset.UTC));
         state.recordFetch("incoming", "primary", new RemoteFetchResult(2, 1, 0));
         state.recordPublish("delivery", "primary", "reputation",
-                new ArtifactPublishResult(0, 0, 1, 0));
+                new ArtifactPublishExecutionResult(1, 0, 0, 1));
         List<PublishRecord> records = List.of(
                 record("pending", PublishStatus.PENDING),
                 record("failed", PublishStatus.FAILED));

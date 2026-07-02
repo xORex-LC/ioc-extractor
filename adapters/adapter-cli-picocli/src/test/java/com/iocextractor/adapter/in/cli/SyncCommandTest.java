@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.in.cli;
 
 import com.iocextractor.application.port.in.sync.ArtifactPublishCommand;
+import com.iocextractor.application.port.in.sync.ArtifactPublishExecutionResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
 import com.iocextractor.application.port.in.sync.PublishCompletedSliceCommand;
@@ -52,7 +53,7 @@ class SyncCommandTest {
     @Test
     void publishReturnsFailureExitCodeAndRendersCounters() {
         RecordingValidator validator = new RecordingValidator();
-        ArtifactPublishUseCase publisher = publisherReturning(new ArtifactPublishResult(1, 2, 1, 0));
+        ArtifactPublishUseCase publisher = publisherReturning(new ArtifactPublishExecutionResult(4, 2, 0, 1));
         SyncPublishCommand command = new SyncPublishCommand(
                 validator, provider(ArtifactPublishUseCase.class, publisher));
         StringWriter output = new StringWriter();
@@ -62,7 +63,7 @@ class SyncCommandTest {
 
         assertThat(exit).isOne();
         assertThat(validator.calls).containsExactly("publish:reputation:backup:share:false");
-        assertThat(output.toString()).contains("Publish: pending=1 succeeded=2 failed=1 abandoned=0");
+        assertThat(output.toString()).contains("Publish: attempted=4 succeeded=2 recovered=0 failed=1");
     }
 
     @Test
@@ -110,7 +111,7 @@ class SyncCommandTest {
         }));
         beans.registerBeanDefinition("publisher", new RootBeanDefinition(ArtifactPublishUseCase.class, () -> {
             publishResolutions.incrementAndGet();
-            return publisherReturning(new ArtifactPublishResult(0, 1, 0, 0));
+            return publisherReturning(new ArtifactPublishExecutionResult(1, 1, 0, 0));
         }));
         RecordingValidator validator = new RecordingValidator() {
             @Override
@@ -150,13 +151,13 @@ class SyncCommandTest {
             }
 
             @Override
-            public ArtifactPublishResult publish(ArtifactPublishCommand command) {
+            public ArtifactPublishExecutionResult publish(ArtifactPublishCommand command) {
                 calls.add("publish");
-                return new ArtifactPublishResult(0, 1, 0, 0);
+                return new ArtifactPublishExecutionResult(1, 1, 0, 0);
             }
 
             @Override
-            public ArtifactPublishResult publishCompletedSlice(PublishCompletedSliceCommand command) {
+            public ArtifactPublishExecutionResult publishCompletedSlice(PublishCompletedSliceCommand command) {
                 throw new UnsupportedOperationException("publishCompletedSlice is not used by CLI");
             }
         };
@@ -187,20 +188,20 @@ class SyncCommandTest {
         return beans;
     }
 
-    private ArtifactPublishUseCase publisherReturning(ArtifactPublishResult result) {
+    private ArtifactPublishUseCase publisherReturning(ArtifactPublishExecutionResult result) {
         return new ArtifactPublishUseCase() {
             @Override
             public ArtifactPublishResult reconcile(ArtifactPublishCommand command) {
+                return new ArtifactPublishResult(0, 0, 0, 0);
+            }
+
+            @Override
+            public ArtifactPublishExecutionResult publish(ArtifactPublishCommand command) {
                 return result;
             }
 
             @Override
-            public ArtifactPublishResult publish(ArtifactPublishCommand command) {
-                return result;
-            }
-
-            @Override
-            public ArtifactPublishResult publishCompletedSlice(PublishCompletedSliceCommand command) {
+            public ArtifactPublishExecutionResult publishCompletedSlice(PublishCompletedSliceCommand command) {
                 throw new UnsupportedOperationException("publishCompletedSlice is not used by CLI");
             }
         };

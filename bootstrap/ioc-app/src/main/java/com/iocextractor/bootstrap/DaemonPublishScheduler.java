@@ -1,7 +1,7 @@
 package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.port.in.sync.ArtifactPublishCommand;
-import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
+import com.iocextractor.application.port.in.sync.ArtifactPublishExecutionResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
 import com.iocextractor.application.sync.PublishTarget;
 import com.iocextractor.observability.EventAction;
@@ -141,7 +141,7 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
                 .message("scheduled remote publish started")
                 .log();
         try {
-            ArtifactPublishResult result = publisher.publish(command(target));
+            ArtifactPublishExecutionResult result = publisher.publish(command(target));
             healthState.recordPublish(
                     target.targetId(), target.endpoint(), target.exportProfile(), result);
             LogEvents.info(log)
@@ -151,9 +151,9 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
                     .field(LogField.IOC_SYNC_ENDPOINT, target.endpoint())
                     .field(LogField.IOC_EXPORT_PROFILE, target.exportProfile())
                     .field(LogField.IOC_SYNC_FILES, result.succeeded())
-                    .message("scheduled remote publish completed: pending=" + result.pending()
-                            + ", succeeded=" + result.succeeded() + ", failed=" + result.failed()
-                            + ", abandoned=" + result.abandoned())
+                    .message("scheduled remote publish completed: attempted=" + result.attempted()
+                            + ", succeeded=" + result.succeeded() + ", recovered=" + result.recovered()
+                            + ", failed=" + result.failed())
                     .log();
         } catch (RuntimeException failure) {
             logFailure(target, "scheduled remote publish target failed", failure);

@@ -1,6 +1,6 @@
 package com.iocextractor.application.port.in.sync;
 
-/** Operator-facing summary of one publish/reconcile cycle. */
+/** Durable ledger state discovered by one reconciliation cycle. */
 public record ArtifactPublishResult(int pending, int succeeded, int failed, int abandoned) {
 
     public ArtifactPublishResult {

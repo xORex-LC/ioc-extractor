@@ -236,7 +236,7 @@ class OnDemandExportIntegrationTest {
 
         Path remoteSlice = TEST_ROOT.resolve("remote/local/published").resolve(slice.getFileName());
         assertThat(first.succeeded()).isOne();
-        assertThat(duplicate.succeeded()).isOne();
+        assertThat(duplicate.hasActivity()).isFalse();
         assertThat(transport.publishCalls).isOne();
         assertThat(guard.canDelete(descriptor)).isTrue();
         assertThat(Files.readAllBytes(remoteSlice.resolve("manifest.json")))

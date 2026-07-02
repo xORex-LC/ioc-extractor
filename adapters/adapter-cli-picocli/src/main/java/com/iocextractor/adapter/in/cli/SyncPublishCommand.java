@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.in.cli;
 
 import com.iocextractor.application.port.in.sync.ArtifactPublishCommand;
+import com.iocextractor.application.port.in.sync.ArtifactPublishExecutionResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
 import com.iocextractor.application.port.in.sync.ValidateSyncSelectionUseCase;
@@ -55,17 +56,15 @@ public final class SyncPublishCommand implements Callable<Integer> {
         ArtifactPublishCommand command = command();
         validator.validatePublish(command);
         ArtifactPublishUseCase publisher = requireUseCase();
-        ArtifactPublishResult result = command.dryRun()
-                ? publisher.reconcile(command)
-                : publishAfterReconcile(publisher, command);
-        render(result);
-        return result.failed() == 0 ? 0 : 1;
-    }
-
-    private ArtifactPublishResult publishAfterReconcile(ArtifactPublishUseCase publisher,
-                                                        ArtifactPublishCommand command) {
+        if (command.dryRun()) {
+            ArtifactPublishResult summary = publisher.reconcile(command);
+            renderSummary(summary);
+            return summary.failed() == 0 ? 0 : 1;
+        }
         publisher.reconcile(command);
-        return publisher.publish(command);
+        ArtifactPublishExecutionResult result = publisher.publish(command);
+        renderExecution(result);
+        return result.failed() == 0 ? 0 : 1;
     }
 
     ArtifactPublishCommand command() {
@@ -77,11 +76,17 @@ public final class SyncPublishCommand implements Callable<Integer> {
         return value == null || value.isBlank() ? Optional.empty() : Optional.of(value);
     }
 
-    void render(ArtifactPublishResult result) {
+    void renderSummary(ArtifactPublishResult result) {
         spec.commandLine().getOut().printf(
                 "Publish%s: pending=%d succeeded=%d failed=%d abandoned=%d%n",
                 dryRun ? " dry-run" : "", result.pending(), result.succeeded(),
                 result.failed(), result.abandoned());
+    }
+
+    void renderExecution(ArtifactPublishExecutionResult result) {
+        spec.commandLine().getOut().printf(
+                "Publish: attempted=%d succeeded=%d recovered=%d failed=%d%n",
+                result.attempted(), result.succeeded(), result.recovered(), result.failed());
     }
 
     private ArtifactPublishUseCase requireUseCase() {

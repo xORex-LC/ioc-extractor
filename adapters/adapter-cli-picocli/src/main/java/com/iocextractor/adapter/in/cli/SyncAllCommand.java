@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.in.cli;
 
 import com.iocextractor.application.port.in.sync.ArtifactPublishCommand;
+import com.iocextractor.application.port.in.sync.ArtifactPublishExecutionResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
 import com.iocextractor.application.port.in.sync.RemoteFetchCommand;
@@ -73,30 +74,36 @@ public final class SyncAllCommand implements Callable<Integer> {
         ArtifactPublishUseCase publisher = requirePublishUseCase();
 
         RemoteFetchResult fetchResult = fetcher.fetch(fetchCommand);
-        ArtifactPublishResult publishResult = publishCommand.dryRun()
-                ? publisher.reconcile(publishCommand)
-                : publishAfterReconcile(publisher, publishCommand);
-        render(fetchResult, publishResult);
+        if (publishCommand.dryRun()) {
+            ArtifactPublishResult summary = publisher.reconcile(publishCommand);
+            renderDryRun(fetchResult, summary);
+            return fetchResult.failed() == 0 && summary.failed() == 0 ? 0 : 1;
+        }
+        publisher.reconcile(publishCommand);
+        ArtifactPublishExecutionResult publishResult = publisher.publish(publishCommand);
+        renderExecution(fetchResult, publishResult);
         return fetchResult.failed() == 0 && publishResult.failed() == 0 ? 0 : 1;
-    }
-
-    private ArtifactPublishResult publishAfterReconcile(ArtifactPublishUseCase publisher,
-                                                        ArtifactPublishCommand command) {
-        publisher.reconcile(command);
-        return publisher.publish(command);
     }
 
     private Optional<String> optional(String value) {
         return value == null || value.isBlank() ? Optional.empty() : Optional.of(value);
     }
 
-    private void render(RemoteFetchResult fetch, ArtifactPublishResult publish) {
+    private void renderDryRun(RemoteFetchResult fetch, ArtifactPublishResult publish) {
         spec.commandLine().getOut().printf("Fetch%s: fetched=%d skipped=%d failed=%d%n",
                 dryRun ? " dry-run" : "", fetch.fetched(), fetch.skipped(), fetch.failed());
         spec.commandLine().getOut().printf(
                 "Publish%s: pending=%d succeeded=%d failed=%d abandoned=%d%n",
                 dryRun ? " dry-run" : "", publish.pending(), publish.succeeded(),
                 publish.failed(), publish.abandoned());
+    }
+
+    private void renderExecution(RemoteFetchResult fetch, ArtifactPublishExecutionResult publish) {
+        spec.commandLine().getOut().printf("Fetch: fetched=%d skipped=%d failed=%d%n",
+                fetch.fetched(), fetch.skipped(), fetch.failed());
+        spec.commandLine().getOut().printf(
+                "Publish: attempted=%d succeeded=%d recovered=%d failed=%d%n",
+                publish.attempted(), publish.succeeded(), publish.recovered(), publish.failed());
     }
 
     private RemoteFetchUseCase requireFetchUseCase() {

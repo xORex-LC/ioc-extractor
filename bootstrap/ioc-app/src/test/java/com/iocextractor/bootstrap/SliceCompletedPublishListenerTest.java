@@ -2,6 +2,7 @@ package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.export.SliceCompleted;
 import com.iocextractor.application.port.in.sync.ArtifactPublishCommand;
+import com.iocextractor.application.port.in.sync.ArtifactPublishExecutionResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
 import com.iocextractor.application.port.in.sync.PublishCompletedSliceCommand;
@@ -104,15 +105,15 @@ class SliceCompletedPublishListenerTest {
         }
 
         @Override
-        public ArtifactPublishResult publish(ArtifactPublishCommand command) {
+        public ArtifactPublishExecutionResult publish(ArtifactPublishCommand command) {
             throw new UnsupportedOperationException("full publish is not used by listener");
         }
 
         @Override
-        public ArtifactPublishResult publishCompletedSlice(PublishCompletedSliceCommand command) {
+        public ArtifactPublishExecutionResult publishCompletedSlice(PublishCompletedSliceCommand command) {
             commands.add(command);
             mdcSnapshots.add(new LinkedHashMap<>(MDC.getCopyOfContextMap()));
-            return new ArtifactPublishResult(0, 1, 0, 0);
+            return new ArtifactPublishExecutionResult(1, 1, 0, 0);
         }
     }
 

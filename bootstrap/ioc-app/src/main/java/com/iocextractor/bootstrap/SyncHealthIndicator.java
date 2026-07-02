@@ -138,10 +138,10 @@ public final class SyncHealthIndicator implements HealthIndicator {
         detail.put("endpoint", snapshot.endpoint());
         detail.put("profile", snapshot.profile());
         detail.put("lastCompletedAt", snapshot.completedAt().toString());
-        detail.put("pending", snapshot.pending());
+        detail.put("attempted", snapshot.attempted());
         detail.put("succeeded", snapshot.succeeded());
+        detail.put("recovered", snapshot.recovered());
         detail.put("failed", snapshot.failed());
-        detail.put("abandoned", snapshot.abandoned());
         if (snapshot.error() != null) {
             detail.put("error", snapshot.error());
         }
