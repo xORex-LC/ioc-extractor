@@ -41,6 +41,7 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
     private final TransportRegistry transports;
     private final SyncHealthState healthState;
     private final KeyedSerialExecutor executor;
+    private final SyncOperationalOutcomePolicy outcomePolicy = new SyncOperationalOutcomePolicy();
     private final PeriodicDaemonCycle cycle;
 
     /** Creates one sequential publish scheduler over the configured target order. */
@@ -132,7 +133,7 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
     }
 
     private void attemptOnExecutor(PublishTarget target) {
-        LogEvents.info(log)
+        LogEvents.debug(log)
                 .action(EventAction.SYNC_PUBLISH_START)
                 .outcome(EventOutcome.UNKNOWN)
                 .field(LogField.IOC_SYNC_TARGET, target.targetId())
@@ -144,17 +145,7 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
             ArtifactPublishExecutionResult result = publisher.publish(command(target));
             healthState.recordPublish(
                     target.targetId(), target.endpoint(), target.exportProfile(), result);
-            LogEvents.info(log)
-                    .action(EventAction.SYNC_PUBLISH_COMPLETE)
-                    .outcome(result.failed() == 0 ? EventOutcome.SUCCESS : EventOutcome.FAILURE)
-                    .field(LogField.IOC_SYNC_TARGET, target.targetId())
-                    .field(LogField.IOC_SYNC_ENDPOINT, target.endpoint())
-                    .field(LogField.IOC_EXPORT_PROFILE, target.exportProfile())
-                    .field(LogField.IOC_SYNC_FILES, result.succeeded())
-                    .message("scheduled remote publish completed: attempted=" + result.attempted()
-                            + ", succeeded=" + result.succeeded() + ", recovered=" + result.recovered()
-                            + ", failed=" + result.failed())
-                    .log();
+            logCompleted(target, result);
         } catch (RuntimeException failure) {
             logFailure(target, "scheduled remote publish target failed", failure);
         }
@@ -196,6 +187,17 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
     private void logFailure(PublishTarget target, String message, RuntimeException failure) {
         healthState.recordPublishFailure(
                 target.targetId(), target.endpoint(), target.exportProfile(), failure);
+        if (outcomePolicy.classify(failure) == SyncOperationalStatus.DEGRADED) {
+            LogEvents.warn(log)
+                    .action(EventAction.SYNC_PUBLISH_COMPLETE)
+                    .outcome(EventOutcome.FAILURE)
+                    .field(LogField.IOC_SYNC_TARGET, target.targetId())
+                    .field(LogField.IOC_SYNC_ENDPOINT, target.endpoint())
+                    .field(LogField.IOC_EXPORT_PROFILE, target.exportProfile())
+                    .message(message)
+                    .log(failure);
+            return;
+        }
         LogEvents.error(log)
                 .action(EventAction.SYNC_PUBLISH_COMPLETE)
                 .outcome(EventOutcome.FAILURE)
@@ -204,6 +206,33 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
                 .field(LogField.IOC_EXPORT_PROFILE, target.exportProfile())
                 .message(message)
                 .log(failure);
+    }
+
+    private void logCompleted(PublishTarget target, ArtifactPublishExecutionResult result) {
+        String message = "scheduled remote publish completed: attempted=" + result.attempted()
+                + ", succeeded=" + result.succeeded() + ", recovered=" + result.recovered()
+                + ", failed=" + result.failed();
+        if (!result.hasActivity()) {
+            LogEvents.debug(log)
+                    .action(EventAction.SYNC_PUBLISH_COMPLETE)
+                    .outcome(EventOutcome.SUCCESS)
+                    .field(LogField.IOC_SYNC_TARGET, target.targetId())
+                    .field(LogField.IOC_SYNC_ENDPOINT, target.endpoint())
+                    .field(LogField.IOC_EXPORT_PROFILE, target.exportProfile())
+                    .field(LogField.IOC_SYNC_FILES, 0)
+                    .message(message)
+                    .log();
+            return;
+        }
+        LogEvents.info(log)
+                .action(EventAction.SYNC_PUBLISH_COMPLETE)
+                .outcome(result.failed() == 0 ? EventOutcome.SUCCESS : EventOutcome.FAILURE)
+                .field(LogField.IOC_SYNC_TARGET, target.targetId())
+                .field(LogField.IOC_SYNC_ENDPOINT, target.endpoint())
+                .field(LogField.IOC_EXPORT_PROFILE, target.exportProfile())
+                .field(LogField.IOC_SYNC_FILES, result.succeeded())
+                .message(message)
+                .log();
     }
 
     @Override

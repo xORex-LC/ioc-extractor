@@ -15,6 +15,8 @@ import com.iocextractor.application.sync.PublishRecord;
 import com.iocextractor.application.sync.PublishStatus;
 import com.iocextractor.application.sync.PublishTarget;
 import com.iocextractor.application.sync.RemoteFetchSource;
+import com.iocextractor.application.sync.RemoteErrorKind;
+import com.iocextractor.application.sync.RemoteTransportException;
 import com.iocextractor.platform.concurrent.KeyedSerialExecutorSnapshot;
 import com.iocextractor.platform.concurrent.KeyedWorkSnapshot;
 import com.iocextractor.platform.concurrent.WorkAdmission;
@@ -144,6 +146,23 @@ class SyncHealthIndicatorTest {
 
         assertThat(recovered).isTrue();
         assertThat(state.keyedExecutorSignals()).isEmpty();
+    }
+
+    @Test
+    void transientTransportFailureIsDegradedAndRecoversAfterConfirmedSuccess() {
+        SyncHealthState state = new SyncHealthState(Clock.fixed(NOW, ZoneOffset.UTC));
+        SyncHealthIndicator indicator = new SyncHealthIndicator(
+                List.of(new RemoteFetchSource(
+                        "incoming", "primary", "/in", List.of("*"), List.of())),
+                List.of(), state, ledger(List.of()), catalog(List.of()), descriptor -> false);
+        state.recordFetchFailure("incoming", "primary",
+                new RemoteTransportException(RemoteErrorKind.TRANSIENT, "connection reset"));
+
+        assertThat(indicator.health().getStatus()).isEqualTo(new Status("DEGRADED"));
+
+        state.recordFetch("incoming", "primary", new RemoteFetchResult(0, 0, 0));
+
+        assertThat(indicator.health().getStatus()).isEqualTo(Status.UP);
     }
 
     private PublishLedger ledger(List<PublishRecord> records) {

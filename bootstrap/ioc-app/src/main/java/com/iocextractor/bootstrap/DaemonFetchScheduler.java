@@ -32,6 +32,7 @@ public final class DaemonFetchScheduler implements SmartLifecycle {
     private final ControlEventPublisher eventPublisher;
     private final TransportRegistry transports;
     private final SyncHealthState healthState;
+    private final SyncOperationalOutcomePolicy outcomePolicy = new SyncOperationalOutcomePolicy();
     private final PeriodicDaemonCycle cycle;
 
     /** Creates one sequential fetch scheduler over the configured source order. */
@@ -78,7 +79,7 @@ public final class DaemonFetchScheduler implements SmartLifecycle {
     }
 
     private void attempt(RemoteFetchSource source) {
-        LogEvents.info(log)
+        LogEvents.debug(log)
                 .action(EventAction.SYNC_FETCH_START)
                 .outcome(EventOutcome.UNKNOWN)
                 .field(LogField.IOC_SOURCE_ID, source.sourceId())
@@ -93,24 +94,53 @@ public final class DaemonFetchScheduler implements SmartLifecycle {
             if (events.isEmpty()) {
                 healthState.recordFetch(source.sourceId(), source.endpoint(), new RemoteFetchResult(0, 0, 0));
             }
-            LogEvents.info(log)
+            logDetectionCompleted(source, detected);
+        } catch (RuntimeException failure) {
+            healthState.recordFetchFailure(source.sourceId(), source.endpoint(), failure);
+            logFailure(source, failure);
+        }
+    }
+
+    private void logDetectionCompleted(RemoteFetchSource source, int detected) {
+        if (detected == 0) {
+            LogEvents.debug(log)
                     .action(EventAction.SYNC_FETCH_COMPLETE)
                     .outcome(EventOutcome.SUCCESS)
                     .field(LogField.IOC_SOURCE_ID, source.sourceId())
                     .field(LogField.IOC_SYNC_ENDPOINT, source.endpoint())
-                    .field(LogField.IOC_SYNC_FILES, detected)
-                    .message("scheduled remote fetch detection completed: detected=" + detected)
+                    .field(LogField.IOC_SYNC_FILES, 0)
+                    .message("scheduled remote fetch detection completed: detected=0")
                     .log();
-        } catch (RuntimeException failure) {
-            healthState.recordFetchFailure(source.sourceId(), source.endpoint(), failure);
-            LogEvents.error(log)
+            return;
+        }
+        LogEvents.info(log)
+                .action(EventAction.SYNC_FETCH_COMPLETE)
+                .outcome(EventOutcome.SUCCESS)
+                .field(LogField.IOC_SOURCE_ID, source.sourceId())
+                .field(LogField.IOC_SYNC_ENDPOINT, source.endpoint())
+                .field(LogField.IOC_SYNC_FILES, detected)
+                .message("scheduled remote fetch detection completed: detected=" + detected)
+                .log();
+    }
+
+    private void logFailure(RemoteFetchSource source, RuntimeException failure) {
+        if (outcomePolicy.classify(failure) == SyncOperationalStatus.DEGRADED) {
+            LogEvents.warn(log)
                     .action(EventAction.SYNC_FETCH_COMPLETE)
                     .outcome(EventOutcome.FAILURE)
                     .field(LogField.IOC_SOURCE_ID, source.sourceId())
                     .field(LogField.IOC_SYNC_ENDPOINT, source.endpoint())
-                    .message("scheduled remote fetch source failed")
+                    .message("scheduled remote fetch source degraded")
                     .log(failure);
+            return;
         }
+        LogEvents.error(log)
+                .action(EventAction.SYNC_FETCH_COMPLETE)
+                .outcome(EventOutcome.FAILURE)
+                .field(LogField.IOC_SOURCE_ID, source.sourceId())
+                .field(LogField.IOC_SYNC_ENDPOINT, source.endpoint())
+                .message("scheduled remote fetch source failed")
+                .log(failure);
     }
 
     @Override

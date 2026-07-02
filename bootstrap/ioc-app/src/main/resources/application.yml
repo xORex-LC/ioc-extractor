@@ -23,6 +23,9 @@ logging:
   level:
     root: INFO
     com.iocextractor: INFO
+    # smbj emits connection lifecycle chatter at INFO; application-owned transport
+    # outcomes remain visible through the sync scheduler taxonomy.
+    com.hierynomus.smbj.connection.Connection: WARN
   file:
     path: var/logs
 
@@ -47,6 +50,10 @@ management:
         include: health,info
   endpoint:
     health:
+      status:
+        order: down,out-of-service,degraded,unknown,up
+        http-mapping:
+          degraded: 200
       # Full component details (including local paths/counts) are returned, and the
       # `ioc health` table relies on them. This is safe ONLY because the server binds
       # loopback (server.address above). REVISIT for ING-8: once the web surface is

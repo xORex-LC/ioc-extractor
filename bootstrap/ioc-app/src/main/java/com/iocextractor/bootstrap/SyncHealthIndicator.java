@@ -13,6 +13,7 @@ import com.iocextractor.platform.concurrent.KeyedSerialExecutorSnapshot;
 import com.iocextractor.platform.concurrent.KeyedWorkSnapshot;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.boot.actuate.health.Status;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -76,12 +77,12 @@ public final class SyncHealthIndicator implements HealthIndicator {
             long inProgress = records.stream().filter(record -> record.status() == PublishStatus.IN_PROGRESS).count();
             long failed = records.stream().filter(record -> record.status() == PublishStatus.FAILED).count();
             long pinned = countPinnedSlices();
-            boolean unhealthy = failed > 0
-                    || fetches.values().stream().anyMatch(this::failed)
-                    || publishes.values().stream().anyMatch(this::failed)
-                    || executorSignals.values().stream().anyMatch(this::failed);
-
-            Health.Builder builder = unhealthy ? Health.down() : Health.up();
+            SyncOperationalStatus status = overallStatus(failed, fetches, publishes, executorSignals);
+            Health.Builder builder = switch (status) {
+                case UP -> Health.up();
+                case DEGRADED -> Health.status(new Status("DEGRADED"));
+                case DOWN -> Health.down();
+            };
             return builder
                     .withDetail("fetchSources", fetchDetails(fetches))
                     .withDetail("publishTargets", publishDetails(publishes))
@@ -127,6 +128,7 @@ public final class SyncHealthIndicator implements HealthIndicator {
         detail.put("fetched", snapshot.fetched());
         detail.put("skipped", snapshot.skipped());
         detail.put("failed", snapshot.failed());
+        detail.put("status", snapshot.status().name());
         if (snapshot.error() != null) {
             detail.put("error", snapshot.error());
         }
@@ -142,6 +144,7 @@ public final class SyncHealthIndicator implements HealthIndicator {
         detail.put("succeeded", snapshot.succeeded());
         detail.put("recovered", snapshot.recovered());
         detail.put("failed", snapshot.failed());
+        detail.put("status", snapshot.status().name());
         if (snapshot.error() != null) {
             detail.put("error", snapshot.error());
         }
@@ -159,13 +162,8 @@ public final class SyncHealthIndicator implements HealthIndicator {
         for (String endpoint : endpoints) {
             boolean hasRun = fetches.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint))
                     || publishes.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint));
-            boolean endpointFailed = fetches.values().stream()
-                    .filter(snapshot -> snapshot.endpoint().equals(endpoint)).anyMatch(this::failed)
-                    || publishes.values().stream()
-                    .filter(snapshot -> snapshot.endpoint().equals(endpoint)).anyMatch(this::failed)
-                    || records.stream().anyMatch(record -> record.endpoint().equals(endpoint)
-                    && record.status() == PublishStatus.FAILED);
-            details.put(endpoint, endpointFailed ? "DOWN" : hasRun ? "UP" : "UNKNOWN");
+            SyncOperationalStatus endpointStatus = endpointStatus(endpoint, fetches, publishes, records);
+            details.put(endpoint, endpointStatus == null ? hasRun ? "UP" : "UNKNOWN" : endpointStatus.name());
         }
         return details;
     }
@@ -232,17 +230,49 @@ public final class SyncHealthIndicator implements HealthIndicator {
         return pinned;
     }
 
-    private boolean failed(SyncHealthState.FetchSnapshot snapshot) {
-        return snapshot.failed() > 0 || snapshot.error() != null;
-    }
-
-    private boolean failed(SyncHealthState.PublishSnapshot snapshot) {
-        return snapshot.failed() > 0 || snapshot.error() != null;
-    }
-
     private boolean failed(SyncHealthState.KeyedExecutorSignal signal) {
         return signal.lastDispatchFailure() != null
                 || signal.error() != null;
+    }
+
+    private SyncOperationalStatus overallStatus(
+            long durableFailures,
+            Map<String, SyncHealthState.FetchSnapshot> fetches,
+            Map<String, SyncHealthState.PublishSnapshot> publishes,
+            Map<String, SyncHealthState.KeyedExecutorSignal> executorSignals) {
+        if (durableFailures > 0
+                || fetches.values().stream().anyMatch(snapshot -> snapshot.status() == SyncOperationalStatus.DOWN)
+                || publishes.values().stream().anyMatch(snapshot -> snapshot.status() == SyncOperationalStatus.DOWN)
+                || executorSignals.values().stream().anyMatch(this::failed)) {
+            return SyncOperationalStatus.DOWN;
+        }
+        if (fetches.values().stream().anyMatch(snapshot -> snapshot.status() == SyncOperationalStatus.DEGRADED)
+                || publishes.values().stream().anyMatch(snapshot -> snapshot.status() == SyncOperationalStatus.DEGRADED)) {
+            return SyncOperationalStatus.DEGRADED;
+        }
+        return SyncOperationalStatus.UP;
+    }
+
+    private SyncOperationalStatus endpointStatus(
+            String endpoint,
+            Map<String, SyncHealthState.FetchSnapshot> fetches,
+            Map<String, SyncHealthState.PublishSnapshot> publishes,
+            List<PublishRecord> records) {
+        if (records.stream().anyMatch(record -> record.endpoint().equals(endpoint)
+                && record.status() == PublishStatus.FAILED)
+                || fetches.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint)
+                && snapshot.status() == SyncOperationalStatus.DOWN)
+                || publishes.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint)
+                && snapshot.status() == SyncOperationalStatus.DOWN)) {
+            return SyncOperationalStatus.DOWN;
+        }
+        if (fetches.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint)
+                && snapshot.status() == SyncOperationalStatus.DEGRADED)
+                || publishes.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint)
+                && snapshot.status() == SyncOperationalStatus.DEGRADED)) {
+            return SyncOperationalStatus.DEGRADED;
+        }
+        return null;
     }
 
     private long millis(Duration duration) {

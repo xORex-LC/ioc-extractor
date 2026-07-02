@@ -18,6 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class SyncHealthState {
 
     private final Clock clock;
+    private final SyncOperationalOutcomePolicy outcomePolicy;
     private final ConcurrentHashMap<String, FetchSnapshot> fetchBySource = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, PublishSnapshot> publishByTarget = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, KeyedExecutorSignal> executorByKey = new ConcurrentHashMap<>();
@@ -25,19 +26,21 @@ public final class SyncHealthState {
     /** Creates runtime state timestamped by the injected application clock. */
     public SyncHealthState(Clock clock) {
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.outcomePolicy = new SyncOperationalOutcomePolicy();
     }
 
     /** Records a completed source fetch, including partial per-file failures. */
     public void recordFetch(String source, String endpoint, RemoteFetchResult result) {
         Objects.requireNonNull(result, "result");
         fetchBySource.put(source, new FetchSnapshot(
-                endpoint, clock.instant(), result.fetched(), result.skipped(), result.failed(), null));
+                endpoint, clock.instant(), result.fetched(), result.skipped(), result.failed(),
+                result.failed() == 0 ? SyncOperationalStatus.UP : SyncOperationalStatus.DOWN, null));
     }
 
     /** Records a source-level fetch failure that produced no result counters. */
     public void recordFetchFailure(String source, String endpoint, RuntimeException failure) {
         fetchBySource.put(source, new FetchSnapshot(
-                endpoint, clock.instant(), 0, 0, 1, failureMessage(failure)));
+                endpoint, clock.instant(), 0, 0, 1, outcomePolicy.classify(failure), failureMessage(failure)));
     }
 
     /** Records a completed target publish, including failed ledger pairs. */
@@ -45,7 +48,8 @@ public final class SyncHealthState {
         Objects.requireNonNull(result, "result");
         publishByTarget.put(target, new PublishSnapshot(
                 endpoint, profile, clock.instant(), result.attempted(), result.succeeded(),
-                result.recovered(), result.failed(), null));
+                result.recovered(), result.failed(),
+                result.failed() == 0 ? SyncOperationalStatus.UP : SyncOperationalStatus.DOWN, null));
     }
 
     /** Records a target-level publish failure that produced no result counters. */
@@ -54,7 +58,8 @@ public final class SyncHealthState {
                                      String profile,
                                      RuntimeException failure) {
         publishByTarget.put(target, new PublishSnapshot(
-                endpoint, profile, clock.instant(), 0, 0, 0, 1, failureMessage(failure)));
+                endpoint, profile, clock.instant(), 0, 0, 0, 1,
+                outcomePolicy.classify(failure), failureMessage(failure)));
     }
 
     /** Records admission shedding for one in-memory executor key. */
@@ -128,6 +133,7 @@ public final class SyncHealthState {
                                 int fetched,
                                 int skipped,
                                 int failed,
+                                SyncOperationalStatus status,
                                 String error) {
     }
 
@@ -139,6 +145,7 @@ public final class SyncHealthState {
                                   int succeeded,
                                   int recovered,
                                   int failed,
+                                  SyncOperationalStatus status,
                                   String error) {
     }
 

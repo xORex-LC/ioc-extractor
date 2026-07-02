@@ -176,16 +176,19 @@ Daemon actuator contributor `sync` публикует:
 - `retentionPinnedSlices`;
 - keyed executor state: running keys, queue depth per key, oldest age и последние
   shed/failure/dispatch-rejected сигналы;
-- summary `UP|DOWN|UNKNOWN` по endpoint.
+- summary `UP|DEGRADED|DOWN|UNKNOWN` по endpoint.
 
 Последние scheduler outcomes хранятся только в памяти процесса и после restart снова
-имеют `NEVER_RUN`; backlog и delivery terminal state остаются durable. Failed outcome
-или `FAILED` pair переводит sync contributor в `DOWN`; отсутствие первого запуска — нет.
+имеют `NEVER_RUN`; backlog и delivery terminal state остаются durable. Транзиентный
+`TRANSIENT`/`UNREACHABLE` transport outcome даёт `WARN` и `DEGRADED`; подтверждённый
+успех следующей операции того же source/target возвращает `UP`. Permanent/unexpected failure
+или durable `FAILED` pair переводит sync contributor в `DOWN`; отсутствие первого запуска — нет.
 Восстановимый executor shed остаётся видимым в details и `WARN`, но сам по себе не переводит
 contributor в `DOWN`: correctness сохраняет reconcile/backstop. Work/dispatch failure переводит
 health в `DOWN`; transient executor-сигнал очищается после следующего успешного work-item того же
 endpoint. ECS actions: `sync_fetch_start|complete`,
 `sync_publish_start|complete`, `sync_work_admission`, `sync_work_dispatch`;
+пустые scheduler ticks логируются на `DEBUG`, реальная работа — на `INFO`;
 поля не содержат host/share/username/password. Полный каталог ошибок —
 [diagnostic-catalog.md](diagnostic-catalog.md).
 
