@@ -172,7 +172,8 @@ inbox, remote storage или ledgers. Ненулевой failed-counter возв
 Daemon actuator contributor `sync` публикует:
 
 - последний fetch по source и последний publish по target/profile;
-- `publishPending`, `publishInProgress`, `publishFailed` из durable ledger;
+- `publishPending`, `publishInProgress`, `publishFailed` из агрегатного durable ledger
+  read model без загрузки исторических строк;
 - `retentionPinnedSlices`;
 - keyed executor state: running keys, queue depth per key, oldest age и последние
   shed/failure/dispatch-rejected сигналы;

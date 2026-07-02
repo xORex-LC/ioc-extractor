@@ -42,9 +42,10 @@ service-DB transaction. `JdbcRunLedger` использует ту же CAS-ди�
 `(slice_id,target_id)`, хранит operational slice identity и target binding, а
 status transitions делает через expected-status CAS. `PENDING|FAILED` и stale
 `IN_PROGRESS` формируют retryable read model; `SUCCEEDED|ABANDONED` являются
-terminal для delivery-aware retention. Для hot publish loop есть агрегированный
-`COUNT(*) GROUP BY status`; полный ordered `findAll` используется только
-health/ops read model и не обходит CAS transitions.
+terminal для delivery-aware retention. Для actuator health есть агрегированный
+`GROUP BY endpoint,status` read model по настроенным target без материализации истории;
+полный ordered `findAll` остаётся только явным ops API. Reconcile lookup поддерживает
+индекс `(profile,slice_name)` и не обходит CAS transitions.
 
 `JdbcSnapshotSliceReader` владеет одним connection/read transaction от
 первого coverage SELECT до завершающего callback. Все artifact coverage

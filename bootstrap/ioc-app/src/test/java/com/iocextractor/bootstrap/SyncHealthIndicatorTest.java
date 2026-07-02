@@ -10,6 +10,7 @@ import com.iocextractor.application.port.in.sync.RemoteFetchResult;
 import com.iocextractor.application.port.out.sync.CompletedSliceCatalog;
 import com.iocextractor.application.port.out.sync.PublishLedger;
 import com.iocextractor.application.sync.PublishLedgerStatusCounts;
+import com.iocextractor.application.sync.PublishLedgerHealthSummary;
 import com.iocextractor.application.sync.CompletedSlice;
 import com.iocextractor.application.sync.PublishRecord;
 import com.iocextractor.application.sync.PublishStatus;
@@ -33,6 +34,8 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.LinkedHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -206,8 +209,13 @@ class SyncHealthIndicatorTest {
             }
 
             @Override
+            public PublishLedgerHealthSummary healthSummary(Set<String> targetIds) {
+                return summary(records, targetIds);
+            }
+
+            @Override
             public List<PublishRecord> findAll() {
-                return records;
+                throw new AssertionError("health indicator must use aggregate ledger query");
             }
 
             @Override
@@ -220,6 +228,26 @@ class SyncHealthIndicatorTest {
                 throw new UnsupportedOperationException();
             }
         };
+    }
+
+    private PublishLedgerHealthSummary summary(List<PublishRecord> records, Set<String> targetIds) {
+        List<PublishRecord> selected = records.stream()
+                .filter(record -> targetIds.contains(record.targetId()))
+                .toList();
+        Map<String, PublishLedgerStatusCounts> byEndpoint = new LinkedHashMap<>();
+        selected.stream().map(PublishRecord::endpoint).distinct().forEach(endpoint ->
+                byEndpoint.put(endpoint, counts(selected.stream()
+                        .filter(record -> record.endpoint().equals(endpoint)).toList())));
+        return new PublishLedgerHealthSummary(counts(selected), byEndpoint);
+    }
+
+    private PublishLedgerStatusCounts counts(List<PublishRecord> records) {
+        return new PublishLedgerStatusCounts(
+                records.stream().filter(record -> record.status() == PublishStatus.PENDING).count(),
+                records.stream().filter(record -> record.status() == PublishStatus.IN_PROGRESS).count(),
+                records.stream().filter(record -> record.status() == PublishStatus.SUCCEEDED).count(),
+                records.stream().filter(record -> record.status() == PublishStatus.FAILED).count(),
+                records.stream().filter(record -> record.status() == PublishStatus.ABANDONED).count());
     }
 
     private CompletedSliceCatalog catalog(List<CompletedSlice> slices) {

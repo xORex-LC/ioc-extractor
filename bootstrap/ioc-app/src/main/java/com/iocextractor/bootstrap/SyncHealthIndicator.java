@@ -5,8 +5,8 @@ import com.iocextractor.application.port.out.export.SliceRetentionGuard;
 import com.iocextractor.application.port.out.sync.CompletedSliceCatalog;
 import com.iocextractor.application.port.out.sync.PublishLedger;
 import com.iocextractor.application.sync.CompletedSlice;
-import com.iocextractor.application.sync.PublishRecord;
-import com.iocextractor.application.sync.PublishStatus;
+import com.iocextractor.application.sync.PublishLedgerHealthSummary;
+import com.iocextractor.application.sync.PublishLedgerStatusCounts;
 import com.iocextractor.application.sync.PublishTarget;
 import com.iocextractor.application.sync.RemoteFetchSource;
 import com.iocextractor.platform.concurrent.KeyedSerialExecutorSnapshot;
@@ -67,15 +67,14 @@ public final class SyncHealthIndicator implements HealthIndicator {
         try {
             Set<String> configuredTargets = Set.copyOf(
                     targets.stream().map(target -> target.targetId()).toList());
-            List<PublishRecord> records = ledger.findAll().stream()
-                    .filter(record -> configuredTargets.contains(record.targetId()))
-                    .toList();
+            PublishLedgerHealthSummary durable = ledger.healthSummary(configuredTargets);
+            PublishLedgerStatusCounts totals = durable.totals();
             Map<String, SyncHealthState.FetchSnapshot> fetches = state.fetchSnapshots();
             Map<String, SyncHealthState.PublishSnapshot> publishes = state.publishSnapshots();
             Map<String, SyncHealthState.KeyedExecutorSignal> executorSignals = state.keyedExecutorSignals();
-            long pending = records.stream().filter(record -> record.status() == PublishStatus.PENDING).count();
-            long inProgress = records.stream().filter(record -> record.status() == PublishStatus.IN_PROGRESS).count();
-            long failed = records.stream().filter(record -> record.status() == PublishStatus.FAILED).count();
+            long pending = totals.pending();
+            long inProgress = totals.inProgress();
+            long failed = totals.failed();
             long pinned = countPinnedSlices();
             SyncOperationalStatus status = overallStatus(failed, fetches, publishes, executorSignals);
             Health.Builder builder = switch (status) {
@@ -91,7 +90,7 @@ public final class SyncHealthIndicator implements HealthIndicator {
                     .withDetail("publishFailed", failed)
                     .withDetail("retentionPinnedSlices", pinned)
                     .withDetail("keyedExecutor", keyedExecutorDetails(executorSignals))
-                    .withDetail("endpoints", endpointDetails(fetches, publishes, records))
+                    .withDetail("endpoints", endpointDetails(fetches, publishes, durable.byEndpoint()))
                     .build();
         } catch (RuntimeException failure) {
             return Health.down(failure).build();
@@ -154,7 +153,7 @@ public final class SyncHealthIndicator implements HealthIndicator {
     private Map<String, Object> endpointDetails(
             Map<String, SyncHealthState.FetchSnapshot> fetches,
             Map<String, SyncHealthState.PublishSnapshot> publishes,
-            List<PublishRecord> records) {
+            Map<String, PublishLedgerStatusCounts> durableByEndpoint) {
         Set<String> endpoints = new LinkedHashSet<>();
         sources.forEach(source -> endpoints.add(source.endpoint()));
         targets.forEach(target -> endpoints.add(target.endpoint()));
@@ -162,7 +161,7 @@ public final class SyncHealthIndicator implements HealthIndicator {
         for (String endpoint : endpoints) {
             boolean hasRun = fetches.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint))
                     || publishes.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint));
-            SyncOperationalStatus endpointStatus = endpointStatus(endpoint, fetches, publishes, records);
+            SyncOperationalStatus endpointStatus = endpointStatus(endpoint, fetches, publishes, durableByEndpoint);
             details.put(endpoint, endpointStatus == null ? hasRun ? "UP" : "UNKNOWN" : endpointStatus.name());
         }
         return details;
@@ -257,9 +256,9 @@ public final class SyncHealthIndicator implements HealthIndicator {
             String endpoint,
             Map<String, SyncHealthState.FetchSnapshot> fetches,
             Map<String, SyncHealthState.PublishSnapshot> publishes,
-            List<PublishRecord> records) {
-        if (records.stream().anyMatch(record -> record.endpoint().equals(endpoint)
-                && record.status() == PublishStatus.FAILED)
+            Map<String, PublishLedgerStatusCounts> durableByEndpoint) {
+        if (durableByEndpoint.getOrDefault(endpoint,
+                new PublishLedgerStatusCounts(0, 0, 0, 0, 0)).failed() > 0
                 || fetches.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint)
                 && snapshot.status() == SyncOperationalStatus.DOWN)
                 || publishes.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint)

@@ -148,6 +148,29 @@ class JdbcPublishLedgerTest {
         }
     }
 
+    @Test
+    void aggregatesHealthStateForConfiguredTargetsOnly() {
+        try (HikariDataSource dataSource = dataSource("publish-health-summary.db")) {
+            migrate(dataSource);
+            JdbcPublishLedger ledger = new JdbcPublishLedger(dataSource, Clock.fixed(NOW, ZoneOffset.UTC));
+            ledger.ensurePending(pending("slice-pending", "target-a"));
+            ledger.ensurePending(pending("slice-done", "target-a"));
+            ledger.transition("slice-done", "target-a", PublishStatus.PENDING, PublishStatus.IN_PROGRESS,
+                    null, null);
+            ledger.transition("slice-done", "target-a", PublishStatus.IN_PROGRESS, PublishStatus.SUCCEEDED,
+                    null, "ok");
+            ledger.ensurePending(pending("slice-ignored", "target-b"));
+
+            var summary = ledger.healthSummary(java.util.Set.of("target-a"));
+
+            assertThat(summary.totals().pending()).isOne();
+            assertThat(summary.totals().succeeded()).isOne();
+            assertThat(summary.byEndpoint()).containsOnlyKeys("dist");
+            assertThat(summary.byEndpoint().get("dist").pending()).isOne();
+            assertThat(summary.byEndpoint().get("dist").succeeded()).isOne();
+        }
+    }
+
     private PublishRecord pending(String sliceId, String targetId) {
         return PublishRecord.pending(sliceId, targetId, "profile",
                 "20260628T000000Z__" + sliceId, HASH, "dist", "/out", NOW);

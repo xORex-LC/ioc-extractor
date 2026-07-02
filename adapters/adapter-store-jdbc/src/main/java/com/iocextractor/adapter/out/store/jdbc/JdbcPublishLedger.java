@@ -2,6 +2,7 @@ package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.port.out.sync.PublishLedger;
 import com.iocextractor.application.sync.PublishLedgerStatusCounts;
+import com.iocextractor.application.sync.PublishLedgerHealthSummary;
 import com.iocextractor.application.sync.PublishRecord;
 import com.iocextractor.application.sync.PublishStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -13,6 +14,9 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
 
 /** SQLite-backed per-slice/per-target publish ledger with CAS transitions. */
 public final class JdbcPublishLedger implements PublishLedger {
@@ -176,6 +180,37 @@ public final class JdbcPublishLedger implements PublishLedger {
     }
 
     @Override
+    public PublishLedgerHealthSummary healthSummary(Set<String> targetIds) {
+        Objects.requireNonNull(targetIds, "targetIds");
+        if (targetIds.isEmpty()) {
+            return PublishLedgerHealthSummary.empty();
+        }
+        EnumMap<PublishStatus, Long> totals = new EnumMap<>(PublishStatus.class);
+        Map<String, EnumMap<PublishStatus, Long>> byEndpoint = new LinkedHashMap<>();
+        jdbc.sql("""
+                        SELECT endpoint, status, COUNT(*) AS count
+                        FROM publish_ledger
+                        WHERE target_id IN (:target_ids)
+                        GROUP BY endpoint, status
+                        ORDER BY endpoint, status
+                        """)
+                .param("target_ids", targetIds)
+                .query((rs, rowNum) -> {
+                    String endpoint = rs.getString("endpoint");
+                    PublishStatus status = PublishStatus.valueOf(rs.getString("status"));
+                    long count = rs.getLong("count");
+                    totals.merge(status, count, Long::sum);
+                    byEndpoint.computeIfAbsent(endpoint, ignored -> new EnumMap<>(PublishStatus.class))
+                            .put(status, count);
+                    return rowNum;
+                })
+                .list();
+        Map<String, PublishLedgerStatusCounts> endpointCounts = new LinkedHashMap<>();
+        byEndpoint.forEach((endpoint, counts) -> endpointCounts.put(endpoint, counts(counts)));
+        return new PublishLedgerHealthSummary(counts(totals), endpointCounts);
+    }
+
+    @Override
     public List<PublishRecord> findAll() {
         return jdbc.sql("""
                         SELECT slice_id, target_id, profile, slice_name, manifest_sha256,
@@ -256,6 +291,15 @@ public final class JdbcPublishLedger implements PublishLedger {
                 || next == PublishStatus.IN_PROGRESS) {
             return;
         }
+    }
+
+    private PublishLedgerStatusCounts counts(Map<PublishStatus, Long> counts) {
+        return new PublishLedgerStatusCounts(
+                counts.getOrDefault(PublishStatus.PENDING, 0L),
+                counts.getOrDefault(PublishStatus.IN_PROGRESS, 0L),
+                counts.getOrDefault(PublishStatus.SUCCEEDED, 0L),
+                counts.getOrDefault(PublishStatus.FAILED, 0L),
+                counts.getOrDefault(PublishStatus.ABANDONED, 0L));
     }
 
     private static PublishRecord map(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
