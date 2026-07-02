@@ -310,7 +310,7 @@ public class SyncConfig {
             return new SmbEndpointSettings(
                     endpoint.name(), smb.host(), smb.share(), smb.domain(), smb.username(), password,
                     smb.encrypt(), defaultDuration(smb.connectTimeout(), Duration.ofSeconds(10)),
-                    defaultDuration(smb.effectiveRequestTimeout(), Duration.ofSeconds(30)),
+                    defaultDuration(smb.requestTimeout(), Duration.ofSeconds(30)),
                     defaultDuration(smb.idleTimeout(), Duration.ofMinutes(5)));
         } finally {
             Arrays.fill(password, '\0');

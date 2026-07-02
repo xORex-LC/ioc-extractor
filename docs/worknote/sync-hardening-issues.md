@@ -106,9 +106,9 @@ smb:
 **Фикс:**
 1. `withSoTimeout(0)` — снять reaper (минимальный bugfix, чинит churn сам по себе);
 2. `read-timeout` → `request-timeout` (переименование в `SmbEndpointSettings`,
-   `IocProperties`, yml, smb-example, packaging-template, docs/sync.md). На один
-   migration-период принять deprecated alias `read-timeout`, но запретить одновременное
-   задание обоих имён; затем удалить alias;
+   `IocProperties`, yml, smb-example, packaging-template, docs/sync.md). Deprecated alias
+   `read-timeout` больше не принимается; binding оставляет fail-fast проверку, чтобы старый
+   внешний YAML не был молча проигнорирован.
 3. настоящий TCP `connect-timeout`: кастомный `SocketFactory` (несоединённый
    сокет + `socket.connect(addr, connectTimeout)`) →
    `withSocketFactory(...)`;

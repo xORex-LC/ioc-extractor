@@ -78,17 +78,13 @@ class SyncPropertiesTest {
     }
 
     @Test
-    void acceptsLegacyReadTimeoutAliasButRejectsAmbiguousTimeouts() {
-        var legacy = new IocProperties.Sync.Endpoint.Smb(
-                "server", "share", null, "user", "secret", true,
-                null, null, java.time.Duration.ofSeconds(45), null);
-
-        assertThat(legacy.effectiveRequestTimeout()).isEqualTo(java.time.Duration.ofSeconds(45));
+    void rejectsRemovedReadTimeoutAlias() {
         assertThatThrownBy(() -> new IocProperties.Sync.Endpoint.Smb(
                 "server", "share", null, "user", "secret", true,
-                null, java.time.Duration.ofSeconds(30), java.time.Duration.ofSeconds(45), null))
+                null, null, java.time.Duration.ofSeconds(45), null))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("must not both be configured");
+                .hasMessageContaining("readTimeout was removed")
+                .hasMessageContaining("requestTimeout");
     }
 
     private IocProperties defaults() throws Exception {

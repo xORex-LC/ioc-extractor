@@ -66,8 +66,8 @@ SMB-соединение создаётся лениво и переисполь
 wall-clock deadline), `request-timeout` ограничивает один SMB read/write/transact
 request, а `idle-timeout` определяет, сколько держать неиспользуемый cached client.
 Reader socket использует внутренний `SO_TIMEOUT=0`: живое соединение не закрывается
-только из-за отсутствия входящих пакетов. Устаревший `read-timeout` временно принимается
-как alias `request-timeout`; задавать оба значения одновременно запрещено.
+только из-за отсутствия входящих пакетов. Устаревший `read-timeout` удалён после
+миграционного периода; используйте `request-timeout`.
 
 ## Fetch: remote → inbox
 
