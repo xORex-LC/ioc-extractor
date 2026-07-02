@@ -1,8 +1,12 @@
 package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.port.out.sync.FileTransport;
+import com.iocextractor.application.port.out.sync.RemoteChangeSignalHandler;
+import com.iocextractor.application.port.out.sync.RemoteChangeSignalSource;
+import com.iocextractor.application.port.out.sync.RemoteChangeWatch;
 import com.iocextractor.application.sync.PublishAtomicallyRequest;
 import com.iocextractor.application.sync.PublishReceipt;
+import com.iocextractor.application.sync.RemoteFetchSource;
 import com.iocextractor.application.sync.RemoteObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -56,6 +60,16 @@ class TransportRegistryTest {
         }
     }
 
+    @Test
+    void exposesOptionalChangeSignalCapabilityPerEndpoint() {
+        FakeTransport transport = new FakeTransport();
+        FakeSignalSource signals = new FakeSignalSource();
+        try (TransportRegistry registry = new TransportRegistry(List.of(
+                new TransportRegistry.Binding("known", transport, transport::closeIdle, transport, signals)))) {
+            assertThat(registry.changeSignals("known")).containsSame(signals);
+        }
+    }
+
     private TransportRegistry.Binding binding(String endpoint, FakeTransport transport) {
         return new TransportRegistry.Binding(endpoint, transport, transport::closeIdle, transport);
     }
@@ -99,6 +113,14 @@ class TransportRegistryTest {
         @Override
         public void close() {
             closeCalls++;
+        }
+    }
+
+    private static final class FakeSignalSource implements RemoteChangeSignalSource {
+
+        @Override
+        public RemoteChangeWatch watch(RemoteFetchSource source, RemoteChangeSignalHandler handler) {
+            return () -> { };
         }
     }
 }

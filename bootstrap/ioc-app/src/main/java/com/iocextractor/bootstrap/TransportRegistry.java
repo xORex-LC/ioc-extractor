@@ -1,6 +1,7 @@
 package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.port.out.sync.FileTransport;
+import com.iocextractor.application.port.out.sync.RemoteChangeSignalSource;
 import com.iocextractor.application.sync.PublishAtomicallyRequest;
 import com.iocextractor.application.sync.PublishReceipt;
 import com.iocextractor.application.sync.RemoteObject;
@@ -76,6 +77,11 @@ public final class TransportRegistry implements FileTransport, AutoCloseable {
         uniqueBindings().forEach(binding -> binding.idleMaintenance().run());
     }
 
+    /** Returns the optional push-change capability for a logical endpoint. */
+    public Optional<RemoteChangeSignalSource> changeSignals(String endpoint) {
+        return resolve(endpoint).changeSignals();
+    }
+
     /** Closes every distinct adapter lifecycle exactly once. */
     @Override
     public void close() {
@@ -122,7 +128,23 @@ public final class TransportRegistry implements FileTransport, AutoCloseable {
     public record Binding(String endpoint,
                           FileTransport transport,
                           Runnable idleMaintenance,
-                          AutoCloseable lifecycle) {
+                          AutoCloseable lifecycle,
+                          Optional<RemoteChangeSignalSource> changeSignals) {
+
+        public Binding(String endpoint,
+                       FileTransport transport,
+                       Runnable idleMaintenance,
+                       AutoCloseable lifecycle) {
+            this(endpoint, transport, idleMaintenance, lifecycle, Optional.empty());
+        }
+
+        public Binding(String endpoint,
+                       FileTransport transport,
+                       Runnable idleMaintenance,
+                       AutoCloseable lifecycle,
+                       RemoteChangeSignalSource changeSignals) {
+            this(endpoint, transport, idleMaintenance, lifecycle, Optional.of(changeSignals));
+        }
 
         public Binding {
             if (endpoint == null || endpoint.isBlank()) {
@@ -131,6 +153,7 @@ public final class TransportRegistry implements FileTransport, AutoCloseable {
             transport = Objects.requireNonNull(transport, "transport");
             idleMaintenance = Objects.requireNonNull(idleMaintenance, "idleMaintenance");
             lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
+            changeSignals = changeSignals == null ? Optional.empty() : changeSignals;
         }
     }
 }

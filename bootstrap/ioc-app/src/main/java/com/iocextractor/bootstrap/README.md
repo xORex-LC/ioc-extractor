@@ -29,6 +29,7 @@ Composition root и конфигурация. Единственное мест�
 | `PeriodicDaemonCycle.java` | Общий lifecycle/overlap wrapper для fixed-delay daemon loops |
 | `TransportRegistry.java` | Lazy endpoint → transport dispatch и adapter lifecycle без утечки transport types в core |
 | `RemoteFetchDetectionCoordinator.java` | Coalescing/single-flight remote source detection for periodic and optional push triggers |
+| `RemoteChangeWatchLifecycle.java` | Starts optional transport-native watches and bridges doorbells into the detection coordinator |
 | `DaemonFetchScheduler.java` | Fixed-delay source-isolated PERIODIC trigger source for remote fetch detection |
 | `DaemonPublishScheduler.java` | Startup reconcile, endpoint-keyed periodic publish и lifecycle phase 150 |
 | `SyncHealthState.java` | Thread-safe latest scheduler outcomes per source/target |
@@ -100,6 +101,9 @@ and optional remote push signals request the same `RemoteSourceMonitor.detect(so
 path. The coordinator coalesces push storms with trailing debounce, prevents overlap
 per source, records detection/watch health and owns post-detection transport
 `closeIdle()` maintenance. `DaemonFetchScheduler` only emits `PERIODIC` triggers.
+`RemoteChangeWatchLifecycle` is intentionally bootstrap-owned: Spring lifecycle and
+fail-fast config wiring stay here, while transport-specific watch loops stay in adapter
+modules behind `RemoteChangeSignalSource`.
 
 Оба sync scheduler используют fixed delay, локальный overlap guard, последовательный обход и
 изоляцию ошибок per source/target; следующий tick является macro retry. При активном daemon publish

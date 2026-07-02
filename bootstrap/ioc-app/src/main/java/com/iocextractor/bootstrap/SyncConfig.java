@@ -3,6 +3,7 @@ package com.iocextractor.bootstrap;
 import com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog;
 import com.iocextractor.adapter.out.store.jdbc.JdbcPublishLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcRemoteFetchLedger;
+import com.iocextractor.adapter.out.transport.smb.SmbChangeNotifyWatcher;
 import com.iocextractor.adapter.out.transport.smb.SmbEndpointSettings;
 import com.iocextractor.adapter.out.transport.smb.SmbFileTransport;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
@@ -71,12 +72,14 @@ public class SyncConfig {
                 .toList();
         rejectUnsupportedTransports(props, smbEndpoints.size());
 
-        SmbFileTransport smb = new SmbFileTransport(smbEndpoints.stream()
+        List<SmbEndpointSettings> smbSettings = smbEndpoints.stream()
                 .map(this::smbSettings)
-                .toList());
+                .toList();
+        SmbFileTransport smb = new SmbFileTransport(smbSettings);
+        SmbChangeNotifyWatcher smbWatcher = new SmbChangeNotifyWatcher(smbSettings, syncRetryPolicy(props));
         List<TransportRegistry.Binding> bindings = smbEndpoints.stream()
                 .map(endpoint -> new TransportRegistry.Binding(
-                        endpoint.name(), smb, smb::closeIdle, smb))
+                        endpoint.name(), smb, smb::closeIdle, smb, smbWatcher))
                 .toList();
         return new TransportRegistry(bindings);
     }
@@ -112,10 +115,7 @@ public class SyncConfig {
     @Lazy
     @ConditionalOnProperty(prefix = "ioc.sync", name = "enabled", havingValue = "true")
     public Retrier syncRetrier(IocProperties props) {
-        IocProperties.Sync.Retry retry = props.sync().retry();
-        return new Retrier(new RetryPolicy(
-                retry.maxAttempts(), retry.backoff(), retry.multiplier(),
-                retry.maxBackoff(), retry.jitter()));
+        return new Retrier(syncRetryPolicy(props));
     }
 
     @Bean
@@ -211,6 +211,18 @@ public class SyncConfig {
             IocProperties props) {
         return new DaemonFetchScheduler(
                 fetchSources(props), detectionCoordinator, props.sync().fetch().interval());
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.sync.enabled:false}' == 'true' && "
+            + "'${ioc.sync.fetch.enabled:false}' == 'true' && "
+            + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
+    public RemoteChangeWatchLifecycle remoteChangeWatchLifecycle(
+            TransportRegistry transports,
+            RemoteFetchDetectionCoordinator detectionCoordinator,
+            IocProperties props) {
+        return new RemoteChangeWatchLifecycle(changeNotifyFetchSources(props), transports, detectionCoordinator);
     }
 
     @Bean
@@ -331,8 +343,24 @@ public class SyncConfig {
         }
     }
 
+    private RetryPolicy syncRetryPolicy(IocProperties props) {
+        IocProperties.Sync.Retry retry = props.sync().retry();
+        return new RetryPolicy(
+                retry.maxAttempts(), retry.backoff(), retry.multiplier(),
+                retry.maxBackoff(), retry.jitter());
+    }
+
     private List<RemoteFetchSource> fetchSources(IocProperties props) {
         return props.sync().fetch().sources().stream()
+                .map(source -> new RemoteFetchSource(
+                        source.name(), source.endpoint(), source.remotePath(),
+                        source.include(), source.exclude()))
+                .toList();
+    }
+
+    private List<RemoteFetchSource> changeNotifyFetchSources(IocProperties props) {
+        return props.sync().fetch().sources().stream()
+                .filter(source -> source.changeNotify().enabled())
                 .map(source -> new RemoteFetchSource(
                         source.name(), source.endpoint(), source.remotePath(),
                         source.include(), source.exclude()))

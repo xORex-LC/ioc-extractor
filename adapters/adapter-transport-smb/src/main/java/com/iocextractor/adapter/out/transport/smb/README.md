@@ -8,6 +8,8 @@ SMB-сессии, handles или типы transport-библиотеки.
 | Файл | Роль |
 |---|---|
 | `SmbFileTransport` | Реализация transport-neutral `FileTransport`: `list`, `stat`, `get`, `delete`, `publishAtomically`. |
+| `SmbChangeNotifyWatcher` | Optional `RemoteChangeSignalSource` поверх SMB2 `CHANGE_NOTIFY`; отдаёт только doorbell-сигналы. |
+| `SmbjChangeNotifySessionFactory` | Выделенный SMBJ client/session/share/directory handle для long-poll watch. |
 | `SmbEndpointSettings` | Immutable-настройки endpoint с маскированием credentials. |
 | `ConnectTimeoutSocketFactory` | Ограничивает TCP connect через `Socket.connect(timeout)`. |
 | `SmbjShareClientFactory` | Создаёт SMBJ client/session/share для endpoint. |
@@ -26,6 +28,13 @@ SMB-сессии, handles или типы transport-библиотеки.
 - Соединение создаётся lazy и переиспользуется per endpoint. Операции одного endpoint
   сериализованы, поэтому reconnect/idle-close не закрывают share во время активного IO;
   разные endpoints могут обслуживаться параллельно.
+- `CHANGE_NOTIFY` использует выделенный клиент и не делит cached `SmbShareClient` с
+  `list/get/publish`; long-poll watch не должен блокировать обычные transport операции.
+- Watcher — это accelerator, не correctness path: callback только сообщает
+  "что-то изменилось", а application запускает обычный `RemoteSourceMonitor.detect`.
+- Pending watch имеет bounded shutdown: `close()` отменяет future, закрывает SMB handles
+  и ждёт worker ограниченное время. Плановый lease re-open вызывает новый
+  `WATCH_ESTABLISHED` detect через bootstrap coordinator.
 - Transient/unreachable failure инвалидирует cached client; следующий macro/micro retry
   открывает новое соединение. Bootstrap вызывает `closeIdle`, shutdown закрывает все clients.
 - `connectTimeout` ограничивает TCP dial, `requestTimeout` — отдельный SMB
@@ -34,5 +43,18 @@ SMB-сессии, handles или типы transport-библиотеки.
 
 ## Тестирование
 
-Unit-тесты используют fake `SmbShareClient` без SMB-сервера и проверяют атомарность
-publish-протокола, idempotency, reconnect-on-transient, timeout wiring и taxonomy mapping.
+Unit-тесты используют fake `SmbShareClient`/watch-session без SMB-сервера и проверяют
+атомарность publish-протокола, idempotency, reconnect-on-transient, timeout wiring,
+taxonomy mapping, watch re-arm, lease re-open и bounded close.
+
+Opt-in contract test против живого SMB-сервера:
+
+```bash
+./mvnw -pl adapters/adapter-transport-smb test \
+  -Dioc.smb.contract=true \
+  -Dioc.smb.host=127.0.0.1 \
+  -Dioc.smb.share=test-share \
+  -Dioc.smb.username="$SMB_USER" \
+  -Dioc.smb.password="$SMB_PASSWORD" \
+  -Dioc.smb.remotePath=send
+```
