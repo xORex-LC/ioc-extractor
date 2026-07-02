@@ -25,7 +25,7 @@ reconcile, MDC-проброс и т.д.) — **закрыты** и здесь н
 | ~~SYNC-7~~ | ~~Индекс `(profile, slice_name)` под `findBySliceName`~~ | Low | ✅ закрыт |
 | ~~SYNC-8~~ | ~~Двойная эмиссия `LOCAL_SLICE_INVALID`~~ | Low | ✅ закрыт |
 | SYNC-9 | Watch-item: leak claim'а in-flight-реестра при abandon работы (сейчас недостижим) | Note | открыт |
-| SYNC-10 | CHANGE_NOTIFY поддержан smbj 0.14; нужен отдельный design-spike optional push-capability | Design | открыт |
+| SYNC-10 | CHANGE_NOTIFY поддержан smbj 0.14; design-note готова ([sync-change-notify.md](sync-change-notify.md)), дальше стендовый прототип (go/no-go) | Design | design готов / стенд |
 | ~~SYNC-11~~ | ~~Actuator health материализовал весь `publish_ledger` через `findAll`~~ | Medium | ✅ закрыт |
 | ~~SYNC-6~~ | ~~Гонка periodic↔fast-path publish~~ | — | ✅ закрыт |
 
@@ -142,12 +142,11 @@ core владеет стабильным `RemoteErrorKind`, bootstrap — его
 
 **Health — НЕ «прибит навсегда» (уточнение по ревью):** следующий успешный
 результат заменяет snapshot (`SyncHealthState.recordFetch`,
-[SyncHealthState.java:~31]) — самовосстановление уже работает. **Открытый
-design-вопрос (противоположное направление):** возможно, endpoint стоит наоборот
-держать degraded/down **до подтверждённого восстановления** (успешная операция
-на том же endpoint), а не мгновенно очищать первым же удачным тиком — иначе
-health мигает на flapping-эндпоинте. Решить при реализации: мгновенная очистка
-vs sticky-until-confirmed (например, N успешных тиков подряд).
+[SyncHealthState.java:~31]) — самовосстановление уже работает. Итоговое решение:
+`latest confirmed outcome wins`, то есть успешная операция того же source/target
+или успешный keyed work-item сразу снимает runtime `DEGRADED`. На flapping-endpoint
+health может мигать `WARN ↔ UP`; sticky-until-N-successes/hysteresis не вводим,
+пока нет реального операторского сигнала, что простая модель даёт шум.
 
 ## SYNC-4 — Библиотечный шум smbj в logback
 
@@ -245,6 +244,16 @@ reconnect/cancel/re-arm, application делает targeted stat и публик�
 Зависимость: сначала SYNC-2 — долгоживущий watch бессмысленен, пока SO_TIMEOUT
 убивает reader через 10 секунд. Реализация CHANGE_NOTIFY — отдельный design-spike,
 не часть timeout bugfix.
+
+**Design-note готова:** [sync-change-notify.md](sync-change-notify.md). Ключевое
+уточнение относительно формулировки выше: вместо targeted `stat` принята
+**doorbell-модель** — любой ответ watch'а (включая overflow и delete) только
+триггерит `RemoteSourceMonitor.detect(source)`, который переиспользует
+существующий listing/матчинг/дедуп и публикует тот же `RemoteChangeBatchDetected`.
+Targeted stat остаётся отложенной оптимизацией для больших каталогов. Там же:
+решение не чистить `remote_fetch` ledger по delete-событиям (retention по
+возрасту как watch-item) и go/no-go вопросы стенда (pending vs `request-timeout`,
+keepalive, Samba/Windows).
 
 ## SYNC-11 — Health грузит весь исторический ledger на каждый запрос
 
@@ -349,7 +358,8 @@ SYNC-5/7/8 и задаёт границу SYNC-10; SYNC-9 остаётся от�
   no-op start/complete переведены на DEBUG (`0d473a1`, `8b67668`).
 - ✅ **SYNC-3:** bootstrap policy переводит `TRANSIENT|UNREACHABLE` в
   `WARN + DEGRADED`, permanent/unexpected — в `ERROR + DOWN`; следующий успешный
-  outcome подтверждает восстановление (`8b67668`).
+  outcome подтверждает восстановление (`8b67668`). Recovery-семантика осознанно
+  instant-clear (`latest confirmed outcome wins`), без sticky hysteresis.
 - ✅ **SYNC-5:** `publish.trigger` удалён; обязательная модель fast-path + periodic
   reconcile отмечена как superseding contract в ADR 0011.
 - ✅ **SYNC-7/SYNC-11:** service schema v7 добавляет индекс `(profile,slice_name)`,

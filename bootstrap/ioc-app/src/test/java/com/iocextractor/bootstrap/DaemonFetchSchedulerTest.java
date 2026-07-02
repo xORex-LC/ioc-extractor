@@ -1,6 +1,5 @@
 package com.iocextractor.bootstrap;
 
-import com.iocextractor.application.port.in.sync.RemoteFetchCommand;
 import com.iocextractor.application.port.out.sync.FileTransport;
 import com.iocextractor.application.port.out.sync.RemoteFetchLedger;
 import com.iocextractor.application.sync.PublishAtomicallyRequest;

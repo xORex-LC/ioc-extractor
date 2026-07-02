@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -183,6 +184,45 @@ class DaemonPublishSchedulerTest {
         assertThat(state.publishSnapshots()).isEmpty();
     }
 
+    @Test
+    void interruptedAwaitDoesNotPinSchedulerThreadWhenAcceptedWorkIsAbandoned() throws Exception {
+        CountDownLatch accepted = new CountDownLatch(1);
+        DaemonPublishScheduler scheduler = new DaemonPublishScheduler(
+                List.of(target("one")), new RecordingPublisher(), registry(), healthState(),
+                new AcceptingButNeverRunningExecutor(accepted), Duration.ofHours(1));
+        Thread schedulerThread = new Thread(scheduler::runOnce);
+
+        schedulerThread.start();
+        assertThat(accepted.await(1, TimeUnit.SECONDS)).isTrue();
+        schedulerThread.interrupt();
+        schedulerThread.join(1000);
+
+        assertThat(schedulerThread.isAlive()).isFalse();
+        assertThat(schedulerThread.isInterrupted()).isTrue();
+    }
+
+    @Test
+    void periodicPublishSubmitsDifferentEndpointsBeforeWaiting() throws Exception {
+        CountDownLatch bothRunning = new CountDownLatch(2);
+        CountDownLatch release = new CountDownLatch(1);
+        ConcurrentPublisher publisher = new ConcurrentPublisher(bothRunning, release);
+        ExecutorService workers = Executors.newFixedThreadPool(2);
+        BoundedKeyedSerialExecutor executor = new BoundedKeyedSerialExecutor(workers, 10);
+        DaemonPublishScheduler scheduler = new DaemonPublishScheduler(
+                List.of(target("one"), target("two")), publisher, registry(), healthState(),
+                executor, Duration.ofHours(1));
+        Thread schedulerThread = new Thread(scheduler::runOnce);
+
+        schedulerThread.start();
+        assertThat(bothRunning.await(1, TimeUnit.SECONDS)).isTrue();
+        release.countDown();
+        schedulerThread.join(1000);
+        executor.shutdown();
+        assertThat(executor.awaitTermination(Duration.ofSeconds(1))).isTrue();
+
+        assertThat(publisher.maxConcurrent()).isEqualTo(2);
+    }
+
     private DaemonPublishScheduler scheduler(ArtifactPublishUseCase publisher) {
         return new DaemonPublishScheduler(
                 List.of(target("one"), target("two")), publisher, registry(), healthState(),
@@ -266,10 +306,76 @@ class DaemonPublishSchedulerTest {
         }
     }
 
+    private static final class ConcurrentPublisher implements ArtifactPublishUseCase {
+        private final CountDownLatch bothRunning;
+        private final CountDownLatch release;
+        private final AtomicInteger running = new AtomicInteger();
+        private final AtomicInteger maxConcurrent = new AtomicInteger();
+
+        private ConcurrentPublisher(CountDownLatch bothRunning, CountDownLatch release) {
+            this.bothRunning = bothRunning;
+            this.release = release;
+        }
+
+        @Override
+        public ArtifactPublishResult reconcile(ArtifactPublishCommand command) {
+            return empty();
+        }
+
+        @Override
+        public ArtifactPublishExecutionResult publish(ArtifactPublishCommand command) {
+            int current = running.incrementAndGet();
+            maxConcurrent.accumulateAndGet(current, Math::max);
+            bothRunning.countDown();
+            try {
+                await(release);
+                return emptyExecution();
+            } finally {
+                running.decrementAndGet();
+            }
+        }
+
+        @Override
+        public ArtifactPublishExecutionResult publishCompletedSlice(PublishCompletedSliceCommand command) {
+            return emptyExecution();
+        }
+
+        int maxConcurrent() {
+            return maxConcurrent.get();
+        }
+    }
+
     private static final class DirectKeyedExecutor implements KeyedSerialExecutor {
         @Override
         public WorkAdmission submit(WorkKey key, Runnable work) {
             work.run();
+            return WorkAdmission.accepted(key, 0);
+        }
+
+        @Override
+        public void shutdown() {
+        }
+
+        @Override
+        public boolean awaitTermination(Duration timeout) {
+            return true;
+        }
+
+        @Override
+        public void close() {
+        }
+    }
+
+    private static final class AcceptingButNeverRunningExecutor implements KeyedSerialExecutor {
+        private final CountDownLatch accepted;
+
+        private AcceptingButNeverRunningExecutor(CountDownLatch accepted) {
+            this.accepted = accepted;
+        }
+
+        @Override
+        public WorkAdmission submit(WorkKey key, Runnable work) {
+            accepted.countDown();
             return WorkAdmission.accepted(key, 0);
         }
 

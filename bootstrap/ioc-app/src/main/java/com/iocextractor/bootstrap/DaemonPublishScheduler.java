@@ -92,9 +92,11 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
     private void runCycle() {
         try {
             reconcileProfiles("scheduled remote publish reconciliation failed");
+            List<PublishAttempt> attempts = new ArrayList<>(targets.size());
             for (PublishTarget target : targets) {
-                attempt(target);
+                attempts.add(submitAttempt(target));
             }
+            awaitCompletions(attempts);
         } finally {
             try {
                 transports.closeIdle();
@@ -108,7 +110,7 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
         }
     }
 
-    private void attempt(PublishTarget target) {
+    private PublishAttempt submitAttempt(PublishTarget target) {
         CountDownLatch completed = new CountDownLatch(1);
         WorkAdmission admission = executor.submit(WorkKey.of(target.endpoint()), () -> {
             try {
@@ -127,9 +129,17 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
                     .field(LogField.IOC_SYNC_SHED_TO_RECONCILE, true)
                     .message("scheduled remote publish shed to next reconcile cycle")
                     .log();
-            return;
+            return new PublishAttempt(completed, false);
         }
-        awaitCompletion(completed);
+        return new PublishAttempt(completed, true);
+    }
+
+    private void awaitCompletions(List<PublishAttempt> attempts) {
+        for (PublishAttempt attempt : attempts) {
+            if (attempt.accepted() && !awaitCompletion(attempt.completed())) {
+                return;
+            }
+        }
     }
 
     private void attemptOnExecutor(PublishTarget target) {
@@ -151,18 +161,13 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
         }
     }
 
-    private void awaitCompletion(CountDownLatch completed) {
-        boolean interrupted = false;
-        while (true) {
-            try {
-                completed.await();
-                break;
-            } catch (InterruptedException ignored) {
-                interrupted = true;
-            }
-        }
-        if (interrupted) {
+    private boolean awaitCompletion(CountDownLatch completed) {
+        try {
+            completed.await();
+            return true;
+        } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
+            return false;
         }
     }
 
@@ -248,6 +253,12 @@ public final class DaemonPublishScheduler implements SmartLifecycle {
     @Override
     public int getPhase() {
         return PHASE;
+    }
+
+    private record PublishAttempt(CountDownLatch completed, boolean accepted) {
+        private PublishAttempt {
+            completed = Objects.requireNonNull(completed, "completed");
+        }
     }
 
 }
