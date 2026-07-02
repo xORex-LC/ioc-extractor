@@ -17,6 +17,9 @@ class DaemonWebEnvironmentPostProcessorTest {
         processor.postProcessEnvironment(environment, null);
 
         assertThat(environment.getProperty("spring.main.web-application-type")).isEqualTo("servlet");
+        assertThat(environment.getProperty("spring.main.lazy-initialization")).isEqualTo("false");
+        assertThat(environment.getProperty("spring.autoconfigure.exclude"))
+                .isEqualTo("org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration");
     }
 
     @Test
@@ -27,6 +30,10 @@ class DaemonWebEnvironmentPostProcessorTest {
         processor.postProcessEnvironment(environment, null);
 
         assertThat(environment.getProperty("spring.main.web-application-type")).isNull();
+        assertThat(environment.getProperty("spring.main.lazy-initialization")).isEqualTo("true");
+        assertThat(environment.getProperty("spring.autoconfigure.exclude"))
+                .contains("DataSourceHealthContributorAutoConfiguration")
+                .contains("JdbcTemplateAutoConfiguration");
     }
 
     @Test
@@ -36,5 +43,9 @@ class DaemonWebEnvironmentPostProcessorTest {
         processor.postProcessEnvironment(environment, null);
 
         assertThat(environment.getProperty("spring.main.web-application-type")).isNull();
+        assertThat(environment.getProperty("spring.main.lazy-initialization")).isEqualTo("true");
+        assertThat(environment.getProperty("spring.autoconfigure.exclude"))
+                .contains("DataSourceHealthContributorAutoConfiguration")
+                .contains("JdbcTemplateAutoConfiguration");
     }
 }

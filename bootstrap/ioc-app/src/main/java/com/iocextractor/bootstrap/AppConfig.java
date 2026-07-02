@@ -154,6 +154,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Predicate;
 
 /**
@@ -515,9 +516,12 @@ public class AppConfig {
     public JdbcCanonicalArtifactRepository jdbcCanonicalArtifactRepository(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             DataframeSchemaPlan dataframeSchemaReconciliation,
+            @Qualifier("artifactIdentityValidation")
+            List<StoredArtifactIdentity> artifactIdentityValidation,
             ArtifactIdentityResolver artifactIdentityResolver,
             IocProperties props,
             Clock clock) {
+        Objects.requireNonNull(artifactIdentityValidation, "artifactIdentityValidation");
         return new JdbcCanonicalArtifactRepository(
                 dataframeStorageDataSource,
                 dataframeSchemas(props),

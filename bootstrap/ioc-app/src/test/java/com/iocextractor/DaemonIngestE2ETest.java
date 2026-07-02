@@ -48,7 +48,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * pass. Drives the use case directly for determinism (the file poller wiring is
  * covered by the runtime-mode context tests).
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "ioc.runtime.mode=daemon",
         "ioc.lookup.path=target/daemon-e2e/none.csv",
         "ioc.ingestion.dirs.inbox=target/daemon-e2e/inbox",

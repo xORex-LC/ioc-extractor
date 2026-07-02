@@ -33,6 +33,16 @@ Spring/Actuator. Export use cases зарегистрированы как lazy b
 `ioc export` связывает `JdbcArtifactRevisionReader`, `JdbcSnapshotSliceReader`,
 `JdbcExportRunLedger`/progress store, `CsvArtifactSliceWriter` и Jackson codec.
 
+Весь oneshot context использует `spring.main.lazy-initialization=true`: разбор root help,
+`health` и validation-only веток не создаёт dataframe datasource, миграции или тяжёлые use cases.
+В daemon mode `DaemonWebEnvironmentPostProcessor` принудительно возвращает eager initialization,
+чтобы schema migration/recovery завершились до запуска poller-ов и scheduler-ов.
+В oneshot также отключены стандартные Boot JDBC auto-configurations: storage, migrations и
+transactions собираются явно в composition root/JDBC adapter, поэтому type-discovery не должен
+материализовать lazy datasource до выбора CLI-команды. Daemon сохраняет прежние JDBC health/metrics
+auto-configurations; post-processor оставляет ему только базовый `DataSourceAutoConfiguration`
+exclude, так как оба datasource создаются проектом явно.
+
 `LoggingExportObserver` — bootstrap adapter application-порта: он переводит
 durable checkpoints saga в ECS actions/fields, не добавляя SLF4J-зависимость в
 application core.

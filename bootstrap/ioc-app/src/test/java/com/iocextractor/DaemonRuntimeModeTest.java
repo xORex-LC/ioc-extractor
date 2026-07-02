@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.integration.dsl.IntegrationFlow;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Runtime-mode smoke test: daemon wiring must start without activating the CLI
  * runner that exits oneshot processes.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "ioc.runtime.mode=daemon",
         "ioc.lookup.path=target/test-daemon/no-lookup.csv",
         "ioc.ingestion.dirs.inbox=target/test-daemon/inbox",
@@ -48,6 +49,10 @@ class DaemonRuntimeModeTest {
 
     @Test
     void daemon_context_has_ingest_flow_without_cli_runner() {
+        var beanFactory = ((ConfigurableApplicationContext) context).getBeanFactory();
+        assertThat(beanFactory.containsSingleton("dataframeStorageDataSource")).isTrue();
+        assertThat(beanFactory.containsSingleton("dataframeFormatSchemaMigration")).isTrue();
+        assertThat(context.containsBean("dbHealthContributor")).isTrue();
         assertThat(ingestSourceUseCase).isNotNull();
         assertThat(context.getBeansOfType(CliRunner.class)).isEmpty();
         assertThat(context.getBeansOfType(IntegrationFlow.class))

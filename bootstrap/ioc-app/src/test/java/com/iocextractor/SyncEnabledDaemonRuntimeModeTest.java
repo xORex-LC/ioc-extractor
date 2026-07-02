@@ -14,7 +14,7 @@ import org.springframework.context.ApplicationContext;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Runtime wiring gate for enabled sync without opening an SMB connection at startup. */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "ioc.runtime.mode=daemon",
         "ioc.sync.enabled=true",
         "ioc.sync.fetch.enabled=true",

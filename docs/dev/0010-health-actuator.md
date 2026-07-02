@@ -31,7 +31,7 @@ classpath oneshot/CLI остаётся non-web.
 
 **2. Гейт по `runtime.mode` через `EnvironmentPostProcessor`.**
 `DaemonWebEnvironmentPostProcessor` (зарегистрирован в
-`META-INF/spring/org.springframework.boot.env.EnvironmentPostProcessor.imports`)
+`META-INF/spring.factories`)
 при `ioc.runtime.mode=daemon` добавляет property-source с
 `spring.main.web-application-type=servlet`.
 - Работает, потому что `spring.main.*` биндится из окружения **после** EPP;

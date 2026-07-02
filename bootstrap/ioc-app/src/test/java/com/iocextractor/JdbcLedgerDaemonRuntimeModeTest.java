@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * ledger. The datasource must be explicitly selected; oneshot and file-ledger
  * daemon contexts stay storage-free.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "ioc.runtime.mode=daemon",
         "ioc.lookup.path=target/test-daemon-jdbc/no-lookup.csv",
         "ioc.ingestion.ledger.type=jdbc",

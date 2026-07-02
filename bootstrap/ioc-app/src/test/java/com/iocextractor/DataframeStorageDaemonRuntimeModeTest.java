@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Runtime-mode smoke test for the opt-in dataframe schema foundation. It must
  * not imply switching the ingestion ledger to JDBC.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "ioc.runtime.mode=daemon",
         "ioc.lookup.path=target/test-dataframe-storage/no-lookup.csv",
         "ioc.ingestion.dirs.inbox=target/test-dataframe-storage/inbox",
