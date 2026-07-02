@@ -20,6 +20,7 @@
 | `SyncPublishCommand.java` | Явная публикация completed slices с фильтрами profile/target/endpoint |
 | `SyncAllCommand.java` | Полностью preflight-валидируемая последовательность fetch → publish |
 | `HealthCommand.java` | Запрос actuator health у отдельного daemon process |
+| `EarlyCliLauncher.java` | Help, health и ошибки синтаксиса до запуска Spring context |
 | `CliRunner.java` | Мост Spring Boot ↔ picocli, проброс exit-кода |
 
 ## Точка входа
@@ -30,6 +31,13 @@
 - `ioc sync publish [--profile <name>] [--target <name>] [--endpoint <name>] [--dry-run]`;
 - `ioc sync all [fetch/publish filters] [--dry-run]`;
 - `ioc health [--json]`.
+
+`EarlyCliLauncher` строит read-only Picocli model из тех же аннотированных command-классов.
+Root/subcommand help, version, синтаксически некорректный ввод и `health` поэтому завершаются
+до `SpringApplication.run()`. Валидные `extract`, `export` и leaf-команды `sync` передаются
+Spring composition root. Для раннего `health` адрес по умолчанию берётся из JVM properties
+`server.address`/`server.port`, затем из `SERVER_ADDRESS`/`SERVER_PORT`, затем используется
+`127.0.0.1:8081`; нестандартный endpoint также можно явно задать CLI-опциями.
 
 `ExportCommand` сначала вызывает IO-free profile validator и только затем
 разрешает через `ObjectProvider` storage-backed export use case. Построение root

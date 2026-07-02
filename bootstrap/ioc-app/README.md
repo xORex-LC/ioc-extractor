@@ -33,8 +33,10 @@ Spring/Actuator. Export use cases зарегистрированы как lazy b
 `ioc export` связывает `JdbcArtifactRevisionReader`, `JdbcSnapshotSliceReader`,
 `JdbcExportRunLedger`/progress store, `CsvArtifactSliceWriter` и Jackson codec.
 
-Весь oneshot context использует `spring.main.lazy-initialization=true`: разбор root help,
-`health` и validation-only веток не создаёт dataframe datasource, миграции или тяжёлые use cases.
+`EarlyCliLauncher` завершает root/subcommand help, `health` и синтаксические ошибки до
+`SpringApplication.run()`, поэтому эти пути вообще не создают Spring context. Оставшийся oneshot
+context использует `spring.main.lazy-initialization=true`: validation-only ветки не создают
+dataframe datasource, миграции или тяжёлые use cases.
 В daemon mode `DaemonWebEnvironmentPostProcessor` принудительно возвращает eager initialization,
 чтобы schema migration/recovery завершились до запуска poller-ов и scheduler-ов.
 В oneshot также отключены стандартные Boot JDBC auto-configurations: storage, migrations и
