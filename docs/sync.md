@@ -190,6 +190,9 @@ Watcher бесконечно reconnect'ится с capped backoff из `ioc.sync
 запускает `WATCH_ESTABLISHED` recovery-detect, чтобы закрыть окно между close и новым watch.
 Trailing debounce выбран как v1 trade-off: одиночный файл получает задержку `debounce`,
 зато серия `ADDED/MODIFIED/RENAMED` сворачивается в один detect без сложного автомата.
+После подтверждённого стабильного watch в health можно поднять `ioc.sync.fetch.interval`
+до более редкого backstop-значения, чтобы сократить холостые SMB listings. Polling при этом
+не выключается: он остаётся correctness-loop для потерянных notify, рестартов и ручных изменений.
 
 Практический риск push-модели — файл может быть замечен во время записи. Базовая
 защита остаётся прежней: producer convention `*.tmp`/`*.part` + atomic rename,
@@ -220,7 +223,7 @@ Daemon actuator contributor `sync` публикует:
 - keyed executor state: running keys, queue depth per key, oldest age и последние
   shed/failure/dispatch-rejected сигналы;
 - fetch detection state и remote change watch state: active/reconnecting/disabled,
-  re-arm count, signal count, reconnect count и last error;
+  detection duration, re-arm count, signal count, reconnect count и last error;
 - summary `UP|DEGRADED|DOWN|UNKNOWN` по endpoint.
 
 Последние scheduler outcomes хранятся только в памяти процесса и после restart снова
@@ -231,7 +234,9 @@ Daemon actuator contributor `sync` публикует:
 Восстановимый executor shed остаётся видимым в details и `WARN`, но сам по себе не переводит
 contributor в `DOWN`: correctness сохраняет reconcile/backstop. Work/dispatch failure переводит
 health в `DOWN`; transient executor-сигнал очищается после следующего успешного work-item того же
-endpoint. ECS actions: `sync_fetch_start|complete`,
+endpoint. Watch `RECONNECTING` отображается сразу, но переводит endpoint/contributor в
+`DEGRADED` только после grace-window: push — accelerator, а polling остаётся backstop.
+ECS actions: `sync_fetch_start|complete`,
 `sync_publish_start|complete`, `sync_work_admission`, `sync_work_dispatch`;
 пустые scheduler ticks логируются на `DEBUG`, реальная работа — на `INFO`;
 поля не содержат host/share/username/password. Полный каталог ошибок —
@@ -244,6 +249,9 @@ endpoint. ECS actions: `sync_fetch_start|complete`,
   не предоставляет `RemoteChangeSignalSource`, включённый `change-notify` fail-fast'ит
   при startup, а не молча деградирует в polling;
 - fetch не удаляет remote source, publish не выполняет remote retention;
+- `CHANGE_NOTIFY` delete-events не используются для чистки `remote_fetch_ledger`: исторические
+  identities чистятся отдельной age-retention задачей, чтобы не связывать correctness с
+  ненадёжной доставкой delete-событий;
 - нет активной startup auth/write probe: endpoint status появляется после операции;
 - provisioning share/ACL и ротация динамических credentials остаются внешними задачами.
 

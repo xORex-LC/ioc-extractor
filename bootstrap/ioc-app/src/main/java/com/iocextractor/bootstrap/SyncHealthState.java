@@ -6,6 +6,7 @@ import com.iocextractor.platform.concurrent.WorkAdmission;
 import com.iocextractor.platform.concurrent.WorkKey;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -46,22 +47,27 @@ public final class SyncHealthState {
     }
 
     /** Records a completed remote source detection run. */
-    public void recordFetchDetection(String source, String endpoint, String reason, int detectedObjects) {
+    public void recordFetchDetection(String source,
+                                     String endpoint,
+                                     String reason,
+                                     int detectedObjects,
+                                     Duration duration) {
         detectionBySource.compute(source, (ignored, previous) -> new FetchDetectionSnapshot(
                 endpoint, clock.instant(), reason, Math.max(0, detectedObjects),
                 previous == null ? 0 : previous.coalescedSignals(),
-                SyncOperationalStatus.UP, null));
+                requireNonNegative(duration, "duration"), SyncOperationalStatus.UP, null));
     }
 
     /** Records a remote source detection run failure. */
     public void recordFetchDetectionFailure(String source,
                                             String endpoint,
                                             String reason,
-                                            RuntimeException failure) {
+                                            RuntimeException failure,
+                                            Duration duration) {
         detectionBySource.compute(source, (ignored, previous) -> new FetchDetectionSnapshot(
                 endpoint, clock.instant(), reason, 0,
                 previous == null ? 0 : previous.coalescedSignals(),
-                outcomePolicy.classify(failure), failureMessage(failure)));
+                requireNonNegative(duration, "duration"), outcomePolicy.classify(failure), failureMessage(failure)));
     }
 
     /** Records a signal that was coalesced into an already scheduled or running detection. */
@@ -71,6 +77,7 @@ public final class SyncHealthState {
                 previous == null ? "UNKNOWN" : previous.reason(),
                 previous == null ? 0 : previous.detectedObjects(),
                 previous == null ? 1 : previous.coalescedSignals() + 1,
+                previous == null ? Duration.ZERO : previous.duration(),
                 previous == null ? SyncOperationalStatus.UP : previous.status(),
                 previous == null ? null : previous.error()));
     }
@@ -81,8 +88,9 @@ public final class SyncHealthState {
                 endpoint, clock.instant(), RemoteChangeWatchStatus.ACTIVE,
                 previous == null ? 0 : previous.signals(),
                 previous == null ? 0 : previous.reconnects(),
-                previous == null ? 0 : previous.reArms() + 1,
-                null));
+                previous == null || !previous.everEstablished() ? 0 : previous.reArms() + 1,
+                null,
+                true));
     }
 
     /** Records an optional remote change watch signal. */
@@ -93,7 +101,8 @@ public final class SyncHealthState {
                 previous == null ? 1 : previous.signals() + 1,
                 previous == null ? 0 : previous.reconnects(),
                 previous == null ? 0 : previous.reArms(),
-                previous == null ? null : previous.error()));
+                previous == null ? null : previous.error(),
+                previous != null && previous.everEstablished()));
     }
 
     /** Records an optional remote change watch entering reconnect/degraded state. */
@@ -103,13 +112,14 @@ public final class SyncHealthState {
                 previous == null ? 0 : previous.signals(),
                 previous == null ? 1 : previous.reconnects() + 1,
                 previous == null ? 0 : previous.reArms(),
-                failureMessage(failure)));
+                failureMessage(failure),
+                previous != null && previous.everEstablished()));
     }
 
     /** Records that remote change watch is disabled for one source. */
     public void recordRemoteChangeWatchDisabled(String source, String endpoint) {
         watchBySource.put(source, new RemoteChangeWatchSnapshot(
-                endpoint, clock.instant(), RemoteChangeWatchStatus.DISABLED, 0, 0, 0, null));
+                endpoint, clock.instant(), RemoteChangeWatchStatus.DISABLED, 0, 0, 0, null, false));
     }
 
     /** Records a completed target publish, including failed ledger pairs. */
@@ -206,6 +216,14 @@ public final class SyncHealthState {
                 ? failure.getClass().getSimpleName() : failure.getMessage();
     }
 
+    private Duration requireNonNegative(Duration value, String field) {
+        Objects.requireNonNull(value, field);
+        if (value.isNegative()) {
+            throw new IllegalArgumentException(field + " must not be negative");
+        }
+        return value;
+    }
+
     /** Latest fetch outcome for one configured source. */
     public record FetchSnapshot(String endpoint,
                                 Instant completedAt,
@@ -222,6 +240,7 @@ public final class SyncHealthState {
                                          String reason,
                                          int detectedObjects,
                                          long coalescedSignals,
+                                         Duration duration,
                                          SyncOperationalStatus status,
                                          String error) {
     }
@@ -254,6 +273,7 @@ public final class SyncHealthState {
                                             long signals,
                                             long reconnects,
                                             long reArms,
-                                            String error) {
+                                            String error,
+                                            boolean everEstablished) {
     }
 }

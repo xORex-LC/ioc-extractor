@@ -15,6 +15,7 @@ import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.boot.actuate.health.Status;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -34,6 +35,9 @@ public final class SyncHealthIndicator implements HealthIndicator {
     private final CompletedSliceCatalog catalog;
     private final Supplier<KeyedSerialExecutorSnapshot> executorSnapshot;
     private final SliceRetentionGuard retentionGuard;
+    private final Clock clock;
+
+    private static final Duration WATCH_RECONNECT_GRACE = Duration.ofSeconds(60);
 
     /** Creates a read-only health contributor over runtime snapshots and durable publish state. */
     public SyncHealthIndicator(List<RemoteFetchSource> sources,
@@ -42,7 +46,8 @@ public final class SyncHealthIndicator implements HealthIndicator {
                                PublishLedger ledger,
                                CompletedSliceCatalog catalog,
                                SliceRetentionGuard retentionGuard) {
-        this(sources, targets, state, ledger, catalog, KeyedSerialExecutorSnapshot::empty, retentionGuard);
+        this(sources, targets, state, ledger, catalog, KeyedSerialExecutorSnapshot::empty,
+                retentionGuard, Clock.systemUTC());
     }
 
     /** Creates a read-only health contributor with live keyed-executor state. */
@@ -53,6 +58,17 @@ public final class SyncHealthIndicator implements HealthIndicator {
                                CompletedSliceCatalog catalog,
                                Supplier<KeyedSerialExecutorSnapshot> executorSnapshot,
                                SliceRetentionGuard retentionGuard) {
+        this(sources, targets, state, ledger, catalog, executorSnapshot, retentionGuard, Clock.systemUTC());
+    }
+
+    SyncHealthIndicator(List<RemoteFetchSource> sources,
+                        List<PublishTarget> targets,
+                        SyncHealthState state,
+                        PublishLedger ledger,
+                        CompletedSliceCatalog catalog,
+                        Supplier<KeyedSerialExecutorSnapshot> executorSnapshot,
+                        SliceRetentionGuard retentionGuard,
+                        Clock clock) {
         this.sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
         this.targets = List.copyOf(Objects.requireNonNull(targets, "targets"));
         this.state = Objects.requireNonNull(state, "state");
@@ -60,6 +76,7 @@ public final class SyncHealthIndicator implements HealthIndicator {
         this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.executorSnapshot = Objects.requireNonNull(executorSnapshot, "executorSnapshot");
         this.retentionGuard = Objects.requireNonNull(retentionGuard, "retentionGuard");
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     @Override
@@ -142,6 +159,7 @@ public final class SyncHealthIndicator implements HealthIndicator {
         detail.put("reason", snapshot.reason());
         detail.put("detectedObjects", snapshot.detectedObjects());
         detail.put("coalescedSignals", snapshot.coalescedSignals());
+        detail.put("detectDurationMs", millis(snapshot.duration()));
         detail.put("status", snapshot.status().name());
         if (snapshot.error() != null) {
             detail.put("error", snapshot.error());
@@ -165,6 +183,10 @@ public final class SyncHealthIndicator implements HealthIndicator {
         detail.put("endpoint", snapshot.endpoint());
         detail.put("updatedAt", snapshot.updatedAt().toString());
         detail.put("status", snapshot.status().name());
+        if (snapshot.status() == RemoteChangeWatchStatus.RECONNECTING) {
+            detail.put("reconnectingForMs", millis(Duration.between(snapshot.updatedAt(), clock.instant())));
+            detail.put("degradedAfterMs", WATCH_RECONNECT_GRACE.toMillis());
+        }
         detail.put("signals", snapshot.signals());
         detail.put("reconnects", snapshot.reconnects());
         detail.put("reArms", snapshot.reArms());
@@ -309,8 +331,7 @@ public final class SyncHealthIndicator implements HealthIndicator {
         }
         if (fetches.values().stream().anyMatch(snapshot -> snapshot.status() == SyncOperationalStatus.DEGRADED)
                 || detections.values().stream().anyMatch(snapshot -> snapshot.status() == SyncOperationalStatus.DEGRADED)
-                || watches.values().stream().anyMatch(snapshot ->
-                snapshot.status() == RemoteChangeWatchStatus.RECONNECTING)
+                || watches.values().stream().anyMatch(this::watchDegraded)
                 || publishes.values().stream().anyMatch(snapshot -> snapshot.status() == SyncOperationalStatus.DEGRADED)) {
             return SyncOperationalStatus.DEGRADED;
         }
@@ -339,12 +360,17 @@ public final class SyncHealthIndicator implements HealthIndicator {
                 || detections.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint)
                 && snapshot.status() == SyncOperationalStatus.DEGRADED)
                 || watches.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint)
-                && snapshot.status() == RemoteChangeWatchStatus.RECONNECTING)
+                && watchDegraded(snapshot))
                 || publishes.values().stream().anyMatch(snapshot -> snapshot.endpoint().equals(endpoint)
                 && snapshot.status() == SyncOperationalStatus.DEGRADED)) {
             return SyncOperationalStatus.DEGRADED;
         }
         return null;
+    }
+
+    private boolean watchDegraded(SyncHealthState.RemoteChangeWatchSnapshot snapshot) {
+        return snapshot.status() == RemoteChangeWatchStatus.RECONNECTING
+                && Duration.between(snapshot.updatedAt(), clock.instant()).compareTo(WATCH_RECONNECT_GRACE) >= 0;
     }
 
     private long millis(Duration duration) {

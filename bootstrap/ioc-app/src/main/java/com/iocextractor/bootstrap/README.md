@@ -100,7 +100,8 @@ Fetch detection now goes through `RemoteFetchDetectionCoordinator`: periodic tic
 and optional remote push signals request the same `RemoteSourceMonitor.detect(source)`
 path. The coordinator coalesces push storms with trailing debounce, prevents overlap
 per source, records detection/watch health and owns post-detection transport
-`closeIdle()` maintenance. `DaemonFetchScheduler` only emits `PERIODIC` triggers.
+`closeIdle()` maintenance. `DaemonFetchScheduler` emits one immediate `STARTUP`
+trigger per source before the fixed-delay `PERIODIC` backstop begins.
 `RemoteChangeWatchLifecycle` is intentionally bootstrap-owned: Spring lifecycle and
 fail-fast config wiring stay here, while transport-specific watch loops stay in adapter
 modules behind `RemoteChangeSignalSource`.

@@ -22,6 +22,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Coalesces periodic and optional push signals into source detection runs.
@@ -63,11 +64,17 @@ public final class RemoteFetchDetectionCoordinator implements RemoteFetchDetecti
                                            SyncHealthState healthState,
                                            Map<String, Duration> debounceBySource) {
         this(sources, monitor, eventPublisher, transports, healthState, debounceBySource,
-                Executors.newScheduledThreadPool(Math.max(1, sources.size()), runnable -> {
-                    Thread thread = new Thread(runnable, "ioc-sync-fetch-detection");
-                    thread.setDaemon(false);
-                    return thread;
-                }));
+                Executors.newScheduledThreadPool(Math.max(1, sources.size()), new java.util.concurrent.ThreadFactory() {
+                    private final AtomicInteger index = new AtomicInteger();
+
+                    @Override
+	                    public Thread newThread(Runnable runnable) {
+	                        Thread thread = new Thread(runnable,
+	                                "ioc-sync-fetch-detection-" + index.incrementAndGet());
+	                        thread.setDaemon(true);
+	                        return thread;
+	                    }
+	                }));
     }
 
     RemoteFetchDetectionCoordinator(List<RemoteFetchSource> sources,
@@ -137,6 +144,10 @@ public final class RemoteFetchDetectionCoordinator implements RemoteFetchDetecti
 
     private void runDetection(SourceState state, RemoteFetchDetectionReason reason) {
         RemoteFetchSource source = state.source;
+        Thread current = Thread.currentThread();
+        String originalThreadName = current.getName();
+        current.setName("ioc-sync-fetch-detection-" + source.sourceId() + "-" + source.endpoint());
+        long startedNanos = System.nanoTime();
         int detected = 0;
         try {
             LogEvents.debug(log)
@@ -152,15 +163,22 @@ public final class RemoteFetchDetectionCoordinator implements RemoteFetchDetecti
             for (RemoteChangeBatchDetected event : events) {
                 publish(event);
             }
-            healthState.recordFetchDetection(source.sourceId(), source.endpoint(), reason.name(), detected);
+            healthState.recordFetchDetection(
+                    source.sourceId(), source.endpoint(), reason.name(), detected, elapsed(startedNanos));
             logDetectionCompleted(source, reason, detected);
         } catch (RuntimeException failure) {
-            healthState.recordFetchDetectionFailure(source.sourceId(), source.endpoint(), reason.name(), failure);
+            healthState.recordFetchDetectionFailure(
+                    source.sourceId(), source.endpoint(), reason.name(), failure, elapsed(startedNanos));
             logFailure(source, reason, failure);
         } finally {
             closeIdle(source);
             state.complete();
+            current.setName(originalThreadName);
         }
+    }
+
+    private Duration elapsed(long startedNanos) {
+        return Duration.ofNanos(Math.max(0L, System.nanoTime() - startedNanos));
     }
 
     private void publish(RemoteChangeBatchDetected event) {
@@ -238,6 +256,8 @@ public final class RemoteFetchDetectionCoordinator implements RemoteFetchDetecti
     private final class SourceState {
         private final RemoteFetchSource source;
         private ScheduledFuture<?> scheduled;
+        private long scheduledToken;
+        private long nextToken;
         private boolean running;
         private boolean rerunRequested;
         private RemoteFetchDetectionReason rerunReason = RemoteFetchDetectionReason.PUSH;
@@ -270,13 +290,19 @@ public final class RemoteFetchDetectionCoordinator implements RemoteFetchDetecti
         }
 
         private void schedule(RemoteFetchDetectionReason reason, Duration delay) {
-            scheduled = executor.schedule(() -> start(reason),
+            long token = ++nextToken;
+            scheduledToken = token;
+            scheduled = executor.schedule(() -> start(reason, token),
                     delay.toMillis(), TimeUnit.MILLISECONDS);
         }
 
-        private void start(RemoteFetchDetectionReason reason) {
+        private void start(RemoteFetchDetectionReason reason, long token) {
             synchronized (this) {
+                if (token != scheduledToken) {
+                    return;
+                }
                 scheduled = null;
+                scheduledToken = 0L;
                 if (closed) {
                     return;
                 }
@@ -307,6 +333,7 @@ public final class RemoteFetchDetectionCoordinator implements RemoteFetchDetecti
                 if (scheduled != null) {
                     scheduled.cancel(false);
                     scheduled = null;
+                    scheduledToken = 0L;
                 }
             }
         }

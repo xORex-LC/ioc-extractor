@@ -7,7 +7,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 
-/** Fixed-delay daemon trigger that isolates remote fetch failures by configured source. */
+/** Fixed-delay daemon trigger that enqueues periodic remote fetch detection by configured source. */
 public final class DaemonFetchScheduler implements SmartLifecycle {
 
     /** Fetch can start before export formation because it only lands files in the local inbox. */
@@ -17,7 +17,7 @@ public final class DaemonFetchScheduler implements SmartLifecycle {
     private final RemoteFetchDetectionTrigger detection;
     private final PeriodicDaemonCycle cycle;
 
-    /** Creates one sequential fetch scheduler over the configured source order. */
+    /** Creates a fetch trigger scheduler over the configured source order. */
     public DaemonFetchScheduler(List<RemoteFetchSource> sources,
                                 RemoteFetchDetectionTrigger detection,
                                 Duration interval) {
@@ -28,10 +28,16 @@ public final class DaemonFetchScheduler implements SmartLifecycle {
 
     @Override
     public void start() {
+        if (cycle.isRunning()) {
+            return;
+        }
+        for (RemoteFetchSource source : sources) {
+            detection.trigger(source, RemoteFetchDetectionReason.STARTUP);
+        }
         cycle.start();
     }
 
-    /** Executes one non-overlapping cycle and keeps later sources runnable after one failure. */
+    /** Executes one non-overlapping periodic trigger cycle. */
     public void runOnce() {
         cycle.runOnce();
     }

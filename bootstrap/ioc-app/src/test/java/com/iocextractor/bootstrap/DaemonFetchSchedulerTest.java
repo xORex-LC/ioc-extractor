@@ -27,6 +27,20 @@ class DaemonFetchSchedulerTest {
     }
 
     @Test
+    void startTriggersStartupDetectionForEveryConfiguredSourceBeforeFirstInterval() {
+        RecordingDetection detection = new RecordingDetection();
+        DaemonFetchScheduler scheduler = new DaemonFetchScheduler(
+                List.of(source("one"), source("two")), detection, Duration.ofHours(1));
+
+        scheduler.start();
+        scheduler.stop();
+
+        assertThat(detection.triggers)
+                .containsExactly("one:" + RemoteFetchDetectionReason.STARTUP,
+                        "two:" + RemoteFetchDetectionReason.STARTUP);
+    }
+
+    @Test
     void slowCycleDoesNotOverlap() throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -46,12 +60,14 @@ class DaemonFetchSchedulerTest {
 
     @Test
     void lifecycleStartsBeforeExportAndStopsCleanly() {
+        RecordingDetection detection = new RecordingDetection();
         DaemonFetchScheduler scheduler = new DaemonFetchScheduler(
-                List.of(source("one")), new RecordingDetection(), Duration.ofHours(1));
+                List.of(source("one")), detection, Duration.ofHours(1));
 
         scheduler.start();
         assertThat(scheduler.isRunning()).isTrue();
         assertThat(scheduler.getPhase()).isLessThan(DaemonExportScheduler.PHASE);
+        assertThat(detection.triggers).containsExactly("one:" + RemoteFetchDetectionReason.STARTUP);
         scheduler.stop();
 
         assertThat(scheduler.isRunning()).isFalse();

@@ -169,25 +169,28 @@ class SyncHealthIndicatorTest {
     }
 
     @Test
-    void reportsDetectionAndRemoteChangeWatchStateAsDegradedNotDown() {
-        SyncHealthState state = new SyncHealthState(Clock.fixed(NOW, ZoneOffset.UTC));
+    void reportsFreshRemoteChangeWatchReconnectWithoutDegradingHealth() {
+        Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        SyncHealthState state = new SyncHealthState(clock);
         SyncHealthIndicator indicator = new SyncHealthIndicator(
                 List.of(new RemoteFetchSource(
                         "incoming", "primary", "/in", List.of("*"), List.of())),
-                List.of(), state, ledger(List.of()), catalog(List.of()), descriptor -> false);
-        state.recordFetchDetection("incoming", "primary", "PUSH", 3);
+                List.of(), state, ledger(List.of()), catalog(List.of()),
+                KeyedSerialExecutorSnapshot::empty, descriptor -> false, clock);
+        state.recordFetchDetection("incoming", "primary", "PUSH", 3, Duration.ofMillis(12));
         state.recordRemoteChangeWatchFailure("incoming", "primary",
                 new IllegalStateException("watch disconnected"));
 
         var health = indicator.health();
 
-        assertThat(health.getStatus()).isEqualTo(new Status("DEGRADED"));
+        assertThat(health.getStatus()).isEqualTo(Status.UP);
         @SuppressWarnings("unchecked")
         Map<String, Map<String, Object>> detection =
                 (Map<String, Map<String, Object>>) health.getDetails().get("fetchDetection");
         assertThat(detection.get("incoming"))
                 .containsEntry("reason", "PUSH")
                 .containsEntry("detectedObjects", 3)
+                .containsEntry("detectDurationMs", 12L)
                 .containsEntry("status", "UP");
         @SuppressWarnings("unchecked")
         Map<String, Map<String, Object>> watch =
@@ -195,7 +198,30 @@ class SyncHealthIndicatorTest {
         assertThat(watch.get("incoming"))
                 .containsEntry("status", "RECONNECTING")
                 .containsEntry("reconnects", 1L)
+                .containsEntry("reconnectingForMs", 0L)
+                .containsEntry("degradedAfterMs", 60_000L)
                 .containsEntry("error", "watch disconnected");
+    }
+
+    @Test
+    void degradesHealthWhenRemoteChangeWatchReconnectExceedsGrace() {
+        Clock stateClock = Clock.fixed(NOW, ZoneOffset.UTC);
+        SyncHealthState state = new SyncHealthState(stateClock);
+        state.recordRemoteChangeWatchFailure("incoming", "primary",
+                new IllegalStateException("watch disconnected"));
+        Clock indicatorClock = Clock.fixed(NOW.plusSeconds(61), ZoneOffset.UTC);
+        SyncHealthIndicator indicator = new SyncHealthIndicator(
+                List.of(new RemoteFetchSource(
+                        "incoming", "primary", "/in", List.of("*"), List.of())),
+                List.of(), state, ledger(List.of()), catalog(List.of()),
+                KeyedSerialExecutorSnapshot::empty, descriptor -> false, indicatorClock);
+
+        var health = indicator.health();
+
+        assertThat(health.getStatus()).isEqualTo(new Status("DEGRADED"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> endpoints = (Map<String, Object>) health.getDetails().get("endpoints");
+        assertThat(endpoints).containsEntry("primary", "DEGRADED");
     }
 
     private PublishLedger ledger(List<PublishRecord> records) {

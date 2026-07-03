@@ -24,11 +24,17 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.AbstractExecutorService;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Delayed;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -135,7 +141,52 @@ class RemoteFetchDetectionCoordinatorTest {
             assertThat(healthState.remoteChangeWatchSnapshots().get("one"))
                     .extracting(snapshot -> snapshot.status(), snapshot -> snapshot.reconnects(),
                             snapshot -> snapshot.reArms())
-                    .containsExactly(RemoteChangeWatchStatus.ACTIVE, 1L, 1L);
+                    .containsExactly(RemoteChangeWatchStatus.ACTIVE, 1L, 0L);
+        }
+    }
+
+    @Test
+    void detectionThreadNameIncludesSourceAndEndpoint() {
+        FakeTransport transport = new FakeTransport();
+        try (RemoteFetchDetectionCoordinator coordinator = coordinator(
+                transport, new RecordingControlEventPublisher(), new SyncHealthState(CLOCK), () -> { },
+                Duration.ZERO, source("one"))) {
+
+            coordinator.trigger(source("one"), RemoteFetchDetectionReason.WATCH_ESTABLISHED);
+
+            waitUntil(() -> !transport.listThreadNames.isEmpty());
+            assertThat(transport.listThreadNames).singleElement()
+                    .satisfies(name -> assertThat(name)
+                            .contains("ioc-sync-fetch-detection", "one", "endpoint-one"));
+        }
+    }
+
+    @Test
+    void staleScheduledDetectionDoesNotClearNewerImmediateTrigger() {
+        ManualScheduledExecutor executor = new ManualScheduledExecutor();
+        FakeTransport transport = new FakeTransport();
+        SyncHealthState healthState = new SyncHealthState(CLOCK);
+        try (RemoteFetchDetectionCoordinator coordinator = new RemoteFetchDetectionCoordinator(
+                List.of(source("one")),
+                new RemoteSourceMonitor(transport, new FakeLedger(), new RemoteFetchInFlightRegistry(),
+                        List.of(source("one")), 10, CLOCK),
+                new RecordingControlEventPublisher(),
+                registry(() -> { }),
+                healthState,
+                Map.of("one", Duration.ofHours(1)),
+                executor)) {
+
+            coordinator.trigger(source("one"), RemoteFetchDetectionReason.PUSH);
+            ManualScheduledFuture stale = executor.tasks.get(0);
+            coordinator.trigger(source("one"), RemoteFetchDetectionReason.WATCH_ESTABLISHED);
+            ManualScheduledFuture current = executor.tasks.get(1);
+
+            stale.run();
+            current.run();
+
+            assertThat(transport.listCalls).containsExactly("endpoint-one:/one");
+            assertThat(healthState.fetchDetectionSnapshots().get("one").reason())
+                    .isEqualTo("WATCH_ESTABLISHED");
         }
     }
 
@@ -198,6 +249,7 @@ class RemoteFetchDetectionCoordinatorTest {
     private static final class FakeTransport implements FileTransport {
         private final Map<String, List<RemoteObject>> objects;
         private final List<String> listCalls = new CopyOnWriteArrayList<>();
+        private final List<String> listThreadNames = new CopyOnWriteArrayList<>();
         private CountDownLatch entered;
         private CountDownLatch release;
         private boolean blockedOnce;
@@ -218,6 +270,7 @@ class RemoteFetchDetectionCoordinatorTest {
         @Override
         public List<RemoteObject> list(String endpoint, String remotePath) {
             listCalls.add(endpoint + ":" + remotePath);
+            listThreadNames.add(Thread.currentThread().getName());
             if (entered != null && !blockedOnce) {
                 blockedOnce = true;
                 entered.countDown();
@@ -281,6 +334,126 @@ class RemoteFetchDetectionCoordinatorTest {
                                          String lastError,
                                          Instant fetchedAt) {
             return new RemoteFetchRecord(identity, status, localPath, 0, lastError, fetchedAt, NOW);
+        }
+    }
+
+    private static final class ManualScheduledExecutor extends AbstractExecutorService
+            implements ScheduledExecutorService {
+        private final List<ManualScheduledFuture> tasks = new CopyOnWriteArrayList<>();
+        private volatile boolean shutdown;
+
+        @Override
+        public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
+            ManualScheduledFuture future = new ManualScheduledFuture(command);
+            tasks.add(future);
+            return future;
+        }
+
+        @Override
+        public <V> ScheduledFuture<V> schedule(Callable<V> callable, long delay, TimeUnit unit) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleAtFixedRate(
+                Runnable command,
+                long initialDelay,
+                long period,
+                TimeUnit unit) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleWithFixedDelay(
+                Runnable command,
+                long initialDelay,
+                long delay,
+                TimeUnit unit) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void shutdown() {
+            shutdown = true;
+        }
+
+        @Override
+        public List<Runnable> shutdownNow() {
+            shutdown = true;
+            return List.of();
+        }
+
+        @Override
+        public boolean isShutdown() {
+            return shutdown;
+        }
+
+        @Override
+        public boolean isTerminated() {
+            return shutdown;
+        }
+
+        @Override
+        public boolean awaitTermination(long timeout, TimeUnit unit) {
+            return true;
+        }
+
+        @Override
+        public void execute(Runnable command) {
+            schedule(command, 0, TimeUnit.NANOSECONDS);
+        }
+    }
+
+    private static final class ManualScheduledFuture implements ScheduledFuture<Object> {
+        private final Runnable command;
+        private volatile boolean cancelled;
+        private volatile boolean done;
+
+        private ManualScheduledFuture(Runnable command) {
+            this.command = command;
+        }
+
+        private void run() {
+            if (!cancelled) {
+                command.run();
+            }
+            done = true;
+        }
+
+        @Override
+        public long getDelay(TimeUnit unit) {
+            return 0;
+        }
+
+        @Override
+        public int compareTo(Delayed other) {
+            return 0;
+        }
+
+        @Override
+        public boolean cancel(boolean mayInterruptIfRunning) {
+            return false;
+        }
+
+        @Override
+        public boolean isCancelled() {
+            return cancelled;
+        }
+
+        @Override
+        public boolean isDone() {
+            return done;
+        }
+
+        @Override
+        public Object get() throws InterruptedException, ExecutionException {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Object get(long timeout, TimeUnit unit)
+                throws InterruptedException, ExecutionException, TimeoutException {
+            throw new UnsupportedOperationException();
         }
     }
 }
