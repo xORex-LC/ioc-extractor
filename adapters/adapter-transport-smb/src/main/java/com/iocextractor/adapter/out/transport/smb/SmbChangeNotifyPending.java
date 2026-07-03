@@ -1,10 +1,11 @@
 package com.iocextractor.adapter.out.transport.smb;
 
+import java.time.Duration;
+import java.util.Optional;
+
 interface SmbChangeNotifyPending {
 
-    boolean isDone();
-
-    SmbChangeNotifyResult get();
+    Optional<SmbChangeNotifyResult> await(Duration timeout);
 
     boolean cancel();
 }

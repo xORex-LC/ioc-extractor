@@ -1,11 +1,13 @@
 package com.iocextractor.adapter.out.transport.smb;
 
+import com.hierynomus.mserref.NtStatus;
 import com.hierynomus.msdtyp.AccessMask;
 import com.hierynomus.msfscc.FileAttributes;
 import com.hierynomus.mssmb2.SMB2CompletionFilter;
 import com.hierynomus.mssmb2.SMB2CreateDisposition;
 import com.hierynomus.mssmb2.SMB2CreateOptions;
 import com.hierynomus.mssmb2.SMB2ShareAccess;
+import com.hierynomus.mssmb2.SMBApiException;
 import com.hierynomus.mssmb2.messages.SMB2ChangeNotifyResponse;
 import com.hierynomus.smbj.SMBClient;
 import com.hierynomus.smbj.auth.AuthenticationContext;
@@ -14,13 +16,17 @@ import com.hierynomus.smbj.share.Directory;
 import com.hierynomus.smbj.share.DiskShare;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 final class SmbjChangeNotifySessionFactory implements SmbChangeNotifySessionFactory {
 
@@ -71,6 +77,22 @@ final class SmbjChangeNotifySessionFactory implements SmbChangeNotifySessionFact
         return remotePath.replace('/', '\\');
     }
 
+    static SmbChangeNotifyResult resultFrom(String endpoint, SMB2ChangeNotifyResponse response) {
+        long statusCode = response.getHeader().getStatusCode();
+        if (statusCode == NtStatus.STATUS_NOTIFY_ENUM_DIR.getValue()) {
+            return new SmbChangeNotifyResult(0, true);
+        }
+        if (statusCode != NtStatus.STATUS_SUCCESS.getValue()) {
+            throw SmbExceptionMapper.map(
+                    new SMBApiException(response.getHeader(), "Change notify failed"),
+                    "watch",
+                    endpoint);
+        }
+        List<?> changes = response.getFileNotifyInfoList();
+        int changeCount = changes == null ? 0 : changes.size();
+        return new SmbChangeNotifyResult(changeCount, false);
+    }
+
     private record SmbjChangeNotifySession(String endpoint,
                                            SMBClient client,
                                            DiskShare share,
@@ -102,19 +124,15 @@ final class SmbjChangeNotifySessionFactory implements SmbChangeNotifySessionFact
                                            Future<SMB2ChangeNotifyResponse> future) implements SmbChangeNotifyPending {
 
         @Override
-        public boolean isDone() {
-            return future.isDone();
-        }
-
-        @Override
-        public SmbChangeNotifyResult get() {
+        public Optional<SmbChangeNotifyResult> await(Duration timeout) {
             try {
-                List<?> changes = future.get().getFileNotifyInfoList();
-                int changeCount = changes == null ? 0 : changes.size();
-                return new SmbChangeNotifyResult(changeCount, changeCount == 0);
+                SMB2ChangeNotifyResponse response = future.get(timeout.toNanos(), TimeUnit.NANOSECONDS);
+                return Optional.of(resultFrom(endpoint, response));
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("Interrupted while waiting for SMB change notify", interrupted);
+            } catch (TimeoutException timeoutExceeded) {
+                return Optional.empty();
             } catch (CancellationException cancelled) {
                 throw SmbExceptionMapper.map(cancelled, "watch", endpoint);
             } catch (ExecutionException failure) {

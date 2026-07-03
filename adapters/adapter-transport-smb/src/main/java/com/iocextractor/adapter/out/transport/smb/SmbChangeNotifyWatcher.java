@@ -11,8 +11,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.locks.LockSupport;
 
 /**
  * SMB2 CHANGE_NOTIFY signal source.
@@ -23,7 +23,7 @@ import java.util.concurrent.locks.LockSupport;
 public final class SmbChangeNotifyWatcher implements RemoteChangeSignalSource {
 
     static final Duration DEFAULT_MAX_SESSION_AGE = Duration.ofMinutes(30);
-    static final Duration DEFAULT_POLL_INTERVAL = Duration.ofMillis(250);
+    static final Duration DEFAULT_POLL_INTERVAL = Duration.ofSeconds(1);
     static final Duration DEFAULT_CLOSE_TIMEOUT = Duration.ofSeconds(5);
 
     private final Map<String, SmbEndpointSettings> endpoints;
@@ -98,7 +98,7 @@ public final class SmbChangeNotifyWatcher implements RemoteChangeSignalSource {
             this.source = source;
             this.handler = handler;
             this.thread = new Thread(this, "ioc-smb-watch-" + source.sourceId());
-            this.thread.setDaemon(false);
+            this.thread.setDaemon(true);
         }
 
         private void start() {
@@ -131,18 +131,17 @@ public final class SmbChangeNotifyWatcher implements RemoteChangeSignalSource {
                 while (!closed && System.nanoTime() < sessionDeadline) {
                     SmbChangeNotifyPending pending = session.watch();
                     currentPending = pending;
-                    awaitPendingOrLeaseDeadline(pending, sessionDeadline);
+                    Optional<SmbChangeNotifyResult> result = awaitPendingOrLeaseDeadline(pending, sessionDeadline);
                     currentPending = null;
                     if (closed) {
                         pending.cancel();
                         return;
                     }
-                    if (!pending.isDone()) {
+                    if (result.isEmpty()) {
                         pending.cancel();
                         return;
                     }
-                    SmbChangeNotifyResult result = pending.get();
-                    if (result.shouldSignal()) {
+                    if (result.get().shouldSignal()) {
                         handler.signal();
                     }
                 }
@@ -152,16 +151,22 @@ public final class SmbChangeNotifyWatcher implements RemoteChangeSignalSource {
             }
         }
 
-        private void awaitPendingOrLeaseDeadline(SmbChangeNotifyPending pending, long sessionDeadline) {
-            while (!closed && !pending.isDone() && System.nanoTime() < sessionDeadline) {
+        private Optional<SmbChangeNotifyResult> awaitPendingOrLeaseDeadline(
+                SmbChangeNotifyPending pending,
+                long sessionDeadline) {
+            while (!closed && System.nanoTime() < sessionDeadline) {
                 long remainingNanos = sessionDeadline - System.nanoTime();
-                long parkNanos = Math.min(pollInterval.toNanos(), Math.max(1L, remainingNanos));
-                LockSupport.parkNanos(parkNanos);
+                Duration timeout = Duration.ofNanos(Math.min(pollInterval.toNanos(), Math.max(1L, remainingNanos)));
+                Optional<SmbChangeNotifyResult> result = pending.await(timeout);
+                if (result.isPresent()) {
+                    return result;
+                }
                 if (Thread.currentThread().isInterrupted()) {
                     closed = true;
-                    return;
+                    return Optional.empty();
                 }
             }
+            return Optional.empty();
         }
 
         private Duration backoff(int failedAttempts) {

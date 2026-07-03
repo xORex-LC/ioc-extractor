@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.List;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -34,6 +35,42 @@ class SmbChangeNotifyWatcherTest {
 
         assertThat(handler.established).hasValue(1);
         assertThat(session.closed).isTrue();
+    }
+
+    @Test
+    void overflowNotifySignalsAndRearms() {
+        FakeSessionFactory factory = new FakeSessionFactory();
+        SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5));
+        RecordingHandler handler = new RecordingHandler();
+
+        RemoteChangeWatch watch = watcher.watch(source(), handler);
+        FakeSession session = waitForSession(factory, 0);
+        FakePending first = waitForPending(session, 0);
+        first.complete(new SmbChangeNotifyResult(0, true));
+
+        waitUntil(() -> handler.signals.get() == 1 && session.watchCalls.get() >= 2);
+        watch.close();
+
+        assertThat(handler.established).hasValue(1);
+        assertThat(handler.failures).hasValue(0);
+    }
+
+    @Test
+    void emptyNotifyDoesNotSignalButRearms() {
+        FakeSessionFactory factory = new FakeSessionFactory();
+        SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5));
+        RecordingHandler handler = new RecordingHandler();
+
+        RemoteChangeWatch watch = watcher.watch(source(), handler);
+        FakeSession session = waitForSession(factory, 0);
+        FakePending first = waitForPending(session, 0);
+        first.complete(new SmbChangeNotifyResult(0, false));
+
+        waitUntil(() -> session.watchCalls.get() >= 2);
+        watch.close();
+
+        assertThat(handler.signals).hasValue(0);
+        assertThat(handler.failures).hasValue(0);
     }
 
     @Test
@@ -66,6 +103,38 @@ class SmbChangeNotifyWatcherTest {
 
         assertThat(factory.sessions).hasSize(1);
         assertThat(handler.lastFailure).hasMessageContaining("connect denied");
+    }
+
+    @Test
+    void reconnectsAfterPendingFailureAndReportsFailure() {
+        FakeSessionFactory factory = new FakeSessionFactory();
+        SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5));
+        RecordingHandler handler = new RecordingHandler();
+
+        RemoteChangeWatch watch = watcher.watch(source(), handler);
+        FakeSession firstSession = waitForSession(factory, 0);
+        FakePending first = waitForPending(firstSession, 0);
+        first.fail(new RuntimeException("delete pending"));
+
+        waitUntil(() -> handler.failures.get() == 1 && handler.established.get() == 2);
+        watch.close();
+
+        assertThat(handler.signals).hasValue(0);
+        assertThat(handler.lastFailure).hasMessageContaining("delete pending");
+        assertThat(factory.sessions).hasSizeGreaterThanOrEqualTo(2);
+    }
+
+    @Test
+    void workerThreadIsDaemon() {
+        FakeSessionFactory factory = new FakeSessionFactory();
+        SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5));
+        RecordingHandler handler = new RecordingHandler();
+
+        RemoteChangeWatch watch = watcher.watch(source(), handler);
+        waitForSession(factory, 0);
+        watch.close();
+
+        assertThat(factory.lastOpenThreadDaemon).isTrue();
     }
 
     @Test
@@ -146,9 +215,11 @@ class SmbChangeNotifyWatcherTest {
     private static final class FakeSessionFactory implements SmbChangeNotifySessionFactory {
         private final List<FakeSession> sessions = new CopyOnWriteArrayList<>();
         private final Queue<RuntimeException> failures = new ArrayDeque<>();
+        private volatile boolean lastOpenThreadDaemon;
 
         @Override
         public synchronized SmbChangeNotifySession open(SmbEndpointSettings settings, String remotePath) {
+            lastOpenThreadDaemon = Thread.currentThread().isDaemon();
             RuntimeException failure = failures.poll();
             if (failure != null) {
                 throw failure;
@@ -179,30 +250,50 @@ class SmbChangeNotifyWatcherTest {
     }
 
     private static final class FakePending implements SmbChangeNotifyPending {
-        private volatile boolean done;
-        private volatile boolean cancelled;
-        private volatile SmbChangeNotifyResult result = new SmbChangeNotifyResult(0, false);
+        private boolean done;
+        private boolean cancelled;
+        private SmbChangeNotifyResult result = new SmbChangeNotifyResult(0, false);
+        private RuntimeException failure;
 
         @Override
-        public boolean isDone() {
-            return done;
+        public synchronized Optional<SmbChangeNotifyResult> await(Duration timeout) {
+            long deadline = System.nanoTime() + timeout.toNanos();
+            while (!done) {
+                long remainingNanos = deadline - System.nanoTime();
+                if (remainingNanos <= 0L) {
+                    return Optional.empty();
+                }
+                try {
+                    TimeUnit.NANOSECONDS.timedWait(this, remainingNanos);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(interrupted);
+                }
+            }
+            if (failure != null) {
+                throw failure;
+            }
+            return Optional.of(result);
         }
 
         @Override
-        public SmbChangeNotifyResult get() {
-            return result;
-        }
-
-        @Override
-        public boolean cancel() {
+        public synchronized boolean cancel() {
             cancelled = true;
             done = true;
+            notifyAll();
             return true;
         }
 
-        private void complete(SmbChangeNotifyResult result) {
+        private synchronized void complete(SmbChangeNotifyResult result) {
             this.result = result;
             done = true;
+            notifyAll();
+        }
+
+        private synchronized void fail(RuntimeException failure) {
+            this.failure = failure;
+            done = true;
+            notifyAll();
         }
     }
 

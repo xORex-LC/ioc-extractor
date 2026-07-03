@@ -33,8 +33,12 @@ SMB-сессии, handles или типы transport-библиотеки.
 - Watcher — это accelerator, не correctness path: callback только сообщает
   "что-то изменилось", а application запускает обычный `RemoteSourceMonitor.detect`.
 - Pending watch имеет bounded shutdown: `close()` отменяет future, закрывает SMB handles
-  и ждёт worker ограниченное время. Плановый lease re-open вызывает новый
+  и ждёт daemon-worker ограниченное время. Плановый lease re-open вызывает новый
   `WATCH_ESTABLISHED` detect через bootstrap coordinator.
+- Async `CHANGE_NOTIFY` response сначала классифицируется по SMB2 header status:
+  `STATUS_NOTIFY_ENUM_DIR` означает overflow/re-list signal, а error-status
+  (`ACCESS_DENIED`, `DELETE_PENDING`, invalid handle и т.п.) переводится в watch failure
+  с reconnect/backoff, а не маскируется под пустой signal.
 - Transient/unreachable failure инвалидирует cached client; следующий macro/micro retry
   открывает новое соединение. Bootstrap вызывает `closeIdle`, shutdown закрывает все clients.
 - `connectTimeout` ограничивает TCP dial, `requestTimeout` — отдельный SMB
