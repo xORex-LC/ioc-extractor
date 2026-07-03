@@ -119,7 +119,7 @@ class JdbcPublishLedgerTest {
                     null, null);
 
             assertThat(ledger.findRetryable(NOW.plusSeconds(300)))
-                    .extracting(PublishRecord::sliceId)
+                    .extracting(record -> record.sliceId())
                     .containsExactly("slice-old");
             assertThat(ledger.findRetryable(NOW.plusSeconds(601))).contains(fresh);
         }

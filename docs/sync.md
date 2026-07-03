@@ -179,10 +179,12 @@ ioc:
 
 Это **accelerator**, а не новый источник корректности. SMB watcher держит выделенный
 client/session/share/directory handle и вызывает только doorbell callback. Он не передаёт
-имена файлов, не делает `stat`, не скачивает данные и не заменяет polling. Любой сигнал,
-overflow или успешное переоткрытие watch-сессии приводит к обычному
-`RemoteSourceMonitor.detect(source)`, где сохраняются include/exclude, in-flight dedup,
-ledger idempotency и bounded batch.
+имена файлов, не делает `stat`, не скачивает данные и не заменяет polling. Notify-ответ
+с изменениями, overflow (`STATUS_NOTIFY_ENUM_DIR`) или успешное переоткрытие watch-сессии
+приводит к обычному `RemoteSourceMonitor.detect(source)`, где сохраняются include/exclude,
+in-flight dedup, ledger idempotency и bounded batch. Пустой успешный notify-ответ считается
+spurious wake/no-op: watcher просто re-arm'ит ожидание, а correctness остаётся за polling
+backstop.
 
 Watcher бесконечно reconnect'ится с capped backoff из `ioc.sync.retry`, но игнорирует
 `max-attempts`: daemon-watch является long-running capability. Pending `watchAsync`

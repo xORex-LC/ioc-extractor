@@ -198,23 +198,30 @@ class SyncHealthIndicatorTest {
         assertThat(watch.get("incoming"))
                 .containsEntry("status", "RECONNECTING")
                 .containsEntry("reconnects", 1L)
+                .containsEntry("reconnectingSince", NOW.toString())
                 .containsEntry("reconnectingForMs", 0L)
                 .containsEntry("degradedAfterMs", 60_000L)
                 .containsEntry("error", "watch disconnected");
     }
 
     @Test
-    void degradesHealthWhenRemoteChangeWatchReconnectExceedsGrace() {
-        Clock stateClock = Clock.fixed(NOW, ZoneOffset.UTC);
-        SyncHealthState state = new SyncHealthState(stateClock);
+    void degradesHealthWhenRepeatedRemoteChangeWatchFailuresExceedOutageGrace() {
+        MutableClock clock = new MutableClock(NOW);
+        SyncHealthState state = new SyncHealthState(clock);
         state.recordRemoteChangeWatchFailure("incoming", "primary",
-                new IllegalStateException("watch disconnected"));
-        Clock indicatorClock = Clock.fixed(NOW.plusSeconds(61), ZoneOffset.UTC);
+                new IllegalStateException("connection refused"));
+        clock.advance(Duration.ofSeconds(30));
+        state.recordRemoteChangeWatchFailure("incoming", "primary",
+                new IllegalStateException("connection refused"));
+        clock.advance(Duration.ofSeconds(25));
+        state.recordRemoteChangeWatchFailure("incoming", "primary",
+                new IllegalStateException("connection refused"));
+        clock.advance(Duration.ofSeconds(6));
         SyncHealthIndicator indicator = new SyncHealthIndicator(
                 List.of(new RemoteFetchSource(
                         "incoming", "primary", "/in", List.of("*"), List.of())),
                 List.of(), state, ledger(List.of()), catalog(List.of()),
-                KeyedSerialExecutorSnapshot::empty, descriptor -> false, indicatorClock);
+                KeyedSerialExecutorSnapshot::empty, descriptor -> false, clock);
 
         var health = indicator.health();
 
@@ -222,6 +229,13 @@ class SyncHealthIndicatorTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> endpoints = (Map<String, Object>) health.getDetails().get("endpoints");
         assertThat(endpoints).containsEntry("primary", "DEGRADED");
+        @SuppressWarnings("unchecked")
+        Map<String, Map<String, Object>> watch =
+                (Map<String, Map<String, Object>>) health.getDetails().get("remoteChangeWatch");
+        assertThat(watch.get("incoming"))
+                .containsEntry("reconnects", 3L)
+                .containsEntry("reconnectingSince", NOW.toString())
+                .containsEntry("reconnectingForMs", 61_000L);
     }
 
     private PublishLedger ledger(List<PublishRecord> records) {
@@ -286,12 +300,39 @@ class SyncHealthIndicatorTest {
         };
     }
 
+    private static final class MutableClock extends Clock {
+        private Instant instant;
+
+        private MutableClock(Instant instant) {
+            this.instant = instant;
+        }
+
+        private void advance(Duration duration) {
+            instant = instant.plus(duration);
+        }
+
+        @Override
+        public ZoneOffset getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(java.time.ZoneId zone) {
+            return Clock.fixed(instant, zone);
+        }
+
+        @Override
+        public Instant instant() {
+            return instant;
+        }
+    }
+
     private PublishLedgerHealthSummary summary(List<PublishRecord> records, Set<String> targetIds) {
         List<PublishRecord> selected = records.stream()
                 .filter(record -> targetIds.contains(record.targetId()))
                 .toList();
         Map<String, PublishLedgerStatusCounts> byEndpoint = new LinkedHashMap<>();
-        selected.stream().map(PublishRecord::endpoint).distinct().forEach(endpoint ->
+        selected.stream().map(record -> record.endpoint()).distinct().forEach(endpoint ->
                 byEndpoint.put(endpoint, counts(selected.stream()
                         .filter(record -> record.endpoint().equals(endpoint)).toList())));
         return new PublishLedgerHealthSummary(counts(selected), byEndpoint);

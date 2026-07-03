@@ -53,7 +53,7 @@ public final class RemoteFetchDetectionCoordinator implements RemoteFetchDetecti
                                            Duration debounce) {
         this(sources, monitor, eventPublisher, transports, healthState,
                 sources.stream().collect(java.util.stream.Collectors.toMap(
-                        RemoteFetchSource::sourceId, ignored -> debounce)));
+                        source -> source.sourceId(), ignored -> debounce)));
     }
 
     /** Creates a coordinator with per-source debounce values. */
@@ -68,13 +68,13 @@ public final class RemoteFetchDetectionCoordinator implements RemoteFetchDetecti
                     private final AtomicInteger index = new AtomicInteger();
 
                     @Override
-	                    public Thread newThread(Runnable runnable) {
-	                        Thread thread = new Thread(runnable,
-	                                "ioc-sync-fetch-detection-" + index.incrementAndGet());
-	                        thread.setDaemon(true);
-	                        return thread;
-	                    }
-	                }));
+                    public Thread newThread(Runnable runnable) {
+                        Thread thread = new Thread(runnable,
+                                "ioc-sync-fetch-detection-" + index.incrementAndGet());
+                        thread.setDaemon(true);
+                        return thread;
+                    }
+                }));
     }
 
     RemoteFetchDetectionCoordinator(List<RemoteFetchSource> sources,

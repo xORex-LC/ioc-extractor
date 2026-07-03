@@ -39,7 +39,7 @@ class SyncKeyedExecutorObserverTest {
         observer.failed(key, new IllegalStateException("work failed"));
         observer.dispatchRejected(key, 2, new RejectedExecutionException("dispatch rejected"));
 
-        assertThat(appender.list).extracting(ILoggingEvent::getLevel)
+        assertThat(appender.list.stream().map(event -> event.getLevel()).toList())
                 .containsExactly(Level.WARN, Level.ERROR, Level.ERROR);
         assertThat(healthState.keyedExecutorSignals().get("endpoint-a"))
                 .satisfies(signal -> {
@@ -63,7 +63,7 @@ class SyncKeyedExecutorObserverTest {
         observer.completed(key);
 
         assertThat(healthState.keyedExecutorSignals()).isEmpty();
-        assertThat(appender.list).extracting(ILoggingEvent::getLevel)
+        assertThat(appender.list.stream().map(event -> event.getLevel()).toList())
                 .containsExactly(Level.WARN, Level.DEBUG);
     }
 

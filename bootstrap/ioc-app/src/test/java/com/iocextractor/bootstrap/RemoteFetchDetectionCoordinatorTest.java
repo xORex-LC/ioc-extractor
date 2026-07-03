@@ -207,7 +207,7 @@ class RemoteFetchDetectionCoordinatorTest {
                 registry(closeIdle),
                 healthState,
                 configuredSources.stream().collect(java.util.stream.Collectors.toMap(
-                        RemoteFetchSource::sourceId, ignored -> debounce)),
+                        source -> source.sourceId(), ignored -> debounce)),
                 executor);
     }
 

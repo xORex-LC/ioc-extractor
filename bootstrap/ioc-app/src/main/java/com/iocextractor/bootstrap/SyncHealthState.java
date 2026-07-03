@@ -90,6 +90,7 @@ public final class SyncHealthState {
                 previous == null ? 0 : previous.reconnects(),
                 previous == null || !previous.everEstablished() ? 0 : previous.reArms() + 1,
                 null,
+                null,
                 true));
     }
 
@@ -101,17 +102,22 @@ public final class SyncHealthState {
                 previous == null ? 1 : previous.signals() + 1,
                 previous == null ? 0 : previous.reconnects(),
                 previous == null ? 0 : previous.reArms(),
+                previous == null ? null : previous.reconnectingSince(),
                 previous == null ? null : previous.error(),
                 previous != null && previous.everEstablished()));
     }
 
     /** Records an optional remote change watch entering reconnect/degraded state. */
     public void recordRemoteChangeWatchFailure(String source, String endpoint, RuntimeException failure) {
+        Instant now = clock.instant();
         watchBySource.compute(source, (ignored, previous) -> new RemoteChangeWatchSnapshot(
-                endpoint, clock.instant(), RemoteChangeWatchStatus.RECONNECTING,
+                endpoint, now, RemoteChangeWatchStatus.RECONNECTING,
                 previous == null ? 0 : previous.signals(),
                 previous == null ? 1 : previous.reconnects() + 1,
                 previous == null ? 0 : previous.reArms(),
+                previous != null && previous.status() == RemoteChangeWatchStatus.RECONNECTING
+                        ? previous.reconnectingSince()
+                        : now,
                 failureMessage(failure),
                 previous != null && previous.everEstablished()));
     }
@@ -119,7 +125,7 @@ public final class SyncHealthState {
     /** Records that remote change watch is disabled for one source. */
     public void recordRemoteChangeWatchDisabled(String source, String endpoint) {
         watchBySource.put(source, new RemoteChangeWatchSnapshot(
-                endpoint, clock.instant(), RemoteChangeWatchStatus.DISABLED, 0, 0, 0, null, false));
+                endpoint, clock.instant(), RemoteChangeWatchStatus.DISABLED, 0, 0, 0, null, null, false));
     }
 
     /** Records a completed target publish, including failed ledger pairs. */
@@ -273,6 +279,7 @@ public final class SyncHealthState {
                                             long signals,
                                             long reconnects,
                                             long reArms,
+                                            Instant reconnectingSince,
                                             String error,
                                             boolean everEstablished) {
     }

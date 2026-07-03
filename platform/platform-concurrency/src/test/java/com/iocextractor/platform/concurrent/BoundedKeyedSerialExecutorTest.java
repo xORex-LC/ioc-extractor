@@ -182,26 +182,27 @@ class BoundedKeyedSerialExecutorTest {
     void abandonsAndObservesQueuedWorkWhenWorkerRejectsDuringDrain() throws InterruptedException {
         RecordingObserver observer = new RecordingObserver();
         workers = new RejectingAfterFirstExecuteExecutorService();
-        BoundedKeyedSerialExecutor executor = new BoundedKeyedSerialExecutor(workers, 8, observer);
-        WorkKey key = WorkKey.of("endpoint-a");
-        CountDownLatch firstStarted = new CountDownLatch(1);
-        CountDownLatch releaseFirst = new CountDownLatch(1);
+        try (BoundedKeyedSerialExecutor executor = new BoundedKeyedSerialExecutor(workers, 8, observer)) {
+            WorkKey key = WorkKey.of("endpoint-a");
+            CountDownLatch firstStarted = new CountDownLatch(1);
+            CountDownLatch releaseFirst = new CountDownLatch(1);
 
-        assertThat(executor.submit(key, () -> blockingSignal(
-                firstStarted, releaseFirst, new CountDownLatch(0))).accepted()).isTrue();
-        assertThat(firstStarted.await(1, TimeUnit.SECONDS)).isTrue();
-        assertThat(executor.submit(key, () -> { }).accepted()).isTrue();
-        assertThat(executor.submit(key, () -> { }).accepted()).isTrue();
+            assertThat(executor.submit(key, () -> blockingSignal(
+                    firstStarted, releaseFirst, new CountDownLatch(0))).accepted()).isTrue();
+            assertThat(firstStarted.await(1, TimeUnit.SECONDS)).isTrue();
+            assertThat(executor.submit(key, () -> { }).accepted()).isTrue();
+            assertThat(executor.submit(key, () -> { }).accepted()).isTrue();
 
-        releaseFirst.countDown();
+            releaseFirst.countDown();
 
-        assertThat(observer.dispatchRejectedObserved.await(1, TimeUnit.SECONDS)).isTrue();
-        assertThat(observer.dispatchRejections).singleElement()
-                .satisfies(rejection -> {
-                    assertThat(rejection.key()).isEqualTo(key);
-                    assertThat(rejection.abandonedWork()).isEqualTo(2);
-                    assertThat(rejection.failure()).isInstanceOf(RejectedExecutionException.class);
-                });
+            assertThat(observer.dispatchRejectedObserved.await(1, TimeUnit.SECONDS)).isTrue();
+            assertThat(observer.dispatchRejections).singleElement()
+                    .satisfies(rejection -> {
+                        assertThat(rejection.key()).isEqualTo(key);
+                        assertThat(rejection.abandonedWork()).isEqualTo(2);
+                        assertThat(rejection.failure()).isInstanceOf(RejectedExecutionException.class);
+                    });
+        }
     }
 
     private BoundedKeyedSerialExecutor executor(int workerCount, int maxQueuedPerKey) {

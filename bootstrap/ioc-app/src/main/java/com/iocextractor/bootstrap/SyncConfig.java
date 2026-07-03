@@ -249,11 +249,11 @@ public class SyncConfig {
             + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
     public KeyedSerialExecutor syncKeyedExecutor(IocProperties props, SyncHealthState healthState) {
         long fetchEndpoints = fetchSources(props).stream()
-                .map(RemoteFetchSource::endpoint)
+                .map(source -> source.endpoint())
                 .distinct()
                 .count();
         long publishEndpoints = publishTargets(props).stream()
-                .map(PublishTarget::endpoint)
+                .map(target -> target.endpoint())
                 .distinct()
                 .count();
         int workers = Math.max(1, (int) Math.max(fetchEndpoints, publishEndpoints));
@@ -370,7 +370,7 @@ public class SyncConfig {
     private Map<String, Duration> fetchDebounces(IocProperties props) {
         return props.sync().fetch().sources().stream()
                 .collect(Collectors.toUnmodifiableMap(
-                        IocProperties.Sync.Fetch.Source::name,
+                        source -> source.name(),
                         source -> source.changeNotify().debounce()));
     }
 

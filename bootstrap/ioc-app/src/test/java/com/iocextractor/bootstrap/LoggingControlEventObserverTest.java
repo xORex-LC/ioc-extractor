@@ -36,7 +36,7 @@ class LoggingControlEventObserverTest {
         observer.publishFailed(event, failure);
         observer.dispatchFailed(event, "handler", failure);
 
-        assertThat(appender.list).extracting(ILoggingEvent::getLevel)
+        assertThat(appender.list.stream().map(logEvent -> logEvent.getLevel()).toList())
                 .containsExactly(Level.DEBUG, Level.DEBUG, Level.ERROR, Level.ERROR);
     }
 

@@ -28,6 +28,8 @@ import java.util.function.Supplier;
 /** Actuator read model for remote-sync progress, endpoint outcomes and retention blocking. */
 public final class SyncHealthIndicator implements HealthIndicator {
 
+    private static final Duration WATCH_RECONNECT_GRACE = Duration.ofSeconds(60);
+
     private final List<RemoteFetchSource> sources;
     private final List<PublishTarget> targets;
     private final SyncHealthState state;
@@ -36,8 +38,6 @@ public final class SyncHealthIndicator implements HealthIndicator {
     private final Supplier<KeyedSerialExecutorSnapshot> executorSnapshot;
     private final SliceRetentionGuard retentionGuard;
     private final Clock clock;
-
-    private static final Duration WATCH_RECONNECT_GRACE = Duration.ofSeconds(60);
 
     /** Creates a read-only health contributor over runtime snapshots and durable publish state. */
     public SyncHealthIndicator(List<RemoteFetchSource> sources,
@@ -184,7 +184,10 @@ public final class SyncHealthIndicator implements HealthIndicator {
         detail.put("updatedAt", snapshot.updatedAt().toString());
         detail.put("status", snapshot.status().name());
         if (snapshot.status() == RemoteChangeWatchStatus.RECONNECTING) {
-            detail.put("reconnectingForMs", millis(Duration.between(snapshot.updatedAt(), clock.instant())));
+            if (snapshot.reconnectingSince() != null) {
+                detail.put("reconnectingSince", snapshot.reconnectingSince().toString());
+                detail.put("reconnectingForMs", millis(Duration.between(snapshot.reconnectingSince(), clock.instant())));
+            }
             detail.put("degradedAfterMs", WATCH_RECONNECT_GRACE.toMillis());
         }
         detail.put("signals", snapshot.signals());
@@ -260,7 +263,7 @@ public final class SyncHealthIndicator implements HealthIndicator {
         keys.addAll(signals.keySet());
 
         List<String> runningKeys = liveByKey.values().stream()
-                .filter(KeyedWorkSnapshot::running)
+                .filter(lane -> lane.running())
                 .map(key -> key.key().value())
                 .toList();
         Map<String, Object> perKey = new LinkedHashMap<>();
@@ -370,7 +373,8 @@ public final class SyncHealthIndicator implements HealthIndicator {
 
     private boolean watchDegraded(SyncHealthState.RemoteChangeWatchSnapshot snapshot) {
         return snapshot.status() == RemoteChangeWatchStatus.RECONNECTING
-                && Duration.between(snapshot.updatedAt(), clock.instant()).compareTo(WATCH_RECONNECT_GRACE) >= 0;
+                && snapshot.reconnectingSince() != null
+                && Duration.between(snapshot.reconnectingSince(), clock.instant()).compareTo(WATCH_RECONNECT_GRACE) >= 0;
     }
 
     private long millis(Duration duration) {

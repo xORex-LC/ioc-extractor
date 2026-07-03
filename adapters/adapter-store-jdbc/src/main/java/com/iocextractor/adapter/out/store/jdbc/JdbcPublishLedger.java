@@ -199,7 +199,7 @@ public final class JdbcPublishLedger implements PublishLedger {
                     String endpoint = rs.getString("endpoint");
                     PublishStatus status = PublishStatus.valueOf(rs.getString("status"));
                     long count = rs.getLong("count");
-                    totals.merge(status, count, Long::sum);
+                    totals.put(status, totals.getOrDefault(status, 0L) + count);
                     byEndpoint.computeIfAbsent(endpoint, ignored -> new EnumMap<>(PublishStatus.class))
                             .put(status, count);
                     return rowNum;

@@ -38,7 +38,8 @@ SMB-сессии, handles или типы transport-библиотеки.
 - Async `CHANGE_NOTIFY` response сначала классифицируется по SMB2 header status:
   `STATUS_NOTIFY_ENUM_DIR` означает overflow/re-list signal, а error-status
   (`ACCESS_DENIED`, `DELETE_PENDING`, invalid handle и т.п.) переводится в watch failure
-  с reconnect/backoff, а не маскируется под пустой signal.
+  с reconnect/backoff, а не маскируется под пустой signal. `STATUS_SUCCESS` без notify
+  entries считается spurious wake/no-op: watcher re-arm'ит ожидание без doorbell callback.
 - Transient/unreachable failure инвалидирует cached client; следующий macro/micro retry
   открывает новое соединение. Bootstrap вызывает `closeIdle`, shutdown закрывает все clients.
 - `connectTimeout` ограничивает TCP dial, `requestTimeout` — отдельный SMB
