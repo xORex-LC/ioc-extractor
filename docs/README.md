@@ -38,6 +38,7 @@
 | [dev/output-mapping.md](dev/output-mapping.md) | Конфигурируемое заполнение артефактов: провайдеры + трансформации, декларативные колонки |
 | [dev/ingestion.md](dev/ingestion.md) | Стриминговый демон-инжест: детект, автомат каталогов, JDBC truth, CSV-проекции, идемпотентность, lifecycle |
 | [dev/sync.md](dev/sync.md) | Remote fetch/publish: SMB transport, ledgers, atomic protocols, CLI, scheduler lifecycle и health |
+| [dev/event-coordination.md](dev/event-coordination.md) | Event-driven координация: когда применять события, контракт `platform-events`, keyed single-flight, correctness-via-reconcile, anti-broker guardrails, эволюция к брокеру |
 | [dev/DIAGNOSTICS.md](dev/DIAGNOSTICS.md) | Диагностика обработки данных: каталог кодов, данные→сообщение, Result/Notification, bridge в logging |
 | [dev/LOGGING.md](dev/LOGGING.md) | Operational logging и трассировка: ECS JSON, rolling file, MDC, daemon/oneshot профили |
 | [dev/LOGGING-TAXONOMY.md](dev/LOGGING-TAXONOMY.md) | Таксономия логов: ECS mapping, `event.*`, project-specific поля `ioc.*`, связь с diagnostics |

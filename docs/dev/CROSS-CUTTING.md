@@ -13,6 +13,12 @@
 > logging фонового сервиса — в [logging.md](LOGGING.md), таксономия логов — в
 > [logging-taxonomy.md](LOGGING-TAXONOMY.md).
 
+> **Смежное, но с оговоркой:** `platform-events` (control-события) и
+> `platform-concurrency` (keyed single-flight) — тоже платформенные модули за
+> портами, но событийная координация **не ambient-концерн, как логирование**: её
+> применяют в узком наборе ситуаций под anti-broker инвариантом. Когда и как —
+> в отдельном [event-coordination.md](event-coordination.md).
+
 ## Общее правило
 
 - Каждая сквозная подсистема определяет **порты в ядре** (агностично) и
