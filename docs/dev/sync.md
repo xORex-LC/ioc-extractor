@@ -242,7 +242,7 @@ ECS actions: `sync_fetch_start|complete`,
 `sync_publish_start|complete`, `sync_work_admission`, `sync_work_dispatch`;
 пустые scheduler ticks логируются на `DEBUG`, реальная работа — на `INFO`;
 поля не содержат host/share/username/password. Полный каталог ошибок —
-[diagnostic-catalog.md](diagnostic-catalog.md).
+[diagnostic-catalog.md](../DIAGNOSTICS-CATALOG.md).
 
 ## Границы v1
 
@@ -257,4 +257,4 @@ ECS actions: `sync_fetch_start|complete`,
 - нет активной startup auth/write probe: endpoint status появляется после операции;
 - provisioning share/ACL и ротация динамических credentials остаются внешними задачами.
 
-Дизайн и журнал решений: [dev/0011-remote-sync.md](dev/0011-remote-sync.md).
+Дизайн и журнал решений: [dev/0011-remote-sync.md](../ADR/0011-remote-sync.md).

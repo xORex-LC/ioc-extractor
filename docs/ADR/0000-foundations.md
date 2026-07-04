@@ -2,7 +2,7 @@
 
 - **Статус:** принято (зафиксировано задним числом)
 - **Дата:** 2026-06-21 *(решения приняты на старте проекта)*
-- **Связано:** [../architecture.md](../architecture.md), [../principles.md](../principles.md)
+- **Связано:** [../architecture.md](../ARCHITECTURE.md), [../principles.md](../PRINCIPLES.md)
 
 ## Контекст
 
@@ -26,7 +26,7 @@
 ## Следствия
 
 - Фреймворки (Spring/Tika/RE2J/commons-csv/picocli/Guava) — только в `adapter`/
-  `bootstrap`; `domain`/`application` — без них ([boundaries.md](../boundaries.md)).
+  `bootstrap`; `domain`/`application` — без них ([boundaries.md](../BOUNDARIES.md)).
 - Эталоны/историю развития последующих решений см. в dev-документах 0001–0005.
 
 ## Открытые вопросы

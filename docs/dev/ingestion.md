@@ -3,7 +3,7 @@
 Детальный дизайн основного режима работы — долгоживущего сервиса, который
 постоянно `active`, обнаруживает новые источники и обрабатывает их без потери
 данных и без двойной обработки. CLI-режим «один прогон» сохраняется как
-вторичный. Обоснование выборов — в [dev/0001-streaming-ingestion.md](dev/0001-streaming-ingestion.md).
+вторичный. Обоснование выборов — в [dev/0001-streaming-ingestion.md](../ADR/0001-streaming-ingestion.md).
 
 > Текущий контур: проект — Maven-реактор; generic pipeline находится в
 > `platform/platform-etl`, IOC use cases и stages — в `core/ioc-application`,
@@ -27,7 +27,7 @@
 > Поверх canonical truth реализован отдельный Artifact Emission contour:
 > `artifact_revision` bump-ится в canonical write transaction, daemon cadence или
 > ручной `ioc export` создаёт consistent immutable profile slice, а `export_run`
-> закрывает crash windows formation saga. Детали — [dev/0012](dev/0012-streaming-dataframe-emission.md).
+> закрывает crash windows formation saga. Детали — [dev/0012](../ADR/0012-streaming-dataframe-emission.md).
 
 ## 0. Реализованный scope 0.1.0
 
@@ -318,7 +318,7 @@ canonical write. Обратный поток берёт только completed e
 - Один «ядовитый» файл не блокирует поток (политика `collect-and-continue`).
 - Категоризация и трансляция ошибок идут через общий exception/diagnostics
   контур; typed `Diagnostic` producer-ы в production path остаются открытым
-  техническим долгом D1 из [roadmap.md](roadmap.md).
+  техническим долгом (OBS-D1) в [KNOWN-ISSUES.md](../KNOWN-ISSUES.md).
 
 ## 10. Параллелизм и backpressure
 
@@ -430,7 +430,7 @@ ioc:
 |---|---|---|
 | Инжест-каркас | `spring-boot-starter-integration` + `spring-integration-file` | только `adapter-ingest`/`ioc-app`; poller/watch, фильтры, error-channel |
 | Ретраи/backoff | `spring-retry` (+ `spring-aspects`, если нужен AOP advice) | только `adapter-ingest` |
-| Health/метрики | `spring-boot-starter-actuator` + `spring-boot-starter-web` | health contributors + HTTP `/actuator/health`; web включается **только в daemon** (`DaemonWebEnvironmentPostProcessor`), loopback-bind. См. [dev/0010](dev/0010-health-actuator.md) |
+| Health/метрики | `spring-boot-starter-actuator` + `spring-boot-starter-web` | health contributors + HTTP `/actuator/health`; web включается **только в daemon** (`DaemonWebEnvironmentPostProcessor`), loopback-bind. См. [dev/0010](../ADR/0010-health-actuator.md) |
 | Хэш содержимого | JDK `MessageDigest` (`SHA-256`) | новой зависимости не требуется |
 | Durable ledger + run-ledger + canonical | `spring-jdbc`/`JdbcClient` + `org.xerial:sqlite-jdbc` + Hikari | `ioc.ingestion.ledger.type: file \| jdbc`; service-datasource создаётся в любом daemon (нужен для run-ledger), dataframe-datasource — при `storage.dataframe.type=jdbc` (default); schema через `user_version`, DB health через `quick_check`/PRAGMA |
 | Immutable export | JDBC snapshot + commons-csv + Jackson | application saga/cadence за портами; JDBC/CSV/JSON остаются в трёх adapter-модулях |
@@ -463,7 +463,7 @@ ioc:
   под `ingest_run` (см. §8);
 - единый авторитет id (`IdGenerator(maxId+1)`); stable-id sidecar упразднён;
 - artifact-aware `LookupRepository` (JDBC) для masks, `ip_list` и hashes;
-- health contributors + HTTP `/actuator/health` (daemon-only, см. [dev/0010](dev/0010-health-actuator.md));
+- health contributors + HTTP `/actuator/health` (daemon-only, см. [dev/0010](../ADR/0010-health-actuator.md));
 - **retention reaper** (`RetentionService`/`RetentionStore`/`DaemonMaintenanceScheduler`):
   возраст/количество → delete/archive для `done`/`failed` (§8.1).
 - **artifact emission**: ручной `ioc export`, daemon cadence, strict snapshot,
@@ -484,9 +484,9 @@ ioc:
 - Daemon- и oneshot-id назначает единый `IdGenerator(start=lookup.maxId()+1)`;
   отдельного stable-id sidecar больше нет (β-коллапс).
 - Использует diagnostics/observability как разные подсистемы
-  ([cross-cutting.md](cross-cutting.md), [logging.md](logging.md)).
+  ([cross-cutting.md](CROSS-CUTTING.md), [logging.md](LOGGING.md)).
 - Модуль `adapters/adapter-ingest` включён в reactor и проверки границ
-  ([modularization.md](modularization.md), [boundaries.md](boundaries.md)).
+  ([modularization.md](../MODULARIZATION.md), [boundaries.md](../BOUNDARIES.md)).
 
 ## 16. Паттерны и референсы
 

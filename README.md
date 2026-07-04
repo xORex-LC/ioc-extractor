@@ -66,7 +66,7 @@ java -jar bootstrap/ioc-app/target/ioc-app-0.1.0.jar export --profile reputation
 With `ioc.runtime.mode=daemon`, sources are dropped into `./var/inbox`, pass a
 stability quiet-period, are written directly into the JDBC dataframe store, and
 regenerate `*_generated.csv` projections from that store. See
-[docs/ingestion.md](docs/ingestion.md). The daemon also schedules immutable
+[docs/ingestion.md](docs/dev/ingestion.md). The daemon also schedules immutable
 profile exports by `ioc.export.trigger` and reports per-profile export health.
 
 ```bash
@@ -83,7 +83,7 @@ java -jar bootstrap/ioc-app/target/ioc-app-0.1.0.jar --ioc.runtime.mode=daemon
 | `address_blacklist` | `address_blacklist_generated.csv` | two columns: `forbidden_url` (domains/URLs/IP-URLs) and `forbidden_ip` (bare IP only) |
 | `hashes` | `hashes_list_generated.csv` | MD5 / SHA1 / SHA256 (UPPER-cased), routed to per-algorithm columns |
 
-Schemas, normalization and column filling are described in [docs/output-mapping.md](docs/output-mapping.md).
+Schemas, normalization and column filling are described in [docs/output-mapping.md](docs/dev/output-mapping.md).
 
 ## Configuration
 
@@ -134,14 +134,14 @@ bootstrap/  ioc-app — composition root + Spring Boot entry point (CLI/daemon, 
 
 Principles, architecture and conventions live in [docs/](docs/) (in Russian):
 
-- [architecture.md](docs/architecture.md) — Clean Hexagonal + Onion, layers, the dependency rule;
-- [modularization.md](docs/modularization.md) — the reactor module map;
-- [pipeline.md](docs/pipeline.md) — the Pipes-and-Filters pipeline;
-- [output-mapping.md](docs/output-mapping.md) — declarative artifact filling;
-- [ingestion.md](docs/ingestion.md) — the streaming daemon, JDBC truth and CSV projection;
-- [boundaries.md](docs/boundaries.md) — architectural boundary enforcement (ArchUnit + Enforcer);
-- [diagnostics.md](docs/diagnostics.md) · [logging.md](docs/logging.md) — diagnostics and ECS observability;
-- [principles.md](docs/principles.md) · [conventions.md](docs/conventions.md) — engineering principles and conventions.
+- [architecture.md](docs/ARCHITECTURE.md) — Clean Hexagonal + Onion, layers, the dependency rule;
+- [modularization.md](docs/MODULARIZATION.md) — the reactor module map;
+- [pipeline.md](docs/dev/pipeline.md) — the Pipes-and-Filters pipeline;
+- [output-mapping.md](docs/dev/output-mapping.md) — declarative artifact filling;
+- [ingestion.md](docs/dev/ingestion.md) — the streaming daemon, JDBC truth and CSV projection;
+- [boundaries.md](docs/BOUNDARIES.md) — architectural boundary enforcement (ArchUnit + Enforcer);
+- [diagnostics.md](docs/dev/DIAGNOSTICS.md) · [logging.md](docs/dev/LOGGING.md) — diagnostics and ECS observability;
+- [principles.md](docs/PRINCIPLES.md) · [conventions.md](docs/CONVENTIONS.md) — engineering principles and conventions.
 
 ## Development
 
@@ -150,7 +150,7 @@ Principles, architecture and conventions live in [docs/](docs/) (in Russian):
 ./mvnw verify     # the real gate: tests + ArchUnit (boundaries) + Enforcer + golden e2e
 ```
 
-Architectural boundaries are kept by the build, not by review ([docs/boundaries.md](docs/boundaries.md)).
+Architectural boundaries are kept by the build, not by review ([docs/boundaries.md](docs/BOUNDARIES.md)).
 CI runs `./mvnw -B -ntp -T 1C verify` on every push and pull request.
 
 ## Stack

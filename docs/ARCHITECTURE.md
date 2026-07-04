@@ -76,8 +76,8 @@ read (SourceReader)
   → write (IocSink на каждый артефакт, маршрутизация по IndicatorType + artifact filters)
 ```
 
-Подход к конвейеру (Pipes-and-Filters + `Envelope`/diagnostics) — [pipeline.md](pipeline.md);
-каталог и карта сервисов стадий — [services.md](services.md).
+Подход к конвейеру (Pipes-and-Filters + `Envelope`/diagnostics) — [pipeline.md](dev/pipeline.md);
+каталог и карта сервисов стадий — [services.md](SERVICES-CATALOG.md).
 
 Конвейер — цепочка независимых стадий: новую стадию/реализацию добавляем, не
 трогая остальные (OCP). Маршрутизация по типу индикатора и декларативным
@@ -102,7 +102,7 @@ read (SourceReader)
 
 Remote sync не меняет extraction pipeline: fetch заканчивается в штатном inbox, а
 publish начинается только после локального export `_SUCCESS`. Подробный protocol и
-операторская модель — [sync.md](sync.md).
+операторская модель — [sync.md](dev/sync.md).
 
 ## Классификация сетевых масок
 
@@ -120,12 +120,12 @@ publish начинается только после локального export
 Разграничение «регистрируемый домен vs поддомен» (вариант 1 vs 2) — по
 **Public Suffix List** (Guava `InternetDomainName`), что корректно для
 многосоставных суффиксов (`com.br`, `co.uk`, `workers.dev`). Триггеры и
-открытые случаи — в [dev/0002](dev/0002-output-mapping-and-matching.md).
+открытые случаи — в [dev/0002](ADR/0002-output-mapping-and-matching.md).
 
 Политика — **rule-based и декларативная**: тонкий вычислитель + реестр
 предикатов над признаками индикатора; сами правила и коды задаются конфигом
 (не зашиты в код). Модель — в
-[output-mapping.md](output-mapping.md#декларативная-классификация-масок-matchurl--matchhost).
+[output-mapping.md](dev/output-mapping.md#декларативная-классификация-масок-matchurl--matchhost).
 
 > Ручной эталон использует только варианты 1 и 3; варианты 2 и 4 — по
 > авторитетному правилу, поэтому вывод на поддоменах/параметрах закономерно
@@ -134,7 +134,7 @@ publish начинается только после локального export
 ## Артефакты и заполнение
 
 Колонки и правила заполнения артефактов **декларативны в конфиге**, не в коде
-(provider/transform-модель). Детали — [output-mapping.md](output-mapping.md).
+(provider/transform-модель). Детали — [output-mapping.md](dev/output-mapping.md).
 
 Текущие артефакты:
 
@@ -167,8 +167,8 @@ publish начинается только после локального export
 явное имя форсит text/HTML, docx/pdf — по дизайну нет); внутри — Unicode `String`.
 Выход всех CSV и чтение существующих артефактов в lookup/storage — в
 `ioc.sink.csv.charset` (read=write); непредставимые символы заменяются с WARN-сигналом,
-неизвестное имя кодировки — fail-fast. Детали — [extraction.md](extraction.md) и
-[output-mapping.md](output-mapping.md).
+неизвестное имя кодировки — fail-fast. Детали — [extraction.md](dev/extraction.md) и
+[output-mapping.md](dev/output-mapping.md).
 
 ## Immutable artifact export
 
@@ -202,7 +202,7 @@ canonical SQLite (one WAL read tx) ──▶ CSV files ──▶ manifest.json �
   каталог целиком. Guard проверяется непосредственно перед delete; standalone
   разрешает удаление, реализация из 0011 сможет pin-ить недоставленные срезы.
 
-Полный протокол, crash-матрица и rationale: [dev/0012](dev/0012-streaming-dataframe-emission.md).
+Полный протокол, crash-матрица и rationale: [dev/0012](ADR/0012-streaming-dataframe-emission.md).
 
 ## Composition root
 
@@ -214,7 +214,7 @@ sink) — изменение здесь, и больше нигде. `IocPropert
 ## Куда движемся
 
 - Многомодульность (выделение слоёв и подсистем в Maven-модули) —
-  [modularization.md](modularization.md).
+  [modularization.md](MODULARIZATION.md).
 - Сквозные подсистемы (логирование/диагностика/ошибки) за портами —
-  [cross-cutting.md](cross-cutting.md).
-- Автоматическая защита границ — [boundaries.md](boundaries.md).
+  [cross-cutting.md](dev/CROSS-CUTTING.md).
+- Автоматическая защита границ — [boundaries.md](BOUNDARIES.md).

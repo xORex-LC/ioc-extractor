@@ -2,7 +2,7 @@
 
 **Статус:** Шаг 1 реализован verify-green до JDBC service ledger + health;
 следующий фокус — Шаг 2 (business dataframe truth). **Ветка:** `feature/data-storage/sqlite`.
-**Якорь:** ING-4 в [../techdebt.md](../techdebt.md); сворачивает ING-7 и два
+**Якорь:** ING-4 в [../techdebt.md](../KNOWN-ISSUES.md); сворачивает ING-7 и два
 retention-seam'а. **Формат:** живой документ — фиксируем решения и открытые нити
 по ходу диалога.
 
@@ -946,13 +946,13 @@ File-ledger остаётся default; JDBC включается только в 
   учитывается. `_source_key` течёт из ingestion-record (daemon) или label/“oneshot”.
   Golden e2e переведён на проверку проекции (байт-точно), daemon-композиция покрыта
   `DataframeProjectionIntegrationTest`. **oneshot стал накопительным** (БД персистентна,
-  `ON CONFLICT DO NOTHING`) — намеренно, задокументировано в [ingestion.md](../ingestion.md).
+  `ON CONFLICT DO NOTHING`) — намеренно, задокументировано в [ingestion.md](../dev/ingestion.md).
 - **run-ledger/saga (crash-window) — выполнен отдельным Step 3 срезом.** Service schema
   получила `aggregation_run`/`export_run`; `AggregationService` пишет checkpoints
   `STARTED → DB_COMMITTED → PROJECTION_COMPLETED → COMPLETED`. Если процесс падает после
   commit БД, startup recovery находит `DB_COMMITTED`, повторяет CSV-проекцию из БД и
   закрывает run. Сбой до `DB_COMMITTED` помечается `FAILED`: автоматический replay без
-  повторного расчёта unsafe. См. [techdebt ING-4a](../techdebt.md).
+  повторного расчёта unsafe. См. [techdebt ING-4a](../KNOWN-ISSUES.md).
 
 - **Единая identity-формула — намеренная смена семантики composite-ключа (ревью A).**
   Срез 12 убрал adapter-локальный `ConfigurableArtifactIdentityResolver` и перевёл

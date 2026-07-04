@@ -6,7 +6,7 @@ adapters и bootstrap собираются как отдельные Maven-мо�
 
 > Статус: **реализовано на этапе 9**. Фактическая структура ниже. Границы
 > модулей подкрепляются Maven-зависимостями, Maven Enforcer и ArchUnit
-> ([boundaries.md](boundaries.md)).
+> ([boundaries.md](BOUNDARIES.md)).
 
 ## Зачем
 
@@ -83,7 +83,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 
 ## Карта «сервис → модуль»
 
-Сервисы из [services.md](services.md) ложатся в модули так:
+Сервисы из [services.md](SERVICES-CATALOG.md) ложатся в модули так:
 
 | Модуль | Сервисы |
 |---|---|
@@ -118,7 +118,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 - Первым кандидатом на будущий вынос из domain остаётся `refang`, если появится
   реальное переиспользование вне этого приложения.
 
-Подробное решение: [dev/0009](dev/0009-modularization-granularity.md).
+Подробное решение: [dev/0009](ADR/0009-modularization-granularity.md).
 
 Artifact Emission не образует новый Maven-модуль: его framework-free модель и
 ports принадлежат `ioc-application`; технологические границы уже разнесены по

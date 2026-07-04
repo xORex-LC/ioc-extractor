@@ -13,7 +13,7 @@
 | Цель | Что даёт |
 |---|---|
 | Расширяемость стадий (OCP), config-driven | Pipes-and-Filters: стадия — независимый Filter, добавляется/переставляется без правки соседей |
-| Диагностика как метаданные | Envelope несёт `diagnostics` рядом с payload (см. [diagnostics.md](diagnostics.md)) |
+| Диагностика как метаданные | Envelope несёт `diagnostics` рядом с payload (см. [diagnostics.md](DIAGNOSTICS.md)) |
 | Политика ошибок (collect-and-continue) | Result/Either на элемент + `FailurePolicy` между стадиями |
 | Единый путь batch и stream | `SourceUnit` инжеста → тот же Envelope → тот же конвейер ([ingestion.md](ingestion.md)) |
 | Изоляция/тестируемость сервисов | каждый Filter = сервис за портом, чистая функция над Envelope |
@@ -60,7 +60,7 @@ read → refang → extract → attribute → deduplicate → fill → sink
  (каждая — Stage/Filter; данные и метаданные идут в Envelope)
 ```
 
-Соответствие сервисам — в [services.md](services.md). Оркестрацию собирает
+Соответствие сервисам — в [services.md](../SERVICES-CATALOG.md). Оркестрацию собирает
 `ExtractIocsUseCase` (application): порядок стадий и `FailurePolicy`
 конфигурируемы; стадии — порты, реализации внедряются в composition root.
 

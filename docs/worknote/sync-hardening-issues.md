@@ -238,7 +238,7 @@ Doorbell-модель проще, сохраняет один detection path и 
 Проверка spike закрыта положительно: smbj 0.14 предоставляет публичный
 `Directory.watchAsync(Set<SMB2CompletionFilter>, boolean)`, pending watch на текущем
 Samba-стенде пережил idle дольше `request-timeout`, create/modify/rename доставляют
-notify. Опубликованная документация перенесена в [../sync.md](../sync.md).
+notify. Опубликованная документация перенесена в [../sync.md](../dev/sync.md).
 
 ## SYNC-11 — Health грузит весь исторический ledger на каждый запрос
 
@@ -370,4 +370,4 @@ SYNC-5/7/8 и задаёт границу SYNC-10; SYNC-9 остаётся от�
   SMB `SmbChangeNotifyWatcher`. Watcher отдаёт только doorbell, а correctness
   остаётся за `RemoteSourceMonitor.detect`, in-flight/ledger idempotency и
   periodic polling/reconcile. Опубликованная документация перенесена в
-  [../sync.md](../sync.md); временная worknote удалена.
+  [../sync.md](../dev/sync.md); временная worknote удалена.

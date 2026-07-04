@@ -898,7 +898,7 @@ index + OS file-lease для recovery-ownership), но fetch/publish-испол�
 > Связанные документы: [0011](0011-remote-sync.md) (реализует его «Post-v1 уточнение модели» и
 > OPS-4), [0012](0012-streaming-dataframe-emission.md) (источник `SliceCompleted`),
 > [0005](0005-services-and-pipeline.md) (ETL-конвейер), [0007](0007-logging-observability.md)
-> (ECS/observability), [../techdebt.md](../techdebt.md) (OPS-4).
+> (ECS/observability), [../techdebt.md](../KNOWN-ISSUES.md) (OPS-4).
 
 ## Операционный план реализации
 

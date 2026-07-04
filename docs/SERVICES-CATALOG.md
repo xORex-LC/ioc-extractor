@@ -3,12 +3,12 @@
 Вся чистая бизнес-логика выделена в **изолированные сервисы** за портами. Это
 DDD-вектор: каждый сервис — самостоятельная единица ответственности, которую
 можно поддерживать, тестировать, масштабировать и разрабатывать **параллельно и
-независимо**, а позже вынести в отдельный модуль ([modularization.md](modularization.md))
+независимо**, а позже вынести в отдельный модуль ([modularization.md](MODULARIZATION.md))
 без переписывания.
 
 Принцип: **сервис общается с другими только через порты**, не зашивая
 зависимости. Реализация заменяема; границы защищены проверками
-([boundaries.md](boundaries.md)).
+([boundaries.md](BOUNDARIES.md)).
 
 ## Каталог
 
@@ -30,6 +30,8 @@ DDD-вектор: каждый сервис — самостоятельная �
 | **Diagnostics** | сбор/рендер диагностики, каталог | `DiagnosticSink`, `DiagnosticRenderer`, `MessageCatalog` | Diagnostic → msg/report | — | cross-cutting | `platform-diagnostics` |
 | **Observability** | operational log events (ECS), MDC-корреляция | `MdcScope`/`LogEvent` | events → ECS-лог | SLF4J/Logback, ECS encoder | cross-cutting | `platform-observability` |
 | **Diagnostics logging bridge** | запись диагностик в общий лог-поток | `LoggingDiagnosticSink` | Diagnostic → LogEvent | diagnostics + observability | cross-cutting | `platform-diagnostics-logging` |
+| **Control events** | тонкий publish-only контракт control-событий (metadata + observer); анти-брокер: без queue/durable delivery/wire format | `ControlEventPublisher`, `ControlEventObserver` | ControlEvent → publish | — | cross-cutting | `platform-events` |
+| **KeyedSerialExecutor** | keyed single-flight: сериализация работы по ключу (endpoint), bounded admission + shed, snapshot для health | `KeyedSerialExecutor`, `KeyedSerialExecutorObserver` | key + work → admission/execution | JDK executors | cross-cutting | `platform-concurrency` |
 | **Pipeline orchestrator** | сборка стадий + политика ошибок | `ExtractIocsUseCase` (in) | command → result | все домен-сервисы (через порты) | application | `ioc-application` |
 | **Watch ingest** | приём источников: детект/стабилизация/клейм, вызов use case | `IngestSourceUseCase` (in); `SourceFeed` — adapter-local | dir → SourceUnit | Spring Integration | adapter (in) | `adapter-ingest` |
 | **SourceLifecycle** | атомарный claim/archive/fail источника и sidecar ошибок | `SourceLifecycle` | path/status → move/sidecar | filesystem | adapter | `adapter-ingest` |
@@ -40,7 +42,7 @@ DDD-вектор: каждый сервис — самостоятельная �
 | **ArtifactIdentityStore** | guard дрейфа формулы identity (`identity_hash`/`epoch`) | `ArtifactIdentityStore` | definition → stored marker/HALT | SQLite dataframe storage | adapter | `adapter-store-jdbc` |
 | **CanonicalArtifactRepository** | чтение/атомарная запись canonical rows + `<artifact>_sources` | `CanonicalArtifactRepository` | artifact rows ↔ DB | Spring JDBC/sqlite | adapter | `adapter-store-jdbc` |
 | **ArtifactProjection** | регенерация CSV-проекций из canonical store | `ArtifactProjection` | artifact names → `*_generated.csv` | commons-csv | adapter | `adapter-sink-csv` |
-| **ExportService** | formation saga неизменяемого локального среза: single-flight, snapshot streaming, staging, content-aware `SKIPPED`, публикация и terminal progress | `ExportArtifactsUseCase`; export out-порты | export profile → completed/skipped slice | export plan, canonical snapshot, service ledger, operation guard | application | `ioc-application` |
+| **ExportService** | formation saga неизменяемого локального среза: single-flight, snapshot streaming, staging, content-aware `SKIPPED`, terminal progress; по завершении эмитит control event `SliceCompleted` (fast-path для publish) | `ExportArtifactsUseCase`; export out-порты | export profile → completed/skipped slice | export plan, canonical snapshot, service ledger, operation guard | application | `ioc-application` |
 | **ExportRunRecoveryService** | forward recovery активных `STARTED/STAGED/AVAILABLE` run по durable ledger и filesystem evidence без перечитывания mutable canonical truth | `RecoverExportUseCase`; `ExportRunLedger`, `ArtifactSliceWriter`, `ExportProgressStore` | active checkpoints → terminal run | export ledger, slice inspection, operation guard | application | `ioc-application` |
 | **ExportChangeDetector** | чистая двухступенчатая policy изменения: revision/plan pre-gate и authoritative content-hash post-check | — (application policy) | revisions/progress/manifest → emit или skip | `ArtifactRevision`, `ExportProgress`, manifest coverage | application | `ioc-application` |
 | **ArtifactSchemaFingerprint** | детерминированный `schemaHash` ordered public columns и normalized declared types для plan/snapshot compatibility | — (application policy) | ordered schema → SHA-256 fingerprint | JDK crypto | application | `ioc-application` |
@@ -50,24 +52,33 @@ DDD-вектор: каждый сервис — самостоятельная �
 | **Export durable state** | CAS state machine formation saga, global single-flight, revisions и terminal progress | `ExportRunLedger`, `ExportRunReader`, `ExportProgressStore`, `ArtifactRevisionReader` | run/progress/revision ↔ durable state | SQLite service/dataframe storage | adapter | `adapter-store-jdbc` |
 | **SliceRetentionService** | profile-scoped age/count retention целых completed slice-каталогов с повторным integrity check и delivery-aware veto | `RunSliceRetentionUseCase`; `SliceRetentionStore`, `SliceRetentionGuard` | completed slices → deleted/pinned | `RetentionPolicy`, filesystem store, delivery guard | application | `ioc-application` |
 | **CompletedSliceCatalog** | read-only worklist только integrity-valid completed slices; staging/incomplete исключаются, corruption не маскируется | `CompletedSliceCatalog` | export root/profile → verified slices | filesystem, manifest codec/hash-chain | adapter | `adapter-sink-csv` |
-| **RemoteFetchService** | read-only remote discovery/filter/dedup и атомарный landing через скрытый staging в local inbox | `RemoteFetchUseCase`; `FileTransport`, `RemoteFetchLedger` | configured source → fetched/skipped/failed | transport, fetch ledger, inbox filesystem | application | `ioc-application` |
-| **ArtifactPublishService** | reconcile verified slices × targets и независимая per-target publish saga с forward recovery remote marker-а | `ArtifactPublishUseCase`; `CompletedSliceCatalog`, `PublishLedger`, `FileTransport` | completed slices → per-target publish states | slice catalog, publish ledger, retrier | application | `ioc-application` |
+| **RemoteSourceMonitor** | fetch detection: remote listing + include/exclude + отсев `FETCHED`/in-flight → bounded batches как `RemoteChangeBatchDetected` | — (application service); `FileTransport`, `RemoteFetchLedger` | configured source → control events | transport, fetch ledger, in-flight registry | application | `ioc-application` |
+| **RemoteFetchInFlightRegistry** | process-local claim/release identities между detection и execution: медленная загрузка не переэмитится на каждом monitor tick | — (application) | detected objects → claimed subset | — | application | `ioc-application` |
+| **RemoteFetchService** | fetch execution: скачивание уже переданных identities без собственного listing; атомарный landing через скрытый staging в local inbox | `RemoteFetchUseCase`; `FileTransport`, `RemoteFetchLedger` | detected objects → fetched/skipped/failed | transport, fetch ledger, inbox filesystem | application | `ioc-application` |
+| **RemoteChangeSignalSource / SMB watcher** | optional push (SMB2 CHANGE_NOTIFY): выделенная watch-сессия на источник, doorbell-callback без payload, status-классификация ответа, re-arm/overflow/плановая lease-ротация, infinite capped backoff | `RemoteChangeSignalSource`, `RemoteChangeWatch`, `RemoteChangeSignalHandler` | watched source → signal/established/failed | smbj, endpoint settings, `RetryPolicy` | adapter | `adapter-transport-smb` |
+| **ArtifactPublishService** | reconcile verified slices × targets и независимая per-target publish saga с forward recovery remote marker-а; исполняется и event fast-path'ом (`SliceCompleted`), и periodic reconcile backstop'ом через один keyed executor | `ArtifactPublishUseCase`; `CompletedSliceCatalog`, `PublishLedger`, `FileTransport` | completed slices → per-target publish states | slice catalog, publish ledger, retrier | application | `ioc-application` |
 | **Retrier** | transport-neutral micro-retry только для `RETRY_NOW`; `RETRY_LATER` оставляет следующему scheduler tick | `RetryPolicy`, `RemoteErrorKind`/`RemoteErrorDisposition` | remote operation → result/final failure | sleeper policy | application | `ioc-application` |
 | **Remote sync ledgers** | durable idempotency fetch по `(path,size,mtime)` и CAS publish saga по `(slice_id,target_id)` | `RemoteFetchLedger`, `PublishLedger` | remote identity/slice-target → status | SQLite service storage | adapter | `adapter-store-jdbc` |
 | **FileTransport / SMB** | transport-neutral list/stat/get/delete и atomic multi-file publish; SMB2/3 session/reconnect/marker-last остаются внутри адаптера | `FileTransport` | remote path/local files ↔ remote objects | smbj, SMB endpoint settings | adapter | `adapter-transport-smb` |
 | **PublishLedgerSliceRetentionGuard** | запрещает local slice delete при missing/`PENDING`/`IN_PROGRESS`/`FAILED` pair любого configured target; terminal pair разрешает | `SliceRetentionGuard` | slice descriptor → allow/veto | configured targets, `PublishLedger` | application | `ioc-application` |
-| **Export/sync daemon lifecycle** | cadence, startup reconcile/recovery, fixed-delay single-flight, phase ordering fetch→export→publish→retention и controlled shutdown | application use cases | scheduler ticks → isolated profile/source/target runs | Clock, config, Spring lifecycle | bootstrap | `ioc-app` |
+| **RemoteFetchDetectionCoordinator** | единая точка detect-триггеров (`PERIODIC`/`PUSH`/`STARTUP`/`WATCH_ESTABLISHED`): debounce/coalescing, per-source single-flight + trailing rerun, публикация событий, detection health, post-detect `closeIdle` | `RemoteFetchDetectionTrigger` | trigger(source, reason) → detect + events | RemoteSourceMonitor, `ControlEventPublisher`, TransportRegistry, SyncHealthState | bootstrap | `ioc-app` |
+| **RemoteChangeWatchLifecycle** | владелец lifecycle опциональных watch'ей: start/stop до fetch-scheduler'а, fail-fast при endpoint без push-capability, мост doorbell → coordinator | Spring `SmartLifecycle` | configured change-notify sources → active watches | TransportRegistry, coordinator | bootstrap | `ioc-app` |
+| **Control event bridge + listeners** | `SpringControlEventPublisher` (порт → `ApplicationEventPublisher`), `RemoteChangeFetchListener` (событие → in-flight claim → keyed fetch), `SliceCompletedPublishListener` (fast-path publish), `LoggingControlEventObserver` (ECS-наблюдение dispatch) | `ControlEventPublisher`/`ControlEventObserver` impls | control events → keyed work | platform-events, keyed executor, use cases | bootstrap | `ioc-app` |
+| **TransportRegistry** | bootstrap-диспетчер логических endpoint'ов: один adapter instance на endpoint, idle-maintenance hook, optional `changeSignals` capability | `FileTransport` (фасад) | endpoint name → adapter operations | adapter bindings | bootstrap | `ioc-app` |
+| **Export/sync daemon lifecycle** | cadence (`PeriodicDaemonCycle`), startup reconcile/recovery, fixed-delay single-flight, phase ordering watch→fetch→export→publish→retention, publish submit-all-then-await и controlled shutdown | application use cases | scheduler ticks → isolated profile/source/target runs | Clock, config, Spring lifecycle | bootstrap | `ioc-app` |
+| **Sync health** | process-local снапшоты fetch/detection/publish/keyed-executor/watch (grace-окно для `RECONNECTING`) поверх durable `PublishLedgerHealthSummary`; классификация outcome в `UP/DEGRADED/DOWN` | `HealthIndicator`; `SyncOperationalOutcomePolicy` | runtime + ledger state → `sync` contributor | SyncHealthState, publish-ledger read model | bootstrap | `ioc-app` |
 | **Daemon health** | состояние ledger/storage/run recovery; экспонируется по HTTP (`/actuator/health`) только в daemon | `HealthIndicator` | runtime state → health | Spring Boot Actuator + web (daemon-only) | bootstrap | `ioc-app` |
 | **RetentionService** | reaper: возраст/количество → delete/archive для `done`/`failed` | `RunRetentionUseCase`, `RetentionStore` | targets → reaped | `RetentionPolicy` | application | `ioc-application` |
 | **RetentionStore** | листинг/удаление/архив записей (рекурсивно листовые файлы) | `RetentionStore` | dir → entries; delete/archive | filesystem | adapter | `adapter-ingest` |
 
 Категории: **domain** — чистая логика; **adapter** — реализация порта на
 технологии; **cross-cutting** — сквозная подсистема; **application** —
-оркестрация. Подробности диагностики — [diagnostics.md](diagnostics.md),
-классификации/заполнения — [output-mapping.md](output-mapping.md), извлечения —
-[extraction.md](extraction.md), инжеста — [ingestion.md](ingestion.md), формирования
-срезов — [dev/0012-streaming-dataframe-emission.md](dev/0012-streaming-dataframe-emission.md),
-remote delivery — [sync.md](sync.md).
+оркестрация. Подробности диагностики — [diagnostics.md](dev/DIAGNOSTICS.md),
+классификации/заполнения — [output-mapping.md](dev/output-mapping.md), извлечения —
+[extraction.md](dev/extraction.md), инжеста — [ingestion.md](dev/ingestion.md), формирования
+срезов — [dev/0012-streaming-dataframe-emission.md](ADR/0012-streaming-dataframe-emission.md),
+remote delivery — [sync.md](dev/sync.md), event-координация —
+[dev/0013-event-driven-coordination.md](ADR/0013-event-driven-coordination.md).
 
 ## Карта (поток данных и зависимости)
 
@@ -96,14 +107,27 @@ remote delivery — [sync.md](sync.md).
                      revisions/progress + export-run-ledger ◀──────┘          │
                     ExportRunRecoveryService ────────────────────────▶ recovery
                                                                              │
-  remote sync: source ─RemoteFetchService─▶ inbox                 CompletedSliceCatalog
-               (FileTransport + fetch-ledger)                              │
-                                                    ArtifactPublishService─┘
-                                                       │ FileTransport + publish-ledger
+  remote fetch (detection ⊥ execution, события — ускоритель, polling — correctness):
+    periodic tick ──────────────┐
+    SMB CHANGE_NOTIFY doorbell ─┤ (SmbChangeNotifyWatcher: re-arm/lease/backoff)
+    watch established / startup┴▶ RemoteFetchDetectionCoordinator (debounce, single-flight)
+                                        │
+                                        ▼
+     RemoteSourceMonitor (list+filter+ledger/in-flight отсев) ─▶ RemoteChangeBatchDetected
+                                        │ ControlEventPublisher (platform-events)
+                                        ▼
+     RemoteChangeFetchListener ─claim─▶ KeyedSerialExecutor(endpoint) ─▶ RemoteFetchService ─▶ inbox
+                                                                          (FileTransport + fetch-ledger)
+
+  remote publish: ExportService ─SliceCompleted─▶ SliceCompletedPublishListener ─┐
+                  periodic reconcile (CompletedSliceCatalog × publish-ledger) ───┤
+                                                    KeyedSerialExecutor(endpoint)┴▶ ArtifactPublishService
+                                                       │ FileTransport + publish-ledger (marker-last)
                                                        ▼
                                                  remote target(s)
 
   slice retention: SliceRetentionService ─▶ SliceRetentionGuard(publish-ledger) ─▶ delete/veto
+  sync health: SyncHealthState (runtime) + PublishLedgerHealthSummary (durable) ─▶ `sync` contributor
 ```
 
 Стрелки = направление данных; все межсервисные связи идут **через порты**
@@ -117,5 +141,5 @@ remote delivery — [sync.md](sync.md).
 - Доменные сервисы — без фреймворков; технологии — в adapter-сервисах.
 - Сервис module-ready: вынос в модуль не требует правки логики (готовит
   параллельную разработку и масштабирование).
-- Правила/специфика — декларативны ([principles.md](principles.md)); код сервиса
+- Правила/специфика — декларативны ([principles.md](PRINCIPLES.md)); код сервиса
   тонкий и переиспользуемый.

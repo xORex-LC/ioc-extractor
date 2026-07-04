@@ -6,7 +6,7 @@ properly prepare an SMB share on Linux and Windows.
 
 This document is deliberately written "from above": it explains system behavior
 and configuration without tying itself to the internal implementation.
-Architectural details live in [../sync.md](../sync.md).
+Architectural details live in [../sync.md](../dev/sync.md).
 
 > Русская версия: [ru/remote-storage-sync.md](ru/remote-storage-sync.md).
 
@@ -140,7 +140,7 @@ A local slice is not removed by retention until it has been delivered to
 
 Everything lives under `ioc.sync.*`. The feature is disabled by default
 (`ioc.sync.enabled: false`). A full configuration example is at the end of
-`application.yml` (the `smb-example` profile) and in [../sync.md](../sync.md).
+`application.yml` (the `smb-example` profile) and in [../sync.md](../dev/sync.md).
 
 ### 2.1 Overall shape
 

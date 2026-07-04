@@ -7,7 +7,7 @@
 
 Когда решения устаканились — они переезжают в `docs/dev/` и/или публикуемые
 доки (`architecture.md`, `ingestion.md`, …), а соответствующий пункт техдолга
-([../techdebt.md](../techdebt.md)) обновляет статус.
+([../techdebt.md](../KNOWN-ISSUES.md)) обновляет статус.
 
 - [storage-layer.md](storage-layer.md) — слой хранилища (ING-4): SQLite/JDBC,
   разделение бизнес/служебных схем, CSV как проекция.

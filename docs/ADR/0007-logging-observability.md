@@ -2,14 +2,14 @@
 
 - **Статус:** принято (дизайн)
 - **Дата:** 2026-06-21
-- **Связано:** [../logging.md](../logging.md), [../logging-taxonomy.md](../logging-taxonomy.md),
-  [../diagnostics.md](../diagnostics.md), [../pipeline.md](../pipeline.md),
+- **Связано:** [../logging.md](../dev/LOGGING.md), [../logging-taxonomy.md](../dev/LOGGING-TAXONOMY.md),
+  [../diagnostics.md](../dev/DIAGNOSTICS.md), [../pipeline.md](../dev/pipeline.md),
   [0003-diagnostics.md](0003-diagnostics.md)
 
 ## Контекст
 
-Заказчик составил дизайн operational logging ([logging.md](../logging.md) +
-[logging-taxonomy.md](../logging-taxonomy.md)) на основе ECS и поставил вопрос:
+Заказчик составил дизайн operational logging ([logging.md](../dev/LOGGING.md) +
+[logging-taxonomy.md](../dev/LOGGING-TAXONOMY.md)) на основе ECS и поставил вопрос:
 объединять ли логирование и диагностику в один этап. Ревью дизайна зафиксировало
 несколько уточнений и одно отменённое прежнее решение.
 

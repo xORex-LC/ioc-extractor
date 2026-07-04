@@ -9,9 +9,9 @@
 > Статус: **реализовано базовое ядро**. Подсистемы выделены в
 > `platform-errors`, `platform-diagnostics`, `platform-etl`,
 > `platform-observability` и `platform-diagnostics-logging`.
-> Детальный дизайн диагностики — в [diagnostics.md](diagnostics.md), operational
-> logging фонового сервиса — в [logging.md](logging.md), таксономия логов — в
-> [logging-taxonomy.md](logging-taxonomy.md).
+> Детальный дизайн диагностики — в [diagnostics.md](DIAGNOSTICS.md), operational
+> logging фонового сервиса — в [logging.md](LOGGING.md), таксономия логов — в
+> [logging-taxonomy.md](LOGGING-TAXONOMY.md).
 
 ## Общее правило
 
@@ -37,7 +37,7 @@ adapter (infra): LoggingDiagnosticSink     — структурированны�
 Принцип: стадии конвейера эмитят доменно-нейтральные диагностические события в
 порт; куда они уходят (лог, метрика, файл) — решает адаптер и конфигурация.
 Operational log events при этом шире диагностики: IO, lifecycle, retry и вызовы
-адаптеров описаны в [logging.md](logging.md) и [logging-taxonomy.md](logging-taxonomy.md).
+адаптеров описаны в [logging.md](LOGGING.md) и [logging-taxonomy.md](LOGGING-TAXONOMY.md).
 
 ## Модель и трансляция ошибок
 
@@ -65,7 +65,7 @@ adapter (infra): реализации политики + интеграция с
 
 SLF4J как фасад, Logback как реализация — деталь инфраструктуры. **Operational
 events** (lifecycle, IO, retry, записи артефактов) идут в **логирование** (ECS,
-`MdcScope`) — [logging.md](logging.md). **Диагностические результаты** обработки
+`MdcScope`) — [logging.md](LOGGING.md). **Диагностические результаты** обработки
 данных идут через порт диагностики и могут попасть в лог через
 `LoggingDiagnosticSink`. Это **разные подсистемы** (`platform-observability` vs
 `platform-diagnostics`); bridge живёт отдельно (`platform-diagnostics-logging`),
@@ -77,6 +77,6 @@ events** (lifecycle, IO, retry, записи артефактов) идут в *
 Вынесение сквозных подсистем за порты даёт то же, что и для основной логики:
 заменяемость реализации, тестируемость (подмена порта в тестах), отсутствие
 скрытой связности между сервисами и возможность переиспользовать подсистему в
-других модулях/приложениях ([modularization.md](modularization.md):
+других модулях/приложениях ([modularization.md](../MODULARIZATION.md):
 `platform-diagnostics`, `platform-observability`, `platform-diagnostics-logging`,
 `platform-errors`).

@@ -88,6 +88,10 @@ public interface SourceReader {
   политик в коде ядра.
 - **Паттерны — RE2-совместимы** (`\b`, без lookaround/backref), чтобы работали на
   обоих движках `PatternEngine`.
+- **Лямбды вместо method references допустимы и не «чинятся» обратно.**
+  Eclipse JDT null-analysis даёт ложные Null-type-safety варнинги на
+  `Type::method` (records/generics); замена на `x -> x.method()` — осознанный
+  способ их погасить, а не стилевая ошибка.
 - Язык кода, идентификаторов и комментариев — английский.
 
 ## Тесты
@@ -102,4 +106,4 @@ public interface SourceReader {
 - **Проверяем логику, не текущие данные.** Тест-корпус (case-table + golden)
   живёт в тест-ресурсах; кейсы изолированы — добавление одного не ломает другие.
 - JUnit 5 + AssertJ; для case-table — параметризованные тесты (`@MethodSource`/CSV).
-  Детали корпуса — [extraction.md](extraction.md#тест-корпус-и-изоляция-тестов).
+  Детали корпуса — [extraction.md](dev/extraction.md#тест-корпус-и-изоляция-тестов).

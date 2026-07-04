@@ -2,8 +2,8 @@
 
 - **Статус:** принято (дизайн)
 - **Дата:** 2026-06-21
-- **Связано:** [../services.md](../services.md), [../pipeline.md](../pipeline.md),
-  [../boundaries.md](../boundaries.md), [../modularization.md](../modularization.md)
+- **Связано:** [../services.md](../SERVICES-CATALOG.md), [../pipeline.md](../dev/pipeline.md),
+  [../boundaries.md](../BOUNDARIES.md), [../modularization.md](../MODULARIZATION.md)
 
 ## Контекст
 
@@ -23,12 +23,12 @@ ETL-конвейеру и детализируем защиту границ и 
 
 ## Следствия
 
-- Появляется [services.md](../services.md) (каталог + карта) и [pipeline.md](../pipeline.md)
+- Появляется [services.md](../SERVICES-CATALOG.md) (каталог + карта) и [pipeline.md](../dev/pipeline.md)
   (подход к конвейеру) как авторитетные доки.
 - `IocExtractionService` эволюционирует в явный `Pipeline` из `Stage`-ов с
   `Envelope`/`Result`, не меняя доменные сервисы.
-- [boundaries.md](../boundaries.md) дополнен конкретными ArchUnit/enforcer-правилами;
-  [modularization.md](../modularization.md) — картой «сервис → модуль» и гранулярностью.
+- [boundaries.md](../BOUNDARIES.md) дополнен конкретными ArchUnit/enforcer-правилами;
+  [modularization.md](../MODULARIZATION.md) — картой «сервис → модуль» и гранулярностью.
 - Кандидаты модулей: `platform-{regex,diagnostics,errors}`, `ioc-domain`,
   `ioc-application`, `adapter-{source-tika,sink-csv,lookup-csv,psl,ingest,cli}`,
   `ioc-app`.

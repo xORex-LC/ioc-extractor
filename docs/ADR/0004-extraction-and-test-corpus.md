@@ -2,8 +2,8 @@
 
 - **Статус:** принято (дизайн); реализация ждёт
 - **Дата:** 2026-06-21
-- **Связано:** [../extraction.md](../extraction.md),
-  [../output-mapping.md](../output-mapping.md), [../conventions.md](../conventions.md)
+- **Связано:** [../extraction.md](../dev/extraction.md),
+  [../output-mapping.md](../dev/output-mapping.md), [../conventions.md](../CONVENTIONS.md)
 
 ## Контекст
 

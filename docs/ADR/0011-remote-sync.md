@@ -4,7 +4,7 @@
 
 **Реализовано (S0–S8).** Ветка `feature/delivery/smb`. Transport-neutral fetch/publish,
 JDBC ledgers, verified slice discovery, SMB adapter, daemon lifecycle, CLI и health
-закрыты полным reactor gate; операторская документация — [sync.md](../sync.md).
+закрыты полным reactor gate; операторская документация — [sync.md](../dev/sync.md).
 Номер бэклога ING — TBD. **Hardening-проход после ревью завершён** (Findings F1–F5 + ref-1…9
 закрыты): в 0011 — **F3** (доставка — отдельный `publish_ledger`, реш. 6), **ref-9** (publish
 byte-preserving, реш. 17), **F2** (slice-retention, реш. 18); остальное — в
@@ -187,8 +187,8 @@ publish_ledger`, затем стартует периодический цикл
 **10. Наблюдаемость — диагностика + ECS-логи (детальная таксономия).** Новая категория
 `DiagnosticCategory.SYNC` (`id` `SYNC.<NAME>`, `messageKey` `sync.<kebab>`) + ECS-события;
 статусы последнего fetch/publish (время, счётчики, ошибки) — в `ioc health`; `--dry-run`
-для sync — в духе `extract --dry-run`. Конвенции — [diagnostics.md](../diagnostics.md) /
-[logging-taxonomy.md](../logging-taxonomy.md).
+для sync — в духе `extract --dry-run`. Конвенции — [diagnostics.md](../dev/DIAGNOSTICS.md) /
+[logging-taxonomy.md](../dev/LOGGING-TAXONOMY.md).
 
 **Дисциплина полноты** (правило проекта): error-ось — *замкнутая*, фиксируем полно **в
 дизайне** сейчас; flow-коды, `event.action` и `ioc.*`-поля — ядро + рост, в
@@ -230,7 +230,7 @@ ECS-эквивалента нет); reuse `ioc.artifact.name`/`ioc.mode`; **`ioc
 publish↔export — namespace **0012** (`ioc.export.*`), publish их переиспускает.
 
 **Реализация (этап sync):** `SyncDiagnosticCodes` + `DiagnosticCategory.SYNC` → регистрация
-в `DiagnosticCatalogs`, регенерация [diagnostic-catalog.md](../diagnostic-catalog.md), бамп
+в `DiagnosticCatalogs`, регенерация [diagnostic-catalog.md](../DIAGNOSTICS-CATALOG.md), бамп
 счётчика в `DiagnosticCatalogTest` (CODE-4); `event.action`/`ioc.*` — в `EventAction`/whitelist
 рядом с producer'ом.
 

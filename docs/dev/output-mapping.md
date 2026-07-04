@@ -111,7 +111,7 @@ ioc:
   `IndicatorNormalizer`) — не строковый парсинг в маппере. Вид хоста
   (`registrable`/`subdomain`) — через **порт `HostClassifier`** (адаптер на Guava
   PSL, `adapter-psl`), чтобы домен оставался без Guava (см.
-  [boundaries.md](boundaries.md), [services.md](services.md)).
+  [boundaries.md](../BOUNDARIES.md), [services.md](../SERVICES-CATALOG.md)).
 - Реестр **предикатов** над признаками: `has-query`, `has-path`, `has-port`,
   `has-path-or-port`, `is-ip`, `is-subdomain`, `is-registrable`, `is-onion`.
   Артефактные фильтры используют тот же реестр плюс специализированный
@@ -144,7 +144,7 @@ ioc:
 раньше 3); IP без PSL не проходит `is-subdomain` и попадает в default → вариант 1.
 Новый предикат = тонкий класс в реестре; новый вариант = правило в конфиге, без
 изменения кода. Триггеры зафиксированы в
-[dev/0002](dev/0002-output-mapping-and-matching.md).
+[dev/0002](../ADR/0002-output-mapping-and-matching.md).
 
 ## Пример конфигурации
 
@@ -205,7 +205,7 @@ artifacts:
   (`adapter/out/sink/csv`): форматирование — адаптерная забота.
 - Провайдеры `match.*` вызывают **доменную** `MatchPolicy` (классификация —
   доменная логика; коды и колонки — конфиг). См.
-  [architecture.md](architecture.md#классификация-сетевых-масок).
+  [architecture.md](../ARCHITECTURE.md#классификация-сетевых-масок).
 - Расширение: новый провайдер/трансформация = новый класс, реализующий
   `ValueProvider`/`Transform` с уникальным ключом (бин, собирается в реестр) —
   конфиг ссылается по ключу. Код существующих артефактов не меняется (OCP).

@@ -14,14 +14,14 @@
 > модель, каталоги кодов, `Result`/`Notification`, `FailurePolicy`, renderer и
 > sink-порты. Bridge в operational logging живёт отдельно в
 > `platform/platform-diagnostics-logging`. Operational logging шире диагностики;
-> политика логирования фонового сервиса — в [logging.md](logging.md), таксономия
-> log events — в [logging-taxonomy.md](logging-taxonomy.md).
+> политика логирования фонового сервиса — в [logging.md](LOGGING.md), таксономия
+> log events — в [logging-taxonomy.md](LOGGING-TAXONOMY.md).
 
 Категория `SYNC` покрывает transport-neutral endpoint/auth/permission/not-found/transient
 ошибки, credential/config failures, несовпадение remote publish marker и валидацию
 локального completed slice discovery. SMB-типы не входят в diagnostic contract:
 адаптер переводит их в `RemoteErrorKind`, а полный опубликованный список генерируется
-в [diagnostic-catalog.md](diagnostic-catalog.md). Control-plane события ADR 0013 пока
+в [diagnostic-catalog.md](../DIAGNOSTICS-CATALOG.md). Control-plane события ADR 0013 пока
 не получают отдельную категорию `EVENTS`: publish/dispatch/admission являются
 operational log/health signals, а не самостоятельными диагностическими кодами обработки
 данных.
@@ -119,7 +119,7 @@ extraction.classify.ambiguous = Неоднозначная классифика�
 |---|---|---|
 | `DiagnosticSink` | out | **реализовано:** `CollectingDiagnosticSink`, `NoopDiagnosticSink`; `LoggingDiagnosticSink` — через bridge-модуль observability; `ReportDiagnosticSink` — будущий |
 | `DiagnosticRenderer` | out | **реализовано:** `TemplateDiagnosticRenderer` (дефолтные шаблоны каталога); `MessageSourceRenderer` (i18n) — отложен |
-| `MessageCatalog` | out | резолв шаблона по коду (bundle/yaml + дефолт каталога) — **отложен до i18n-шага** (см. [dev/0008](dev/0008-stage-6-8-implementation-followups.md)) |
+| `MessageCatalog` | out | резолв шаблона по коду (bundle/yaml + дефолт каталога) — **отложен до i18n-шага** (см. [dev/0008](../ADR/0008-stage-6-8-implementation-followups.md)) |
 
 Ядро подсистемы (модель, каталог, Notification/Result, порты) — агностично, без
 фреймворков; адаптеры (MessageSource, логирование, отчёты) — снаружи.
@@ -131,7 +131,7 @@ category → severity → шаблон → где возникает) — для
 разработчиков, и как реестр для отчётов. Генерация — отдельный инструмент/тест,
 не рантайм-зависимость.
 
-Опубликованный generated artifact — [diagnostic-catalog.md](diagnostic-catalog.md).
+Опубликованный generated artifact — [diagnostic-catalog.md](../DIAGNOSTICS-CATALOG.md).
 Категория `EXPORT` полностью покрывает executable boundaries Artifact Emission:
 unsupported mode, snapshot read, slice write, invalid manifest/tree, отсутствие
 atomic publish, ledger CAS conflict и recovery failure. Код создаётся рядом с
@@ -160,11 +160,11 @@ LogEvent(ECS fields + ioc.diagnostic.* + error.*)
 - `Diagnostic` не диктует `event.action`; он только добавляет
   `ioc.diagnostic.*` и, при наличии причины, `error.*`.
 - `LoggingDiagnosticSink` живёт в bridge-модуле (`platform-diagnostics-logging`),
-  использует таксономию из [logging-taxonomy.md](logging-taxonomy.md), но не
+  использует таксономию из [logging-taxonomy.md](LOGGING-TAXONOMY.md), но не
   является главным каналом всех логов.
 - Обычные SLF4J log events могут существовать без `DiagnosticCode`.
 - Политика вывода (`console`, rolling file, ECS JSON, retention) описана в
-  [logging.md](logging.md).
+  [logging.md](LOGGING.md).
 
 ## Паттерны и референсы
 
@@ -182,11 +182,11 @@ Observer/Event (sinks) · Template/MessageFormat.
 
 ## Связи
 
-- Реализует «ошибки/диагностику за портами» из [cross-cutting.md](cross-cutting.md);
+- Реализует «ошибки/диагностику за портами» из [cross-cutting.md](CROSS-CUTTING.md);
   `FailurePolicy`/dead-letter применяются и в [ingestion.md](ingestion.md).
-- Соблюдает [principles.md](principles.md): каталог/инструменты — тонкий код,
+- Соблюдает [principles.md](../PRINCIPLES.md): каталог/инструменты — тонкий код,
   шаблоны/специфика сообщений — декларативны и дозированы.
-- Кандидаты `platform/diagnostics` — в [modularization.md](modularization.md).
+- Кандидаты `platform/diagnostics` — в [modularization.md](../MODULARIZATION.md).
 
 ## Этапы внедрения
 
@@ -202,7 +202,7 @@ Observer/Event (sinks) · Template/MessageFormat.
 > каталоги и bridge есть, `PipelineRunner` умеет останавливать поток через
 > `DiagnosticException`, но большинство production producer-ов всё ещё бросают
 > `IocExtractorException` без построения typed `Diagnostic`. План интеграции —
-> [dev/0008](dev/0008-stage-6-8-implementation-followups.md).
+> [dev/0008](../ADR/0008-stage-6-8-implementation-followups.md).
 
 Мост в логи (`LoggingDiagnosticSink`, ECS/MDC) — **отдельная подсистема
-observability** ([logging.md](logging.md)); реализуется своим этапом, а не здесь.
+observability** ([logging.md](LOGGING.md)); реализуется своим этапом, а не здесь.

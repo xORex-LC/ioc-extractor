@@ -15,7 +15,7 @@ revision, JDBC snapshot, CSV/filesystem writer, service ledger и bootstrap life
 **Переписан** после приземления SQLite-хранилища и
 β-коллапса (партиции и отдельный проход агрегации удалены) — прежняя редакция
 исходила из «перезаписи canonical-файла», что более неверно. Грунт — текущий код
-и [../ingestion.md](../ingestion.md) / [../worknote/storage-layer.md](../worknote/storage-layer.md).
+и [../ingestion.md](../dev/ingestion.md) / [../worknote/storage-layer.md](../worknote/storage-layer.md).
 
 ## Контекст
 

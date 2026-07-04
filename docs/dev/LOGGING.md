@@ -47,7 +47,7 @@ dead-letter sidecar или JSONL.
   logs должны быть ECS-compatible JSON.
 
 Минимальная проектная таксономия полей и событий — в
-[logging-taxonomy.md](logging-taxonomy.md). Она фиксирует стартовое ядро и правила
+[logging-taxonomy.md](LOGGING-TAXONOMY.md). Она фиксирует стартовое ядро и правила
 расширения, а не пытается заранее описать все будущие events.
 
 ## Источники log events

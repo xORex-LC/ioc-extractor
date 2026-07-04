@@ -3,14 +3,14 @@
 - **Статус:** принято; актуализировано после этапа 9; **partition/aggregation-часть
   заменена storage-коллапсом** (см. ниже)
 - **Дата:** 2026-06-21
-- **Связано:** [../ingestion.md](../ingestion.md), [../architecture.md](../architecture.md),
-  [../cross-cutting.md](../cross-cutting.md), [../modularization.md](../modularization.md)
+- **Связано:** [../ingestion.md](../dev/ingestion.md), [../architecture.md](../ARCHITECTURE.md),
+  [../cross-cutting.md](../dev/CROSS-CUTTING.md), [../modularization.md](../MODULARIZATION.md)
 
 > **Superseded (storage Step 1–3 / β-коллапс):** этот ADR — историческая запись
 > исходного дизайна с partition-staging, отдельным проходом агрегации и stable-id
 > sidecar. Они **удалены**: бизнес-данные теперь в canonical SQLite (truth), демон
 > пишет каждый файл прямо в canonical + CSV-проекция, id даёт единый `IdGenerator`.
-> Актуальный контур — [../ingestion.md](../ingestion.md) и
+> Актуальный контур — [../ingestion.md](../dev/ingestion.md) и
 > [../worknote/storage-layer.md](../worknote/storage-layer.md). Ниже — как было.
 
 > **Поправки после ревью ([0006](0006-design-review-refinements.md)) и
@@ -67,9 +67,9 @@ CLI-запуск «один прогон → выход» остаётся по�
 - **Новые библиотеки:** `spring-boot-starter-integration` + `spring-integration-file`,
   `spring-retry`; Actuator переносится на период после этапа 11, SQLite/tail
   libraries — later/optional. SHA-256 можно считать через JDK `MessageDigest`
-  без `commons-codec`. Детали — в [../ingestion.md](../ingestion.md).
+  без `commons-codec`. Детали — в [../ingestion.md](../dev/ingestion.md).
 - Смыкается со сквозной **подсистемой ошибок** (политика fail-fast vs
-  collect-and-continue, dead-letter) — [../cross-cutting.md](../cross-cutting.md).
+  collect-and-continue, dead-letter) — [../cross-cutting.md](../dev/CROSS-CUTTING.md).
 
 ## Открытые вопросы
 
