@@ -15,7 +15,7 @@ import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
 /**
- * Enforces the architectural boundaries from docs/boundaries.md as failing
+ * Enforces the architectural boundaries from docs/BOUNDARIES.md as failing
  * tests. Production classes only (tests excluded), so the rules guard the
  * shipped code, not the test scaffolding.
  */

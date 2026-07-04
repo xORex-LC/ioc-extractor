@@ -27,3 +27,17 @@ jobs:
       # Module boundaries are enforced inside the build, not by extra CI steps.
       - name: Build, test & verify boundaries
         run: ./mvnw -B -ntp -T 1C verify
+
+  # Documentation links are enforced by the build too: a moved/renamed doc that
+  # leaves a dangling relative link fails CI instead of drifting silently.
+  # Offline mode checks local file/anchor existence only (no flaky external URLs).
+  doc-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check documentation links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: "--offline --no-progress docs README.md"
+          fail: true
