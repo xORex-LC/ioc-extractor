@@ -206,7 +206,8 @@ Anti-broker инварианты держит не ревью, а сборка (
 ## Связанные документы
 
 - Решения и обоснование: [../ADR/0013-event-driven-coordination.md](../ADR/0013-event-driven-coordination.md)
-  (+ 0011 remote sync, 0012 export).
+  (+ 0011 remote sync, 0012 export); расширение на цепочку ingest→export→delivery —
+  [../ADR/0014-event-driven-ingest-to-delivery.md](../ADR/0014-event-driven-ingest-to-delivery.md).
 - Главный потребитель: [sync.md](sync.md).
 - Открытые seam'ы: OPS-4/OPS-6 в [../KNOWN-ISSUES.md](../KNOWN-ISSUES.md).
 - Сервисы контура: [../SERVICES-CATALOG.md](../SERVICES-CATALOG.md).
