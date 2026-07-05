@@ -17,10 +17,13 @@ import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.SourceContext;
 import com.iocextractor.platform.etl.NoopPipelineObserver;
+import com.iocextractor.platform.events.RecordingControlEventPublisher;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -30,6 +33,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class IngestionServiceTest {
 
+    private static final Instant EVENT_TIME = Instant.parse("2026-06-22T00:00:05Z");
+
+    private final Clock clock = Clock.fixed(EVENT_TIME, ZoneOffset.UTC);
+
     @Test
     void processes_claimed_source_into_canonical_storage_projects_and_archives_it() {
         var key = new SourceKey("ABC123");
@@ -38,8 +45,9 @@ class IngestionServiceTest {
         var sink = new CountingSink();
         var runLedger = new MemoryRunLedger();
         var projection = new CollectingProjection();
+        var events = new RecordingControlEventPublisher();
         var service = new IngestionService(ledger, lifecycle, source -> new SourceSinks(List.of(sink)),
-                extractionFactory(), runLedger, projection);
+                extractionFactory(), runLedger, projection, events, clock);
 
         var result = service.ingest(new IngestSourceCommand(
                 Path.of("inbox/source.html"), key, Instant.parse("2026-06-22T00:00:00Z")));
@@ -53,6 +61,7 @@ class IngestionServiceTest {
                 .extracting(IngestionRecord::status)
                 .isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
         assertThat(lifecycle.events).containsExactly("claim", "archive");
+        assertArtifactsChanged(events, "run-1", List.of("masks"));
     }
 
     @Test
@@ -61,10 +70,11 @@ class IngestionServiceTest {
         var ledger = new MemoryLedger();
         var lifecycle = new MemoryLifecycle();
         var runLedger = new MemoryRunLedger();
+        var events = new RecordingControlEventPublisher();
         var service = new IngestionService(ledger, lifecycle, source -> new SourceSinks(List.of(new CountingSink())),
                 extractionFactory(), runLedger, artifactName -> {
                     throw new IllegalStateException("projection failed");
-                });
+                }, events, clock);
 
         assertThatThrownBy(() -> service.ingest(new IngestSourceCommand(
                 Path.of("inbox/source.html"), key, Instant.parse("2026-06-22T00:00:00Z"))))
@@ -76,6 +86,7 @@ class IngestionServiceTest {
                 .extracting(IngestionRecord::status)
                 .isEqualTo(IngestionStatus.CLAIMED);
         assertThat(lifecycle.events).containsExactly("claim");
+        assertThat(events.events()).isEmpty();
     }
 
     @Test
@@ -86,12 +97,15 @@ class IngestionServiceTest {
                 Path.of("old/source.html"), Path.of("processing/source.html"),
                 Path.of("done/source.html"),
                 Instant.parse("2026-06-22T00:00:00Z"), Instant.parse("2026-06-22T00:00:01Z"), null);
+        var events = new RecordingControlEventPublisher();
         var service = new IngestionService(ledger, new MemoryLifecycle(), source -> {
             throw new AssertionError("source sink factory must not be called for duplicate");
-        }, extractionFactory());
+        }, extractionFactory(), new MemoryRunLedger(), new CollectingProjection(), events, clock);
 
         service.ingest(new IngestSourceCommand(
                 Path.of("inbox/source-copy.html"), key, Instant.parse("2026-06-22T00:01:00Z")));
+
+        assertThat(events.events()).isEmpty();
     }
 
     @Test
@@ -103,9 +117,10 @@ class IngestionServiceTest {
                 Path.of("done/source.html"),
                 Instant.parse("2026-06-22T00:00:00Z"), Instant.parse("2026-06-22T00:00:01Z"), null);
         var lifecycle = new MemoryLifecycle();
+        var events = new RecordingControlEventPublisher();
         var service = new IngestionService(ledger, lifecycle, source -> {
             throw new AssertionError("source sink factory must not be called for duplicate");
-        }, extractionFactory());
+        }, extractionFactory(), new MemoryRunLedger(), new CollectingProjection(), events, clock);
 
         var result = service.ingest(new IngestSourceCommand(
                 Path.of("inbox/source-copy.html"), key, Instant.parse("2026-06-22T00:01:00Z")));
@@ -113,6 +128,26 @@ class IngestionServiceTest {
         assertThat(result.duplicate()).isTrue();
         assertThat(result.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
         assertThat(lifecycle.events).containsExactly("archiveDuplicate");
+        assertThat(events.events()).isEmpty();
+    }
+
+    @Test
+    void existing_failed_source_does_not_emit_event() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.record = new IngestionRecord(key, IngestionStatus.FAILED,
+                Path.of("old/source.html"), Path.of("processing/source.html"), null,
+                Instant.parse("2026-06-22T00:00:00Z"), Instant.parse("2026-06-22T00:00:01Z"), "failed");
+        var events = new RecordingControlEventPublisher();
+        var service = new IngestionService(ledger, new MemoryLifecycle(), source -> {
+            throw new AssertionError("source sink factory must not be called for failed record");
+        }, extractionFactory(), new MemoryRunLedger(), new CollectingProjection(), events, clock);
+
+        var result = service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source-copy.html"), key, Instant.parse("2026-06-22T00:01:00Z")));
+
+        assertThat(result.status()).isEqualTo(IngestionStatus.FAILED);
+        assertThat(events.events()).isEmpty();
     }
 
     @Test
@@ -120,9 +155,10 @@ class IngestionServiceTest {
         var key = new SourceKey("ABC123");
         var ledger = new MemoryLedger();
         var lifecycle = new MemoryLifecycle();
+        var events = new RecordingControlEventPublisher();
         var service = new IngestionService(ledger, lifecycle, source -> {
             throw new IllegalStateException("source sink unavailable");
-        }, extractionFactory());
+        }, extractionFactory(), new MemoryRunLedger(), new CollectingProjection(), events, clock);
 
         assertThatThrownBy(() -> service.ingest(new IngestSourceCommand(
                 Path.of("inbox/source.html"), key, Instant.parse("2026-06-22T00:00:00Z"))))
@@ -139,6 +175,94 @@ class IngestionServiceTest {
                 .extracting(IngestionRecord::status)
                 .isEqualTo(IngestionStatus.FAILED);
         assertThat(lifecycle.events).containsExactly("claim", "failRecovered");
+        assertThat(events.events()).isEmpty();
+    }
+
+    @Test
+    void claim_failure_does_not_emit_event() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.claimFailure = new IllegalStateException("ledger unavailable");
+        var lifecycle = new MemoryLifecycle();
+        var events = new RecordingControlEventPublisher();
+        var service = new IngestionService(ledger, lifecycle, source -> new SourceSinks(List.of(new CountingSink())),
+                extractionFactory(), new MemoryRunLedger(), new CollectingProjection(), events, clock);
+
+        assertThatThrownBy(() -> service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source.html"), key, Instant.parse("2026-06-22T00:00:00Z"))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("ledger unavailable");
+
+        assertThat(ledger.find(key)).get()
+                .extracting(IngestionRecord::status)
+                .isEqualTo(IngestionStatus.FAILED);
+        assertThat(lifecycle.events).containsExactly("claim", "fail");
+        assertThat(events.events()).isEmpty();
+    }
+
+    @Test
+    void extraction_failure_marks_run_failed_and_does_not_emit_event() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        var runLedger = new MemoryRunLedger();
+        var events = new RecordingControlEventPublisher();
+        var service = new IngestionService(ledger, lifecycle, source -> new SourceSinks(List.of(new CountingSink())),
+                failingExtractionFactory(), runLedger, new CollectingProjection(), events, clock);
+
+        assertThatThrownBy(() -> service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source.html"), key, Instant.parse("2026-06-22T00:00:00Z"))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("read failed");
+
+        assertThat(runLedger.status).isEqualTo(IngestRunStatus.FAILED);
+        assertThat(ledger.find(key)).get()
+                .extracting(IngestionRecord::status)
+                .isEqualTo(IngestionStatus.CLAIMED);
+        assertThat(events.events()).isEmpty();
+    }
+
+    @Test
+    void claimed_recovery_emits_event_through_process_claimed_path() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.record = new IngestionRecord(key, IngestionStatus.CLAIMED,
+                Path.of("inbox/source.html"), Path.of("processing/source.html"), null,
+                Instant.parse("2026-06-22T00:00:00Z"), Instant.parse("2026-06-22T00:00:01Z"), null);
+        var lifecycle = new MemoryLifecycle();
+        var runLedger = new MemoryRunLedger();
+        var events = new RecordingControlEventPublisher();
+        var service = new IngestionService(ledger, lifecycle, source -> new SourceSinks(List.of(new CountingSink("hashes"))),
+                extractionFactory(), runLedger, new CollectingProjection(), events, clock);
+
+        var results = service.recoverIncomplete();
+
+        assertThat(results).singleElement()
+                .extracting(IngestSourceResult::status)
+                .isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
+        assertThat(runLedger.status).isEqualTo(IngestRunStatus.COMPLETED);
+        assertArtifactsChanged(events, "run-1", List.of("hashes"));
+    }
+
+    @Test
+    void publisher_failure_does_not_change_successful_ingest_result() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        var runLedger = new MemoryRunLedger();
+        var service = new IngestionService(ledger, lifecycle, source -> new SourceSinks(List.of(new CountingSink())),
+                extractionFactory(), runLedger, new CollectingProjection(), event -> {
+                    throw new IllegalStateException("event bus unavailable");
+                }, clock);
+
+        var result = service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source.html"), key, Instant.parse("2026-06-22T00:00:00Z")));
+
+        assertThat(result.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
+        assertThat(runLedger.status).isEqualTo(IngestRunStatus.COMPLETED);
+        assertThat(ledger.find(key)).get()
+                .extracting(IngestionRecord::status)
+                .isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
     }
 
     @Test
@@ -185,12 +309,62 @@ class IngestionServiceTest {
                 NoopDiagnosticSink.INSTANCE);
     }
 
+    private IocExtractionServiceFactory failingExtractionFactory() {
+        return new IocExtractionServiceFactory(
+                source -> {
+                    throw new IllegalStateException("read failed");
+                },
+                text -> text,
+                text -> List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)),
+                (text, indicators) -> List.of(new Indicator("example.com", IndicatorType.DOMAIN, new SourceContext(null, null))),
+                new LookupRepository() {
+                    @Override
+                    public boolean contains(Indicator indicator) {
+                        return false;
+                    }
+
+                    @Override
+                    public long maxId() {
+                        return 0;
+                    }
+                },
+                false,
+                "daemon",
+                new NoopPipelineObserver(),
+                NoopDiagnosticSink.INSTANCE);
+    }
+
+    private void assertArtifactsChanged(RecordingControlEventPublisher events,
+                                        String runId,
+                                        List<String> artifactNames) {
+        assertThat(events.events()).singleElement()
+                .isInstanceOfSatisfying(CanonicalArtifactsChanged.class, event -> {
+                    assertThat(event.runId()).isEqualTo(runId);
+                    assertThat(event.artifactNames()).containsExactlyElementsOf(artifactNames);
+                    assertThat(event.metadata().eventId()).isEqualTo("canonical-artifacts-changed:" + runId);
+                    assertThat(event.metadata().eventType()).isEqualTo(CanonicalArtifactsChanged.EVENT_TYPE);
+                    assertThat(event.metadata().eventVersion()).isEqualTo(CanonicalArtifactsChanged.EVENT_VERSION);
+                    assertThat(event.metadata().occurredAt()).isEqualTo(EVENT_TIME);
+                    assertThat(event.metadata().correlationId()).isEqualTo(runId);
+                    assertThat(event.metadata().causationId()).isNull();
+                });
+    }
+
     private static final class CountingSink implements IocSink {
+        private final String name;
         private int written;
+
+        private CountingSink() {
+            this("masks");
+        }
+
+        private CountingSink(String name) {
+            this.name = name;
+        }
 
         @Override
         public String name() {
-            return "masks";
+            return name;
         }
 
         @Override
@@ -292,6 +466,7 @@ class IngestionServiceTest {
 
     private static final class MemoryLedger implements IngestionLedger {
         private IngestionRecord record;
+        private RuntimeException claimFailure;
 
         @Override
         public Optional<IngestionRecord> find(SourceKey key) {
@@ -301,6 +476,9 @@ class IngestionServiceTest {
 
         @Override
         public void markClaimed(SourceUnit unit) {
+            if (claimFailure != null) {
+                throw claimFailure;
+            }
             record = new IngestionRecord(unit.key(), IngestionStatus.CLAIMED,
                     unit.originalPath(), unit.processingPath(), null,
                     unit.detectedAt(), unit.detectedAt(), null);

@@ -768,14 +768,18 @@ public class AppConfig {
                                              SourceSinkFactory sourceSinkFactory,
                                              IocExtractionServiceFactory extractionFactory,
                                              ObjectProvider<RunLedger> runLedger,
-                                             ObjectProvider<ArtifactProjection> projection) {
+                                             ObjectProvider<ArtifactProjection> projection,
+                                             ControlEventPublisher controlEventPublisher,
+                                             Clock clock) {
         return new IngestionService(
                 ledger,
                 sourceLifecycle,
                 sourceSinkFactory,
                 extractionFactory,
                 runLedger.getIfAvailable(NoopRunLedger::new),
-                projection.getIfAvailable(NoopArtifactProjection::new));
+                projection.getIfAvailable(NoopArtifactProjection::new),
+                controlEventPublisher,
+                clock);
     }
 
     @Bean

@@ -15,8 +15,11 @@ import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.port.out.ingest.SourceSinkFactory;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
+import com.iocextractor.platform.events.ControlEventPublisher;
+import com.iocextractor.platform.events.NoopControlEventPublisher;
 
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -34,6 +37,8 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     private final IocExtractionServiceFactory extractionFactory;
     private final RunLedger runLedger;
     private final ArtifactProjection projection;
+    private final ControlEventPublisher eventPublisher;
+    private final Clock clock;
 
     public IngestionService(IngestionLedger ledger,
                             SourceLifecycle sourceLifecycle,
@@ -49,12 +54,26 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                             IocExtractionServiceFactory extractionFactory,
                             RunLedger runLedger,
                             ArtifactProjection projection) {
+        this(ledger, sourceLifecycle, sourceSinkFactory, extractionFactory, runLedger, projection,
+                NoopControlEventPublisher.INSTANCE, Clock.systemUTC());
+    }
+
+    public IngestionService(IngestionLedger ledger,
+                            SourceLifecycle sourceLifecycle,
+                            SourceSinkFactory sourceSinkFactory,
+                            IocExtractionServiceFactory extractionFactory,
+                            RunLedger runLedger,
+                            ArtifactProjection projection,
+                            ControlEventPublisher eventPublisher,
+                            Clock clock) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.sourceLifecycle = Objects.requireNonNull(sourceLifecycle, "sourceLifecycle");
         this.sourceSinkFactory = Objects.requireNonNull(sourceSinkFactory, "sourceSinkFactory");
         this.extractionFactory = Objects.requireNonNull(extractionFactory, "extractionFactory");
         this.runLedger = Objects.requireNonNull(runLedger, "runLedger");
         this.projection = Objects.requireNonNull(projection, "projection");
+        this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher");
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     @Override
@@ -144,7 +163,16 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         Path archived = sourceLifecycle.archive(unit);
         ledger.markSourceArchived(unit.key(), archived);
         runLedger.markCompleted(run.runId());
+        publishArtifactsChanged(run.runId(), run.artifacts());
         return new IngestSourceResult(unit.key(), IngestionStatus.SOURCE_ARCHIVED, false, extraction);
+    }
+
+    private void publishArtifactsChanged(String runId, List<String> artifactNames) {
+        try {
+            eventPublisher.publish(CanonicalArtifactsChanged.from(runId, artifactNames, clock.instant()));
+        } catch (RuntimeException ignored) {
+            // Event delivery must not affect the durable ingest outcome.
+        }
     }
 
     private void failRecord(IngestionRecord record, String reason) {
