@@ -130,6 +130,7 @@ import com.iocextractor.domain.refang.Refanger;
 import com.iocextractor.observability.diagnostics.LoggingDiagnosticSink;
 import com.iocextractor.observability.logging.LoggingPipelineObserver;
 import com.iocextractor.platform.events.ControlEventPublisher;
+import com.iocextractor.platform.events.ControlEventObserver;
 import com.zaxxer.hikari.HikariDataSource;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.QuoteMode;
@@ -690,6 +691,17 @@ public class AppConfig {
                 catalog.plans(), cadences, artifactRevisionReader, exportProgressStore,
                 recoverExportUseCase, exportArtifactsUseCase, cadencePollInterval(trigger),
                 exportNudgePolicy(trigger));
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
+            + "'${ioc.export.enabled:true}' == 'true' && "
+            + "'${ioc.storage.service.type:disabled}' == 'jdbc' && "
+            + "'${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
+    public CanonicalArtifactsChangedExportListener canonicalArtifactsChangedExportListener(
+            ExportNudgeTrigger exportNudgeTrigger,
+            ControlEventObserver observer) {
+        return new CanonicalArtifactsChangedExportListener(exportNudgeTrigger, observer);
     }
 
     @Bean
