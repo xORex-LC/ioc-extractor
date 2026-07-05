@@ -130,7 +130,7 @@ terminal pair, включая ещё не materialized row. Поэтому max-c
 fetch scheduler и на каждом успешном открытии watch-сессии запускает обычный
 detection (`WATCH_ESTABLISHED`). Publish до запуска periodic executor и на каждом periodic tick reconciles
 completed slices × targets один раз на export profile, чтобы retention не обогнал discovery и потерянный
-`SliceCompleted` не ждал restart. Periodic publish execution проходит через тот же
+`SliceCompleted` из normal export или export recovery не ждал restart. Periodic publish execution проходит через тот же
 keyed executor по endpoint, что и `SliceCompleted` fast-path; scheduler ждёт completion
 work-item перед idle-cleanup, поэтому fast-path и backstop не публикуют один endpoint
 параллельно. Оба sync scheduler последовательны, имеют overlap guard, изолируют ошибку одного
@@ -148,7 +148,7 @@ port; текущая доставка — Spring bridge в `bootstrap`, а не 
 fetch interval      ──▶ RemoteSourceMonitor ──▶ RemoteChangeBatchDetected ──▶ endpoint-keyed fetch
 SMB CHANGE_NOTIFY   ──▶ doorbell debounce ─────▶ same RemoteSourceMonitor.detect(source)
 watch established   ──▶ recovery detect ───────▶ same RemoteSourceMonitor.detect(source)
-export complete     ──▶ SliceCompleted event ──▶ publish concrete slice
+export complete/recovered complete ──▶ SliceCompleted event ──▶ publish concrete slice
 publish reconcile   ──▶ per-profile dir-listing × publish_ledger anti-join ──▶ verify only missing slices
 publish interval    ──▶ publish_ledger.findRetryable ──▶ publish pending/failed pairs
 ```

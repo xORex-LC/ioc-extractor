@@ -5,9 +5,9 @@ control-plane контракт (`platform-events`) + keyed single-flight исп�
 (`platform-concurrency`). Документ отвечает на два вопроса разработчика/агента:
 «стоит ли здесь вообще событие?» и «как его использовать, не нарушив рамки?».
 
-> Статус: **реализовано**. Базовое ядро (ADR 0013, S0–S8) + опциональный SMB2
-> `CHANGE_NOTIFY` push. Durable outbox / внешний брокер / DLQ — **сознательно
-> отложенные seam'ы** (§7), не реализованы. «Почему так» — в
+> Статус: **реализовано**. Базовое ядро (ADR 0013, S0–S8), опциональный SMB2
+> `CHANGE_NOTIFY` push и ADR 0014 Р1/Р2 fast-paths. Durable outbox / внешний
+> брокер / DLQ — **сознательно отложенные seam'ы** (§7), не реализованы. «Почему так» — в
 > [../ADR/0013-event-driven-coordination.md](../ADR/0013-event-driven-coordination.md).
 
 ## 1. Что это (и чем НЕ является)
@@ -20,9 +20,10 @@ subscriber SPI. Доставка — это концерн **адаптера** 
 
 Событийная координация — **не ambient-концерн**, как логирование. Логирование
 применяют везде по умолчанию; события — в узком наборе ситуаций (§2), под
-anti-broker инвариантом. Сейчас события используются **только** в sync-контуре
-(fetch/publish); extraction/ingestion/output-mapping их не трогают. Ближе по духу
-к «как мы делаем concurrency», чем к «как мы логируем».
+anti-broker инвариантом. Сейчас события используются в sync-контуре
+(fetch/publish) и локальном `ingest -> export` fast-path; extraction/output-mapping
+их не трогают. Ближе по духу к «как мы делаем concurrency», чем к «как мы
+логируем».
 
 Несущий инвариант (ADR 0013, реш. 2/11): **платформа задаёт event-модель и
 контракт публикации; вся доставочная механика — за адаптером.**
@@ -90,6 +91,9 @@ interface ControlEventObserver {                 // наблюдаемость �
 - **Wiring доставки — в bootstrap:** `SpringControlEventPublisher` мостит порт в
   Spring `ApplicationEventPublisher`; `LoggingControlEventObserver` пишет
   ECS-наблюдение dispatch'а (`EventCoordinationConfig`). Ядро о Spring не знает.
+  Текущий Spring dispatch синхронный: listener должен только принять hint и
+  передать его в consumer-owned executor/scheduler, а не выполнять тяжёлую работу
+  в потоке публикации.
 
 ## 4. Модель корректности
 
@@ -102,12 +106,15 @@ interface ControlEventObserver {                 // наблюдаемость �
 - **Reconcile — correctness backstop:** периодический проход сверяет реальное
   состояние (listing / каталог срезов) с ledger и добирает всё, что событие
   потеряло (пропущенный emit, рестарт, overflow push'а).
-- **Keyed single-flight (`platform-concurrency`):** и fast-path (событие), и
-  backstop (reconcile) идут через **один** `KeyedSerialExecutor` с ключом =
-  endpoint. Поэтому работа по одному endpoint сериализована (не гоняется сама с
-  собой), разные endpoints параллельны. `BoundedKeyedSerialExecutor` даёт
-  bounded admission + shed-to-reconcile: при перегрузке работа сбрасывается, а не
-  копится безгранично — её доберёт reconcile.
+- **Consumer-owned async boundary:** Spring listener не исполняет use case
+  напрямую. В sync и fast-path, и backstop идут через **один**
+  `KeyedSerialExecutor` с ключом = endpoint. Поэтому работа по одному endpoint
+  сериализована (не гоняется сама с собой), разные endpoints параллельны.
+  `BoundedKeyedSerialExecutor` даёт bounded admission + shed-to-reconcile: при
+  перегрузке работа сбрасывается, а не копится безгранично — её доберёт
+  reconcile. В `ingest -> export` роль async boundary принадлежит самому
+  `DaemonExportScheduler`: listener вызывает только `nudge()`, а проверка cadence
+  и возможный export идут на single-thread executor'е scheduler'а.
 
 ## 5. Разобранные примеры
 
@@ -124,8 +131,18 @@ periodic / startup / CHANGE_NOTIFY ─▶ Coordinator ─▶ RemoteSourceMonitor
 ```
 
 **Publish.** `ExportService` по завершении среза эмитит `SliceCompleted` (несёт
-`manifestSha256`). `SliceCompletedPublishListener` ставит keyed-publish. Backstop
-— periodic reconcile каталога срезов × `publish_ledger`.
+`manifestSha256`). `ExportRunRecoveryService` эмитит тот же факт, когда recovery
+доводит уже доступный срез до `COMPLETED`. `SliceCompletedPublishListener` ставит
+keyed-publish. Backstop — periodic reconcile каталога срезов × `publish_ledger`.
+
+**Ingest -> export.** `IngestionService` после durable `COMPLETED` эмитит
+`CanonicalArtifactsChanged` (`runId` + список artifact names, без revision:
+consumer сам читает durable revision в момент проверки).
+`CanonicalArtifactsChangedExportListener` только открывает MDC/observer dispatch
+и вызывает `DaemonExportScheduler.nudge()`. Nudge включён для `quiet-period`
+cadence, coalesce'ит повторные hints и планирует проверку через тот же
+quiet-period на executor'е export scheduler'а. Periodic export poll остаётся
+backstop для потерянных событий, duplicate-only ingest, restart и plan-drift.
 
 **CHANGE_NOTIFY как «внешний сигнал → то же событие».** SMB watch не несёт своих
 фактов: его doorbell лишь триггерит обычный `detect`, который производит то же
@@ -140,9 +157,9 @@ OCP-рецепт (не трогая `platform-events`):
    контексте факта, со стабильным `EVENT_TYPE`/`EVENT_VERSION` и `metadata()`.
 2. **Эмитить в источнике факта** через `ControlEventPublisher.publish(...)` —
    там, где факт становится истиной (после commit/durable-записи, не до).
-3. **Добавить listener в bootstrap**, который переводит событие в keyed-работу
-   (`KeyedSerialExecutor.submit(WorkKey.of(key), …)`), а не делает тяжёлую работу
-   в потоке публикации.
+3. **Добавить listener в bootstrap**, который переводит событие в consumer-owned
+   async boundary (`KeyedSerialExecutor.submit(WorkKey.of(key), …)` или
+   scheduler-owned `nudge()`), а не делает тяжёлую работу в потоке публикации.
 4. **Убедиться, что backstop есть** — периодический reconcile/poll, который
    добьёт потерянное событие. Нет backstop'а → это не event-кейс (§2), нужен
    ledger.

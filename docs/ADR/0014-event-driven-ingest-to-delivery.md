@@ -11,6 +11,12 @@ single-flight, anti-broker), новые точки применения. Фик�
 рефакторинга и миграции**; кода ещё нет. Обоснование модели «когда/как» — в
 [../dev/event-coordination.md](../dev/event-coordination.md).
 
+**Обновление 2026-07-05.** Р1/Р2 реализованы: export recovery теперь эмитит
+`SliceCompleted` (`49bd68b`), ingest эмитит `CanonicalArtifactsChanged`
+(`d28c74e`), `DaemonExportScheduler.nudge()` и Spring listener соединяют ingest
+с export fast-path (`e265b0d`, `294b67c`). Follow-up loop дополнительно защищён
+от idle-состояний без pending-работы (`aefb593`). Р3/Р4 остаются design-state.
+
 ## Контекст
 
 0013 задал доктрину и реализовал её для sync (fetch — detection⊥execution +
@@ -631,7 +637,7 @@ by design best-effort). События-источники появятся ли�
 in-process adapter/fan-out, тяжёлая работа уходит в consumer-owned executor или
 scheduler, periodic/reconcile backstop не удаляется.
 
-### Срез 1 — Р1: recovery эмитит `SliceCompleted`
+### Срез 1 — Р1: recovery эмитит `SliceCompleted` (выполнен: `49bd68b`)
 
 **Цель.** Закрыть post-crash latency-cliff для export-срезов, которые recovery
 доводит до `COMPLETED`: доставка получает тот же fast-path, что и обычный
@@ -678,7 +684,7 @@ happy-path `ExportService.export()`.
 **Граница коммита.** Самодостаточный коммит `P1 recovery emits SliceCompleted`.
 Не смешивать с Р2: blast radius маленький, value появляется сразу.
 
-### Срез 2 — Р2a: `CanonicalArtifactsChanged` и эмиссия из ingest
+### Срез 2 — Р2a: `CanonicalArtifactsChanged` и эмиссия из ingest (выполнен: `d28c74e`)
 
 **Цель.** Зафиксировать application-level факт: завершённый ingest-run мог
 изменить canonical artifacts. Consumer пока не добавляется.
@@ -738,7 +744,7 @@ happy-path `ExportService.export()`.
 После него событие уже есть, но fast-path ещё не подключён: это допустимый
 промежуточный state, потому что без listener'а событие является harmless hint.
 
-### Срез 3 — Р2b: `DaemonExportScheduler.nudge()`
+### Срез 3 — Р2b: `DaemonExportScheduler.nudge()` (выполнен: `e265b0d`, fix `aefb593`)
 
 **Цель.** Добавить consumer-owned async boundary: ingest-событие сможет просить
 export scheduler проверить durable cadence раньше `pollInterval`, но сам Spring
@@ -822,7 +828,7 @@ listener не будет выполнять export.
 scheduler`. Если реализация идёт ровно, допустимо объединить со срезом 4, но
 при первых concurrency-шероховатостях лучше оставить отдельно.
 
-### Срез 4 — Р2c: listener и Spring wiring
+### Срез 4 — Р2c: listener и Spring wiring (выполнен: `294b67c`)
 
 **Цель.** Соединить `CanonicalArtifactsChanged` с `DaemonExportScheduler.nudge()`
 через тонкий Spring listener.

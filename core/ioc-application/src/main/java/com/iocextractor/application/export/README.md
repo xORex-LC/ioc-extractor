@@ -29,7 +29,7 @@ adapters за портами `application.port.out.export`.
 | `SliceRetentionService` | Profile-scoped age/count selection и guard check непосредственно перед delete |
 | `StandaloneSliceRetentionGuard` | Fail-open composition, когда remote delivery targets отсутствуют |
 | `ExportChangeDetector` | Чистая policy: revision/plan pre-gate, authoritative content-hash post-check и terminal progress |
-| `SliceCompleted` | Control event после durable `AVAILABLE -> COMPLETED`, payload только для callback lookup |
+| `SliceCompleted` | Control event после durable `AVAILABLE -> COMPLETED` в normal export или recovery, payload только для callback lookup |
 | `ExportService` | Оркестрация одного run от global single-flight до `COMPLETED`/`SKIPPED` |
 | `ExportRunRecoveryService` | Forward recovery активных checkpoints только из ledger и filesystem evidence |
 | `NoopExportObserver` | Default implementation operational event boundary без framework/logging зависимости |
@@ -51,8 +51,8 @@ adapters за портами `application.port.out.export`.
   только per-artifact content hash из manifest.
 - При post-hash `SKIPPED` новые snapshot revisions сохраняются атомарно с
   terminal status, но `lastSha256/lastSliceId` остаются от опубликованного среза.
-- `SliceCompleted` публикуется только после durable `COMPLETED`; `SKIPPED` не
-  создаёт delivery event.
+- `SliceCompleted` публикуется только после durable `COMPLETED`; normal export и
+  forward recovery эмитят один и тот же факт. `SKIPPED` не создаёт delivery event.
 
 ## Formation saga
 
@@ -84,6 +84,11 @@ adapters за портами `application.port.out.export`.
 - `AVAILABLE` восстанавливает progress из manifest coverage/hash и завершает run;
 - missing/partial staging удаляется и получает `FAILED`; corrupt/conflicting
   evidence не перезаписывается и также получает `FAILED` + `RECOVERY_FAILED`.
+
+После successful `AVAILABLE -> COMPLETED` recovery публикует `SliceCompleted`
+тем же framework-free `ControlEventPublisher`, что и normal export. Failure
+publisher-адаптера наблюдается/гасится и не откатывает уже durable terminal state;
+periodic publish reconcile остаётся correctness backstop.
 
 Operation lease удерживается и formation, и standalone startup recovery, поэтому
 второй живой CLI/daemon process не может восстанавливать активный run владельца.
