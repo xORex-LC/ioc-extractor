@@ -153,6 +153,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Predicate;
@@ -687,7 +688,8 @@ public class AppConfig {
         }
         return new DaemonExportScheduler(
                 catalog.plans(), cadences, artifactRevisionReader, exportProgressStore,
-                recoverExportUseCase, exportArtifactsUseCase, cadencePollInterval(trigger));
+                recoverExportUseCase, exportArtifactsUseCase, cadencePollInterval(trigger),
+                exportNudgePolicy(trigger));
     }
 
     @Bean
@@ -872,11 +874,24 @@ public class AppConfig {
     }
 
     private Duration cadencePollInterval(IocProperties.Export.Trigger trigger) {
-        if (!"quiet-period".equalsIgnoreCase(trigger.type())) {
+        if (!"quiet-period".equals(normalizedTriggerType(trigger))) {
             return trigger.interval();
         }
         return trigger.quietPeriod().compareTo(trigger.maxCap()) <= 0
                 ? trigger.quietPeriod() : trigger.maxCap();
+    }
+
+    private ExportNudgePolicy exportNudgePolicy(IocProperties.Export.Trigger trigger) {
+        if (!"quiet-period".equals(normalizedTriggerType(trigger))) {
+            return ExportNudgePolicy.disabled();
+        }
+        return new ExportNudgePolicy(true, trigger.quietPeriod());
+    }
+
+    private String normalizedTriggerType(IocProperties.Export.Trigger trigger) {
+        return Objects.requireNonNull(trigger.type(), "export trigger type")
+                .trim()
+                .toLowerCase(Locale.ROOT);
     }
 
     // ---- artifact assembly -------------------------------------------------

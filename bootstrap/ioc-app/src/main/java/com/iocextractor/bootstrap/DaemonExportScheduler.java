@@ -23,9 +23,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 /**
  * Daemon lifecycle boundary that samples durable cadence facts and invokes profiles sequentially.
@@ -34,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * and an explicit overlap guard ensure this process never starts two formation attempts at once;
  * the service-database single-flight remains authoritative across processes.
  */
-public final class DaemonExportScheduler implements SmartLifecycle {
+public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeTrigger {
 
     /** Starts after ordinary lifecycle components; retention uses a later phase. */
     public static final int PHASE = 100;
@@ -49,10 +51,13 @@ public final class DaemonExportScheduler implements SmartLifecycle {
     private final RecoverExportUseCase recovery;
     private final ExportArtifactsUseCase exporter;
     private final Duration pollInterval;
+    private final ExportNudgePolicy nudgePolicy;
+    private final Supplier<ScheduledExecutorService> executorFactory;
     private final AtomicBoolean running = new AtomicBoolean();
+    private final AtomicBoolean nudgeScheduled = new AtomicBoolean();
 
     private volatile boolean active;
-    private ScheduledExecutorService executor;
+    private volatile ScheduledExecutorService executor;
 
     /** Creates a scheduler with one cadence source per configured profile. */
     public DaemonExportScheduler(List<ExportPlan> plans,
@@ -62,6 +67,32 @@ public final class DaemonExportScheduler implements SmartLifecycle {
                                  RecoverExportUseCase recovery,
                                  ExportArtifactsUseCase exporter,
                                  Duration pollInterval) {
+        this(plans, cadences, revisionReader, progressStore, recovery, exporter,
+                pollInterval, ExportNudgePolicy.disabled());
+    }
+
+    /** Creates a scheduler with one cadence source per configured profile and optional nudges. */
+    public DaemonExportScheduler(List<ExportPlan> plans,
+                                 Map<String, CadenceSource> cadences,
+                                 ArtifactRevisionReader revisionReader,
+                                 ExportProgressStore progressStore,
+                                 RecoverExportUseCase recovery,
+                                 ExportArtifactsUseCase exporter,
+                                 Duration pollInterval,
+                                 ExportNudgePolicy nudgePolicy) {
+        this(plans, cadences, revisionReader, progressStore, recovery, exporter,
+                pollInterval, nudgePolicy, DaemonExportScheduler::newExecutor);
+    }
+
+    DaemonExportScheduler(List<ExportPlan> plans,
+                          Map<String, CadenceSource> cadences,
+                          ArtifactRevisionReader revisionReader,
+                          ExportProgressStore progressStore,
+                          RecoverExportUseCase recovery,
+                          ExportArtifactsUseCase exporter,
+                          Duration pollInterval,
+                          ExportNudgePolicy nudgePolicy,
+                          Supplier<ScheduledExecutorService> executorFactory) {
         this.plans = List.copyOf(Objects.requireNonNull(plans, "plans"));
         this.cadences = Map.copyOf(new LinkedHashMap<>(Objects.requireNonNull(cadences, "cadences")));
         this.revisionReader = Objects.requireNonNull(revisionReader, "revisionReader");
@@ -69,6 +100,8 @@ public final class DaemonExportScheduler implements SmartLifecycle {
         this.recovery = Objects.requireNonNull(recovery, "recovery");
         this.exporter = Objects.requireNonNull(exporter, "exporter");
         this.pollInterval = requirePositive(pollInterval);
+        this.nudgePolicy = Objects.requireNonNull(nudgePolicy, "nudgePolicy");
+        this.executorFactory = Objects.requireNonNull(executorFactory, "executorFactory");
         List<String> profiles = this.plans.stream().map(plan -> plan.profile().name()).toList();
         if (!this.cadences.keySet().containsAll(profiles) || this.cadences.size() != profiles.size()) {
             throw new IllegalArgumentException("Cadence sources must match configured export profiles");
@@ -81,31 +114,59 @@ public final class DaemonExportScheduler implements SmartLifecycle {
             return;
         }
         recovery.recoverIncomplete();
-        executor = Executors.newSingleThreadScheduledExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "ioc-export-scheduler");
-            thread.setDaemon(false);
-            return thread;
-        });
+        nudgeScheduled.set(false);
+        executor = Objects.requireNonNull(executorFactory.get(), "executor");
+        active = true;
         executor.scheduleWithFixedDelay(
                 this::runOnce, pollInterval.toMillis(), pollInterval.toMillis(), TimeUnit.MILLISECONDS);
-        active = true;
+        nudge();
     }
 
     /** Executes one non-overlapping poll; profile failures are isolated and retried on later polls. */
     public void runOnce() {
-        if (!running.compareAndSet(false, true)) {
+        runProfiles();
+    }
+
+    @Override
+    public void nudge() {
+        if (!active || !nudgePolicy.enabled()) {
+            return;
+        }
+        ScheduledExecutorService current = executor;
+        if (current == null || !nudgeScheduled.compareAndSet(false, true)) {
             return;
         }
         try {
+            current.schedule(this::runNudgedCheck, nudgePolicy.delay().toMillis(), TimeUnit.MILLISECONDS);
+        } catch (RejectedExecutionException rejected) {
+            nudgeScheduled.set(false);
+        }
+    }
+
+    private void runNudgedCheck() {
+        nudgeScheduled.set(false);
+        SchedulerOutcome outcome = runProfiles();
+        if (outcome == SchedulerOutcome.PENDING_NOT_DUE || outcome == SchedulerOutcome.BUSY) {
+            nudge();
+        }
+    }
+
+    private SchedulerOutcome runProfiles() {
+        if (!running.compareAndSet(false, true)) {
+            return SchedulerOutcome.BUSY;
+        }
+        SchedulerOutcome outcome = SchedulerOutcome.IDLE;
+        try {
             for (ExportPlan plan : plans) {
-                attempt(plan);
+                outcome = outcome.merge(attempt(plan));
             }
         } finally {
             running.set(false);
         }
+        return outcome;
     }
 
-    private void attempt(ExportPlan plan) {
+    private SchedulerOutcome attempt(ExportPlan plan) {
         String profile = plan.profile().name();
         CadenceSource cadence = cadences.get(profile);
         try {
@@ -123,11 +184,12 @@ public final class DaemonExportScheduler implements SmartLifecycle {
                         .max((left, right) -> left.compareTo(right))
                         .orElse(null);
                 if (!cadence.isDue(activity, checkpoint)) {
-                    return;
+                    return SchedulerOutcome.PENDING_NOT_DUE;
                 }
             }
             exporter.export(new ExportArtifactsCommand(profile));
             cadence.completed();
+            return SchedulerOutcome.ATTEMPTED;
         } catch (RuntimeException failure) {
             LogEvents.error(log)
                     .action(EventAction.EXPORT_COMPLETE)
@@ -135,6 +197,7 @@ public final class DaemonExportScheduler implements SmartLifecycle {
                     .field(LogField.IOC_EXPORT_PROFILE, profile)
                     .message("scheduled artifact export attempt failed")
                     .log(failure);
+            return SchedulerOutcome.FAILED;
         }
     }
 
@@ -197,5 +260,35 @@ public final class DaemonExportScheduler implements SmartLifecycle {
             throw new IllegalArgumentException("pollInterval must be positive");
         }
         return value;
+    }
+
+    private static ScheduledExecutorService newExecutor() {
+        return Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "ioc-export-scheduler");
+            thread.setDaemon(false);
+            return thread;
+        });
+    }
+
+    private enum SchedulerOutcome {
+        IDLE,
+        FAILED,
+        ATTEMPTED,
+        PENDING_NOT_DUE,
+        BUSY;
+
+        private SchedulerOutcome merge(SchedulerOutcome other) {
+            return priority() >= other.priority() ? this : other;
+        }
+
+        private int priority() {
+            return switch (this) {
+                case IDLE -> 0;
+                case FAILED -> 1;
+                case ATTEMPTED -> 2;
+                case PENDING_NOT_DUE -> 3;
+                case BUSY -> 4;
+            };
+        }
     }
 }
