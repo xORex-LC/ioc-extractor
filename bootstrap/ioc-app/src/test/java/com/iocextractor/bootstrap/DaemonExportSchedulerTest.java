@@ -271,7 +271,8 @@ class DaemonExportSchedulerTest {
         ExportPlan plan = plan("one");
         var pendingScheduler = nudgedScheduler(
                 List.of(plan), Map.of("one", neverDue()),
-                profile -> List.of(progress(plan, plan.planHash())), artifacts -> nullRevision(artifacts),
+                profile -> List.of(progress(plan, plan.planHash())),
+                artifacts -> changedRevision(artifacts, START.plusSeconds(1)),
                 () -> 0, command -> completed(command.profile()),
                 Duration.ofSeconds(7), () -> pendingExecutor);
         pendingScheduler.start();
@@ -282,8 +283,9 @@ class DaemonExportSchedulerTest {
 
         ManualExecutor idleExecutor = new ManualExecutor();
         var idleScheduler = nudgedScheduler(
-                List.of(), Map.of(),
-                profile -> List.of(), artifacts -> List.of(),
+                List.of(plan), Map.of("one", neverDue()),
+                profile -> List.of(progress(plan, plan.planHash())),
+                artifacts -> nullRevision(artifacts),
                 () -> 0, command -> completed(command.profile()),
                 Duration.ofSeconds(7), () -> idleExecutor);
         idleScheduler.start();
@@ -291,6 +293,32 @@ class DaemonExportSchedulerTest {
         idleExecutor.runNextDelayed();
 
         assertThat(idleExecutor.delayedTasks).isEmpty();
+    }
+
+    @Test
+    void attemptedProfileAndIdleCoveredProfileDoNotCreateFollowUpLoop() {
+        ManualExecutor executor = new ManualExecutor();
+        ExportPlan active = plan("active");
+        ExportPlan idle = plan("idle");
+        AtomicInteger attempts = new AtomicInteger();
+        var scheduler = nudgedScheduler(
+                List.of(active, idle),
+                Map.of("active", alwaysDue(), "idle", neverDue()),
+                profile -> profile.equals("active")
+                        ? List.of()
+                        : List.of(progress(idle, idle.planHash())),
+                artifacts -> nullRevision(artifacts),
+                () -> 0, command -> {
+                    attempts.incrementAndGet();
+                    return completed(command.profile());
+                },
+                Duration.ofSeconds(7), () -> executor);
+        scheduler.start();
+
+        executor.runNextDelayed();
+
+        assertThat(attempts).hasValue(1);
+        assertThat(executor.delayedTasks).isEmpty();
     }
 
     @Test
@@ -425,6 +453,12 @@ class DaemonExportSchedulerTest {
     private List<ArtifactRevision> nullRevision(List<String> artifacts) {
         return artifacts.stream()
                 .map(name -> new ArtifactRevision(name, 0, null))
+                .toList();
+    }
+
+    private List<ArtifactRevision> changedRevision(List<String> artifacts, Instant changedAt) {
+        return artifacts.stream()
+                .map(name -> new ArtifactRevision(name, 1, changedAt))
                 .toList();
     }
 

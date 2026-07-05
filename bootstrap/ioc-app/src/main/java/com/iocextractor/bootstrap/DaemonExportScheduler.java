@@ -183,6 +183,9 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
                         .map(item -> item.updatedAt())
                         .max((left, right) -> left.compareTo(right))
                         .orElse(null);
+                if (nudgePolicy.enabled() && !hasPendingActivity(activity, checkpoint)) {
+                    return SchedulerOutcome.IDLE;
+                }
                 if (!cadence.isDue(activity, checkpoint)) {
                     return SchedulerOutcome.PENDING_NOT_DUE;
                 }
@@ -223,6 +226,10 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
             ExportProgress item = byArtifact.get(spec.artifactName());
             return item != null && item.planHash().equals(planHash);
         });
+    }
+
+    private boolean hasPendingActivity(Instant activity, Instant checkpoint) {
+        return activity != null && (checkpoint == null || activity.isAfter(checkpoint));
     }
 
     @Override
@@ -277,6 +284,8 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
         PENDING_NOT_DUE,
         BUSY;
 
+        // PENDING/BUSY keep the nudge loop alive even when another profile failed;
+        // failures alone still wait for the periodic poll backstop.
         private SchedulerOutcome merge(SchedulerOutcome other) {
             return priority() >= other.priority() ? this : other;
         }
