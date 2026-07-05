@@ -13,7 +13,7 @@ class DiagnosticCatalogDocumentationTest {
 
     @Test
     void committed_catalog_document_matches_generated_catalog() throws Exception {
-        var committed = Files.readString(repoFile("docs/diagnostic-catalog.md"));
+        var committed = Files.readString(repoFile("docs/DIAGNOSTICS-CATALOG.md"));
 
         assertThat(normalize(committed)).isEqualTo(normalize(generatedMarkdown()));
     }
