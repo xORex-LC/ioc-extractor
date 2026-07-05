@@ -11,6 +11,8 @@ import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.ExportDiagnosticCodes;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.platform.events.ControlEventPublisher;
+import com.iocextractor.platform.events.NoopControlEventPublisher;
 
 import java.time.Clock;
 import java.util.List;
@@ -32,6 +34,7 @@ public final class ExportRunRecoveryService implements RecoverExportUseCase {
     private final DiagnosticSink diagnosticSink;
     private final DiagnosticFactory diagnosticFactory;
     private final Clock clock;
+    private final ControlEventPublisher eventPublisher;
 
     /** Creates recovery with no-op diagnostics and operational events. */
     public ExportRunRecoveryService(ExportRunLedger ledger,
@@ -39,10 +42,11 @@ public final class ExportRunRecoveryService implements RecoverExportUseCase {
                                     ExportProgressStore progressStore,
                                     Clock clock) {
         this(ledger, sliceWriter, progressStore, new ExportChangeDetector(), NoopExportObserver.INSTANCE,
-                NoopDiagnosticSink.INSTANCE, new DiagnosticFactory(clock), clock);
+                NoopDiagnosticSink.INSTANCE, new DiagnosticFactory(clock), clock,
+                NoopControlEventPublisher.INSTANCE);
     }
 
-    /** Creates recovery with explicit policies and event/diagnostic delivery. */
+    /** Creates recovery with explicit policies and diagnostics. */
     public ExportRunRecoveryService(ExportRunLedger ledger,
                                     ArtifactSliceWriter sliceWriter,
                                     ExportProgressStore progressStore,
@@ -51,6 +55,20 @@ public final class ExportRunRecoveryService implements RecoverExportUseCase {
                                     DiagnosticSink diagnosticSink,
                                     DiagnosticFactory diagnosticFactory,
                                     Clock clock) {
+        this(ledger, sliceWriter, progressStore, changeDetector, observer, diagnosticSink,
+                diagnosticFactory, clock, NoopControlEventPublisher.INSTANCE);
+    }
+
+    /** Creates recovery with explicit policies and control-event delivery. */
+    public ExportRunRecoveryService(ExportRunLedger ledger,
+                                    ArtifactSliceWriter sliceWriter,
+                                    ExportProgressStore progressStore,
+                                    ExportChangeDetector changeDetector,
+                                    ExportObserver observer,
+                                    DiagnosticSink diagnosticSink,
+                                    DiagnosticFactory diagnosticFactory,
+                                    Clock clock,
+                                    ControlEventPublisher eventPublisher) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.sliceWriter = Objects.requireNonNull(sliceWriter, "sliceWriter");
         this.progressStore = Objects.requireNonNull(progressStore, "progressStore");
@@ -59,6 +77,7 @@ public final class ExportRunRecoveryService implements RecoverExportUseCase {
         this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
         this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher");
     }
 
     @Override
@@ -152,6 +171,7 @@ public final class ExportRunRecoveryService implements RecoverExportUseCase {
         ExportRun terminal = ledger.finish(run.runId(), ExportRunStatus.AVAILABLE,
                 ExportRunStatus.COMPLETED, progress);
         observer.completed(terminal);
+        publishCompleted(terminal);
     }
 
     private ExportRun fail(ExportRun run, String reason) {
@@ -180,6 +200,14 @@ public final class ExportRunRecoveryService implements RecoverExportUseCase {
         Diagnostic diagnostic = builder.build();
         diagnosticSink.emit(diagnostic);
         return diagnostic;
+    }
+
+    private void publishCompleted(ExportRun terminal) {
+        try {
+            eventPublisher.publish(SliceCompleted.from(terminal));
+        } catch (RuntimeException ignored) {
+            // Event delivery must not reclassify an already durable recovery outcome.
+        }
     }
 
     private String reasonSuffix(String reason) {

@@ -620,11 +620,12 @@ public class AppConfig {
             ArtifactSliceWriter artifactSliceWriter,
             ExportObserver exportObserver,
             DiagnosticSink diagnosticSink,
+            ControlEventPublisher controlEventPublisher,
             Clock clock) {
         return new ExportRunRecoveryService(
                 exportRunLedger, artifactSliceWriter, exportProgressStore,
                 new ExportChangeDetector(), exportObserver,
-                diagnosticSink, new DiagnosticFactory(clock), clock);
+                diagnosticSink, new DiagnosticFactory(clock), clock, controlEventPublisher);
     }
 
     @Bean
