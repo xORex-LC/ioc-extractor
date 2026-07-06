@@ -56,7 +56,9 @@ class RemoteFetchDetectionCoordinatorTest {
 
             coordinator.trigger(source("one"), RemoteFetchDetectionReason.PERIODIC);
 
-            waitUntil(() -> !publisher.events().isEmpty());
+            waitUntil(() -> !publisher.events().isEmpty()
+                    && healthState.fetchDetectionSnapshots().containsKey("one")
+                    && closeIdleCalls.get() == 1);
             assertThat(publisher.events()).singleElement()
                     .isInstanceOfSatisfying(RemoteChangeBatchDetected.class, event ->
                             assertThat(event.objects()).containsExactly(object));
@@ -64,7 +66,7 @@ class RemoteFetchDetectionCoordinatorTest {
                     .extracting(snapshot -> snapshot.reason(), snapshot -> snapshot.detectedObjects(),
                             snapshot -> snapshot.status())
                     .containsExactly("PERIODIC", 1, SyncOperationalStatus.UP);
-            assertThat(closeIdleCalls).hasValue(1);
+            assertThat(closeIdleCalls.get()).isEqualTo(1);
         }
     }
 
@@ -78,7 +80,7 @@ class RemoteFetchDetectionCoordinatorTest {
 
             coordinator.trigger(source("one"), RemoteFetchDetectionReason.WATCH_ESTABLISHED);
 
-            waitUntil(() -> transport.listCalls.size() == 1);
+            waitUntil(() -> healthState.fetchDetectionSnapshots().containsKey("one"));
             assertThat(healthState.fetchDetectionSnapshots().get("one").reason())
                     .isEqualTo("WATCH_ESTABLISHED");
         }
