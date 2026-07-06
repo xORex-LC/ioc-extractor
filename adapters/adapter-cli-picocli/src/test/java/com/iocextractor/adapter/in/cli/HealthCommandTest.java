@@ -9,6 +9,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -24,8 +25,13 @@ class HealthCommandTest {
     }
 
     private String start(int status, String body) throws Exception {
+        return start(status, body, new AtomicReference<>());
+    }
+
+    private String start(int status, String body, AtomicReference<String> requestedPath) throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/actuator/health", exchange -> {
+            requestedPath.set(exchange.getRequestURI().getPath());
             byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(status, bytes.length);
             exchange.getResponseBody().write(bytes);
@@ -57,7 +63,7 @@ class HealthCommandTest {
         int code = run(new String[]{"--url", url}, out);
 
         assertThat(code).isZero();
-        assertThat(out.toString()).contains("STATUS").contains("aggregation").contains("sourcesProcessed=3");
+        assertThat(out.toString()).contains("status").contains("aggregation").contains("sourcesProcessed  3");
     }
 
     @Test
@@ -81,6 +87,43 @@ class HealthCommandTest {
 
         assertThat(code).isZero();
         assertThat(out.toString()).contains("\"components\"").contains("\"ping\"");
+    }
+
+    @Test
+    void renders_nested_details_as_readable_tree() throws Exception {
+        String url = start(200, "{\"status\":\"UP\",\"components\":{\"sync\":{\"status\":\"UP\",\"details\":{"
+                + "\"remoteChangeWatch\":{\"incoming-ioc\":{\"status\":\"ACTIVE\",\"signals\":1}},"
+                + "\"publishPending\":0}}}}");
+        StringBuilder out = new StringBuilder();
+
+        int code = run(new String[]{"--url", url}, out);
+
+        assertThat(code).isZero();
+        assertThat(out.toString())
+                .contains("sync")
+                .contains("remoteChangeWatch")
+                .contains("incoming-ioc")
+                .contains("status   ACTIVE")
+                .contains("signals  1")
+                .contains("publishPending")
+                .doesNotContain("remoteChangeWatch={");
+    }
+
+    @Test
+    void component_option_queries_actuator_component_and_renders_top_level_details() throws Exception {
+        AtomicReference<String> requestedPath = new AtomicReference<>();
+        String url = start(200, "{\"status\":\"UP\",\"details\":{"
+                + "\"remoteChangeWatch\":{\"incoming-ioc\":{\"status\":\"ACTIVE\",\"signals\":1}}}}", requestedPath);
+        StringBuilder out = new StringBuilder();
+
+        int code = run(new String[]{"--url", url, "--component", "sync"}, out);
+
+        assertThat(code).isZero();
+        assertThat(requestedPath).hasValue("/actuator/health/sync");
+        assertThat(out.toString())
+                .contains("remoteChangeWatch")
+                .contains("incoming-ioc")
+                .contains("signals  1");
     }
 
     @Test

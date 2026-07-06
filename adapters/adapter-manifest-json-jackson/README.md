@@ -19,7 +19,8 @@ Outbound adapter для versioned JSON-представления `SliceManifest
 
 ## Инварианты
 
-- output всегда UTF-8 без pretty-print и platform-dependent newline;
+- output всегда UTF-8 с deterministic pretty-print (`\n`, два пробела), чтобы
+  `manifest.json` оставался пригодным для ручного просмотра на файловой шаре;
 - порядок полей задан явно для root/format/artifact/coverage;
 - `output_mode` кодируется lower-case;
 - nullable `changed_at` при revision zero пишется явным JSON `null`;

@@ -9,10 +9,13 @@ import picocli.CommandLine.Option;
 
 import java.net.ConnectException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
@@ -48,6 +51,9 @@ public final class HealthCommand implements Callable<Integer> {
 
     @Option(names = "--url", description = "Full health URL; overrides --host/--port.")
     private String url;
+
+    @Option(names = "--component", description = "Actuator health component name, for example sync.")
+    private String component;
 
     @Option(names = "--timeout", description = "Request timeout in seconds (default: 5).")
     private int timeoutSeconds = 5;
@@ -96,12 +102,19 @@ public final class HealthCommand implements Callable<Integer> {
     }
 
     private String resolveEndpoint() {
+        String endpoint;
         if (url != null && !url.isBlank()) {
-            return url.trim();
+            endpoint = url.trim();
+        } else {
+            String h = host != null && !host.isBlank() ? host.trim() : defaultHost;
+            String p = port != null ? String.valueOf(port) : defaultPort;
+            endpoint = "http://" + h + ":" + p + "/actuator/health";
         }
-        String h = host != null && !host.isBlank() ? host.trim() : defaultHost;
-        String p = port != null ? String.valueOf(port) : defaultPort;
-        return "http://" + h + ":" + p + "/actuator/health";
+        if (component == null || component.isBlank()) {
+            return endpoint;
+        }
+        String encoded = URLEncoder.encode(component.trim(), StandardCharsets.UTF_8);
+        return endpoint.replaceAll("/+$", "") + "/" + encoded;
     }
 
     @SuppressWarnings("unchecked")
@@ -125,40 +138,87 @@ public final class HealthCommand implements Callable<Integer> {
     @SuppressWarnings("unchecked")
     private void renderTable(String endpoint, Map<String, Object> health) {
         String overall = String.valueOf(health.get("status"));
-        System.out.println(Ansi.AUTO.string("ioc-extractor @ " + endpoint));
-        System.out.println();
-        System.out.println("  STATUS  " + badge(overall));
+        System.out.println("ioc-extractor");
+        System.out.println("  endpoint  " + endpoint);
+        System.out.println("  status    " + badge(overall));
 
         Object componentsRaw = health.get("components");
         if (!(componentsRaw instanceof Map)) {
+            System.out.println();
+            renderDetails(health.get("details"), 2);
             return;
         }
         Map<String, Object> components = (Map<String, Object>) componentsRaw;
-        int nameWidth = Math.max("COMPONENT".length(),
-                components.keySet().stream().mapToInt(name -> name.length()).max().orElse(9));
+        int nameWidth = components.keySet().stream().mapToInt(name -> name.length()).max().orElse(9);
 
         System.out.println();
-        System.out.printf("  %-" + nameWidth + "s  %-8s  %s%n", "COMPONENT", "STATUS", "DETAILS");
+        System.out.println("Components");
         components.forEach((name, value) -> {
             Map<String, Object> component = value instanceof Map ? (Map<String, Object>) value : Map.of();
             String status = String.valueOf(component.getOrDefault("status", "UNKNOWN"));
-            System.out.printf("  %-" + nameWidth + "s  %s  %s%n",
-                    name, badgePadded(status), details(component.get("details")));
+            System.out.printf("  %-" + nameWidth + "s  %s%n", name, badge(status));
+            renderDetails(component.get("details"), 4);
+            System.out.println();
         });
     }
 
-    private String details(Object detailsRaw) {
-        if (!(detailsRaw instanceof Map<?, ?> details) || details.isEmpty()) {
-            return "";
+    private void renderDetails(Object value, int indent) {
+        if (value instanceof Map<?, ?> map) {
+            renderMap(map, indent);
+            return;
         }
-        StringBuilder sb = new StringBuilder();
-        details.forEach((k, v) -> {
-            if (sb.length() > 0) {
-                sb.append("  ");
+        if (value instanceof Collection<?> collection) {
+            renderCollection(collection, indent);
+            return;
+        }
+        if (value != null) {
+            System.out.printf("%s%s%n", " ".repeat(indent), value);
+        }
+    }
+
+    private void renderMap(Map<?, ?> map, int indent) {
+        if (map.isEmpty()) {
+            System.out.printf("%s{}%n", " ".repeat(indent));
+            return;
+        }
+        int keyWidth = map.keySet().stream()
+                .map(String::valueOf)
+                .mapToInt(String::length)
+                .max()
+                .orElse(0);
+        map.forEach((key, nested) -> renderDetail(String.valueOf(key), nested, indent, keyWidth));
+    }
+
+    private void renderCollection(Collection<?> collection, int indent) {
+        if (collection.isEmpty()) {
+            System.out.printf("%s[]%n", " ".repeat(indent));
+            return;
+        }
+        collection.forEach(item -> {
+            if (item instanceof Map<?, ?> || item instanceof Collection<?>) {
+                renderDetails(item, indent);
+                return;
             }
-            sb.append(k).append('=').append(v);
+            System.out.printf("%s- %s%n", " ".repeat(indent), item);
         });
-        return sb.toString();
+    }
+
+    private void renderDetail(String key, Object value, int indent) {
+        renderDetail(key, value, indent, key.length());
+    }
+
+    private void renderDetail(String key, Object value, int indent, int keyWidth) {
+        if (value instanceof Map<?, ?> map && !map.isEmpty()) {
+            System.out.printf("%s%s%n", " ".repeat(indent), key);
+            renderMap(map, indent + 2);
+            return;
+        }
+        if (value instanceof Collection<?> collection && !collection.isEmpty()) {
+            System.out.printf("%s%s%n", " ".repeat(indent), key);
+            renderCollection(collection, indent + 2);
+            return;
+        }
+        System.out.printf("%s%-" + keyWidth + "s  %s%n", " ".repeat(indent), key, value);
     }
 
     /** Colored badge: green for UP, red otherwise. Auto-disabled on non-TTY. */
@@ -167,10 +227,4 @@ public final class HealthCommand implements Callable<Integer> {
         return Ansi.AUTO.string("UP".equals(status) ? "@|bold,green " + marker + "|@" : "@|bold,red " + marker + "|@");
     }
 
-    /** Badge padded to a stable visual width (8) ignoring ANSI codes. */
-    private String badgePadded(String status) {
-        String plain = "● " + status;
-        String padding = " ".repeat(Math.max(0, 8 - plain.length()));
-        return badge(status) + padding;
-    }
 }

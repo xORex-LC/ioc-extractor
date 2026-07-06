@@ -2,9 +2,9 @@
 
 ## Назначение
 
-Пакет реализует `SliceManifestCodec` как deterministic UTF-8 JSON.
-Application model остаётся Jackson-free: wire names, field order и version gate
-локализованы в adapter-owned document records.
+Пакет реализует `SliceManifestCodec` как deterministic pretty UTF-8 JSON.
+Application model остаётся Jackson-free: wire names, field order, indentation и
+version gate локализованы в adapter-owned document records.
 
 ## Структура
 
@@ -17,8 +17,9 @@ Application model остаётся Jackson-free: wire names, field order и vers
 
 Root order: `manifest_version`, `slice_id`, `run_id`, `profile`, `created_at`,
 `output_mode`, `plan_hash`, `format`, `artifacts`. Nested documents также
-имеют explicit order. Codec не считает hash: caller хэширует
-именно возвращённые bytes, которые записаны в `manifest.json`.
+имеют explicit order. Pretty-print фиксирован: `\n` и два пробела, без
+platform-dependent newline. Codec не считает hash: caller хэширует именно
+возвращённые bytes, которые записаны в `manifest.json`.
 
 ## Ошибки
 

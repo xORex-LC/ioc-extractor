@@ -5,6 +5,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.core.util.DefaultIndenter;
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
@@ -41,8 +43,12 @@ public final class JacksonSliceManifestCodec implements SliceManifestCodec {
                 .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
                 .build();
+        DefaultPrettyPrinter prettyPrinter = new DefaultPrettyPrinter();
+        DefaultIndenter indenter = new DefaultIndenter("  ", "\n");
+        prettyPrinter.indentObjectsWith(indenter);
+        prettyPrinter.indentArraysWith(indenter);
         this.reader = mapper.readerFor(ManifestDocument.class);
-        this.writer = mapper.writerFor(ManifestDocument.class);
+        this.writer = mapper.writerFor(ManifestDocument.class).with(prettyPrinter);
     }
 
     @Override

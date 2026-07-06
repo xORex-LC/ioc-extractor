@@ -27,7 +27,7 @@ class JacksonSliceManifestCodecTest {
     private final JacksonSliceManifestCodec codec = new JacksonSliceManifestCodec();
 
     @Test
-    void produces_stable_utf8_golden_bytes_with_unicode_escaping_and_explicit_null() {
+    void produces_stable_pretty_utf8_golden_bytes_with_unicode_escaping_and_explicit_null() {
         SliceManifest manifest = manifest(
                 "репутация \"IOC\"",
                 "маски-\"ioc\".csv",
@@ -37,8 +37,39 @@ class JacksonSliceManifestCodecTest {
         String json = new String(codec.encode(manifest), StandardCharsets.UTF_8);
 
         assertThat(json).isEqualTo("""
-                {"manifest_version":1,"slice_id":"run-1","run_id":"run-1","profile":"репутация \\"IOC\\"","created_at":"2026-06-28T00:00:00Z","output_mode":"complete","plan_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","format":{"type":"csv","charset":"UTF-8","delimiter":";","quote":"\\\"","null_literal":"NULL"},"artifacts":[{"artifact":"masks","file":"маски-\\"ioc\\".csv","rows":0,"coverage":{"revision":0,"changed_at":null,"upper_id":0},"identity_epoch":1,"identity_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","schema_hash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}]}
-                """.strip());
+                {
+                  "manifest_version" : 1,
+                  "slice_id" : "run-1",
+                  "run_id" : "run-1",
+                  "profile" : "репутация \\"IOC\\"",
+                  "created_at" : "2026-06-28T00:00:00Z",
+                  "output_mode" : "complete",
+                  "plan_hash" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "format" : {
+                    "type" : "csv",
+                    "charset" : "UTF-8",
+                    "delimiter" : ";",
+                    "quote" : "\\\"",
+                    "null_literal" : "NULL"
+                  },
+                  "artifacts" : [
+                    {
+                      "artifact" : "masks",
+                      "file" : "маски-\\"ioc\\".csv",
+                      "rows" : 0,
+                      "coverage" : {
+                        "revision" : 0,
+                        "changed_at" : null,
+                        "upper_id" : 0
+                      },
+                      "identity_epoch" : 1,
+                      "identity_hash" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                      "schema_hash" : "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                      "sha256" : "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                    }
+                  ]
+                }
+                """.stripTrailing());
         assertThat(codec.encode(manifest)).isEqualTo(json.getBytes(StandardCharsets.UTF_8));
     }
 
@@ -61,7 +92,7 @@ class JacksonSliceManifestCodecTest {
     void rejects_unknown_manifest_version_before_building_application_model() {
         byte[] bytes = new String(codec.encode(manifest(
                 "reputation", "masks.csv", ArtifactCoverage.empty(), format())), StandardCharsets.UTF_8)
-                .replace("\"manifest_version\":1", "\"manifest_version\":2")
+                .replace("\"manifest_version\" : 1", "\"manifest_version\" : 2")
                 .getBytes(StandardCharsets.UTF_8);
 
         assertThatThrownBy(() -> codec.decode(bytes))
@@ -77,7 +108,7 @@ class JacksonSliceManifestCodecTest {
 
         byte[] unknownField = new String(codec.encode(manifest(
                 "reputation", "masks.csv", ArtifactCoverage.empty(), format())), StandardCharsets.UTF_8)
-                .replace("{\"manifest_version\":1", "{\"unexpected\":true,\"manifest_version\":1")
+                .replace("{\n  \"manifest_version\" : 1", "{\n  \"unexpected\" : true,\n  \"manifest_version\" : 1")
                 .getBytes(StandardCharsets.UTF_8);
         assertThatThrownBy(() -> codec.decode(unknownField))
                 .isInstanceOf(IocExtractorException.class)
@@ -88,8 +119,8 @@ class JacksonSliceManifestCodecTest {
     void rejects_duplicate_properties_instead_of_accepting_an_ambiguous_manifest() {
         byte[] duplicateProfile = new String(codec.encode(manifest(
                 "reputation", "masks.csv", ArtifactCoverage.empty(), format())), StandardCharsets.UTF_8)
-                .replace("\"profile\":\"reputation\"",
-                        "\"profile\":\"other\",\"profile\":\"reputation\"")
+                .replace("\"profile\" : \"reputation\"",
+                        "\"profile\" : \"other\",\n  \"profile\" : \"reputation\"")
                 .getBytes(StandardCharsets.UTF_8);
 
         assertThatThrownBy(() -> codec.decode(duplicateProfile))
