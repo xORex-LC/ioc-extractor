@@ -17,6 +17,15 @@ single-flight, anti-broker), новые точки применения. Фик�
 с export fast-path (`e265b0d`, `294b67c`). Follow-up loop дополнительно защищён
 от idle-состояний без pending-работы (`aefb593`). Р3/Р4 остаются design-state.
 
+**Обновление 2026-07-06.** Оба fast-path подтверждены эмпирически на тестовом
+стенде (daemon, ECS-лог): Р2 — событие ingest → nudge-чек ровно через QP →
+export → publish за сотни мс; Р1 — crash-симуляция (SIGKILL, run возвращён в
+`AVAILABLE`) дала при рестарте `export_recover → export_complete →
+event_publish → доставка через 140 мс`, причём до строки
+`Started IocExtractorApplication` — эмиссия на phase 100 доходит до executor'а
+ещё в процессе старта. От краша до передоставленного среза — <12 с (против
+reconcile-тика до Р1).
+
 ## Контекст
 
 0013 задал доктрину и реализовал её для sync (fetch — detection⊥execution +
@@ -606,7 +615,10 @@ by design best-effort). События-источники появятся ли�
   Listener и executor — eager-бины, созданные до SmartLifecycle-стартов; пул
   executor'а жив с конструирования; publish-reconcile стартует позже (phase 150).
   Детали — «Детальный дизайн» → Р1; при имплементации осталось эмпирическое
-  подтверждение по ECS-логу старта.
+  подтверждение по ECS-логу старта. — **Подтверждено эмпирически (2026-07-06,
+  стенд):** recovery-эмиссия на phase 100 доставила восстановленный срез за
+  140 мс, до завершения старта приложения (см. «Обновление 2026-07-06» в
+  Статусе).
 - **Р2 гранулярность:** `CanonicalArtifactsChanged` per-artifact или per-run; нести
   ли значение revision для точного таргетинга; переиспользовать
   `RemoteFetchDetectionCoordinator` или отдельный маленький `ExportTriggerCoordinator`.

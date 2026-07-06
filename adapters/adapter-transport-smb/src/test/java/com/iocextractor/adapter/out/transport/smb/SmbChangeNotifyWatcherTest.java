@@ -74,6 +74,46 @@ class SmbChangeNotifyWatcherTest {
     }
 
     @Test
+    void idleAwaitDoesNotReconnectBeforeLeaseDeadline() {
+        FakeSessionFactory factory = new FakeSessionFactory();
+        SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5));
+        RecordingHandler handler = new RecordingHandler();
+
+        RemoteChangeWatch watch = watcher.watch(source(), handler);
+        FakeSession session = waitForSession(factory, 0);
+        FakePending pending = waitForPending(session, 0);
+
+        waitUntil(() -> pending.awaitCalls.get() >= 3);
+        watch.close();
+
+        assertThat(handler.established).hasValue(1);
+        assertThat(handler.signals).hasValue(0);
+        assertThat(handler.failures).hasValue(0);
+        assertThat(factory.sessions).hasSize(1);
+        assertThat(session.watchCalls).hasValue(1);
+    }
+
+    @Test
+    void completedNotifyAfterIdleAwaitSignalsWithoutReconnect() {
+        FakeSessionFactory factory = new FakeSessionFactory();
+        SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5));
+        RecordingHandler handler = new RecordingHandler();
+
+        RemoteChangeWatch watch = watcher.watch(source(), handler);
+        FakeSession session = waitForSession(factory, 0);
+        FakePending pending = waitForPending(session, 0);
+        waitUntil(() -> pending.awaitCalls.get() >= 3);
+
+        pending.complete(new SmbChangeNotifyResult(1, false));
+        waitUntil(() -> handler.signals.get() == 1 && session.watchCalls.get() >= 2);
+        watch.close();
+
+        assertThat(handler.established).hasValue(1);
+        assertThat(handler.failures).hasValue(0);
+        assertThat(factory.sessions).hasSize(1);
+    }
+
+    @Test
     void leaseReopenCallsEstablishedWithoutSignal() {
         FakeSessionFactory factory = new FakeSessionFactory();
         SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofMillis(40));
@@ -254,9 +294,11 @@ class SmbChangeNotifyWatcherTest {
         private boolean cancelled;
         private SmbChangeNotifyResult result = new SmbChangeNotifyResult(0, false);
         private RuntimeException failure;
+        private final AtomicInteger awaitCalls = new AtomicInteger();
 
         @Override
         public synchronized Optional<SmbChangeNotifyResult> await(Duration timeout) {
+            awaitCalls.incrementAndGet();
             long deadline = System.nanoTime() + timeout.toNanos();
             while (!done) {
                 long remainingNanos = deadline - System.nanoTime();

@@ -54,7 +54,50 @@ class SmbChangeNotifyContractTest {
         assertThat(handler.failures).hasValue(0);
     }
 
+    @Test
+    void watcherSurvivesIdleLongerThanRequestTimeoutBeforeSignal() throws Exception {
+        SmbEndpointSettings settings = settings(Duration.ofSeconds(2));
+        String remotePath = require("ioc.smb.remotePath");
+        RemoteFetchSource source = new RemoteFetchSource("contract", settings.name(), remotePath, List.of("*"), List.of());
+        RecordingHandler handler = new RecordingHandler();
+        SmbChangeNotifyWatcher watcher = new SmbChangeNotifyWatcher(
+                List.of(settings),
+                new RetryPolicy(3, Duration.ofMillis(100), 1.0d, Duration.ofMillis(100), false));
+        String fileName = "codex-change-notify-idle-" + UUID.randomUUID() + ".txt";
+        Path localFile = tempDir.resolve(fileName);
+        Files.writeString(localFile, "contract\n");
+        String remoteFile = SmbFileTransport.join(remotePath, fileName);
+        boolean uploaded = false;
+
+        try (RemoteChangeWatch watch = watcher.watch(source, handler);
+             SmbShareClient client = new SmbjShareClientFactory().open(settings)) {
+            waitUntil(() -> handler.established.get() > 0);
+            Thread.sleep(Duration.ofSeconds(3));
+
+            assertThat(handler.established).hasValue(1);
+            assertThat(handler.failures).hasValue(0);
+            assertThat(handler.signals).hasValue(0);
+
+            client.upload(localFile, remoteFile);
+            uploaded = true;
+
+            waitUntil(() -> handler.signals.get() > 0);
+        } finally {
+            if (uploaded) {
+                try (SmbShareClient client = new SmbjShareClientFactory().open(settings)) {
+                    client.delete(remoteFile);
+                }
+            }
+        }
+
+        assertThat(handler.failures).hasValue(0);
+    }
+
     private static SmbEndpointSettings settings() {
+        return settings(Duration.ofSeconds(30));
+    }
+
+    private static SmbEndpointSettings settings(Duration requestTimeout) {
         char[] password = require("ioc.smb.password").toCharArray();
         try {
             return new SmbEndpointSettings(
@@ -66,7 +109,7 @@ class SmbChangeNotifyContractTest {
                     password,
                     Boolean.getBoolean("ioc.smb.encrypt"),
                     Duration.ofSeconds(5),
-                    Duration.ofSeconds(30),
+                    requestTimeout,
                     Duration.ofMinutes(1));
         } finally {
             Arrays.fill(password, '\0');

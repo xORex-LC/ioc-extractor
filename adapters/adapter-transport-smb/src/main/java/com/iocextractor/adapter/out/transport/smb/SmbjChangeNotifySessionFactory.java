@@ -25,8 +25,6 @@ import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 final class SmbjChangeNotifySessionFactory implements SmbChangeNotifySessionFactory {
 
@@ -120,24 +118,37 @@ final class SmbjChangeNotifySessionFactory implements SmbChangeNotifySessionFact
         }
     }
 
-    private record SmbjChangeNotifyPending(String endpoint,
-                                           Future<SMB2ChangeNotifyResponse> future) implements SmbChangeNotifyPending {
+    record SmbjChangeNotifyPending(String endpoint,
+                                    Future<SMB2ChangeNotifyResponse> future) implements SmbChangeNotifyPending {
 
         @Override
         public Optional<SmbChangeNotifyResult> await(Duration timeout) {
+            if (!future.isDone()) {
+                pause(timeout);
+                if (!future.isDone()) {
+                    return Optional.empty();
+                }
+            }
             try {
-                SMB2ChangeNotifyResponse response = future.get(timeout.toNanos(), TimeUnit.NANOSECONDS);
+                SMB2ChangeNotifyResponse response = future.get();
                 return Optional.of(resultFrom(endpoint, response));
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("Interrupted while waiting for SMB change notify", interrupted);
-            } catch (TimeoutException timeoutExceeded) {
-                return Optional.empty();
             } catch (CancellationException cancelled) {
                 throw SmbExceptionMapper.map(cancelled, "watch", endpoint);
             } catch (ExecutionException failure) {
                 Throwable cause = failure.getCause() == null ? failure : failure.getCause();
                 throw SmbExceptionMapper.map(cause, "watch", endpoint);
+            }
+        }
+
+        private static void pause(Duration timeout) {
+            try {
+                Thread.sleep(timeout.toMillis(), timeout.toNanosPart() % 1_000_000);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted while waiting for SMB change notify", interrupted);
             }
         }
 

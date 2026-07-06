@@ -106,12 +106,20 @@ What an administrator should know:
 - it is an **option for latency, not for correctness**: if the watch
   connection breaks, the system reconnects with an increasing backoff, while
   timer-based polling keeps working;
+- the watch uses its own long-lived SMB session with an open directory handle.
+  Fetch/publish/list/upload/download operations use the regular SMB transport
+  session. Seeing two sessions for the same account on the file server is
+  therefore normal: the watch session usually has one open handle, while the
+  regular session may have zero opens and only stays cached until
+  `idle-timeout`;
 - the watch session is deliberately recreated roughly every 30 minutes
   (protection against connections that died silently behind a firewall/NAT);
   after every reopen the directory is checked forcibly, so the window between
-  sessions is not lost;
+  sessions is not lost. This 30-minute watch lease is separate from
+  `request-timeout` and `idle-timeout`;
 - with push enabled and stable, the polling interval can be made sparse
-  (10–15 minutes and more) — this is where the main traffic and load savings
+  (10–15 minutes, or even about an hour if that is an acceptable worst-case
+  delay after a lost push) — this is where the main traffic and load savings
   come from;
 - if push is enabled for an endpoint that does not support it, the application
   **does not start** (fail-fast): since the operator explicitly requested the
@@ -210,8 +218,8 @@ endpoints:
 | `username` / `password` | — | **Environment variables only** (`${SMB_USER}`). Secrets never reach logs or health output |
 | `encrypt` | — | SMB3 session-level encryption. Always enable it if the server speaks SMB3 (see section 4). Disable only for legacy servers and only on a trusted network |
 | `connect-timeout` | 10s | How long to wait for the TCP connection. LAN: 5s is enough. WAN/VPN: 10–15s. Note: DNS resolution is not included in this budget |
-| `request-timeout` | 30s | Ceiling for **one** SMB operation: reading a block, writing, listing a directory. Raise it if the server is slow, or the directory holds thousands of files and the listing does not fit. Does not affect waiting for push notifications |
-| `idle-timeout` | 5m | How long to keep an idle connection before closing it. Lower — more frequent reconnects (extra handshake/auth). Higher — the socket lives longer and a stateful firewall may silently drop it. Practical rule: **slightly below** the idle timeout of your firewall/NAT (a common factory setting is 5–30 minutes) |
+| `request-timeout` | 30s | Ceiling for **one regular SMB request**: reading a block, writing, listing a directory, opening/closing handles. Raise it if the server is slow, or the directory holds thousands of files and the listing does not fit. It is not a polling interval, not a fetch/publish schedule, and it does not limit the idle wait of `CHANGE_NOTIFY` push notifications |
+| `idle-timeout` | 5m | How long to keep an idle **regular transport connection** before closing it. This connection is used by fetch/publish/list/download/upload operations; it is separate from the active `CHANGE_NOTIFY` watch session. Lower — more frequent reconnects (extra handshake/auth). Higher — the socket lives longer and a stateful firewall may silently drop it. Practical rule: **slightly below** the idle timeout of your firewall/NAT (a common factory setting is 5–30 minutes) |
 
 Endpoint names must be unique; a reference to a non-existent endpoint or an
 unsupported `transport` is rejected at startup, before the first network
@@ -236,7 +244,7 @@ fetch:
 
 | Parameter | Default | What it does and how to choose |
 |---|---|---|
-| `interval` | 1m | Polling period for all sources. It is both the "detection frequency" (without push) and the "safety-net cycle" (with push). Without push: pick it by the acceptable data-arrival delay — 1–5 minutes is typical. With push enabled and stable: 10–15 minutes and more is fine — push handles the fast cases, polling remains the safety net |
+| `interval` | 1m | Automatic polling period for all sources. It is both the "detection frequency" (without push) and the scheduled "safety-net cycle" (with push). Without push: pick it by the acceptable data-arrival delay — 1–5 minutes is typical. With push enabled and stable: make it sparse — 10–15 minutes is conservative, about 1 hour is acceptable if a lost push may wait that long for the scheduled backstop. An operator can still run `ioc sync fetch` / `ioc sync all` at any time to trigger the same fetch cycle immediately |
 | `remote-path` | — | Directory inside the share (forward slashes: `/incoming`). The listing is **not recursive** — nested directories are not scanned |
 | `include` | — | Name masks to collect. List only the formats you actually need — it is the first filter against junk |
 | `exclude` | — | Masks ignored **on top of** include. Always keep the producer's temporary names here: `*.tmp`, `*.part`, hidden `.*` — this is the protection against downloading half-written files |
@@ -266,7 +274,7 @@ publish:
 
 | Parameter | Default | What it does and how to choose |
 |---|---|---|
-| `interval` | 5m | Period of reconciling "what is ready locally" × "what has been delivered". A completed slice leaves immediately via an event; the interval is insurance against a lost event or a restart. 5m is a sane default; no need to lower it |
+| `interval` | 5m | Automatic period of reconciling "what is ready locally" × "what has been delivered". A completed slice leaves immediately via an event; the interval is the scheduled insurance against a lost event or a restart. 5m is a sane default; with stable event delivery it can be raised (for example to 1 hour) if that worst-case automatic delivery delay is acceptable. An operator can still run `ioc sync publish` / `ioc sync all` at any time to reconcile and publish immediately |
 | `remote-path` | — | Directory the slices are delivered into. Slice subdirectories and temporary directories (during copying) will appear inside |
 | `export-profile` | — | Which export profile to deliver (see `ioc.export.profiles`). The profile must exist — validated at startup |
 
@@ -328,16 +336,18 @@ The `sync` health contributor (daemon actuator, loopback `:8081`, and the
 
 - status per source/target/endpoint: `UP / DEGRADED / DOWN / UNKNOWN`;
 - push-watch state per source: `ACTIVE / RECONNECTING / DISABLED`, counters of
-  signals and reconnects, duration of the last directory check;
+  signals, reconnects and re-arms, duration of the last directory check;
 - the delivery queue: `publishPending / publishInProgress / publishFailed`.
 
 Reading rules:
 
 - `DEGRADED` — a transient problem (network, overload): the system retries on
   its own. React only if the status persists beyond your SLA.
-  A short `RECONNECTING` on the watch is normal (including the planned session
-  recreation); it turns into `DEGRADED` only when reconnecting keeps failing
-  longer than the grace window (60 seconds);
+  A short `RECONNECTING` on the watch is normal after a real disconnect; it
+  turns into `DEGRADED` only when reconnecting keeps failing longer than the
+  grace window (60 seconds). Planned watch re-arms should normally return to
+  `ACTIVE` quickly and increment the re-arm counter, not leave the watch
+  permanently reconnecting;
 - `DOWN` — a permanent problem (authentication, permissions, a delivery error
   in the ledger): needs intervention;
 - `publishFailed > 0` — check the logs of the specific slice × target pair.
