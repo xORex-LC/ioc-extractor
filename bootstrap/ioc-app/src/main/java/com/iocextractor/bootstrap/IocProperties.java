@@ -34,7 +34,8 @@ public record IocProperties(
         @NotEmpty Map<IndicatorType, String> patterns,
         @NotNull @Valid Classify classify,
         @NotNull @Valid Sink sink,
-        @NotNull @Valid Lookup lookup,
+        @NotNull @Valid Pipeline pipeline,
+        @Valid Lookup lookup,
         @NotNull @Valid Ingestion ingestion,
         @NotNull @Valid ArtifactIdentity artifactIdentity,
         @NotNull @Valid Export export,
@@ -43,6 +44,10 @@ public record IocProperties(
         @NotNull @Valid Observability observability) {
 
     public IocProperties {
+        pipeline = pipeline == null ? new Pipeline(true) : pipeline;
+        validateDataframeStorage(storage);
+        rejectLegacyLookup(lookup);
+        validateSinkIdStarts(sink);
         if (sync != null && export != null) {
             sync.validateAgainst(export);
         }
@@ -92,6 +97,10 @@ public record IocProperties(
         }
     }
 
+    /** Pipeline policy switches. Deduplication here is batch-local only. */
+    public record Pipeline(boolean deduplicate) {
+    }
+
     public record Sink(@NotNull @Valid Csv csv, @NotEmpty @Valid List<Artifact> artifacts) {
 
         public record Csv(@NotBlank String delimiter, @NotBlank String quote, @NotBlank String nullLiteral,
@@ -122,8 +131,12 @@ public record IocProperties(
         }
     }
 
-    public record Lookup(String type, @NotBlank String path, boolean deduplicate, List<Artifact> artifacts) {
-        public record Artifact(@NotBlank String name, @NotBlank String path) {
+    /**
+     * Tombstone for removed {@code ioc.lookup.*} settings. Keep this nullable
+     * until strict binding replaces compatibility diagnostics.
+     */
+    public record Lookup(String type, String path, Boolean deduplicate, List<Artifact> artifacts) {
+        public record Artifact(String name, String path) {
         }
     }
 
@@ -418,5 +431,64 @@ public record IocProperties(
     }
 
     public record Observability(@NotBlank String mode, boolean perItemTraceEnabled) {
+    }
+
+    private static void validateDataframeStorage(Storage storage) {
+        if (storage == null || storage.dataframe() == null || storage.dataframe().type() == null) {
+            return;
+        }
+        if (!"jdbc".equalsIgnoreCase(storage.dataframe().type())) {
+            throw new IllegalArgumentException(
+                    "ioc.storage.dataframe.type must be jdbc; legacy CSV dataframe storage was removed");
+        }
+    }
+
+    private static void rejectLegacyLookup(Lookup lookup) {
+        if (lookup == null) {
+            return;
+        }
+        boolean hasMovedDedup = lookup.deduplicate() != null;
+        boolean hasRemovedLookup = lookup.type() != null
+                || lookup.path() != null
+                || (lookup.artifacts() != null && !lookup.artifacts().isEmpty());
+        if (hasMovedDedup && hasRemovedLookup) {
+            throw new IllegalArgumentException(
+                    "legacy ioc.lookup.* removed; ioc.lookup.deduplicate moved to ioc.pipeline.deduplicate");
+        }
+        if (hasMovedDedup) {
+            throw new IllegalArgumentException("ioc.lookup.deduplicate moved to ioc.pipeline.deduplicate");
+        }
+        if (hasRemovedLookup) {
+            throw new IllegalArgumentException(
+                    "legacy ioc.lookup.* removed; SQLite/JDBC dataframe storage is the only runtime truth");
+        }
+    }
+
+    private static void validateSinkIdStarts(Sink sink) {
+        if (sink == null || sink.artifacts() == null) {
+            return;
+        }
+        for (Sink.Artifact artifact : sink.artifacts()) {
+            Sink.Artifact.Id id = artifact.id();
+            if (id == null || id.start() == null || hasPublicIdColumn(artifact) || !isExplicitNumeric(id.start())) {
+                continue;
+            }
+            throw new IllegalArgumentException("Artifact " + artifact.name()
+                    + " configures id.start but has no public id column");
+        }
+    }
+
+    private static boolean hasPublicIdColumn(Sink.Artifact artifact) {
+        return artifact.columns() != null && artifact.columns().stream()
+                .anyMatch(column -> "id".equals(column.name()));
+    }
+
+    private static boolean isExplicitNumeric(String value) {
+        try {
+            Long.parseLong(value.trim());
+            return true;
+        } catch (NumberFormatException ex) {
+            return false;
+        }
     }
 }

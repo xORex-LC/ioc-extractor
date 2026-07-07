@@ -94,6 +94,12 @@ ioc:
     mode: oneshot
     per-item-trace-enabled: false
 
+  # ---- Pipeline policy -------------------------------------------------------
+  # Batch-local dedup only. Cross-run keep-first/provenance belongs to canonical
+  # JDBC storage (`row_key` + `<artifact>_sources`), not a pre-write lookup.
+  pipeline:
+    deduplicate: true
+
   # ---- Source profile: how to read & where indicators come from --------------
   source:
     type: auto                       # 'auto' = Tika detects format (.docx/.htm/.pdf/...)
@@ -151,9 +157,8 @@ ioc:
       delimiter: ";"
       quote: "\""
       null-literal: "NULL"
-      # Output charset (boundary 2) for ALL artifacts, and for reading existing
-      # artifacts in lookup/storage (read and write always agree). Unmappable
-      # characters are replaced, never fatal. Blank = UTF-8.
+      # Output charset (boundary 2) for generated CSV projections and export
+      # slices. Unmappable characters are replaced, never fatal. Blank = UTF-8.
       charset: UTF-8
     artifacts:
       - name: masks                  # network IOC -> reputation-list masks
@@ -212,16 +217,6 @@ ioc:
           - { name: threat_type,     from: const }
           - { name: source,          from: source.label, transform: [ "strip-prefix:Письмо " ] }
           - { name: description,     from: const }
-
-  # ---- Lookup repository (dedup / cross-checks against existing artifact) -----
-  lookup:
-    type: csv
-    path: "./dataframe/masks_list.csv"
-    deduplicate: true
-    artifacts:
-      - { name: masks,   path: "./dataframe/masks_list.csv" }
-      - { name: ip_list, path: "./dataframe/ip_list.csv" }
-      - { name: hashes,  path: "./dataframe/hashes_list.csv" }
 
   # ---- Artifact identity (row_key) -------------------------------------------
   artifact-identity:

@@ -142,7 +142,8 @@ class SyncPropertiesTest {
     private IocProperties withSync(IocProperties source, IocProperties.Sync sync) {
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
-                source.patterns(), source.classify(), source.sink(), source.lookup(), source.ingestion(),
-                source.artifactIdentity(), source.export(), sync, source.maintenance(), source.observability());
+                source.patterns(), source.classify(), source.sink(), source.pipeline(), source.lookup(),
+                source.ingestion(), source.artifactIdentity(), source.export(), sync, source.maintenance(),
+                source.observability());
     }
 }

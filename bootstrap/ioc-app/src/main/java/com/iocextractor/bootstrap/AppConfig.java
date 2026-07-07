@@ -295,7 +295,7 @@ public class AppConfig {
                                                                    DiagnosticSink diagnosticSink,
                                                                    IocProperties props) {
         return new IocExtractionServiceFactory(reader, refanger, extractor, attributor,
-                props.lookup().deduplicate(), props.observability().mode(),
+                props.pipeline().deduplicate(), props.observability().mode(),
                 new LoggingPipelineObserver(), diagnosticSink);
     }
 
