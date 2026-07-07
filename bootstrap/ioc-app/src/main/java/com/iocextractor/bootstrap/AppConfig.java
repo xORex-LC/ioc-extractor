@@ -309,11 +309,10 @@ public class AppConfig {
                                                                    Refanger refanger,
                                                                    IndicatorExtractor extractor,
                                                                    SourceAttributor attributor,
-                                                                   LookupRepository lookup,
                                                                    DiagnosticSink diagnosticSink,
                                                                    IocProperties props) {
         return new IocExtractionServiceFactory(reader, refanger, extractor, attributor,
-                lookup, props.lookup().deduplicate(), props.observability().mode(),
+                props.lookup().deduplicate(), props.observability().mode(),
                 new LoggingPipelineObserver(), diagnosticSink);
     }
 
@@ -327,6 +326,7 @@ public class AppConfig {
                                                          jdbcCanonicalRepository,
                                                  ObjectProvider<CsvArtifactProjection> csvArtifactProjection,
                                                  IocProperties props) {
+        requireDataframeJdbc(props, "Oneshot extraction");
         List<IocSink> sinks = buildSinks(
                 props,
                 matchPolicy,
@@ -344,10 +344,7 @@ public class AppConfig {
                                                IndicatorFeatureExtractor featureExtractor,
                                                LookupRepository lookup,
                                                JdbcCanonicalArtifactRepository jdbcCanonicalRepository) {
-        if (!isDataframeJdbc(props)) {
-            throw new IocExtractorException("Daemon direct-to-canonical ingest requires "
-                    + "ioc.storage.dataframe.type=jdbc");
-        }
+        requireDataframeJdbc(props, "Daemon direct-to-canonical ingest");
         var artifacts = artifactDefinitions(props, matchPolicy, featureExtractor, lookup);
         Map<String, IdGenerator> ids = new LinkedHashMap<>();
         for (CsvArtifactDefinition artifact : artifacts) {
@@ -1020,6 +1017,12 @@ public class AppConfig {
 
     private boolean isDataframeJdbc(IocProperties props) {
         return "jdbc".equalsIgnoreCase(props.storage().dataframe().type());
+    }
+
+    private void requireDataframeJdbc(IocProperties props, String useCase) {
+        if (!isDataframeJdbc(props)) {
+            throw new IocExtractorException(useCase + " requires ioc.storage.dataframe.type=jdbc");
+        }
     }
 
     private Map<String, ValueProvider> valueProviders(MatchPolicy matchPolicy,

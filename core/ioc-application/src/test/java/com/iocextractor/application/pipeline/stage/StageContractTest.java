@@ -8,7 +8,6 @@ import com.iocextractor.application.pipeline.payload.RefangedText;
 import com.iocextractor.application.pipeline.payload.RetainedIndicators;
 import com.iocextractor.application.pipeline.payload.SourceText;
 import com.iocextractor.application.port.out.IocSink;
-import com.iocextractor.application.port.out.LookupRepository;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.domain.extract.RawIndicator;
@@ -49,7 +48,7 @@ class StageContractTest {
                         false),
                 diagnostic);
         assertPreservesContract(
-                new DeduplicateIndicatorsStage(new EmptyLookup(), true),
+                new DeduplicateIndicatorsStage(true),
                 StageTestSupport.envelope(new AttributedIndicators(List.of(StageTestSupport.indicator("example.com"))),
                         false),
                 diagnostic);
@@ -86,16 +85,4 @@ class StageContractTest {
         }
     }
 
-    private static final class EmptyLookup implements LookupRepository {
-
-        @Override
-        public boolean contains(Indicator indicator) {
-            return false;
-        }
-
-        @Override
-        public long maxId() {
-            return 0;
-        }
-    }
 }

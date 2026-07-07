@@ -7,7 +7,6 @@ import com.iocextractor.application.artifact.IngestRunStatus;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.application.port.out.IocSink;
-import com.iocextractor.application.port.out.LookupRepository;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
@@ -292,17 +291,6 @@ class IngestionServiceTest {
                 text -> text,
                 text -> List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)),
                 (text, indicators) -> List.of(new Indicator("example.com", IndicatorType.DOMAIN, new SourceContext(null, null))),
-                new LookupRepository() {
-                    @Override
-                    public boolean contains(Indicator indicator) {
-                        return false;
-                    }
-
-                    @Override
-                    public long maxId() {
-                        return 0;
-                    }
-                },
                 false,
                 "daemon",
                 new NoopPipelineObserver(),
@@ -317,17 +305,6 @@ class IngestionServiceTest {
                 text -> text,
                 text -> List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)),
                 (text, indicators) -> List.of(new Indicator("example.com", IndicatorType.DOMAIN, new SourceContext(null, null))),
-                new LookupRepository() {
-                    @Override
-                    public boolean contains(Indicator indicator) {
-                        return false;
-                    }
-
-                    @Override
-                    public long maxId() {
-                        return 0;
-                    }
-                },
                 false,
                 "daemon",
                 new NoopPipelineObserver(),

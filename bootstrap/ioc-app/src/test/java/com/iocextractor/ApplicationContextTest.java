@@ -17,23 +17,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Smoke test: the Spring context boots and wires the core use case from the
- * default configuration. Isolated from project artifacts — the lookup path is
- * overridden to a non-existent file (handled as empty storage), so the test
- * does not depend on {@code dataframe/} contents.
+ * default configuration. Isolated from project artifacts by redirecting service
+ * and dataframe SQLite storage to temporary target files.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
-        "ioc.lookup.path=target/test-no-such-lookup.csv",
-        "ioc.storage.dataframe.type=disabled",
         "spring.main.banner-mode=off"
 })
 class ApplicationContextTest {
 
     private static final Path SERVICE_DB = Path.of(
             "target", "lazy-service-" + UUID.randomUUID() + ".db");
+    private static final Path DATAFRAME_DB = Path.of(
+            "target", "context-dataframe-" + UUID.randomUUID() + ".db");
 
     @DynamicPropertySource
-    static void servicePath(DynamicPropertyRegistry registry) {
+    static void storagePaths(DynamicPropertyRegistry registry) {
         registry.add("ioc.storage.service.url", () -> "jdbc:sqlite:" + SERVICE_DB);
+        registry.add("ioc.storage.dataframe.url", () -> "jdbc:sqlite:" + DATAFRAME_DB);
     }
 
     @Autowired
@@ -54,12 +54,14 @@ class ApplicationContextTest {
     void binds_service_storage_defaults_without_creating_storage_runtime() {
         assertThat(props.storage().service().type()).isEqualTo("jdbc");
         assertThat(props.storage().service().url()).isEqualTo("jdbc:sqlite:" + SERVICE_DB);
+        assertThat(props.storage().dataframe().type()).isEqualTo("jdbc");
+        assertThat(props.storage().dataframe().url()).isEqualTo("jdbc:sqlite:" + DATAFRAME_DB);
         assertThat(props.storage().service().sqlite().tuning()).isEqualTo("low-memory");
         assertThat(props.storage().service().pool().writeMax()).isEqualTo(1);
         assertThat(props.storage().service().pool().readMax()).isEqualTo(2);
         var beanFactory = ((ConfigurableApplicationContext) context).getBeanFactory();
-        // The holder may exist, but neither migration nor the export graph may resolve
-        // it while the ordinary oneshot context and root help are initialized.
+        // The holder may exist, but neither service migration nor the export graph may
+        // resolve it while the ordinary oneshot context and root help are initialized.
         assertThat(beanFactory.containsSingleton("serviceSchemaMigration")).isFalse();
         assertThat(beanFactory.containsSingleton("exportArtifactsUseCase")).isFalse();
         assertThat(SERVICE_DB).doesNotExist();

@@ -5,32 +5,27 @@ import com.iocextractor.platform.etl.Stage;
 import com.iocextractor.platform.etl.StageId;
 import com.iocextractor.application.pipeline.payload.AttributedIndicators;
 import com.iocextractor.application.pipeline.payload.RetainedIndicators;
-import com.iocextractor.application.port.out.LookupRepository;
 import com.iocextractor.domain.model.Indicator;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 
 /**
- * Removes within-batch duplicates and indicators already present in lookup
- * storage.
+ * Removes within-batch duplicates. Storage-level keep-first semantics and
+ * provenance accounting belong to the canonical artifact repository.
  */
 public final class DeduplicateIndicatorsStage implements Stage<AttributedIndicators, RetainedIndicators> {
 
-    private final LookupRepository lookup;
     private final boolean deduplicate;
 
     /**
      * Creates the stage.
      *
-     * @param lookup lookup repository
-     * @param deduplicate whether de-duplication is enabled
+     * @param deduplicate whether within-batch de-duplication is enabled
      */
-    public DeduplicateIndicatorsStage(LookupRepository lookup, boolean deduplicate) {
-        this.lookup = Objects.requireNonNull(lookup, "lookup");
+    public DeduplicateIndicatorsStage(boolean deduplicate) {
         this.deduplicate = deduplicate;
     }
 
@@ -51,9 +46,6 @@ public final class DeduplicateIndicatorsStage implements Stage<AttributedIndicat
         List<Indicator> out = new ArrayList<>(indicators.size());
         for (Indicator indicator : indicators) {
             if (!seen.add(indicator.dedupKey())) {
-                continue;
-            }
-            if (lookup.contains(indicator)) {
                 continue;
             }
             out.add(indicator);
