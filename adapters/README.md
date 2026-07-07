@@ -16,9 +16,8 @@
 | `in/cli/` | Входной адаптер: CLI на picocli (`ioc extract …`) |
 | `out/regex/` | `PatternEngine`: RE2/J (по умолчанию) и JDK |
 | `out/source/` | `SourceReader`: Apache Tika |
-| `out/sink/csv/` | `IocSink`: запись CSV-артефактов (commons-csv) |
+| `out/sink/csv/` | CSV projections and immutable export slice writers (commons-csv) |
 | `out/manifest/json/` | `SliceManifestCodec`: deterministic versioned JSON (Jackson) |
-| `out/lookup/` | `LookupRepository`: чтение существующего CSV |
 | `out/store/jdbc/` | durable storage ports over relational stores (Spring JDBC/JDBC drivers) |
 
 ## Зависимости

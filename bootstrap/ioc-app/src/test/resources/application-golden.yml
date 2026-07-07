@@ -1,13 +1,11 @@
-# Test profile for GoldenPipelineTest: redirects sinks to target/golden and uses
-# no lookup. Only ioc.sink + ioc.lookup are overridden; everything else (source,
-# refang, patterns, classify rules) is inherited from the main application.yml.
+# Test profile for GoldenPipelineTest: redirects dataframe storage and sinks to
+# target/golden. Everything else (source, refang, patterns, classify rules) is
+# inherited from the main application.yml.
 ioc:
   storage:
     dataframe:
       type: jdbc
       url: "jdbc:sqlite:target/golden/ioc-dataframe.db"
-  lookup:
-    path: "target/golden/none.csv"
   sink:
     csv:
       delimiter: ";"

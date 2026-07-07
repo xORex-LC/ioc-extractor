@@ -26,7 +26,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "ioc.runtime.mode=daemon",
-        "ioc.lookup.path=target/test-dataframe-storage/no-lookup.csv",
         "ioc.ingestion.dirs.inbox=target/test-dataframe-storage/inbox",
         "ioc.ingestion.dirs.processing=target/test-dataframe-storage/processing",
         "ioc.ingestion.dirs.done=target/test-dataframe-storage/done",

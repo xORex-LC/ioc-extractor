@@ -2,9 +2,9 @@
 
 ## Назначение
 
-Выходные CSV-адаптеры для двух разных контрактов: текущая запись/проекция
-canonical dataframe и формирование immutable export slices. Схема артефакта
-(колонки) и заполнение остаются **декларативными**, не зашитыми в код.
+Выходные CSV-адаптеры для двух контрактов: generated projection из canonical
+dataframe и формирование immutable export slices. Схема артефакта (колонки) и
+заполнение остаются **декларативными**, не зашитыми в код.
 
 **Правило слоя:** пакет реализует application-порты и инкапсулирует commons-csv,
 кодировки и filesystem publication protocol. Он не меняет export-ledger, не
@@ -16,7 +16,6 @@ canonical dataframe и формирование immutable export slices. Схе�
 
 | Файл | Назначение |
 |---|---|
-| `CsvIocSink.java` | Запись артефакта: фильтр по типу/признакам, id, делегирование мапперу |
 | `ArtifactFilter.java` | Artifact-level `include`/`exclude` фильтр поверх `accepts` |
 | `RowMapper.java` | Порт маппинга `Indicator → строка CSV` |
 | `ConfigurableRowMapper.java` | Generic-маппер по `ColumnSpec` + реестры провайдеров/трансформаций |
@@ -43,9 +42,9 @@ canonical dataframe и формирование immutable export slices. Схе�
 `when-type`, упорядоченные `transform` — без выражений в конфиге. Реестры
 собираются в `bootstrap/AppConfig`.
 
-DB truth switch использует те же artifact definitions, но держит ответственности
-раздельно: application orchestration не знает CSV-диалект, а adapter отвечает за
-projection-файл и key extraction.
+JDBC truth path использует те же artifact definitions, но держит
+ответственности раздельно: application orchestration не знает CSV-диалект, а
+adapter отвечает за projection-файл и immutable export slices.
 
 ## Immutable slice protocol
 

@@ -37,7 +37,6 @@ import static org.assertj.core.api.Assertions.assertThat;
         "ioc.sync.endpoints[0].smb.username=sync-test",
         "ioc.sync.endpoints[0].smb.password=not-a-production-secret",
         "ioc.export.root=target/test-sync-daemon/export",
-        "ioc.lookup.path=target/test-sync-daemon/no-lookup.csv",
         "ioc.storage.service.url=jdbc:sqlite:target/test-sync-daemon/ioc-service.db",
         "ioc.storage.dataframe.url=jdbc:sqlite:target/test-sync-daemon/ioc-dataframe.db",
         "ioc.ingestion.dirs.inbox=target/test-sync-daemon/inbox",

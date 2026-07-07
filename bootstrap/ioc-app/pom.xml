@@ -41,10 +41,6 @@
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
-            <artifactId>ioc-adapter-lookup-csv</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.iocextractor</groupId>
             <artifactId>ioc-adapter-sink-csv</artifactId>
         </dependency>
         <dependency>

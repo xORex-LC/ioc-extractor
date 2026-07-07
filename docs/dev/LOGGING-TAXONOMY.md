@@ -95,7 +95,6 @@ Per-item поля (`ioc.indicator.*`, `ioc.dedup.key`) не входят в ба
 | `command_complete` | cli | CLI command завершилась |
 | `stage_start` | pipeline | стадия началась |
 | `stage_complete` | pipeline | стадия завершилась |
-| `lookup_load` | lookup | lookup artifact загружен |
 | `source_read` | source | source document прочитан |
 | `artifact_write` | sink | CSV artifact записан |
 | `storage_write` | storage | canonical storage write завершён |

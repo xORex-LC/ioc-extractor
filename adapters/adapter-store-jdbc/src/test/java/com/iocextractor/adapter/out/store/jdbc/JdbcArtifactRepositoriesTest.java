@@ -174,38 +174,6 @@ class JdbcArtifactRepositoriesTest {
     }
 
     @Test
-    void lookup_repository_uses_dataframe_tables_for_contains_and_max_id() {
-        var schemas = List.of(
-                schema("masks", "id", "mask"),
-                schema("ip_list", "id", "ip"),
-                schema("hashes", "id", "hash_md5", "hash_sha1", "hash_sha256"));
-        var identities = List.of(
-                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1),
-                new ArtifactIdentityDefinition("ip_list", List.of("ip"), false, 1),
-                new ArtifactIdentityDefinition("hashes", List.of("hash_md5", "hash_sha1", "hash_sha256"), true, 1));
-        var canonical = canonicalRepository(schemas, identities);
-        canonical.write("masks", new CanonicalArtifact("masks", List.of("id", "mask"),
-                List.of(row("id", "10", "mask", "example.com"))));
-        canonical.write("ip_list", new CanonicalArtifact("ip_list", List.of("id", "ip"),
-                List.of(row("id", "692", "ip", "1.2.3.4"))));
-        canonical.write("hashes", new CanonicalArtifact("hashes", List.of("id", "hash_md5", "hash_sha1", "hash_sha256"),
-                List.of(row("id", "100", "hash_md5", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-                        "hash_sha1", null, "hash_sha256", null))));
-
-        var lookup = new JdbcLookupRepository(dataSource);
-
-        assertThat(lookup.contains(new Indicator("example.com", IndicatorType.DOMAIN, source()))).isTrue();
-        assertThat(lookup.contains(new Indicator("1.2.3.4", IndicatorType.IPV4, source()))).isTrue();
-        assertThat(lookup.contains(new Indicator("1.2.3.4:8080/payload.exe", IndicatorType.IPV4, source()))).isFalse();
-        assertThat(lookup.contains(new Indicator("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", IndicatorType.MD5, source()))).isTrue();
-        assertThat(lookup.contains(new Indicator("example.org", IndicatorType.DOMAIN, source()))).isFalse();
-        assertThat(lookup.maxId("masks")).isEqualTo(10L);
-        assertThat(lookup.maxId("ip_list")).isEqualTo(692L);
-        assertThat(lookup.maxId("hashes")).isEqualTo(100L);
-        assertThat(lookup.maxId()).isEqualTo(692L);
-    }
-
-    @Test
     void artifact_id_baseline_uses_configured_public_id_columns_without_hardcoded_artifacts() {
         var schemas = List.of(
                 schema("masks", "id", "mask"),

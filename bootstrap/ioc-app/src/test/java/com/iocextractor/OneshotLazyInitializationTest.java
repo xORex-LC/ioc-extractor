@@ -15,7 +15,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Verifies that parsing the oneshot command graph does not initialize JDBC storage. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
         "ioc.runtime.mode=oneshot",
-        "ioc.lookup.path=target/test-lazy-oneshot/no-lookup.csv",
         "spring.main.banner-mode=off"
 })
 class OneshotLazyInitializationTest {

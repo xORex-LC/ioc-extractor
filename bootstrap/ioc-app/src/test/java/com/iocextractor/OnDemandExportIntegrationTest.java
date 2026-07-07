@@ -75,7 +75,6 @@ class OnDemandExportIntegrationTest {
                 () -> "jdbc:sqlite:" + TEST_ROOT.resolve("service.db"));
         registry.add("ioc.storage.dataframe.url",
                 () -> "jdbc:sqlite:" + TEST_ROOT.resolve("dataframe.db"));
-        registry.add("ioc.lookup.path", () -> TEST_ROOT.resolve("missing-lookup.csv").toString());
         registry.add("ioc.export.root", EXPORT_ROOT::toString);
         registry.add("ioc.export.profiles[0].name", () -> "e2e-reputation");
         registry.add("ioc.export.profiles[0].output-mode", () -> "complete");

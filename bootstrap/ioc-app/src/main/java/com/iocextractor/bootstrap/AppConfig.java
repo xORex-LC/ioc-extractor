@@ -1,7 +1,5 @@
 package com.iocextractor.bootstrap;
 
-import com.iocextractor.adapter.out.lookup.CsvArtifactLookupRepository;
-import com.iocextractor.adapter.out.lookup.CsvMaskLookupRepository;
 import com.iocextractor.adapter.out.maintenance.FileSystemRetentionStore;
 import com.iocextractor.adapter.out.regex.JdkRegexPatternEngine;
 import com.iocextractor.adapter.out.regex.Re2jPatternEngine;
@@ -14,7 +12,6 @@ import com.iocextractor.adapter.out.sink.csv.CsvArtifactProjection;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactSliceWriter;
 import com.iocextractor.adapter.out.sink.csv.FileSystemSliceRetentionStore;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition;
-import com.iocextractor.adapter.out.sink.csv.CsvIocSink;
 import com.iocextractor.adapter.out.sink.csv.IdGenerator;
 import com.iocextractor.adapter.out.sink.csv.IdValueProvider;
 import com.iocextractor.adapter.out.sink.csv.IndicatorValueProvider;
@@ -38,7 +35,6 @@ import com.iocextractor.adapter.out.store.jdbc.JdbcIngestionLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcExportProgressStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcExportRunLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcIocSink;
-import com.iocextractor.adapter.out.store.jdbc.JdbcLookupRepository;
 import com.iocextractor.adapter.out.store.jdbc.JdbcRunLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader;
 import com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealthProbe;
@@ -80,7 +76,6 @@ import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.maintenance.RetentionStore;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.out.IocSink;
-import com.iocextractor.application.port.out.LookupRepository;
 import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.application.port.out.artifact.ArtifactIdBaseline;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
@@ -137,8 +132,8 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.QuoteMode;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -251,29 +246,6 @@ public class AppConfig {
     }
 
     @Bean
-    @Primary
-    public LookupRepository lookupRepository(IocProperties props,
-                                             ObjectProvider<JdbcLookupRepository> jdbcLookupRepository) {
-        if (isDataframeJdbc(props)) {
-            return jdbcLookupRepository.getObject();
-        }
-        Charset charset = csvCharset(props);
-        Map<String, Path> artifactPaths = lookupArtifactPaths(props);
-        if (artifactPaths.isEmpty() && !"daemon".equalsIgnoreCase(props.runtime().mode())) {
-            return new CsvMaskLookupRepository(Path.of(props.lookup().path()), charset);
-        }
-        return new CsvArtifactLookupRepository(artifactPaths, charset);
-    }
-
-    @Bean
-    @ConditionalOnDataframeStorage
-    public JdbcLookupRepository jdbcLookupRepository(
-            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
-            DataframeSchemaPlan dataframeSchemaReconciliation) {
-        return new JdbcLookupRepository(dataframeStorageDataSource);
-    }
-
-    @Bean
     @ConditionalOnDataframeStorage
     public ArtifactIdBaseline artifactIdBaseline(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
@@ -333,9 +305,8 @@ public class AppConfig {
                                                  MatchPolicy matchPolicy,
                                                  IndicatorFeatureExtractor featureExtractor,
                                                  ArtifactIdBaseline artifactIdBaseline,
-                                                 ObjectProvider<JdbcCanonicalArtifactRepository>
-                                                         jdbcCanonicalRepository,
-                                                 ObjectProvider<CsvArtifactProjection> csvArtifactProjection,
+                                                 JdbcCanonicalArtifactRepository jdbcCanonicalRepository,
+                                                 CsvArtifactProjection csvArtifactProjection,
                                                  IocProperties props) {
         requireDataframeJdbc(props, "Oneshot extraction");
         List<IocSink> sinks = buildSinks(
@@ -343,8 +314,8 @@ public class AppConfig {
                 matchPolicy,
                 featureExtractor,
                 artifactIdBaseline,
-                jdbcCanonicalRepository.getIfAvailable(),
-                csvArtifactProjection.getIfAvailable());
+                jdbcCanonicalRepository,
+                csvArtifactProjection);
         return factory.create(sinks);
     }
 
@@ -922,35 +893,16 @@ public class AppConfig {
                                      ArtifactIdBaseline artifactIdBaseline,
                                      JdbcCanonicalArtifactRepository jdbcCanonicalRepository,
                                      CsvArtifactProjection csvArtifactProjection) {
-        CSVFormat writeFormat = writeFormat(props.sink().csv());
-        Charset charset = csvCharset(props);
         return artifactDefinitions(props, matchPolicy, featureExtractor, artifactIdBaseline).stream()
-                .map(artifact -> {
-                    if (isDataframeJdbc(props)) {
-                        if (jdbcCanonicalRepository == null || csvArtifactProjection == null) {
-                            throw new IocExtractorException("Dataframe JDBC storage is enabled but repository "
-                                    + "or CSV projection is not wired");
-                        }
-                        return new JdbcIocSink(
-                                artifact.name(),
-                                artifact.accepts(),
-                                artifact.filter()::accepts,
-                                artifact.mapper().header(),
-                                artifact.mapper()::toRow,
-                                new IdGenerator(artifact.idStrategy(), artifact.idStart())::next,
-                                jdbcCanonicalRepository,
-                                csvArtifactProjection::project);
-                    }
-                    return new CsvIocSink(
-                            artifact.name(),
-                            Path.of(findArtifactPath(props, artifact.name())),
-                            artifact.accepts(),
-                            artifact.filter(),
-                            artifact.mapper(),
-                            new IdGenerator(artifact.idStrategy(), artifact.idStart()),
-                            writeFormat,
-                            charset);
-                })
+                .map(artifact -> new JdbcIocSink(
+                        artifact.name(),
+                        artifact.accepts(),
+                        artifact.filter()::accepts,
+                        artifact.mapper().header(),
+                        artifact.mapper()::toRow,
+                        new IdGenerator(artifact.idStrategy(), artifact.idStart())::next,
+                        jdbcCanonicalRepository,
+                        csvArtifactProjection::project))
                 .map(IocSink.class::cast)
                 .toList();
     }
@@ -977,27 +929,6 @@ public class AppConfig {
                     startOf(artifact.name(), artifact, artifactIdBaseline)));
         }
         return artifacts;
-    }
-
-    private Map<String, Path> lookupArtifactPaths(IocProperties props) {
-        Map<String, Path> paths = new HashMap<>();
-        if (props.lookup().artifacts() != null) {
-            for (IocProperties.Lookup.Artifact artifact : props.lookup().artifacts()) {
-                paths.put(artifact.name(), Path.of(artifact.path()));
-            }
-        }
-        if (!paths.containsKey("masks") && props.lookup().path() != null && !props.lookup().path().isBlank()) {
-            paths.put("masks", Path.of(props.lookup().path()));
-        }
-        return paths;
-    }
-
-    private String findArtifactPath(IocProperties props, String name) {
-        return props.sink().artifacts().stream()
-                .filter(artifact -> artifact.name().equals(name))
-                .findFirst()
-                .map(artifact -> artifact.path())
-                .orElseThrow(() -> new IocExtractorException("Unknown artifact: " + name));
     }
 
     private Map<String, Path> canonicalArtifactPaths(IocProperties props) {

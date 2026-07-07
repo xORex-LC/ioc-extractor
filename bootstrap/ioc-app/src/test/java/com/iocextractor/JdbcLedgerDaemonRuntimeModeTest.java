@@ -30,7 +30,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "ioc.runtime.mode=daemon",
-        "ioc.lookup.path=target/test-daemon-jdbc/no-lookup.csv",
         "ioc.ingestion.ledger.type=jdbc",
         "ioc.ingestion.ledger.path=target/test-daemon-jdbc/legacy-ledger",
         "ioc.storage.service.url=jdbc:sqlite:target/test-daemon-jdbc/ioc-service.db",

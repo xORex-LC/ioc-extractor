@@ -50,7 +50,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "ioc.runtime.mode=daemon",
-        "ioc.lookup.path=target/daemon-e2e/none.csv",
         "ioc.ingestion.dirs.inbox=target/daemon-e2e/inbox",
         "ioc.ingestion.dirs.processing=target/daemon-e2e/processing",
         "ioc.ingestion.dirs.done=target/daemon-e2e/done",

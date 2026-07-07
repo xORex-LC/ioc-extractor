@@ -45,8 +45,8 @@ runtime JDBC drivers.
   `ON CONFLICT(row_key) DO NOTHING`, preserving explicit legacy ids when present.
   It returns the actual inserted-row count and advances `artifact_revision` once
   per mutating write in the same transaction. `JdbcArtifactRevisionReader`
-  provides change detection without scanning business rows. `JdbcLookupRepository`
-  serves indexed-style SQL lookups and `maxId` without loading CSVs into memory.
+  provides change detection without scanning business rows. `JdbcArtifactIdBaseline`
+  serves schema-aware `maxId` reads for application-side id generation.
 - `JdbcLegacyArtifactImporter` is a one-shot migration helper that reads existing
   rows through a source `CanonicalArtifactRepository` (the CSV adapter owns CSV
   parsing) and writes them via `JdbcCanonicalArtifactRepository`, then raises

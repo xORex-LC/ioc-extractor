@@ -10,7 +10,6 @@ public enum EventAction {
     COMMAND_COMPLETE("command_complete"),
     STAGE_START("stage_start"),
     STAGE_COMPLETE("stage_complete"),
-    LOOKUP_LOAD("lookup_load"),
     SOURCE_READ("source_read"),
     ARTIFACT_WRITE("artifact_write"),
     AGGREGATION_START("aggregation_start"),

@@ -18,7 +18,6 @@ class LoggingTaxonomyTest {
                         "command_complete",
                         "stage_start",
                         "stage_complete",
-                        "lookup_load",
                         "source_read",
                         "artifact_write",
                         "aggregation_start",
