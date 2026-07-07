@@ -11,6 +11,9 @@
 
 - [storage-layer.md](storage-layer.md) — слой хранилища (ING-4): SQLite/JDBC,
   разделение бизнес/служебных схем, CSV как проекция.
+- [csv-lookup-retirement.md](csv-lookup-retirement.md) — вывод из эксплуатации
+  legacy CSV lookup после перехода dataframe truth на SQLite/JDBC; риски вокруг
+  `LookupRepository.contains`, provenance и id-baseline.
 - [sync-hardening-issues.md](sync-hardening-issues.md) — временный issues-список
   по sync/event-coordination после реализации 0013 (S0–S8): лог-altitude,
   SMB-таймауты (SO_TIMEOUT-reaper), классификация транзиентов, health-`findAll`,
