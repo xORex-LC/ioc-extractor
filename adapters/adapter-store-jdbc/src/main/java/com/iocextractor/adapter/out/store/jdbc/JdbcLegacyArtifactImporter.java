@@ -59,9 +59,9 @@ public final class JdbcLegacyArtifactImporter {
     }
 
     private long maxIdInImportedArtifacts() {
-        JdbcLookupRepository lookup = new JdbcLookupRepository(dataSource);
+        JdbcArtifactIdBaseline baseline = new JdbcArtifactIdBaseline(dataSource, schemas);
         return schemas.stream()
-                .mapToLong(schema -> lookup.maxId(schema.artifactName()))
+                .mapToLong(schema -> baseline.maxId(schema.artifactName()))
                 .max()
                 .orElse(0L);
     }

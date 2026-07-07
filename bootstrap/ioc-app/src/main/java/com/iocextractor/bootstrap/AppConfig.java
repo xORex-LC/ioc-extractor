@@ -48,6 +48,7 @@ import com.iocextractor.adapter.out.store.jdbc.DataframeColumn;
 import com.iocextractor.adapter.out.store.jdbc.DataframeFormatMigrations;
 import com.iocextractor.adapter.out.store.jdbc.DataframeSchemaPlan;
 import com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler;
+import com.iocextractor.adapter.out.store.jdbc.JdbcArtifactIdBaseline;
 import com.iocextractor.adapter.out.store.jdbc.SchemaMigrationResult;
 import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceFactory;
 import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceSettings;
@@ -81,6 +82,7 @@ import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.application.port.out.LookupRepository;
 import com.iocextractor.application.port.out.SourceReader;
+import com.iocextractor.application.port.out.artifact.ArtifactIdBaseline;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityStore;
 import com.iocextractor.application.port.out.artifact.RunLedger;
@@ -272,6 +274,15 @@ public class AppConfig {
     }
 
     @Bean
+    @ConditionalOnDataframeStorage
+    public ArtifactIdBaseline artifactIdBaseline(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            DataframeSchemaPlan dataframeSchemaReconciliation,
+            IocProperties props) {
+        return new JdbcArtifactIdBaseline(dataframeStorageDataSource, dataframeSchemas(props));
+    }
+
+    @Bean
     @Primary
     public Clock clock() {
         return Clock.systemUTC();
@@ -321,7 +332,7 @@ public class AppConfig {
     public ExtractIocsUseCase extractIocsUseCase(IocExtractionServiceFactory factory,
                                                  MatchPolicy matchPolicy,
                                                  IndicatorFeatureExtractor featureExtractor,
-                                                 LookupRepository lookup,
+                                                 ArtifactIdBaseline artifactIdBaseline,
                                                  ObjectProvider<JdbcCanonicalArtifactRepository>
                                                          jdbcCanonicalRepository,
                                                  ObjectProvider<CsvArtifactProjection> csvArtifactProjection,
@@ -331,7 +342,7 @@ public class AppConfig {
                 props,
                 matchPolicy,
                 featureExtractor,
-                lookup,
+                artifactIdBaseline,
                 jdbcCanonicalRepository.getIfAvailable(),
                 csvArtifactProjection.getIfAvailable());
         return factory.create(sinks);
@@ -342,10 +353,10 @@ public class AppConfig {
     public SourceSinkFactory sourceSinkFactory(IocProperties props,
                                                MatchPolicy matchPolicy,
                                                IndicatorFeatureExtractor featureExtractor,
-                                               LookupRepository lookup,
+                                               ArtifactIdBaseline artifactIdBaseline,
                                                JdbcCanonicalArtifactRepository jdbcCanonicalRepository) {
         requireDataframeJdbc(props, "Daemon direct-to-canonical ingest");
-        var artifacts = artifactDefinitions(props, matchPolicy, featureExtractor, lookup);
+        var artifacts = artifactDefinitions(props, matchPolicy, featureExtractor, artifactIdBaseline);
         Map<String, IdGenerator> ids = new LinkedHashMap<>();
         for (CsvArtifactDefinition artifact : artifacts) {
             ids.put(artifact.name(), new IdGenerator(artifact.idStrategy(), artifact.idStart()));
@@ -908,12 +919,12 @@ public class AppConfig {
     private List<IocSink> buildSinks(IocProperties props,
                                      MatchPolicy matchPolicy,
                                      IndicatorFeatureExtractor featureExtractor,
-                                     LookupRepository lookup,
+                                     ArtifactIdBaseline artifactIdBaseline,
                                      JdbcCanonicalArtifactRepository jdbcCanonicalRepository,
                                      CsvArtifactProjection csvArtifactProjection) {
         CSVFormat writeFormat = writeFormat(props.sink().csv());
         Charset charset = csvCharset(props);
-        return artifactDefinitions(props, matchPolicy, featureExtractor, lookup).stream()
+        return artifactDefinitions(props, matchPolicy, featureExtractor, artifactIdBaseline).stream()
                 .map(artifact -> {
                     if (isDataframeJdbc(props)) {
                         if (jdbcCanonicalRepository == null || csvArtifactProjection == null) {
@@ -947,7 +958,7 @@ public class AppConfig {
     private List<CsvArtifactDefinition> artifactDefinitions(IocProperties props,
                                                             MatchPolicy matchPolicy,
                                                             IndicatorFeatureExtractor featureExtractor,
-                                                            LookupRepository lookup) {
+                                                            ArtifactIdBaseline artifactIdBaseline) {
         Map<String, ValueProvider> providers = valueProviders(matchPolicy, featureExtractor);
         Map<String, Transform> transforms = transforms();
         Map<String, Predicate<Indicator>> filters = artifactFilters(featureExtractor);
@@ -963,7 +974,7 @@ public class AppConfig {
                     artifactFilter(artifact, filters),
                     mapper,
                     strategyOf(artifact.id()),
-                    startOf(artifact.name(), artifact.id(), lookup)));
+                    startOf(artifact.name(), artifact, artifactIdBaseline)));
         }
         return artifacts;
     }
@@ -1117,19 +1128,30 @@ public class AppConfig {
      * Resolve the starting id. {@code auto} continues the ascending sequence from
      * the named artifact's current max id (+1); a numeric value is used verbatim.
      */
-    private long startOf(String artifactName, IocProperties.Sink.Artifact.Id id, LookupRepository lookup) {
+    private long startOf(String artifactName,
+                         IocProperties.Sink.Artifact artifact,
+                         ArtifactIdBaseline artifactIdBaseline) {
+        IocProperties.Sink.Artifact.Id id = artifact.id();
+        if (!hasPublicIdColumn(artifact)) {
+            return 0L;
+        }
         if (id == null || id.start() == null) {
-            return lookup.maxId(artifactName) + 1;
+            return artifactIdBaseline.maxId(artifactName) + 1;
         }
         String start = id.start().trim();
         if (start.equalsIgnoreCase("auto")) {
-            return lookup.maxId(artifactName) + 1;
+            return artifactIdBaseline.maxId(artifactName) + 1;
         }
         try {
             return Long.parseLong(start);
         } catch (NumberFormatException ignored) {
-            return lookup.maxId(artifactName) + 1;
+            return artifactIdBaseline.maxId(artifactName) + 1;
         }
+    }
+
+    private boolean hasPublicIdColumn(IocProperties.Sink.Artifact artifact) {
+        return artifact.columns().stream()
+                .anyMatch(column -> "id".equals(column.name()));
     }
 
     /** A blank/absent mask code means "no match" -> rendered as the CSV null literal. */

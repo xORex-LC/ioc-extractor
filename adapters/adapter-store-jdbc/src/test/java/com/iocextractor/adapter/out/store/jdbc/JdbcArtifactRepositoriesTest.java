@@ -186,6 +186,30 @@ class JdbcArtifactRepositoriesTest {
         assertThat(lookup.maxId()).isEqualTo(692L);
     }
 
+    @Test
+    void artifact_id_baseline_uses_configured_public_id_columns_without_hardcoded_artifacts() {
+        var schemas = List.of(
+                schema("masks", "id", "mask"),
+                schema("address_blacklist", "forbidden_url"),
+                schema("custom_list", "id", "value"));
+        var repository = canonicalRepository(schemas, List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1),
+                new ArtifactIdentityDefinition("address_blacklist", List.of("forbidden_url"), false, 1),
+                new ArtifactIdentityDefinition("custom_list", List.of("value"), false, 1)));
+        repository.write("masks", new CanonicalArtifact("masks", List.of("id", "mask"),
+                List.of(row("id", "10", "mask", "example.com"))));
+        repository.write("address_blacklist", new CanonicalArtifact("address_blacklist", List.of("forbidden_url"),
+                List.of(row("forbidden_url", "https://example.com/payload.exe"))));
+        repository.write("custom_list", new CanonicalArtifact("custom_list", List.of("id", "value"),
+                List.of(row("id", "77", "value", "custom-value"))));
+
+        var baseline = new JdbcArtifactIdBaseline(dataSource, schemas);
+
+        assertThat(baseline.maxId("masks")).isEqualTo(10L);
+        assertThat(baseline.maxId("custom_list")).isEqualTo(77L);
+        assertThat(baseline.maxId("address_blacklist")).isZero();
+    }
+
     private JdbcCanonicalArtifactRepository canonicalRepository(List<DataframeArtifactSchema> schemas,
                                                                 List<ArtifactIdentityDefinition> identities) {
         dataSource = dataSource("artifacts-" + System.nanoTime() + ".db");
