@@ -110,6 +110,25 @@ class JdbcArtifactRepositoriesTest {
     }
 
     @Test
+    void duplicate_write_from_same_source_increments_occurrences_without_public_duplicate() {
+        var schema = schema("masks", "id", "mask", "source");
+        var repository = canonicalRepository(List.of(schema), List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1)));
+
+        var first = repository.write("masks", new CanonicalArtifact("masks", List.of("id", "mask", "source"),
+                List.of(row("id", "1", "mask", "example.com", "source", "same-source"))));
+        var duplicate = repository.write("masks", new CanonicalArtifact("masks", List.of("id", "mask", "source"),
+                List.of(row("id", "2", "mask", "example.com", "source", "same-source"))));
+
+        assertThat(first).extracting("inserted", "revision").containsExactly(1, 1L);
+        assertThat(duplicate).extracting("inserted", "revision").containsExactly(0, 1L);
+        assertThat(repository.load("masks").rows())
+                .extracting(row -> row.value("id") + ":" + row.value("mask") + ":" + row.value("source"))
+                .containsExactly("1:example.com:same-source");
+        assertThat(sourceRows("masks")).containsExactly("1:same-source:2");
+    }
+
+    @Test
     void failed_batch_rolls_back_public_rows_provenance_and_revision() {
         var schema = schema("masks", "id", "mask", "source");
         var repository = canonicalRepository(List.of(schema), List.of(
