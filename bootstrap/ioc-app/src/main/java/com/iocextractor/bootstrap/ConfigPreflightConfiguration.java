@@ -28,6 +28,9 @@ class ConfigPreflightConfiguration {
         return new IocUnknownConfigurationPreflight(environment);
     }
 
+    // Converters below are anonymous classes on purpose: a lambda erases the
+    // Converter's generic parameters and the binder cannot resolve its
+    // source/target types at runtime. Do not rewrite them to lambdas.
     @Bean
     @ConfigurationPropertiesBinding
     static Converter<String, EngineType> engineTypeConverter() {

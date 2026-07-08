@@ -20,6 +20,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 class ExportPlanCatalogTest {
 
@@ -63,6 +64,30 @@ class ExportPlanCatalogTest {
         assertThat(revised.artifacts().getFirst().mappingHash())
                 .isNotEqualTo(original.artifacts().getFirst().mappingHash());
         assertThat(revised.planHash()).isNotEqualTo(original.planHash());
+    }
+
+    @Test
+    void defaultExportFingerprintsStayWireCompatible() throws Exception {
+        IocProperties properties = defaults();
+        var plans = catalog(properties, new ArrayList<>()).plans();
+
+        assertThat(plans)
+                .extracting(plan -> plan.profile().name(), plan -> plan.planHash())
+                .containsExactly(
+                        tuple("reputation-lists",
+                                "389252b9da27e14b1477ac82bb84734c09271ec4a85ed35289390ed4828f410a"),
+                        tuple("address-blacklist",
+                                "2757f361b6338b8ec0957e8c0ae637ed1b5673441955583f3b97815c70756eea"));
+        assertThat(plans.getFirst().artifacts())
+                .extracting(artifact -> artifact.artifactName(), artifact -> artifact.mappingHash())
+                .containsExactly(
+                        tuple("masks", "d2b6f8f0d0c0a67e1316f02af70c0162c99b73851010e74ba89295d7c30083e5"),
+                        tuple("ip_list", "bc91f31706aa8d264e3700d19bf12c5fd310e23d6b81829cfd7af3ba6c7deca1"),
+                        tuple("hashes", "0fbcbbe5d6ca875407553d86ae7d85c7e8f52accf50517f72f997a4d337556f1"));
+        assertThat(plans.get(1).artifacts())
+                .extracting(artifact -> artifact.artifactName(), artifact -> artifact.mappingHash())
+                .containsExactly(tuple("address_blacklist",
+                        "7117767f5770e482e970835fac62db5d82389d9924141a204fb7eae7e6730553"));
     }
 
     @Test

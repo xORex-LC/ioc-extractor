@@ -15,7 +15,6 @@ import org.springframework.core.env.SystemEnvironmentPropertySource;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
-import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -34,14 +33,6 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
 
     private static final String PREFIX = "ioc";
     private static final String PREFIX_DOT = PREFIX + ".";
-    private static final Set<Class<?>> SIMPLE_TYPES = Set.of(
-            String.class,
-            Boolean.class,
-            Integer.class,
-            Long.class,
-            Double.class,
-            Duration.class,
-            IdStart.class);
 
     private final ConfigurableEnvironment environment;
 
@@ -134,9 +125,8 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
         return false;
     }
 
-    private boolean canTerminateAt(Class<?> raw) {
-        return raw.isRecord() || List.class.isAssignableFrom(raw)
-                || Map.class.isAssignableFrom(raw) || isSimple(raw);
+    static boolean canTerminateAt(Class<?> raw) {
+        return raw != null;
     }
 
     private boolean matchesRecord(Class<?> raw, List<String> tokens, int index) {
@@ -200,10 +190,6 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
             return clazz;
         }
         return null;
-    }
-
-    private boolean isSimple(Class<?> raw) {
-        return raw.isPrimitive() || raw.isEnum() || SIMPLE_TYPES.contains(raw);
     }
 
     private boolean isIndex(String token) {

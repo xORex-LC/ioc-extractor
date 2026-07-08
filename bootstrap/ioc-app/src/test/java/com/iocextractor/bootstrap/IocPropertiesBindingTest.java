@@ -125,6 +125,21 @@ class IocPropertiesBindingTest {
     }
 
     @Test
+    void reportsUnknownKeysBeforeSemanticValidationErrors() {
+        contextRunner(
+                "ioc.pipeline.deduplicat=false",
+                "ioc.sync.publish.targets[0].name=target",
+                "ioc.sync.publish.targets[0].endpoint=missing",
+                "ioc.sync.publish.targets[0].remote-path=/out",
+                "ioc.sync.publish.targets[0].export-profile=missing-profile")
+                .run(context -> {
+                    assertThat(unboundKeys(context.getStartupFailure()))
+                            .containsExactly("ioc.pipeline.deduplicat");
+                    assertThat(cause(context.getStartupFailure(), BindValidationException.class)).isNull();
+                });
+    }
+
+    @Test
     void rejectsRemovedLegacyLookupKeyAsUnknown() {
         contextRunner("ioc.lookup.deduplicate=false")
                 .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
