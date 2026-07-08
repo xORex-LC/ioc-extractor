@@ -48,7 +48,7 @@ self-contained:
 │   ├── export/                   # immutable completed export slices
 │   ├── inbox/ processing/ done/ failed/
 │   └── ledger/ logs/
-└── dataframe/                    # generated CSV projections + lookup seeds
+└── dataframe/                    # generated CSV projections
 ```
 
 The service `WorkingDirectory` is `<prefix>`, so the application's relative paths
@@ -148,10 +148,9 @@ Legacy databases at `var/ioc-service.db` and `dataframe/ioc-dataframe.db` are mo
 together with WAL/SHM sidecars, into `var/db`. If both old and new primary files
 exist, installation stops for manual reconciliation instead of selecting one.
 
-The optional `--lookup-seed PATH` supplies `masks_list.csv`. When installation is
-run from the repository, the other current lookup seeds are discovered by their
-canonical names (`ip_list.csv`, `hashes_list.csv`, `address_blacklist.csv`). Existing
-operator lookup files are never overwritten.
+The installer no longer accepts legacy seed CSV files. Canonical business data
+lives in `var/db/ioc-dataframe.db`; files under `dataframe/` are generated
+projections and may be recreated from SQLite truth.
 
 ## SQLite state and backup
 
@@ -163,8 +162,8 @@ Both databases are durable state and live together under `<prefix>/var/db`:
 The directory, not an individual `.db` file, is the writable/backup unit because
 SQLite WAL mode may create adjacent `-wal` and `-shm` files. For a simple consistent
 offline backup, stop the service and copy `var/db`; use SQLite's online backup API
-if stopping is not acceptable. CSV files in `dataframe` are projections/reference
-inputs and immutable delivery slices live separately in `var/export`.
+if stopping is not acceptable. CSV files in `dataframe` are generated projections
+and immutable delivery slices live separately in `var/export`.
 
 ## SMB sync
 

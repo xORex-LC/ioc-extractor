@@ -56,7 +56,7 @@ record Result<T>(T value, Notification diagnostics) {}       // per-item/ста�
 ## Стадии конвейера
 
 ```
-read → refang → extract → attribute → deduplicate → fill → sink
+read → refang → extract → attribute → deduplicate(batch-local) → fill → sink
  (каждая — Stage/Filter; данные и метаданные идут в Envelope)
 ```
 

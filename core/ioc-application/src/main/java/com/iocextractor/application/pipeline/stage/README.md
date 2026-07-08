@@ -17,7 +17,7 @@ composition.
 | `RefangStage.java` | `Refanger` → `RefangedText` |
 | `ExtractIndicatorsStage.java` | `IndicatorExtractor` → `ExtractedIndicators` |
 | `AttributeSourceStage.java` | `SourceAttributor` → `AttributedIndicators` |
-| `DeduplicateIndicatorsStage.java` | within-batch + lookup dedup |
+| `DeduplicateIndicatorsStage.java` | within-batch dedup by `Indicator.dedupKey()` |
 | `WriteArtifactsStage.java` | sink fan-out / dry-run summary |
 
 ## Зависимости

@@ -22,11 +22,11 @@ DDD-вектор: каждый сервис — самостоятельная �
 | **IndicatorFeatureExtractor** | признаки индикатора (`IndicatorFeatures`) | `IndicatorFeatureExtractor` | Indicator → IndicatorFeatures | `HostClassifier` | domain | `ioc-domain` |
 | **HostClassifier** | вид хоста по PSL (registrable/subdomain) | `HostClassifier` | host → kind | Guava PSL | adapter | `adapter-psl` |
 | **MatchClassifier** | коды масок (4-вар., rule-based) | `MatchPolicy` | IndicatorFeatures → MaskMatch | classify-rules | domain | `ioc-domain` |
-| **Dedup** | within-run дедуп (`contains`) + keep-first в сторадже | `LookupRepository`; `ON CONFLICT(row_key) DO NOTHING` | Indicator[] → Indicator[] | LookupRepository, canonical store | application (stage) + adapter | `ioc-application`, `adapter-store-jdbc` |
+| **Dedup** | batch-local дедуп по `Indicator.dedupKey()` + keep-first/provenance в canonical storage | `DeduplicateIndicatorsStage`; `ON CONFLICT(row_key) DO NOTHING`; `<artifact>_sources` | Indicator[] → Indicator[] | canonical store | application (stage) + adapter | `ioc-application`, `adapter-store-jdbc` |
 | **ArtifactFiller** | заполнение колонок (provider/transform) | `RowMapper`, `ValueProvider`/`Transform` | Indicator → row | MatchPolicy, columns (config) | adapter | `adapter-sink-csv` |
 | **SourceReader** | чтение источника (формат-агностик) | `SourceReader` | path → text | Tika | adapter | `adapter-source-tika` |
 | **IocSink** | запись артефакта | `IocSink` | Indicator[] → canonical store / CSV | commons-csv или JDBC, ArtifactFiller | adapter | `adapter-sink-csv`, `adapter-store-jdbc` |
-| **LookupRepository** | artifact-aware лукап/дедуп-стор для masks + hashes | `LookupRepository` | Indicator → bool, maxId | CSV/JDBC | adapter | `adapter-lookup-csv`, `adapter-store-jdbc` |
+| **ArtifactIdBaseline** | schema-aware чтение `max(id)` для продолжения public id-space | `ArtifactIdBaseline` | artifact name → max id | canonical SQLite | adapter | `adapter-store-jdbc` |
 | **Diagnostics** | сбор/рендер диагностики, каталог | `DiagnosticSink`, `DiagnosticRenderer`, `MessageCatalog` | Diagnostic → msg/report | — | cross-cutting | `platform-diagnostics` |
 | **Observability** | operational log events (ECS), MDC-корреляция | `MdcScope`/`LogEvent` | events → ECS-лог | SLF4J/Logback, ECS encoder | cross-cutting | `platform-observability` |
 | **Diagnostics logging bridge** | запись диагностик в общий лог-поток | `LoggingDiagnosticSink` | Diagnostic → LogEvent | diagnostics + observability | cross-cutting | `platform-diagnostics-logging` |
@@ -92,7 +92,7 @@ remote delivery — [sync.md](dev/sync.md), event-координация —
         SourceAttributor ◀──────────────────────── ┘
             │ Indicator[]
             ▼
-       Deduplicator ──(LookupRepository)──▶ Indicator[]
+       Deduplicator(batch-local) ─────────▶ Indicator[]
             │
             ▼
    IocSink ◀─ ArtifactFiller(MatchClassifier+HostClassifier(PSL), provider/transform) ─▶ [artifact]

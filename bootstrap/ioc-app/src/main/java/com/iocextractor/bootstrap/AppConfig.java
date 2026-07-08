@@ -1061,8 +1061,7 @@ public class AppConfig {
     }
 
     /**
-     * Output charset for all CSV artifacts (writers) and for reading existing
-     * artifacts in lookup/storage, so read and write always agree. Blank or
+     * Output charset for generated CSV projections and export slices. Blank or
      * absent {@code ioc.sink.csv.charset} means UTF-8.
      */
     private Charset csvCharset(IocProperties props) {

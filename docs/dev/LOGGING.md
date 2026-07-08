@@ -59,7 +59,7 @@ dead-letter sidecar или JSONL.
 | Ingest adapter | detect/claim/stabilize/move/retry/dead-letter | SLF4J + MDC |
 | Application pipeline | stage started/completed, counters, duration | SLF4J / LogEvent helper |
 | Domain services | редкие DEBUG/TRACE решения без инфраструктурных деталей | SLF4J или diagnostic result |
-| Out adapters | IO: read/write CSV, JDBC storage, lookup loaded, projection written | SLF4J |
+| Out adapters | IO: CSV projection/export, JDBC storage, projection written | SLF4J |
 | Diagnostics bridge | diagnostic result rendered as log event | `LoggingDiagnosticSink` |
 | Export observer (bootstrap) | formation checkpoints/recovery, profile/slice/revision | `ExportObserver` → SLF4J + MDC |
 | Export schedulers (bootstrap) | cadence failures, slice-retention sweep/blocks | `LogEvent` helper; ошибка tick не останавливает daemon |

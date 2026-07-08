@@ -20,7 +20,7 @@
 | ING-1 | **Retention reaper** — единый декларативный reaper (`ioc.maintenance.retention`) чистит `done` + `failed` по возрасту/количеству (delete/archive); пул-политика `RetentionPolicy`, порт `RetentionStore`, `DaemonMaintenanceScheduler`. Partition-specific retention удалён вместе с partition-staging. | закрыт | M | dev/0001 #6, storage collapse |
 | ING-2 | **Tail-режим для источников** (растущие append-фиды: offset/rotation/checkpoint). **Descoped:** вне домена document-ingest — источники дискретны (Word/HTML, скрейпинг даёт целые документы). При появлении стриминг-источника — новый режим/`SourceReader` тогда. | descoped | L | dev/0001 #1, dev/0006 |
 | ING-3 | **Health-транспорт демона** — actuator/health по HTTP, web включается только в daemon (`DaemonWebEnvironmentPostProcessor` по `ioc.runtime.mode`), loopback-bind, expose `health,info`. Первый камень под web driving-adapter (ING-8). | закрыт | M | dev/0001 |
-| ING-4 | **Durability ledger + сторадж** — реализован служебный JDBC storage (`ioc.ingestion.ledger.type: file \| jdbc`, service SQLite datasource, `user_version`-миграции, JDBC `IngestionLedger`, legacy-import, DB health) **и business dataframe truth**: `ioc.storage.dataframe.type: jdbc` (default), per-artifact identity (`identity_hash`/`epoch`), JDBC canonical/lookup repositories с `<artifact>_sources`, CSV (`*_generated.csv`) как проекция из БД для oneshot и daemon. Partition-staging удалён; daemon пишет сразу в canonical store. | закрыт | M | dev/0001, review, worknote/storage-layer |
+| ING-4 | **Durability ledger + сторадж** — реализован служебный JDBC storage (`ioc.ingestion.ledger.type: file \| jdbc`, service SQLite datasource, `user_version`-миграции, JDBC `IngestionLedger`, legacy ledger import, DB health) **и business dataframe truth**: `ioc.storage.dataframe.type: jdbc` (default), per-artifact identity (`identity_hash`/`epoch`), JDBC canonical repositories с `<artifact>_sources`, schema-aware id baseline, CSV (`*_generated.csv`) как проекция из БД для oneshot и daemon. Partition-staging удалён; daemon пишет сразу в canonical store. | закрыт | M | dev/0001, review, worknote/storage-layer |
 | ING-4a | **Durable run-ledger + saga (crash-window).** Service schema содержит `ingest_run`; daemon пишет checkpoints `STARTED → DB_COMMITTED → PROJECTION_COMPLETED → COMPLETED` для per-file write→project. Если процесс падает после commit БД, startup recovery повторяет CSV-проекцию из БД и закрывает run. Сбой до DB commit помечается `FAILED`, потому что автоматический replay без повторного расчёта unsafe. | закрыт | M | review, worknote/storage-layer §«Статус Шага 3» |
 | ING-5 | **Триггер прежнего merge-pass** — удалён вместе с partition-staging; daemon больше не ждёт отдельный scheduled pass после ingest. | закрыт | M | dev/0001, storage collapse |
 | ING-6 | **Partition-wrapper boundary** — исторический guardrail снят после удаления промежуточного staging; source-key теперь доходит в JDBC sink как adapter/application concern. | закрыт | S | dev/0001, storage collapse |
@@ -49,7 +49,7 @@
 | OBS-D1 | **Продьюсеры диагностик.** Первый реальный код добавлен (`SOURCE.MARKERS_UNMATCHED`); остальные стадии/адаптеры всё ещё бросают `IocExtractorException` — мигрировать на `Diagnostic` и реально задействовать collect-and-continue. | частично | M | dev/0008 |
 | OBS-D3 | **ECS-типы строками** — `event.duration` / `ioc.rows` идут через MDC (только `String`); ECS типизирует `event.duration` как `long` → риск mapping-конфликта в Elasticsearch. | открыт | M | dev/0008 |
 | OBS-1 | **Таблица `Severity → log.level`** — финализировать теперь, когда появились первые коды каталога. | открыт | S | dev/0007 |
-| OBS-2 | **`SINK.CHARSET_UNMAPPABLE` — полноценная диагностика непредставимых символов на выходе.** Сейчас — только WARN-лог на артефакт (`CsvIocSink`/`CsvArtifactRepositories` через `CountingCharsetWriter`); коды диагностики нет, т.к. запись в адаптере не держит `DiagnosticSink`. Протащить через `WriteArtifactsStage` для collect-and-continue + точный счёт по значению. | частично | M | review |
+| OBS-2 | **`SINK.CHARSET_UNMAPPABLE` — полноценная диагностика непредставимых символов на выходе.** Сейчас — только WARN-лог на артефакт (`CsvArtifactProjection`/slice writers через `CountingCharsetWriter`); коды диагностики нет, т.к. запись в адаптере не держит `DiagnosticSink`. Протащить через `WriteArtifactsStage`/projection boundary для collect-and-continue + точный счёт по значению. | частично | M | review |
 | OBS-3 | **Свести seed-actions док с `EventAction` + вычистить стэйл.** `logging-taxonomy.md` «Seed actions» разошлась с `EventAction.java`: док перечисляет `storage_write`/`artifact_project` (в enum нет), enum несёт `retention_sweep/schema_migrate/schema_validate/db_open/ledger_import/db_health/maintenance/backfill` (в доке нет); плюс стэйл `aggregation_start/complete` — вырезанный β-коллапсом сабсистем, продакшен-продюсеров нет (живут лишь в enum + `LoggingTaxonomyTest`). Свести таблицу с кодом (или перевести в generated-док из констант) + удалить `aggregation_*` из enum и `LoggingTaxonomyTest`. | открыт | S | обсуждение 0011 (logging) |
 
 ## 5. Надёжность конфига (`CFG`)
@@ -57,7 +57,7 @@
 | ID | Долг | Статус | Эфф. | Источник |
 |---|---|---|---|---|
 | CFG-1 | **Тихий `catch (NumberFormatException ignored)`** на `id.start` ([AppConfig.java:512](../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java#L512)) — опечатка молча уходит в `auto`. | открыт | S | review |
-| CFG-2 | **Нет кросс-проверки имён артефактов** `lookup.artifacts` / `artifact-identity.artifacts` ↔ `sink.artifacts` — опечатка → молчаливый неверный baseline / no-op identity config. | открыт | S | review |
+| CFG-2 | **Нет кросс-проверки имён артефактов** `artifact-identity.artifacts` ↔ `sink.artifacts` — опечатка → no-op identity config. | открыт | S | review |
 | CFG-3 | **«stage 11» протекло в рантайм-ошибку** ([AppConfig.java:421](../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java#L421)) — внутренний номер этапа в сообщении пользователю. | открыт | S | review |
 | CFG-4 | **Strict configuration binding после миграций.** Сейчас удалённый SMB `read-timeout` оставлен в `IocProperties.Sync.Endpoint.Smb` как tombstone: alias больше не работает, но старый внешний YAML валится fail-fast вместо молчаливого fallback на default `request-timeout`. Следующий шаг — спроектировать строгий binding для `ioc.*` (`ignoreUnknownFields=false` или отдельный preflight неизвестных ключей), затем полностью удалить tombstone-поле `readTimeout`. Нельзя включать глобальную строгость вслепую: проверить overlay `./configs/application.yml`, env/CLI overrides и тестовые YAML, чтобы не сломать допустимые внешние ключи. | открыт | S | sync-hardening follow-up |
 
@@ -65,8 +65,8 @@
 
 | ID | Долг | Статус | Эфф. | Источник |
 |---|---|---|---|---|
-| CODE-1 | **Телескопические конструкторы** — `IocExtractionService` (6 шт.), `CsvIocSink`, `CsvArtifactDefinition`; свернуть в builder/factory. | открыт | M | review |
-| CODE-2 | **Дублирование «bare IP»** — доменный `NetworkAddressClassifier` (запись) vs строковый `isBareIp` в `CsvArtifactLookupRepository` (дедуп); эквивалентны, но две формулы. | открыт | S | review |
+| CODE-1 | **Телескопические конструкторы** — `IocExtractionService` (6 шт.), `CsvArtifactDefinition`; свернуть в builder/factory. | открыт | M | review |
+| CODE-2 | **Дублирование «bare IP» в legacy CSV lookup** — закрыто удалением `adapter-lookup-csv`; runtime использует доменный `NetworkAddressClassifier`/provider predicates и canonical row-key дедуп. | закрыт | S | review |
 | CODE-3 | **Повторная feature-extraction** — `featureExtractor.extract()` зовётся многократно на один индикатор (провайдеры + фильтр + matchPolicy); мемоизация в пределах батча. | открыт | M | review |
 | CODE-4 | **Хрупкий `DiagnosticCatalogTest`** — хардкодит число кодов в каталоге (правился 17→18). | открыт | S | review |
 
@@ -119,13 +119,12 @@
     `done`/`failed`.
   - **Actuator** — `show-details: always` явно связан с loopback-биндом + пометка REVISIT для ING-8
     (вынос web за loopback ⇒ auth / `when-authorized`, иначе утечка внутренних путей).
-- **Hash-aware lookup** — `CsvArtifactLookupRepository` грузит и дедуплицирует хэши + per-artifact `maxId`.
 - **D2** (зависимость `platform-observability` на `application.pipeline`) — снят выносом generic ETL-контрактов в `platform-etl` (этап 9).
 - **ING-3** — health-транспорт демона: actuator/health по HTTP, web-сервер поднимается только в daemon-режиме (`DaemonWebEnvironmentPostProcessor` флипает `spring.main.web-application-type` по `ioc.runtime.mode`; oneshot/CLI остаётся non-web), bind на loopback, expose `health,info`, без `shutdown`. Заодно seed под ING-8.
 - **ING-5/ING-6** — partition trigger и wrapper удалены при storage collapse.
 - **ING-1** — retention reaper реализован: один `RetentionPolicy` + порт `RetentionStore` (`FileSystemRetentionStore`, реап листовых файлов рекурсивно) + `DaemonMaintenanceScheduler`; конфиг `ioc.maintenance.retention` (targets: done/failed, max-age/max-count, delete|archive).
 - **ING-4a** — durable `ingest_run` реализован: post-DB-commit crash-window восстанавливается startup recovery через адресную CSV-проекцию незавершённых артефактов.
-- **Кодировки I/O** — задекларированный `ioc.source.charset` теперь реально соблюдается (форс text/HTML через Tika `EncodingDetector`; docx/pdf — по дизайну нет), добавлен `ioc.sink.csv.charset` для всех писателей **и** чтения артефактов в lookup/storage (read=write), непредставимые символы заменяются (не падаем), fail-fast на неизвестном имени кодировки.
+- **Кодировки I/O** — задекларированный `ioc.source.charset` теперь реально соблюдается (форс text/HTML через Tika `EncodingDetector`; docx/pdf — по дизайну нет), добавлен `ioc.sink.csv.charset` для CSV-проекций и export writers, непредставимые символы заменяются (не падаем), fail-fast на неизвестном имени кодировки.
 - **Атрибуция:** пустой `source` вместо `UNKNOWN` + первый реальный продьюсер диагностик (`SOURCE.MARKERS_UNMATCHED`), частично закрывает OBS-D1.
 
 > Связанные документы: [ADR/](ADR/) (история решений и исходные

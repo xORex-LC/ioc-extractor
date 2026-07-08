@@ -81,23 +81,13 @@ ConfigurableRowMapper ──uses──▶ Map<key, ValueProvider>
 `exclude` отбрасывает индикатор, если сработал хотя бы один предикат. Пустые
 списки означают «без дополнительного фильтра».
 
-## Id и lookup baseline
+## Id и baseline
 
-Артефакты имеют независимые id-space. Для `id.start: auto` baseline берётся не
-из общего max id, а из lookup path конкретного артефакта:
-
-```yaml
-ioc:
-  lookup:
-    artifacts:
-      - { name: masks,   path: "./dataframe/masks_list.csv" }
-      - { name: ip_list, path: "./dataframe/ip_list.csv" }
-      - { name: hashes,  path: "./dataframe/hashes_list.csv" }
-```
-
-Если artifact-specific path не задан, используется старый fallback
-`lookup.path`/`LookupRepository.maxId()`. Артефакты без `id` в колонках
-(`address_blacklist`) могут не иметь lookup baseline.
+Артефакты имеют независимые id-space. Для `id.start: auto` baseline берётся из
+canonical SQLite через узкий application-port `ArtifactIdBaseline`: adapter читает
+`max(id)` конкретного артефакта только если в его public schema есть колонка
+`id`. Артефакты без `id` в колонках (`address_blacklist`) не делают baseline SQL
+и стартуют с `0` как техническим no-op значением для mapper-а.
 
 ## Декларативная классификация масок (match.url / match.host)
 
@@ -212,12 +202,10 @@ artifacts:
 
 ## Кодировка вывода (граница выхода)
 
-`ioc.sink.csv.charset` (дефолт `UTF-8`) — кодировка **всех** CSV-артефактов и
-**чтения существующих** артефактов в lookup/storage, чтобы запись и чтение
-всегда совпадали (один «диалект dataframe» — без рассинхрона read/write):
+`ioc.sink.csv.charset` (дефолт `UTF-8`) — кодировка **всех** generated CSV
+projection и immutable export slice файлов:
 
-- применяется во всех писателях (`CsvIocSink`, `CsvArtifactProjection`) и
-  читателях (lookup/storage-репозитории);
+- применяется в `CsvArtifactProjection` и export slice writers;
 - **непредставимый символ** в целевой кодировке (напр. emoji в cp1251)
   **заменяется**, а не роняет батч (`CodingErrorAction.REPLACE`); для UTF-8 это
   no-op;

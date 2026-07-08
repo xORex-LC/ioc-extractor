@@ -35,10 +35,9 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 ├── adapters/
 │   ├── adapter-regex-re2j         (PatternEngine → RE2J/JDK fallback)
 │   ├── adapter-source-tika        (SourceReader → Tika)
-│   ├── adapter-sink-csv           (IocSink + ArtifactFiller + CSV projection → commons-csv)
+│   ├── adapter-sink-csv           (ArtifactFiller + CSV projection/export slices → commons-csv)
 │   ├── adapter-manifest-json-jackson (SliceManifestCodec → Jackson)
 │   ├── adapter-store-jdbc         (service/dataframe storage → Spring JDBC + sqlite-jdbc)
-│   ├── adapter-lookup-csv         (LookupRepository → CSV)
 │   ├── adapter-psl                (HostClassifier → Guava PSL)
 │   ├── adapter-ingest             (daemon file ingest → Spring Integration)
 │   └── adapter-cli-picocli        (входной адаптер CLI)
@@ -96,11 +95,10 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `ioc-application` | Pipeline/ingest use cases; framework-free Artifact Emission и Remote Sync models, retry/cadence, formation/delivery sagas, ports и policies |
 | `adapter-regex-re2j` | PatternEngine implementation (RE2J + JDK fallback) |
 | `adapter-source-tika` | SourceReader (Tika) |
-| `adapter-sink-csv` | IocSink + mapping, canonical CSV projection, callback-streaming immutable slices, integrity verification, atomic local publish и directory-level slice retention |
+| `adapter-sink-csv` | Artifact mapping, canonical CSV projection, callback-streaming immutable slices, integrity verification, atomic local publish и directory-level slice retention |
 | `adapter-manifest-json-jackson` | Deterministic versioned JSON codec for immutable slice manifests |
-| `adapter-store-jdbc` | Service/dataframe SQLite: canonical/revision storage, strict snapshot reader, ingest/export/fetch/publish ledgers + progress, migrations, lookup и health |
+| `adapter-store-jdbc` | Service/dataframe SQLite: canonical/revision storage, schema-aware id baseline, strict snapshot reader, ingest/export/fetch/publish ledgers + progress, migrations и health |
 | `adapter-transport-smb` | smbj boundary: lazy SMB2/3 sessions, streaming get и atomic slice publish за `FileTransport` |
-| `adapter-lookup-csv` | artifact-aware `LookupRepository` for masks + hashes |
 | `adapter-psl` | HostClassifier (PSL/Guava) |
 | `adapter-ingest` | Watch ingest: `IngestSourceUseCase`(in), `SourceLifecycle`, file `IngestionLedger`; SourceFeed adapter-local (Spring Integration); `FileSystemRetentionStore` (reaper IO) |
 | `adapter-cli-picocli` | входной CLI: `extract`, lazy `export`, `sync fetch|publish|all`, remote daemon `health` |

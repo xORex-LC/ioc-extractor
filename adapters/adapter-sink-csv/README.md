@@ -2,8 +2,8 @@
 
 ## Назначение
 
-Outbound CSV adapter implementing `IocSink`, canonical CSV projection and
-streaming immutable artifact slices.
+Outbound CSV adapter providing artifact row mapping, canonical CSV projection
+and streaming immutable artifact slices.
 
 **Правило слоя:** owns CSV writing, artifact row mapping and local atomic slice
 publication; domain/application do not depend on Commons CSV or filesystem
@@ -14,7 +14,7 @@ mechanics. Export saga/ledger orchestration remains in application/storage ports
 | Подпапка / файл | Назначение |
 |---|---|
 | `pom.xml` | Maven module descriptor |
-| `src/main/java/com/iocextractor/adapter/out/sink/csv/` | CSV sink and mapping components |
+| `src/main/java/com/iocextractor/adapter/out/sink/csv/` | CSV projection, export slice writers and mapping components |
 
 ## Зависимости
 

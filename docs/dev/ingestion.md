@@ -9,7 +9,7 @@
 > `platform/platform-etl`, IOC use cases и stages — в `core/ioc-application`,
 > технические входы — отдельные `adapter-*` модули. Реализованы whole-file
 > daemon ingestion, **прямая запись в canonical SQLite-хранилище**, CSV-проекция,
-> artifact-aware lookup, retention/reaper, immutable artifact export и health-контур.
+> batch-local dedup, retention/reaper, immutable artifact export и health-контур.
 > Служебный durable ledger переключается file ↔ JDBC
 > (`ioc.ingestion.ledger.type: file | jdbc`). **Бизнес-данные dataframe хранятся
 > в SQLite как source of truth** (`ioc.storage.dataframe.type: jdbc`, default), а
@@ -94,7 +94,7 @@ wiring.
               JdbcIocSink (per-source) → canonical SQLite ──▶ ArtifactProjection → *_generated.csv
    driving:  IngestSourceUseCase, ExtractIocsUseCase
    driven:   IngestionLedger | SourceLifecycle | SourceSinkFactory | CanonicalArtifactRepository
-             | ArtifactProjection | RunLedger | LookupRepository
+             | ArtifactProjection | RunLedger
 ```
 
 **Новые порты**
@@ -332,7 +332,7 @@ canonical write. Обратный поток берёт только completed e
 - Обработка **stateless и идемпотентна** (ключ — content-hash); переобработка
   безопасна.
 - Порты потокобезопасны/по-задачно: `IngestionLedger` — атомарная фиксация,
-  `LookupRepository` — неизменяемый снапшот, reader/refanger/extractor — без
+  canonical writes идемпотентны по `row_key`, reader/refanger/extractor — без
   разделяемого состояния.
 - Canonical writes сериализуются SQLite write connection (`write-max=1`), а
   `UNIQUE(row_key)` + `ON CONFLICT DO NOTHING` сохраняют keep-first при replay.
@@ -462,7 +462,8 @@ ioc:
 - прямая запись daemon-ингеста в canonical + CSV-проекция, сага write→project
   под `ingest_run` (см. §8);
 - единый авторитет id (`IdGenerator(maxId+1)`); stable-id sidecar упразднён;
-- artifact-aware `LookupRepository` (JDBC) для masks, `ip_list` и hashes;
+- schema-aware `ArtifactIdBaseline` (JDBC) для продолжения id-space артефактов с
+  public `id`-колонкой;
 - health contributors + HTTP `/actuator/health` (daemon-only, см. [dev/0010](../ADR/0010-health-actuator.md));
 - **retention reaper** (`RetentionService`/`RetentionStore`/`DaemonMaintenanceScheduler`):
   возраст/количество → delete/archive для `done`/`failed` (§8.1).
@@ -481,7 +482,7 @@ ioc:
 
 ## 15. Связи
 
-- Daemon- и oneshot-id назначает единый `IdGenerator(start=lookup.maxId()+1)`;
+- Daemon- и oneshot-id назначает единый `IdGenerator(start=ArtifactIdBaseline.maxId()+1)`;
   отдельного stable-id sidecar больше нет (β-коллапс).
 - Использует diagnostics/observability как разные подсистемы
   ([cross-cutting.md](CROSS-CUTTING.md), [logging.md](LOGGING.md)).

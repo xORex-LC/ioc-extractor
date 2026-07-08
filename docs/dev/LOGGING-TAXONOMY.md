@@ -73,7 +73,7 @@
 
 | Поле | Когда |
 |---|---|
-| `file.path` | путь lookup/output файла, если событие связано с файловым IO |
+| `file.path` | путь input/output файла, если событие связано с файловым IO |
 
 **Корреляция** run/source — каноничные project fields `ioc.run.id` /
 `ioc.source.id`. ECS `trace.id` / `transaction.id` используем только при наличии

@@ -43,7 +43,7 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Platform | `events` | Framework-free control-event marker, metadata envelope, publish port and observers; no broker/delivery mechanics |
 | Platform | `concurrent` | In-memory keyed single-flight executor, observer hooks and health snapshots |
 | Application | `application/port/in` | `ExtractIocsUseCase`, `ExtractionCommand`, `ExtractionResult` (driving) |
-| Application | `application/port/out` | `SourceReader`, `IocSink`, `LookupRepository`, ingestion/artifact-storage ports, `RetentionStore` (driven) |
+| Application | `application/port/out` | `SourceReader`, `IocSink`, artifact/id-baseline ports, ingestion/export/sync ports, `RetentionStore` (driven) |
 | Application | `application/pipeline/payload` | IOC-specific payload records between stages |
 | Application | `application/pipeline/stage` | IOC ETL stage implementations |
 | Application | `application/service` | `IocExtractionService` — use-case orchestrator |
@@ -54,8 +54,8 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Adapter (in) | `adapter/in/cli` | `IocRootCommand`, `ExtractCommand`, `CliRunner` (picocli) |
 | Adapter (out) | `adapter/out/regex` | `Re2jPatternEngine` (default), `JdkRegexPatternEngine` |
 | Adapter (out) | `adapter/out/source` | `TikaSourceReader` |
-| Adapter (out) | `adapter/out/sink/csv` | `CsvIocSink`, `RowMapper` + мапперы, `IdGenerator` |
-| Adapter (out) | `adapter/out/lookup` | `CsvMaskLookupRepository`, `CsvArtifactLookupRepository` |
+| Adapter (out) | `adapter/out/sink/csv` | `RowMapper` + мапперы, `IdGenerator`, `CsvArtifactProjection`, export slice writers |
+| Adapter (out) | `adapter/out/store/jdbc` | `JdbcIocSink`, `JdbcCanonicalArtifactRepository`, `JdbcArtifactIdBaseline`, ledgers, migrations, health |
 | Adapter (in) | `adapter/in/ingest` | Spring Integration file-poll daemon, filesystem lifecycle, file ledger |
 | Adapter (out) | `adapter/out/maintenance` | `FileSystemRetentionStore` (reaper IO; в модуле `adapter-ingest`) |
 | Adapter (out) | `adapter/out/transport/smb` | SMB2/3 `FileTransport` на smbj; session/reconnect/atomic publish внутри адаптера |
@@ -72,7 +72,7 @@ read (SourceReader)
   → refang (Refanger)
   → extract (IndicatorExtractor / PatternEngine)
   → attribute source (SourceAttributor)
-  → de-duplicate (LookupRepository)
+  → de-duplicate (within-batch)
   → write (IocSink на каждый артефакт, маршрутизация по IndicatorType + artifact filters)
 ```
 
@@ -91,7 +91,8 @@ read (SourceReader)
 | `ExtractIocsUseCase` | driving (in) | Единая точка входа прикладного ядра |
 | `SourceReader` | driven (out) | Извлечение текста из документа любого формата |
 | `IocSink` | driven (out) | Один выходной артефакт; фильтрует принимаемые типы |
-| `LookupRepository` | driven (out) | Проверки существования (дедуп) против «хранилища» |
+| `ArtifactIdBaseline` | driven (out) | Чтение текущего public `max(id)` из canonical storage для продолжения id-последовательностей |
+| `CanonicalArtifactRepository` / `ArtifactProjection` | driven (out) | Canonical write/read с provenance и генерация CSV-проекций |
 | `PatternEngine` | domain SPI | Движок regex (RE2/J по умолчанию, JDK — замена) |
 | `IngestSourceUseCase` | driving (in) | Обработка одного daemon source unit |
 | `RunRetentionUseCase` / `RetentionStore` | driving (in) / driven (out) | Reaper растущих каталогов по возрасту/количеству (delete/archive) |
@@ -140,16 +141,16 @@ publish начинается только после локального export
 
 | Артефакт | Содержимое | Id-space |
 |---|---|---|
-| `masks` | сетевые IOC кроме голых IP: домены, URL, IP с port/path | свой, baseline из `lookup.artifacts[masks]` |
-| `ip_list` | только голые IPv4 | свой, baseline из `lookup.artifacts[ip_list]` |
+| `masks` | сетевые IOC кроме голых IP: домены, URL, IP с port/path | свой, baseline из canonical SQLite `max(id)` |
+| `ip_list` | только голые IPv4 | свой, baseline из canonical SQLite `max(id)` |
 | `address_blacklist` | простой список `forbidden_url` / `forbidden_ip`; без id | нет id |
-| `hashes` | MD5/SHA1/SHA256 по разным колонкам | свой, baseline из `lookup.artifacts[hashes]` |
+| `hashes` | MD5/SHA1/SHA256 по разным колонкам | свой, baseline из canonical SQLite `max(id)` |
 
 **Словарь колонок (masks):**
 
 | Колонка | Назначение |
 |---|---|
-| `id` | идентификатор записи (ascending, продолжается от max в lookup) |
+| `id` | идентификатор записи (ascending, продолжается от max в canonical storage) |
 | `mask` | маска: адрес (URL) или имя домена (FQDN) |
 | `url_match` | вариант совпадения адреса (URL) с маской |
 | `host_match` | вариант совпадения имени домена с маской |
@@ -165,9 +166,9 @@ publish начинается только после локального export
 
 **Кодировки I/O.** Вход декодируется по `ioc.source.charset` (`auto` = детект Tika/ICU;
 явное имя форсит text/HTML, docx/pdf — по дизайну нет); внутри — Unicode `String`.
-Выход всех CSV и чтение существующих артефактов в lookup/storage — в
-`ioc.sink.csv.charset` (read=write); непредставимые символы заменяются с WARN-сигналом,
-неизвестное имя кодировки — fail-fast. Детали — [extraction.md](dev/extraction.md) и
+Выход всех CSV-проекций и export-срезов — в `ioc.sink.csv.charset`;
+непредставимые символы заменяются с WARN-сигналом, неизвестное имя кодировки —
+fail-fast. Детали — [extraction.md](dev/extraction.md) и
 [output-mapping.md](dev/output-mapping.md).
 
 ## Immutable artifact export

@@ -3,8 +3,8 @@
 ## Назначение
 
 JDBC storage adapter internals: datasource creation, SQLite runtime policy,
-schema migration mechanics, dataframe schema reconciliation, repository
-implementations for storage ports and legacy artifact import.
+schema migration mechanics, dataframe schema reconciliation and repository
+implementations for storage ports.
 
 **Правило слоя:** this package may use JDBC, Hikari, SQL and database-specific
 mechanics. It must expose only application-port implementations and storage VO
@@ -22,8 +22,6 @@ types to bootstrap; domain/application do not import this package.
 | `JdbcSnapshotSliceReader` | Strict multi-artifact read snapshot и callback-streaming public rows |
 | `*Schema*` | SQLite `user_version` runner, migration support and dataframe reconciler |
 | `Dataframe*` | Table-per-artifact desired schema, additive plan and reconciliation |
-| `JdbcLegacyArtifactImporter` | One-shot import of legacy rows (read via a source `CanonicalArtifactRepository`) into dataframe tables; preserves explicit ids and lifts sequence to imported max |
-
 `JdbcCanonicalArtifactRepository` reports actual public-row inserts and advances
 `artifact_revision` once per mutating write in the same transaction. Provenance-only
 updates do not advance the revision. `JdbcArtifactRevisionReader` exposes this marker

@@ -4,9 +4,9 @@
 
 Outbound storage adapter for relational stores. It owns JDBC access, SQL dialect
 mechanics, SQLite runtime policy, local transactions, schema migration mechanics,
-dataframe schema reconciliation, artifact repositories, run-ledger checkpoints
-and legacy artifact import. As an edge module it also emits storage diagnostics
-and operational ECS log events for startup/storage actions.
+dataframe schema reconciliation, artifact repositories and run-ledger
+checkpoints. As an edge module it also emits storage diagnostics and operational
+ECS log events for startup/storage actions.
 
 **Правило слоя:** implements storage ports with Spring JDBC/JdbcClient and JDBC
 drivers. Domain and application never import JDBC, SQL, Hikari, SQLite driver or
@@ -47,10 +47,6 @@ runtime JDBC drivers.
   per mutating write in the same transaction. `JdbcArtifactRevisionReader`
   provides change detection without scanning business rows. `JdbcArtifactIdBaseline`
   serves schema-aware `maxId` reads for application-side id generation.
-- `JdbcLegacyArtifactImporter` is a one-shot migration helper that reads existing
-  rows through a source `CanonicalArtifactRepository` (the CSV adapter owns CSV
-  parsing) and writes them via `JdbcCanonicalArtifactRepository`, then raises
-  SQLite sequences to the imported maximum id.
 - `JdbcRunLedger` stores durable per-file ingest checkpoints in `ingest_run`.
   Startup recovery treats `DB_COMMITTED` as recoverable by replaying the derived
   CSV projection from dataframe truth; failures before that checkpoint are marked

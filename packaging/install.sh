@@ -13,7 +13,7 @@
 #   <prefix>/current              atomic symlink to the active release
 #   <prefix>/etc/                 application.yml + ioc-extractor.env (operator-editable)
 #   <prefix>/var/                 db/ export/ inbox/ processing/ done/ failed/ ledger/ logs/
-#   <prefix>/dataframe/           generated CSV projections + lookup seeds
+#   <prefix>/dataframe/           generated CSV projections
 #
 # Idempotent: re-running upgrades the jar and unit; existing config is preserved
 # (a *.new is written instead) unless --force is given.
@@ -21,7 +21,7 @@
 # Usage:
 #   sudo ./install.sh [--prefix DIR] [--jar PATH] [--release-id ID] [--user NAME]
 #                     [--jdk-tarball PATH | --jdk-url URL | --system-java]
-#                     [--lookup-seed PATH] [--no-start] [--force] [--help]
+#                     [--no-start] [--force] [--help]
 #
 set -Eeuo pipefail
 
@@ -34,7 +34,6 @@ RUN_USER="ioc"
 JAR=""
 JDK_TARBALL=""
 JDK_URL=""
-LOOKUP_SEED=""
 USE_SYSTEM_JAVA="false"
 NO_START="false"
 FORCE="false"
@@ -52,7 +51,7 @@ die()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; exit 1; }
 trap 'die "failed at line $LINENO"' ERR
 trap '[[ -z "${CLEANUP_TARBALL:-}" ]] || rm -f -- "${CLEANUP_TARBALL}"' EXIT
 
-usage() { sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0; }
+usage() { sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0; }
 
 # ---- argument parsing ------------------------------------------------------
 while [[ $# -gt 0 ]]; do
@@ -64,7 +63,6 @@ while [[ $# -gt 0 ]]; do
     --jdk-tarball)  JDK_TARBALL="${2:?}"; shift 2 ;;
     --jdk-url)      JDK_URL="${2:?}"; shift 2 ;;
     --system-java)  USE_SYSTEM_JAVA="true"; shift ;;
-    --lookup-seed)  LOOKUP_SEED="${2:?}"; shift 2 ;;
     --no-start)     NO_START="true"; shift ;;
     --force)        FORCE="true"; shift ;;
     -h|--help)      usage ;;
@@ -260,35 +258,9 @@ sed -e "s|@PREFIX@|${PREFIX}|g" \
     "${SCRIPT_DIR}/templates/ioc" > "${PREFIX}/bin/ioc"
 chmod 0750 "${PREFIX}/bin/ioc"
 
-# ---- 5. seed reference lookups (optional, existing files are preserved) ----
-seed_lookup() { # name [explicit-source]
-  local name="$1" explicit="${2:-}" source=""
-  [[ -e "${PREFIX}/dataframe/${name}" ]] && return 0
-  if [[ -n "${explicit}" ]]; then
-    source="${explicit}"
-  elif [[ -f "${SCRIPT_DIR}/seed/${name}" ]]; then
-    source="${SCRIPT_DIR}/seed/${name}"
-  elif [[ -f "${SCRIPT_DIR}/../dataframe/${name}" ]]; then
-    source="${SCRIPT_DIR}/../dataframe/${name}"
-  fi
-  if [[ -n "${source}" && -f "${source}" ]]; then
-    install -m 0640 "${source}" "${PREFIX}/dataframe/${name}"
-    log "seeded lookup: ${name}"
-  else
-    warn "lookup seed not found: ${name}; the corresponding dedup lookup starts empty."
-  fi
-}
-
-[[ -z "${LOOKUP_SEED}" || -f "${LOOKUP_SEED}" ]] \
-  || die "lookup seed not found: ${LOOKUP_SEED}"
-seed_lookup "masks_list.csv" "${LOOKUP_SEED}"
-seed_lookup "ip_list.csv"
-seed_lookup "hashes_list.csv"
-seed_lookup "address_blacklist.csv"
-
-# ---- 6. ownership & permissions --------------------------------------------
+# ---- 5. ownership & permissions --------------------------------------------
 # Executables and configuration stay root-owned. Only durable runtime state and
-# CSV lookup/projection data are writable by the unprivileged daemon.
+# CSV projection data are writable by the unprivileged daemon.
 log "setting ownership (runtime user ${RUN_USER}:${RUN_GROUP})"
 chown root:"${RUN_GROUP}" "${PREFIX}"
 chown -R root:"${RUN_GROUP}" "${PREFIX}/releases" "${PREFIX}/backups" \
@@ -305,7 +277,7 @@ chmod 0640 "${PREFIX}/etc/application.yml" "${PREFIX}/etc/ioc-extractor.env"
 [[ ! -f "${PREFIX}/etc/application.yml.new" ]] || chmod 0640 "${PREFIX}/etc/application.yml.new"
 [[ ! -f "${PREFIX}/etc/ioc-extractor.env.new" ]] || chmod 0640 "${PREFIX}/etc/ioc-extractor.env.new"
 
-# ---- 7. systemd unit -------------------------------------------------------
+# ---- 6. systemd unit -------------------------------------------------------
 UNIT="/etc/systemd/system/${SERVICE}.service"
 log "rendering ${UNIT}"
 sed -e "s|@PREFIX@|${PREFIX}|g" \
