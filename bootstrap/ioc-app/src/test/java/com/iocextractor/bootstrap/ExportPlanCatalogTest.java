@@ -9,6 +9,7 @@ import com.iocextractor.diagnostics.codes.ExportDiagnosticCodes;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.context.properties.source.ConfigurationPropertySources;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.core.io.ClassPathResource;
@@ -63,6 +64,26 @@ class ExportPlanCatalogTest {
                 .isNotEqualTo(original.artifacts().getFirst().mappingHash());
         assertThat(revised.planHash()).isNotEqualTo(original.planHash());
     }
+
+    @Test
+    void mappingHashNormalizesAutoIdStart() throws Exception {
+        IocProperties properties = defaults();
+        var original = catalog(properties, new ArrayList<>()).plans().getFirst();
+        IocProperties.Sink.Artifact masks = properties.sink().artifacts().getFirst();
+        IocProperties.Sink.Artifact.Id id = masks.id();
+        IocProperties.Sink.Artifact normalized = new IocProperties.Sink.Artifact(
+                masks.name(), masks.enabled(), masks.path(), masks.accepts(), masks.include(),
+                masks.exclude(), new IocProperties.Sink.Artifact.Id(id.strategy(), IdStart.parse(" AUTO ")),
+                masks.columns());
+
+        var revised = catalog(withSinkArtifact(properties, normalized), new ArrayList<>())
+                .plans().getFirst();
+
+        assertThat(revised.artifacts().getFirst().mappingHash())
+                .isEqualTo(original.artifacts().getFirst().mappingHash());
+        assertThat(revised.planHash()).isEqualTo(original.planHash());
+    }
+
 
     @Test
     void rejectsUnknownOrDisabledArtifactBeforeInfrastructureIo() throws Exception {
@@ -154,7 +175,10 @@ class ExportPlanCatalogTest {
     private IocProperties defaults() throws Exception {
         var source = new YamlPropertySourceLoader()
                 .load("defaults", new ClassPathResource("application.yml")).getFirst();
-        return new Binder(ConfigurationPropertySources.from(source))
+        ApplicationConversionService conversionService = new ApplicationConversionService();
+        conversionService.addConverter(String.class, IdStart.class, IdStart::parse);
+        conversionService.addConverter(Number.class, IdStart.class, IdStart::from);
+        return new Binder(ConfigurationPropertySources.from(source), null, conversionService)
                 .bind("ioc", Bindable.of(IocProperties.class))
                 .orElseThrow(() -> new IllegalStateException("default ioc properties did not bind"));
     }

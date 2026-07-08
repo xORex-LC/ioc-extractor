@@ -1,6 +1,7 @@
 package com.iocextractor.bootstrap;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.ConfigurationPropertySources;
@@ -28,7 +29,10 @@ class IocPropertiesTest {
         var sources = new MutablePropertySources();
         sources.addFirst(new MapPropertySource("overrides", overrides));
         sources.addLast(defaults);
-        return new Binder(ConfigurationPropertySources.from(sources))
+        ApplicationConversionService conversionService = new ApplicationConversionService();
+        conversionService.addConverter(String.class, IdStart.class, IdStart::parse);
+        conversionService.addConverter(Number.class, IdStart.class, IdStart::from);
+        return new Binder(ConfigurationPropertySources.from(sources), null, conversionService)
                 .bind("ioc", Bindable.of(IocProperties.class))
                 .orElseThrow(() -> new IllegalStateException("default ioc properties did not bind"));
     }

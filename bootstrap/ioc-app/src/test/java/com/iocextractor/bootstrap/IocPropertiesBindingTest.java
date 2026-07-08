@@ -351,6 +351,37 @@ class IocPropertiesBindingTest {
     }
 
     @Test
+    void bindsIdStartAutoAndExplicitValues() {
+        contextRunner(artifactWithIdStart("AUTO"))
+                .run(context -> {
+                    IocProperties.Sink.Artifact.Id id = context.getBean(IocProperties.class)
+                            .sink().artifacts().getFirst().id();
+                    assertThat(id.start()).isInstanceOf(IdStart.Auto.class);
+                    assertThat(IdStart.parse(" auto ")).isInstanceOf(IdStart.Auto.class);
+                });
+
+        contextRunner(artifactWithIdStart("42"))
+                .run(context -> {
+                    IocProperties.Sink.Artifact.Id id = context.getBean(IocProperties.class)
+                            .sink().artifacts().getFirst().id();
+                    assertThat(id.start()).isInstanceOfSatisfying(IdStart.Explicit.class,
+                            explicit -> assertThat(explicit.value()).isEqualTo(42L));
+                });
+    }
+
+    @Test
+    void rejectsInvalidIdStartValuesDuringBinding() {
+        for (String invalid : List.of("10O0", "\\u0430uto", "", "9223372036854775808")) {
+            String value = "\\u0430uto".equals(invalid) ? "\u0430uto" : invalid;
+            contextRunner(artifactWithIdStart(value))
+                    .run(context -> assertThat(causeMessages(context.getStartupFailure()))
+                            .contains("ioc.sink.artifacts[].id.start")
+                            .contains("auto")
+                            .contains("signed 64-bit"));
+        }
+    }
+
+    @Test
     void reportsMultipleIdentityAndSinkMistakesTogether() {
         contextRunner(concat(
                 sinkArtifact(0, "masks", true, "mask", "mask"),
@@ -497,6 +528,16 @@ class IocPropertiesBindingTest {
             values.add("%s.key-columns[%d]=%s".formatted(prefix, i, keyColumns[i]));
         }
         return values.toArray(String[]::new);
+    }
+
+    private static String[] artifactWithIdStart(String start) {
+        return concat(
+                sinkArtifact(0, "custom_list", true, "id", "value"),
+                new String[] {
+                        "ioc.sink.artifacts[0].id.strategy=ascending",
+                        "ioc.sink.artifacts[0].id.start=" + start
+                },
+                identity(0, "custom_list", "value"));
     }
 
     private static String[] concat(String[]... groups) {

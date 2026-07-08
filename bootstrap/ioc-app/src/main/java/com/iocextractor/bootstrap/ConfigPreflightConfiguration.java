@@ -148,4 +148,26 @@ class ConfigPreflightConfiguration {
             }
         };
     }
+
+    @Bean
+    @ConfigurationPropertiesBinding
+    static Converter<String, IdStart> idStartConverter() {
+        return new Converter<String, IdStart>() {
+            @Override
+            public IdStart convert(String source) {
+                return IdStart.parse(source);
+            }
+        };
+    }
+
+    @Bean
+    @ConfigurationPropertiesBinding
+    static Converter<Number, IdStart> numericIdStartConverter() {
+        return new Converter<Number, IdStart>() {
+            @Override
+            public IdStart convert(Number source) {
+                return IdStart.from(source);
+            }
+        };
+    }
 }

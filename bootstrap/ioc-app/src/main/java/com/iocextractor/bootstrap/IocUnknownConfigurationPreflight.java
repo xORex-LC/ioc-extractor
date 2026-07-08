@@ -40,7 +40,8 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
             Integer.class,
             Long.class,
             Double.class,
-            Duration.class);
+            Duration.class,
+            IdStart.class);
 
     private final ConfigurableEnvironment environment;
 

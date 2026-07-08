@@ -217,7 +217,7 @@ public final class ExportPlanCatalog {
             addAll(digest, artifact.exclude());
             IocProperties.Sink.Artifact.Id id = artifact.id();
             add(digest, id == null || id.strategy() == null ? null : id.strategy().token());
-            add(digest, id == null ? null : id.start());
+            add(digest, id == null || id.start() == null ? null : id.start().normalized());
             for (IocProperties.Sink.Artifact.Column column : artifact.columns()) {
                 add(digest, column.name());
                 add(digest, column.from());

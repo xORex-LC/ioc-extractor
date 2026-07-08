@@ -108,7 +108,7 @@ public record IocProperties(
                 Id id,
                 @NotEmpty @Valid List<Column> columns) {
 
-            public record Id(ArtifactIdStrategy strategy, String start) {
+            public record Id(ArtifactIdStrategy strategy, IdStart start) {
             }
 
             public boolean hasPublicIdColumn() {

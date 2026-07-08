@@ -3,6 +3,7 @@ package com.iocextractor.bootstrap.sync;
 import com.iocextractor.bootstrap.IocProperties;
 import com.iocextractor.bootstrap.SyncTransport;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.ConfigurationPropertySources;
@@ -46,7 +47,12 @@ class SyncPropertiesTest {
     private IocProperties defaults() throws Exception {
         var source = new YamlPropertySourceLoader()
                 .load("defaults", new ClassPathResource("application.yml")).getFirst();
-        return new Binder(ConfigurationPropertySources.from(source))
+        ApplicationConversionService conversionService = new ApplicationConversionService();
+        conversionService.addConverter(String.class, com.iocextractor.bootstrap.IdStart.class,
+                com.iocextractor.bootstrap.IdStart::parse);
+        conversionService.addConverter(Number.class, com.iocextractor.bootstrap.IdStart.class,
+                com.iocextractor.bootstrap.IdStart::from);
+        return new Binder(ConfigurationPropertySources.from(source), null, conversionService)
                 .bind("ioc", Bindable.of(IocProperties.class))
                 .orElseThrow(() -> new IllegalStateException("default ioc properties did not bind"));
     }

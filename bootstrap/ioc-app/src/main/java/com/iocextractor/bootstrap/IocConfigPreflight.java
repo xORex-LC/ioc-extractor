@@ -120,12 +120,12 @@ final class IocConfigPreflight implements Validator {
                                          Set<String> columnNames,
                                          Errors errors) {
         IocProperties.Sink.Artifact.Id id = artifact.id();
-        if (id == null || !hasText(id.start()) || !isExplicitNumeric(id.start()) || columnNames.contains("id")) {
+        if (id == null || !(id.start() instanceof IdStart.Explicit) || columnNames.contains("id")) {
             return;
         }
         reject(errors, "sink.artifacts[%d].id.start".formatted(artifactIndex), id.start(),
                 "ioc.sink.artifacts[%d].id.start='%s' is numeric but artifact '%s' has no public id column; remove id.start or add an id column"
-                        .formatted(artifactIndex, id.start(), artifact.name()));
+                        .formatted(artifactIndex, id.start().normalized(), artifact.name()));
     }
 
     private Set<String> validateIdentityDefinitions(IocProperties.ArtifactIdentity identity,
@@ -376,15 +376,6 @@ final class IocConfigPreflight implements Validator {
 
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
-    }
-
-    private static boolean isExplicitNumeric(String value) {
-        try {
-            Long.parseLong(value.trim());
-            return true;
-        } catch (NumberFormatException ex) {
-            return false;
-        }
     }
 
     private record SinkArtifactRef(

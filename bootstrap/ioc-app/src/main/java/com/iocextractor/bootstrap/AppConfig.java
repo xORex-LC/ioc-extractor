@@ -1037,15 +1037,14 @@ public class AppConfig {
         if (id == null || id.start() == null) {
             return artifactIdBaseline.maxId(artifactName) + 1;
         }
-        String start = id.start().trim();
-        if (start.equalsIgnoreCase("auto")) {
+        IdStart start = id.start();
+        if (start instanceof IdStart.Auto) {
             return artifactIdBaseline.maxId(artifactName) + 1;
         }
-        try {
-            return Long.parseLong(start);
-        } catch (NumberFormatException ignored) {
-            return artifactIdBaseline.maxId(artifactName) + 1;
+        if (start instanceof IdStart.Explicit explicit) {
+            return explicit.value();
         }
+        throw new IllegalStateException("Unsupported id.start value for artifact: " + artifactName);
     }
 
     /** A blank/absent mask code means "no match" -> rendered as the CSV null literal. */
