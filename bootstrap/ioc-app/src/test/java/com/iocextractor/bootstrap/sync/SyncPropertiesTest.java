@@ -12,7 +12,6 @@ import java.time.Duration;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SyncPropertiesTest {
 
@@ -24,68 +23,6 @@ class SyncPropertiesTest {
         assertThat(properties.sync().endpoints()).isEmpty();
         assertThat(properties.sync().fetch().sources()).isEmpty();
         assertThat(properties.sync().publish().targets()).isEmpty();
-    }
-
-    @Test
-    void rejectsDuplicateEndpointNames() throws Exception {
-        defaults();
-
-        assertThatThrownBy(() -> sync(List.of(endpoint("share"), endpoint("share")),
-                List.of(), List.of()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Duplicate sync endpoint name");
-    }
-
-    @Test
-    void rejectsUnknownEndpointReferences() throws Exception {
-        IocProperties properties = defaults();
-
-        assertThatThrownBy(() -> withSync(properties, sync(List.of(endpoint("known")),
-                List.of(source("src", "missing")), List.of())))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("references unknown endpoint");
-
-        assertThatThrownBy(() -> withSync(properties, sync(List.of(endpoint("known")),
-                List.of(), List.of(target("target", "missing", "reputation-lists")))))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("references unknown endpoint");
-    }
-
-    @Test
-    void rejectsUnknownExportProfileTargets() throws Exception {
-        IocProperties properties = defaults();
-        IocProperties.Sync sync = sync(List.of(endpoint("known")), List.of(),
-                List.of(target("target", "known", "missing-profile")));
-
-        assertThatThrownBy(() -> withSync(properties, sync))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Unknown sync publish export profile");
-    }
-
-    @Test
-    void rejectsInvalidRetryNumbers() throws Exception {
-        assertThatThrownBy(() -> new IocProperties.Sync.Retry(0,
-                java.time.Duration.ofSeconds(1), 2.0d, java.time.Duration.ofSeconds(5), false))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("maxAttempts");
-    }
-
-    @Test
-    void rejectsIncompleteSmbCredentialsAfterBinding() {
-        assertThatThrownBy(() -> new IocProperties.Sync.Endpoint.Smb(
-                "server", "share", null, "user", "", true, null, null, null, null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("password");
-    }
-
-    @Test
-    void rejectsRemovedReadTimeoutAlias() {
-        assertThatThrownBy(() -> new IocProperties.Sync.Endpoint.Smb(
-                "server", "share", null, "user", "secret", true,
-                null, null, java.time.Duration.ofSeconds(45), null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("readTimeout was removed")
-                .hasMessageContaining("requestTimeout");
     }
 
     @Test

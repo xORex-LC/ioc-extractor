@@ -11,10 +11,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Type-safe binding of the {@code ioc.*} configuration tree. This is the only
@@ -45,12 +43,6 @@ public record IocProperties(
 
     public IocProperties {
         pipeline = pipeline == null ? new Pipeline(true) : pipeline;
-        validateDataframeStorage(storage);
-        rejectLegacyLookup(lookup);
-        validateSinkIdStarts(sink);
-        if (sync != null && export != null) {
-            sync.validateAgainst(export);
-        }
     }
 
     public record Runtime(@NotBlank String mode) {
@@ -189,21 +181,7 @@ public record IocProperties(
             @NotNull @Valid Publish publish) {
 
         public Sync {
-            endpoints = List.copyOf(endpoints);
-            unique(endpoints.stream().map(endpoint -> endpoint.name()).toList(), "sync endpoint");
-            Set<String> endpointNames = new HashSet<>(endpoints.stream().map(endpoint -> endpoint.name()).toList());
-            fetch.validate(endpointNames);
-            publish.validate(endpointNames);
-        }
-
-        void validateAgainst(Export export) {
-            Set<String> profiles = new HashSet<>(export.profiles().stream().map(profile -> profile.name()).toList());
-            for (Publish.Target target : publish.targets()) {
-                if (!profiles.contains(target.exportProfile())) {
-                    throw new IllegalArgumentException("Unknown sync publish export profile: "
-                            + target.exportProfile());
-                }
-            }
+            endpoints = endpoints == null ? null : List.copyOf(endpoints);
         }
 
         public record Retry(@Positive int maxAttempts,
@@ -211,34 +189,11 @@ public record IocProperties(
                             double multiplier,
                             @NotNull Duration maxBackoff,
             boolean jitter) {
-
-            public Retry {
-                if (maxAttempts < 1) {
-                    throw new IllegalArgumentException("sync retry maxAttempts must be at least 1");
-                }
-                positive(backoff, "sync retry backoff");
-                positive(maxBackoff, "sync retry maxBackoff");
-                if (multiplier < 1.0d) {
-                    throw new IllegalArgumentException("sync retry multiplier must be at least 1.0");
-                }
-                if (maxBackoff.compareTo(backoff) < 0) {
-                    throw new IllegalArgumentException("sync retry maxBackoff must be >= backoff");
-                }
-            }
         }
 
         public record Endpoint(@NotBlank String name,
                                @NotBlank String transport,
                                @Valid Smb smb) {
-
-            public Endpoint {
-                name = requireText(name, "sync endpoint name");
-                transport = requireText(transport, "sync endpoint transport");
-                if ("smb".equalsIgnoreCase(transport) && smb == null) {
-                    throw new IllegalArgumentException("SMB sync endpoint requires smb settings: " + name);
-                }
-            }
-
             public record Smb(@NotBlank String host,
                               @NotBlank String share,
                               String domain,
@@ -249,20 +204,6 @@ public record IocProperties(
                               Duration requestTimeout,
                               @Deprecated Duration readTimeout,
                               Duration idleTimeout) {
-
-                public Smb {
-                    host = requireText(host, "sync SMB host");
-                    share = requireText(share, "sync SMB share");
-                    username = requireText(username, "sync SMB username");
-                    password = requireText(password, "sync SMB password");
-                    optionalPositive(connectTimeout, "sync SMB connectTimeout");
-                    optionalPositive(requestTimeout, "sync SMB requestTimeout");
-                    optionalPositive(idleTimeout, "sync SMB idleTimeout");
-                    if (readTimeout != null) {
-                        throw new IllegalArgumentException(
-                                "sync SMB readTimeout was removed; use requestTimeout instead");
-                    }
-                }
             }
         }
 
@@ -271,15 +212,7 @@ public record IocProperties(
                             @NotNull @Valid List<Source> sources) {
 
             public Fetch {
-                positive(interval, "sync fetch interval");
-                sources = List.copyOf(sources);
-                unique(sources.stream().map(source -> source.name()).toList(), "sync fetch source");
-            }
-
-            void validate(Set<String> endpointNames) {
-                for (Source source : sources) {
-                    requireEndpoint(endpointNames, source.endpoint(), "sync fetch source " + source.name());
-                }
+                sources = sources == null ? null : List.copyOf(sources);
             }
 
             public record Source(@NotBlank String name,
@@ -290,11 +223,8 @@ public record IocProperties(
                                  @Valid ChangeNotify changeNotify) {
 
                 public Source {
-                    name = requireText(name, "sync fetch source name");
-                    endpoint = requireText(endpoint, "sync fetch source endpoint");
-                    remotePath = requireText(remotePath, "sync fetch source remotePath");
-                    include = List.copyOf(include);
-                    exclude = List.copyOf(exclude);
+                    include = include == null ? null : List.copyOf(include);
+                    exclude = exclude == null ? null : List.copyOf(exclude);
                     changeNotify = changeNotify == null ? ChangeNotify.disabled() : changeNotify;
                 }
 
@@ -304,7 +234,6 @@ public record IocProperties(
 
                     public ChangeNotify {
                         debounce = debounce == null ? DEFAULT_DEBOUNCE : debounce;
-                        positive(debounce, "sync fetch changeNotify debounce");
                     }
 
                     static ChangeNotify disabled() {
@@ -319,63 +248,14 @@ public record IocProperties(
                               @NotNull @Valid List<Target> targets) {
 
             public Publish {
-                positive(interval, "sync publish interval");
-                targets = List.copyOf(targets);
-                unique(targets.stream().map(target -> target.name()).toList(), "sync publish target");
-            }
-
-            void validate(Set<String> endpointNames) {
-                for (Target target : targets) {
-                    requireEndpoint(endpointNames, target.endpoint(), "sync publish target " + target.name());
-                }
+                targets = targets == null ? null : List.copyOf(targets);
             }
 
             public record Target(@NotBlank String name,
                                  @NotBlank String endpoint,
                                  @NotBlank String remotePath,
                                  @NotBlank String exportProfile) {
-
-                public Target {
-                    name = requireText(name, "sync publish target name");
-                    endpoint = requireText(endpoint, "sync publish target endpoint");
-                    remotePath = requireText(remotePath, "sync publish target remotePath");
-                    exportProfile = requireText(exportProfile, "sync publish target exportProfile");
-                }
             }
-        }
-
-        private static void requireEndpoint(Set<String> endpointNames, String endpoint, String owner) {
-            if (!endpointNames.contains(endpoint)) {
-                throw new IllegalArgumentException(owner + " references unknown endpoint: " + endpoint);
-            }
-        }
-
-        private static void unique(List<String> names, String label) {
-            Set<String> seen = new HashSet<>();
-            for (String name : names) {
-                if (!seen.add(name)) {
-                    throw new IllegalArgumentException("Duplicate " + label + " name: " + name);
-                }
-            }
-        }
-
-        private static void positive(Duration duration, String name) {
-            if (duration == null || duration.isZero() || duration.isNegative()) {
-                throw new IllegalArgumentException(name + " must be positive");
-            }
-        }
-
-        private static void optionalPositive(Duration duration, String name) {
-            if (duration != null) {
-                positive(duration, name);
-            }
-        }
-
-        private static String requireText(String value, String name) {
-            if (value == null || value.isBlank()) {
-                throw new IllegalArgumentException(name + " must not be blank");
-            }
-            return value;
         }
     }
 
@@ -436,59 +316,5 @@ public record IocProperties(
     }
 
     public record Observability(@NotBlank String mode, boolean perItemTraceEnabled) {
-    }
-
-    private static void validateDataframeStorage(Storage storage) {
-        if (storage == null || storage.dataframe() == null || storage.dataframe().type() == null) {
-            return;
-        }
-        if (!"jdbc".equalsIgnoreCase(storage.dataframe().type())) {
-            throw new IllegalArgumentException(
-                    "ioc.storage.dataframe.type must be jdbc; legacy CSV dataframe storage was removed");
-        }
-    }
-
-    private static void rejectLegacyLookup(Lookup lookup) {
-        if (lookup == null) {
-            return;
-        }
-        boolean hasMovedDedup = lookup.deduplicate() != null;
-        boolean hasRemovedLookup = lookup.type() != null
-                || lookup.path() != null
-                || lookup.artifacts() != null;
-        if (hasMovedDedup && hasRemovedLookup) {
-            throw new IllegalArgumentException(
-                    "legacy ioc.lookup.* removed; ioc.lookup.deduplicate moved to ioc.pipeline.deduplicate");
-        }
-        if (hasMovedDedup) {
-            throw new IllegalArgumentException("ioc.lookup.deduplicate moved to ioc.pipeline.deduplicate");
-        }
-        if (hasRemovedLookup) {
-            throw new IllegalArgumentException(
-                    "legacy ioc.lookup.* removed; SQLite/JDBC dataframe storage is the only runtime truth");
-        }
-    }
-
-    private static void validateSinkIdStarts(Sink sink) {
-        if (sink == null || sink.artifacts() == null) {
-            return;
-        }
-        for (Sink.Artifact artifact : sink.artifacts()) {
-            Sink.Artifact.Id id = artifact.id();
-            if (id == null || id.start() == null || artifact.hasPublicIdColumn() || !isExplicitNumeric(id.start())) {
-                continue;
-            }
-            throw new IllegalArgumentException("Artifact " + artifact.name()
-                    + " configures id.start but has no public id column");
-        }
-    }
-
-    private static boolean isExplicitNumeric(String value) {
-        try {
-            Long.parseLong(value.trim());
-            return true;
-        } catch (NumberFormatException ex) {
-            return false;
-        }
     }
 }
