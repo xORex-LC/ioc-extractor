@@ -43,6 +43,14 @@ class IocPropertiesTest {
     }
 
     @Test
+    void rejectsLegacyLookupArtifactsEvenWhenEmpty() {
+        assertThatThrownBy(() -> bind(Map.of("ioc.lookup.artifacts", List.of())))
+                .satisfies(thrown -> assertThat(rootCause(thrown))
+                        .isInstanceOf(IllegalArgumentException.class)
+                        .hasMessage("legacy ioc.lookup.* removed; SQLite/JDBC dataframe storage is the only runtime truth"));
+    }
+
+    @Test
     void rejectsNonJdbcDataframeStorageBeforeBeanWiring() {
         assertThatThrownBy(() -> bind(Map.of("ioc.storage.dataframe.type", "disabled")))
                 .satisfies(thrown -> assertThat(rootCause(thrown))

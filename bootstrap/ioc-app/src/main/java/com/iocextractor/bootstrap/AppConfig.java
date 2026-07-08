@@ -246,7 +246,6 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnDataframeStorage
     public ArtifactIdBaseline artifactIdBaseline(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             DataframeSchemaPlan dataframeSchemaReconciliation,
@@ -308,7 +307,6 @@ public class AppConfig {
                                                  JdbcCanonicalArtifactRepository jdbcCanonicalRepository,
                                                  CsvArtifactProjection csvArtifactProjection,
                                                  IocProperties props) {
-        requireDataframeJdbc(props, "Oneshot extraction");
         List<IocSink> sinks = buildSinks(
                 props,
                 matchPolicy,
@@ -326,7 +324,6 @@ public class AppConfig {
                                                IndicatorFeatureExtractor featureExtractor,
                                                ArtifactIdBaseline artifactIdBaseline,
                                                JdbcCanonicalArtifactRepository jdbcCanonicalRepository) {
-        requireDataframeJdbc(props, "Daemon direct-to-canonical ingest");
         var artifacts = artifactDefinitions(props, matchPolicy, featureExtractor, artifactIdBaseline);
         Map<String, IdGenerator> ids = new LinkedHashMap<>();
         for (CsvArtifactDefinition artifact : artifacts) {
@@ -429,7 +426,6 @@ public class AppConfig {
     }
 
     @Bean(destroyMethod = "close")
-    @ConditionalOnDataframeStorage
     public HikariDataSource dataframeStorageDataSource(IocProperties props) {
         IocProperties.Storage.Dataframe dataframe = props.storage().dataframe();
         return new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(new SqliteDataSourceSettings(
@@ -441,7 +437,6 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnDataframeStorage
     public SchemaMigrationResult dataframeFormatSchemaMigration(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             DiagnosticSink diagnosticSink,
@@ -455,7 +450,6 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnDataframeStorage
     public DataframeSchemaPlan dataframeSchemaReconciliation(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             @Qualifier("dataframeFormatSchemaMigration")
@@ -469,7 +463,6 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnDataframeStorage
     public ArtifactIdentityStore artifactIdentityStore(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             DiagnosticSink diagnosticSink,
@@ -483,7 +476,6 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnDataframeStorage
     public List<StoredArtifactIdentity> artifactIdentityValidation(
             ArtifactIdentityStore artifactIdentityStore,
             DataframeSchemaPlan dataframeSchemaReconciliation,
@@ -493,7 +485,6 @@ public class AppConfig {
 
     @Bean
     @Primary
-    @ConditionalOnDataframeStorage
     public JdbcCanonicalArtifactRepository jdbcCanonicalArtifactRepository(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             DataframeSchemaPlan dataframeSchemaReconciliation,
@@ -511,7 +502,6 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnDataframeStorage
     public CsvArtifactProjection csvArtifactProjection(JdbcCanonicalArtifactRepository jdbcCanonicalArtifactRepository,
                                                        IocProperties props) {
         return new CsvArtifactProjection(
@@ -526,7 +516,6 @@ public class AppConfig {
 
     @Bean
     @Lazy
-    @ConditionalOnDataframeStorage
     public ArtifactRevisionReader artifactRevisionReader(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             DataframeSchemaPlan dataframeSchemaReconciliation) {
@@ -535,7 +524,6 @@ public class AppConfig {
 
     @Bean
     @Lazy
-    @ConditionalOnDataframeStorage
     public SnapshotSliceReader snapshotSliceReader(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             DataframeSchemaPlan dataframeSchemaReconciliation,
@@ -593,8 +581,7 @@ public class AppConfig {
 
     @Bean
     @Lazy
-    @ConditionalOnExpression("'${ioc.storage.service.type:disabled}' == 'jdbc' && "
-            + "'${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
+    @ConditionalOnServiceStorage
     public ExportRunRecoveryService exportRunRecoveryService(
             ExportRunLedger exportRunLedger,
             ExportProgressStore exportProgressStore,
@@ -611,8 +598,7 @@ public class AppConfig {
 
     @Bean
     @Lazy
-    @ConditionalOnExpression("'${ioc.storage.service.type:disabled}' == 'jdbc' && "
-            + "'${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
+    @ConditionalOnServiceStorage
     public ExportArtifactsUseCase exportArtifactsUseCase(
             ExportPlanCatalog plans,
             ArtifactRevisionReader artifactRevisionReader,
@@ -635,8 +621,7 @@ public class AppConfig {
     @Bean
     @Lazy
     @Primary
-    @ConditionalOnExpression("'${ioc.storage.service.type:disabled}' == 'jdbc' && "
-            + "'${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
+    @ConditionalOnServiceStorage
     public RecoverExportUseCase recoverExportUseCase(
             ExportRunRecoveryService recoveryService,
             ExportOperationGuard operationGuard) {
@@ -650,8 +635,7 @@ public class AppConfig {
     @Bean
     @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
             + "'${ioc.export.enabled:true}' == 'true' && "
-            + "'${ioc.storage.service.type:disabled}' == 'jdbc' && "
-            + "'${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
+            + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
     public DaemonExportScheduler daemonExportScheduler(
             ExportPlanCatalog catalog,
             ArtifactRevisionReader artifactRevisionReader,
@@ -675,8 +659,7 @@ public class AppConfig {
     @Bean
     @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
             + "'${ioc.export.enabled:true}' == 'true' && "
-            + "'${ioc.storage.service.type:disabled}' == 'jdbc' && "
-            + "'${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
+            + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
     public CanonicalArtifactsChangedExportListener canonicalArtifactsChangedExportListener(
             ExportNudgeTrigger exportNudgeTrigger,
             ControlEventObserver observer) {
@@ -686,8 +669,7 @@ public class AppConfig {
     @Bean
     @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
             + "'${ioc.export.enabled:true}' == 'true' && "
-            + "'${ioc.storage.service.type:disabled}' == 'jdbc' && "
-            + "'${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
+            + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
     public ExportHealthIndicator exportHealthIndicator(
             ExportPlanCatalog catalog,
             ArtifactRevisionReader artifactRevisionReader,
@@ -793,8 +775,7 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && "
-            + "'${ioc.storage.dataframe.type:disabled}' == 'jdbc'")
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     public JdbcStorageHealthIndicator dataframeStorageHealthIndicator(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             @Qualifier("dataframeFormatSchemaMigration") SchemaMigrationResult dataframeFormatSchemaMigration) {
@@ -957,16 +938,6 @@ public class AppConfig {
         return headers;
     }
 
-    private boolean isDataframeJdbc(IocProperties props) {
-        return "jdbc".equalsIgnoreCase(props.storage().dataframe().type());
-    }
-
-    private void requireDataframeJdbc(IocProperties props, String useCase) {
-        if (!isDataframeJdbc(props)) {
-            throw new IocExtractorException(useCase + " requires ioc.storage.dataframe.type=jdbc");
-        }
-    }
-
     private Map<String, ValueProvider> valueProviders(MatchPolicy matchPolicy,
                                                       IndicatorFeatureExtractor featureExtractor) {
         Map<String, ValueProvider> providers = new HashMap<>();
@@ -1063,7 +1034,7 @@ public class AppConfig {
                          IocProperties.Sink.Artifact artifact,
                          ArtifactIdBaseline artifactIdBaseline) {
         IocProperties.Sink.Artifact.Id id = artifact.id();
-        if (!hasPublicIdColumn(artifact)) {
+        if (!artifact.hasPublicIdColumn()) {
             return 0L;
         }
         if (id == null || id.start() == null) {
@@ -1078,11 +1049,6 @@ public class AppConfig {
         } catch (NumberFormatException ignored) {
             return artifactIdBaseline.maxId(artifactName) + 1;
         }
-    }
-
-    private boolean hasPublicIdColumn(IocProperties.Sink.Artifact artifact) {
-        return artifact.columns().stream()
-                .anyMatch(column -> "id".equals(column.name()));
     }
 
     /** A blank/absent mask code means "no match" -> rendered as the CSV null literal. */

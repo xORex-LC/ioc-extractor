@@ -120,6 +120,11 @@ public record IocProperties(
             public record Id(String strategy, String start) {
             }
 
+            public boolean hasPublicIdColumn() {
+                return columns != null && columns.stream()
+                        .anyMatch(column -> "id".equals(column.name()));
+            }
+
             public record Column(
                     @NotBlank String name,
                     @NotBlank String from,
@@ -450,7 +455,7 @@ public record IocProperties(
         boolean hasMovedDedup = lookup.deduplicate() != null;
         boolean hasRemovedLookup = lookup.type() != null
                 || lookup.path() != null
-                || (lookup.artifacts() != null && !lookup.artifacts().isEmpty());
+                || lookup.artifacts() != null;
         if (hasMovedDedup && hasRemovedLookup) {
             throw new IllegalArgumentException(
                     "legacy ioc.lookup.* removed; ioc.lookup.deduplicate moved to ioc.pipeline.deduplicate");
@@ -470,17 +475,12 @@ public record IocProperties(
         }
         for (Sink.Artifact artifact : sink.artifacts()) {
             Sink.Artifact.Id id = artifact.id();
-            if (id == null || id.start() == null || hasPublicIdColumn(artifact) || !isExplicitNumeric(id.start())) {
+            if (id == null || id.start() == null || artifact.hasPublicIdColumn() || !isExplicitNumeric(id.start())) {
                 continue;
             }
             throw new IllegalArgumentException("Artifact " + artifact.name()
                     + " configures id.start but has no public id column");
         }
-    }
-
-    private static boolean hasPublicIdColumn(Sink.Artifact artifact) {
-        return artifact.columns() != null && artifact.columns().stream()
-                .anyMatch(column -> "id".equals(column.name()));
     }
 
     private static boolean isExplicitNumeric(String value) {
