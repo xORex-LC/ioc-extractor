@@ -13,6 +13,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.validation.FieldError;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -115,6 +116,107 @@ class IocPropertiesBindingTest {
                 });
     }
 
+    @Test
+    void rejectsTypoInIdentityArtifactName() {
+        contextRunner(concat(
+                identity(0, "mask", "mask"),
+                identity(1, "ip_list", "ip"),
+                identity(2, "address_blacklist", "forbidden_url", "forbidden_ip"),
+                identity(3, "hashes", "hash_md5", "hash_sha1", "hash_sha256")))
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .extracting(FieldError::getField)
+                        .contains("artifactIdentity.artifacts[0].name"));
+    }
+
+    @Test
+    void rejectsEnabledSinkArtifactWithoutIdentity() {
+        contextRunner(concat(
+                sinkArtifact(0, "masks", true, "id", "mask"),
+                sinkArtifact(1, "custom_list", true, "value"),
+                identity(0, "masks", "mask")))
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .extracting(FieldError::getField)
+                        .contains("sink.artifacts[1].name"));
+    }
+
+    @Test
+    void acceptsIdentityForDisabledButExistingArtifact() {
+        contextRunner(concat(
+                sinkArtifact(0, "legacy_list", false, "value"),
+                identity(0, "legacy_list", "value")))
+                .run(context -> assertThat(context).hasSingleBean(IocProperties.class));
+    }
+
+    @Test
+    void rejectsDuplicateSinkArtifactNames() {
+        contextRunner(concat(
+                sinkArtifact(0, "masks", true, "id", "mask"),
+                sinkArtifact(1, "masks", true, "id", "mask"),
+                identity(0, "masks", "mask")))
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .extracting(FieldError::getField)
+                        .contains("sink.artifacts[1].name"));
+    }
+
+    @Test
+    void rejectsDuplicateIdentityArtifactNames() {
+        contextRunner(concat(
+                identity(0, "masks", "mask"),
+                identity(1, "masks", "mask")))
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .extracting(FieldError::getField)
+                        .contains("artifactIdentity.artifacts[1].name"));
+    }
+
+    @Test
+    void rejectsDuplicateColumnNamesInsideOneArtifact() {
+        contextRunner(concat(
+                sinkArtifact(0, "masks", true, "mask", "mask"),
+                identity(0, "masks", "mask")))
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .extracting(FieldError::getField)
+                        .contains("sink.artifacts[0].columns[1].name"));
+    }
+
+    @Test
+    void rejectsTypoInCompositeIdentityKeyColumn() {
+        contextRunner(concat(
+                identity(0, "masks", "missing_mask"),
+                identity(1, "ip_list", "ip"),
+                identity(2, "address_blacklist", "forbidden_url", "forbidden_ip"),
+                identity(3, "hashes", "hash_md5", "hash_sha1", "hash_sha256")))
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .extracting(FieldError::getField)
+                        .contains("artifactIdentity.artifacts[0].keyColumns[0]"));
+    }
+
+    @Test
+    void rejectsNumericIdStartWithoutPublicIdColumn() {
+        contextRunner(concat(
+                sinkArtifact(0, "address_blacklist", true, "forbidden_url", "forbidden_ip"),
+                new String[] { "ioc.sink.artifacts[0].id.start=42" },
+                identity(0, "address_blacklist", "forbidden_url")))
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .extracting(FieldError::getField)
+                        .contains("sink.artifacts[0].id.start"));
+    }
+
+    @Test
+    void reportsMultipleIdentityAndSinkMistakesTogether() {
+        contextRunner(concat(
+                sinkArtifact(0, "masks", true, "mask", "mask"),
+                sinkArtifact(1, "masks", true, "value"),
+                identity(0, "missing", "ghost"),
+                identity(1, "masks", "ghost")))
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .extracting(FieldError::getField)
+                        .contains(
+                                "sink.artifacts[0].columns[1].name",
+                                "sink.artifacts[1].name",
+                                "artifactIdentity.artifacts[0].name",
+                                "artifactIdentity.artifacts[1].keyColumns[0]"));
+    }
+
     private ApplicationContextRunner contextRunner(String... overrides) {
         return new ApplicationContextRunner()
                 .withInitializer(IocPropertiesBindingTest::addDefaultApplicationYaml)
@@ -158,6 +260,38 @@ class IocPropertiesBindingTest {
         } catch (IOException ex) {
             throw new IllegalStateException("Cannot load default application.yml", ex);
         }
+    }
+
+    private static String[] sinkArtifact(int index, String name, boolean enabled, String... columns) {
+        List<String> values = new ArrayList<>();
+        String prefix = "ioc.sink.artifacts[%d]".formatted(index);
+        values.add("%s.name=%s".formatted(prefix, name));
+        values.add("%s.enabled=%s".formatted(prefix, enabled));
+        values.add("%s.path=./dataframe/%s_generated.csv".formatted(prefix, name));
+        values.add("%s.accepts[0]=IPV4".formatted(prefix));
+        for (int i = 0; i < columns.length; i++) {
+            values.add("%s.columns[%d].name=%s".formatted(prefix, i, columns[i]));
+            values.add("%s.columns[%d].from=%s".formatted(prefix, i, "id".equals(columns[i]) ? "id" : "value"));
+        }
+        return values.toArray(String[]::new);
+    }
+
+    private static String[] identity(int index, String name, String... keyColumns) {
+        List<String> values = new ArrayList<>();
+        String prefix = "ioc.artifact-identity.artifacts[%d]".formatted(index);
+        values.add("%s.name=%s".formatted(prefix, name));
+        for (int i = 0; i < keyColumns.length; i++) {
+            values.add("%s.key-columns[%d]=%s".formatted(prefix, i, keyColumns[i]));
+        }
+        return values.toArray(String[]::new);
+    }
+
+    private static String[] concat(String[]... groups) {
+        List<String> values = new ArrayList<>();
+        for (String[] group : groups) {
+            values.addAll(List.of(group));
+        }
+        return values.toArray(String[]::new);
     }
 
     @Configuration(proxyBeanMethods = false)

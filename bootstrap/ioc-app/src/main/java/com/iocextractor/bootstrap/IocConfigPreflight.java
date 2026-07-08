@@ -5,8 +5,10 @@ import org.springframework.validation.Validator;
 
 import java.time.Duration;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -29,6 +31,7 @@ final class IocConfigPreflight implements Validator {
         }
         validateDataframeStorage(props, errors);
         validateLegacyLookup(props, errors);
+        validateArtifactIdentityReferences(props, errors);
         validateSync(props, errors);
     }
 
@@ -73,6 +76,150 @@ final class IocConfigPreflight implements Validator {
         Set<String> endpointNames = validateEndpoints(sync.endpoints(), errors);
         validateFetch(sync.fetch(), endpointNames, errors);
         validatePublish(sync.publish(), endpointNames, exportProfiles(props.export()), errors);
+    }
+
+    private void validateArtifactIdentityReferences(IocProperties props, Errors errors) {
+        Map<String, SinkArtifactRef> sinkArtifacts = validateSinkArtifacts(props.sink(), errors);
+        Set<String> identityArtifacts = validateIdentityDefinitions(props.artifactIdentity(), sinkArtifacts, errors);
+        for (SinkArtifactRef sinkArtifact : sinkArtifacts.values()) {
+            IocProperties.Sink.Artifact artifact = sinkArtifact.artifact();
+            if (artifact.enabled() && hasText(artifact.name()) && !identityArtifacts.contains(artifact.name())) {
+                reject(errors, "sink.artifacts[%d].name".formatted(sinkArtifact.index()), artifact.name(),
+                        "ioc.sink.artifacts[%d].name='%s' is enabled but has no identity definition; add matching ioc.artifact-identity.artifacts[].name"
+                                .formatted(sinkArtifact.index(), artifact.name()));
+            }
+        }
+    }
+
+    private Map<String, SinkArtifactRef> validateSinkArtifacts(IocProperties.Sink sink, Errors errors) {
+        Map<String, SinkArtifactRef> result = new LinkedHashMap<>();
+        if (sink == null || sink.artifacts() == null) {
+            return result;
+        }
+        Set<String> seen = new HashSet<>();
+        List<IocProperties.Sink.Artifact> artifacts = sink.artifacts();
+        for (int i = 0; i < artifacts.size(); i++) {
+            IocProperties.Sink.Artifact artifact = artifacts.get(i);
+            if (artifact == null) {
+                reject(errors, "sink.artifacts[%d]".formatted(i), null,
+                        "ioc.sink.artifacts[%d] is invalid; configure an artifact object".formatted(i));
+                continue;
+            }
+            Set<String> columnNames = validateSinkArtifactColumns(artifact, i, errors);
+            validateArtifactIdStart(artifact, i, columnNames, errors);
+            if (!hasText(artifact.name())) {
+                continue;
+            }
+            if (seen.add(artifact.name())) {
+                result.put(artifact.name(), new SinkArtifactRef(i, artifact, columnNames));
+            } else {
+                reject(errors, "sink.artifacts[%d].name".formatted(i), artifact.name(),
+                        "ioc.sink.artifacts[%d].name='%s' duplicates another sink artifact; use unique names"
+                                .formatted(i, artifact.name()));
+            }
+        }
+        return result;
+    }
+
+    private Set<String> validateSinkArtifactColumns(IocProperties.Sink.Artifact artifact,
+                                                    int artifactIndex,
+                                                    Errors errors) {
+        Set<String> columnNames = new HashSet<>();
+        if (artifact.columns() == null) {
+            return columnNames;
+        }
+        Set<String> seen = new HashSet<>();
+        List<IocProperties.Sink.Artifact.Column> columns = artifact.columns();
+        for (int i = 0; i < columns.size(); i++) {
+            IocProperties.Sink.Artifact.Column column = columns.get(i);
+            if (column == null) {
+                reject(errors, "sink.artifacts[%d].columns[%d]".formatted(artifactIndex, i), null,
+                        "ioc.sink.artifacts[%d].columns[%d] is invalid; configure a column object"
+                                .formatted(artifactIndex, i));
+                continue;
+            }
+            String name = column.name();
+            if (!hasText(name)) {
+                continue;
+            }
+            columnNames.add(name);
+            rejectDuplicate(errors, seen, name,
+                    "sink.artifacts[%d].columns[%d].name".formatted(artifactIndex, i),
+                    "ioc.sink.artifacts[%d].columns[%d].name".formatted(artifactIndex, i),
+                    "sink artifact column");
+        }
+        return columnNames;
+    }
+
+    private void validateArtifactIdStart(IocProperties.Sink.Artifact artifact,
+                                         int artifactIndex,
+                                         Set<String> columnNames,
+                                         Errors errors) {
+        IocProperties.Sink.Artifact.Id id = artifact.id();
+        if (id == null || !hasText(id.start()) || !isExplicitNumeric(id.start()) || columnNames.contains("id")) {
+            return;
+        }
+        reject(errors, "sink.artifacts[%d].id.start".formatted(artifactIndex), id.start(),
+                "ioc.sink.artifacts[%d].id.start='%s' is numeric but artifact '%s' has no public id column; remove id.start or add an id column"
+                        .formatted(artifactIndex, id.start(), artifact.name()));
+    }
+
+    private Set<String> validateIdentityDefinitions(IocProperties.ArtifactIdentity identity,
+                                                    Map<String, SinkArtifactRef> sinkArtifacts,
+                                                    Errors errors) {
+        Set<String> identityNames = new HashSet<>();
+        if (identity == null || identity.artifacts() == null) {
+            return identityNames;
+        }
+        Set<String> seen = new HashSet<>();
+        List<IocProperties.ArtifactIdentity.Artifact> artifacts = identity.artifacts();
+        for (int i = 0; i < artifacts.size(); i++) {
+            IocProperties.ArtifactIdentity.Artifact artifact = artifacts.get(i);
+            if (artifact == null) {
+                reject(errors, "artifactIdentity.artifacts[%d]".formatted(i), null,
+                        "ioc.artifact-identity.artifacts[%d] is invalid; configure an identity object".formatted(i));
+                continue;
+            }
+            String name = artifact.name();
+            SinkArtifactRef sinkArtifact = null;
+            if (hasText(name)) {
+                identityNames.add(name);
+                rejectDuplicate(errors, seen, name, "artifactIdentity.artifacts[%d].name".formatted(i),
+                        "ioc.artifact-identity.artifacts[%d].name".formatted(i), "artifact identity");
+                sinkArtifact = sinkArtifacts.get(name);
+                if (sinkArtifact == null) {
+                    reject(errors, "artifactIdentity.artifacts[%d].name".formatted(i), name,
+                            "ioc.artifact-identity.artifacts[%d].name='%s' is unknown; reference an ioc.sink.artifacts[].name"
+                                    .formatted(i, name));
+                }
+            }
+            validateIdentityKeyColumns(artifact, i, sinkArtifact, errors);
+        }
+        return identityNames;
+    }
+
+    private void validateIdentityKeyColumns(IocProperties.ArtifactIdentity.Artifact artifact,
+                                            int identityIndex,
+                                            SinkArtifactRef sinkArtifact,
+                                            Errors errors) {
+        List<String> keyColumns = artifact.keyColumns();
+        if (keyColumns == null) {
+            return;
+        }
+        for (int i = 0; i < keyColumns.size(); i++) {
+            String keyColumn = keyColumns.get(i);
+            String field = "artifactIdentity.artifacts[%d].keyColumns[%d]".formatted(identityIndex, i);
+            String configKey = "ioc.artifact-identity.artifacts[%d].key-columns[%d]".formatted(identityIndex, i);
+            if (!hasText(keyColumn)) {
+                reject(errors, field, keyColumn, "%s is blank; reference a configured sink column".formatted(configKey));
+                continue;
+            }
+            if (sinkArtifact != null && !sinkArtifact.columnNames().contains(keyColumn)) {
+                reject(errors, field, keyColumn,
+                        "%s='%s' is unknown for artifact '%s'; reference one of its ioc.sink.artifacts[].columns[].name values"
+                                .formatted(configKey, keyColumn, artifact.name()));
+            }
+        }
     }
 
     private void validateRetry(IocProperties.Sync.Retry retry, Errors errors) {
@@ -280,5 +427,20 @@ final class IocConfigPreflight implements Validator {
 
     private static String normalize(String value) {
         return Objects.toString(value, "").trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean isExplicitNumeric(String value) {
+        try {
+            Long.parseLong(value.trim());
+            return true;
+        } catch (NumberFormatException ex) {
+            return false;
+        }
+    }
+
+    private record SinkArtifactRef(
+            int index,
+            IocProperties.Sink.Artifact artifact,
+            Set<String> columnNames) {
     }
 }
