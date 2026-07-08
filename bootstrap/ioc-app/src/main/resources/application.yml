@@ -166,7 +166,7 @@ ioc:
         path: "./dataframe/masks_list_generated.csv"
         accepts: [ IPV4, DOMAIN, URL ]
         exclude: [ is-bare-ip ]
-        id: { strategy: ascending, start: auto }   # ascending; 'auto' = lookup max + 1
+        id: { strategy: ascending, start: auto }   # ascending; 'auto' = canonical DB max id + 1
         columns:
           - { name: id,              from: id }
           - { name: mask,            from: value, transform: [ lower-host ] }

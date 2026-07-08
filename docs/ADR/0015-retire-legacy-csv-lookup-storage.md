@@ -7,6 +7,19 @@ runtime lookup/storage через CSV после перехода dataframe trut
 Рабочий план и найденные риски ведутся в
 [worknote/csv-lookup-retirement.md](../worknote/csv-lookup-retirement.md).
 
+**Обновление 2026-07-08. Реализовано полностью (фазы 0–6), `./mvnw verify`
+зелёный.** Удалены `adapter-lookup-csv`, `CsvIocSink`, `JdbcLookupRepository`,
+порт `LookupRepository`, `EventAction.LOOKUP_LOAD`; дедуп стадии — batch-local;
+id-baseline — schema-aware порт `ArtifactIdBaseline`; конфиг — `ioc.pipeline.
+deduplicate` + tombstone-валидация `ioc.lookup.*` и `storage.dataframe.type`.
+Контракт «повтор доходит до canonical repository и обновляет provenance»
+закреплён регрессами (адаптерные + сквозной двойной extract поверх golden).
+**Открытый вопрос 1 разрешён:** операторский seed import не нужен — ручные CSV
+окончательно ушли из runtime story; `JdbcLegacyArtifactImporter` и seed-хуки
+`install.sh` (`--lookup-seed`, `seed_lookup`) удалены. Header-эталоны схем в
+`dataframe/` остаются только как референс формата. Вопросы 2 (gapless id) и 3
+(CFG-4 strict binding → удаление tombstone) остаются открытыми.
+
 ## Контекст
 
 Ранние решения держали CSV-файлы не только как выходные артефакты, но и как
@@ -126,7 +139,8 @@ repository и provenance не обновился бы. Dedup storage-level до�
 ## Открытые вопросы
 
 1. Нужен ли операторский seed import ручных списков в canonical DB, или ручные
-   CSV окончательно уходят из runtime story?
+   CSV окончательно уходят из runtime story? — **Разрешён (2026-07-08):** уходят
+   окончательно, см. «Обновление 2026-07-08» в Статусе.
 2. Нужен ли в будущем gapless id / DB-owned id allocation, или unique ascending
    id с gaps является достаточным контрактом?
 3. Когда CFG-4 strict binding удалит временные tombstone-поля для старых
