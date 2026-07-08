@@ -192,8 +192,7 @@ contract, используемый и preflight'ом, и `AppConfig.startOf`. М
 
 План ниже — execution checklist для имплементации. Целевая модель цельная:
 единый startup preflight, strict binding, typed selectors, единая грамматика
-ранних и поздних consumers, tombstones вне `IocProperties`. Срезы можно
-выполнить за один агентский проход, но коммитить лучше логическими группами:
+ранних и поздних consumers, tombstones вне `IocProperties`. Коммитить лучше логическими группами:
 preflight lifecycle отдельно, strict binding/analyzer отдельно, value typing
 отдельно, docs/tracking отдельно. Каждый срез сохраняет инварианты архитектуры:
 вся Spring/Boot-специфика остаётся в `bootstrap/ioc-app`, domain/application
@@ -264,7 +263,7 @@ root DSL.
 ```
 
 **Граница коммита.** `CFG preflight lifecycle and constructor migration`.
-Можно объединить со срезом 2, если agent держит diff небольшим, но лучше
+Можно объединить со срезом 2, если diff небольшой, но лучше
 сначала закрепить lifecycle без новых правил.
 
 ### Срез 2 — Config→config ссылочная целостность для artifacts/identity
@@ -591,7 +590,7 @@ pure config→config и config→registry boundaries.
 6. `CFG validate registry-backed config eagerly`
 7. `Docs mark config preflight shipped`
 
-Если реализация идёт одним агентским проходом, допустимые объединения:
+Если реализация идёт одним проходом, допустимые объединения:
 срезы 1+2 (один preflight lifecycle/reference commit), срезы 4+5 (typed selectors +
 `id.start` grammar), срезы 6+7 только если registry checks малы и docs не
 маскируют кодовый diff. Срез 3 лучше держать отдельно: strict binding и

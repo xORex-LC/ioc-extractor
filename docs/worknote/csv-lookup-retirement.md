@@ -156,7 +156,7 @@ truth эти CSV не становятся источником дедуплик
 никогда. То есть runtime import path сегодня **отсутствует вовсе**: seed CSV в
 default-режиме молча нефункциональны, requirement «дедуп против ручных
 справочников» в JDBC-режиме не выполняется. Это блокер-решение всего
-retirement: (а) requirement умер → чинить только docs (AGENTS/README, где
+retirement: (а) requirement умер → чинить только docs (README, где
 ручные списки всё ещё «the lookup reference») и удалить importer как мёртвый
 класс; (б) requirement жив → wire importer (или команда `ioc import`) как seed
 в canonical DB, и только потом снимать CSV lookup.
@@ -387,9 +387,6 @@ canonical SQLite/JDBC как truth, CSV-файлы только как projectio
    - `docs/dev/ingestion.md`;
    - `docs/KNOWN-ISSUES.md`;
    - `adapters/README.md` и module READMEs;
-   - `AGENTS.md`/`CLAUDE.md` (гитигнорен, но несёт ту же диаграмму пайплайна,
-     список конфиг-секций с `lookup`, строку модульной карты
-     `adapter-lookup-csv` и фразу про hand-filled «lookup reference»).
 2. Убрать формулировки, что hand-filled
    `dataframe/masks_list.csv` / `hashes_list.csv` — runtime lookup reference.
 3. Packaging:

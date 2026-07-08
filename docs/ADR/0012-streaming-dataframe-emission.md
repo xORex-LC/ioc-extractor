@@ -926,7 +926,7 @@ ArchUnit rules входят в общий `verify`.
 | C — Vertical MVP | C7–C8 | application saga + bootstrap/CLI | Рабочий ручной `ioc export` с recovery и skip |
 | D — Operations | C9–C11 | cadence + retention + health/gates | Полный daemon-ready контур и опубликованные docs |
 
-Пакет handoff для следующего агента обязан содержать:
+Пакет handoff обязан содержать:
 
 - диапазон уже готовых commit hash и чистый `git status`;
 - список зафиксированных public interfaces и migrations;
@@ -944,7 +944,7 @@ ArchUnit rules входят в общий `verify`.
 5. Новая значимая директория сразу получает README, сложные public/module classes — Javadoc.
 6. Bootstrap содержит только composition/lifecycle; SQL остаётся JDBC adapter, CSV/filesystem —
    sink adapter, saga/policy — application.
-7. Перед handoff агент сверяет acceptance criteria своего диапазона с этим разделом построчно.
+7. Перед handoff сверяется acceptance criteria своего диапазона с этим разделом построчно.
 
 Безопасный параллелизм возможен только в отдельных worktree/ветках:
 
