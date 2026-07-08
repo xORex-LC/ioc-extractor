@@ -64,7 +64,7 @@ class SyncPropertiesTest {
     private IocProperties.Sync.Endpoint endpoint(String name) {
         return new IocProperties.Sync.Endpoint(name, "smb",
                 new IocProperties.Sync.Endpoint.Smb("server", "share", null,
-                        "user", "secret", true, null, null, null, null));
+                        "user", "secret", true, null, null, null));
     }
 
     private IocProperties.Sync.Fetch.Source source(String name, String endpoint) {
@@ -79,8 +79,7 @@ class SyncPropertiesTest {
     private IocProperties withSync(IocProperties source, IocProperties.Sync sync) {
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
-                source.patterns(), source.classify(), source.sink(), source.pipeline(), source.lookup(),
-                source.ingestion(), source.artifactIdentity(), source.export(), sync, source.maintenance(),
-                source.observability());
+                source.patterns(), source.classify(), source.sink(), source.pipeline(), source.ingestion(),
+                source.artifactIdentity(), source.export(), sync, source.maintenance(), source.observability());
     }
 }

@@ -33,7 +33,6 @@ public record IocProperties(
         @NotNull @Valid Classify classify,
         @NotNull @Valid Sink sink,
         @NotNull @Valid Pipeline pipeline,
-        @Valid Lookup lookup,
         @NotNull @Valid Ingestion ingestion,
         @NotNull @Valid ArtifactIdentity artifactIdentity,
         @NotNull @Valid Export export,
@@ -128,15 +127,6 @@ public record IocProperties(
         }
     }
 
-    /**
-     * Tombstone for removed {@code ioc.lookup.*} settings. Keep this nullable
-     * until strict binding replaces compatibility diagnostics.
-     */
-    public record Lookup(String type, String path, Boolean deduplicate, List<Artifact> artifacts) {
-        public record Artifact(String name, String path) {
-        }
-    }
-
     public record ArtifactIdentity(@NotEmpty @Valid List<Artifact> artifacts) {
 
         public record Artifact(
@@ -184,7 +174,7 @@ public record IocProperties(
             endpoints = endpoints == null ? null : List.copyOf(endpoints);
         }
 
-        public record Retry(@Positive int maxAttempts,
+        public record Retry(int maxAttempts,
                             @NotNull Duration backoff,
                             double multiplier,
                             @NotNull Duration maxBackoff,
@@ -202,7 +192,6 @@ public record IocProperties(
                               boolean encrypt,
                               Duration connectTimeout,
                               Duration requestTimeout,
-                              @Deprecated Duration readTimeout,
                               Duration idleTimeout) {
             }
         }

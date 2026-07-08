@@ -30,7 +30,6 @@ final class IocConfigPreflight implements Validator {
             return;
         }
         validateDataframeStorage(props, errors);
-        validateLegacyLookup(props, errors);
         validateArtifactIdentityReferences(props, errors);
         validateSync(props, errors);
     }
@@ -44,26 +43,6 @@ final class IocConfigPreflight implements Validator {
         if (hasText(type) && !"jdbc".equalsIgnoreCase(type)) {
             reject(errors, "storage.dataframe.type", type,
                     "ioc.storage.dataframe.type='%s' is not supported; set it to 'jdbc'".formatted(type));
-        }
-    }
-
-    private void validateLegacyLookup(IocProperties props, Errors errors) {
-        IocProperties.Lookup lookup = props.lookup();
-        if (lookup == null) {
-            return;
-        }
-        if (lookup.deduplicate() != null) {
-            reject(errors, "lookup.deduplicate", lookup.deduplicate(),
-                    "ioc.lookup.deduplicate was moved; use ioc.pipeline.deduplicate");
-        }
-        if (lookup.type() != null) {
-            rejectRemovedLookup(errors, "lookup.type", lookup.type());
-        }
-        if (lookup.path() != null) {
-            rejectRemovedLookup(errors, "lookup.path", lookup.path());
-        }
-        if (lookup.artifacts() != null) {
-            rejectRemovedLookup(errors, "lookup.artifacts", lookup.artifacts());
         }
     }
 
@@ -274,7 +253,6 @@ final class IocConfigPreflight implements Validator {
         return endpointNames;
     }
 
-    @SuppressWarnings("deprecation")
     private void validateSmb(IocProperties.Sync.Endpoint.Smb smb, int endpointIndex, Errors errors) {
         if (smb == null) {
             return;
@@ -286,11 +264,6 @@ final class IocConfigPreflight implements Validator {
                 "ioc.sync.endpoints[%d].smb.request-timeout".formatted(endpointIndex));
         rejectIfNotPositive(errors, prefix + "idleTimeout", smb.idleTimeout(),
                 "ioc.sync.endpoints[%d].smb.idle-timeout".formatted(endpointIndex));
-        if (smb.readTimeout() != null) {
-            reject(errors, prefix + "readTimeout", smb.readTimeout(),
-                    "ioc.sync.endpoints[%d].smb.read-timeout was removed; use request-timeout"
-                            .formatted(endpointIndex));
-        }
     }
 
     private void validateFetch(IocProperties.Sync.Fetch fetch, Set<String> endpointNames, Errors errors) {
@@ -400,11 +373,6 @@ final class IocConfigPreflight implements Validator {
             reject(errors, field, value,
                     "%s='%s' duplicates another %s; use unique names".formatted(configKey, value, label));
         }
-    }
-
-    private void rejectRemovedLookup(Errors errors, String field, Object value) {
-        reject(errors, field, value,
-                "legacy ioc.lookup.* storage keys are removed; SQLite/JDBC dataframe storage is the runtime truth");
     }
 
     private void rejectIfNotPositive(Errors errors, String field, Duration value, String configKey) {

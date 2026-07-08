@@ -1,7 +1,11 @@
 package com.iocextractor.bootstrap;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.context.properties.bind.UnboundConfigurationPropertiesException;
 import org.springframework.boot.context.properties.bind.validation.BindValidationException;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -9,14 +13,22 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.MutablePropertySources;
+import org.springframework.core.env.SystemEnvironmentPropertySource;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
 import org.springframework.validation.FieldError;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class IocPropertiesBindingTest {
 
@@ -25,7 +37,6 @@ class IocPropertiesBindingTest {
         contextRunner().run(context -> {
             assertThat(context).hasSingleBean(IocProperties.class);
             assertThat(context).hasBean("configurationPropertiesValidator");
-            assertThat(context.getBean(IocProperties.class).lookup()).isNull();
         });
     }
 
@@ -33,7 +44,6 @@ class IocPropertiesBindingTest {
     void reportsMultipleSemanticErrorsTogether() {
         contextRunner(
                 "ioc.storage.dataframe.type=disabled",
-                "ioc.lookup.deduplicate=false",
                 "ioc.sync.retry.max-attempts=1",
                 "ioc.sync.retry.backoff=10s",
                 "ioc.sync.retry.max-backoff=1s",
@@ -42,20 +52,110 @@ class IocPropertiesBindingTest {
                         .extracting(FieldError::getField)
                         .contains(
                                 "storage.dataframe.type",
-                                "lookup.deduplicate",
                                 "sync.retry.maxBackoff",
                                 "sync.retry.multiplier"));
     }
 
     @Test
-    void rejectsLegacyLookupStorageKeysWithFieldErrors() {
-        contextRunner(
-                "ioc.lookup.type=csv",
-                "ioc.lookup.path=./dataframe/masks_list.csv",
-                "ioc.lookup.artifacts[0].name=masks")
+    void reportsRetryMaxAttemptsThroughPreflightOnly() {
+        contextRunner("ioc.sync.retry.max-attempts=0")
                 .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
-                        .extracting(FieldError::getField)
-                        .contains("lookup.type", "lookup.path", "lookup.artifacts"));
+                        .filteredOn(error -> "sync.retry.maxAttempts".equals(error.getField()))
+                        .singleElement()
+                        .satisfies(error -> assertThat(error.getDefaultMessage())
+                                .contains("set it to at least 1")));
+    }
+
+    @Test
+    void rejectsUnknownIocKeyFromDefaultStyleOverrides() {
+        contextRunner("ioc.pipeline.deduplicat=false")
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
+                        .containsExactly("ioc.pipeline.deduplicat"));
+    }
+
+    @Test
+    void rejectsRemovedLegacyLookupKeyAsUnknown() {
+        contextRunner("ioc.lookup.deduplicate=false")
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
+                        .containsExactly("ioc.lookup.deduplicate"));
+    }
+
+    @Test
+    void rejectsRemovedLegacySmbReadTimeoutKeyAsUnknown() {
+        contextRunner(
+                "ioc.sync.endpoints[0].name=share",
+                "ioc.sync.endpoints[0].transport=smb",
+                "ioc.sync.endpoints[0].smb.host=server",
+                "ioc.sync.endpoints[0].smb.share=share",
+                "ioc.sync.endpoints[0].smb.username=user",
+                "ioc.sync.endpoints[0].smb.password=secret",
+                "ioc.sync.endpoints[0].smb.read-timeout=45s")
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
+                        .containsExactly("ioc.sync.endpoints[0].smb.read-timeout"));
+    }
+
+    @Test
+    void rejectsUnknownNestedRecordKey() {
+        contextRunner(
+                "ioc.sync.endpoints[0].name=share",
+                "ioc.sync.endpoints[0].transport=smb",
+                "ioc.sync.endpoints[0].smb.host=server",
+                "ioc.sync.endpoints[0].smb.share=share",
+                "ioc.sync.endpoints[0].smb.username=user",
+                "ioc.sync.endpoints[0].smb.password=secret",
+                "ioc.sync.endpoints[0].smb.unknown-timeout=45s")
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
+                        .containsExactly("ioc.sync.endpoints[0].smb.unknown-timeout"));
+    }
+
+    @Test
+    void rejectsUnknownIocKeyFromOptionalOverlay(@TempDir Path tempDir) throws IOException {
+        Path overlay = tempDir.resolve("application.yml");
+        Files.writeString(overlay, """
+                ioc:
+                  pipeline:
+                    deduplicat: false
+                """);
+
+        contextRunnerWithYamlOverlay(overlay)
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
+                        .containsExactly("ioc.pipeline.deduplicat"));
+    }
+
+    @Test
+    void rejectsUnknownIocKeyFromCliOverride() {
+        SpringApplication app = springApplication();
+
+        assertThatThrownBy(() -> app.run("--ioc.pipeline.deduplicat=false"))
+                .satisfies(failure -> assertThat(unboundKeys(failure))
+                        .containsExactly("ioc.pipeline.deduplicat"));
+    }
+
+    @Test
+    void acceptsKnownCliOverride() {
+        SpringApplication app = springApplication();
+
+        try (ConfigurableApplicationContext context = app.run("--ioc.pipeline.deduplicate=false")) {
+            assertThat(context.getBean(IocProperties.class).pipeline().deduplicate()).isFalse();
+        }
+    }
+
+    @Test
+    void ignoresUnrelatedSystemEnvironmentAndSystemProperties() {
+        contextRunnerWithSystemSources().run(context -> assertThat(context).hasSingleBean(IocProperties.class));
+    }
+
+    @Test
+    void acceptsKnownEnvironmentOverride() {
+        contextRunnerWithEnvironment(Map.of("IOC_PIPELINE_DEDUPLICATE", "false"))
+                .run(context -> assertThat(context.getBean(IocProperties.class).pipeline().deduplicate()).isFalse());
+    }
+
+    @Test
+    void rejectsRemovedLegacyLookupEnvironmentKeyAsUnknown() {
+        contextRunnerWithEnvironment(Map.of("IOC_LOOKUP_DEDUPLICATE", "false"))
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
+                        .containsExactly("ioc.lookup.deduplicate"));
     }
 
     @Test
@@ -93,13 +193,11 @@ class IocPropertiesBindingTest {
                 "ioc.sync.endpoints[0].smb.share=share",
                 "ioc.sync.endpoints[0].smb.username=user",
                 "ioc.sync.endpoints[0].smb.password=secret",
-                "ioc.sync.endpoints[0].smb.read-timeout=45s",
                 "ioc.sync.fetch.interval=0s",
                 "ioc.sync.publish.interval=0s")
                 .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
                         .extracting(FieldError::getField)
                         .contains(
-                                "sync.endpoints[0].smb.readTimeout",
                                 "sync.fetch.interval",
                                 "sync.publish.interval"));
     }
@@ -218,10 +316,42 @@ class IocPropertiesBindingTest {
     }
 
     private ApplicationContextRunner contextRunner(String... overrides) {
+        // TestPropertyValues merges indexed lists over application.yml; it cannot shorten default YAML lists.
         return new ApplicationContextRunner()
                 .withInitializer(IocPropertiesBindingTest::addDefaultApplicationYaml)
                 .withUserConfiguration(TestConfig.class)
                 .withPropertyValues(overrides);
+    }
+
+    private ApplicationContextRunner contextRunnerWithYamlOverlay(Path overlay) {
+        return new ApplicationContextRunner()
+                .withInitializer(context -> addYaml(context, "overlay", new FileSystemResource(overlay), true))
+                .withInitializer(IocPropertiesBindingTest::addDefaultApplicationYaml)
+                .withUserConfiguration(TestConfig.class);
+    }
+
+    private ApplicationContextRunner contextRunnerWithSystemSources() {
+        return contextRunnerWithEnvironment(Map.of(
+                "IOC_UNRELATED_OPERATOR_FLAG", "true",
+                "UNRELATED_SYSTEM_KEY", "x"))
+                .withSystemProperties("IOC_PIPELINE_DEDUPLICAT=false", "random.system.key=value");
+    }
+
+    private ApplicationContextRunner contextRunnerWithEnvironment(Map<String, Object> environment) {
+        return new ApplicationContextRunner()
+                .withInitializer(context -> {
+                    context.getEnvironment().getPropertySources().addFirst(new SystemEnvironmentPropertySource(
+                            "testEnv", environment));
+                    addDefaultApplicationYaml(context);
+                })
+                .withUserConfiguration(TestConfig.class);
+    }
+
+    private static SpringApplication springApplication() {
+        SpringApplication app = new SpringApplication(TestConfig.class);
+        app.setWebApplicationType(WebApplicationType.NONE);
+        app.addInitializers(IocPropertiesBindingTest::addDefaultApplicationYaml);
+        return app;
     }
 
     private static List<FieldError> fieldErrors(Throwable failure) {
@@ -231,6 +361,15 @@ class IocPropertiesBindingTest {
                 .filter(FieldError.class::isInstance)
                 .map(FieldError.class::cast)
                 .toList();
+    }
+
+    private static Set<String> unboundKeys(Throwable failure) {
+        UnboundConfigurationPropertiesException unbound =
+                cause(failure, UnboundConfigurationPropertiesException.class);
+        assertThat(unbound).isNotNull();
+        return unbound.getUnboundProperties().stream()
+                .map(property -> property.getName().toString())
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
     }
 
     private static <T extends Throwable> T cause(Throwable throwable, Class<T> type) {
@@ -253,12 +392,23 @@ class IocPropertiesBindingTest {
     }
 
     private static void addDefaultApplicationYaml(ConfigurableApplicationContext context) {
+        addYaml(context, "defaults", new ClassPathResource("application.yml"), false);
+    }
+
+    private static void addYaml(ConfigurableApplicationContext context,
+                                String name,
+                                Resource resource,
+                                boolean first) {
         try {
             MutablePropertySources sources = context.getEnvironment().getPropertySources();
-            sources.addLast(new YamlPropertySourceLoader()
-                    .load("defaults", new ClassPathResource("application.yml")).getFirst());
+            var source = new YamlPropertySourceLoader().load(name, resource).getFirst();
+            if (first) {
+                sources.addFirst(source);
+            } else {
+                sources.addLast(source);
+            }
         } catch (IOException ex) {
-            throw new IllegalStateException("Cannot load default application.yml", ex);
+            throw new IllegalStateException("Cannot load " + resource, ex);
         }
     }
 

@@ -169,9 +169,8 @@ class ExportPlanCatalogTest {
     private IocProperties withExport(IocProperties source, IocProperties.Export export) {
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
-                source.patterns(), source.classify(), source.sink(), source.pipeline(), source.lookup(),
-                source.ingestion(), source.artifactIdentity(), export, source.sync(), source.maintenance(),
-                source.observability());
+                source.patterns(), source.classify(), source.sink(), source.pipeline(), source.ingestion(),
+                source.artifactIdentity(), export, source.sync(), source.maintenance(), source.observability());
     }
 
     private IocProperties withSinkArtifact(IocProperties source, IocProperties.Sink.Artifact replacement) {
@@ -183,18 +182,16 @@ class ExportPlanCatalogTest {
         IocProperties.Sink sink = new IocProperties.Sink(source.sink().csv(), artifacts);
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
-                source.patterns(), source.classify(), sink, source.pipeline(), source.lookup(), source.ingestion(),
-                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(),
-                source.observability());
+                source.patterns(), source.classify(), sink, source.pipeline(), source.ingestion(),
+                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(), source.observability());
     }
 
     private IocProperties withCsv(IocProperties source, IocProperties.Sink.Csv csv) {
         IocProperties.Sink sink = new IocProperties.Sink(csv, source.sink().artifacts());
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
-                source.patterns(), source.classify(), sink, source.pipeline(), source.lookup(), source.ingestion(),
-                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(),
-                source.observability());
+                source.patterns(), source.classify(), sink, source.pipeline(), source.ingestion(),
+                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(), source.observability());
     }
 
     private IocProperties.Sink.Artifact copyArtifact(

@@ -16,11 +16,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class IocPropertiesTest {
 
     @Test
-    void defaultConfigurationBindsPipelineDedupWithoutLegacyLookup() throws Exception {
+    void defaultConfigurationBindsPipelineDedup() throws Exception {
         IocProperties properties = bind(Map.of());
 
         assertThat(properties.pipeline().deduplicate()).isTrue();
-        assertThat(properties.lookup()).isNull();
     }
 
     private IocProperties bind(Map<String, Object> overrides) throws Exception {

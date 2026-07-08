@@ -80,9 +80,8 @@ class SyncSelectionCatalogTest {
         IocProperties defaults = defaults();
         IocProperties properties = new IocProperties(
                 defaults.engine(), defaults.runtime(), defaults.storage(), defaults.source(), defaults.refang(),
-                defaults.patterns(), defaults.classify(), defaults.sink(), defaults.pipeline(), defaults.lookup(),
-                defaults.ingestion(), defaults.artifactIdentity(), defaults.export(), sync,
-                defaults.maintenance(), defaults.observability());
+                defaults.patterns(), defaults.classify(), defaults.sink(), defaults.pipeline(), defaults.ingestion(),
+                defaults.artifactIdentity(), defaults.export(), sync, defaults.maintenance(), defaults.observability());
         return new SyncSelectionCatalog(properties);
     }
 
@@ -104,7 +103,7 @@ class SyncSelectionCatalogTest {
         return new IocProperties.Sync.Endpoint(name, "smb",
                 new IocProperties.Sync.Endpoint.Smb(
                         "server", "share", null, "user", "secret", true,
-                        null, null, null, null));
+                        null, null, null));
     }
 
     private IocProperties defaults() throws Exception {
