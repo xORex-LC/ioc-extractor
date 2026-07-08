@@ -43,7 +43,6 @@ class IocPropertiesBindingTest {
     @Test
     void reportsMultipleSemanticErrorsTogether() {
         contextRunner(
-                "ioc.storage.dataframe.type=disabled",
                 "ioc.sync.retry.max-attempts=1",
                 "ioc.sync.retry.backoff=10s",
                 "ioc.sync.retry.max-backoff=1s",
@@ -51,9 +50,61 @@ class IocPropertiesBindingTest {
                 .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
                         .extracting(FieldError::getField)
                         .contains(
-                                "storage.dataframe.type",
                                 "sync.retry.maxBackoff",
                                 "sync.retry.multiplier"));
+    }
+
+    @Test
+    void bindsClosedSelectorVariants() {
+        contextRunner(
+                "ioc.engine=Re2J",
+                "ioc.runtime.mode=DAEMON",
+                "ioc.observability.mode=DAEMON",
+                "ioc.storage.service.type=JDBC",
+                "ioc.storage.dataframe.type=jdbc",
+                "ioc.export.trigger.type=quiet-period",
+                "ioc.ingestion.ledger.type=FILE")
+                .run(context -> {
+                    IocProperties props = context.getBean(IocProperties.class);
+                    assertThat(props.engine()).isEqualTo(EngineType.RE2J);
+                    assertThat(props.runtime().mode()).isEqualTo(RuntimeMode.DAEMON);
+                    assertThat(props.observability().mode()).isEqualTo(ObservabilityMode.DAEMON);
+                    assertThat(props.storage().service().type()).isEqualTo(StorageType.JDBC);
+                    assertThat(ArtifactIdStrategy.parse("DESCENDING")).isEqualTo(ArtifactIdStrategy.DESCENDING);
+                    assertThat(props.artifactIdentity().artifacts().get(2).keyMode())
+                            .isEqualTo(ArtifactKeyMode.FIRST_NON_EMPTY);
+                    assertThat(ArtifactKeyMode.parse("first_non_empty")).isEqualTo(ArtifactKeyMode.FIRST_NON_EMPTY);
+                    assertThat(props.export().trigger().type()).isEqualTo(ExportTriggerType.QUIET_PERIOD);
+                    assertThat(ExportOutputMode.parse("Complete")).isEqualTo(ExportOutputMode.COMPLETE);
+                    assertThat(props.ingestion().ledger().type()).isEqualTo(IngestionLedgerType.FILE);
+                    assertThat(RetentionActionType.parse("ARCHIVE")).isEqualTo(RetentionActionType.ARCHIVE);
+                });
+    }
+
+    @Test
+    void rejectsInvalidClosedSelectorWithSupportedValues() {
+        contextRunner("ioc.engine=regex")
+                .run(context -> assertThat(causeMessages(context.getStartupFailure()))
+                        .contains("ioc.engine")
+                        .contains("re2j, jdk"));
+    }
+
+    @Test
+    void rejectsSyncTransportTypoDuringBinding() {
+        contextRunner(
+                "ioc.sync.endpoints[0].name=share",
+                "ioc.sync.endpoints[0].transport=ftp")
+                .run(context -> assertThat(causeMessages(context.getStartupFailure()))
+                        .contains("ioc.sync.endpoints[].transport")
+                        .contains("smb"));
+    }
+
+    @Test
+    void rejectsRetentionActionTypoDuringBinding() {
+        contextRunner("ioc.maintenance.retention.targets[0].action=drop")
+                .run(context -> assertThat(causeMessages(context.getStartupFailure()))
+                        .contains("ioc.maintenance.retention.targets[].action")
+                        .contains("delete, archive"));
     }
 
     @Test
@@ -389,6 +440,18 @@ class IocPropertiesBindingTest {
             current = current.getCause();
         }
         return current;
+    }
+
+    private static String causeMessages(Throwable throwable) {
+        List<String> messages = new ArrayList<>();
+        Throwable current = throwable;
+        while (current != null) {
+            if (current.getMessage() != null) {
+                messages.add(current.getMessage());
+            }
+            current = current.getCause();
+        }
+        return String.join("\n", messages);
     }
 
     private static void addDefaultApplicationYaml(ConfigurableApplicationContext context) {

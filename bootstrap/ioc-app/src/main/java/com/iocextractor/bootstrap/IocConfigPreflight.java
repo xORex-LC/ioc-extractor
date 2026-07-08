@@ -7,9 +7,7 @@ import java.time.Duration;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -29,21 +27,8 @@ final class IocConfigPreflight implements Validator {
         if (!(target instanceof IocProperties props)) {
             return;
         }
-        validateDataframeStorage(props, errors);
         validateArtifactIdentityReferences(props, errors);
         validateSync(props, errors);
-    }
-
-    private void validateDataframeStorage(IocProperties props, Errors errors) {
-        IocProperties.Storage storage = props.storage();
-        if (storage == null || storage.dataframe() == null) {
-            return;
-        }
-        String type = storage.dataframe().type();
-        if (hasText(type) && !"jdbc".equalsIgnoreCase(type)) {
-            reject(errors, "storage.dataframe.type", type,
-                    "ioc.storage.dataframe.type='%s' is not supported; set it to 'jdbc'".formatted(type));
-        }
     }
 
     private void validateSync(IocProperties props, Errors errors) {
@@ -244,7 +229,7 @@ final class IocConfigPreflight implements Validator {
                 rejectDuplicate(errors, seen, name, "sync.endpoints[%d].name".formatted(i),
                         "ioc.sync.endpoints[%d].name".formatted(i), "sync endpoint");
             }
-            if ("smb".equals(normalize(endpoint.transport())) && endpoint.smb() == null) {
+            if (endpoint.transport() == SyncTransport.SMB && endpoint.smb() == null) {
                 reject(errors, "sync.endpoints[%d].smb".formatted(i), null,
                         "ioc.sync.endpoints[%d].smb is required when transport is 'smb'".formatted(i));
             }
@@ -391,10 +376,6 @@ final class IocConfigPreflight implements Validator {
 
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
-    }
-
-    private static String normalize(String value) {
-        return Objects.toString(value, "").trim().toLowerCase(Locale.ROOT);
     }
 
     private static boolean isExplicitNumeric(String value) {

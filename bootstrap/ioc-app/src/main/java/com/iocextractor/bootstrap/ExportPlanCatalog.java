@@ -23,7 +23,6 @@ import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -121,7 +120,7 @@ public final class ExportPlanCatalog {
         for (IocProperties.ArtifactIdentity.Artifact configured : properties.artifactIdentity().artifacts()) {
             ArtifactIdentityDefinition definition = new ArtifactIdentityDefinition(
                     configured.name(), configured.keyColumns(),
-                    "first-non-empty".equalsIgnoreCase(Objects.toString(configured.keyMode(), "")),
+                    configured.keyMode() == ArtifactKeyMode.FIRST_NON_EMPTY,
                     configured.epoch() == null ? 1 : configured.epoch());
             if (result.put(configured.name(), definition) != null) {
                 throw new IllegalArgumentException("Duplicate artifact identity: " + configured.name());
@@ -159,12 +158,12 @@ public final class ExportPlanCatalog {
                                   DiagnosticFactory diagnosticFactory) {
         ExportMode mode;
         try {
-            mode = ExportMode.valueOf(profile.outputMode().trim().toUpperCase(Locale.ROOT));
+            mode = ExportMode.valueOf(profile.outputMode().name());
         } catch (IllegalArgumentException failure) {
-            throw unsupported(profile, profile.outputMode(), diagnosticSink, diagnosticFactory, failure);
+            throw unsupported(profile, profile.outputMode().token(), diagnosticSink, diagnosticFactory, failure);
         }
         if (mode != ExportMode.COMPLETE) {
-            throw unsupported(profile, mode.name(), diagnosticSink, diagnosticFactory, null);
+            throw unsupported(profile, profile.outputMode().token(), diagnosticSink, diagnosticFactory, null);
         }
         return mode;
     }
@@ -217,7 +216,7 @@ public final class ExportPlanCatalog {
             addAll(digest, artifact.include());
             addAll(digest, artifact.exclude());
             IocProperties.Sink.Artifact.Id id = artifact.id();
-            add(digest, id == null ? null : id.strategy());
+            add(digest, id == null || id.strategy() == null ? null : id.strategy().token());
             add(digest, id == null ? null : id.start());
             for (IocProperties.Sink.Artifact.Column column : artifact.columns()) {
                 add(digest, column.name());

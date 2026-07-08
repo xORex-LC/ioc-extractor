@@ -12,6 +12,6 @@ import java.lang.annotation.Target;
 @Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
-@ConditionalOnExpression("'${ioc.storage.service.type:disabled}' == 'jdbc'")
+@ConditionalOnExpression("'${ioc.storage.service.type:disabled}' == '" + StorageType.JDBC_VALUE + "'")
 public @interface ConditionalOnServiceStorage {
 }

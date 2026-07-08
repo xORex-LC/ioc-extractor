@@ -1,6 +1,7 @@
 package com.iocextractor;
 
 import com.iocextractor.adapter.in.cli.EarlyCliLauncher;
+import com.iocextractor.bootstrap.RuntimeMode;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
@@ -28,8 +29,9 @@ public class IocExtractorApplication {
         }
 
         var context = SpringApplication.run(IocExtractorApplication.class, args);
-        String mode = context.getEnvironment().getProperty("ioc.runtime.mode", "oneshot");
-        if (!"daemon".equalsIgnoreCase(mode)) {
+        RuntimeMode mode = RuntimeMode.parse(context.getEnvironment()
+                .getProperty("ioc.runtime.mode", RuntimeMode.ONESHOT_VALUE));
+        if (!mode.isDaemon()) {
             System.exit(SpringApplication.exit(context));
         }
     }

@@ -100,7 +100,7 @@ class SyncSelectionCatalogTest {
     }
 
     private IocProperties.Sync.Endpoint endpoint(String name) {
-        return new IocProperties.Sync.Endpoint(name, "smb",
+        return new IocProperties.Sync.Endpoint(name, SyncTransport.SMB,
                 new IocProperties.Sync.Endpoint.Smb(
                         "server", "share", null, "user", "secret", true,
                         null, null, null));

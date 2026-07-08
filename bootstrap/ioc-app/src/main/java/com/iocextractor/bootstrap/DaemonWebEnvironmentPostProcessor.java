@@ -36,8 +36,8 @@ public class DaemonWebEnvironmentPostProcessor implements EnvironmentPostProcess
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
-        String mode = environment.getProperty("ioc.runtime.mode", "oneshot");
-        if ("daemon".equalsIgnoreCase(mode)) {
+        RuntimeMode mode = RuntimeMode.parse(environment.getProperty("ioc.runtime.mode", RuntimeMode.ONESHOT_VALUE));
+        if (mode.isDaemon()) {
             environment.getPropertySources().addFirst(new MapPropertySource(
                     PROPERTY_SOURCE_NAME,
                     Map.of(

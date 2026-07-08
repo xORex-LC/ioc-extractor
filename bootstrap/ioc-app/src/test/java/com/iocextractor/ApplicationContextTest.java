@@ -2,6 +2,7 @@ package com.iocextractor;
 
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.bootstrap.IocProperties;
+import com.iocextractor.bootstrap.StorageType;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -52,9 +53,9 @@ class ApplicationContextTest {
 
     @Test
     void binds_service_storage_defaults_without_creating_storage_runtime() {
-        assertThat(props.storage().service().type()).isEqualTo("jdbc");
+        assertThat(props.storage().service().type()).isEqualTo(StorageType.JDBC);
         assertThat(props.storage().service().url()).isEqualTo("jdbc:sqlite:" + SERVICE_DB);
-        assertThat(props.storage().dataframe().type()).isEqualTo("jdbc");
+        assertThat(props.storage().dataframe().type()).isEqualTo(StorageType.JDBC);
         assertThat(props.storage().dataframe().url()).isEqualTo("jdbc:sqlite:" + DATAFRAME_DB);
         assertThat(props.storage().service().sqlite().tuning()).isEqualTo("low-memory");
         assertThat(props.storage().service().pool().writeMax()).isEqualTo(1);

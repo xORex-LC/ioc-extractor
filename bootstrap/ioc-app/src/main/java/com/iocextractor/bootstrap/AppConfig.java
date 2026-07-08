@@ -151,7 +151,6 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Predicate;
@@ -171,7 +170,7 @@ public class AppConfig {
 
     @Bean
     public PatternEngine patternEngine(IocProperties props) {
-        return "jdk".equalsIgnoreCase(props.engine())
+        return props.engine() == EngineType.JDK
                 ? new JdkRegexPatternEngine()
                 : new Re2jPatternEngine();
     }
@@ -294,12 +293,16 @@ public class AppConfig {
                                                                    DiagnosticSink diagnosticSink,
                                                                    IocProperties props) {
         return new IocExtractionServiceFactory(reader, refanger, extractor, attributor,
-                props.pipeline().deduplicate(), props.observability().mode(),
+                props.pipeline().deduplicate(), props.observability().mode().token(),
                 new LoggingPipelineObserver(), diagnosticSink);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "oneshot", matchIfMissing = true)
+    @ConditionalOnProperty(
+            prefix = "ioc.runtime",
+            name = "mode",
+            havingValue = RuntimeMode.ONESHOT_VALUE,
+            matchIfMissing = true)
     public ExtractIocsUseCase extractIocsUseCase(IocExtractionServiceFactory factory,
                                                  MatchPolicy matchPolicy,
                                                  IndicatorFeatureExtractor featureExtractor,
@@ -318,7 +321,7 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public SourceSinkFactory sourceSinkFactory(IocProperties props,
                                                MatchPolicy matchPolicy,
                                                IndicatorFeatureExtractor featureExtractor,
@@ -377,7 +380,7 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public JdbcStorageHealthProbe serviceStorageHealthProbe(@Qualifier("serviceStorageDataSource")
                                                             HikariDataSource serviceStorageDataSource,
                                                             @Qualifier("serviceSchemaMigration")
@@ -386,7 +389,7 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public RunLedger runLedger(@Qualifier("serviceStorageDataSource")
                                HikariDataSource serviceStorageDataSource,
                                @Qualifier("serviceSchemaMigration")
@@ -648,7 +651,7 @@ public class AppConfig {
         Map<String, CadenceSource> cadences = new LinkedHashMap<>();
         for (var plan : catalog.plans()) {
             cadences.put(plan.profile().name(), CadenceSources.create(
-                    trigger.type(), trigger.interval(), trigger.quietPeriod(), trigger.maxCap(), clock));
+                    trigger.type().token(), trigger.interval(), trigger.quietPeriod(), trigger.maxCap(), clock));
         }
         return new DaemonExportScheduler(
                 catalog.plans(), cadences, artifactRevisionReader, exportProgressStore,
@@ -731,13 +734,13 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public Integer ingestRunRecovery(RunLedger runLedger, ArtifactProjection csvArtifactProjection) {
         return new IngestRunRecoveryService(runLedger, csvArtifactProjection).recover();
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public IngestionService ingestionService(IngestionLedger ledger,
                                              SourceLifecycle sourceLifecycle,
                                              SourceSinkFactory sourceSinkFactory,
@@ -769,13 +772,13 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public JdbcStorageHealthIndicator jdbcStorageHealthIndicator(JdbcStorageHealthProbe serviceStorageHealthProbe) {
         return new JdbcStorageHealthIndicator(serviceStorageHealthProbe);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public JdbcStorageHealthIndicator dataframeStorageHealthIndicator(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             @Qualifier("dataframeFormatSchemaMigration") SchemaMigrationResult dataframeFormatSchemaMigration) {
@@ -783,7 +786,7 @@ public class AppConfig {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public ArtifactStorageHealthIndicator artifactStorageHealthIndicator(IocProperties props) {
         return new ArtifactStorageHealthIndicator(props);
     }
@@ -829,7 +832,7 @@ public class AppConfig {
         }
         List<RetentionTarget> targets = new ArrayList<>();
         for (IocProperties.Maintenance.Retention.Target target : maintenance.retention().targets()) {
-            RetentionAction action = "archive".equalsIgnoreCase(blankToEmpty(target.action()))
+            RetentionAction action = target.action() == RetentionActionType.ARCHIVE
                     ? RetentionAction.ARCHIVE
                     : RetentionAction.DELETE;
             Path archiveDir = (target.archiveDir() == null || target.archiveDir().isBlank())
@@ -846,7 +849,7 @@ public class AppConfig {
     }
 
     private Duration cadencePollInterval(IocProperties.Export.Trigger trigger) {
-        if (!"quiet-period".equals(normalizedTriggerType(trigger))) {
+        if (!trigger.type().isQuietPeriod()) {
             return trigger.interval();
         }
         return trigger.quietPeriod().compareTo(trigger.maxCap()) <= 0
@@ -854,16 +857,10 @@ public class AppConfig {
     }
 
     private ExportNudgePolicy exportNudgePolicy(IocProperties.Export.Trigger trigger) {
-        if (!"quiet-period".equals(normalizedTriggerType(trigger))) {
+        if (!trigger.type().isQuietPeriod()) {
             return ExportNudgePolicy.disabled();
         }
         return new ExportNudgePolicy(true, trigger.quietPeriod());
-    }
-
-    private String normalizedTriggerType(IocProperties.Export.Trigger trigger) {
-        return Objects.requireNonNull(trigger.type(), "export trigger type")
-                .trim()
-                .toLowerCase(Locale.ROOT);
     }
 
     // ---- artifact assembly -------------------------------------------------
@@ -1015,13 +1012,13 @@ public class AppConfig {
                 .map(artifact -> new ArtifactIdentityDefinition(
                         artifact.name(),
                         artifact.keyColumns(),
-                        "first-non-empty".equalsIgnoreCase(blankToEmpty(artifact.keyMode())),
+                        artifact.keyMode() == ArtifactKeyMode.FIRST_NON_EMPTY,
                         artifact.epoch() == null ? 1 : artifact.epoch()))
                 .toList();
     }
 
     private IdGenerator.Strategy strategyOf(IocProperties.Sink.Artifact.Id id) {
-        return id != null && "descending".equalsIgnoreCase(id.strategy())
+        return id != null && id.strategy() == ArtifactIdStrategy.DESCENDING
                 ? IdGenerator.Strategy.DESCENDING
                 : IdGenerator.Strategy.ASCENDING;
     }

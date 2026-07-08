@@ -33,7 +33,7 @@ public final class ApplicationLifecycleLogger {
         LogEvents.info(log)
                 .action(EventAction.APP_START)
                 .outcome(EventOutcome.SUCCESS)
-                .field(LogField.IOC_MODE, properties.observability().mode())
+                .field(LogField.IOC_MODE, properties.observability().mode().token())
                 .message("application started" + healthSuffix())
                 .log();
     }
@@ -53,7 +53,7 @@ public final class ApplicationLifecycleLogger {
         LogEvents.info(log)
                 .action(EventAction.APP_STOP)
                 .outcome(EventOutcome.SUCCESS)
-                .field(LogField.IOC_MODE, properties.observability().mode())
+                .field(LogField.IOC_MODE, properties.observability().mode().token())
                 .message("application stopped")
                 .log();
     }

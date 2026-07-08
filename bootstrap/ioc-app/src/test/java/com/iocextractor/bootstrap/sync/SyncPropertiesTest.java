@@ -1,6 +1,7 @@
 package com.iocextractor.bootstrap.sync;
 
 import com.iocextractor.bootstrap.IocProperties;
+import com.iocextractor.bootstrap.SyncTransport;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -62,7 +63,7 @@ class SyncPropertiesTest {
     }
 
     private IocProperties.Sync.Endpoint endpoint(String name) {
-        return new IocProperties.Sync.Endpoint(name, "smb",
+        return new IocProperties.Sync.Endpoint(name, SyncTransport.SMB,
                 new IocProperties.Sync.Endpoint.Smb("server", "share", null,
                         "user", "secret", true, null, null, null));
     }

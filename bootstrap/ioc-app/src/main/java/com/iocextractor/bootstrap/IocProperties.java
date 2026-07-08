@@ -24,7 +24,7 @@ import java.util.Map;
 @Validated
 @ConfigurationProperties(prefix = "ioc")
 public record IocProperties(
-        String engine,
+        @NotNull EngineType engine,
         @NotNull @Valid Runtime runtime,
         @NotNull @Valid Storage storage,
         @NotNull @Valid Source source,
@@ -44,7 +44,7 @@ public record IocProperties(
         pipeline = pipeline == null ? new Pipeline(true) : pipeline;
     }
 
-    public record Runtime(@NotBlank String mode) {
+    public record Runtime(@NotNull RuntimeMode mode) {
     }
 
     /**
@@ -55,14 +55,14 @@ public record IocProperties(
     public record Storage(@NotNull @Valid Service service, @NotNull @Valid Dataframe dataframe) {
 
         public record Service(
-                @NotBlank String type,
+                @NotNull StorageType type,
                 @NotBlank String url,
                 @NotNull @Valid Sqlite sqlite,
                 @NotNull @Valid Pool pool) {
         }
 
         public record Dataframe(
-                @NotBlank String type,
+                @NotNull StorageType type,
                 @NotBlank String url,
                 @NotNull @Valid Sqlite sqlite,
                 @NotNull @Valid Pool pool) {
@@ -108,7 +108,7 @@ public record IocProperties(
                 Id id,
                 @NotEmpty @Valid List<Column> columns) {
 
-            public record Id(String strategy, String start) {
+            public record Id(ArtifactIdStrategy strategy, String start) {
             }
 
             public boolean hasPublicIdColumn() {
@@ -132,7 +132,7 @@ public record IocProperties(
         public record Artifact(
                 @NotBlank String name,
                 @NotEmpty List<String> keyColumns,
-                String keyMode,
+                ArtifactKeyMode keyMode,
                 @Positive Integer epoch) {
         }
     }
@@ -146,7 +146,7 @@ public record IocProperties(
             @NotNull @Valid Retention retention) {
 
         public record Trigger(
-                @NotBlank String type,
+                @NotNull ExportTriggerType type,
                 @NotNull Duration interval,
                 Duration quietPeriod,
                 Duration maxCap) {
@@ -154,7 +154,7 @@ public record IocProperties(
 
         public record Profile(
                 @NotBlank String name,
-                @NotBlank String outputMode,
+                @NotNull ExportOutputMode outputMode,
                 @NotEmpty List<String> artifacts) {
         }
 
@@ -182,7 +182,7 @@ public record IocProperties(
         }
 
         public record Endpoint(@NotBlank String name,
-                               @NotBlank String transport,
+                               @NotNull SyncTransport transport,
                                @Valid Smb smb) {
             public record Smb(@NotBlank String host,
                               @NotBlank String share,
@@ -266,7 +266,7 @@ public record IocProperties(
                     @NotBlank String dir,
                     Duration maxAge,
                     int maxCount,
-                    String action,
+                    RetentionActionType action,
                     String archiveDir) {
             }
         }
@@ -300,10 +300,10 @@ public record IocProperties(
         public record Retry(int maxAttempts, @NotNull Duration backoff) {
         }
 
-        public record Ledger(@NotBlank String type, @NotBlank String path) {
+        public record Ledger(@NotNull IngestionLedgerType type, @NotBlank String path) {
         }
     }
 
-    public record Observability(@NotBlank String mode, boolean perItemTraceEnabled) {
+    public record Observability(@NotNull ObservabilityMode mode, boolean perItemTraceEnabled) {
     }
 }

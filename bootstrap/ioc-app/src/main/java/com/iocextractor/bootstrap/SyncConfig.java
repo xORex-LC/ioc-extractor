@@ -68,9 +68,8 @@ public class SyncConfig {
     @ConditionalOnProperty(prefix = "ioc.sync", name = "enabled", havingValue = "true")
     public TransportRegistry transportRegistry(IocProperties props) {
         List<IocProperties.Sync.Endpoint> smbEndpoints = props.sync().endpoints().stream()
-                .filter(endpoint -> "smb".equalsIgnoreCase(endpoint.transport()))
+                .filter(endpoint -> endpoint.transport() == SyncTransport.SMB)
                 .toList();
-        rejectUnsupportedTransports(props, smbEndpoints.size());
 
         List<SmbEndpointSettings> smbSettings = smbEndpoints.stream()
                 .map(this::smbSettings)
@@ -313,20 +312,6 @@ public class SyncConfig {
                 fetchSources(props), publishTargets(props), state, ledger, catalog,
                 syncKeyedExecutor::snapshot,
                 retentionGuard.getIfAvailable(() -> descriptor -> true));
-    }
-
-    private void rejectUnsupportedTransports(IocProperties props, int supportedCount) {
-        if (supportedCount == props.sync().endpoints().size()) {
-            return;
-        }
-        String unsupported = props.sync().endpoints().stream()
-                .filter(endpoint -> !"smb".equalsIgnoreCase(endpoint.transport()))
-                .map(endpoint -> endpoint.transport())
-                .distinct()
-                .sorted()
-                .reduce((left, right) -> left + ", " + right)
-                .orElse("unknown");
-        throw new IllegalArgumentException("Unsupported sync transport: " + unsupported);
     }
 
     private SmbEndpointSettings smbSettings(IocProperties.Sync.Endpoint endpoint) {

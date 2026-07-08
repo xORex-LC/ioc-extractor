@@ -16,6 +16,7 @@ import java.lang.annotation.Target;
 @Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
-@ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && '${ioc.ingestion.ledger.type:file}' == 'jdbc'")
+@ConditionalOnExpression("'${ioc.runtime.mode}' == '" + RuntimeMode.DAEMON_VALUE
+        + "' && '${ioc.ingestion.ledger.type:file}' == '" + IngestionLedgerType.JDBC_VALUE + "'")
 public @interface ConditionalOnJdbcLedger {
 }

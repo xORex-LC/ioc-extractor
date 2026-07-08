@@ -68,7 +68,7 @@ class ExportPlanCatalogTest {
     void rejectsUnknownOrDisabledArtifactBeforeInfrastructureIo() throws Exception {
         IocProperties properties = defaults();
         IocProperties.Export invalid = export(properties,
-                List.of(new IocProperties.Export.Profile("broken", "complete", List.of("missing"))));
+                List.of(new IocProperties.Export.Profile("broken", ExportOutputMode.COMPLETE, List.of("missing"))));
 
         assertThatThrownBy(() -> catalog(withExport(properties, invalid), new ArrayList<>()))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -91,8 +91,8 @@ class ExportPlanCatalogTest {
     void rejectsDuplicateProfileNames() throws Exception {
         IocProperties properties = defaults();
         IocProperties.Export invalid = export(properties, List.of(
-                new IocProperties.Export.Profile("duplicate", "complete", List.of("masks")),
-                new IocProperties.Export.Profile("duplicate", "complete", List.of("hashes"))));
+                new IocProperties.Export.Profile("duplicate", ExportOutputMode.COMPLETE, List.of("masks")),
+                new IocProperties.Export.Profile("duplicate", ExportOutputMode.COMPLETE, List.of("hashes"))));
 
         assertThatThrownBy(() -> catalog(withExport(properties, invalid), new ArrayList<>()))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -103,7 +103,7 @@ class ExportPlanCatalogTest {
     void rejectsAppendWithStableDiagnostic() throws Exception {
         IocProperties properties = defaults();
         IocProperties.Export invalid = export(properties,
-                List.of(new IocProperties.Export.Profile("append-profile", "append", List.of("masks"))));
+                List.of(new IocProperties.Export.Profile("append-profile", ExportOutputMode.APPEND, List.of("masks"))));
         ArrayList<Diagnostic> diagnostics = new ArrayList<>();
 
         assertThatThrownBy(() -> catalog(withExport(properties, invalid), diagnostics))
