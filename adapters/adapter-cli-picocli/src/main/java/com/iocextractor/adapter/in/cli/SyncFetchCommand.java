@@ -35,6 +35,11 @@ public final class SyncFetchCommand implements Callable<Integer> {
     @Option(names = "--dry-run", description = "List prospective work without inbox or ledger writes.")
     private boolean dryRun;
 
+    /** Creates a metadata-only command instance for Picocli model construction. */
+    public SyncFetchCommand() {
+        this(null, null);
+    }
+
     /**
      * Creates a command with IO-free validation and lazy use-case resolution.
      *
@@ -50,11 +55,34 @@ public final class SyncFetchCommand implements Callable<Integer> {
     @Override
     public Integer call() {
         RemoteFetchCommand command = command();
-        validator.validateFetch(command);
+        requireValidator().validateFetch(command);
         RemoteFetchUseCase fetcher = requireUseCase();
         RemoteFetchResult result = fetcher.fetch(command);
         render(result);
         return result.failed() == 0 ? 0 : 1;
+    }
+
+    private ValidateSyncSelectionUseCase requireValidator() {
+        if (validator == null) {
+            throw unavailable();
+        }
+        return validator;
+    }
+
+    private RemoteFetchUseCase requireUseCase() {
+        if (useCase == null) {
+            throw unavailable();
+        }
+        RemoteFetchUseCase fetcher = useCase.getIfAvailable();
+        if (fetcher == null) {
+            throw unavailable();
+        }
+        return fetcher;
+    }
+
+    private IllegalStateException unavailable() {
+        return new IllegalStateException(
+                "Remote sync fetch requires enabled JDBC-backed sync configuration");
     }
 
     RemoteFetchCommand command() {
@@ -68,14 +96,5 @@ public final class SyncFetchCommand implements Callable<Integer> {
     void render(RemoteFetchResult result) {
         spec.commandLine().getOut().printf("Fetch%s: fetched=%d skipped=%d failed=%d%n",
                 dryRun ? " dry-run" : "", result.fetched(), result.skipped(), result.failed());
-    }
-
-    private RemoteFetchUseCase requireUseCase() {
-        RemoteFetchUseCase fetcher = useCase.getIfAvailable();
-        if (fetcher == null) {
-            throw new IllegalStateException(
-                    "Remote sync fetch requires enabled JDBC-backed sync configuration");
-        }
-        return fetcher;
     }
 }

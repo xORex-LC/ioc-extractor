@@ -46,6 +46,11 @@ public final class SyncAllCommand implements Callable<Integer> {
     @Option(names = "--dry-run", description = "Inspect both operations without durable writes.")
     private boolean dryRun;
 
+    /** Creates a metadata-only command instance for Picocli model construction. */
+    public SyncAllCommand() {
+        this(null, null, null);
+    }
+
     /**
      * Creates a combined command that preflights both operations before resolving either graph.
      *
@@ -68,8 +73,9 @@ public final class SyncAllCommand implements Callable<Integer> {
         ArtifactPublishCommand publishCommand = new ArtifactPublishCommand(
                 optional(profile), optional(target), endpointFilter, dryRun);
 
-        validator.validateFetch(fetchCommand);
-        validator.validatePublish(publishCommand);
+        ValidateSyncSelectionUseCase selectionValidator = requireValidator();
+        selectionValidator.validateFetch(fetchCommand);
+        selectionValidator.validatePublish(publishCommand);
         RemoteFetchUseCase fetcher = requireFetchUseCase();
         ArtifactPublishUseCase publisher = requirePublishUseCase();
 
@@ -106,7 +112,17 @@ public final class SyncAllCommand implements Callable<Integer> {
                 publish.attempted(), publish.succeeded(), publish.recovered(), publish.failed());
     }
 
+    private ValidateSyncSelectionUseCase requireValidator() {
+        if (validator == null) {
+            throw unavailable("all");
+        }
+        return validator;
+    }
+
     private RemoteFetchUseCase requireFetchUseCase() {
+        if (fetchUseCase == null) {
+            throw unavailable("fetch");
+        }
         RemoteFetchUseCase fetcher = fetchUseCase.getIfAvailable();
         if (fetcher == null) {
             throw unavailable("fetch");
@@ -115,6 +131,9 @@ public final class SyncAllCommand implements Callable<Integer> {
     }
 
     private ArtifactPublishUseCase requirePublishUseCase() {
+        if (publishUseCase == null) {
+            throw unavailable("publish");
+        }
         ArtifactPublishUseCase publisher = publishUseCase.getIfAvailable();
         if (publisher == null) {
             throw unavailable("publish");

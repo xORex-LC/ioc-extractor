@@ -39,6 +39,11 @@ public final class SyncPublishCommand implements Callable<Integer> {
     @Option(names = "--dry-run", description = "Inspect work without remote or ledger writes.")
     private boolean dryRun;
 
+    /** Creates a metadata-only command instance for Picocli model construction. */
+    public SyncPublishCommand() {
+        this(null, null);
+    }
+
     /**
      * Creates a command with IO-free validation and lazy use-case resolution.
      *
@@ -54,7 +59,7 @@ public final class SyncPublishCommand implements Callable<Integer> {
     @Override
     public Integer call() {
         ArtifactPublishCommand command = command();
-        validator.validatePublish(command);
+        requireValidator().validatePublish(command);
         ArtifactPublishUseCase publisher = requireUseCase();
         if (command.dryRun()) {
             ArtifactPublishResult summary = publisher.reconcile(command);
@@ -70,6 +75,13 @@ public final class SyncPublishCommand implements Callable<Integer> {
     ArtifactPublishCommand command() {
         return new ArtifactPublishCommand(
                 optional(profile), optional(target), optional(endpoint), dryRun);
+    }
+
+    private ValidateSyncSelectionUseCase requireValidator() {
+        if (validator == null) {
+            throw unavailable();
+        }
+        return validator;
     }
 
     private Optional<String> optional(String value) {
@@ -90,11 +102,18 @@ public final class SyncPublishCommand implements Callable<Integer> {
     }
 
     private ArtifactPublishUseCase requireUseCase() {
+        if (useCase == null) {
+            throw unavailable();
+        }
         ArtifactPublishUseCase publisher = useCase.getIfAvailable();
         if (publisher == null) {
-            throw new IllegalStateException(
-                    "Remote sync publish requires enabled JDBC-backed sync configuration");
+            throw unavailable();
         }
         return publisher;
+    }
+
+    private IllegalStateException unavailable() {
+        return new IllegalStateException(
+                "Remote sync publish requires enabled JDBC-backed sync configuration");
     }
 }
