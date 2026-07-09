@@ -3,8 +3,6 @@ package com.iocextractor.bootstrap;
 import com.iocextractor.adapter.out.maintenance.FileSystemRetentionStore;
 import com.iocextractor.adapter.out.regex.JdkRegexPatternEngine;
 import com.iocextractor.adapter.out.regex.Re2jPatternEngine;
-import com.iocextractor.adapter.out.sink.csv.AddressIpValueProvider;
-import com.iocextractor.adapter.out.sink.csv.AddressUrlValueProvider;
 import com.iocextractor.adapter.out.sink.csv.ArtifactFilter;
 import com.iocextractor.adapter.out.sink.csv.ColumnSpec;
 import com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper;
@@ -13,18 +11,9 @@ import com.iocextractor.adapter.out.sink.csv.CsvArtifactSliceWriter;
 import com.iocextractor.adapter.out.sink.csv.FileSystemSliceRetentionStore;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition;
 import com.iocextractor.adapter.out.sink.csv.IdGenerator;
-import com.iocextractor.adapter.out.sink.csv.IdValueProvider;
-import com.iocextractor.adapter.out.sink.csv.IndicatorValueProvider;
-import com.iocextractor.adapter.out.sink.csv.LowerHostTransform;
-import com.iocextractor.adapter.out.sink.csv.LowercaseTransform;
 import com.iocextractor.adapter.out.sink.csv.NioExportOperationGuard;
-import com.iocextractor.adapter.out.sink.csv.MatchHostValueProvider;
-import com.iocextractor.adapter.out.sink.csv.MatchUrlValueProvider;
 import com.iocextractor.adapter.out.sink.csv.RowMapper;
-import com.iocextractor.adapter.out.sink.csv.SourceLabelValueProvider;
-import com.iocextractor.adapter.out.sink.csv.StripPrefixTransform;
 import com.iocextractor.adapter.out.sink.csv.Transform;
-import com.iocextractor.adapter.out.sink.csv.UppercaseTransform;
 import com.iocextractor.adapter.out.sink.csv.ValueProvider;
 import com.iocextractor.adapter.out.source.TikaSourceReader;
 import com.iocextractor.adapter.out.manifest.json.JacksonSliceManifestCodec;
@@ -105,7 +94,6 @@ import com.iocextractor.domain.attribute.MarkerSourceAttributor;
 import com.iocextractor.domain.attribute.SourceAttributor;
 import com.iocextractor.adapter.out.psl.PslHostClassifier;
 import com.iocextractor.domain.classify.FeaturePredicate;
-import com.iocextractor.domain.classify.FeaturePredicates;
 import com.iocextractor.domain.classify.MatchPolicy;
 import com.iocextractor.domain.classify.MatchRule;
 import com.iocextractor.domain.classify.RuleBasedMatchPolicy;
@@ -114,7 +102,6 @@ import com.iocextractor.domain.feature.DefaultIndicatorNormalizer;
 import com.iocextractor.domain.feature.HostClassifier;
 import com.iocextractor.domain.feature.IndicatorFeatureExtractor;
 import com.iocextractor.domain.feature.IndicatorNormalizer;
-import com.iocextractor.domain.feature.NetworkAddressClassifier;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.extract.PatternEngine;
 import com.iocextractor.domain.extract.RegexIndicatorExtractor;
@@ -201,7 +188,7 @@ public class AppConfig {
 
     @Bean
     public MatchPolicy matchPolicy(IocProperties props, IndicatorFeatureExtractor featureExtractor) {
-        Map<String, FeaturePredicate> registry = FeaturePredicates.defaults();
+        Map<String, FeaturePredicate> registry = ConfigRegistryCatalog.featurePredicates();
         List<MatchRule> rules = props.classify().rules().stream()
                 .map(rule -> new MatchRule(
                         resolvePredicates(rule.when(), registry),
@@ -889,9 +876,9 @@ public class AppConfig {
                                                             MatchPolicy matchPolicy,
                                                             IndicatorFeatureExtractor featureExtractor,
                                                             ArtifactIdBaseline artifactIdBaseline) {
-        Map<String, ValueProvider> providers = valueProviders(matchPolicy, featureExtractor);
-        Map<String, Transform> transforms = transforms();
-        Map<String, Predicate<Indicator>> filters = artifactFilters(featureExtractor);
+        Map<String, ValueProvider> providers = ConfigRegistryCatalog.valueProviders(matchPolicy, featureExtractor);
+        Map<String, Transform> transforms = ConfigRegistryCatalog.transforms();
+        Map<String, Predicate<Indicator>> filters = ConfigRegistryCatalog.artifactFilters(featureExtractor);
         List<CsvArtifactDefinition> artifacts = new ArrayList<>();
         for (IocProperties.Sink.Artifact artifact : props.sink().artifacts()) {
             if (!artifact.enabled()) {
@@ -935,28 +922,6 @@ public class AppConfig {
         return headers;
     }
 
-    private Map<String, ValueProvider> valueProviders(MatchPolicy matchPolicy,
-                                                      IndicatorFeatureExtractor featureExtractor) {
-        Map<String, ValueProvider> providers = new HashMap<>();
-        providers.put("id", new IdValueProvider());
-        providers.put("value", new IndicatorValueProvider());
-        providers.put("source.label", new SourceLabelValueProvider());
-        providers.put("match.url", new MatchUrlValueProvider(matchPolicy));
-        providers.put("match.host", new MatchHostValueProvider(matchPolicy));
-        providers.put("address.url", new AddressUrlValueProvider(featureExtractor));
-        providers.put("address.ip", new AddressIpValueProvider(featureExtractor));
-        return providers;
-    }
-
-    private Map<String, Predicate<Indicator>> artifactFilters(IndicatorFeatureExtractor featureExtractor) {
-        Map<String, Predicate<Indicator>> filters = new HashMap<>();
-        FeaturePredicates.defaults().forEach((key, predicate) ->
-                filters.put(key, indicator -> predicate.test(featureExtractor.extract(indicator))));
-        filters.put("is-bare-ip", indicator ->
-                NetworkAddressClassifier.isBareIp(indicator, featureExtractor.extract(indicator)));
-        return filters;
-    }
-
     private ArtifactFilter artifactFilter(IocProperties.Sink.Artifact artifact,
                                           Map<String, Predicate<Indicator>> filters) {
         return new ArtifactFilter(
@@ -978,15 +943,6 @@ public class AppConfig {
             predicates.add(predicate);
         }
         return predicates;
-    }
-
-    private Map<String, Transform> transforms() {
-        Map<String, Transform> transforms = new HashMap<>();
-        transforms.put("lower", new LowercaseTransform());
-        transforms.put("lower-host", new LowerHostTransform());
-        transforms.put("upper", new UppercaseTransform());
-        transforms.put("strip-prefix", new StripPrefixTransform());
-        return transforms;
     }
 
     private List<ColumnSpec> columnSpecs(IocProperties.Sink.Artifact artifact) {

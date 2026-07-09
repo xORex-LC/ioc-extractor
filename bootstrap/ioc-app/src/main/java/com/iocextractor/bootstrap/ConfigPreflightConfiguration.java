@@ -28,6 +28,12 @@ class ConfigPreflightConfiguration {
         return new IocUnknownConfigurationPreflight(environment);
     }
 
+    @Bean
+    @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+    static ConfigRegistryPreflight configRegistryPreflight(IocProperties props) {
+        return new ConfigRegistryPreflight(props);
+    }
+
     // Converters below are anonymous classes on purpose: a lambda erases the
     // Converter's generic parameters and the binder cannot resolve its
     // source/target types at runtime. Do not rewrite them to lambdas.
