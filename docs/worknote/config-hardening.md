@@ -16,6 +16,15 @@ config→config referential integrity, полная типизация закр�
 рабочим списком реализации (маршрут, проверки, слайсы), но слайсы не меняют
 целевую модель; «почему» — в ADR.
 
+**Обновление 2026-07-09: реализовано.** Маршрут ADR 0016 закрыт коммитами
+`b0e5157..8575527`: semantic preflight (`IocConfigPreflight`), config→config
+identity checks, unknown-key preflight (`IocUnknownConfigurationPreflight`),
+legacy `FailureAnalyzer`, typed selectors, sealed `IdStart`, registry-backed
+startup preflight (`ConfigRegistryPreflight`). Важное отклонение от гипотезы
+B1: `ignoreUnknownFields=false` отвергнут после эксперимента из-за ложных
+unbound failures на частичных overlay/list shapes; shipped-решение — B2 без
+YAML-препарсера, ограниченное reflection-shape root `IocProperties`.
+
 ## Постановка (общий корень)
 
 `ioc.*` — это не «настройки», а **DSL с типизированными значениями и
@@ -170,7 +179,7 @@ Boot; наш код только декларирует форму (`IocProperti
   collect-all + пути: CFG-2 — это 3–4 проверки на секцию, оператор должен
   видеть их разом.
 
-**Решено (2026-07-08): A2, с полной миграцией.** Уточнение границы: compact
+**Решено (2026-07-08), реализовано 2026-07-09: A2, с полной миграцией.** Уточнение границы: compact
 constructors НЕ исчезают, а сужаются до нормализации/дефолтов
 (`pipeline == null → default`, `ChangeNotify.disabled()`, `List.copyOf`) и
 **перестают бросать по операторским ошибкам**. Причина жёсткой границы: если
@@ -219,6 +228,15 @@ adapter-local binding `IngestAdapterProperties(prefix = "ioc.ingestion")`;
 глобальный advisor без фильтра может ошибочно считать соседние ingest-ключи
 unbound при поддеревном binding.
 
+**Итог эксперимента (2026-07-09): выбран B2.** B1 (`ignoreUnknownFields=false`)
+не стал финальным решением: на текущей форме records/list overlays он даёт
+ложные unbound failures при частичном перекрытии списков, а CLI-канал
+unknown-ошибок получается менее управляемым для legacy-подсказок. Реализован
+`IocUnknownConfigurationPreflight`: он работает поверх уже собранного
+`Environment`, проверяет только property names под `ioc.*`, сверяет их с
+reflection-shape `IocProperties`, допускает map leaves и adapter-local
+subtrees, а migration hints оставляет `IocConfigurationFailureAnalyzer`.
+
 ### C. Типизация значений (CFG-1, CFG-2г)
 
 Инвентарь stringly-typed полей делится на два сорта:
@@ -257,6 +275,11 @@ unbound при поддеревном binding.
   реализационная деталь; обязательный дизайн-инвариант — одна грамматика для
   preflight и runtime.
 
+**Итог реализации (2026-07-09):** закрытые словари переведены на enum/value
+types с едиными parser'ами для ранних consumers, а `id.start` реализован как
+sealed `IdStart` + `@ConfigurationPropertiesBinding` converters. Runtime
+`startOf` больше не содержит silent `NumberFormatException` fallback.
+
 ### D. Ссылочная целостность (CFG-2) — состав проверок
 
 В preflight'е, чистые config→config:
@@ -275,6 +298,12 @@ unbound при поддеревном binding.
 
 Config→registry проверки (classify-предикаты, `columns.from`, transforms) —
 остаются на создании бинов; проверить, что все соответствующие бины eager.
+
+**Итог реализации (2026-07-09):** config→registry проверки вынесены в
+отдельный `ConfigRegistryPreflight` и общий `ConfigRegistryCatalog`, чтобы не
+смешивать config→config правила `IocConfigPreflight` с registry boundary.
+Runtime guards в `AppConfig`/`ConfigurableRowMapper` оставлены как
+defence-in-depth.
 
 ## Маршрут реализации (решение — в ADR 0016)
 
@@ -324,7 +353,13 @@ Config→registry проверки (classify-предикаты, `columns.from`,
 4. ~~**C2 (sealed IdStart)**~~ — **уточнено (2026-07-08):** вопрос не в форме
    sealed-типа, а в единой грамматике. `id.start` обязан иметь общий
    parser/value contract для preflight и runtime; sealed converter остаётся
-   допустимой, но не обязательной реализационной формой.
+   допустимой, но не обязательной реализационной формой. **Закрыто
+   реализацией 2026-07-09:** выбран sealed `IdStart` + converter.
+5. ~~**B1 vs B2 strict binding**~~ — **закрыто реализацией 2026-07-09:**
+   B1 отвергнут экспериментом, B2 reflection-shape preflight принят и
+   реализован.
+6. ~~**Коды CONFIG.\***~~ — **закрыто реализацией 2026-07-09:** startup/analyzer
+   сообщения используют стабильные `CONFIG.*` без связи с `DiagnosticSink`.
 
 ## Верификация (когда дойдём до кода)
 

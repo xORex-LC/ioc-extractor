@@ -28,6 +28,31 @@
 - Подсистема не знает о доменной специфике потребителя; потребитель не знает о
   технологии подсистемы.
 
+## Startup config preflight
+
+`ioc.*` рассматривается как DSL, а не набор разрозненных knobs. Его проверка
+проходит на старте в `bootstrap/ioc-app`, до runtime graph и до первой обработки
+файла:
+
+- shape/binding/conversion/JSR-380 failures остаются в Spring Boot binding
+  lifecycle;
+- semantic config→config правила (`artifact-identity` ↔ `sink`,
+  `key-columns` ⊆ columns, дубликаты, `id.start` policy, sync/export refs)
+  собирает `IocConfigPreflight` через стандартный
+  `configurationPropertiesValidator`;
+- unknown `ioc.*` keys проверяет `IocUnknownConfigurationPreflight` по
+  reflection-shape `IocProperties`, а legacy migration hints показывает
+  `IocConfigurationFailureAnalyzer`;
+- config→registry ссылки (`classify.when`, artifact filters,
+  `columns[].from`, transforms) проверяет eager `ConfigRegistryPreflight`,
+  используя тот же `ConfigRegistryCatalog`, что и `AppConfig`.
+
+Операторское сообщение строится как `ключ → значение → как исправить` и не
+должно упоминать внутренние номера стадий, методы или детали реализации.
+`FailureAnalyzer` намеренно не связан с `DiagnosticSink`: boot failure
+происходит до полностью собранного контекста, а diagnostics обслуживает уже
+работающие сценарии.
+
 ## Диагностика / телеметрия
 
 Отдельный порт для структурированной диагностики хода работы (что прочитано,

@@ -56,10 +56,10 @@
 
 | ID | Долг | Статус | Эфф. | Источник |
 |---|---|---|---|---|
-| CFG-1 | **Тихий `catch (NumberFormatException ignored)`** на `id.start` ([AppConfig.java:512](../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java#L512)) — опечатка молча уходит в `auto`. | открыт | S | review |
-| CFG-2 | **Нет кросс-проверки имён артефактов** `artifact-identity.artifacts` ↔ `sink.artifacts` — опечатка → no-op identity config. | открыт | S | review |
-| CFG-3 | **«stage 11» протекло в рантайм-ошибку** ([AppConfig.java:421](../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/AppConfig.java#L421)) — внутренний номер этапа в сообщении пользователю. | открыт | S | review |
-| CFG-4 | **Strict configuration binding после миграций.** Сейчас удалённый SMB `read-timeout` оставлен в `IocProperties.Sync.Endpoint.Smb` как tombstone: alias больше не работает, но старый внешний YAML валится fail-fast вместо молчаливого fallback на default `request-timeout`. Следующий шаг — спроектировать строгий binding для `ioc.*` (`ignoreUnknownFields=false` или отдельный preflight неизвестных ключей), затем полностью удалить tombstone-поле `readTimeout`. Нельзя включать глобальную строгость вслепую: проверить overlay `./configs/application.yml`, env/CLI overrides и тестовые YAML, чтобы не сломать допустимые внешние ключи. | открыт | S | sync-hardening follow-up |
+| CFG-1 | **Тихий `catch (NumberFormatException ignored)`** на `id.start` — закрыто: `id.start` стал sealed value contract (`auto` \| explicit long) с binding converters, parser и runtime без silent fallback. | закрыт | S | ADR/0016, `3d45cdd`, `e01e2fa` |
+| CFG-2 | **Нет кросс-проверки имён артефактов** `artifact-identity.artifacts` ↔ `sink.artifacts` — закрыто: startup preflight проверяет identity↔sink, key-columns⊆columns, дубликаты, id policy и registry-backed keys до обработки файла/записи. | закрыт | S | ADR/0016, `b0e5157`, `9bb9e63`, `8575527` |
+| CFG-3 | **«stage 11» протекло в рантайм-ошибку** — закрыто удалением старого aggregation/storage кода при β-collapse; новая config-error convention запрещает внутреннюю нумерацию/implementation jargon в operator-facing сообщениях. | закрыт | S | storage collapse, ADR/0016 |
+| CFG-4 | **Strict configuration binding после миграций.** Закрыто: tombstone-поля `Lookup`/`smb.readTimeout` удалены из `IocProperties`; unknown `ioc.*` keys отбиваются reflection-shape preflight, legacy migration hints живут в `IocConfigurationFailureAnalyzer` с `CONFIG.*`. | закрыт | S | ADR/0016, `ec14c8d`, `e01e2fa` |
 
 ## 6. Код-смелл (`CODE`)
 

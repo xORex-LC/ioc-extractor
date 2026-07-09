@@ -9,6 +9,14 @@
 порядок реализации — в
 [worknote/config-hardening.md](../worknote/config-hardening.md).
 
+**Реализовано 2026-07-09** в диапазоне коммитов `b0e5157..8575527`
+(`b0e5157`, `9bb9e63`, `ec14c8d`, `da27b24`, `30f1884`, `3d45cdd`,
+`e01e2fa`, `8575527`). Shipped-модель: `configurationPropertiesValidator`
+для semantic collect-all, reflection-shape unknown-key preflight вместо
+`ignoreUnknownFields=false`, legacy `FailureAnalyzer` с кодами `CONFIG.*`,
+typed selectors, sealed `IdStart` + converter, registry-backed eager preflight.
+CFG-1, CFG-2, CFG-3 и CFG-4 закрыты в [KNOWN-ISSUES](../KNOWN-ISSUES.md).
+
 ## Контекст
 
 `ioc.*` — не «настройки», а DSL с типизированными значениями и символьными
@@ -105,6 +113,15 @@ reference-integrity, literals/value-types, policy). Это сохраняет е
 подключается `spring-boot-configuration-processor` в `bootstrap/ioc-app`
 (машиночитаемые метаданные ключей + автодополнение операторского YAML в IDE).
 
+**Implementation note 2026-07-09.** Эксперимент с
+`ignoreUnknownFields=false` (B1) был проведён и отвергнут: на текущей
+record/list-shape модели Boot даёт ложные unbound failures на частичных
+overlay/list overrides, а CLI/unknown-channel репортится иначе, чем нужно
+операторскому контракту. Выбран B2-вариант без YAML-препарсера:
+`IocUnknownConfigurationPreflight` сверяет фактические `ioc.*` property names
+с reflection-shape `IocProperties`, ограничен root prefix `ioc` и не трогает
+adapter-local binding. Legacy-подсказки остались в `FailureAnalyzer`.
+
 ### 4. Tombstones удаляются из модели; подсказки живут в FailureAnalyzer
 
 Поля-призраки (`Smb.readTimeout`, record `Lookup`) удаляются из
@@ -188,6 +205,16 @@ contract, используемый и preflight'ом, и `AppConfig.startOf`. М
    contract без converter'а. Обязательный инвариант один: preflight и runtime
    используют одну грамматику.
 
+**Закрыто 2026-07-09.**
+
+1. B1 отвергнут, выбран reflection-shape preflight для unknown keys
+   (`IocUnknownConfigurationPreflight`).
+2. Стабильные коды `CONFIG.*` используются в startup/analyzer сообщениях без
+   привязки к `DiagnosticSink`.
+3. `id.start` реализован как sealed `IdStart` (`auto`/`explicit(long)`) с
+   `@ConfigurationPropertiesBinding` converter и общей нормализованной
+   грамматикой для binding/preflight/runtime.
+
 ## План реализации по срезам
 
 План ниже — execution checklist для имплементации. Целевая модель цельная:
@@ -199,7 +226,7 @@ preflight lifecycle отдельно, strict binding/analyzer отдельно, 
 не знают о конфиге, adapter-local binding не становится источником правил для
 root DSL.
 
-### Срез 1 — Preflight lifecycle и миграция существующих constructor-проверок
+### Срез 1 — Preflight lifecycle и миграция существующих constructor-проверок (выполнен: `b0e5157`)
 
 **Цель.** Ввести единый Spring-facing preflight-шов и убрать throw-first
 операторские ошибки из compact-конструкторов `IocProperties`, не меняя пока
@@ -266,7 +293,7 @@ root DSL.
 Можно объединить со срезом 2, если diff небольшой, но лучше
 сначала закрепить lifecycle без новых правил.
 
-### Срез 2 — Config→config ссылочная целостность для artifacts/identity
+### Срез 2 — Config→config ссылочная целостность для artifacts/identity (выполнен: `9bb9e63`)
 
 **Цель.** Закрыть худший CFG-2 risk: ошибка `artifact-identity` не должна
 создавать мусорную durable identity-запись, падать на первой записи или
@@ -320,7 +347,7 @@ root DSL.
 Blast radius — bootstrap tests + no runtime IO, поэтому этот срез можно
 объединить со срезом 1 при аккуратной реализации.
 
-### Срез 3 — Strict binding, metadata и legacy FailureAnalyzer
+### Срез 3 — Strict binding, metadata и legacy FailureAnalyzer (выполнен: `ec14c8d`)
 
 **Цель.** Сделать неизвестный ключ под `ioc.*` startup failure, удалить
 tombstone-поля из модели и сохранить адресные подсказки миграции.
@@ -383,7 +410,7 @@ tombstone-поля из модели и сохранить адресные по
 Не смешивать с value typing: при регрессе operator startup UX проще отлаживать
 strict binding отдельно.
 
-### Срез 4 — Typed selectors и единая грамматика ранних consumers
+### Срез 4 — Typed selectors и единая грамматика ранних consumers (выполнен: `da27b24`, fix `30f1884`)
 
 **Цель.** Убрать stringly-typed закрытые словари из `IocProperties` и из
 потребителей, включая ранние места, где root properties ещё не связаны.
@@ -448,7 +475,7 @@ strict binding отдельно.
 Оба коммита должны двигаться к одной целевой модели и не оставлять две
 грамматики для одного selector'а.
 
-### Срез 5 — `id.start` value contract и удаление silent fallback
+### Срез 5 — `id.start` value contract и удаление silent fallback (выполнен: `3d45cdd`, fix `e01e2fa`)
 
 **Цель.** Закрыть CFG-1 полностью: `id.start` становится `"auto" | long`
 value contract с одной грамматикой для binding/preflight/runtime.
@@ -497,7 +524,7 @@ value contract с одной грамматикой для binding/preflight/run
 Можно объединить со срезом 4, если typed selector migration уже небольшая; при
 сомнениях держать отдельно, потому что это отдельный tagged-union contract.
 
-### Срез 6 — Registry checks, eager startup и сообщения
+### Срез 6 — Registry checks, eager startup и сообщения (выполнен: `8575527`)
 
 **Цель.** Довести config→registry проверки до того же startup UX: неизвестные
 predicate/provider/transform/filter keys не должны проявляться в первой
@@ -546,7 +573,7 @@ predicate/provider/transform/filter keys не должны проявлятьс�
 без раздувания `IocConfigPreflight`; иначе держать отдельно, чтобы не смешать
 pure config→config и config→registry boundaries.
 
-### Срез 7 — Документы, tracking и финальная верификация
+### Срез 7 — Документы, tracking и финальная верификация (выполняется текущим docs/tracking commit)
 
 **Цель.** Перевести ADR/worknote/KNOWN-ISSUES из design-state в shipped-state
 после кода и закрепить operator-facing contract в документации.

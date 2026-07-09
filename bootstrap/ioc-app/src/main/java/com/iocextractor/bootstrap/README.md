@@ -14,6 +14,13 @@ Composition root и конфигурация. Единственное мест�
 | Файл | Назначение |
 |---|---|
 | `IocProperties.java` | Типобезопасная привязка дерева `ioc.*` (`@ConfigurationProperties`) |
+| `ConfigPreflightConfiguration.java` | Ранний wiring config validators/converters/preflight beans для `ioc.*` |
+| `IocConfigPreflight.java` | Semantic collect-all preflight для config→config инвариантов `IocProperties` |
+| `IocUnknownConfigurationPreflight.java` | Reflection-shape unknown-key preflight для root `ioc.*` без YAML-препарсера |
+| `IocConfigurationFailureAnalyzer.java` | Boot startup analyzer с legacy migration hints и `CONFIG.*` сообщениями |
+| `ConfigRegistryCatalog.java` | Composition-root registry factories/keys для providers, transforms, filters и predicates |
+| `ConfigRegistryPreflight.java` | Eager startup check config→registry ссылок до обработки файла/записи |
+| `*Type.java`, `*Mode.java`, `*Strategy.java`, `SyncTransport.java`, `RetentionActionType.java`, `IdStart.java` | Typed selector/value grammar для `IocProperties` и ранних consumers |
 | `AppConfig.java` | Сборка основного extraction/export/storage graph |
 | `EventCoordinationConfig.java` | Spring bridge для `ControlEventPublisher` и observer wiring |
 | `SyncConfig.java` | Изолированная composition remote sync: transport, ledgers, use cases, guards и schedulers |
