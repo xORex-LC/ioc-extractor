@@ -223,8 +223,9 @@ class IocPropertiesBindingTest {
     }
 
     @Test
-    void ignoresUnrelatedSystemEnvironmentAndSystemProperties() {
-        contextRunnerWithSystemSources().run(context -> assertThat(context).hasSingleBean(IocProperties.class));
+    void rejectsUnknownSystemEnvironmentKeyButIgnoresNonIocSystemProperties() {
+        contextRunnerWithSystemSources().run(context -> assertThat(unboundKeys(context.getStartupFailure()))
+                .containsExactly("ioc.unrelated.operator.flag"));
     }
 
     @Test
@@ -234,10 +235,62 @@ class IocPropertiesBindingTest {
     }
 
     @Test
+    void acceptsMultiwordEnvironmentProperty() {
+        contextRunnerWithEnvironment(Map.of("IOC_INGESTION_STABILITY_QUIET_PERIOD", "15s"))
+                .run(context -> assertThat(context.getBean(IocProperties.class).ingestion().stability().quietPeriod())
+                        .isEqualTo(java.time.Duration.ofSeconds(15)));
+    }
+
+    @Test
+    void acceptsEnvironmentValuesUsingCustomConverters() {
+        contextRunnerWithEnvironment(Map.of("IOC_ENGINE", "Re2J"))
+                .run(context -> {
+                    IocProperties properties = context.getBean(IocProperties.class);
+                    assertThat(properties.engine()).isEqualTo(EngineType.RE2J);
+                });
+        assertThat(new IocEnvironmentPropertyMatcher().match("IOC_SINK_ARTIFACTS_0_ID_START").isKnown()).isTrue();
+    }
+
+    @Test
+    void detectsAmbiguousEnvironmentSchemaSegmentation() {
+        IocEnvironmentPropertyMatcher.MatchResult result = new IocEnvironmentPropertyMatcher(AmbiguousRoot.class)
+                .match("IOC_FOO_BAR");
+
+        assertThat(result.canonicalNames()).containsExactlyInAnyOrder("ioc.foo-bar", "ioc.foo.bar");
+        assertThat(result.isAmbiguous()).isTrue();
+    }
+
+    @Test
+    void acceptsCompleteIndexedEnvironmentRecord() {
+        contextRunnerWithEnvironment(Map.of(
+                "IOC_CLASSIFY_RULES_0_WHEN_0", "has-query",
+                "IOC_CLASSIFY_RULES_0_URL_MATCH", "u:hAS,pEX",
+                "IOC_CLASSIFY_RULES_0_HOST_MATCH", ""))
+                .run(context -> assertThat(context.getBean(IocProperties.class).classify().rules().getFirst().when())
+                        .containsExactly("has-query"));
+    }
+
+    @Test
+    void preservesBindingFailureForInvalidKnownEnvironmentValue() {
+        contextRunnerWithEnvironment(Map.of("IOC_ENGINE", "regex"))
+                .run(context -> {
+                    assertThat(unboundKeysOrEmpty(context.getStartupFailure())).isEmpty();
+                    assertThat(causeMessages(context.getStartupFailure())).contains("ioc.engine");
+                });
+    }
+
+    @Test
     void rejectsRemovedLegacyLookupEnvironmentKeyAsUnknown() {
         contextRunnerWithEnvironment(Map.of("IOC_LOOKUP_DEDUPLICATE", "false"))
                 .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
                         .containsExactly("ioc.lookup.deduplicate"));
+    }
+
+    @Test
+    void rejectsRemovedLegacySmbReadTimeoutEnvironmentKeyAsUnknown() {
+        contextRunnerWithEnvironment(Map.of("IOC_SYNC_ENDPOINTS_0_SMB_READ_TIMEOUT", "45s"))
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
+                        .containsExactly("ioc.sync.endpoints[0].smb.read-timeout"));
     }
 
     @Test
@@ -485,6 +538,16 @@ class IocPropertiesBindingTest {
                 .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
     }
 
+    private static Set<String> unboundKeysOrEmpty(Throwable failure) {
+        UnboundConfigurationPropertiesException unbound = cause(failure, UnboundConfigurationPropertiesException.class);
+        if (unbound == null) {
+            return Set.of();
+        }
+        return unbound.getUnboundProperties().stream()
+                .map(property -> property.getName().toString())
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+    }
+
     private static <T extends Throwable> T cause(Throwable throwable, Class<T> type) {
         Throwable current = throwable;
         while (current != null) {
@@ -583,5 +646,11 @@ class IocPropertiesBindingTest {
     @EnableConfigurationProperties(IocProperties.class)
     @Import(ConfigPreflightConfiguration.class)
     static class TestConfig {
+    }
+
+    private record AmbiguousRoot(String fooBar, Foo foo) {
+    }
+
+    private record Foo(String bar) {
     }
 }

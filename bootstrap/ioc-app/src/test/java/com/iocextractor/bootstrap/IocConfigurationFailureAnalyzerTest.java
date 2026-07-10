@@ -40,6 +40,17 @@ class IocConfigurationFailureAnalyzerTest {
                 .contains("replace ioc.sync.endpoints[].smb.read-timeout with request-timeout");
     }
 
+    @Test
+    void showsRawEnvironmentNameWithoutChangingLegacyClassification() {
+        ConfigurationProperty property = new ConfigurationProperty(
+                ConfigurationPropertyName.of("ioc.lookup.deduplicate"), "IOC_LOOKUP_DEDUPLICATE", null);
+        FailureAnalysis analysis = new IocConfigurationFailureAnalyzer()
+                .analyze(new UnboundConfigurationPropertiesException(Set.of(property)));
+
+        assertThat(analysis.getDescription()).contains("IOC_LOOKUP_DEDUPLICATE (ioc.lookup.deduplicate)");
+        assertThat(analysis.getAction()).contains("CONFIG.LEGACY_LOOKUP");
+    }
+
     private FailureAnalysis analyze(String... names) {
         Set<ConfigurationProperty> properties = java.util.Arrays.stream(names)
                 .map(IocConfigurationFailureAnalyzerTest::property)

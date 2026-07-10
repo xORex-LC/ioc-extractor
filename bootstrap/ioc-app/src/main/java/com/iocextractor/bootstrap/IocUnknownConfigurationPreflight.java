@@ -15,6 +15,7 @@ import org.springframework.core.env.SystemEnvironmentPropertySource;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +36,7 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
     private static final String PREFIX_DOT = PREFIX + ".";
 
     private final ConfigurableEnvironment environment;
+    private final IocEnvironmentPropertyMatcher environmentMatcher = new IocEnvironmentPropertyMatcher();
 
     IocUnknownConfigurationPreflight(ConfigurableEnvironment environment) {
         this.environment = environment;
@@ -47,7 +49,7 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
 
     @Override
     public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
-        Set<String> unknownNames = new LinkedHashSet<>();
+        Map<String, String> unknownNames = new LinkedHashMap<>();
         for (PropertySource<?> source : environment.getPropertySources()) {
             collectUnknownKeys(source, unknownNames);
         }
@@ -56,32 +58,43 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
         }
     }
 
-    private void collectUnknownKeys(PropertySource<?> source, Set<String> unknownNames) {
+    private void collectUnknownKeys(PropertySource<?> source, Map<String, String> unknownNames) {
         if (!(source instanceof EnumerablePropertySource<?> enumerable) || shouldSkip(source)) {
             return;
         }
         for (String rawName : enumerable.getPropertyNames()) {
+            if (source instanceof SystemEnvironmentPropertySource) {
+                collectUnknownEnvironmentKey(rawName, unknownNames);
+                continue;
+            }
             ConfigurationPropertyName name = canonicalName(rawName, source);
             if (name == null) {
                 continue;
             }
             String canonical = name.toString();
-            if (source instanceof SystemEnvironmentPropertySource && !isLegacyTombstone(canonical)) {
-                continue;
-            }
             if (canonical.startsWith(PREFIX_DOT) && !isKnownIocProperty(canonical)) {
-                unknownNames.add(canonical);
+                unknownNames.putIfAbsent(canonical, null);
             }
         }
     }
 
-    private boolean shouldSkip(PropertySource<?> source) {
-        return "configurationProperties".equals(source.getName());
+    private void collectUnknownEnvironmentKey(String rawName, Map<String, String> unknownNames) {
+        IocEnvironmentPropertyMatcher.MatchResult result = environmentMatcher.match(rawName);
+        if (!result.ioc()) {
+            return;
+        }
+        if (result.isAmbiguous()) {
+            throw new IllegalStateException("Ambiguous IOC environment configuration name '%s': %s"
+                    .formatted(rawName, result.canonicalNames()));
+        }
+        if (result.isKnown()) {
+            return;
+        }
+        unknownNames.putIfAbsent(environmentUnknownName(rawName), rawName);
     }
 
-    private boolean isLegacyTombstone(String canonical) {
-        return canonical.startsWith("ioc.lookup.")
-                || (canonical.startsWith("ioc.sync.endpoints[") && canonical.endsWith(".smb.read-timeout"));
+    private boolean shouldSkip(PropertySource<?> source) {
+        return "configurationProperties".equals(source.getName());
     }
 
     private ConfigurationPropertyName canonicalName(String rawName, PropertySource<?> source) {
@@ -95,6 +108,32 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
         } catch (RuntimeException ex) {
             return null;
         }
+    }
+
+    private String environmentUnknownName(String rawName) {
+        ConfigurationPropertyName name = canonicalName(rawName, new SystemEnvironmentPropertySource("ioc", Map.of()));
+        if (name == null) {
+            return rawName;
+        }
+        String canonical = canonicalEnvironmentName(name.toString());
+        if (canonical.matches("ioc\\.sync\\.endpoints\\[\\d+]\\.smb\\.read\\.timeout")) {
+            return canonical.substring(0, canonical.length() - ".read.timeout".length()) + ".read-timeout";
+        }
+        return canonical;
+    }
+
+    private String canonicalEnvironmentName(String adapted) {
+        StringBuilder result = new StringBuilder();
+        for (String token : adapted.split("\\.")) {
+            if (token.matches("\\d+")) {
+                result.append('[').append(token).append(']');
+            } else if (result.isEmpty()) {
+                result.append(token);
+            } else {
+                result.append('.').append(token);
+            }
+        }
+        return result.toString();
     }
 
     private boolean isKnownIocProperty(String canonical) {
@@ -209,11 +248,14 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
         return result.toString();
     }
 
-    private Set<ConfigurationProperty> properties(Set<String> names) {
+    private Set<ConfigurationProperty> properties(Map<String, String> names) {
         Set<ConfigurationProperty> properties = new LinkedHashSet<>();
-        names.stream()
-                .sorted()
-                .map(name -> new ConfigurationProperty(ConfigurationPropertyName.of(name), "<unknown>", null))
+        names.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> new ConfigurationProperty(
+                        ConfigurationPropertyName.of(entry.getKey()),
+                        entry.getValue() == null ? "<unknown>" : entry.getValue(),
+                        null))
                 .forEach(properties::add);
         return properties;
     }
