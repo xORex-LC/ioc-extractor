@@ -51,6 +51,17 @@ class IocConfigurationFailureAnalyzerTest {
         assertThat(analysis.getAction()).contains("CONFIG.LEGACY_LOOKUP");
     }
 
+    @Test
+    void recognizesLegacySmbTimeoutFromRawEnvironmentName() {
+        ConfigurationProperty property = new ConfigurationProperty(
+                ConfigurationPropertyName.of("ioc.sync.endpoints[0].smb.read.timeout"),
+                "ioc_sync_endpoints_0_smb_read_timeout", null);
+        FailureAnalysis analysis = new IocConfigurationFailureAnalyzer()
+                .analyze(new UnboundConfigurationPropertiesException(Set.of(property)));
+
+        assertThat(analysis.getAction()).contains("CONFIG.LEGACY_SYNC_TIMEOUT");
+    }
+
     private FailureAnalysis analyze(String... names) {
         Set<ConfigurationProperty> properties = java.util.Arrays.stream(names)
                 .map(IocConfigurationFailureAnalyzerTest::property)

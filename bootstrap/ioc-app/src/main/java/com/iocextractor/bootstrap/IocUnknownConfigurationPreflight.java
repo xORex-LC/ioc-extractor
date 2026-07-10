@@ -98,11 +98,14 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
     }
 
     private ConfigurationPropertyName canonicalName(String rawName, PropertySource<?> source) {
+        return canonicalName(rawName, source instanceof SystemEnvironmentPropertySource ? '_' : '.');
+    }
+
+    private ConfigurationPropertyName canonicalName(String rawName, char separator) {
         ConfigurationPropertyName name = ConfigurationPropertyName.ofIfValid(rawName);
         if (name != null) {
             return name;
         }
-        char separator = source instanceof SystemEnvironmentPropertySource ? '_' : '.';
         try {
             return ConfigurationPropertyName.adapt(rawName, separator);
         } catch (RuntimeException ex) {
@@ -111,15 +114,11 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
     }
 
     private String environmentUnknownName(String rawName) {
-        ConfigurationPropertyName name = canonicalName(rawName, new SystemEnvironmentPropertySource("ioc", Map.of()));
+        ConfigurationPropertyName name = canonicalName(rawName, '_');
         if (name == null) {
             return rawName;
         }
-        String canonical = canonicalEnvironmentName(name.toString());
-        if (canonical.matches("ioc\\.sync\\.endpoints\\[\\d+]\\.smb\\.read\\.timeout")) {
-            return canonical.substring(0, canonical.length() - ".read.timeout".length()) + ".read-timeout";
-        }
-        return canonical;
+        return canonicalEnvironmentName(name.toString());
     }
 
     private String canonicalEnvironmentName(String adapted) {

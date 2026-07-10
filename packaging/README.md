@@ -65,7 +65,7 @@ unrelated `IOC_*` variable is therefore a deployment error and prevents startup;
 use a different prefix for host-local variables that do not configure
 ioc-extractor.
 
-After a successful start, the application logs each winning external IOC override
+After context refresh and before command runners, the application logs each winning external IOC override
 as `ioc.some.key <- source`. The report never includes configuration values, so
 credentials supplied through the environment file remain absent from it.
 

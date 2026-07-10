@@ -57,7 +57,7 @@
 происходит до полностью собранного контекста, а diagnostics обслуживает уже
 работающие сценарии.
 
-После успешного refresh `IocConfigurationOverrideReporter` однократно пишет
+После refresh и до `ApplicationRunner` `IocConfigurationOverrideReporter` однократно пишет
 эффективные внешние overrides в форме `ioc.some.key <- source`: источник с
 наивысшим precedence выигрывает, packaged classpath defaults не выводятся,
 значения никогда не логируются. Порядок sources не меняется (`CLI > system

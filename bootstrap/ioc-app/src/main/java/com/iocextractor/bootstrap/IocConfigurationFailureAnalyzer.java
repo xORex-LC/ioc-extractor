@@ -17,6 +17,8 @@ public final class IocConfigurationFailureAnalyzer
 
     private static final Pattern SMB_READ_TIMEOUT = Pattern.compile(
             "ioc\\.sync\\.endpoints\\[\\d+]\\.smb\\.read-timeout");
+    private static final Pattern SMB_READ_TIMEOUT_ENV = Pattern.compile(
+            "ioc_sync_endpoints_\\d+_smb_read_timeout", Pattern.CASE_INSENSITIVE);
 
     @Override
     protected FailureAnalysis analyze(Throwable rootFailure, UnboundConfigurationPropertiesException cause) {
@@ -54,7 +56,7 @@ public final class IocConfigurationFailureAnalyzer
                 actions.add("CONFIG.LEGACY_LOOKUP: replace ioc.lookup.deduplicate with ioc.pipeline.deduplicate.");
             } else if (canonical.startsWith("ioc.lookup.")) {
                 actions.add("CONFIG.LEGACY_LOOKUP: remove legacy ioc.lookup.* keys; CSV lookup storage was retired.");
-            } else if (SMB_READ_TIMEOUT.matcher(canonical).matches()) {
+            } else if (isLegacySmbReadTimeout(key)) {
                 actions.add(
                         "CONFIG.LEGACY_SYNC_TIMEOUT: replace ioc.sync.endpoints[].smb.read-timeout with request-timeout.");
             }
@@ -75,7 +77,13 @@ public final class IocConfigurationFailureAnalyzer
     }
 
     private String rawEnvironmentName(Object value) {
-        return value instanceof String string && string.startsWith("IOC_") ? string : null;
+        return value instanceof String string && string.indexOf('_') >= 0 ? string : null;
+    }
+
+    private boolean isLegacySmbReadTimeout(UnknownKey key) {
+        return SMB_READ_TIMEOUT.matcher(key.canonicalName()).matches()
+                || (key.rawEnvironmentName() != null
+                && SMB_READ_TIMEOUT_ENV.matcher(key.rawEnvironmentName()).matches());
     }
 
     private record UnknownKey(String canonicalName, String rawEnvironmentName) {

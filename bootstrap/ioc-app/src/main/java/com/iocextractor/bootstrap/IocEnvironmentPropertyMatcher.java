@@ -39,7 +39,7 @@ final class IocEnvironmentPropertyMatcher {
             return MatchResult.notIoc();
         }
         List<String> tokens = tokens(adapted.toString());
-        if (tokens.isEmpty() || !PREFIX.equals(tokens.getFirst())) {
+        if (tokens.size() == 1 || !PREFIX.equals(tokens.getFirst())) {
             return MatchResult.notIoc();
         }
         Set<String> canonicalNames = new LinkedHashSet<>();

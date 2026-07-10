@@ -42,6 +42,11 @@ Unknown env failure показывает оператору исходное `IO
 `CLI > system properties > env > config files`, а packaged classpath defaults
 не считаются override.
 
+**Уточнение 2026-07-10.** Reporter слушает `ApplicationStartedEvent`: контекст
+уже refresh'нут, но `ApplicationRunner` ещё не начал полезную работу. Поэтому
+provenance виден и перед oneshot command, который позднее завершится ошибкой;
+это уточняет формулировку «успешного startup» выше.
+
 ## Контекст
 
 `ioc.*` — не «настройки», а DSL с типизированными значениями и символьными

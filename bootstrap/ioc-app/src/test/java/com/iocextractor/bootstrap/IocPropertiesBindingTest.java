@@ -1,5 +1,6 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.domain.model.IndicatorType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.SpringApplication;
@@ -235,10 +236,23 @@ class IocPropertiesBindingTest {
     }
 
     @Test
+    void ignoresBareIocEnvironmentNames() {
+        contextRunnerWithEnvironment(Map.of("IOC", "true", "IOC_", "true"))
+                .run(context -> assertThat(context).hasSingleBean(IocProperties.class));
+    }
+
+    @Test
     void acceptsMultiwordEnvironmentProperty() {
         contextRunnerWithEnvironment(Map.of("IOC_INGESTION_STABILITY_QUIET_PERIOD", "15s"))
                 .run(context -> assertThat(context.getBean(IocProperties.class).ingestion().stability().quietPeriod())
                         .isEqualTo(java.time.Duration.ofSeconds(15)));
+    }
+
+    @Test
+    void acceptsMapTailEnvironmentProperty() {
+        contextRunnerWithEnvironment(Map.of("IOC_PATTERNS_SHA256", "env-sha256-pattern"))
+                .run(context -> assertThat(context.getBean(IocProperties.class).patterns().get(IndicatorType.SHA256))
+                        .isEqualTo("env-sha256-pattern"));
     }
 
     @Test
@@ -290,7 +304,7 @@ class IocPropertiesBindingTest {
     void rejectsRemovedLegacySmbReadTimeoutEnvironmentKeyAsUnknown() {
         contextRunnerWithEnvironment(Map.of("IOC_SYNC_ENDPOINTS_0_SMB_READ_TIMEOUT", "45s"))
                 .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
-                        .containsExactly("ioc.sync.endpoints[0].smb.read-timeout"));
+                        .containsExactly("ioc.sync.endpoints[0].smb.read.timeout"));
     }
 
     @Test

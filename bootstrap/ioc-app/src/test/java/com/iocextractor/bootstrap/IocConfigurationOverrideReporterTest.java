@@ -7,6 +7,7 @@ import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationStartedEvent;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
 import org.springframework.mock.env.MockEnvironment;
@@ -61,6 +62,13 @@ class IocConfigurationOverrideReporterTest {
         reporter.reportOverrides();
 
         assertThat(appender.list).isEmpty();
+    }
+
+    @Test
+    void listensBeforeApplicationRunners() throws NoSuchMethodException {
+        assertThat(IocConfigurationOverrideReporter.class
+                .getDeclaredMethod("onStarted", ApplicationStartedEvent.class)
+                .isAnnotationPresent(org.springframework.context.event.EventListener.class)).isTrue();
     }
 
     private ListAppender<ILoggingEvent> appender() {

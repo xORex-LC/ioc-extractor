@@ -2,7 +2,7 @@ package com.iocextractor.bootstrap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.boot.context.event.ApplicationStartedEvent;
 import org.springframework.boot.context.properties.source.ConfigurationPropertyName;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.env.ConfigurableEnvironment;
@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Reports effective external {@code ioc.*} overrides after a successful startup.
+ * Reports effective external {@code ioc.*} overrides after context refresh.
  *
  * <p>Only property names and winning source labels are logged. Values may carry
  * credentials or other deployment secrets and must never enter this report.</p>
@@ -36,7 +36,7 @@ final class IocConfigurationOverrideReporter {
     }
 
     @EventListener
-    public void onReady(ApplicationReadyEvent event) {
+    public void onStarted(ApplicationStartedEvent event) {
         reportOverrides();
     }
 
