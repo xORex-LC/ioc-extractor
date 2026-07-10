@@ -18,6 +18,7 @@ Composition root и конфигурация. Единственное мест�
 | `IocConfigPreflight.java` | Semantic collect-all preflight для config→config инвариантов `IocProperties` |
 | `IocUnknownConfigurationPreflight.java` | Reflection-shape unknown-key preflight для root `ioc.*` без YAML-препарсера |
 | `IocConfigurationFailureAnalyzer.java` | Boot startup analyzer с legacy migration hints и `CONFIG.*` сообщениями |
+| `IocConfigurationOverrideReporter.java` | Value-free startup report выигравших external `ioc.*` overrides |
 | `ConfigRegistryCatalog.java` | Composition-root registry factories/keys для providers, transforms, filters и predicates |
 | `ConfigRegistryPreflight.java` | Eager startup check config→registry ссылок до обработки файла/записи |
 | `*Type.java`, `*Mode.java`, `*Strategy.java`, `SyncTransport.java`, `RetentionActionType.java`, `IdStart.java` | Typed selector/value grammar для `IocProperties` и ранних consumers |
