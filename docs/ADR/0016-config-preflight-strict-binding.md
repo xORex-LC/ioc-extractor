@@ -17,6 +17,31 @@
 typed selectors, sealed `IdStart` + converter, registry-backed eager preflight.
 CFG-1, CFG-2, CFG-3 и CFG-4 закрыты в [KNOWN-ISSUES](../KNOWN-ISSUES.md).
 
+**Дополнение 2026-07-10.** CFG-4 был переоткрыт после обнаружения silent
+environment channel: `IocUnknownConfigurationPreflight` намеренно пропускал
+все env keys, кроме legacy tombstones, поэтому опечатка вроде
+`IOC_PIPELINE_DEDUPLICAT` оставляла default без startup failure. Два
+Boot-native spike не дали безопасного решения: итерация adapted env source
+теряет границы kebab-case, а resolve-probe не даёт стабильного raw имени для
+вычисления «raw env минус объяснённые имена». Поэтому для **только**
+`SystemEnvironmentPropertySource` разрешён узкий schema-aware join matcher
+`IocEnvironmentPropertyMatcher` (`5851ec1`): он сопоставляет токены env с уже
+объявленной reflection-shape `IocProperties`, склеивая их лишь в известные
+kebab-case record components; list index и однотокенный map tail сохраняют
+обычные правила формы. Dot-каналы продолжают exact shape matching. При
+неоднозначной сегментации в разные канонические ключи startup останавливается.
+
+`IOC_*` теперь зарезервирован для `ioc.*`: переменная, которую matcher относит
+к этому дереву, обязана быть известным ключом; чужая `IOC_*` на bare-metal —
+ошибка deployment. `PATH`, bare `IOC` и env names вне `ioc.*` не затрагиваются.
+Unknown env failure показывает оператору исходное `IOC_…` имя и канонический
+`ioc.*` ключ, поэтому legacy migration hints остаются адресными. После
+успешного startup `IocConfigurationOverrideReporter` (`2c224c2`) однократно
+логирует только выигравшие external overrides как `key <- source`, без
+значений. Приоритет не меняется: обычный порядок Spring Boot остаётся
+`CLI > system properties > env > config files`, а packaged classpath defaults
+не считаются override.
+
 ## Контекст
 
 `ioc.*` — не «настройки», а DSL с типизированными значениями и символьными
@@ -193,6 +218,11 @@ contract, используемый и preflight'ом, и `AppConfig.startOf`. М
 - **Собственный YAML-препарсер для строгости** — вне Binder'а невозможно
   знать, какие ключи потреблены (relaxed binding, вложенные maps); строгость
   должна жить в binding-фазе.
+- **Общий raw-env препарсер** — отклонён как преждевременное дублирование
+  relaxed grammar Binder'а. Исключение из этого пункта зафиксировано в
+  дополнении от 2026-07-10: после двух неудачных публичных Boot-native spike
+  разрешён минимальный matcher raw env имени к собственной schema, не parser
+  значений и не замена Binder'а.
 
 ## Открытые вопросы
 

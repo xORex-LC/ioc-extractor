@@ -59,7 +59,7 @@
 | CFG-1 | **Тихий `catch (NumberFormatException ignored)`** на `id.start` — закрыто: `id.start` стал sealed value contract (`auto` \| explicit long) с binding converters, parser и runtime без silent fallback. | закрыт | S | ADR/0016, `3d45cdd`, `e01e2fa` |
 | CFG-2 | **Нет кросс-проверки имён артефактов** `artifact-identity.artifacts` ↔ `sink.artifacts` — закрыто: startup preflight проверяет identity↔sink, key-columns⊆columns, дубликаты, id policy и registry-backed keys до обработки файла/записи. | закрыт | S | ADR/0016, `b0e5157`, `9bb9e63`, `8575527` |
 | CFG-3 | **«stage 11» протекло в рантайм-ошибку** — закрыто удалением старого aggregation/storage кода при β-collapse; новая config-error convention запрещает внутреннюю нумерацию/implementation jargon в operator-facing сообщениях. | закрыт | S | storage collapse, ADR/0016 |
-| CFG-4 | **Strict configuration binding после миграций.** Закрыто: tombstone-поля `Lookup`/`smb.readTimeout` удалены из `IocProperties`; unknown `ioc.*` keys отбиваются reflection-shape preflight, legacy migration hints живут в `IocConfigurationFailureAnalyzer` с `CONFIG.*`. | закрыт | S | ADR/0016, `ec14c8d`, `e01e2fa` |
+| CFG-4 | **Strict configuration binding после миграций.** Закрыто: tombstone-поля `Lookup`/`smb.readTimeout` удалены из `IocProperties`; unknown `ioc.*` keys отбиваются reflection-shape preflight, legacy migration hints живут в `IocConfigurationFailureAnalyzer` с `CONFIG.*`. Переоткрывался 2026-07-10: env-канал молча пропускал `IOC_*` опечатки. Финально закрыт schema-aware env matcher'ом и value-free reporter'ом выигравших overrides. | закрыт | S | ADR/0016, `ec14c8d`, `e01e2fa`, `5851ec1`, `2c224c2` |
 
 ## 6. Код-смелл (`CODE`)
 

@@ -54,6 +54,21 @@ self-contained:
 The service `WorkingDirectory` is `<prefix>`, so the application's relative paths
 (`./var/...`, `./dataframe/...`) resolve inside the install directory.
 
+## Configuration overrides
+
+The packaged `application.yml` is the baseline. The normal Spring Boot order is
+`CLI > system properties > environment > configuration files`; the deployed
+`etc/application.yml` is an external configuration file and remains
+operator-owned across releases. Environment names beginning with `IOC_` are
+reserved for the application's `ioc.*` configuration tree. A misspelled or
+unrelated `IOC_*` variable is therefore a deployment error and prevents startup;
+use a different prefix for host-local variables that do not configure
+ioc-extractor.
+
+After a successful start, the application logs each winning external IOC override
+as `ioc.some.key <- source`. The report never includes configuration values, so
+credentials supplied through the environment file remain absent from it.
+
 ## Local deployment
 
 For a development/test host, run deployment from the source checkout as an

@@ -43,6 +43,10 @@
 - unknown `ioc.*` keys проверяет `IocUnknownConfigurationPreflight` по
   reflection-shape `IocProperties`, а legacy migration hints показывает
   `IocConfigurationFailureAnalyzer`;
+- env-канал использует ту же строгость: `IOC_*` зарезервирован для `ioc.*`,
+  а узкий schema-aware matcher восстанавливает только границы известных
+  kebab-case компонентов, потерянные Boot при env adaptation. Неизвестный
+  `IOC_*` — startup/deployment failure; значения в сообщение не попадают;
 - config→registry ссылки (`classify.when`, artifact filters,
   `columns[].from`, transforms) проверяет eager `ConfigRegistryPreflight`,
   используя тот же `ConfigRegistryCatalog`, что и `AppConfig`.
@@ -52,6 +56,12 @@
 `FailureAnalyzer` намеренно не связан с `DiagnosticSink`: boot failure
 происходит до полностью собранного контекста, а diagnostics обслуживает уже
 работающие сценарии.
+
+После успешного refresh `IocConfigurationOverrideReporter` однократно пишет
+эффективные внешние overrides в форме `ioc.some.key <- source`: источник с
+наивысшим precedence выигрывает, packaged classpath defaults не выводятся,
+значения никогда не логируются. Порядок sources не меняется (`CLI > system
+properties > env > config files`).
 
 ## Диагностика / телеметрия
 
