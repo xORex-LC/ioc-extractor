@@ -198,6 +198,22 @@ class IocPropertiesBindingTest {
     }
 
     @Test
+    void runsRegistryPreflightAtStartupWithLazyInitialization() {
+        SpringApplication app = springApplication();
+
+        assertThatThrownBy(() -> app.run(
+                "--spring.main.lazy-initialization=true",
+                "--ioc.classify.rules[0].when[0]=has-secret-sauce",
+                "--ioc.classify.rules[0].url-match=u:hAS,pEX",
+                "--ioc.classify.rules[0].host-match="))
+                .satisfies(failure -> assertThat(causeMessages(failure))
+                        .contains(
+                                "CONFIG.REGISTRY",
+                                "ioc.classify.rules[0].when[0]",
+                                "has-secret-sauce"));
+    }
+
+    @Test
     void acceptsKnownCliOverride() {
         SpringApplication app = springApplication();
 

@@ -156,16 +156,10 @@ public final class ExportPlanCatalog {
     private ExportMode outputMode(IocProperties.Export.Profile profile,
                                   DiagnosticSink diagnosticSink,
                                   DiagnosticFactory diagnosticFactory) {
-        ExportMode mode;
-        try {
-            mode = ExportMode.valueOf(profile.outputMode().name());
-        } catch (IllegalArgumentException failure) {
-            throw unsupported(profile, profile.outputMode().token(), diagnosticSink, diagnosticFactory, failure);
-        }
-        if (mode != ExportMode.COMPLETE) {
+        if (profile.outputMode() != ExportOutputMode.COMPLETE) {
             throw unsupported(profile, profile.outputMode().token(), diagnosticSink, diagnosticFactory, null);
         }
-        return mode;
+        return ExportMode.COMPLETE;
     }
 
     private DiagnosticException unsupported(IocProperties.Export.Profile profile,

@@ -994,13 +994,10 @@ public class AppConfig {
             return artifactIdBaseline.maxId(artifactName) + 1;
         }
         IdStart start = id.start();
-        if (start instanceof IdStart.Auto) {
-            return artifactIdBaseline.maxId(artifactName) + 1;
-        }
-        if (start instanceof IdStart.Explicit explicit) {
-            return explicit.value();
-        }
-        throw new IllegalStateException("Unsupported id.start value for artifact: " + artifactName);
+        return switch (start) {
+            case IdStart.Auto ignored -> artifactIdBaseline.maxId(artifactName) + 1;
+            case IdStart.Explicit explicit -> explicit.value();
+        };
     }
 
     /** A blank/absent mask code means "no match" -> rendered as the CSV null literal. */
