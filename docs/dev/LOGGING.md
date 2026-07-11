@@ -214,7 +214,7 @@ try (MdcScope ignored = MdcScope.open()
 Текстовый локальный формат:
 
 ```text
-2026-06-21T12:00:01.123 INFO  event.action=artifact_write event.outcome=success ioc.run.id=01J... ioc.artifact.name=masks ioc.rows=58
+2026-06-21T12:00:01.123 INFO  event.action=artifact_project event.outcome=success ioc.run.id=01J... ioc.artifact.name=masks ioc.rows=58
 ```
 
 ECS JSON:
@@ -228,7 +228,7 @@ ECS JSON:
   "service.name": "ioc-extractor",
   "service.version": "0.1.0",
   "event.dataset": "ioc-extractor",
-  "event.action": "artifact_write",
+  "event.action": "artifact_project",
   "event.category": ["file"],
   "event.type": ["creation"],
   "event.outcome": "success",

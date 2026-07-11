@@ -15,7 +15,7 @@ public enum EventAction {
     STAGE_START("stage_start", "pipeline", "Pipeline stage execution started."),
     STAGE_COMPLETE("stage_complete", "pipeline", "Pipeline stage execution completed or failed."),
     SOURCE_READ("source_read", "source", "Source document text was read."),
-    ARTIFACT_WRITE("artifact_write", "sink", "CSV artifact was written."),
+    ARTIFACT_PROJECT("artifact_project", "sink", "CSV projection was regenerated from canonical storage."),
     RETENTION_SWEEP("retention_sweep", "maintenance", "Retention sweep evaluated configured targets."),
     SCHEMA_MIGRATE("schema_migrate", "storage", "Database schema migration progressed or failed."),
     SCHEMA_VALIDATE("schema_validate", "storage", "Database schema reconciliation evaluated an artifact schema."),

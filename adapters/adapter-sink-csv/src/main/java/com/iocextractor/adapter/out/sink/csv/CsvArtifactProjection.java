@@ -80,7 +80,7 @@ public final class CsvArtifactProjection implements ArtifactProjection {
             }
             if (writer.unmappable() > 0) {
                 LogEvents.warn(log)
-                        .action(EventAction.ARTIFACT_WRITE)
+                        .action(EventAction.ARTIFACT_PROJECT)
                         .outcome(EventOutcome.SUCCESS)
                         .field(LogField.IOC_ARTIFACT_NAME, artifactName)
                         .field(LogField.FILE_PATH, path)
@@ -90,7 +90,7 @@ public final class CsvArtifactProjection implements ArtifactProjection {
             }
             moveIntoPlace(temp, path);
             LogEvents.info(log)
-                    .action(EventAction.ARTIFACT_WRITE)
+                    .action(EventAction.ARTIFACT_PROJECT)
                     .outcome(EventOutcome.SUCCESS)
                     .field(LogField.IOC_ARTIFACT_NAME, artifactName)
                     .field(LogField.FILE_PATH, path)

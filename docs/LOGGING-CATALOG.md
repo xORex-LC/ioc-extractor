@@ -13,7 +13,7 @@ Generated from `EventAction` and `LogField`.
 | `stage_start` | pipeline | Pipeline stage execution started. |
 | `stage_complete` | pipeline | Pipeline stage execution completed or failed. |
 | `source_read` | source | Source document text was read. |
-| `artifact_write` | sink | CSV artifact was written. |
+| `artifact_project` | sink | CSV projection was regenerated from canonical storage. |
 | `retention_sweep` | maintenance | Retention sweep evaluated configured targets. |
 | `schema_migrate` | storage | Database schema migration progressed or failed. |
 | `schema_validate` | storage | Database schema reconciliation evaluated an artifact schema. |
