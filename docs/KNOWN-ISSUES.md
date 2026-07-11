@@ -46,11 +46,11 @@
 
 | ID | Долг | Статус | Эфф. | Источник |
 |---|---|---|---|---|
-| OBS-D1 | **Продьюсеры диагностик.** Первый реальный код добавлен (`SOURCE.MARKERS_UNMATCHED`); остальные стадии/адаптеры всё ещё бросают `IocExtractorException` — мигрировать на `Diagnostic` и реально задействовать collect-and-continue. | частично | M | dev/0008 |
+| OBS-D1 | **Продьюсеры диагностик.** Export/sync/storage/schema уже эмитят typed diagnostics; extraction pipeline пока даёт только `SOURCE.MARKERS_UNMATCHED`, а runtime data failures в source/extraction/classify/sink/ingest всё ещё преимущественно бросают `IocExtractorException`. `CatalogReferenceRatchetTest` фиксирует baseline: 24 из 43 кодов пока без production bytecode reference (burn-down для D1; это не доказательство вызова sink). Мигрировать runtime-data sites на `Diagnostic` и реально включить collect-and-continue. | частично | M | dev/0008, `2681c4d` |
 | OBS-D3 | **ECS-типы строками** — `event.duration` / `ioc.rows` идут через MDC (только `String`); ECS типизирует `event.duration` как `long` → риск mapping-конфликта в Elasticsearch. | открыт | M | dev/0008 |
-| OBS-1 | **Таблица `Severity → log.level`** — финализировать теперь, когда появились первые коды каталога. | открыт | S | dev/0007 |
-| OBS-2 | **`SINK.CHARSET_UNMAPPABLE` — полноценная диагностика непредставимых символов на выходе.** Сейчас — только WARN-лог на артефакт (`CsvArtifactProjection`/slice writers через `CountingCharsetWriter`); коды диагностики нет, т.к. запись в адаптере не держит `DiagnosticSink`. Протащить через `WriteArtifactsStage`/projection boundary для collect-and-continue + точный счёт по значению. | частично | M | review |
-| OBS-3 | **Свести seed-actions док с `EventAction` + вычистить стэйл.** `logging-taxonomy.md` «Seed actions» разошлась с `EventAction.java`: док перечисляет `storage_write`/`artifact_project` (в enum нет), enum несёт `retention_sweep/schema_migrate/schema_validate/db_open/ledger_import/db_health/maintenance/backfill` (в доке нет); плюс стэйл `aggregation_start/complete` — вырезанный β-коллапсом сабсистем, продакшен-продюсеров нет (живут лишь в enum + `LoggingTaxonomyTest`). Свести таблицу с кодом (или перевести в generated-док из констант) + удалить `aggregation_*` из enum и `LoggingTaxonomyTest`. | открыт | S | обсуждение 0011 (logging) |
+| OBS-1 | **Таблица `Severity → log.level`** — закрыто: `LOGGING-TAXONOMY.md` публикует FATAL/ERROR→error, WARN→warn, INFO→info, DEBUG→debug, TRACE→trace; `LoggingDiagnosticSinkTest` пинит все шесть значений. | закрыт | S | `5ba28b1` |
+| OBS-2 | **`SINK.CHARSET_UNMAPPABLE` — полноценная диагностика непредставимых символов на выходе.** Долг относится только к мутабельной `CsvArtifactProjection`: сейчас она заменяет непредставимые символы и пишет WARN без `DiagnosticSink`, счётчик считает writer-чанки, а не значения. Immutable slice writers используют `CodingErrorAction.REPORT` и намеренно fail-fast, поэтому в этот долг не входят. Протащить diagnostics через projection boundary для collect-and-continue + точный счёт по значению. | частично | M | review |
+| OBS-3 | **Таксономия логов и generated catalog.** Закрыто: `EventAction`/`LogField` несут metadata, `LOGGING-CATALOG.md` генерируется и doc-sync тестируется; stale actions удалены, CSV projection эмитит `artifact_project`, а `CatalogReferenceRatchetTest` не даёт добавить неиспользуемую action без осознанного решения. | закрыт | S | `752d186`, `8277ab7`, `2681c4d` |
 
 ## 5. Надёжность конфига (`CFG`)
 
@@ -68,7 +68,7 @@
 | CODE-1 | **Телескопические конструкторы** — `IocExtractionService` (6 шт.), `CsvArtifactDefinition`; свернуть в builder/factory. | открыт | M | review |
 | CODE-2 | **Дублирование «bare IP» в legacy CSV lookup** — закрыто удалением `adapter-lookup-csv`; runtime использует доменный `NetworkAddressClassifier`/provider predicates и canonical row-key дедуп. | закрыт | S | review |
 | CODE-3 | **Повторная feature-extraction** — `featureExtractor.extract()` зовётся многократно на один индикатор (провайдеры + фильтр + matchPolicy); мемоизация в пределах батча. | открыт | M | review |
-| CODE-4 | **Хрупкий `DiagnosticCatalogTest`** — хардкодит число кодов в каталоге (правился 17→18). | открыт | S | review |
+| CODE-4 | **Хрупкий `DiagnosticCatalogTest`** — закрыто: хардкод размера удалён; registration discovery и generated catalog doc-sync проверяют полноту и свежесть контракта без привязки к числу кодов. | закрыт | S | `adc795b` |
 
 ## 7. Архитектура / модульность (`ARCH`)
 
