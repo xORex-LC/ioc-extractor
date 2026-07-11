@@ -12,11 +12,15 @@ import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.LoggerFactory;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -63,6 +67,29 @@ class LoggingDiagnosticSinkTest {
         assertThat(event.getLevel()).isEqualTo(Level.ERROR);
         assertThat(event.getThrowableProxy()).isNotNull();
         assertThat(event.getThrowableProxy().getMessage()).isEqualTo("boom");
+    }
+
+    @ParameterizedTest
+    @MethodSource("severityLevels")
+    void maps_diagnostic_severity_to_the_published_log_level(DiagnosticSeverity severity, Level expectedLevel) {
+        var appender = appender();
+        var sink = new LoggingDiagnosticSink(logger, ignored -> "rendered diagnostic");
+
+        sink.emit(diagnostic(severity, null));
+
+        assertThat(appender.list).singleElement()
+                .extracting(ILoggingEvent::getLevel)
+                .isEqualTo(expectedLevel);
+    }
+
+    private static Stream<Arguments> severityLevels() {
+        return Stream.of(
+                Arguments.of(DiagnosticSeverity.FATAL, Level.ERROR),
+                Arguments.of(DiagnosticSeverity.ERROR, Level.ERROR),
+                Arguments.of(DiagnosticSeverity.WARN, Level.WARN),
+                Arguments.of(DiagnosticSeverity.INFO, Level.INFO),
+                Arguments.of(DiagnosticSeverity.DEBUG, Level.DEBUG),
+                Arguments.of(DiagnosticSeverity.TRACE, Level.TRACE));
     }
 
     private ListAppender<ILoggingEvent> appender() {
