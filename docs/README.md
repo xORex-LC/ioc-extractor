@@ -23,6 +23,7 @@
 | [CONVENTIONS.md](CONVENTIONS.md) | Стандарт Javadoc, конвенция «README в каждом каталоге» (+ шаблон), правила кода |
 | [SERVICES-CATALOG.md](SERVICES-CATALOG.md) | Каталог бизнес-сервисов (DDD) и карта: ответственности, порты, зависимости, целевые модули |
 | [DIAGNOSTICS-CATALOG.md](DIAGNOSTICS-CATALOG.md) | Генерируемая карта диагностических кодов из `DiagnosticCatalogs` |
+| [LOGGING-CATALOG.md](LOGGING-CATALOG.md) | Генерируемая карта log actions и полей из `EventAction` / `LogField` |
 | [KNOWN-ISSUES.md](KNOWN-ISSUES.md) | Единый реестр технического долга, заложенных seam'ов и статуса этапов (ID, статус, эфф., приоритет) |
 
 ## Способности (dev/): как это работает внутри

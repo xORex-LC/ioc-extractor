@@ -41,39 +41,9 @@
 
 ## Project fields
 
-Начальный whitelist `ioc.*`:
-
-| Поле | Когда |
-|---|---|
-| `ioc.run.id` | один pipeline-прогон |
-| `ioc.mode` | `oneshot` / `daemon` |
-| `ioc.stage` | стадия pipeline |
-| `ioc.source.id` | id источника |
-| `ioc.source.path` | путь источника |
-| `ioc.source.content_hash` | content hash источника |
-| `ioc.artifact.name` | имя артефакта |
-| `ioc.rows` | число строк |
-| `ioc.export.profile` | имя неделимого export profile |
-| `ioc.export.slice.id` | immutable slice/run identity |
-| `ioc.export.revision` | максимальная canonical revision в записанном slice event |
-| `ioc.event.id` | stable control-event id при event hand-off |
-| `ioc.event.type` | stable project event type, не ECS `event.type` |
-| `ioc.event.version` | версия payload contract control-event |
-| `ioc.event.correlation_id` | correlation id control-event |
-| `ioc.event.causation_id` | event/command id, вызвавший текущий event, если есть |
-| `ioc.event.handler` | имя локального handler/listener |
-| `ioc.sync.endpoint` | логическое имя endpoint без host/share/credentials |
-| `ioc.sync.target` | логическое имя publish target |
-| `ioc.sync.files` | счётчик файлов текущей sync-операции |
-| `ioc.diagnostic.code` | если событие связано с Diagnostic |
-| `ioc.diagnostic.category` | если событие связано с Diagnostic |
-| `ioc.diagnostic.severity` | если событие связано с Diagnostic |
-
-Используемые стартовые ECS-поля сверх базового минимума:
-
-| Поле | Когда |
-|---|---|
-| `file.path` | путь input/output файла, если событие связано с файловым IO |
+Полный актуальный список project- и используемых ECS-полей генерируется из
+`LogField` в [LOGGING-CATALOG.md](../LOGGING-CATALOG.md). Это reference-каталог;
+данный документ фиксирует правила их выбора и расширения.
 
 **Корреляция** run/source — каноничные project fields `ioc.run.id` /
 `ioc.source.id`. ECS `trace.id` / `transaction.id` используем только при наличии
@@ -83,33 +53,11 @@
 Per-item поля (`ioc.indicator.*`, `ioc.dedup.key`) не входят в базовый набор:
 они допускаются только для `DEBUG`/`TRACE` и добавляются отдельным решением.
 
-## Seed actions
+## Actions
 
-Стартовый набор `event.action`, достаточный для этапа 8:
-
-| Action | Area | Когда |
-|---|---|---|
-| `app_start` | app | приложение стартует |
-| `app_stop` | app | graceful shutdown |
-| `command_start` | cli | CLI command началась |
-| `command_complete` | cli | CLI command завершилась |
-| `stage_start` | pipeline | стадия началась |
-| `stage_complete` | pipeline | стадия завершилась |
-| `source_read` | source | source document прочитан |
-| `artifact_write` | sink | CSV artifact записан |
-| `storage_write` | storage | canonical storage write завершён |
-| `artifact_project` | sink | CSV projection regenerated from storage |
-| `export_start` | artifact emission | durable global single-flight захвачен |
-| `export_slice_write` | artifact emission | staging data/manifest/marker записаны и проверены |
-| `export_complete` | artifact emission | formation run достиг terminal checkpoint |
-| `export_recover` | artifact emission | начата проверка incomplete durable run |
-| `sync_fetch_start` | remote sync | начат fetch одного configured source |
-| `sync_fetch_complete` | remote sync | fetch source завершён или изолирован с ошибкой |
-| `sync_publish_start` | remote sync | начат publish одного configured target |
-| `sync_publish_complete` | remote sync | publish target завершён или изолирован с ошибкой |
-| `diagnostic_emit` | diagnostics | Diagnostic опубликован в log stream |
-
-Следующие daemon actions добавляются только вместе с первым producer'ом события.
+Полный актуальный список `event.action` генерируется из `EventAction` в
+[LOGGING-CATALOG.md](../LOGGING-CATALOG.md). Новый action добавляется только
+вместе с первым production producer'ом события.
 
 ## Diagnostic mapping
 
@@ -119,10 +67,22 @@ Diagnostic не определяет log event, а только добавляе
 |---|---|
 | `DiagnosticCode.id()` | `ioc.diagnostic.code` |
 | `DiagnosticCategory` | `ioc.diagnostic.category` |
-| `Severity` | `ioc.diagnostic.severity` и/или `log.level` mapping |
+| `Severity` | `ioc.diagnostic.severity` и `log.level` по таблице ниже |
 | `cause` | `error.*`, если есть исключение |
 
 Обычные SLF4J/ECS log events могут существовать без `DiagnosticCode`.
+
+| Diagnostic severity | `log.level` |
+|---|---|
+| FATAL | error |
+| ERROR | error |
+| WARN | warn |
+| INFO | info |
+| DEBUG | debug |
+| TRACE | trace |
+
+`FATAL` намеренно совпадает с `ERROR` на уровне `log.level`. Различение остаётся
+в `ioc.diagnostic.severity`; останов обработки определяет `FailurePolicy`.
 
 ## Правила расширения
 
@@ -132,5 +92,5 @@ Diagnostic не определяет log event, а только добавляе
 4. `message` можно менять свободно; `event.action` и имена полей считаются
    стабильным контрактом.
 5. Поля с IOC/token/query не выводить на `INFO` без маскирования или short hash.
-6. При росте набора полей перевести таблицы в generated docs из code constants,
-   но не делать генератор на старте.
+6. Каталог actions и полей генерируется из code constants; не дублировать его
+   таблицы вручную в capability-доках.
