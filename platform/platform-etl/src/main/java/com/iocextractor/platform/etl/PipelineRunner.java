@@ -95,6 +95,20 @@ public final class PipelineRunner {
      * @return final envelope
      */
     public <I, O> Envelope<O> run(Envelope<I> input, Pipeline<I, O> pipeline) {
+        return runWithOutcome(input, pipeline).envelope();
+    }
+
+    /**
+     * Runs the pipeline and returns its final envelope together with the typed
+     * diagnostic summary maintained by the bounded accumulator.
+     *
+     * @param input initial envelope
+     * @param pipeline pipeline to run
+     * @param <I> initial payload type
+     * @param <O> final payload type
+     * @return typed pipeline outcome
+     */
+    public <I, O> PipelineRunResult<O> runWithOutcome(Envelope<I> input, Pipeline<I, O> pipeline) {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(pipeline, "pipeline");
 
@@ -133,7 +147,7 @@ public final class PipelineRunner {
         current.diagnostics().stream()
                 .filter(diagnostic -> diagnostic.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED)
                 .forEach(diagnosticSink::emit);
-        return cast(current);
+        return new PipelineRunResult<>(cast(current), bounded.summary());
     }
 
     private Envelope<?> executeStage(Stage<?, ?> stage, Envelope<?> input) {

@@ -2,7 +2,6 @@ package com.iocextractor.diagnostics.result;
 
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
-import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 
 import java.util.EnumMap;
 import java.util.List;
@@ -37,32 +36,6 @@ public record DiagnosticSummary(long total,
         suppressedBySeverity.forEach((severity, count) -> counts.merge(severity, count, Long::sum));
         long suppressed = suppressedBySeverity.values().stream().mapToLong(Long::longValue).sum();
         return new DiagnosticSummary(diagnostics.size() + suppressed, suppressed, counts);
-    }
-
-    /** Builds a summary from the bounded envelope representation. */
-    public static DiagnosticSummary from(List<Diagnostic> diagnostics) {
-        Objects.requireNonNull(diagnostics, "diagnostics");
-        long suppressed = diagnostics.stream()
-                .filter(diagnostic -> diagnostic.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED)
-                .mapToLong(diagnostic -> ((Number) diagnostic.context().get("suppressedCount")).longValue())
-                .sum();
-        var retained = diagnostics.stream()
-                .filter(diagnostic -> diagnostic.code() != PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED)
-                .toList();
-        var summary = diagnostics.stream()
-                .filter(diagnostic -> diagnostic.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED)
-                .findFirst();
-        if (summary.isEmpty()) {
-            return of(retained, Map.of());
-        }
-        var rawCounts = summary.orElseThrow().context().get("suppressedBySeverity");
-        if (!(rawCounts instanceof Map<?, ?> counts)) {
-            return of(retained, Map.of(summary.orElseThrow().severity(), suppressed));
-        }
-        var bySeverity = new EnumMap<DiagnosticSeverity, Long>(DiagnosticSeverity.class);
-        counts.forEach((severity, count) -> bySeverity.put(
-                DiagnosticSeverity.valueOf(severity.toString()), ((Number) count).longValue()));
-        return of(retained, bySeverity);
     }
 
     /** Returns whether the run observed an error or fatal diagnostic. */

@@ -19,6 +19,7 @@ Tika, CSV или logging/MDC.
 | `Stage.java` | Контракт одного filter-шагa |
 | `Pipeline.java` | Type-safe список стадий |
 | `PipelineRunner.java` | Последовательное исполнение стадий + `FailurePolicy` |
+| `PipelineRunResult.java` | Финальный Envelope + типизированный diagnostic summary |
 | `PipelineObserver.java` | Порт operational events для runner |
 | `NoopPipelineObserver.java` | No-op observer для тестов/простых конструкторов |
 | `StageId.java` | Generic stable stage identifier |

@@ -24,7 +24,6 @@ import com.iocextractor.domain.attribute.SourceAttributor;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.refang.Refanger;
 import com.iocextractor.diagnostics.result.FailurePolicy;
-import com.iocextractor.diagnostics.result.DiagnosticSummary;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
@@ -157,9 +156,10 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                 .withAttribute(PipelineMetaAttributes.SOURCE_PATH, normalizedSource)
                 .withAttribute(PipelineMetaAttributes.DRY_RUN, command.dryRun())
                 .withAttribute(PipelineMetaAttributes.MODE, observabilityMode);
-        var output = runner.run(Envelope.of(command, meta), pipeline);
+        var pipelineResult = runner.runWithOutcome(Envelope.of(command, meta), pipeline);
+        var output = pipelineResult.envelope();
         var summary = output.payload();
-        var diagnosticSummary = DiagnosticSummary.from(output.diagnostics());
+        var diagnosticSummary = pipelineResult.diagnosticSummary();
 
         return new ExtractionResult(
                 summary.extracted(),

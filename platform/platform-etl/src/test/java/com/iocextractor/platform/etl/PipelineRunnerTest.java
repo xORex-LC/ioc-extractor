@@ -77,13 +77,17 @@ class PipelineRunnerTest {
         var runner = new PipelineRunner(FailurePolicy.collectAndContinue(),
                 new NoopPipelineObserver(), diagnostics, new DiagnosticFactory(CLOCK), 1);
 
-        var output = runner.run(Envelope.of("start", meta()), pipeline);
+        var result = runner.runWithOutcome(Envelope.of("start", meta()), pipeline);
+        var output = result.envelope();
 
         assertThat(output.diagnostics()).extracting(diagnostic -> diagnostic.code())
                 .containsExactly(PipelineDiagnosticCodes.STAGE_FAILED,
                         PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED);
         assertThat(output.diagnostics().getFirst().severity()).isEqualTo(DiagnosticSeverity.ERROR);
         assertThat(diagnostics.diagnostics()).containsExactly(warning, error, output.diagnostics().get(1));
+        assertThat(result.diagnosticSummary().total()).isEqualTo(2);
+        assertThat(result.diagnosticSummary().suppressed()).isOne();
+        assertThat(result.diagnosticSummary().hasErrors()).isTrue();
     }
 
     @Test
