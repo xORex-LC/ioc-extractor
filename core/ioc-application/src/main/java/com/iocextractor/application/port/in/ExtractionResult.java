@@ -29,9 +29,4 @@ public record ExtractionResult(int extracted,
         Objects.requireNonNull(diagnosticSummary, "diagnosticSummary");
     }
 
-    public ExtractionResult(int extracted, int retained, Map<String, Integer> writtenPerArtifact) {
-        this(extracted, retained, writtenPerArtifact, CompletionStatus.COMPLETED,
-                List.of(), DiagnosticSummary.empty());
-    }
-
 }

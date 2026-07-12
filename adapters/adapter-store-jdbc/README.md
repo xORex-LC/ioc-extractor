@@ -43,6 +43,8 @@ runtime JDBC drivers.
   excluded from config drift checks.
 - `JdbcCanonicalArtifactRepository` writes rows with canonical `row_key` and
   `ON CONFLICT(row_key) DO NOTHING`, preserving explicit legacy ids when present.
+  It is a commit-only boundary: routing and row mapping finish before this adapter
+  is called, so rejected fail-fast runs perform no storage write.
   It returns the actual inserted-row count and advances `artifact_revision` once
   per mutating write in the same transaction. `JdbcArtifactRevisionReader`
   provides change detection without scanning business rows. `JdbcArtifactIdBaseline`

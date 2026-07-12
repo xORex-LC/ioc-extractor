@@ -1,8 +1,10 @@
 package com.iocextractor.application.service;
 
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
-import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.application.port.out.SourceReader;
+import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
+import com.iocextractor.application.port.out.artifact.ArtifactProjection;
+import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.diagnostics.result.FailurePolicy;
 import com.iocextractor.domain.attribute.SourceAttributor;
@@ -15,9 +17,9 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Factory for extraction use cases that differ only by output sink set. Daemon
- * ingestion uses this to create source-scoped pipelines without changing
- * the existing extraction service contract.
+ * Factory for extraction use cases that differ by source-scoped artifact
+ * preparation and post-commit projection. Daemon ingestion uses it without
+ * leaking storage or CSV details into the use case.
  */
 public final class IocExtractionServiceFactory {
 
@@ -32,20 +34,9 @@ public final class IocExtractionServiceFactory {
     private final DiagnosticSink diagnosticSink;
     private final FailurePolicy failurePolicy;
     private final int maxDiagnosticsPerRun;
+    private final CanonicalArtifactRepository repository;
 
-    public IocExtractionServiceFactory(SourceReader reader,
-                                       Refanger refanger,
-                                       IndicatorExtractor extractor,
-                                       SourceAttributor attributor,
-                                       MatchPolicy matchPolicy,
-                                       boolean deduplicate,
-                                       String observabilityMode,
-                                       PipelineObserver observer,
-                                       DiagnosticSink diagnosticSink) {
-        this(reader, refanger, extractor, attributor, matchPolicy, deduplicate, observabilityMode,
-                observer, diagnosticSink, FailurePolicy.failFast(), 10_000);
-    }
-
+    /** Creates the factory with explicit extraction policies and canonical storage. */
     public IocExtractionServiceFactory(SourceReader reader,
                                        Refanger refanger,
                                        IndicatorExtractor extractor,
@@ -56,7 +47,8 @@ public final class IocExtractionServiceFactory {
                                        PipelineObserver observer,
                                        DiagnosticSink diagnosticSink,
                                        FailurePolicy failurePolicy,
-                                       int maxDiagnosticsPerRun) {
+                                       int maxDiagnosticsPerRun,
+                                       CanonicalArtifactRepository repository) {
         this.reader = Objects.requireNonNull(reader, "reader");
         this.refanger = Objects.requireNonNull(refanger, "refanger");
         this.extractor = Objects.requireNonNull(extractor, "extractor");
@@ -71,17 +63,19 @@ public final class IocExtractionServiceFactory {
             throw new IllegalArgumentException("maxDiagnosticsPerRun must be positive");
         }
         this.maxDiagnosticsPerRun = maxDiagnosticsPerRun;
+        this.repository = Objects.requireNonNull(repository, "repository");
     }
 
     /**
-     * Creates an extraction use case that writes to the provided sinks.
+     * Creates an extraction use case for the provided preparers and projection.
      *
-     * @param sinks output sinks for this run
+     * @param preparers side-effect-free artifact preparers for this run
+     * @param projection projection invoked after each successful canonical commit
      * @return extraction use case
      */
-    public ExtractIocsUseCase create(List<IocSink> sinks) {
+    public ExtractIocsUseCase create(List<ArtifactPreparer> preparers, ArtifactProjection projection) {
         return new IocExtractionService(reader, refanger, extractor, attributor, matchPolicy,
-                sinks, deduplicate, observabilityMode, observer, diagnosticSink,
+                preparers, repository, projection, deduplicate, observabilityMode, observer, diagnosticSink,
                 failurePolicy, maxDiagnosticsPerRun);
     }
 }

@@ -43,7 +43,7 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Platform | `events` | Framework-free control-event marker, metadata envelope, publish port and observers; no broker/delivery mechanics |
 | Platform | `concurrent` | In-memory keyed single-flight executor, observer hooks and health snapshots |
 | Application | `application/port/in` | `ExtractIocsUseCase`, `ExtractionCommand`, `ExtractionResult` (driving) |
-| Application | `application/port/out` | `SourceReader`, `IocSink`, artifact/id-baseline ports, ingestion/export/sync ports, `RetentionStore` (driven) |
+| Application | `application/port/out` | `SourceReader`, `ArtifactPreparer`, canonical artifact/id-baseline ports, ingestion/export/sync ports, `RetentionStore` (driven) |
 | Application | `application/pipeline/payload` | IOC-specific payload records between stages |
 | Application | `application/pipeline/stage` | IOC ETL stage implementations |
 | Application | `application/service` | `IocExtractionService` — use-case orchestrator |
@@ -54,8 +54,8 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Adapter (in) | `adapter/in/cli` | `IocRootCommand`, `ExtractCommand`, `CliRunner` (picocli) |
 | Adapter (out) | `adapter/out/regex` | `Re2jPatternEngine` (default), `JdkRegexPatternEngine` |
 | Adapter (out) | `adapter/out/source` | `TikaSourceReader` |
-| Adapter (out) | `adapter/out/sink/csv` | `RowMapper` + мапперы, `IdGenerator`, `CsvArtifactProjection`, export slice writers |
-| Adapter (out) | `adapter/out/store/jdbc` | `JdbcIocSink`, `JdbcCanonicalArtifactRepository`, `JdbcArtifactIdBaseline`, ledgers, migrations, health |
+| Adapter (out) | `adapter/out/sink/csv` | `CsvArtifactPreparer`, `RowMapper` + мапперы, `CsvArtifactProjection`, export slice writers |
+| Adapter (out) | `adapter/out/store/jdbc` | `JdbcCanonicalArtifactRepository`, `JdbcArtifactIdBaseline`, ledgers, migrations, health |
 | Adapter (in) | `adapter/in/ingest` | Spring Integration file-poll daemon, filesystem lifecycle, file ledger |
 | Adapter (out) | `adapter/out/maintenance` | `FileSystemRetentionStore` (reaper IO; в модуле `adapter-ingest`) |
 | Adapter (out) | `adapter/out/transport/smb` | SMB2/3 `FileTransport` на smbj; session/reconnect/atomic publish внутри адаптера |
@@ -72,8 +72,11 @@ read (SourceReader)
   → refang (Refanger)
   → extract (IndicatorExtractor / PatternEngine)
   → attribute source (SourceAttributor)
+  → classify (один materialized ClassificationDecision)
   → de-duplicate (within-batch)
-  → write (IocSink на каждый артефакт, маршрутизация по IndicatorType + artifact filters)
+  → prepare rows (ArtifactPreparer, без IO и финальных id)
+  → failure-policy checkpoint
+  → commit canonical rows → project derived CSV
 ```
 
 Подход к конвейеру (Pipes-and-Filters + `Envelope`/diagnostics) — [pipeline.md](dev/pipeline.md);
@@ -90,7 +93,7 @@ read (SourceReader)
 |---|---|---|
 | `ExtractIocsUseCase` | driving (in) | Единая точка входа прикладного ядра |
 | `SourceReader` | driven (out) | Извлечение текста из документа любого формата |
-| `IocSink` | driven (out) | Один выходной артефакт; фильтрует принимаемые типы |
+| `ArtifactPreparer` | driven (out) | Side-effect-free routing/mapping одного артефакта до policy checkpoint |
 | `ArtifactIdBaseline` | driven (out) | Чтение текущего public `max(id)` из canonical storage для продолжения id-последовательностей |
 | `CanonicalArtifactRepository` / `ArtifactProjection` | driven (out) | Canonical write/read с provenance и генерация CSV-проекций |
 | `PatternEngine` | domain SPI | Движок regex (RE2/J по умолчанию, JDK — замена) |

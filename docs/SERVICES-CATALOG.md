@@ -23,9 +23,9 @@ DDD-вектор: каждый сервис — самостоятельная �
 | **HostClassifier** | вид хоста по PSL (registrable/subdomain) | `HostClassifier` | host → kind | Guava PSL | adapter | `adapter-psl` |
 | **MatchClassifier** | коды масок (4-вар., rule-based) | `MatchPolicy` | IndicatorFeatures → MaskMatch | classify-rules | domain | `ioc-domain` |
 | **Dedup** | batch-local дедуп по `Indicator.dedupKey()` + keep-first/provenance в canonical storage | `DeduplicateIndicatorsStage`; `ON CONFLICT(row_key) DO NOTHING`; `<artifact>_sources` | Indicator[] → Indicator[] | canonical store | application (stage) + adapter | `ioc-application`, `adapter-store-jdbc` |
-| **ArtifactFiller** | заполнение колонок (provider/transform) | `RowMapper`, `ValueProvider`/`Transform` | Indicator → row | MatchPolicy, columns (config) | adapter | `adapter-sink-csv` |
+| **Artifact preparation** | side-effect-free routing и заполнение колонок до policy checkpoint | `ArtifactPreparer`, `RowMapper`, `ValueProvider`/`Transform` | ClassifiedIndicator[] → ArtifactWritePlan + diagnostics | columns/filters (config), deferred id sequence | application + adapter | `ioc-application`, `adapter-sink-csv` |
 | **SourceReader** | чтение источника (формат-агностик) | `SourceReader` | path → text | Tika | adapter | `adapter-source-tika` |
-| **IocSink** | запись артефакта | `IocSink` | Indicator[] → canonical store / CSV | commons-csv или JDBC, ArtifactFiller | adapter | `adapter-sink-csv`, `adapter-store-jdbc` |
+| **Canonical artifact commit** | транзакционная фиксация уже подготовленных строк | `CanonicalArtifactRepository` | CanonicalArtifact → write result | Spring JDBC/sqlite | adapter | `adapter-store-jdbc` |
 | **ArtifactIdBaseline** | schema-aware чтение `max(id)` для продолжения public id-space | `ArtifactIdBaseline` | artifact name → max id | canonical SQLite | adapter | `adapter-store-jdbc` |
 | **Diagnostics** | сбор/рендер диагностики, каталог | `DiagnosticSink`, `DiagnosticRenderer`, `MessageCatalog` | Diagnostic → msg/report | — | cross-cutting | `platform-diagnostics` |
 | **Observability** | operational log events (ECS), MDC-корреляция | `MdcScope`/`LogEvent` | events → ECS-лог | SLF4J/Logback, ECS encoder | cross-cutting | `platform-observability` |
@@ -37,7 +37,7 @@ DDD-вектор: каждый сервис — самостоятельная �
 | **SourceLifecycle** | атомарный claim/archive/fail источника и sidecar ошибок | `SourceLifecycle` | path/status → move/sidecar | filesystem | adapter | `adapter-ingest` |
 | **IngestionLedger** | журнал обработанного (идемпотентность, статусы, восстановление) | `IngestionLedger` | unit → status | file/SQLite | adapter | `adapter-ingest`, `adapter-store-jdbc` |
 | **RunLedger** | per-file saga checkpoints для write→project recovery | `RunLedger` | run id/status → recovery | SQLite service storage | adapter | `adapter-store-jdbc` |
-| **SourceSinkFactory** | per-source `JdbcIocSink`-и, пишущие прямо в canonical с `_source_key` | `SourceSinkFactory` | claimed source → IocSink[] | canonical store, IdGenerator | bootstrap | `ioc-app` |
+| **SourcePreparerFactory** | per-source preparer bundle с `_source_key` и общими id-sequence | `SourcePreparerFactory` | claimed source → SourcePreparers | CSV mapping config, ArtifactIdSequence | bootstrap | `ioc-app` |
 | **ArtifactIdentityResolver** | единая формула `row_key` из output-значений (JSON-канон, явные null) | `ArtifactIdentityResolver` | artifact row → key | identity config | application | `ioc-application` |
 | **ArtifactIdentityStore** | guard дрейфа формулы identity (`identity_hash`/`epoch`) | `ArtifactIdentityStore` | definition → stored marker/HALT | SQLite dataframe storage | adapter | `adapter-store-jdbc` |
 | **CanonicalArtifactRepository** | чтение/атомарная запись canonical rows + `<artifact>_sources` | `CanonicalArtifactRepository` | artifact rows ↔ DB | Spring JDBC/sqlite | adapter | `adapter-store-jdbc` |
@@ -95,7 +95,8 @@ remote delivery — [sync.md](dev/sync.md), event-координация —
        Deduplicator(batch-local) ─────────▶ Indicator[]
             │
             ▼
-   IocSink ◀─ ArtifactFiller(MatchClassifier+HostClassifier(PSL), provider/transform) ─▶ [artifact]
+   Classify ─▶ Deduplicate ─▶ ArtifactPreparer(provider/transform) ─▶ policy checkpoint
+                                                               └──▶ canonical commit ─▶ CSV projection
 
   orchestration: ExtractIocsUseCase (application) собирает стадии и применяет FailurePolicy
   daemon: watch ─IngestSourceUseCase─▶ [тот же конвейер] ─▶ JDBC dataframe truth ─▶ CSV projection

@@ -65,9 +65,18 @@ record Result<T>(T value, Notification diagnostics) {}       // per-item/ста�
 ## Стадии конвейера
 
 ```
-read → refang → extract → attribute → deduplicate(batch-local) → fill → sink
+read → refang → extract → attribute → classify → deduplicate(batch-local)
+     → prepare rows → policy checkpoint → canonical commit → projection
  (каждая — Stage/Filter; данные и метаданные идут в Envelope)
 ```
+
+`PrepareArtifactsStage` выполняет type/filter routing и mapping без durable IO,
+накапливая только typed `SINK.ROW_MAPPING_FAILED`. `PipelineRunner` применяет
+policy к этим диагностикам до `WriteArtifactsStage`; поэтому fail-fast не
+резервирует id и не оставляет частичный commit. Финальные public id резервируются
+при materialization write-plan непосредственно перед попыткой canonical write;
+диапазон после неуспешной попытки не переиспользуется. Неожиданный дефект mapper-а
+не превращается в element diagnostic и останавливает прогон.
 
 Соответствие сервисам — в [services.md](../SERVICES-CATALOG.md). Оркестрацию собирает
 `ExtractIocsUseCase` (application): порядок стадий и `FailurePolicy`

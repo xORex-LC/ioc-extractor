@@ -18,7 +18,7 @@ SQLite/JDBC, CSV projection implementation или logging. Все внешние
 | `IngestionService` | Use case orchestration для normal ingest, recovery `CLAIMED` records и reject |
 | `IngestionRecord`, `IngestionStatus` | Durable source-ledger read model и terminal/active statuses |
 | `SourceKey`, `SourceUnit`, `ArchivedSourceUnit` | Stable source identity и перемещение файла между lifecycle зонами |
-| `SourceSinks` | Per-source sink bundle и список затронутых artifact names |
+| `SourcePreparers` | Per-source preparer bundle и список затронутых artifact names |
 | `CanonicalArtifactsChanged` | Control event после durable completed ingest-run |
 
 ## Инварианты

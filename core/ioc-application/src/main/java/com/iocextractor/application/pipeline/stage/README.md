@@ -19,7 +19,8 @@ composition.
 | `AttributeSourceStage.java` | `SourceAttributor` → `AttributedIndicators` |
 | `ClassifyIndicatorsStage.java` | One `ClassificationDecision` per indicator |
 | `DeduplicateIndicatorsStage.java` | within-batch dedup by `Indicator.dedupKey()` |
-| `WriteArtifactsStage.java` | sink fan-out / dry-run summary |
+| `PrepareArtifactsStage.java` | side-effect-free artifact routing/mapping и сбор element diagnostics |
+| `WriteArtifactsStage.java` | deferred-id materialization, canonical commit, projection / dry-run summary |
 
 ## Зависимости
 

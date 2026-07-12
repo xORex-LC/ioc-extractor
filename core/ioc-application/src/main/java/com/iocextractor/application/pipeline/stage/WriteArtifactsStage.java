@@ -1,31 +1,42 @@
 package com.iocextractor.application.pipeline.stage;
 
 import com.iocextractor.application.pipeline.payload.ArtifactWriteSummary;
-import com.iocextractor.application.pipeline.payload.RetainedIndicators;
+import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
 import com.iocextractor.application.pipeline.PipelineMetaAttributes;
-import com.iocextractor.application.port.out.IocSink;
+import com.iocextractor.application.port.out.artifact.ArtifactProjection;
+import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
+import com.iocextractor.diagnostics.DiagnosticException;
+import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
 import com.iocextractor.platform.etl.Envelope;
 import com.iocextractor.platform.etl.Stage;
 import com.iocextractor.platform.etl.StageId;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Objects;
 
 /**
  * Writes retained indicators to configured sinks unless dry-run is enabled.
  */
-public final class WriteArtifactsStage implements Stage<RetainedIndicators, ArtifactWriteSummary> {
+public final class WriteArtifactsStage implements Stage<PreparedArtifacts, ArtifactWriteSummary> {
 
-    private final List<IocSink> sinks;
+    private final CanonicalArtifactRepository repository;
+    private final ArtifactProjection projection;
+    private final DiagnosticFactory diagnosticFactory;
 
     /**
      * Creates the stage.
      *
-     * @param sinks artifact sinks
+     * @param repository canonical storage port
+     * @param projection post-commit projection port
+     * @param diagnosticFactory factory for typed run failures
      */
-    public WriteArtifactsStage(List<IocSink> sinks) {
-        this.sinks = List.copyOf(Objects.requireNonNull(sinks, "sinks"));
+    public WriteArtifactsStage(CanonicalArtifactRepository repository,
+                               ArtifactProjection projection,
+                               DiagnosticFactory diagnosticFactory) {
+        this.repository = Objects.requireNonNull(repository, "repository");
+        this.projection = Objects.requireNonNull(projection, "projection");
+        this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
     }
 
     @Override
@@ -34,17 +45,44 @@ public final class WriteArtifactsStage implements Stage<RetainedIndicators, Arti
     }
 
     @Override
-    public Envelope<ArtifactWriteSummary> process(Envelope<RetainedIndicators> input) {
+    public Envelope<ArtifactWriteSummary> process(Envelope<PreparedArtifacts> input) {
         var payload = input.payload();
         var written = new LinkedHashMap<String, Integer>();
         if (!input.meta().booleanAttribute(PipelineMetaAttributes.DRY_RUN, false)) {
-            for (IocSink sink : sinks) {
-                written.put(sink.name(), sink.write(payload.retained()));
+            for (var plan : payload.plans()) {
+                int inserted;
+                try {
+                    inserted = repository.write(plan.artifactName(), plan.materialize()).inserted();
+                } catch (RuntimeException failure) {
+                    throw writeFailure("canonical", plan.artifactName(), failure);
+                }
+                try {
+                    projection.project(plan.artifactName());
+                } catch (RuntimeException failure) {
+                    throw writeFailure("projection", plan.artifactName(), failure);
+                }
+                written.put(plan.artifactName(), inserted);
             }
         }
         return input.withPayload(new ArtifactWriteSummary(
-                payload.extracted().size(),
-                payload.retained().size(),
+                payload.extracted(),
+                payload.retained(),
                 written));
+    }
+
+    private DiagnosticException writeFailure(String sink, String artifact, RuntimeException failure) {
+        var diagnostic = diagnosticFactory.create(SinkDiagnosticCodes.WRITE_FAILED)
+                .with("sink", sink)
+                .with("artifact", artifact)
+                .with("reason", reason(failure))
+                .cause(failure)
+                .build();
+        return new DiagnosticException(diagnostic);
+    }
+
+    private static String reason(RuntimeException failure) {
+        return failure.getMessage() == null || failure.getMessage().isBlank()
+                ? failure.getClass().getSimpleName()
+                : failure.getMessage();
     }
 }

@@ -7,8 +7,9 @@
 provider/transform (OCP, но это код).
 
 > Статус: **реализовано**. `ConfigurableRowMapper` использует provider/transform
-> registries и единую artifact definition для oneshot/daemon JDBC-write path и
-> CSV projection adapters.
+> registries и единую artifact definition для oneshot/daemon preparation path и
+> CSV projection adapters. Mapping выполняется до failure-policy checkpoint без
+> IO; canonical commit получает уже подготовленный `ArtifactWritePlan`.
 
 ## Принцип
 
@@ -39,6 +40,11 @@ ConfigurableRowMapper ──uses──▶ Map<key, ValueProvider>
 | `value` | значение для `from: const` (пусто → CSV `NULL`) |
 | `when-type` | колонка заполняется только для этого `IndicatorType`, иначе `NULL` |
 | `transform` | список трансформаций, применяются по порядку |
+
+`from: id` — специальный deferred slot. Его финальное значение резервируется
+только после policy checkpoint, непосредственно перед canonical commit. Поэтому
+для него допускается не более одной колонки на артефакт и запрещены
+`when-type`/`transform`; config preflight отклоняет нарушение на старте.
 
 ## Реестр провайдеров (`from`)
 
@@ -193,6 +199,11 @@ artifacts:
 
 - `ConfigurableRowMapper`, провайдеры и трансформации — в адаптере вывода
   (`adapter/out/sink/csv`): форматирование — адаптерная забота.
+- `CsvArtifactPreparer` ловит только typed `RowMappingException`: это ожидаемый
+  data-dependent element failure. Неожиданный `RuntimeException` mapper-а
+  считается дефектом и останавливает run, а не маскируется продолжением.
+- `ArtifactIdSequence` принадлежит application-модели, thread-safe и общий для
+  daemon session. Failed commit оставляет gap: id unique/stable, но не gapless.
 - Application-стадия вызывает **доменную** `MatchPolicy` один раз на indicator;
   providers/filters переиспользуют `ClassificationDecision` независимо от числа
   колонок и артефактов. Правила и коды остаются в конфиге. См.

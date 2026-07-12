@@ -93,6 +93,7 @@ final class ConfigRegistryPreflight implements InitializingBean {
         if (columns == null) {
             return;
         }
+        int idColumns = 0;
         for (int columnIndex = 0; columnIndex < columns.size(); columnIndex++) {
             IocProperties.Sink.Artifact.Column column = columns.get(columnIndex);
             if (column == null) {
@@ -100,6 +101,27 @@ final class ConfigRegistryPreflight implements InitializingBean {
             }
             validateColumnProvider(errors, valueProviders, column, artifactIndex, columnIndex);
             validateColumnTransforms(errors, transforms, column, artifactIndex, columnIndex);
+            if ("id".equals(column.from())) {
+                idColumns++;
+                validateDeferredIdColumn(errors, column, artifactIndex, columnIndex);
+            }
+        }
+        if (idColumns > 1) {
+            errors.add("ioc.sink.artifacts[%d].columns contains %d 'id' providers; use at most one deferred id column"
+                    .formatted(artifactIndex, idColumns));
+        }
+    }
+
+    private void validateDeferredIdColumn(List<String> errors,
+                                          IocProperties.Sink.Artifact.Column column,
+                                          int artifactIndex,
+                                          int columnIndex) {
+        String path = "ioc.sink.artifacts[%d].columns[%d]".formatted(artifactIndex, columnIndex);
+        if (column.whenType() != null) {
+            errors.add(path + ".when-type is not supported for the deferred 'id' provider; remove the gate");
+        }
+        if (column.transform() != null && !column.transform().isEmpty()) {
+            errors.add(path + ".transform is not supported for the deferred 'id' provider; remove transforms");
         }
     }
 

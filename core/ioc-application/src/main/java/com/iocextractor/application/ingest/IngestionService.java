@@ -13,7 +13,7 @@ import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
-import com.iocextractor.application.port.out.ingest.SourceSinkFactory;
+import com.iocextractor.application.port.out.ingest.SourcePreparerFactory;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import com.iocextractor.platform.events.NoopControlEventPublisher;
@@ -33,7 +33,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
 
     private final IngestionLedger ledger;
     private final SourceLifecycle sourceLifecycle;
-    private final SourceSinkFactory sourceSinkFactory;
+    private final SourcePreparerFactory sourcePreparerFactory;
     private final IocExtractionServiceFactory extractionFactory;
     private final RunLedger runLedger;
     private final ArtifactProjection projection;
@@ -42,25 +42,25 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
 
     public IngestionService(IngestionLedger ledger,
                             SourceLifecycle sourceLifecycle,
-                            SourceSinkFactory sourceSinkFactory,
+                            SourcePreparerFactory sourcePreparerFactory,
                             IocExtractionServiceFactory extractionFactory) {
-        this(ledger, sourceLifecycle, sourceSinkFactory, extractionFactory,
+        this(ledger, sourceLifecycle, sourcePreparerFactory, extractionFactory,
                 new NoopRunLedger(), new NoopArtifactProjection());
     }
 
     public IngestionService(IngestionLedger ledger,
                             SourceLifecycle sourceLifecycle,
-                            SourceSinkFactory sourceSinkFactory,
+                            SourcePreparerFactory sourcePreparerFactory,
                             IocExtractionServiceFactory extractionFactory,
                             RunLedger runLedger,
                             ArtifactProjection projection) {
-        this(ledger, sourceLifecycle, sourceSinkFactory, extractionFactory, runLedger, projection,
+        this(ledger, sourceLifecycle, sourcePreparerFactory, extractionFactory, runLedger, projection,
                 NoopControlEventPublisher.INSTANCE, Clock.systemUTC());
     }
 
     public IngestionService(IngestionLedger ledger,
                             SourceLifecycle sourceLifecycle,
-                            SourceSinkFactory sourceSinkFactory,
+                            SourcePreparerFactory sourcePreparerFactory,
                             IocExtractionServiceFactory extractionFactory,
                             RunLedger runLedger,
                             ArtifactProjection projection,
@@ -68,7 +68,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                             Clock clock) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.sourceLifecycle = Objects.requireNonNull(sourceLifecycle, "sourceLifecycle");
-        this.sourceSinkFactory = Objects.requireNonNull(sourceSinkFactory, "sourceSinkFactory");
+        this.sourcePreparerFactory = Objects.requireNonNull(sourcePreparerFactory, "sourcePreparerFactory");
         this.extractionFactory = Objects.requireNonNull(extractionFactory, "extractionFactory");
         this.runLedger = Objects.requireNonNull(runLedger, "runLedger");
         this.projection = Objects.requireNonNull(projection, "projection");
@@ -141,16 +141,16 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     }
 
     private IngestSourceResult processClaimed(SourceUnit unit) {
-        var sourceSinks = sourceSinkFactory.createFor(unit);
-        var run = runLedger.startIngest(unit.key().value(), sourceSinks.artifactNames());
+        var sourcePreparers = sourcePreparerFactory.createFor(unit);
+        var run = runLedger.startIngest(unit.key().value(), sourcePreparers.artifactNames());
         boolean dbCommitted = false;
         ExtractionResult extraction;
         try {
-            extraction = extractionFactory.create(sourceSinks.sinks())
+            extraction = extractionFactory.create(sourcePreparers.preparers(), new NoopArtifactProjection())
                 .extract(new ExtractionCommand(unit.processingPath(), false));
             runLedger.markDbCommitted(run.runId());
             dbCommitted = true;
-            for (String artifactName : sourceSinks.artifactNames()) {
+            for (String artifactName : sourcePreparers.artifactNames()) {
                 projection.project(artifactName);
             }
             runLedger.markProjectionCompleted(run.runId());

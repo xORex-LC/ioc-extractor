@@ -19,6 +19,7 @@ pipeline runner, logging или adapters. Коллекции и map копиру
 | `AttributedIndicators.java` | `AttributionOutcome` после source attribution |
 | `ClassifiedIndicator(s).java` | Indicator + единственный materialized `ClassificationDecision` |
 | `RetainedIndicators.java` | Classified indicators до/после dedup |
+| `PreparedArtifacts.java` | Artifact write plans после mapping и до policy/commit |
 | `ArtifactWriteSummary.java` | Итог записи артефактов |
 
 ## Зависимости

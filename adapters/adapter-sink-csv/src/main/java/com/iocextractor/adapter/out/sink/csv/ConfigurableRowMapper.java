@@ -6,6 +6,7 @@ import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Generic {@link RowMapper} driven by declarative {@link ColumnSpec}s plus
@@ -24,6 +25,8 @@ public final class ConfigurableRowMapper implements RowMapper {
     private final List<ColumnSpec> columns;
     private final Map<String, ValueProvider> providers;
     private final Map<String, Transform> transforms;
+    private final List<String> header;
+    private final Optional<String> idColumn;
 
     public ConfigurableRowMapper(List<ColumnSpec> columns,
                                  Map<String, ValueProvider> providers,
@@ -31,11 +34,21 @@ public final class ConfigurableRowMapper implements RowMapper {
         this.columns = List.copyOf(columns);
         this.providers = Map.copyOf(providers);
         this.transforms = Map.copyOf(transforms);
+        this.header = this.columns.stream().map(ColumnSpec::name).toList();
+        this.idColumn = this.columns.stream()
+                .filter(column -> "id".equals(column.from()))
+                .map(ColumnSpec::name)
+                .findFirst();
     }
 
     @Override
     public List<String> header() {
-        return columns.stream().map(ColumnSpec::name).toList();
+        return header;
+    }
+
+    @Override
+    public Optional<String> idColumn() {
+        return idColumn;
     }
 
     @Override

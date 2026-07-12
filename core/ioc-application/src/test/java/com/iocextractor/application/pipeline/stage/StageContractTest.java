@@ -5,15 +5,18 @@ import com.iocextractor.platform.etl.Stage;
 import com.iocextractor.application.pipeline.payload.ExtractedIndicators;
 import com.iocextractor.application.pipeline.payload.RefangedText;
 import com.iocextractor.application.pipeline.payload.RetainedIndicators;
+import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
 import com.iocextractor.application.pipeline.payload.SourceText;
-import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.domain.extract.RawIndicator;
 import com.iocextractor.domain.extract.ExtractionOutcome;
 import com.iocextractor.domain.refang.RefangOutcome;
 import com.iocextractor.domain.model.Indicator;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.application.artifact.CanonicalArtifact;
+import com.iocextractor.application.artifact.CanonicalWriteResult;
+import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
+import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.domain.model.IndicatorType;
 import org.junit.jupiter.api.Test;
 
@@ -66,11 +69,13 @@ class StageContractTest {
                         false),
                 diagnostic);
         assertPreservesContract(
-                new WriteArtifactsStage(List.of(new CountingSink())),
-                StageTestSupport.envelope(new RetainedIndicators(List.of(
-                                StageTestSupport.classifiedIndicator(StageTestSupport.indicator("example.com"))),
-                        List.of(StageTestSupport.classifiedIndicator(StageTestSupport.indicator("example.com")))),
-                        false),
+                new PrepareArtifactsStage(List.of()),
+                StageTestSupport.envelope(new RetainedIndicators(List.of(), List.of()), false),
+                diagnostic);
+        assertPreservesContract(
+                new WriteArtifactsStage(new NoopRepository(), ignored -> { },
+                        new DiagnosticFactory(StageTestSupport.CLOCK)),
+                StageTestSupport.envelope(new PreparedArtifacts(0, 0, List.of()), true),
                 diagnostic);
     }
 
@@ -85,16 +90,15 @@ class StageContractTest {
         assertThat(input.payload()).isSameAs(source.payload());
     }
 
-    private static final class CountingSink implements IocSink {
-
+    private static final class NoopRepository implements CanonicalArtifactRepository {
         @Override
-        public String name() {
-            return "test";
+        public CanonicalArtifact load(String artifactName) {
+            throw new UnsupportedOperationException();
         }
 
         @Override
-        public int write(List<ClassifiedIndicator> indicators) {
-            return indicators.size();
+        public CanonicalWriteResult write(String artifactName, CanonicalArtifact artifact) {
+            return new CanonicalWriteResult(0, 0);
         }
     }
 

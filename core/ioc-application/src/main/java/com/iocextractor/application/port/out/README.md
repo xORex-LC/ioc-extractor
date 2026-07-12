@@ -13,8 +13,7 @@ Driven-порты (выходные): контракты, которые при�
 | Файл | Назначение |
 |---|---|
 | `SourceReader.java` | Извлечение текста из документа любого формата |
-| `IocSink.java` | Один выходной артефакт; фильтрует принимаемые типы |
 | `ingest/` | Driven-порты source lifecycle и ledger |
-| `artifact/` | Driven-порты canonical storage, projection, identity resolver, id-baseline и run-ledger |
+| `artifact/` | Driven-порты side-effect-free preparation, canonical storage, projection, identity resolver, id-baseline и run-ledger |
 | `export/` | Driven-порты snapshot streaming, slice writer, manifest, revision/progress и export-ledger |
 | `sync/` | Driven-порты remote file transport и будущих sync-ledgers |

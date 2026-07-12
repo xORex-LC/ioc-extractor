@@ -1,10 +1,12 @@
 package com.iocextractor.application.pipeline;
 
 import com.iocextractor.application.pipeline.stage.AttributeSourceStage;
+import com.iocextractor.application.pipeline.stage.ClassifyIndicatorsStage;
 import com.iocextractor.application.pipeline.stage.DeduplicateIndicatorsStage;
 import com.iocextractor.application.pipeline.stage.ExtractIndicatorsStage;
 import com.iocextractor.application.pipeline.stage.ReadSourceStage;
 import com.iocextractor.application.pipeline.stage.RefangStage;
+import com.iocextractor.application.pipeline.stage.PrepareArtifactsStage;
 import com.iocextractor.application.pipeline.stage.WriteArtifactsStage;
 import com.iocextractor.platform.etl.Stage;
 import com.iocextractor.platform.etl.StageId;
@@ -22,7 +24,9 @@ class PipelineModelArchitectureTest {
             RefangStage.class,
             ExtractIndicatorsStage.class,
             AttributeSourceStage.class,
+            ClassifyIndicatorsStage.class,
             DeduplicateIndicatorsStage.class,
+            PrepareArtifactsStage.class,
             WriteArtifactsStage.class);
 
     @Test
@@ -71,6 +75,9 @@ class PipelineModelArchitectureTest {
         }
         if (type == java.time.Clock.class) {
             return java.time.Clock.systemUTC();
+        }
+        if (type == com.iocextractor.diagnostics.DiagnosticFactory.class) {
+            return new com.iocextractor.diagnostics.DiagnosticFactory(java.time.Clock.systemUTC());
         }
         if (type.isInterface()) {
             return java.lang.reflect.Proxy.newProxyInstance(

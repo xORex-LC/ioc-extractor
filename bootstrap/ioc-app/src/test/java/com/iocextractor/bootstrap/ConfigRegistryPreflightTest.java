@@ -1,5 +1,6 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.domain.model.IndicatorType;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -66,6 +67,20 @@ class ConfigRegistryPreflightTest {
                         "normalize-host",
                         "lower-host",
                         "name:arg"));
+    }
+
+    @Test
+    void rejectsConditionalOrTransformedDeferredIdColumn() throws Exception {
+        IocProperties source = defaults();
+        IocProperties.Sink.Artifact.Column id = source.sink().artifacts().getFirst().columns().getFirst();
+        var invalid = new IocProperties.Sink.Artifact.Column(
+                id.name(), id.from(), id.value(), id.type(), IndicatorType.MD5, List.of("upper"));
+
+        contextRunner(withMasksColumnAt(source, 0, invalid))
+                .run(context -> assertRegistryFailure(context.getStartupFailure(),
+                        "ioc.sink.artifacts[0].columns[0].when-type",
+                        "ioc.sink.artifacts[0].columns[0].transform",
+                        "deferred 'id' provider"));
     }
 
     @Test
@@ -160,10 +175,16 @@ class ConfigRegistryPreflightTest {
     }
 
     private IocProperties withMasksColumn(IocProperties source, IocProperties.Sink.Artifact.Column replacement) {
+        return withMasksColumnAt(source, 1, replacement);
+    }
+
+    private IocProperties withMasksColumnAt(IocProperties source,
+                                             int columnIndex,
+                                             IocProperties.Sink.Artifact.Column replacement) {
         List<IocProperties.Sink.Artifact> artifacts = new ArrayList<>(source.sink().artifacts());
         IocProperties.Sink.Artifact masks = artifacts.getFirst();
         List<IocProperties.Sink.Artifact.Column> columns = new ArrayList<>(masks.columns());
-        columns.set(1, replacement);
+        columns.set(columnIndex, replacement);
         artifacts.set(0, copyArtifact(masks, masks.include(), masks.exclude(), columns));
         return withSink(source, new IocProperties.Sink(source.sink().csv(), artifacts));
     }

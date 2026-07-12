@@ -29,6 +29,9 @@ public final class StageNames {
     /** De-duplication. */
     public static final StageId DEDUPLICATE = new StageId("DEDUPLICATE");
 
+    /** Side-effect-free artifact filtering and row mapping. */
+    public static final StageId PREPARE_ARTIFACTS = new StageId("PREPARE_ARTIFACTS");
+
     /** Artifact writing. */
     public static final StageId WRITE_ARTIFACTS = new StageId("WRITE_ARTIFACTS");
 

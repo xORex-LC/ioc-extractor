@@ -10,7 +10,7 @@ import com.iocextractor.adapter.out.sink.csv.CsvArtifactProjection;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactSliceWriter;
 import com.iocextractor.adapter.out.sink.csv.FileSystemSliceRetentionStore;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition;
-import com.iocextractor.adapter.out.sink.csv.IdGenerator;
+import com.iocextractor.adapter.out.sink.csv.CsvArtifactPreparer;
 import com.iocextractor.adapter.out.sink.csv.NioExportOperationGuard;
 import com.iocextractor.adapter.out.sink.csv.RowMapper;
 import com.iocextractor.adapter.out.sink.csv.Transform;
@@ -23,7 +23,6 @@ import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository;
 import com.iocextractor.adapter.out.store.jdbc.JdbcIngestionLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcExportProgressStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcExportRunLedger;
-import com.iocextractor.adapter.out.store.jdbc.JdbcIocSink;
 import com.iocextractor.adapter.out.store.jdbc.JdbcRunLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader;
 import com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealthProbe;
@@ -41,6 +40,7 @@ import com.iocextractor.adapter.out.store.jdbc.SqlitePragmaPolicy;
 import com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator;
 import com.iocextractor.application.artifact.IngestRunRecoveryService;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
+import com.iocextractor.application.artifact.ArtifactIdSequence;
 import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.artifact.NoopArtifactProjection;
 import com.iocextractor.application.artifact.NoopRunLedger;
@@ -62,10 +62,10 @@ import com.iocextractor.application.port.in.export.RecoverExportUseCase;
 import com.iocextractor.application.port.in.export.RunSliceRetentionUseCase;
 import com.iocextractor.application.port.in.export.ValidateExportProfileUseCase;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
+import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.maintenance.RetentionStore;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
-import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.application.port.out.artifact.ArtifactIdBaseline;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
@@ -73,7 +73,7 @@ import com.iocextractor.application.port.out.artifact.ArtifactIdentityStore;
 import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
-import com.iocextractor.application.port.out.ingest.SourceSinkFactory;
+import com.iocextractor.application.port.out.ingest.SourcePreparerFactory;
 import com.iocextractor.application.port.out.export.ArtifactRevisionReader;
 import com.iocextractor.application.port.out.export.ArtifactSliceWriter;
 import com.iocextractor.application.port.out.export.ExportObserver;
@@ -283,11 +283,13 @@ public class AppConfig {
                                                                    SourceAttributor attributor,
                                                                    MatchPolicy matchPolicy,
                                                                    DiagnosticSink diagnosticSink,
+                                                                   JdbcCanonicalArtifactRepository repository,
                                                                    IocProperties props) {
         return new IocExtractionServiceFactory(reader, refanger, extractor, attributor, matchPolicy,
                 props.pipeline().deduplicate(), props.observability().mode().token(),
                 new LoggingPipelineObserver(), diagnosticSink,
-                props.pipeline().failurePolicy().toPolicy(), props.pipeline().maxDiagnosticsPerRun());
+                props.pipeline().failurePolicy().toPolicy(), props.pipeline().maxDiagnosticsPerRun(),
+                repository);
     }
 
     @Bean
@@ -298,39 +300,28 @@ public class AppConfig {
             matchIfMissing = true)
     public ExtractIocsUseCase extractIocsUseCase(IocExtractionServiceFactory factory,
                                                  ArtifactIdBaseline artifactIdBaseline,
-                                                 JdbcCanonicalArtifactRepository jdbcCanonicalRepository,
                                                  CsvArtifactProjection csvArtifactProjection,
+                                                 Clock clock,
                                                  IocProperties props) {
-        List<IocSink> sinks = buildSinks(
-                props,
-                artifactIdBaseline,
-                jdbcCanonicalRepository,
-                csvArtifactProjection);
-        return factory.create(sinks);
+        List<ArtifactPreparer> preparers = artifactPreparers(
+                artifactDefinitions(props, artifactIdBaseline), null, clock);
+        return factory.create(preparers, csvArtifactProjection);
     }
 
     @Bean
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
-    public SourceSinkFactory sourceSinkFactory(IocProperties props,
-                                               ArtifactIdBaseline artifactIdBaseline,
-                                               JdbcCanonicalArtifactRepository jdbcCanonicalRepository) {
+    public SourcePreparerFactory sourcePreparerFactory(IocProperties props,
+                                                       ArtifactIdBaseline artifactIdBaseline,
+                                                       Clock clock) {
         var artifacts = artifactDefinitions(props, artifactIdBaseline);
-        Map<String, IdGenerator> ids = new LinkedHashMap<>();
+        Map<String, ArtifactIdSequence> ids = new LinkedHashMap<>();
         for (CsvArtifactDefinition artifact : artifacts) {
-            ids.put(artifact.name(), new IdGenerator(artifact.idStrategy(), artifact.idStart()));
+            ids.put(artifact.name(), new ArtifactIdSequence(artifact.idStrategy(), artifact.idStart()));
         }
-        return source -> new com.iocextractor.application.ingest.SourceSinks(artifacts.stream()
-                .map(artifact -> new JdbcIocSink(
-                        artifact.name(),
-                        artifact.accepts(),
-                        artifact.filter()::accepts,
-                        artifact.mapper().header(),
-                        artifact.mapper()::toRow,
-                        ids.get(artifact.name())::next,
-                        jdbcCanonicalRepository,
-                        null,
-                        source.key().value()))
-                .map(IocSink.class::cast)
+        return source -> new com.iocextractor.application.ingest.SourcePreparers(artifacts.stream()
+                .map(artifact -> new CsvArtifactPreparer(
+                        artifact, ids.get(artifact.name()), new DiagnosticFactory(clock), source.key().value()))
+                .map(ArtifactPreparer.class::cast)
                 .toList());
     }
 
@@ -730,7 +721,7 @@ public class AppConfig {
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public IngestionService ingestionService(IngestionLedger ledger,
                                              SourceLifecycle sourceLifecycle,
-                                             SourceSinkFactory sourceSinkFactory,
+                                             SourcePreparerFactory sourcePreparerFactory,
                                              IocExtractionServiceFactory extractionFactory,
                                              ObjectProvider<RunLedger> runLedger,
                                              ObjectProvider<ArtifactProjection> projection,
@@ -739,7 +730,7 @@ public class AppConfig {
         return new IngestionService(
                 ledger,
                 sourceLifecycle,
-                sourceSinkFactory,
+                sourcePreparerFactory,
                 extractionFactory,
                 runLedger.getIfAvailable(NoopRunLedger::new),
                 projection.getIfAvailable(NoopArtifactProjection::new),
@@ -852,21 +843,16 @@ public class AppConfig {
 
     // ---- artifact assembly -------------------------------------------------
 
-    private List<IocSink> buildSinks(IocProperties props,
-                                     ArtifactIdBaseline artifactIdBaseline,
-                                     JdbcCanonicalArtifactRepository jdbcCanonicalRepository,
-                                     CsvArtifactProjection csvArtifactProjection) {
-        return artifactDefinitions(props, artifactIdBaseline).stream()
-                .map(artifact -> new JdbcIocSink(
-                        artifact.name(),
-                        artifact.accepts(),
-                        artifact.filter()::accepts,
-                        artifact.mapper().header(),
-                        artifact.mapper()::toRow,
-                        new IdGenerator(artifact.idStrategy(), artifact.idStart())::next,
-                        jdbcCanonicalRepository,
-                        csvArtifactProjection::project))
-                .map(IocSink.class::cast)
+    private List<ArtifactPreparer> artifactPreparers(List<CsvArtifactDefinition> artifacts,
+                                                     String sourceKey,
+                                                     Clock clock) {
+        return artifacts.stream()
+                .map(artifact -> new CsvArtifactPreparer(
+                        artifact,
+                        new ArtifactIdSequence(artifact.idStrategy(), artifact.idStart()),
+                        new DiagnosticFactory(clock),
+                        sourceKey))
+                .map(ArtifactPreparer.class::cast)
                 .toList();
     }
 
@@ -970,10 +956,11 @@ public class AppConfig {
                 .toList();
     }
 
-    private IdGenerator.Strategy strategyOf(IocProperties.Sink.Artifact.Id id) {
+    private com.iocextractor.application.artifact.ArtifactIdStrategy strategyOf(
+            IocProperties.Sink.Artifact.Id id) {
         return id != null && id.strategy() == ArtifactIdStrategy.DESCENDING
-                ? IdGenerator.Strategy.DESCENDING
-                : IdGenerator.Strategy.ASCENDING;
+                ? com.iocextractor.application.artifact.ArtifactIdStrategy.DESCENDING
+                : com.iocextractor.application.artifact.ArtifactIdStrategy.ASCENDING;
     }
 
     /**

@@ -17,8 +17,9 @@
 > обоих режимов: oneshot и daemon переключены на DB-truth одновременно.
 >
 > **β-коллапс выполнен:** partition-staging, отдельный проход агрегации и
-> stable-id sidecar удалены. Демон извлекает каждый файл прямо в canonical
-> (`SourceSinkFactory → JdbcIocSink`) и тут же перепроецирует CSV. Запись→проекция
+> stable-id sidecar удалены. Демон готовит строки через per-source
+> `ArtifactPreparer`, после policy checkpoint фиксирует их через
+> `CanonicalArtifactRepository` и тут же перепроецирует CSV. Запись→проекция
 > идёт сагой с durable run-ledger (`ingest_run`): crash-window после commit БД и до
 > CSV-проекции закрывается на старте повторной проекцией незавершённого
 > `DB_COMMITTED` run (и/или полным идемпотентным репроцессом источника со статусом
@@ -42,11 +43,11 @@ DO NOTHING` в canonical-таблицах (keep-first).
   имеет свой `ioc.observability.mode` и используется для лог-профиля/полей.
 - В `daemon` CLI runner выключен, а процесс живёт вместе со Spring context и
   Spring Integration flow.
-- `IocSink` API не расширен контекстом источника. В daemon-режиме bootstrap
-  подставляет per-source `JdbcIocSink`-и (`SourceSinkFactory.createFor(unit)`),
-  которые пишут прямо в canonical с `_source_key` из ingestion-record; провенанс
-  оседает в `<artifact>_sources`.
-- **Авторитет id — единый** `IdGenerator(strategy, start=maxId+1)` (как в oneshot);
+- В daemon-режиме bootstrap создаёт per-source `ArtifactPreparer`-ы
+  (`SourcePreparerFactory.createFor(unit)`), которые добавляют `_source_key` из
+  ingestion-record к storage-neutral write plan; commit выполняет общий
+  `CanonicalArtifactRepository`, провенанс оседает в `<artifact>_sources`.
+- **Авторитет id — единый** `ArtifactIdSequence(strategy, start=maxId+1)` (как в oneshot);
   отдельный stable-id sidecar упразднён, `id AUTOINCREMENT` — пассивная подстраховка.
 
 ## 1. Режимы запуска
@@ -91,9 +92,10 @@ wiring.
                    └──────────────▶ extraction pipeline (refang → extract → attribute)
                    │
                    ▼
-              JdbcIocSink (per-source) → canonical SQLite ──▶ ArtifactProjection → *_generated.csv
+              ArtifactPreparer (per-source) → policy → CanonicalArtifactRepository
+                                                    └──▶ ArtifactProjection → *_generated.csv
    driving:  IngestSourceUseCase, ExtractIocsUseCase
-   driven:   IngestionLedger | SourceLifecycle | SourceSinkFactory | CanonicalArtifactRepository
+   driven:   IngestionLedger | SourceLifecycle | SourcePreparerFactory | CanonicalArtifactRepository
              | ArtifactProjection | RunLedger
 ```
 
@@ -104,7 +106,8 @@ wiring.
 | `IngestSourceUseCase` | in (driving) | Приём одной единицы-источника на обработку (вызывается watch-адаптером) |
 | `IngestionLedger` | out (driven) | Durable-журнал **статусов** обработки (идемпотентность, восстановление) |
 | `SourceLifecycle` | out (driven) | Claim/archive/fail источника через атомарные операции ФС; application не знает SI |
-| `SourceSinkFactory` | out (driven) | Создание per-source `IocSink`-ов (`JdbcIocSink`), пишущих прямо в canonical с `_source_key`; реализация в bootstrap поверх `adapter-store-jdbc` |
+| `SourcePreparerFactory` | out (driven) | Создание per-source `ArtifactPreparer`-ов с `_source_key`; реализация в bootstrap поверх CSV mapping config и общих id-sequence |
+| `ArtifactPreparer` | out (driven) | Type/filter routing и mapping в storage-neutral write plan без IO до failure-policy checkpoint |
 | `CanonicalArtifactRepository` | out (driven) | Чтение / транзакционная запись canonical-таблиц (rows + `<artifact>_sources`), keep-first `ON CONFLICT` |
 | `ArtifactProjection` | out (driven) | Перепроекция `*_generated.csv` из canonical-истины (`CsvArtifactProjection`) |
 | `ArtifactIdentityResolver` | out (driven) | Единая формула `row_key` из output-значений (application) |
@@ -120,11 +123,11 @@ SI заменяем без влияния на ядро.
 
 | Модуль | Что добавляется |
 |---|---|
-| `core/ioc-application` | `IngestSourceUseCase`, ingestion command/result, `IngestionLedger`, `SourceLifecycle`, `SourceSinkFactory`, run-ledger saga + `IngestRunRecoveryService`, orchestration service |
+| `core/ioc-application` | `IngestSourceUseCase`, ingestion command/result, `IngestionLedger`, `SourceLifecycle`, `SourcePreparerFactory`, run-ledger saga + `IngestRunRecoveryService`, orchestration service |
 | `adapters/adapter-ingest` | Spring Integration file flow, stability filters, `SourceLifecycle` FS implementation, file ledger implementation |
-| `adapters/adapter-store-jdbc` | `JdbcIocSink`, `JdbcCanonicalArtifactRepository` (rows + `_sources`), `JdbcRunLedger`, schema migrations/health |
-| `adapters/adapter-sink-csv` | `CsvArtifactProjection` (CSV-проекция из canonical) |
-| `bootstrap/ioc-app` | conditional wiring: `oneshot` CLI vs `daemon` ingest, `SourceSinkFactory`, config binding, app lifecycle |
+| `adapters/adapter-store-jdbc` | `JdbcCanonicalArtifactRepository` (rows + `_sources`), `JdbcRunLedger`, schema migrations/health |
+| `adapters/adapter-sink-csv` | `CsvArtifactPreparer` + `CsvArtifactProjection` (CSV-проекция из canonical) |
+| `bootstrap/ioc-app` | conditional wiring: `oneshot` CLI vs `daemon` ingest, `SourcePreparerFactory`, config binding, app lifecycle |
 
 ## 3. Детект появления (гибрид)
 
@@ -237,10 +240,11 @@ dataframe/
 └── hashes_list_generated.csv
 ```
 
-- **Запись:** извлечённые из источника индикаторы идут в per-source `JdbcIocSink`-и
-  (`SourceSinkFactory.createFor(unit)`), которые пишут прямо в canonical-таблицы
-  одной транзакцией на артефакт (rows + `<artifact>_sources` с `_source_key` из
-  ingestion-record). Дедуп — `ON CONFLICT(row_key) DO NOTHING` (keep-first), причём
+- **Подготовка и запись:** `SourcePreparerFactory.createFor(unit)` создаёт
+  per-source preparer-ы, которые без IO выполняют routing/mapping и формируют
+  write plans с `_source_key`. После policy checkpoint общий
+  `CanonicalArtifactRepository` пишет каждый артефакт одной транзакцией (rows +
+  `<artifact>_sources`). Дедуп — `ON CONFLICT(row_key) DO NOTHING` (keep-first), причём
   источник отброшенного дубля всё равно учитывается в `<artifact>_sources`.
 - **Проекция:** после успешного commit БД `IngestionService` вызывает
   `ArtifactProjection.project(...)` — `CsvArtifactProjection` перечитывает артефакт
@@ -252,9 +256,11 @@ dataframe/
   и так несёт ingestion-ledger (`CLAIMED → полный репроцесс`), а run-ledger даёт
   наблюдаемость фаз write→project. Artifact export использует отдельные
   `export_run`/`export_progress`, не перегружая ingest ledger.
-- **Авторитет id:** единый `IdGenerator(strategy, start=canonical maxId+1)` (как в
-  oneshot), общий счётчик через сессию демона; контракт id — stable/unique/ascending
-  (не gapless). `id AUTOINCREMENT` — пассивная подстраховка.
+- **Авторитет id:** единый thread-safe `ArtifactIdSequence(strategy,
+  start=canonical maxId+1)` (как в oneshot), общий через сессию демона. Диапазон
+  резервируется после policy checkpoint и не возвращается при failed commit;
+  контракт id — stable/unique/ascending (не gapless). `id AUTOINCREMENT` —
+  пассивная подстраховка.
 
 ### 8.1 Retention reaper (housekeeping)
 
@@ -444,9 +450,10 @@ ioc:
    для whole-file source unit.
 3. Модуль `adapters/adapter-ingest`: Spring Integration file flow,
    include/exclude/stability filters, atomic claim, file ledger implementation.
-4. Direct-to-canonical artifact writing: per-source `JdbcIocSink` пишет прямо в
-   canonical SQLite (rows + `<artifact>_sources`), без partition-staging; CSV —
-   проекция (`CsvArtifactProjection`).
+4. Direct-to-canonical artifact writing: per-source `ArtifactPreparer` готовит
+   storage-neutral plans до policy checkpoint, затем
+   `JdbcCanonicalArtifactRepository` фиксирует их в canonical SQLite (rows +
+   `<artifact>_sources`), без partition-staging; CSV — проекция.
 5. Recovery/compensation: ingestion-ledger (`CLAIMED → репроцесс`) + run-ledger
    (`DB_COMMITTED → репроекция`), retry/dead-letter, `.error` sidecar упавшего файла.
 6. Test contour: unit-тесты статус-переходов, adapter-тесты с `@TempDir`,
@@ -461,7 +468,7 @@ ioc:
 
 - прямая запись daemon-ингеста в canonical + CSV-проекция, сага write→project
   под `ingest_run` (см. §8);
-- единый авторитет id (`IdGenerator(maxId+1)`); stable-id sidecar упразднён;
+- единый авторитет id (`ArtifactIdSequence(maxId+1)`); stable-id sidecar упразднён;
 - schema-aware `ArtifactIdBaseline` (JDBC) для продолжения id-space артефактов с
   public `id`-колонкой;
 - health contributors + HTTP `/actuator/health` (daemon-only, см. [dev/0010](../ADR/0010-health-actuator.md));
@@ -482,7 +489,7 @@ ioc:
 
 ## 15. Связи
 
-- Daemon- и oneshot-id назначает единый `IdGenerator(start=ArtifactIdBaseline.maxId()+1)`;
+- Daemon- и oneshot-id назначает единый `ArtifactIdSequence(start=ArtifactIdBaseline.maxId()+1)`;
   отдельного stable-id sidecar больше нет (β-коллапс).
 - Использует diagnostics/observability как разные подсистемы
   ([cross-cutting.md](CROSS-CUTTING.md), [logging.md](LOGGING.md)).

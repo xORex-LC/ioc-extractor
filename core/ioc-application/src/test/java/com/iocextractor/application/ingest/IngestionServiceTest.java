@@ -6,7 +6,17 @@ import com.iocextractor.application.artifact.IngestRun;
 import com.iocextractor.application.artifact.IngestRunStatus;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.RunLedger;
-import com.iocextractor.application.port.out.IocSink;
+import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
+import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
+import com.iocextractor.application.artifact.ArtifactIdSequence;
+import com.iocextractor.application.artifact.ArtifactIdStrategy;
+import com.iocextractor.application.artifact.ArtifactRow;
+import com.iocextractor.application.artifact.ArtifactWritePlan;
+import com.iocextractor.application.artifact.CanonicalArtifact;
+import com.iocextractor.application.artifact.CanonicalWriteResult;
+import com.iocextractor.application.artifact.PreparedArtifactRow;
+import com.iocextractor.diagnostics.result.FailurePolicy;
+import com.iocextractor.diagnostics.result.Result;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
@@ -51,11 +61,11 @@ class IngestionServiceTest {
         var key = new SourceKey("ABC123");
         var ledger = new MemoryLedger();
         var lifecycle = new MemoryLifecycle();
-        var sink = new CountingSink();
+        var sink = new CountingPreparer();
         var runLedger = new MemoryRunLedger();
         var projection = new CollectingProjection();
         var events = new RecordingControlEventPublisher();
-        var service = new IngestionService(ledger, lifecycle, source -> new SourceSinks(List.of(sink)),
+        var service = new IngestionService(ledger, lifecycle, source -> new SourcePreparers(List.of(sink)),
                 extractionFactory(), runLedger, projection, events, clock);
 
         var result = service.ingest(new IngestSourceCommand(
@@ -80,7 +90,7 @@ class IngestionServiceTest {
         var lifecycle = new MemoryLifecycle();
         var runLedger = new MemoryRunLedger();
         var events = new RecordingControlEventPublisher();
-        var service = new IngestionService(ledger, lifecycle, source -> new SourceSinks(List.of(new CountingSink())),
+        var service = new IngestionService(ledger, lifecycle, source -> new SourcePreparers(List.of(new CountingPreparer())),
                 extractionFactory(), runLedger, artifactName -> {
                     throw new IllegalStateException("projection failed");
                 }, events, clock);
@@ -194,7 +204,7 @@ class IngestionServiceTest {
         ledger.claimFailure = new IllegalStateException("ledger unavailable");
         var lifecycle = new MemoryLifecycle();
         var events = new RecordingControlEventPublisher();
-        var service = new IngestionService(ledger, lifecycle, source -> new SourceSinks(List.of(new CountingSink())),
+        var service = new IngestionService(ledger, lifecycle, source -> new SourcePreparers(List.of(new CountingPreparer())),
                 extractionFactory(), new MemoryRunLedger(), new CollectingProjection(), events, clock);
 
         assertThatThrownBy(() -> service.ingest(new IngestSourceCommand(
@@ -216,7 +226,7 @@ class IngestionServiceTest {
         var lifecycle = new MemoryLifecycle();
         var runLedger = new MemoryRunLedger();
         var events = new RecordingControlEventPublisher();
-        var service = new IngestionService(ledger, lifecycle, source -> new SourceSinks(List.of(new CountingSink())),
+        var service = new IngestionService(ledger, lifecycle, source -> new SourcePreparers(List.of(new CountingPreparer())),
                 failingExtractionFactory(), runLedger, new CollectingProjection(), events, clock);
 
         assertThatThrownBy(() -> service.ingest(new IngestSourceCommand(
@@ -244,7 +254,7 @@ class IngestionServiceTest {
         var lifecycle = new MemoryLifecycle();
         var runLedger = new MemoryRunLedger();
         var events = new RecordingControlEventPublisher();
-        var service = new IngestionService(ledger, lifecycle, source -> new SourceSinks(List.of(new CountingSink("hashes"))),
+        var service = new IngestionService(ledger, lifecycle, source -> new SourcePreparers(List.of(new CountingPreparer("hashes"))),
                 extractionFactory(), runLedger, new CollectingProjection(), events, clock);
 
         var results = service.recoverIncomplete();
@@ -262,7 +272,7 @@ class IngestionServiceTest {
         var ledger = new MemoryLedger();
         var lifecycle = new MemoryLifecycle();
         var runLedger = new MemoryRunLedger();
-        var service = new IngestionService(ledger, lifecycle, source -> new SourceSinks(List.of(new CountingSink())),
+        var service = new IngestionService(ledger, lifecycle, source -> new SourcePreparers(List.of(new CountingPreparer())),
                 extractionFactory(), runLedger, new CollectingProjection(), event -> {
                     throw new IllegalStateException("event bus unavailable");
                 }, clock);
@@ -284,7 +294,7 @@ class IngestionServiceTest {
         var lifecycle = new MemoryLifecycle();
         lifecycle.processingSources = List.of(new ArchivedSourceUnit(
                 key, Path.of("processing/abc123-source.html"), Instant.parse("2026-06-22T00:00:00Z")));
-        var service = new IngestionService(ledger, lifecycle, source -> new SourceSinks(List.of()),
+        var service = new IngestionService(ledger, lifecycle, source -> new SourcePreparers(List.of()),
                 extractionFactory());
 
         var results = service.recoverIncomplete();
@@ -310,7 +320,8 @@ class IngestionServiceTest {
                 false,
                 "daemon",
                 new NoopPipelineObserver(),
-                NoopDiagnosticSink.INSTANCE);
+                NoopDiagnosticSink.INSTANCE,
+                FailurePolicy.failFast(), 10_000, new MemoryRepository());
     }
 
     private IocExtractionServiceFactory failingExtractionFactory() {
@@ -327,7 +338,8 @@ class IngestionServiceTest {
                 false,
                 "daemon",
                 new NoopPipelineObserver(),
-                NoopDiagnosticSink.INSTANCE);
+                NoopDiagnosticSink.INSTANCE,
+                FailurePolicy.failFast(), 10_000, new MemoryRepository());
     }
 
     private ClassificationDecision classificationDecision(Indicator indicator) {
@@ -353,15 +365,15 @@ class IngestionServiceTest {
                 });
     }
 
-    private static final class CountingSink implements IocSink {
+    private static final class CountingPreparer implements ArtifactPreparer {
         private final String name;
         private int written;
 
-        private CountingSink() {
+        private CountingPreparer() {
             this("masks");
         }
 
-        private CountingSink(String name) {
+        private CountingPreparer(String name) {
             this.name = name;
         }
 
@@ -371,9 +383,26 @@ class IngestionServiceTest {
         }
 
         @Override
-        public int write(List<ClassifiedIndicator> indicators) {
+        public Result<ArtifactWritePlan> prepare(List<ClassifiedIndicator> indicators) {
             written += indicators.size();
-            return indicators.size();
+            var rows = indicators.stream()
+                    .map(indicator -> new PreparedArtifactRow(ArtifactRow.ordered(
+                            java.util.Map.of("value", indicator.indicator().value())), Optional.empty()))
+                    .toList();
+            return Result.success(new ArtifactWritePlan(name, List.of("value"), rows,
+                    new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 1)));
+        }
+    }
+
+    private static final class MemoryRepository implements CanonicalArtifactRepository {
+        @Override
+        public CanonicalArtifact load(String artifactName) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CanonicalWriteResult write(String artifactName, CanonicalArtifact artifact) {
+            return new CanonicalWriteResult(artifact.rows().size(), artifact.rows().isEmpty() ? 0 : 1);
         }
     }
 

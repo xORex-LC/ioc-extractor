@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.out.sink.csv;
 
 import com.iocextractor.domain.model.IndicatorType;
+import com.iocextractor.application.artifact.ArtifactIdStrategy;
 
 import java.util.Set;
 
@@ -19,7 +20,7 @@ public record CsvArtifactDefinition(String name,
                                     Set<IndicatorType> accepts,
                                     ArtifactFilter filter,
                                     RowMapper mapper,
-                                    IdGenerator.Strategy idStrategy,
+                                    ArtifactIdStrategy idStrategy,
                                     long idStart) {
 
     public CsvArtifactDefinition {
@@ -32,7 +33,7 @@ public record CsvArtifactDefinition(String name,
     public CsvArtifactDefinition(String name,
                                  Set<IndicatorType> accepts,
                                  RowMapper mapper,
-                                 IdGenerator.Strategy idStrategy,
+                                 ArtifactIdStrategy idStrategy,
                                  long idStart) {
         this(name, accepts, ArtifactFilter.none(), mapper, idStrategy, idStart);
     }
