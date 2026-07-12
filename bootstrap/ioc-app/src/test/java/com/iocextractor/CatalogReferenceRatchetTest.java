@@ -42,7 +42,6 @@ class CatalogReferenceRatchetTest {
             "INGEST.LEDGER_WRITE_FAILED",
             "INGEST.RECOVERY_FAILED",
             "PIPELINE.ITEM_SKIPPED",
-            "PIPELINE.STAGE_FAILED",
             "SINK.ROW_MAPPING_FAILED",
             "SINK.WRITE_FAILED",
             "SOURCE.EMPTY_TEXT",

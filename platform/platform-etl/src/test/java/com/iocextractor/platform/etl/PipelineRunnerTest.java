@@ -2,9 +2,11 @@ package com.iocextractor.platform.etl;
 
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
+import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.diagnostics.result.FailurePolicy;
+import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -38,14 +40,16 @@ class PipelineRunnerTest {
     @Test
     void stops_when_failure_policy_rejects_accumulated_diagnostics() {
         var diagnostic = diagnostic(DiagnosticSeverity.ERROR);
+        var diagnostics = new CollectingDiagnosticSink();
         var pipeline = Pipeline.<String>start()
                 .then(new DiagnosticStage(diagnostic));
 
-        assertThatThrownBy(() -> new PipelineRunner(FailurePolicy.failFast())
+        assertThatThrownBy(() -> runner(FailurePolicy.failFast(), diagnostics)
                 .run(Envelope.of("start", meta()), pipeline))
                 .isInstanceOf(DiagnosticException.class)
                 .extracting("diagnostic")
                 .isEqualTo(diagnostic);
+        assertThat(diagnostics.diagnostics()).containsExactly(diagnostic);
     }
 
     @Test
@@ -74,6 +78,43 @@ class PipelineRunnerTest {
 
         assertThat(seen).containsExactly("READ_SOURCE");
         assertThat(events).containsExactly("open:READ_SOURCE", "started:READ_SOURCE", "completed:READ_SOURCE", "close");
+    }
+
+    @Test
+    void emits_typed_stage_exception_once_and_preserves_it() {
+        var diagnostic = diagnostic(DiagnosticSeverity.FATAL);
+        var diagnostics = new CollectingDiagnosticSink();
+        var pipeline = Pipeline.<String>start().then(new ThrowingStage(new DiagnosticException(diagnostic)));
+
+        assertThatThrownBy(() -> runner(FailurePolicy.collectAndContinue(), diagnostics)
+                .run(Envelope.of("start", meta()), pipeline))
+                .isInstanceOf(DiagnosticException.class)
+                .extracting("diagnostic")
+                .isEqualTo(diagnostic);
+        assertThat(diagnostics.diagnostics()).containsExactly(diagnostic);
+    }
+
+    @Test
+    void converts_generic_stage_exception_to_typed_diagnostic() {
+        var failure = new IllegalStateException("boom");
+        var diagnostics = new CollectingDiagnosticSink();
+        var pipeline = Pipeline.<String>start().then(new ThrowingStage(failure));
+
+        assertThatThrownBy(() -> runner(FailurePolicy.collectAndContinue(), diagnostics)
+                .run(Envelope.of("start", meta()), pipeline))
+                .isInstanceOf(DiagnosticException.class)
+                .hasCause(failure);
+        assertThat(diagnostics.diagnostics()).singleElement().satisfies(diagnostic -> {
+            assertThat(diagnostic.code()).isEqualTo(PipelineDiagnosticCodes.STAGE_FAILED);
+            assertThat(diagnostic.context())
+                    .containsEntry("stage", "EXTRACT")
+                    .containsEntry("reason", "boom");
+            assertThat(diagnostic.cause()).contains(failure);
+        });
+    }
+
+    private PipelineRunner runner(FailurePolicy policy, CollectingDiagnosticSink diagnostics) {
+        return new PipelineRunner(policy, new NoopPipelineObserver(), diagnostics, new DiagnosticFactory(CLOCK));
     }
 
     private EnvelopeMeta meta() {
@@ -108,6 +149,19 @@ class PipelineRunnerTest {
         @Override
         public Envelope<String> process(Envelope<String> input) {
             return input.withDiagnostic(diagnostic);
+        }
+    }
+
+    private record ThrowingStage(RuntimeException failure) implements Stage<String, String> {
+
+        @Override
+        public StageId name() {
+            return new StageId("EXTRACT");
+        }
+
+        @Override
+        public Envelope<String> process(Envelope<String> input) {
+            throw failure;
         }
     }
 

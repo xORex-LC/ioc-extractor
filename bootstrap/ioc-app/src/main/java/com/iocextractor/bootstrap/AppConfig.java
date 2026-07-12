@@ -112,6 +112,7 @@ import com.iocextractor.domain.refang.RefangRule;
 import com.iocextractor.domain.refang.ReplacementRefanger;
 import com.iocextractor.domain.refang.Refanger;
 import com.iocextractor.observability.diagnostics.LoggingDiagnosticSink;
+import com.iocextractor.observability.diagnostics.ResilientDiagnosticSink;
 import com.iocextractor.observability.logging.LoggingPipelineObserver;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import com.iocextractor.platform.events.ControlEventObserver;
@@ -252,7 +253,8 @@ public class AppConfig {
 
     @Bean
     public DiagnosticSink diagnosticSink(DiagnosticRenderer renderer) {
-        return new LoggingDiagnosticSink(LoggerFactory.getLogger(LoggingDiagnosticSink.class), renderer);
+        var logging = new LoggingDiagnosticSink(LoggerFactory.getLogger(LoggingDiagnosticSink.class), renderer);
+        return new ResilientDiagnosticSink(logging, LoggerFactory.getLogger(ResilientDiagnosticSink.class));
     }
 
     @Bean

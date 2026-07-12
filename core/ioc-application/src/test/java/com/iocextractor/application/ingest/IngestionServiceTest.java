@@ -10,6 +10,8 @@ import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
+import com.iocextractor.diagnostics.DiagnosticException;
+import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
 import com.iocextractor.domain.extract.RawIndicator;
 import com.iocextractor.domain.model.Indicator;
@@ -211,8 +213,11 @@ class IngestionServiceTest {
 
         assertThatThrownBy(() -> service.ingest(new IngestSourceCommand(
                 Path.of("inbox/source.html"), key, Instant.parse("2026-06-22T00:00:00Z"))))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessage("read failed");
+                .isInstanceOfSatisfying(DiagnosticException.class, failure -> {
+                    assertThat(failure.diagnostic().code()).isEqualTo(PipelineDiagnosticCodes.STAGE_FAILED);
+                    assertThat(failure).hasCauseInstanceOf(IllegalStateException.class)
+                            .hasRootCauseMessage("read failed");
+                });
 
         assertThat(runLedger.status).isEqualTo(IngestRunStatus.FAILED);
         assertThat(ledger.find(key)).get()

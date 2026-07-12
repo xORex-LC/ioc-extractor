@@ -1,8 +1,16 @@
 package com.iocextractor.platform.etl;
 
+import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.diagnostics.DiagnosticException;
+import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.diagnostics.result.FailurePolicy;
 import com.iocextractor.diagnostics.result.Notification;
+import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
 
+import java.time.Clock;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -12,6 +20,8 @@ public final class PipelineRunner {
 
     private final FailurePolicy failurePolicy;
     private final PipelineObserver observer;
+    private final DiagnosticSink diagnosticSink;
+    private final DiagnosticFactory diagnosticFactory;
 
     /**
      * Creates a runner using the supplied failure policy.
@@ -21,6 +31,8 @@ public final class PipelineRunner {
     public PipelineRunner(FailurePolicy failurePolicy) {
         this.failurePolicy = Objects.requireNonNull(failurePolicy, "failurePolicy");
         this.observer = new NoopPipelineObserver();
+        this.diagnosticSink = NoopDiagnosticSink.INSTANCE;
+        this.diagnosticFactory = new DiagnosticFactory(Clock.systemUTC());
     }
 
     /**
@@ -32,6 +44,26 @@ public final class PipelineRunner {
     public PipelineRunner(FailurePolicy failurePolicy, PipelineObserver observer) {
         this.failurePolicy = Objects.requireNonNull(failurePolicy, "failurePolicy");
         this.observer = Objects.requireNonNull(observer, "observer");
+        this.diagnosticSink = NoopDiagnosticSink.INSTANCE;
+        this.diagnosticFactory = new DiagnosticFactory(Clock.systemUTC());
+    }
+
+    /**
+     * Creates a runner with explicit policy, observer and diagnostic delivery.
+     *
+     * @param failurePolicy policy evaluated after each stage
+     * @param observer operational observer
+     * @param diagnosticSink non-throwing diagnostic delivery port
+     * @param diagnosticFactory factory for generic stage-failure diagnostics
+     */
+    public PipelineRunner(FailurePolicy failurePolicy,
+                          PipelineObserver observer,
+                          DiagnosticSink diagnosticSink,
+                          DiagnosticFactory diagnosticFactory) {
+        this.failurePolicy = Objects.requireNonNull(failurePolicy, "failurePolicy");
+        this.observer = Objects.requireNonNull(observer, "observer");
+        this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
+        this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
     }
 
     /**
@@ -54,11 +86,14 @@ public final class PipelineRunner {
                 observer.stageStarted(stageInput.meta());
                 long startedAt = System.nanoTime();
                 try {
-                    current = apply(stage, stageInput);
-                    new Notification()
-                            .addAll(current.diagnostics())
-                            .throwIfRejected(failurePolicy);
+                    Envelope<?> next = executeStage(stage, stageInput);
+                    emitDelta(stageInput.diagnostics(), next.diagnostics());
+                    rejectIfRequired(next.diagnostics());
+                    current = next;
                     observer.stageCompleted(stageInput.meta(), System.nanoTime() - startedAt);
+                } catch (StageProcessingFailure failure) {
+                    observer.stageFailed(stageInput.meta(), System.nanoTime() - startedAt, failure.propagated());
+                    throw failure.propagated();
                 } catch (RuntimeException ex) {
                     observer.stageFailed(stageInput.meta(), System.nanoTime() - startedAt, ex);
                     throw ex;
@@ -75,6 +110,42 @@ public final class PipelineRunner {
         return cast(current);
     }
 
+    private Envelope<?> executeStage(Stage<?, ?> stage, Envelope<?> input) {
+        try {
+            return apply(stage, input);
+        } catch (DiagnosticException exception) {
+            diagnosticSink.emit(exception.diagnostic());
+            throw new StageProcessingFailure(exception);
+        } catch (RuntimeException exception) {
+            Diagnostic diagnostic = diagnosticFactory.create(PipelineDiagnosticCodes.STAGE_FAILED)
+                    .with("stage", stage.name().value())
+                    .with("reason", reason(exception))
+                    .cause(exception)
+                    .build();
+            diagnosticSink.emit(diagnostic);
+            throw new StageProcessingFailure(new DiagnosticException(diagnostic));
+        }
+    }
+
+    private void emitDelta(List<Diagnostic> before, List<Diagnostic> after) {
+        if (after.size() < before.size() || !after.subList(0, before.size()).equals(before)) {
+            throw new IllegalStateException("Stage diagnostics must be append-only");
+        }
+        after.subList(before.size(), after.size()).forEach(diagnosticSink::emit);
+    }
+
+    private void rejectIfRequired(List<Diagnostic> diagnostics) {
+        new Notification()
+                .addAll(diagnostics)
+                .throwIfRejected(failurePolicy);
+    }
+
+    private String reason(RuntimeException exception) {
+        return exception.getMessage() == null || exception.getMessage().isBlank()
+                ? exception.getClass().getSimpleName()
+                : exception.getMessage();
+    }
+
     @SuppressWarnings({"unchecked", "rawtypes"})
     private Envelope<?> apply(Stage stage, Envelope<?> input) {
         return stage.process(input);
@@ -83,5 +154,19 @@ public final class PipelineRunner {
     @SuppressWarnings("unchecked")
     private <O> Envelope<O> cast(Envelope<?> envelope) {
         return (Envelope<O>) envelope;
+    }
+
+    private static final class StageProcessingFailure extends RuntimeException {
+
+        private final DiagnosticException propagated;
+
+        private StageProcessingFailure(DiagnosticException propagated) {
+            super(propagated);
+            this.propagated = propagated;
+        }
+
+        private DiagnosticException propagated() {
+            return propagated;
+        }
     }
 }

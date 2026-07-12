@@ -5,8 +5,8 @@ import com.iocextractor.common.IocExtractorException;
 import java.util.Objects;
 
 /**
- * Unchecked exception carrying a fatal diagnostic across an orchestration
- * boundary.
+ * Unchecked exception carrying a diagnostic that stopped processing across an
+ * orchestration boundary.
  */
 public class DiagnosticException extends IocExtractorException {
 
@@ -15,7 +15,7 @@ public class DiagnosticException extends IocExtractorException {
     /**
      * Creates an exception for the supplied diagnostic.
      *
-     * @param diagnostic fatal diagnostic
+     * @param diagnostic stopping diagnostic
      */
     public DiagnosticException(Diagnostic diagnostic) {
         super(message(diagnostic), diagnostic.cause().orElse(null));
