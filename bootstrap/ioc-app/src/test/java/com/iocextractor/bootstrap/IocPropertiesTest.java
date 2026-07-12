@@ -21,6 +21,8 @@ class IocPropertiesTest {
         IocProperties properties = bind(Map.of());
 
         assertThat(properties.pipeline().deduplicate()).isTrue();
+        assertThat(properties.pipeline().failurePolicy()).isEqualTo(PipelineFailurePolicy.FAIL_FAST);
+        assertThat(properties.pipeline().maxDiagnosticsPerRun()).isEqualTo(10_000);
     }
 
     private IocProperties bind(Map<String, Object> overrides) throws Exception {

@@ -4,6 +4,7 @@ import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.diagnostics.result.FailurePolicy;
 import com.iocextractor.domain.attribute.SourceAttributor;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.refang.Refanger;
@@ -27,6 +28,8 @@ public final class IocExtractionServiceFactory {
     private final String observabilityMode;
     private final PipelineObserver observer;
     private final DiagnosticSink diagnosticSink;
+    private final FailurePolicy failurePolicy;
+    private final int maxDiagnosticsPerRun;
 
     public IocExtractionServiceFactory(SourceReader reader,
                                        Refanger refanger,
@@ -36,6 +39,20 @@ public final class IocExtractionServiceFactory {
                                        String observabilityMode,
                                        PipelineObserver observer,
                                        DiagnosticSink diagnosticSink) {
+        this(reader, refanger, extractor, attributor, deduplicate, observabilityMode,
+                observer, diagnosticSink, FailurePolicy.failFast(), 10_000);
+    }
+
+    public IocExtractionServiceFactory(SourceReader reader,
+                                       Refanger refanger,
+                                       IndicatorExtractor extractor,
+                                       SourceAttributor attributor,
+                                       boolean deduplicate,
+                                       String observabilityMode,
+                                       PipelineObserver observer,
+                                       DiagnosticSink diagnosticSink,
+                                       FailurePolicy failurePolicy,
+                                       int maxDiagnosticsPerRun) {
         this.reader = Objects.requireNonNull(reader, "reader");
         this.refanger = Objects.requireNonNull(refanger, "refanger");
         this.extractor = Objects.requireNonNull(extractor, "extractor");
@@ -44,6 +61,11 @@ public final class IocExtractionServiceFactory {
         this.observabilityMode = Objects.requireNonNull(observabilityMode, "observabilityMode");
         this.observer = Objects.requireNonNull(observer, "observer");
         this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
+        this.failurePolicy = Objects.requireNonNull(failurePolicy, "failurePolicy");
+        if (maxDiagnosticsPerRun < 1) {
+            throw new IllegalArgumentException("maxDiagnosticsPerRun must be positive");
+        }
+        this.maxDiagnosticsPerRun = maxDiagnosticsPerRun;
     }
 
     /**
@@ -54,6 +76,7 @@ public final class IocExtractionServiceFactory {
      */
     public ExtractIocsUseCase create(List<IocSink> sinks) {
         return new IocExtractionService(reader, refanger, extractor, attributor,
-                sinks, deduplicate, observabilityMode, observer, diagnosticSink);
+                sinks, deduplicate, observabilityMode, observer, diagnosticSink,
+                failurePolicy, maxDiagnosticsPerRun);
     }
 }

@@ -41,7 +41,7 @@ public record IocProperties(
         @NotNull @Valid Observability observability) {
 
     public IocProperties {
-        pipeline = pipeline == null ? new Pipeline(true) : pipeline;
+        pipeline = pipeline == null ? new Pipeline(true, PipelineFailurePolicy.FAIL_FAST, 10_000) : pipeline;
     }
 
     public record Runtime(@NotNull RuntimeMode mode) {
@@ -89,7 +89,9 @@ public record IocProperties(
     }
 
     /** Pipeline policy switches. Deduplication here is batch-local only. */
-    public record Pipeline(boolean deduplicate) {
+    public record Pipeline(boolean deduplicate,
+                           @NotNull PipelineFailurePolicy failurePolicy,
+                           @Positive int maxDiagnosticsPerRun) {
     }
 
     public record Sink(@NotNull @Valid Csv csv, @NotEmpty @Valid List<Artifact> artifacts) {

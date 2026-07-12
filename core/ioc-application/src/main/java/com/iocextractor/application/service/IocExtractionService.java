@@ -4,6 +4,7 @@ import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.in.ExtractionCommand;
 import com.iocextractor.application.port.in.ExtractionResult;
 import com.iocextractor.application.pipeline.PipelineMetaAttributes;
+import com.iocextractor.application.pipeline.CompletionStatus;
 import com.iocextractor.platform.etl.Envelope;
 import com.iocextractor.platform.etl.EnvelopeMeta;
 import com.iocextractor.platform.etl.NoopPipelineObserver;
@@ -23,6 +24,7 @@ import com.iocextractor.domain.attribute.SourceAttributor;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.refang.Refanger;
 import com.iocextractor.diagnostics.result.FailurePolicy;
+import com.iocextractor.diagnostics.result.DiagnosticSummary;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
@@ -92,9 +94,24 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                 String observabilityMode,
                                 PipelineObserver observer,
                                 DiagnosticSink diagnosticSink) {
+        this(reader, refanger, extractor, attributor, sinks, deduplicate, observabilityMode,
+                observer, diagnosticSink, FailurePolicy.failFast(), 10_000);
+    }
+
+    public IocExtractionService(SourceReader reader,
+                                Refanger refanger,
+                                IndicatorExtractor extractor,
+                                SourceAttributor attributor,
+                                List<IocSink> sinks,
+                                boolean deduplicate,
+                                String observabilityMode,
+                                PipelineObserver observer,
+                                DiagnosticSink diagnosticSink,
+                                FailurePolicy failurePolicy,
+                                int maxDiagnosticsPerRun) {
         this(
-                new PipelineRunner(FailurePolicy.failFast(), observer, diagnosticSink,
-                        new DiagnosticFactory(Clock.systemUTC())),
+                new PipelineRunner(failurePolicy, observer, diagnosticSink,
+                        new DiagnosticFactory(Clock.systemUTC()), maxDiagnosticsPerRun),
                 pipeline(reader, refanger, extractor, attributor, sinks, deduplicate, Clock.systemUTC()),
                 Clock.systemUTC(),
                 observabilityMode);
@@ -142,11 +159,15 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                 .withAttribute(PipelineMetaAttributes.MODE, observabilityMode);
         var output = runner.run(Envelope.of(command, meta), pipeline);
         var summary = output.payload();
+        var diagnosticSummary = DiagnosticSummary.from(output.diagnostics());
 
         return new ExtractionResult(
                 summary.extracted(),
                 summary.retained(),
-                new LinkedHashMap<>(summary.writtenPerArtifact()));
+                new LinkedHashMap<>(summary.writtenPerArtifact()),
+                CompletionStatus.from(diagnosticSummary),
+                output.diagnostics(),
+                diagnosticSummary);
     }
 
     private static Pipeline<ExtractionCommand, ArtifactWriteSummary> pipeline(SourceReader reader,

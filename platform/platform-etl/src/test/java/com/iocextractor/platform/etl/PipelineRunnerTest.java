@@ -67,6 +67,26 @@ class PipelineRunnerTest {
     }
 
     @Test
+    void diagnostic_budget_retains_first_error_and_emits_one_summary() {
+        var warning = diagnostic(DiagnosticSeverity.WARN);
+        var error = diagnostic(DiagnosticSeverity.ERROR);
+        var diagnostics = new CollectingDiagnosticSink();
+        var pipeline = Pipeline.<String>start()
+                .then(new DiagnosticStage(warning))
+                .then(new DiagnosticStage(error));
+        var runner = new PipelineRunner(FailurePolicy.collectAndContinue(),
+                new NoopPipelineObserver(), diagnostics, new DiagnosticFactory(CLOCK), 1);
+
+        var output = runner.run(Envelope.of("start", meta()), pipeline);
+
+        assertThat(output.diagnostics()).extracting(diagnostic -> diagnostic.code())
+                .containsExactly(PipelineDiagnosticCodes.STAGE_FAILED,
+                        PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED);
+        assertThat(output.diagnostics().getFirst().severity()).isEqualTo(DiagnosticSeverity.ERROR);
+        assertThat(diagnostics.diagnostics()).containsExactly(warning, error, output.diagnostics().get(1));
+    }
+
+    @Test
     void opens_and_closes_observer_scope_around_stage_execution() {
         var seen = new ArrayList<String>();
         var events = new ArrayList<String>();

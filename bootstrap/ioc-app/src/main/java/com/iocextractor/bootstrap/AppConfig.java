@@ -283,7 +283,8 @@ public class AppConfig {
                                                                    IocProperties props) {
         return new IocExtractionServiceFactory(reader, refanger, extractor, attributor,
                 props.pipeline().deduplicate(), props.observability().mode().token(),
-                new LoggingPipelineObserver(), diagnosticSink);
+                new LoggingPipelineObserver(), diagnosticSink,
+                props.pipeline().failurePolicy().toPolicy(), props.pipeline().maxDiagnosticsPerRun());
     }
 
     @Bean

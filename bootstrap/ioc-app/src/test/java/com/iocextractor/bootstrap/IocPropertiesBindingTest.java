@@ -224,6 +224,19 @@ class IocPropertiesBindingTest {
     }
 
     @Test
+    void bindsTypedPipelineFailurePolicyAndDiagnosticBudget() {
+        SpringApplication app = springApplication();
+
+        try (ConfigurableApplicationContext context = app.run(
+                "--ioc.pipeline.failure-policy=collect-and-continue",
+                "--ioc.pipeline.max-diagnostics-per-run=42")) {
+            assertThat(context.getBean(IocProperties.class).pipeline().failurePolicy())
+                    .isEqualTo(PipelineFailurePolicy.COLLECT_AND_CONTINUE);
+            assertThat(context.getBean(IocProperties.class).pipeline().maxDiagnosticsPerRun()).isEqualTo(42);
+        }
+    }
+
+    @Test
     void rejectsUnknownSystemEnvironmentKeyButIgnoresNonIocSystemProperties() {
         contextRunnerWithSystemSources().run(context -> assertThat(unboundKeys(context.getStartupFailure()))
                 .containsExactly("ioc.unrelated.operator.flag"));

@@ -21,6 +21,11 @@ ioc:
     mode: daemon            # also forced on the command line by the systemd unit
   observability:
     mode: daemon            # ECS logging tuned for a long-running process
+  pipeline:
+    # Preserve a structurally completed ingestion saga while surfacing a
+    # degraded extraction outcome for recoverable per-element errors.
+    failure-policy: collect-and-continue
+    max-diagnostics-per-run: 10000
   # Keep durable SQLite state separate from CSV references/projections. SQLite
   # creates WAL/SHM sidecars next to each DB, so var/db is the backup unit.
   storage:

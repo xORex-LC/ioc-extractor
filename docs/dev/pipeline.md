@@ -22,7 +22,7 @@
 
 ```java
 // framework-free ядро platform-etl
-record Envelope<T>(T payload, EnvelopeMeta meta, Notification diagnostics) {}
+record Envelope<T>(T payload, EnvelopeMeta meta, List<Diagnostic> diagnostics) {}
 record EnvelopeMeta(String runId, String sourceId, StageId stage,
                     Instant createdAt, Map<String,Object> attributes) {}
 
@@ -48,6 +48,15 @@ record Result<T>(T value, Notification diagnostics) {}       // per-item/ста�
 - **Result** — тонкий `record` (value + diagnostics) для пер-элементных исходов
   внутри стадии; накопленные диагностики живут в Envelope (один источник истины).
 - **FailurePolicy** (Strategy): `fail-fast | collect-and-continue` — между стадиями.
+  `PipelineRunner` доставляет только delta новой стадии, затем применяет policy;
+  stopping diagnostic из `DiagnosticException` не дублируется generic-кодом.
+  Доставка через `DiagnosticSink` observational и в production защищена
+  non-throwing decorator-ом.
+- **Diagnostic budget:** `ioc.pipeline.max-diagnostics-per-run` ограничивает
+  retained diagnostics (по умолчанию 10 000). Первый `ERROR/FATAL` не скрывается,
+  а усечение представлено `PIPELINE.DIAGNOSTICS_SUPPRESSED` и счётчиками по severity.
+  `ExtractionResult` публикует immutable diagnostics, summary и
+  `COMPLETED | COMPLETED_WITH_WARNINGS | COMPLETED_WITH_ERRORS`.
 - **PipelineObserver** (port) — framework-free seam наблюдаемости: `PipelineRunner`
   открывает stage-scope и шлёт `stageStarted/Completed/Failed` через порт. ECS/MDC
   реализация (`LoggingPipelineObserver`) живёт в `platform-observability`; ядро

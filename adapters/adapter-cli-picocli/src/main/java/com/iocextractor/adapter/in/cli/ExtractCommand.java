@@ -3,6 +3,7 @@ package com.iocextractor.adapter.in.cli;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.in.ExtractionCommand;
 import com.iocextractor.application.port.in.ExtractionResult;
+import com.iocextractor.application.pipeline.CompletionStatus;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
@@ -67,14 +68,15 @@ public final class ExtractCommand implements Callable<Integer> {
             System.out.printf("Extracted=%d, retained=%d%n", result.extracted(), result.retained());
             result.writtenPerArtifact().forEach((artifact, rows) ->
                     System.out.printf("  %-8s -> %d rows%n", artifact, rows));
+            boolean completedWithErrors = result.completionStatus() == CompletionStatus.COMPLETED_WITH_ERRORS;
             LogEvents.info(log)
                     .action(EventAction.COMMAND_COMPLETE)
-                    .outcome(EventOutcome.SUCCESS)
+                    .outcome(completedWithErrors ? EventOutcome.FAILURE : EventOutcome.SUCCESS)
                     .field(LogField.IOC_MODE, observabilityMode)
                     .field(LogField.IOC_SOURCE_PATH, source)
                     .message("command completed")
                     .log();
-            return 0;
+            return completedWithErrors ? 2 : 0;
         } catch (RuntimeException ex) {
             LogEvents.error(log)
                     .action(EventAction.COMMAND_COMPLETE)

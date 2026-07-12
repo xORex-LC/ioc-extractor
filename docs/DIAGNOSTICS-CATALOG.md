@@ -46,4 +46,5 @@ Generated from `DiagnosticCatalogs`.
 | `SYNC.ENDPOINT_UNKNOWN` | SYNC | FATAL | OPERATION | `sync.endpoint-unknown` | Sync configuration references unknown endpoint {endpoint} from {owner} |
 | `SYNC.CREDENTIAL_MISSING` | SYNC | FATAL | OPERATION | `sync.credential-missing` | Sync endpoint {endpoint} is missing required credential {credential} |
 | `PIPELINE.STAGE_FAILED` | PIPELINE | ERROR | RUN | `pipeline.stage-failed` | Pipeline stage {stage} failed: {reason} |
+| `PIPELINE.DIAGNOSTICS_SUPPRESSED` | PIPELINE | WARN | RUN | `pipeline.diagnostics-suppressed` | Suppressed {suppressedCount} diagnostics after reaching the run budget of {limit} |
 | `PIPELINE.ITEM_SKIPPED` | PIPELINE | WARN | ELEMENT | `pipeline.item-skipped` | Pipeline item {item} was skipped at stage {stage}: {reason} |

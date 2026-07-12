@@ -99,6 +99,8 @@ ioc:
   # JDBC storage (`row_key` + `<artifact>_sources`), not a pre-write lookup.
   pipeline:
     deduplicate: true
+    failure-policy: fail-fast
+    max-diagnostics-per-run: 10000
 
   # ---- Source profile: how to read & where indicators come from --------------
   source:

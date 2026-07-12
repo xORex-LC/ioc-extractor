@@ -11,6 +11,8 @@ import com.iocextractor.diagnostics.DiagnosticSeverity;
 public enum PipelineDiagnosticCodes implements DiagnosticCode {
     STAGE_FAILED(DiagnosticSeverity.ERROR, DiagnosticImpact.RUN, "pipeline.stage-failed",
             "Pipeline stage {stage} failed: {reason}"),
+    DIAGNOSTICS_SUPPRESSED(DiagnosticSeverity.WARN, DiagnosticImpact.RUN, "pipeline.diagnostics-suppressed",
+            "Suppressed {suppressedCount} diagnostics after reaching the run budget of {limit}"),
     ITEM_SKIPPED(DiagnosticSeverity.WARN, DiagnosticImpact.ELEMENT, "pipeline.item-skipped",
             "Pipeline item {item} was skipped at stage {stage}: {reason}");
 

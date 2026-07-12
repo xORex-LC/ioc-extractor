@@ -5,6 +5,7 @@ import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.diagnostics.result.FailurePolicy;
+import com.iocextractor.diagnostics.result.BoundedNotification;
 import com.iocextractor.diagnostics.result.Notification;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
@@ -18,10 +19,13 @@ import java.util.Objects;
  */
 public final class PipelineRunner {
 
+    private static final int DEFAULT_MAX_DIAGNOSTICS_PER_RUN = 10_000;
+
     private final FailurePolicy failurePolicy;
     private final PipelineObserver observer;
     private final DiagnosticSink diagnosticSink;
     private final DiagnosticFactory diagnosticFactory;
+    private final int maxDiagnosticsPerRun;
 
     /**
      * Creates a runner using the supplied failure policy.
@@ -33,6 +37,7 @@ public final class PipelineRunner {
         this.observer = new NoopPipelineObserver();
         this.diagnosticSink = NoopDiagnosticSink.INSTANCE;
         this.diagnosticFactory = new DiagnosticFactory(Clock.systemUTC());
+        this.maxDiagnosticsPerRun = DEFAULT_MAX_DIAGNOSTICS_PER_RUN;
     }
 
     /**
@@ -46,6 +51,7 @@ public final class PipelineRunner {
         this.observer = Objects.requireNonNull(observer, "observer");
         this.diagnosticSink = NoopDiagnosticSink.INSTANCE;
         this.diagnosticFactory = new DiagnosticFactory(Clock.systemUTC());
+        this.maxDiagnosticsPerRun = DEFAULT_MAX_DIAGNOSTICS_PER_RUN;
     }
 
     /**
@@ -60,10 +66,23 @@ public final class PipelineRunner {
                           PipelineObserver observer,
                           DiagnosticSink diagnosticSink,
                           DiagnosticFactory diagnosticFactory) {
+        this(failurePolicy, observer, diagnosticSink, diagnosticFactory, DEFAULT_MAX_DIAGNOSTICS_PER_RUN);
+    }
+
+    /** Creates a runner with an explicit per-run diagnostic retention budget. */
+    public PipelineRunner(FailurePolicy failurePolicy,
+                          PipelineObserver observer,
+                          DiagnosticSink diagnosticSink,
+                          DiagnosticFactory diagnosticFactory,
+                          int maxDiagnosticsPerRun) {
         this.failurePolicy = Objects.requireNonNull(failurePolicy, "failurePolicy");
         this.observer = Objects.requireNonNull(observer, "observer");
         this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
         this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
+        if (maxDiagnosticsPerRun < 1) {
+            throw new IllegalArgumentException("maxDiagnosticsPerRun must be positive");
+        }
+        this.maxDiagnosticsPerRun = maxDiagnosticsPerRun;
     }
 
     /**
@@ -79,7 +98,9 @@ public final class PipelineRunner {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(pipeline, "pipeline");
 
-        Envelope<?> current = input;
+        var bounded = new BoundedNotification(maxDiagnosticsPerRun, diagnosticFactory);
+        bounded.addAll(input.diagnostics());
+        Envelope<?> current = compact(input, bounded.diagnostics());
         for (Stage<?, ?> stage : pipeline.stages()) {
             var stageInput = current.atStage(stage.name());
             try (var ignored = observer.openStage(stageInput.meta())) {
@@ -87,9 +108,11 @@ public final class PipelineRunner {
                 long startedAt = System.nanoTime();
                 try {
                     Envelope<?> next = executeStage(stage, stageInput);
-                    emitDelta(stageInput.diagnostics(), next.diagnostics());
-                    rejectIfRequired(next.diagnostics());
-                    current = next;
+                    List<Diagnostic> delta = delta(stageInput.diagnostics(), next.diagnostics());
+                    delta.forEach(diagnosticSink::emit);
+                    bounded.addAll(delta);
+                    current = compact(next, bounded.diagnostics());
+                    rejectIfRequired(current.diagnostics());
                     observer.stageCompleted(stageInput.meta(), System.nanoTime() - startedAt);
                 } catch (StageProcessingFailure failure) {
                     observer.stageFailed(stageInput.meta(), System.nanoTime() - startedAt, failure.propagated());
@@ -107,6 +130,9 @@ public final class PipelineRunner {
                 throw new StageExecutionException("Failed to close stage scope: " + stage.name(), ex);
             }
         }
+        current.diagnostics().stream()
+                .filter(diagnostic -> diagnostic.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED)
+                .forEach(diagnosticSink::emit);
         return cast(current);
     }
 
@@ -127,11 +153,15 @@ public final class PipelineRunner {
         }
     }
 
-    private void emitDelta(List<Diagnostic> before, List<Diagnostic> after) {
+    private List<Diagnostic> delta(List<Diagnostic> before, List<Diagnostic> after) {
         if (after.size() < before.size() || !after.subList(0, before.size()).equals(before)) {
             throw new IllegalStateException("Stage diagnostics must be append-only");
         }
-        after.subList(before.size(), after.size()).forEach(diagnosticSink::emit);
+        return List.copyOf(after.subList(before.size(), after.size()));
+    }
+
+    private Envelope<?> compact(Envelope<?> envelope, List<Diagnostic> diagnostics) {
+        return new Envelope<>(envelope.payload(), envelope.meta(), diagnostics);
     }
 
     private void rejectIfRequired(List<Diagnostic> diagnostics) {
