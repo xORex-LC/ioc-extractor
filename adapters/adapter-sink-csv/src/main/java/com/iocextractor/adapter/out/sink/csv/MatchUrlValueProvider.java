@@ -1,19 +1,12 @@
 package com.iocextractor.adapter.out.sink.csv;
 
-import com.iocextractor.domain.classify.MatchPolicy;
-import com.iocextractor.domain.model.Indicator;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 
-/** Provider {@code match.url}: the {@code url_match} code from the domain {@link MatchPolicy}. */
+/** Provider {@code match.url}: the materialized {@code url_match} code. */
 public final class MatchUrlValueProvider implements ValueProvider {
 
-    private final MatchPolicy matchPolicy;
-
-    public MatchUrlValueProvider(MatchPolicy matchPolicy) {
-        this.matchPolicy = matchPolicy;
-    }
-
     @Override
-    public String provide(long id, Indicator indicator) {
-        return matchPolicy.classify(indicator).urlMatch();
+    public String provide(long id, ClassifiedIndicator indicator) {
+        return indicator.classification().match().urlMatch();
     }
 }

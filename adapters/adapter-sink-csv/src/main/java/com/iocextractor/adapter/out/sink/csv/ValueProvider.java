@@ -1,6 +1,6 @@
 package com.iocextractor.adapter.out.sink.csv;
 
-import com.iocextractor.domain.model.Indicator;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 
 /**
  * Supplies a raw cell value for a configurable column ({@code from: <key>}).
@@ -8,5 +8,5 @@ import com.iocextractor.domain.model.Indicator;
  */
 public interface ValueProvider {
 
-    String provide(long id, Indicator indicator);
+    String provide(long id, ClassifiedIndicator indicator);
 }

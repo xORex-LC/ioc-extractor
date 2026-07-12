@@ -43,13 +43,19 @@ class PayloadTypeTest {
 
     @Test
     void retained_indicators_copy_lists() {
-        var indicators = new ArrayList<>(List.of(indicator("example.com")));
+        var classified = new ClassifiedIndicator(indicator("example.com"),
+                new com.iocextractor.domain.classify.ClassificationDecision(
+                        new com.iocextractor.domain.feature.IndicatorFeatures(
+                                "example.com", "example.com", false, false, false,
+                                com.iocextractor.domain.feature.HostKind.REGISTRABLE),
+                        0, List.of(), new com.iocextractor.domain.model.MaskMatch("u:hAS", "h:dAS")));
+        var indicators = new ArrayList<>(List.of(classified));
 
         var retained = new RetainedIndicators(indicators, indicators);
         indicators.clear();
 
-        assertThat(retained.extracted()).containsExactly(indicator("example.com"));
-        assertThat(retained.retained()).containsExactly(indicator("example.com"));
+        assertThat(retained.extracted()).containsExactly(classified);
+        assertThat(retained.retained()).containsExactly(classified);
     }
 
     private Indicator indicator(String value) {

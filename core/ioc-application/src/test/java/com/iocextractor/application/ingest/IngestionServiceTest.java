@@ -7,6 +7,7 @@ import com.iocextractor.application.artifact.IngestRunStatus;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.application.port.out.IocSink;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
@@ -18,6 +19,10 @@ import com.iocextractor.domain.extract.ExtractionOutcome;
 import com.iocextractor.domain.refang.RefangOutcome;
 import com.iocextractor.domain.attribute.AttributionDecision;
 import com.iocextractor.domain.attribute.AttributionOutcome;
+import com.iocextractor.domain.classify.ClassificationDecision;
+import com.iocextractor.domain.feature.HostKind;
+import com.iocextractor.domain.feature.IndicatorFeatures;
+import com.iocextractor.domain.model.MaskMatch;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.platform.etl.NoopPipelineObserver;
@@ -301,6 +306,7 @@ class IngestionServiceTest {
                         List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of()),
                 (text, indicators) -> new AttributionOutcome(List.of(),
                         List.of(new AttributionDecision(indicators.getFirst(), Optional.empty()))),
+                indicator -> classificationDecision(indicator),
                 false,
                 "daemon",
                 new NoopPipelineObserver(),
@@ -317,10 +323,18 @@ class IngestionServiceTest {
                         List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of()),
                 (text, indicators) -> new AttributionOutcome(List.of(),
                         List.of(new AttributionDecision(indicators.getFirst(), Optional.empty()))),
+                indicator -> classificationDecision(indicator),
                 false,
                 "daemon",
                 new NoopPipelineObserver(),
                 NoopDiagnosticSink.INSTANCE);
+    }
+
+    private ClassificationDecision classificationDecision(Indicator indicator) {
+        return new ClassificationDecision(
+                new IndicatorFeatures(indicator.value(), indicator.value(), false, false, false,
+                        HostKind.REGISTRABLE),
+                0, List.of(), new MaskMatch("u:hAS", "h:dAS"));
     }
 
     private void assertArtifactsChanged(RecordingControlEventPublisher events,
@@ -357,7 +371,7 @@ class IngestionServiceTest {
         }
 
         @Override
-        public int write(List<Indicator> indicators) {
+        public int write(List<ClassifiedIndicator> indicators) {
             written += indicators.size();
             return indicators.size();
         }

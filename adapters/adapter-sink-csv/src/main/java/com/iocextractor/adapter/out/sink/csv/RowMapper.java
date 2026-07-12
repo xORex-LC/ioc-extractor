@@ -1,6 +1,6 @@
 package com.iocextractor.adapter.out.sink.csv;
 
-import com.iocextractor.domain.model.Indicator;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 
 import java.util.List;
 
@@ -15,5 +15,5 @@ public interface RowMapper {
     List<String> header();
 
     /** Ordered cell values aligned to {@link #header()}; {@code null} = NULL. */
-    List<String> toRow(long id, Indicator indicator);
+    List<String> toRow(long id, ClassifiedIndicator indicator);
 }

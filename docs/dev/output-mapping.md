@@ -47,8 +47,8 @@ ConfigurableRowMapper ──uses──▶ Map<key, ValueProvider>
 | `id` | назначенный id записи |
 | `value` | значение индикатора (URL/домен/IP/хэш) |
 | `source.label` | метка провенанса (`source`) |
-| `match.url` | код `url_match` от доменной `MatchPolicy` |
-| `match.host` | код `host_match` от доменной `MatchPolicy` |
+| `match.url` | materialized код `url_match` из `ClassificationDecision` |
+| `match.host` | materialized код `host_match` из `ClassificationDecision` |
 | `address.url` | значение для blacklist-колонки: всё, кроме голого IP (домены, URL, IP-URL); голый IP → `NULL` |
 | `address.ip` | значение для blacklist-колонки: только голый IP (`IPV4` без port/path/query); остальное → `NULL` |
 | `type` | тип индикатора (на будущее) |
@@ -193,8 +193,9 @@ artifacts:
 
 - `ConfigurableRowMapper`, провайдеры и трансформации — в адаптере вывода
   (`adapter/out/sink/csv`): форматирование — адаптерная забота.
-- Провайдеры `match.*` вызывают **доменную** `MatchPolicy` (классификация —
-  доменная логика; коды и колонки — конфиг). См.
+- Application-стадия вызывает **доменную** `MatchPolicy` один раз на indicator;
+  providers/filters переиспользуют `ClassificationDecision` независимо от числа
+  колонок и артефактов. Правила и коды остаются в конфиге. См.
   [architecture.md](../ARCHITECTURE.md#классификация-сетевых-масок).
 - Расширение: новый провайдер/трансформация = новый класс, реализующий
   `ValueProvider`/`Transform` с уникальным ключом (бин, собирается в реестр) —

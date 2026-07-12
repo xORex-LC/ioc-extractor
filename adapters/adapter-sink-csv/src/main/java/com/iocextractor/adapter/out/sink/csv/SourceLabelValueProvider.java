@@ -1,12 +1,12 @@
 package com.iocextractor.adapter.out.sink.csv;
 
-import com.iocextractor.domain.model.Indicator;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 
 /** Provider {@code source.label}: the provenance label. */
 public final class SourceLabelValueProvider implements ValueProvider {
 
     @Override
-    public String provide(long id, Indicator indicator) {
-        return indicator.source().label();
+    public String provide(long id, ClassifiedIndicator indicator) {
+        return indicator.indicator().source().label();
     }
 }

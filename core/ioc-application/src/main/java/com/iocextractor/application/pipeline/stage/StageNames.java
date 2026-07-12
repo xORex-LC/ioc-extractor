@@ -23,6 +23,9 @@ public final class StageNames {
     /** Source attribution. */
     public static final StageId ATTRIBUTE = new StageId("ATTRIBUTE");
 
+    /** Feature extraction and mask classification. */
+    public static final StageId CLASSIFY = new StageId("CLASSIFY");
+
     /** De-duplication. */
     public static final StageId DEDUPLICATE = new StageId("DEDUPLICATE");
 

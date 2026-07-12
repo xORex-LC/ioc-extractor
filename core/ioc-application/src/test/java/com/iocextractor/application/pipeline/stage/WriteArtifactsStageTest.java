@@ -3,6 +3,7 @@ package com.iocextractor.application.pipeline.stage;
 import com.iocextractor.application.pipeline.payload.RetainedIndicators;
 import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.domain.model.Indicator;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -18,15 +19,16 @@ class WriteArtifactsStageTest {
         var hashes = new RecordingSink("hashes", 1);
         var indicator = StageTestSupport.indicator("example.com");
         var stage = new WriteArtifactsStage(List.of(masks, hashes));
+        var classified = StageTestSupport.classifiedIndicator(indicator);
 
         var output = stage.process(StageTestSupport.envelope(
-                new RetainedIndicators(List.of(indicator), List.of(indicator)), false));
+                new RetainedIndicators(List.of(classified), List.of(classified)), false));
 
         assertThat(output.payload().extracted()).isEqualTo(1);
         assertThat(output.payload().retained()).isEqualTo(1);
         assertThat(output.payload().writtenPerArtifact().keySet()).containsExactly("masks", "hashes");
-        assertThat(masks.received).containsExactly(indicator);
-        assertThat(hashes.received).containsExactly(indicator);
+        assertThat(masks.received).containsExactly(classified);
+        assertThat(hashes.received).containsExactly(classified);
     }
 
     @Test
@@ -34,9 +36,10 @@ class WriteArtifactsStageTest {
         var sink = new RecordingSink("masks", 2);
         var indicator = StageTestSupport.indicator("example.com");
         var stage = new WriteArtifactsStage(List.of(sink));
+        var classified = StageTestSupport.classifiedIndicator(indicator);
 
         var output = stage.process(StageTestSupport.envelope(
-                new RetainedIndicators(List.of(indicator), List.of(indicator)), true));
+                new RetainedIndicators(List.of(classified), List.of(classified)), true));
 
         assertThat(output.payload().writtenPerArtifact()).isEmpty();
         assertThat(sink.received).isEmpty();
@@ -45,7 +48,7 @@ class WriteArtifactsStageTest {
     private static final class RecordingSink implements IocSink {
         private final String name;
         private final int written;
-        private final List<Indicator> received = new ArrayList<>();
+        private final List<ClassifiedIndicator> received = new ArrayList<>();
 
         private RecordingSink(String name, int written) {
             this.name = name;
@@ -58,7 +61,7 @@ class WriteArtifactsStageTest {
         }
 
         @Override
-        public int write(List<Indicator> indicators) {
+        public int write(List<ClassifiedIndicator> indicators) {
             received.addAll(indicators);
             return written;
         }

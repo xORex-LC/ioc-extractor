@@ -1,6 +1,6 @@
 package com.iocextractor.application.port.out;
 
-import com.iocextractor.domain.model.Indicator;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 
 import java.util.List;
 
@@ -15,9 +15,9 @@ public interface IocSink {
     String name();
 
     /**
-     * Persist the indicators this sink accepts.
+     * Persist the classified indicators this sink accepts without recomputing decisions.
      *
      * @return number of rows actually written
      */
-    int write(List<Indicator> indicators);
+    int write(List<ClassifiedIndicator> indicators);
 }

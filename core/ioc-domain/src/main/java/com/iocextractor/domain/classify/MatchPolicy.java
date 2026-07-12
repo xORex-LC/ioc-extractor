@@ -1,7 +1,6 @@
 package com.iocextractor.domain.classify;
 
 import com.iocextractor.domain.model.Indicator;
-import com.iocextractor.domain.model.MaskMatch;
 
 /**
  * Decides the {@code url_match}/{@code host_match} codes for a network indicator.
@@ -9,5 +8,6 @@ import com.iocextractor.domain.model.MaskMatch;
  */
 public interface MatchPolicy {
 
-    MaskMatch classify(Indicator indicator);
+    /** Computes and returns the complete classification decision once. */
+    ClassificationDecision classify(Indicator indicator);
 }

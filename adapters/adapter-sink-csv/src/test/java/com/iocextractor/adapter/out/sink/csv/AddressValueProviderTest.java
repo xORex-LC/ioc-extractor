@@ -6,6 +6,9 @@ import com.iocextractor.domain.feature.HostKind;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.SourceContext;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.domain.classify.ClassificationDecision;
+import com.iocextractor.domain.model.MaskMatch;
 import org.junit.jupiter.api.Test;
 
 import java.util.regex.Pattern;
@@ -20,8 +23,8 @@ class AddressValueProviderTest {
             new DefaultIndicatorNormalizer(),
             host -> IPV4.matcher(host).matches() ? HostKind.IP : HostKind.REGISTRABLE);
 
-    private final AddressUrlValueProvider url = new AddressUrlValueProvider(featureExtractor);
-    private final AddressIpValueProvider ip = new AddressIpValueProvider(featureExtractor);
+    private final AddressUrlValueProvider url = new AddressUrlValueProvider();
+    private final AddressIpValueProvider ip = new AddressIpValueProvider();
 
     @Test
     void bare_ip_goes_to_ip_column_only() {
@@ -51,7 +54,9 @@ class AddressValueProviderTest {
         assertThat(ip.provide(1, domain)).isNull();
     }
 
-    private Indicator indicator(String value, IndicatorType type) {
-        return new Indicator(value, type, new SourceContext(null, null));
+    private ClassifiedIndicator indicator(String value, IndicatorType type) {
+        var indicator = new Indicator(value, type, new SourceContext(null, null));
+        return new ClassifiedIndicator(indicator, new ClassificationDecision(
+                featureExtractor.extract(indicator), 0, java.util.List.of(), new MaskMatch(null, null)));
     }
 }

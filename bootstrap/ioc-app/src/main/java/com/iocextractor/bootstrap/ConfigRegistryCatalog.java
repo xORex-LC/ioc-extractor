@@ -15,10 +15,8 @@ import com.iocextractor.adapter.out.sink.csv.UppercaseTransform;
 import com.iocextractor.adapter.out.sink.csv.ValueProvider;
 import com.iocextractor.domain.classify.FeaturePredicate;
 import com.iocextractor.domain.classify.FeaturePredicates;
-import com.iocextractor.domain.classify.MatchPolicy;
-import com.iocextractor.domain.feature.IndicatorFeatureExtractor;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 import com.iocextractor.domain.feature.NetworkAddressClassifier;
-import com.iocextractor.domain.model.Indicator;
 
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -84,25 +82,24 @@ final class ConfigRegistryCatalog {
                 TRANSFORM_STRIP_PREFIX);
     }
 
-    static Map<String, ValueProvider> valueProviders(MatchPolicy matchPolicy,
-                                                     IndicatorFeatureExtractor featureExtractor) {
+    static Map<String, ValueProvider> valueProviders() {
         Map<String, ValueProvider> providers = new HashMap<>();
         providers.put(PROVIDER_ID, new IdValueProvider());
         providers.put(PROVIDER_VALUE, new IndicatorValueProvider());
         providers.put(PROVIDER_SOURCE_LABEL, new SourceLabelValueProvider());
-        providers.put(PROVIDER_MATCH_URL, new MatchUrlValueProvider(matchPolicy));
-        providers.put(PROVIDER_MATCH_HOST, new MatchHostValueProvider(matchPolicy));
-        providers.put(PROVIDER_ADDRESS_URL, new AddressUrlValueProvider(featureExtractor));
-        providers.put(PROVIDER_ADDRESS_IP, new AddressIpValueProvider(featureExtractor));
+        providers.put(PROVIDER_MATCH_URL, new MatchUrlValueProvider());
+        providers.put(PROVIDER_MATCH_HOST, new MatchHostValueProvider());
+        providers.put(PROVIDER_ADDRESS_URL, new AddressUrlValueProvider());
+        providers.put(PROVIDER_ADDRESS_IP, new AddressIpValueProvider());
         return providers;
     }
 
-    static Map<String, Predicate<Indicator>> artifactFilters(IndicatorFeatureExtractor featureExtractor) {
-        Map<String, Predicate<Indicator>> filters = new HashMap<>();
+    static Map<String, Predicate<ClassifiedIndicator>> artifactFilters() {
+        Map<String, Predicate<ClassifiedIndicator>> filters = new HashMap<>();
         featurePredicates().forEach((key, predicate) ->
-                filters.put(key, indicator -> predicate.test(featureExtractor.extract(indicator))));
-        filters.put(FILTER_IS_BARE_IP, indicator ->
-                NetworkAddressClassifier.isBareIp(indicator, featureExtractor.extract(indicator)));
+                filters.put(key, classified -> predicate.test(classified.classification().features())));
+        filters.put(FILTER_IS_BARE_IP, classified -> NetworkAddressClassifier.isBareIp(
+                classified.indicator(), classified.classification().features()));
         return filters;
     }
 

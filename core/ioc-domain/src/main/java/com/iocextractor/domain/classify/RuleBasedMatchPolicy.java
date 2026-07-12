@@ -23,13 +23,16 @@ public final class RuleBasedMatchPolicy implements MatchPolicy {
     }
 
     @Override
-    public MaskMatch classify(Indicator indicator) {
+    public ClassificationDecision classify(Indicator indicator) {
         IndicatorFeatures features = featureExtractor.extract(indicator);
-        for (MatchRule rule : rules) {
+        for (int ruleIndex = 0; ruleIndex < rules.size(); ruleIndex++) {
+            MatchRule rule = rules.get(ruleIndex);
             if (rule.matches(features)) {
-                return rule.codes();
+                return new ClassificationDecision(
+                        features, ruleIndex, rule.predicateNames(), rule.codes());
             }
         }
-        return new MaskMatch(null, null); // unreachable when a catch-all default rule is present
+        return new ClassificationDecision(
+                features, -1, List.of(), new MaskMatch(null, null));
     }
 }

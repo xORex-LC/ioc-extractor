@@ -17,7 +17,8 @@ pipeline runner, logging или adapters. Коллекции и map копиру
 | `RefangedText.java` | `RefangOutcome`: текст + применённые правила |
 | `ExtractedIndicators.java` | Refanged text + `ExtractionOutcome` |
 | `AttributedIndicators.java` | `AttributionOutcome` после source attribution |
-| `RetainedIndicators.java` | Indicators до/после dedup |
+| `ClassifiedIndicator(s).java` | Indicator + единственный materialized `ClassificationDecision` |
+| `RetainedIndicators.java` | Classified indicators до/после dedup |
 | `ArtifactWriteSummary.java` | Итог записи артефактов |
 
 ## Зависимости

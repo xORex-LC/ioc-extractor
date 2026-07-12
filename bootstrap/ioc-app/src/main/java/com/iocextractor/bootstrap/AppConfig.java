@@ -64,6 +64,7 @@ import com.iocextractor.application.port.in.export.ValidateExportProfileUseCase;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.maintenance.RetentionStore;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.application.port.out.artifact.ArtifactIdBaseline;
@@ -192,6 +193,7 @@ public class AppConfig {
         Map<String, FeaturePredicate> registry = ConfigRegistryCatalog.featurePredicates();
         List<MatchRule> rules = props.classify().rules().stream()
                 .map(rule -> new MatchRule(
+                        rule.when(),
                         resolvePredicates(rule.when(), registry),
                         new MaskMatch(blankToNull(rule.urlMatch()), blankToNull(rule.hostMatch()))))
                 .toList();
@@ -279,9 +281,10 @@ public class AppConfig {
                                                                    Refanger refanger,
                                                                    IndicatorExtractor extractor,
                                                                    SourceAttributor attributor,
+                                                                   MatchPolicy matchPolicy,
                                                                    DiagnosticSink diagnosticSink,
                                                                    IocProperties props) {
-        return new IocExtractionServiceFactory(reader, refanger, extractor, attributor,
+        return new IocExtractionServiceFactory(reader, refanger, extractor, attributor, matchPolicy,
                 props.pipeline().deduplicate(), props.observability().mode().token(),
                 new LoggingPipelineObserver(), diagnosticSink,
                 props.pipeline().failurePolicy().toPolicy(), props.pipeline().maxDiagnosticsPerRun());
@@ -294,16 +297,12 @@ public class AppConfig {
             havingValue = RuntimeMode.ONESHOT_VALUE,
             matchIfMissing = true)
     public ExtractIocsUseCase extractIocsUseCase(IocExtractionServiceFactory factory,
-                                                 MatchPolicy matchPolicy,
-                                                 IndicatorFeatureExtractor featureExtractor,
                                                  ArtifactIdBaseline artifactIdBaseline,
                                                  JdbcCanonicalArtifactRepository jdbcCanonicalRepository,
                                                  CsvArtifactProjection csvArtifactProjection,
                                                  IocProperties props) {
         List<IocSink> sinks = buildSinks(
                 props,
-                matchPolicy,
-                featureExtractor,
                 artifactIdBaseline,
                 jdbcCanonicalRepository,
                 csvArtifactProjection);
@@ -313,11 +312,9 @@ public class AppConfig {
     @Bean
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public SourceSinkFactory sourceSinkFactory(IocProperties props,
-                                               MatchPolicy matchPolicy,
-                                               IndicatorFeatureExtractor featureExtractor,
                                                ArtifactIdBaseline artifactIdBaseline,
                                                JdbcCanonicalArtifactRepository jdbcCanonicalRepository) {
-        var artifacts = artifactDefinitions(props, matchPolicy, featureExtractor, artifactIdBaseline);
+        var artifacts = artifactDefinitions(props, artifactIdBaseline);
         Map<String, IdGenerator> ids = new LinkedHashMap<>();
         for (CsvArtifactDefinition artifact : artifacts) {
             ids.put(artifact.name(), new IdGenerator(artifact.idStrategy(), artifact.idStart()));
@@ -856,12 +853,10 @@ public class AppConfig {
     // ---- artifact assembly -------------------------------------------------
 
     private List<IocSink> buildSinks(IocProperties props,
-                                     MatchPolicy matchPolicy,
-                                     IndicatorFeatureExtractor featureExtractor,
                                      ArtifactIdBaseline artifactIdBaseline,
                                      JdbcCanonicalArtifactRepository jdbcCanonicalRepository,
                                      CsvArtifactProjection csvArtifactProjection) {
-        return artifactDefinitions(props, matchPolicy, featureExtractor, artifactIdBaseline).stream()
+        return artifactDefinitions(props, artifactIdBaseline).stream()
                 .map(artifact -> new JdbcIocSink(
                         artifact.name(),
                         artifact.accepts(),
@@ -876,12 +871,10 @@ public class AppConfig {
     }
 
     private List<CsvArtifactDefinition> artifactDefinitions(IocProperties props,
-                                                            MatchPolicy matchPolicy,
-                                                            IndicatorFeatureExtractor featureExtractor,
                                                             ArtifactIdBaseline artifactIdBaseline) {
-        Map<String, ValueProvider> providers = ConfigRegistryCatalog.valueProviders(matchPolicy, featureExtractor);
+        Map<String, ValueProvider> providers = ConfigRegistryCatalog.valueProviders();
         Map<String, Transform> transforms = ConfigRegistryCatalog.transforms();
-        Map<String, Predicate<Indicator>> filters = ConfigRegistryCatalog.artifactFilters(featureExtractor);
+        Map<String, Predicate<ClassifiedIndicator>> filters = ConfigRegistryCatalog.artifactFilters();
         List<CsvArtifactDefinition> artifacts = new ArrayList<>();
         for (IocProperties.Sink.Artifact artifact : props.sink().artifacts()) {
             if (!artifact.enabled()) {
@@ -926,20 +919,21 @@ public class AppConfig {
     }
 
     private ArtifactFilter artifactFilter(IocProperties.Sink.Artifact artifact,
-                                          Map<String, Predicate<Indicator>> filters) {
+                                          Map<String, Predicate<ClassifiedIndicator>> filters) {
         return new ArtifactFilter(
                 resolveArtifactPredicates(artifact.include(), filters),
                 resolveArtifactPredicates(artifact.exclude(), filters));
     }
 
-    private List<Predicate<Indicator>> resolveArtifactPredicates(List<String> keys,
-                                                                 Map<String, Predicate<Indicator>> filters) {
+    private List<Predicate<ClassifiedIndicator>> resolveArtifactPredicates(
+            List<String> keys,
+            Map<String, Predicate<ClassifiedIndicator>> filters) {
         if (keys == null || keys.isEmpty()) {
             return List.of();
         }
-        List<Predicate<Indicator>> predicates = new ArrayList<>();
+        List<Predicate<ClassifiedIndicator>> predicates = new ArrayList<>();
         for (String key : keys) {
-            Predicate<Indicator> predicate = filters.get(key);
+            Predicate<ClassifiedIndicator> predicate = filters.get(key);
             if (predicate == null) {
                 throw new IocExtractorException("Unknown artifact filter predicate: " + key);
             }

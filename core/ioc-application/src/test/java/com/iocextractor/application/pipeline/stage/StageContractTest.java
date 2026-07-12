@@ -13,6 +13,7 @@ import com.iocextractor.domain.extract.RawIndicator;
 import com.iocextractor.domain.extract.ExtractionOutcome;
 import com.iocextractor.domain.refang.RefangOutcome;
 import com.iocextractor.domain.model.Indicator;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 import com.iocextractor.domain.model.IndicatorType;
 import org.junit.jupiter.api.Test;
 
@@ -53,16 +54,22 @@ class StageContractTest {
                         false),
                 diagnostic);
         assertPreservesContract(
-                new DeduplicateIndicatorsStage(true),
+                new ClassifyIndicatorsStage(indicator -> StageTestSupport.classifiedIndicator(indicator)
+                        .classification()),
                 StageTestSupport.envelope(StageTestSupport.attributedIndicators(
+                        StageTestSupport.indicator("example.com")), false),
+                diagnostic);
+        assertPreservesContract(
+                new DeduplicateIndicatorsStage(true),
+                StageTestSupport.envelope(StageTestSupport.classifiedIndicators(
                                 StageTestSupport.indicator("example.com")),
                         false),
                 diagnostic);
         assertPreservesContract(
                 new WriteArtifactsStage(List.of(new CountingSink())),
-                StageTestSupport.envelope(new RetainedIndicators(
-                        List.of(StageTestSupport.indicator("example.com")),
-                        List.of(StageTestSupport.indicator("example.com"))),
+                StageTestSupport.envelope(new RetainedIndicators(List.of(
+                                StageTestSupport.classifiedIndicator(StageTestSupport.indicator("example.com"))),
+                        List.of(StageTestSupport.classifiedIndicator(StageTestSupport.indicator("example.com")))),
                         false),
                 diagnostic);
     }
@@ -86,7 +93,7 @@ class StageContractTest {
         }
 
         @Override
-        public int write(List<Indicator> indicators) {
+        public int write(List<ClassifiedIndicator> indicators) {
             return indicators.size();
         }
     }

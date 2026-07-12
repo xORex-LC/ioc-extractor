@@ -17,7 +17,7 @@ dataframe и формирование immutable export slices. Схема арт
 | Файл | Назначение |
 |---|---|
 | `ArtifactFilter.java` | Artifact-level `include`/`exclude` фильтр поверх `accepts` |
-| `RowMapper.java` | Порт маппинга `Indicator → строка CSV` |
+| `RowMapper.java` | Порт маппинга `ClassifiedIndicator → строка CSV` |
 | `ConfigurableRowMapper.java` | Generic-маппер по `ColumnSpec` + реестры провайдеров/трансформаций |
 | `ColumnSpec.java` | Декларативная спека колонки (`name/from/value/when-type/transform`) |
 | `ValueProvider.java` + `*ValueProvider` | Источники значений: `id`, `value`, `source.label`, `match.url`, `match.host`, `address.url`, `address.ip` |
@@ -45,6 +45,9 @@ dataframe и формирование immutable export slices. Схема арт
 JDBC truth path использует те же artifact definitions, но держит
 ответственности раздельно: application orchestration не знает CSV-диалект, а
 adapter отвечает за projection-файл и immutable export slices.
+`match.*`, `address.*` и artifact filters читают уже materialized features/match
+из `ClassifiedIndicator`; adapter не вызывает `MatchPolicy` или
+`IndicatorFeatureExtractor` повторно для каждой колонки.
 
 ## Immutable slice protocol
 

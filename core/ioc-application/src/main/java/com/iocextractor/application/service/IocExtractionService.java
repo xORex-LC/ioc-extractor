@@ -13,6 +13,7 @@ import com.iocextractor.platform.etl.PipelineObserver;
 import com.iocextractor.platform.etl.PipelineRunner;
 import com.iocextractor.application.pipeline.payload.ArtifactWriteSummary;
 import com.iocextractor.application.pipeline.stage.AttributeSourceStage;
+import com.iocextractor.application.pipeline.stage.ClassifyIndicatorsStage;
 import com.iocextractor.application.pipeline.stage.DeduplicateIndicatorsStage;
 import com.iocextractor.application.pipeline.stage.ExtractIndicatorsStage;
 import com.iocextractor.application.pipeline.stage.ReadSourceStage;
@@ -21,6 +22,7 @@ import com.iocextractor.application.pipeline.stage.WriteArtifactsStage;
 import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.domain.attribute.SourceAttributor;
+import com.iocextractor.domain.classify.MatchPolicy;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.refang.Refanger;
 import com.iocextractor.diagnostics.result.FailurePolicy;
@@ -38,7 +40,7 @@ import java.util.UUID;
  * Application core: the ETL pipeline expressed against ports only.
  *
  * <pre>
- *   read → refang → extract → attribute → deduplicate → sink(s)
+ *   read → refang → extract → attribute → classify → deduplicate → sink(s)
  * </pre>
  *
  * Framework-free by design; wired in the composition root (bootstrap).
@@ -56,19 +58,22 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                 Refanger refanger,
                                 IndicatorExtractor extractor,
                                 SourceAttributor attributor,
+                                MatchPolicy matchPolicy,
                                 List<IocSink> sinks,
                                 boolean deduplicate) {
-        this(reader, refanger, extractor, attributor, sinks, deduplicate, DEFAULT_OBSERVABILITY_MODE);
+        this(reader, refanger, extractor, attributor, matchPolicy, sinks, deduplicate,
+                DEFAULT_OBSERVABILITY_MODE);
     }
 
     public IocExtractionService(SourceReader reader,
                                 Refanger refanger,
                                 IndicatorExtractor extractor,
                                 SourceAttributor attributor,
+                                MatchPolicy matchPolicy,
                                 List<IocSink> sinks,
                                 boolean deduplicate,
                                 String observabilityMode) {
-        this(reader, refanger, extractor, attributor, sinks, deduplicate,
+        this(reader, refanger, extractor, attributor, matchPolicy, sinks, deduplicate,
                 observabilityMode, new NoopPipelineObserver());
     }
 
@@ -76,11 +81,12 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                 Refanger refanger,
                                 IndicatorExtractor extractor,
                                 SourceAttributor attributor,
+                                MatchPolicy matchPolicy,
                                 List<IocSink> sinks,
                                 boolean deduplicate,
                                 String observabilityMode,
                                 PipelineObserver observer) {
-        this(reader, refanger, extractor, attributor, sinks, deduplicate,
+        this(reader, refanger, extractor, attributor, matchPolicy, sinks, deduplicate,
                 observabilityMode, observer, NoopDiagnosticSink.INSTANCE);
     }
 
@@ -88,12 +94,13 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                 Refanger refanger,
                                 IndicatorExtractor extractor,
                                 SourceAttributor attributor,
+                                MatchPolicy matchPolicy,
                                 List<IocSink> sinks,
                                 boolean deduplicate,
                                 String observabilityMode,
                                 PipelineObserver observer,
                                 DiagnosticSink diagnosticSink) {
-        this(reader, refanger, extractor, attributor, sinks, deduplicate, observabilityMode,
+        this(reader, refanger, extractor, attributor, matchPolicy, sinks, deduplicate, observabilityMode,
                 observer, diagnosticSink, FailurePolicy.failFast(), 10_000);
     }
 
@@ -101,6 +108,7 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                 Refanger refanger,
                                 IndicatorExtractor extractor,
                                 SourceAttributor attributor,
+                                MatchPolicy matchPolicy,
                                 List<IocSink> sinks,
                                 boolean deduplicate,
                                 String observabilityMode,
@@ -111,7 +119,8 @@ public final class IocExtractionService implements ExtractIocsUseCase {
         this(
                 new PipelineRunner(failurePolicy, observer, diagnosticSink,
                         new DiagnosticFactory(Clock.systemUTC()), maxDiagnosticsPerRun),
-                pipeline(reader, refanger, extractor, attributor, sinks, deduplicate, Clock.systemUTC()),
+                pipeline(reader, refanger, extractor, attributor, matchPolicy, sinks,
+                        deduplicate, Clock.systemUTC()),
                 Clock.systemUTC(),
                 observabilityMode);
     }
@@ -174,6 +183,7 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                                                               Refanger refanger,
                                                                               IndicatorExtractor extractor,
                                                                               SourceAttributor attributor,
+                                                                              MatchPolicy matchPolicy,
                                                                               List<IocSink> sinks,
                                                                               boolean deduplicate,
                                                                               Clock clock) {
@@ -182,6 +192,7 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                 .then(new RefangStage(refanger))
                 .then(new ExtractIndicatorsStage(extractor))
                 .then(new AttributeSourceStage(attributor, clock))
+                .then(new ClassifyIndicatorsStage(matchPolicy))
                 .then(new DeduplicateIndicatorsStage(deduplicate))
                 .then(new WriteArtifactsStage(sinks));
     }

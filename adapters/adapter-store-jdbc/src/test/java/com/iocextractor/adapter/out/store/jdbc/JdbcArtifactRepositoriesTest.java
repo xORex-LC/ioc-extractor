@@ -4,10 +4,15 @@ import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.domain.classify.ClassificationDecision;
+import com.iocextractor.domain.feature.HostKind;
+import com.iocextractor.domain.feature.IndicatorFeatures;
 import com.iocextractor.application.export.ArtifactRevision;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
+import com.iocextractor.domain.model.MaskMatch;
 import com.iocextractor.domain.model.SourceContext;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
@@ -158,13 +163,14 @@ class JdbcArtifactRepositoriesTest {
                 Set.of(IndicatorType.DOMAIN),
                 null,
                 List.of("id", "mask"),
-                (id, indicator) -> List.of(Long.toString(id), indicator.value()),
+                (id, indicator) -> List.of(Long.toString(id), indicator.indicator().value()),
                 ids::incrementAndGet,
                 repository,
                 null);
         Indicator duplicate = new Indicator("example.com", IndicatorType.DOMAIN, source());
+        var classified = classified(duplicate);
 
-        int written = sink.write(List.of(duplicate, duplicate));
+        int written = sink.write(List.of(classified, classified));
 
         assertThat(written).isOne();
         assertThat(repository.load("masks").rows()).hasSize(1);
@@ -225,6 +231,13 @@ class JdbcArtifactRepositoriesTest {
 
     private SourceContext source() {
         return new SourceContext(null, null);
+    }
+
+    private ClassifiedIndicator classified(Indicator indicator) {
+        return new ClassifiedIndicator(indicator, new ClassificationDecision(
+                new IndicatorFeatures(indicator.value(), indicator.value(), false, false, false,
+                        HostKind.REGISTRABLE),
+                0, List.of(), new MaskMatch("u:hAS", "h:dAS")));
     }
 
     private List<String> sourceRows(String artifactName) {

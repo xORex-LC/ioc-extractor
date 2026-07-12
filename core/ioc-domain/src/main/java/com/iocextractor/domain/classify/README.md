@@ -12,7 +12,8 @@
 
 | Файл | Назначение |
 |---|---|
-| `MatchPolicy.java` | Порт: `MaskMatch classify(Indicator)` |
+| `MatchPolicy.java` | Порт: `ClassificationDecision classify(Indicator)` |
+| `ClassificationDecision.java` | Features + matched rule/predicate names + `MaskMatch` |
 | `FeaturePredicate.java` | Тонкий именованный предикат над `IndicatorFeatures` |
 | `FeaturePredicates.java` | Реестр предикатов по ключам (`has-query`, `is-subdomain`, …) |
 | `MatchRule.java` | Правило: `when` (предикаты, AND) → коды `MaskMatch` |
@@ -23,3 +24,5 @@
 4-вариантная схема и правила — `application.yml` (`ioc.classify.rules`) и
 `docs/output-mapping.md` (декларативная классификация). Вид хоста (PSL) приходит
 через признаки `domain.feature` (порт `HostClassifier`).
+Decision материализуется application-стадией ровно один раз на indicator;
+artifact providers и filters только читают его и не повторяют feature extraction.

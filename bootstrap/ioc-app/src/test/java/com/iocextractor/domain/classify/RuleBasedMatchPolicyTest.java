@@ -29,15 +29,18 @@ class RuleBasedMatchPolicyTest {
         IndicatorFeatureExtractor extractor =
                 new DefaultIndicatorFeatureExtractor(new DefaultIndicatorNormalizer(), new PslHostClassifier());
         List<MatchRule> rules = List.of(
-                new MatchRule(List.of(reg.get("has-query")), new MaskMatch("u:hAS,pEX", null)),
-                new MatchRule(List.of(reg.get("has-path-or-port")), new MaskMatch("u:hEX,dEX", null)),
-                new MatchRule(List.of(reg.get("is-subdomain")), new MaskMatch("u:hEX", "h:dEX")),
-                new MatchRule(List.of(), new MaskMatch("u:hAS", "h:dAS")));
+                new MatchRule(List.of("has-query"), List.of(reg.get("has-query")),
+                        new MaskMatch("u:hAS,pEX", null)),
+                new MatchRule(List.of("has-path-or-port"), List.of(reg.get("has-path-or-port")),
+                        new MaskMatch("u:hEX,dEX", null)),
+                new MatchRule(List.of("is-subdomain"), List.of(reg.get("is-subdomain")),
+                        new MaskMatch("u:hEX", "h:dEX")),
+                new MatchRule(List.of(), List.of(), new MaskMatch("u:hAS", "h:dAS")));
         return new RuleBasedMatchPolicy(extractor, rules);
     }
 
     private MaskMatch classify(String value, IndicatorType type) {
-        return policy.classify(new Indicator(value, type, new SourceContext(null, null)));
+        return policy.classify(new Indicator(value, type, new SourceContext(null, null))).match();
     }
 
     @Test
@@ -68,6 +71,11 @@ class RuleBasedMatchPolicyTest {
     @Test
     void url_with_query_is_variant4() {
         assertThat(classify("zeccecard.com/x?asdzq", IndicatorType.DOMAIN)).isEqualTo(new MaskMatch("u:hAS,pEX", null));
+        var decision = policy.classify(new Indicator(
+                "zeccecard.com/x?asdzq", IndicatorType.DOMAIN, new SourceContext(null, null)));
+        assertThat(decision.matchedRuleIndex()).isZero();
+        assertThat(decision.matchedPredicates()).containsExactly("has-query");
+        assertThat(decision.features().hasQuery()).isTrue();
     }
 
     @Test

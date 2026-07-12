@@ -1,7 +1,7 @@
 package com.iocextractor.adapter.out.sink.csv;
 
 import com.iocextractor.common.IocExtractorException;
-import com.iocextractor.domain.model.Indicator;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,7 +39,7 @@ public final class ConfigurableRowMapper implements RowMapper {
     }
 
     @Override
-    public List<String> toRow(long id, Indicator indicator) {
+    public List<String> toRow(long id, ClassifiedIndicator indicator) {
         List<String> row = new ArrayList<>(columns.size());
         for (ColumnSpec column : columns) {
             row.add(cell(column, id, indicator));
@@ -47,7 +47,7 @@ public final class ConfigurableRowMapper implements RowMapper {
         return row;
     }
 
-    private String cell(ColumnSpec column, long id, Indicator indicator) {
+    private String cell(ColumnSpec column, long id, ClassifiedIndicator classified) {
         String value;
         if (CONST.equals(column.from())) {
             value = column.value();
@@ -56,9 +56,9 @@ public final class ConfigurableRowMapper implements RowMapper {
             if (provider == null) {
                 throw new IocExtractorException("Unknown value provider: " + column.from());
             }
-            value = provider.provide(id, indicator);
+            value = provider.provide(id, classified);
         }
-        if (column.whenType() != null && indicator.type() != column.whenType()) {
+        if (column.whenType() != null && classified.indicator().type() != column.whenType()) {
             return null;
         }
         if (value != null && column.transform() != null) {

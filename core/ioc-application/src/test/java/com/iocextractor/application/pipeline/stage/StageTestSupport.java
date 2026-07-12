@@ -8,16 +8,23 @@ import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.SourceContext;
 import com.iocextractor.application.pipeline.payload.AttributedIndicators;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicators;
 import com.iocextractor.domain.attribute.AttributionDecision;
 import com.iocextractor.domain.attribute.AttributionOutcome;
 import com.iocextractor.domain.attribute.SourceMarker;
 import com.iocextractor.domain.extract.RawIndicator;
+import com.iocextractor.domain.classify.ClassificationDecision;
+import com.iocextractor.domain.feature.HostKind;
+import com.iocextractor.domain.feature.IndicatorFeatures;
+import com.iocextractor.domain.model.MaskMatch;
 
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.List;
 
 final class StageTestSupport {
 
@@ -61,5 +68,18 @@ final class StageTestSupport {
 
     static AttributedIndicators attributedIndicators(Indicator... indicators) {
         return new AttributedIndicators(attributionOutcome(indicators));
+    }
+
+    static ClassifiedIndicator classifiedIndicator(Indicator indicator) {
+        var features = new IndicatorFeatures(
+                indicator.value(), indicator.value(), false, false, false, HostKind.REGISTRABLE);
+        return new ClassifiedIndicator(indicator,
+                new ClassificationDecision(features, 0, List.of(), new MaskMatch("u:hAS", "h:dAS")));
+    }
+
+    static ClassifiedIndicators classifiedIndicators(Indicator... indicators) {
+        return new ClassifiedIndicators(java.util.Arrays.stream(indicators)
+                .map(StageTestSupport::classifiedIndicator)
+                .toList());
     }
 }

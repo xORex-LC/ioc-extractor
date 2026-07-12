@@ -2,6 +2,7 @@ package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.domain.model.Indicator;
@@ -24,7 +25,7 @@ public final class JdbcIocSink implements IocSink {
 
     private final String name;
     private final Set<IndicatorType> accepts;
-    private final Predicate<Indicator> filter;
+    private final Predicate<ClassifiedIndicator> filter;
     private final List<String> header;
     private final RowValues mapper;
     private final LongSupplier ids;
@@ -34,7 +35,7 @@ public final class JdbcIocSink implements IocSink {
 
     public JdbcIocSink(String name,
                        Set<IndicatorType> accepts,
-                       Predicate<Indicator> filter,
+                       Predicate<ClassifiedIndicator> filter,
                        List<String> header,
                        RowValues mapper,
                        LongSupplier ids,
@@ -45,7 +46,7 @@ public final class JdbcIocSink implements IocSink {
 
     public JdbcIocSink(String name,
                        Set<IndicatorType> accepts,
-                       Predicate<Indicator> filter,
+                       Predicate<ClassifiedIndicator> filter,
                        List<String> header,
                        RowValues mapper,
                        LongSupplier ids,
@@ -69,9 +70,9 @@ public final class JdbcIocSink implements IocSink {
     }
 
     @Override
-    public int write(List<Indicator> indicators) {
+    public int write(List<ClassifiedIndicator> indicators) {
         List<ArtifactRow> rows = indicators.stream()
-                .filter(indicator -> accepts.contains(indicator.type()))
+                .filter(indicator -> accepts.contains(indicator.indicator().type()))
                 .filter(filter)
                 .map(this::row)
                 .toList();
@@ -86,10 +87,10 @@ public final class JdbcIocSink implements IocSink {
      */
     @FunctionalInterface
     public interface RowValues {
-        List<String> map(long id, Indicator indicator);
+        List<String> map(long id, ClassifiedIndicator indicator);
     }
 
-    private ArtifactRow row(Indicator indicator) {
+    private ArtifactRow row(ClassifiedIndicator indicator) {
         List<String> values = mapper.map(ids.getAsLong(), indicator);
         var row = new LinkedHashMap<String, String>();
         for (int i = 0; i < header.size(); i++) {
@@ -101,7 +102,8 @@ public final class JdbcIocSink implements IocSink {
         return ArtifactRow.ordered(row);
     }
 
-    private String sourceKey(Indicator indicator) {
+    private String sourceKey(ClassifiedIndicator classified) {
+        Indicator indicator = classified.indicator();
         if (sourceKey != null && !sourceKey.isBlank()) {
             return sourceKey;
         }
