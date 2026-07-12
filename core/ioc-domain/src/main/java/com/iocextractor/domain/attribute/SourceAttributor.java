@@ -1,8 +1,6 @@
 package com.iocextractor.domain.attribute;
 
 import com.iocextractor.domain.extract.RawIndicator;
-import com.iocextractor.domain.model.Indicator;
-
 import java.util.List;
 
 /**
@@ -11,5 +9,6 @@ import java.util.List;
  */
 public interface SourceAttributor {
 
-    List<Indicator> attribute(String text, List<RawIndicator> indicators);
+    /** Attributes raw indicators and exposes marker-selection decisions. */
+    AttributionOutcome attribute(String text, List<RawIndicator> indicators);
 }

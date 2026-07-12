@@ -43,8 +43,9 @@ public final class AttributeSourceStage implements Stage<ExtractedIndicators, At
     @Override
     public Envelope<AttributedIndicators> process(Envelope<ExtractedIndicators> input) {
         var payload = input.payload();
-        List<Indicator> attributed = attributor.attribute(payload.text(), payload.rawIndicators());
-        Envelope<AttributedIndicators> output = input.withPayload(new AttributedIndicators(attributed));
+        var outcome = attributor.attribute(payload.text(), payload.rawIndicators());
+        List<Indicator> attributed = outcome.indicators();
+        Envelope<AttributedIndicators> output = input.withPayload(new AttributedIndicators(outcome));
 
         long unattributed = attributed.stream().filter(i -> i.source().label() == null).count();
         if (unattributed > 0) {

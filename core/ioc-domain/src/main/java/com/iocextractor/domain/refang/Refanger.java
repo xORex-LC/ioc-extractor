@@ -6,5 +6,11 @@ package com.iocextractor.domain.refang;
  */
 public interface Refanger {
 
-    String refang(String text);
+    /**
+     * Applies configured rules and exposes both transformed text and decision facts.
+     *
+     * @param text non-null source text
+     * @return immutable refang outcome
+     */
+    RefangOutcome refang(String text);
 }

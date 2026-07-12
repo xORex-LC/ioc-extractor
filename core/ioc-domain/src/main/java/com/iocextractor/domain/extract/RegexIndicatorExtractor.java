@@ -15,7 +15,7 @@ import java.util.Map;
  */
 public final class RegexIndicatorExtractor implements IndicatorExtractor {
 
-    private record Entry(IndicatorType type, PatternEngine.Compiled compiled) {
+    private record Entry(IndicatorType type, String pattern, PatternEngine.Compiled compiled) {
     }
 
     private final List<Entry> entries;
@@ -26,29 +26,34 @@ public final class RegexIndicatorExtractor implements IndicatorExtractor {
      */
     public RegexIndicatorExtractor(PatternEngine engine, Map<IndicatorType, String> patterns) {
         List<Entry> built = new ArrayList<>();
-        patterns.forEach((type, regex) -> built.add(new Entry(type, engine.compile(regex))));
+        patterns.forEach((type, regex) -> built.add(new Entry(type, regex, engine.compile(regex))));
         this.entries = List.copyOf(built);
     }
 
     @Override
-    public List<RawIndicator> extract(String text) {
+    public ExtractionOutcome extract(String text) {
         if (text == null || text.isEmpty()) {
-            return List.of();
+            return new ExtractionOutcome(List.of(), List.of());
         }
         boolean[] claimed = new boolean[text.length()];
         List<RawIndicator> out = new ArrayList<>();
+        List<ExtractionDecision> decisions = new ArrayList<>();
 
         for (Entry entry : entries) {
             for (Span span : entry.compiled().findAll(text)) {
                 if (overlapsClaimed(claimed, span.start(), span.end())) {
+                    decisions.add(new ExtractionDecision(entry.type(), entry.pattern(), span,
+                            ExtractionDecisionStatus.DROPPED_OVERLAP));
                     continue;
                 }
                 claim(claimed, span.start(), span.end());
                 out.add(new RawIndicator(span.value(), entry.type(), span.start()));
+                decisions.add(new ExtractionDecision(entry.type(), entry.pattern(), span,
+                        ExtractionDecisionStatus.ACCEPTED));
             }
         }
         out.sort(Comparator.comparingInt(RawIndicator::position));
-        return out;
+        return new ExtractionOutcome(out, decisions);
     }
 
     private boolean overlapsClaimed(boolean[] claimed, int start, int end) {

@@ -12,9 +12,11 @@
 
 | Файл | Назначение |
 |---|---|
-| `Refanger.java` | Порт: `String refang(String)` |
+| `Refanger.java` | Порт: `RefangOutcome refang(String)` |
 | `ReplacementRefanger.java` | Упорядоченные литеральные замены (порядок важен) |
 | `RefangRule.java` | Правило замены `from → to` |
+| `RefangOutcome.java` | Преобразованный текст + применённые правила |
+| `RefangDecision.java` | Индекс правила и число фактических замен |
 
 ## Заметки
 

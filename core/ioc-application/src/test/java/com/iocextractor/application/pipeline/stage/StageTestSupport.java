@@ -7,11 +7,17 @@ import com.iocextractor.application.port.in.ExtractionCommand;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.SourceContext;
+import com.iocextractor.application.pipeline.payload.AttributedIndicators;
+import com.iocextractor.domain.attribute.AttributionDecision;
+import com.iocextractor.domain.attribute.AttributionOutcome;
+import com.iocextractor.domain.attribute.SourceMarker;
+import com.iocextractor.domain.extract.RawIndicator;
 
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Optional;
 
 final class StageTestSupport {
 
@@ -38,5 +44,22 @@ final class StageTestSupport {
 
     static Indicator indicator(String value) {
         return new Indicator(value, IndicatorType.DOMAIN, new SourceContext("test-source", null));
+    }
+
+    static AttributionOutcome attributionOutcome(Indicator... indicators) {
+        var decisions = java.util.Arrays.stream(indicators)
+                .map(indicator -> {
+                    var raw = new RawIndicator(indicator.value(), indicator.type(), 0);
+                    var marker = Optional.ofNullable(indicator.source().label())
+                            .map(label -> new SourceMarker(0, label));
+                    return new AttributionDecision(raw, marker);
+                })
+                .toList();
+        var markers = decisions.stream().flatMap(decision -> decision.marker().stream()).distinct().toList();
+        return new AttributionOutcome(markers, decisions);
+    }
+
+    static AttributedIndicators attributedIndicators(Indicator... indicators) {
+        return new AttributedIndicators(attributionOutcome(indicators));
     }
 }

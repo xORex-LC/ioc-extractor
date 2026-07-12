@@ -1,6 +1,7 @@
 package com.iocextractor.application.pipeline.payload;
 
 import com.iocextractor.domain.extract.RawIndicator;
+import com.iocextractor.domain.extract.ExtractionOutcome;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.SourceContext;
@@ -18,7 +19,7 @@ class PayloadTypeTest {
     @Test
     void collection_payloads_are_defensively_copied() {
         var raw = new ArrayList<>(List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)));
-        var extracted = new ExtractedIndicators("example.com", raw);
+        var extracted = new ExtractedIndicators("example.com", new ExtractionOutcome(raw, List.of()));
         raw.clear();
 
         assertThat(extracted.rawIndicators()).hasSize(1);

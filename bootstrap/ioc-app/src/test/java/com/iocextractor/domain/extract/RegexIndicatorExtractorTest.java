@@ -26,19 +26,27 @@ class RegexIndicatorExtractorTest {
         String hash = "c9e92d24fefd87f1817428ceb56e175ddcf19ecd96d80418824a553588aa6067";
         String text = "url hxxp refanged: https://evil.com/a ip 1.2.3.4:8080 host bare.example.org hash " + hash;
 
-        List<RawIndicator> result = extractor().extract(text);
+        ExtractionOutcome result = extractor().extract(text);
 
-        assertThat(result).extracting(indicator -> indicator.type())
+        assertThat(result.indicators()).extracting(indicator -> indicator.type())
                 .contains(IndicatorType.URL, IndicatorType.IPV4, IndicatorType.DOMAIN, IndicatorType.SHA256);
     }
 
     @Test
     void url_host_is_not_re_emitted_as_bare_domain() {
-        List<RawIndicator> result = extractor().extract("go to https://evil.com/path now");
+        ExtractionOutcome result = extractor().extract("go to https://evil.com/path now");
 
-        assertThat(result).extracting(indicator -> indicator.value())
+        assertThat(result.indicators()).extracting(indicator -> indicator.value())
                 .containsExactly("https://evil.com/path");
-        assertThat(result).extracting(indicator -> indicator.type())
+        assertThat(result.indicators()).extracting(indicator -> indicator.type())
                 .doesNotContain(IndicatorType.DOMAIN);
+        assertThat(result.decisions())
+                .filteredOn(decision -> decision.type() == IndicatorType.DOMAIN)
+                .singleElement()
+                .satisfies(decision -> {
+                    assertThat(decision.span().value()).isEqualTo("evil.com/path");
+                    assertThat(decision.status()).isEqualTo(ExtractionDecisionStatus.DROPPED_OVERLAP);
+                    assertThat(decision.pattern()).isNotBlank();
+                });
     }
 }

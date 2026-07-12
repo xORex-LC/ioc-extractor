@@ -1,6 +1,5 @@
 package com.iocextractor.application.pipeline.stage;
 
-import com.iocextractor.application.pipeline.payload.AttributedIndicators;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -17,7 +16,7 @@ class DeduplicateIndicatorsStageTest {
         var stage = new DeduplicateIndicatorsStage(true);
 
         var output = stage.process(StageTestSupport.envelope(
-                new AttributedIndicators(List.of(first, duplicate, second)), false));
+                StageTestSupport.attributedIndicators(first, duplicate, second), false));
 
         assertThat(output.payload().extracted()).containsExactly(first, duplicate, second);
         assertThat(output.payload().retained()).containsExactly(first, second);
@@ -30,7 +29,7 @@ class DeduplicateIndicatorsStageTest {
         var stage = new DeduplicateIndicatorsStage(false);
 
         var output = stage.process(StageTestSupport.envelope(
-                new AttributedIndicators(List.of(first, duplicate)), false));
+                StageTestSupport.attributedIndicators(first, duplicate), false));
 
         assertThat(output.payload().retained()).containsExactly(first, duplicate);
     }

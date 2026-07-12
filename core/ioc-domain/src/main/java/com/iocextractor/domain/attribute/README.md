@@ -14,6 +14,9 @@
 |---|---|
 | `SourceAttributor.java` | Порт: `attribute(text, rawIndicators)` |
 | `MarkerSourceAttributor.java` | Ближайший предшествующий маркер → метка `source` |
+| `AttributionOutcome.java` | Найденные маркеры + решения по каждому indicator |
+| `AttributionDecision.java` | Raw indicator и выбранный preceding marker |
+| `SourceMarker.java` | Нормализованный marker label + позиция |
 
 ## Заметки
 

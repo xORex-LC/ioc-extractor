@@ -31,6 +31,16 @@ email/IPv6/telegram handles — позже, через расширение `Ind
 хост URL не переэмитился как отдельный домен. `.onion` и host-only telegram links
 сейчас не имеют отдельного приоритета: их ловят общие `DOMAIN`/`URL` правила.
 
+## Pure processing outcomes
+
+Refang, extraction и source attribution возвращают не scalar/list-only ответы,
+а immutable outcomes. Functional payload остаётся прежним, но рядом сохраняются
+факты решения: применённое refang-правило и число замен; pattern/type/span и
+`ACCEPTED|DROPPED_OVERLAP`; найденные section markers и выбранный preceding
+marker для каждого indicator. Application payload records несут эти outcomes до
+следующей стадии. Domain не импортирует diagnostics/logging: подключение
+producer-ов и gated TRACE является отдельным application concern ADR-0017.
+
 ## Нормализация
 
 Владельцы — доменные сервисы `IndicatorNormalizer` (нормализует значение) и

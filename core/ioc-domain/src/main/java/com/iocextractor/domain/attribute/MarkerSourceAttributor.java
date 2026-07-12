@@ -3,8 +3,6 @@ package com.iocextractor.domain.attribute;
 import com.iocextractor.domain.extract.PatternEngine;
 import com.iocextractor.domain.extract.RawIndicator;
 import com.iocextractor.domain.extract.Span;
-import com.iocextractor.domain.model.Indicator;
-import com.iocextractor.domain.model.SourceContext;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -18,9 +16,6 @@ import java.util.List;
  */
 public final class MarkerSourceAttributor implements SourceAttributor {
 
-    private record Marker(int position, String label) {
-    }
-
     private final List<PatternEngine.Compiled> markerPatterns;
 
     public MarkerSourceAttributor(PatternEngine engine, List<String> markerRegexes) {
@@ -32,38 +27,38 @@ public final class MarkerSourceAttributor implements SourceAttributor {
     }
 
     @Override
-    public List<Indicator> attribute(String text, List<RawIndicator> indicators) {
-        List<Marker> markers = collectMarkers(text);
-        List<Indicator> out = new ArrayList<>(indicators.size());
+    public AttributionOutcome attribute(String text, List<RawIndicator> indicators) {
+        List<SourceMarker> markers = collectMarkers(text);
+        List<AttributionDecision> decisions = new ArrayList<>(indicators.size());
         for (RawIndicator raw : indicators) {
-            String label = labelAt(markers, raw.position());
-            out.add(new Indicator(raw.value(), raw.type(), new SourceContext(label, null)));
+            decisions.add(new AttributionDecision(raw,
+                    java.util.Optional.ofNullable(markerAt(markers, raw.position()))));
         }
-        return out;
+        return new AttributionOutcome(markers, decisions);
     }
 
-    private List<Marker> collectMarkers(String text) {
-        List<Marker> markers = new ArrayList<>();
+    private List<SourceMarker> collectMarkers(String text) {
+        List<SourceMarker> markers = new ArrayList<>();
         for (PatternEngine.Compiled pattern : markerPatterns) {
             for (Span span : pattern.findAll(text)) {
-                markers.add(new Marker(span.start(), normalize(span.value())));
+                markers.add(new SourceMarker(span.start(), normalize(span.value())));
             }
         }
-        markers.sort(Comparator.comparingInt(Marker::position));
+        markers.sort(Comparator.comparingInt(SourceMarker::position));
         return markers;
     }
 
     /** Nearest marker whose position is at or before {@code position}, or {@code null} if none. */
-    private String labelAt(List<Marker> markers, int position) {
-        String label = null;
-        for (Marker marker : markers) {
+    private SourceMarker markerAt(List<SourceMarker> markers, int position) {
+        SourceMarker selected = null;
+        for (SourceMarker marker : markers) {
             if (marker.position() <= position) {
-                label = marker.label();
+                selected = marker;
             } else {
                 break;
             }
         }
-        return label;
+        return selected;
     }
 
     private String normalize(String raw) {

@@ -1,7 +1,5 @@
 package com.iocextractor.domain.extract;
 
-import java.util.List;
-
 /**
  * Detects indicators in a refanged document. Implementations are responsible
  * for resolving overlaps by type priority (e.g. a URL host is not re-emitted
@@ -9,5 +7,6 @@ import java.util.List;
  */
 public interface IndicatorExtractor {
 
-    List<RawIndicator> extract(String text);
+    /** Extracts indicators and exposes accepted and dropped match decisions. */
+    ExtractionOutcome extract(String text);
 }

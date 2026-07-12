@@ -14,9 +14,12 @@ import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
 import com.iocextractor.domain.extract.RawIndicator;
+import com.iocextractor.domain.extract.ExtractionOutcome;
+import com.iocextractor.domain.refang.RefangOutcome;
+import com.iocextractor.domain.attribute.AttributionDecision;
+import com.iocextractor.domain.attribute.AttributionOutcome;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
-import com.iocextractor.domain.model.SourceContext;
 import com.iocextractor.platform.etl.NoopPipelineObserver;
 import com.iocextractor.platform.events.RecordingControlEventPublisher;
 import org.junit.jupiter.api.Test;
@@ -293,9 +296,11 @@ class IngestionServiceTest {
     private IocExtractionServiceFactory extractionFactory() {
         return new IocExtractionServiceFactory(
                 source -> "example.com",
-                text -> text,
-                text -> List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)),
-                (text, indicators) -> List.of(new Indicator("example.com", IndicatorType.DOMAIN, new SourceContext(null, null))),
+                text -> new RefangOutcome(text, List.of()),
+                text -> new ExtractionOutcome(
+                        List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of()),
+                (text, indicators) -> new AttributionOutcome(List.of(),
+                        List.of(new AttributionDecision(indicators.getFirst(), Optional.empty()))),
                 false,
                 "daemon",
                 new NoopPipelineObserver(),
@@ -307,9 +312,11 @@ class IngestionServiceTest {
                 source -> {
                     throw new IllegalStateException("read failed");
                 },
-                text -> text,
-                text -> List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)),
-                (text, indicators) -> List.of(new Indicator("example.com", IndicatorType.DOMAIN, new SourceContext(null, null))),
+                text -> new RefangOutcome(text, List.of()),
+                text -> new ExtractionOutcome(
+                        List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of()),
+                (text, indicators) -> new AttributionOutcome(List.of(),
+                        List.of(new AttributionDecision(indicators.getFirst(), Optional.empty()))),
                 false,
                 "daemon",
                 new NoopPipelineObserver(),

@@ -14,9 +14,9 @@ pipeline runner, logging или adapters. Коллекции и map копиру
 | Файл | Назначение |
 |---|---|
 | `SourceText.java` | Текст, прочитанный из источника |
-| `RefangedText.java` | Текст после refang |
-| `ExtractedIndicators.java` | Refanged text + raw indicators |
-| `AttributedIndicators.java` | Indicators после source attribution |
+| `RefangedText.java` | `RefangOutcome`: текст + применённые правила |
+| `ExtractedIndicators.java` | Refanged text + `ExtractionOutcome` |
+| `AttributedIndicators.java` | `AttributionOutcome` после source attribution |
 | `RetainedIndicators.java` | Indicators до/после dedup |
 | `ArtifactWriteSummary.java` | Итог записи артефактов |
 

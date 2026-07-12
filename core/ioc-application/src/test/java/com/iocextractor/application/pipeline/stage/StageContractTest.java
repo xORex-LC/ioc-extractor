@@ -2,7 +2,6 @@ package com.iocextractor.application.pipeline.stage;
 
 import com.iocextractor.platform.etl.Envelope;
 import com.iocextractor.platform.etl.Stage;
-import com.iocextractor.application.pipeline.payload.AttributedIndicators;
 import com.iocextractor.application.pipeline.payload.ExtractedIndicators;
 import com.iocextractor.application.pipeline.payload.RefangedText;
 import com.iocextractor.application.pipeline.payload.RetainedIndicators;
@@ -11,6 +10,8 @@ import com.iocextractor.application.port.out.IocSink;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.domain.extract.RawIndicator;
+import com.iocextractor.domain.extract.ExtractionOutcome;
+import com.iocextractor.domain.refang.RefangOutcome;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import org.junit.jupiter.api.Test;
@@ -33,23 +34,28 @@ class StageContractTest {
                 StageTestSupport.commandEnvelope(false),
                 diagnostic);
         assertPreservesContract(
-                new RefangStage(text -> text.replace("hxxp", "http")),
+                new RefangStage(text -> new RefangOutcome(text.replace("hxxp", "http"), List.of())),
                 StageTestSupport.envelope(new SourceText("hxxp://example.com"), false),
                 diagnostic);
         assertPreservesContract(
-                new ExtractIndicatorsStage(text -> List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0))),
-                StageTestSupport.envelope(new RefangedText("example.com"), false),
+                new ExtractIndicatorsStage(text -> new ExtractionOutcome(
+                        List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of())),
+                StageTestSupport.envelope(new RefangedText(new RefangOutcome("example.com", List.of())), false),
                 diagnostic);
         assertPreservesContract(
-                new AttributeSourceStage((text, rawIndicators) -> List.of(StageTestSupport.indicator("example.com")), StageTestSupport.CLOCK),
+                new AttributeSourceStage((text, rawIndicators) ->
+                        StageTestSupport.attributionOutcome(StageTestSupport.indicator("example.com")),
+                        StageTestSupport.CLOCK),
                 StageTestSupport.envelope(new ExtractedIndicators(
                         "example.com",
-                        List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0))),
+                        new ExtractionOutcome(
+                                List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of())),
                         false),
                 diagnostic);
         assertPreservesContract(
                 new DeduplicateIndicatorsStage(true),
-                StageTestSupport.envelope(new AttributedIndicators(List.of(StageTestSupport.indicator("example.com"))),
+                StageTestSupport.envelope(StageTestSupport.attributedIndicators(
+                                StageTestSupport.indicator("example.com")),
                         false),
                 diagnostic);
         assertPreservesContract(
