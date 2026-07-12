@@ -35,6 +35,7 @@ class DiagnosticCatalogTest {
         assertThat(entries).allSatisfy(entry -> {
             assertThat(entry.id()).matches("[A-Z]+\\.[A-Z0-9_]+");
             assertThat(entry.id()).startsWith(entry.category().name() + ".");
+            assertThat(entry.impact()).isNotNull();
             assertThat(entry.messageKey()).isNotBlank();
             assertThat(entry.defaultMessageTemplate()).isNotBlank();
         });

@@ -2,24 +2,27 @@ package com.iocextractor.diagnostics.codes;
 
 import com.iocextractor.diagnostics.DiagnosticCategory;
 import com.iocextractor.diagnostics.DiagnosticCode;
+import com.iocextractor.diagnostics.DiagnosticImpact;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
 
 /**
  * Diagnostic codes for indicator classification.
  */
 public enum ClassificationDiagnosticCodes implements DiagnosticCode {
-    AMBIGUOUS_MATCH(DiagnosticSeverity.WARN, "classify.ambiguous-match",
+    AMBIGUOUS_MATCH(DiagnosticSeverity.WARN, DiagnosticImpact.ELEMENT, "classify.ambiguous-match",
             "Indicator {indicator} matched multiple classification rules: {candidates}"),
-    UNSUPPORTED_INDICATOR_TYPE(DiagnosticSeverity.ERROR, "classify.unsupported-indicator-type",
+    UNSUPPORTED_INDICATOR_TYPE(DiagnosticSeverity.ERROR, DiagnosticImpact.ELEMENT, "classify.unsupported-indicator-type",
             "Indicator type {type} is not supported by classifier {classifier}");
 
     private final DiagnosticSeverity defaultSeverity;
+    private final DiagnosticImpact impact;
     private final String messageKey;
     private final String defaultMessageTemplate;
 
-    ClassificationDiagnosticCodes(DiagnosticSeverity defaultSeverity, String messageKey,
+    ClassificationDiagnosticCodes(DiagnosticSeverity defaultSeverity, DiagnosticImpact impact, String messageKey,
                                   String defaultMessageTemplate) {
         this.defaultSeverity = defaultSeverity;
+        this.impact = impact;
         this.messageKey = messageKey;
         this.defaultMessageTemplate = defaultMessageTemplate;
     }
@@ -37,6 +40,11 @@ public enum ClassificationDiagnosticCodes implements DiagnosticCode {
     @Override
     public DiagnosticSeverity defaultSeverity() {
         return defaultSeverity;
+    }
+
+    @Override
+    public DiagnosticImpact impact() {
+        return impact;
     }
 
     @Override

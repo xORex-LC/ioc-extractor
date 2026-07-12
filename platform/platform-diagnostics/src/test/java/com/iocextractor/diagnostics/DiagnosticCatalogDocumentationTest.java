@@ -46,8 +46,8 @@ class DiagnosticCatalogDocumentationTest {
         var builder = new StringBuilder();
         builder.append("# Diagnostic Catalog\n\n");
         builder.append("Generated from `DiagnosticCatalogs`.\n\n");
-        builder.append("| Code | Category | Severity | Message Key | Default Template |\n");
-        builder.append("|---|---|---|---|---|\n");
+        builder.append("| Code | Category | Severity | Impact | Message Key | Default Template |\n");
+        builder.append("|---|---|---|---|---|---|\n");
         DiagnosticCatalogs.entries().stream()
                 .map(this::row)
                 .forEach(builder::append);
@@ -55,10 +55,11 @@ class DiagnosticCatalogDocumentationTest {
     }
 
     private String row(DiagnosticCatalogEntry entry) {
-        return "| `%s` | %s | %s | `%s` | %s |%n".formatted(
+        return "| `%s` | %s | %s | %s | `%s` | %s |%n".formatted(
                 entry.id(),
                 entry.category(),
                 entry.defaultSeverity(),
+                entry.impact(),
                 entry.messageKey(),
                 escapePipes(entry.defaultMessageTemplate()));
     }

@@ -31,6 +31,13 @@ public interface DiagnosticCode {
     DiagnosticSeverity defaultSeverity();
 
     /**
+     * Returns the processing unit affected by this diagnostic.
+     *
+     * @return immutable diagnostic impact
+     */
+    DiagnosticImpact impact();
+
+    /**
      * Returns a stable message key for future catalog/bundle lookup.
      *
      * @return stable message key

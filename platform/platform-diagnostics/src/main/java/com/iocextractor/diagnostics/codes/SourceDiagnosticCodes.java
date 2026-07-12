@@ -2,27 +2,31 @@ package com.iocextractor.diagnostics.codes;
 
 import com.iocextractor.diagnostics.DiagnosticCategory;
 import com.iocextractor.diagnostics.DiagnosticCode;
+import com.iocextractor.diagnostics.DiagnosticImpact;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
 
 /**
  * Diagnostic codes for source document reading.
  */
 public enum SourceDiagnosticCodes implements DiagnosticCode {
-    READ_FAILED(DiagnosticSeverity.FATAL, "source.read-failed",
+    READ_FAILED(DiagnosticSeverity.FATAL, DiagnosticImpact.RUN, "source.read-failed",
             "Source {source} could not be read: {reason}"),
-    UNSUPPORTED_FORMAT(DiagnosticSeverity.ERROR, "source.unsupported-format",
+    UNSUPPORTED_FORMAT(DiagnosticSeverity.ERROR, DiagnosticImpact.RUN, "source.unsupported-format",
             "Source {source} has unsupported format {format}"),
-    EMPTY_TEXT(DiagnosticSeverity.WARN, "source.empty-text",
+    EMPTY_TEXT(DiagnosticSeverity.WARN, DiagnosticImpact.RUN, "source.empty-text",
             "Source {source} produced empty text"),
-    MARKERS_UNMATCHED(DiagnosticSeverity.WARN, "source.markers-unmatched",
+    MARKERS_UNMATCHED(DiagnosticSeverity.WARN, DiagnosticImpact.RUN, "source.markers-unmatched",
             "No section marker matched {unattributed} of {total} indicator(s); source left empty (extend ioc.source.section-markers)");
 
     private final DiagnosticSeverity defaultSeverity;
+    private final DiagnosticImpact impact;
     private final String messageKey;
     private final String defaultMessageTemplate;
 
-    SourceDiagnosticCodes(DiagnosticSeverity defaultSeverity, String messageKey, String defaultMessageTemplate) {
+    SourceDiagnosticCodes(DiagnosticSeverity defaultSeverity, DiagnosticImpact impact,
+                          String messageKey, String defaultMessageTemplate) {
         this.defaultSeverity = defaultSeverity;
+        this.impact = impact;
         this.messageKey = messageKey;
         this.defaultMessageTemplate = defaultMessageTemplate;
     }
@@ -40,6 +44,11 @@ public enum SourceDiagnosticCodes implements DiagnosticCode {
     @Override
     public DiagnosticSeverity defaultSeverity() {
         return defaultSeverity;
+    }
+
+    @Override
+    public DiagnosticImpact impact() {
+        return impact;
     }
 
     @Override

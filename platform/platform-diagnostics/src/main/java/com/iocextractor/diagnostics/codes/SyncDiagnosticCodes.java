@@ -2,6 +2,7 @@ package com.iocextractor.diagnostics.codes;
 
 import com.iocextractor.diagnostics.DiagnosticCategory;
 import com.iocextractor.diagnostics.DiagnosticCode;
+import com.iocextractor.diagnostics.DiagnosticImpact;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
 
 /** Diagnostic codes produced by remote fetch/publish synchronization. */
@@ -50,6 +51,11 @@ public enum SyncDiagnosticCodes implements DiagnosticCode {
     @Override
     public DiagnosticSeverity defaultSeverity() {
         return defaultSeverity;
+    }
+
+    @Override
+    public DiagnosticImpact impact() {
+        return DiagnosticImpact.OPERATION;
     }
 
     @Override
