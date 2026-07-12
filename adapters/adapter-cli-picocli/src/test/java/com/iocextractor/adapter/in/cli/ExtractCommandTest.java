@@ -27,6 +27,6 @@ class ExtractCommandTest {
 
         int exit = new CommandLine(command).execute("--source", "source.htm");
 
-        assertThat(exit).isEqualTo(2);
+        assertThat(exit).isEqualTo(3);
     }
 }

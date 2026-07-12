@@ -30,6 +30,7 @@ import java.util.concurrent.Callable;
         description = "Extract, refang and normalize IOCs from a source document into reputation artifacts.")
 public final class ExtractCommand implements Callable<Integer> {
 
+    private static final int COMPLETED_WITH_ERRORS_EXIT_CODE = 3;
     private static final Logger log = LoggerFactory.getLogger(ExtractCommand.class);
 
     private final ObjectProvider<ExtractIocsUseCase> useCase;
@@ -74,9 +75,9 @@ public final class ExtractCommand implements Callable<Integer> {
                     .outcome(completedWithErrors ? EventOutcome.FAILURE : EventOutcome.SUCCESS)
                     .field(LogField.IOC_MODE, observabilityMode)
                     .field(LogField.IOC_SOURCE_PATH, source)
-                    .message("command completed")
+                    .message(completedWithErrors ? "command completed with errors" : "command completed")
                     .log();
-            return completedWithErrors ? 2 : 0;
+            return completedWithErrors ? COMPLETED_WITH_ERRORS_EXIT_CODE : 0;
         } catch (RuntimeException ex) {
             LogEvents.error(log)
                     .action(EventAction.COMMAND_COMPLETE)

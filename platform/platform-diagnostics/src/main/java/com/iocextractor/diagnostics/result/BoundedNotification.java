@@ -24,6 +24,8 @@ public final class BoundedNotification {
     private final DiagnosticFactory factory;
     private final List<Diagnostic> retained = new ArrayList<>();
     private long suppressed;
+    private boolean hasErrorOrWorse;
+    private boolean hasFatal;
     private final Map<DiagnosticSeverity, Long> suppressedBySeverity =
             new EnumMap<>(DiagnosticSeverity.class);
 
@@ -46,15 +48,15 @@ public final class BoundedNotification {
         Objects.requireNonNull(diagnostic, "diagnostic");
         if (retained.size() < limit) {
             retained.add(diagnostic);
+            trackRetained(diagnostic);
             return;
         }
-        boolean firstError = diagnostic.severity() == DiagnosticSeverity.ERROR
-                && retained.stream().noneMatch(existing -> existing.severity().isErrorOrWorse());
-        boolean firstFatal = diagnostic.severity() == DiagnosticSeverity.FATAL
-                && retained.stream().noneMatch(existing -> existing.severity() == DiagnosticSeverity.FATAL);
+        boolean firstError = diagnostic.severity() == DiagnosticSeverity.ERROR && !hasErrorOrWorse;
+        boolean firstFatal = diagnostic.severity() == DiagnosticSeverity.FATAL && !hasFatal;
         if (firstError || firstFatal) {
             int replacement = lowestSeverityIndex();
             Diagnostic displaced = retained.set(replacement, diagnostic);
+            trackRetained(diagnostic);
             suppress(displaced);
             return;
         }
@@ -84,6 +86,11 @@ public final class BoundedNotification {
     private void suppress(Diagnostic diagnostic) {
         suppressed++;
         suppressedBySeverity.merge(diagnostic.severity(), 1L, Long::sum);
+    }
+
+    private void trackRetained(Diagnostic diagnostic) {
+        hasErrorOrWorse |= diagnostic.severity().isErrorOrWorse();
+        hasFatal |= diagnostic.severity() == DiagnosticSeverity.FATAL;
     }
 
     private int lowestSeverityIndex() {
