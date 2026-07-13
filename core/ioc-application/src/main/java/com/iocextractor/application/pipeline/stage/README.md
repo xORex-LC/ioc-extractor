@@ -17,8 +17,8 @@ composition.
 | `RefangStage.java` | `Refanger` → `RefangedText` |
 | `ExtractIndicatorsStage.java` | `IndicatorExtractor` → `ExtractedIndicators` |
 | `AttributeSourceStage.java` | `SourceAttributor` → `AttributedIndicators` |
-| `ClassifyIndicatorsStage.java` | One `ClassificationDecision` per indicator |
 | `DeduplicateIndicatorsStage.java` | within-batch dedup by `Indicator.dedupKey()` |
+| `ClassifyIndicatorsStage.java` | one materialized `ClassificationDecision` per retained indicator; rule evaluation only for NETWORK |
 | `PrepareArtifactsStage.java` | side-effect-free artifact routing/mapping и сбор element diagnostics |
 | `WriteArtifactsStage.java` | deferred-id materialization, canonical commit, projection / dry-run summary |
 

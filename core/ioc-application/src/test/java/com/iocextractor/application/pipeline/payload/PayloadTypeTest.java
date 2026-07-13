@@ -51,11 +51,23 @@ class PayloadTypeTest {
                         0, List.of(), new com.iocextractor.domain.model.MaskMatch("u:hAS", "h:dAS")));
         var indicators = new ArrayList<>(List.of(classified));
 
-        var retained = new RetainedIndicators(indicators, indicators);
+        var retained = new RetainedIndicators(1, indicators);
         indicators.clear();
 
-        assertThat(retained.extracted()).containsExactly(classified);
+        assertThat(retained.extracted()).isEqualTo(1);
         assertThat(retained.retained()).containsExactly(classified);
+    }
+
+    @Test
+    void deduplicated_indicators_copy_retained_list() {
+        var indicator = indicator("example.com");
+        var indicators = new ArrayList<>(List.of(indicator));
+
+        var deduplicated = new DeduplicatedIndicators(2, indicators);
+        indicators.clear();
+
+        assertThat(deduplicated.extracted()).isEqualTo(2);
+        assertThat(deduplicated.retained()).containsExactly(indicator);
     }
 
     private Indicator indicator(String value) {

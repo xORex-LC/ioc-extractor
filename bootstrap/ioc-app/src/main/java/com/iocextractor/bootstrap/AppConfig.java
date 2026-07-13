@@ -733,7 +733,7 @@ public class AppConfig {
                 sourcePreparerFactory,
                 extractionFactory,
                 runLedger.getIfAvailable(NoopRunLedger::new),
-                projection.getIfAvailable(NoopArtifactProjection::new),
+                projection.getIfAvailable(() -> NoopArtifactProjection.INSTANCE),
                 controlEventPublisher,
                 clock);
     }

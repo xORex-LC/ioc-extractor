@@ -1,17 +1,19 @@
 package com.iocextractor.application.pipeline.payload;
 
+import com.iocextractor.domain.model.Indicator;
+
 import java.util.List;
 import java.util.Objects;
 
 /**
- * Classified indicators retained for artifact preparation.
+ * Attributed indicators retained after optional within-batch de-duplication.
  *
- * @param extracted number of attributed indicators before de-duplication
- * @param retained classified indicators retained for sinks
+ * @param extracted number of indicators before de-duplication
+ * @param retained indicators retained for downstream processing
  */
-public record RetainedIndicators(int extracted, List<ClassifiedIndicator> retained) {
+public record DeduplicatedIndicators(int extracted, List<Indicator> retained) {
 
-    public RetainedIndicators {
+    public DeduplicatedIndicators {
         if (extracted < 0) {
             throw new IllegalArgumentException("extracted must be non-negative");
         }

@@ -98,7 +98,7 @@ class ArtifactPolicyCheckpointTest {
     private Envelope<RetainedIndicators> input() {
         var classified = StageTestSupport.classifiedIndicator(StageTestSupport.indicator("example.com"));
         var indicators = Collections.nCopies(INPUT_SIZE, classified);
-        return StageTestSupport.envelope(new RetainedIndicators(indicators, indicators), false);
+        return StageTestSupport.envelope(new RetainedIndicators(INPUT_SIZE, indicators), false);
     }
 
     private ArtifactPreparer preparer(ArtifactIdSequence ids, boolean oneInvalid) {

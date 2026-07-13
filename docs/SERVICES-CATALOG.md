@@ -92,10 +92,7 @@ remote delivery — [sync.md](dev/sync.md), event-координация —
         SourceAttributor ◀──────────────────────── ┘
             │ Indicator[]
             ▼
-       Deduplicator(batch-local) ─────────▶ Indicator[]
-            │
-            ▼
-   Classify ─▶ Deduplicate ─▶ ArtifactPreparer(provider/transform) ─▶ policy checkpoint
+   Deduplicate(batch-local) ─▶ Classify(NETWORK) ─▶ ArtifactPreparer(provider/transform) ─▶ policy checkpoint
                                                                └──▶ canonical commit ─▶ CSV projection
 
   orchestration: ExtractIocsUseCase (application) собирает стадии и применяет FailurePolicy

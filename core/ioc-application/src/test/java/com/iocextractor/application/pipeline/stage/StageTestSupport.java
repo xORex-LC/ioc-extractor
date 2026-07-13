@@ -9,7 +9,7 @@ import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.SourceContext;
 import com.iocextractor.application.pipeline.payload.AttributedIndicators;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicators;
+import com.iocextractor.application.pipeline.payload.DeduplicatedIndicators;
 import com.iocextractor.domain.attribute.AttributionDecision;
 import com.iocextractor.domain.attribute.AttributionOutcome;
 import com.iocextractor.domain.attribute.SourceMarker;
@@ -77,9 +77,7 @@ final class StageTestSupport {
                 new ClassificationDecision(features, 0, List.of(), new MaskMatch("u:hAS", "h:dAS")));
     }
 
-    static ClassifiedIndicators classifiedIndicators(Indicator... indicators) {
-        return new ClassifiedIndicators(java.util.Arrays.stream(indicators)
-                .map(StageTestSupport::classifiedIndicator)
-                .toList());
+    static DeduplicatedIndicators deduplicatedIndicators(Indicator... indicators) {
+        return new DeduplicatedIndicators(indicators.length, List.of(indicators));
     }
 }

@@ -7,6 +7,12 @@ import com.iocextractor.application.port.out.artifact.ArtifactProjection;
  */
 public final class NoopArtifactProjection implements ArtifactProjection {
 
+    /** Shared stateless no-op projection. */
+    public static final NoopArtifactProjection INSTANCE = new NoopArtifactProjection();
+
+    private NoopArtifactProjection() {
+    }
+
     @Override
     public void project(String artifactName) {
     }

@@ -45,7 +45,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                             SourcePreparerFactory sourcePreparerFactory,
                             IocExtractionServiceFactory extractionFactory) {
         this(ledger, sourceLifecycle, sourcePreparerFactory, extractionFactory,
-                new NoopRunLedger(), new NoopArtifactProjection());
+                new NoopRunLedger(), NoopArtifactProjection.INSTANCE);
     }
 
     public IngestionService(IngestionLedger ledger,
@@ -146,7 +146,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         boolean dbCommitted = false;
         ExtractionResult extraction;
         try {
-            extraction = extractionFactory.create(sourcePreparers.preparers(), new NoopArtifactProjection())
+            extraction = extractionFactory.create(sourcePreparers.preparers(), NoopArtifactProjection.INSTANCE)
                 .extract(new ExtractionCommand(unit.processingPath(), false));
             runLedger.markDbCommitted(run.runId());
             dbCommitted = true;

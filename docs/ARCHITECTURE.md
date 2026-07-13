@@ -72,8 +72,8 @@ read (SourceReader)
   → refang (Refanger)
   → extract (IndicatorExtractor / PatternEngine)
   → attribute source (SourceAttributor)
-  → classify (один materialized ClassificationDecision)
   → de-duplicate (within-batch)
+  → classify NETWORK (один materialized ClassificationDecision на retained IOC)
   → prepare rows (ArtifactPreparer, без IO и финальных id)
   → failure-policy checkpoint
   → commit canonical rows → project derived CSV

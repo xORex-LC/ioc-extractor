@@ -24,8 +24,8 @@ class PipelineModelArchitectureTest {
             RefangStage.class,
             ExtractIndicatorsStage.class,
             AttributeSourceStage.class,
-            ClassifyIndicatorsStage.class,
             DeduplicateIndicatorsStage.class,
+            ClassifyIndicatorsStage.class,
             PrepareArtifactsStage.class,
             WriteArtifactsStage.class);
 

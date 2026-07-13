@@ -204,9 +204,11 @@ artifacts:
   считается дефектом и останавливает run, а не маскируется продолжением.
 - `ArtifactIdSequence` принадлежит application-модели, thread-safe и общий для
   daemon session. Failed commit оставляет gap: id unique/stable, но не gapless.
-- Application-стадия вызывает **доменную** `MatchPolicy` один раз на indicator;
-  providers/filters переиспользуют `ClassificationDecision` независимо от числа
-  колонок и артефактов. Правила и коды остаются в конфиге. См.
+- Application-стадия вызывает **доменную** `MatchPolicy` один раз на retained
+  NETWORK-indicator после batch dedup; providers/filters переиспользуют
+  `ClassificationDecision` независимо от числа колонок и артефактов. FILE
+  проходит с нейтральным decision без feature/rule evaluation. Правила и коды
+  остаются в конфиге. См.
   [architecture.md](../ARCHITECTURE.md#классификация-сетевых-масок).
 - Расширение: новый провайдер/трансформация = новый класс, реализующий
   `ValueProvider`/`Transform` с уникальным ключом (бин, собирается в реестр) —

@@ -51,11 +51,10 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
     public Result<ArtifactWritePlan> prepare(List<ClassifiedIndicator> indicators) {
         var rows = new ArrayList<PreparedArtifactRow>();
         var diagnostics = new ArrayList<Diagnostic>();
-        int ordinal = 0;
-        for (ClassifiedIndicator classified : indicators) {
+        for (int ordinal = 0; ordinal < indicators.size(); ordinal++) {
+            ClassifiedIndicator classified = indicators.get(ordinal);
             if (!definition.accepts().contains(classified.indicator().type())
                     || !definition.filter().accepts(classified)) {
-                ordinal++;
                 continue;
             }
             try {
@@ -68,7 +67,6 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
                         .cause(failure)
                         .build());
             }
-            ordinal++;
         }
         var plan = new ArtifactWritePlan(
                 definition.name(), definition.mapper().header(), rows, ids);

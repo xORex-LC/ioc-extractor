@@ -41,7 +41,7 @@ import java.util.UUID;
  * Application core: the ETL pipeline expressed against ports only.
  *
  * <pre>
- *   read → refang → extract → attribute → classify → deduplicate → prepare → commit
+ *   read → refang → extract → attribute → deduplicate → classify NETWORK → prepare → commit
  * </pre>
  *
  * Framework-free by design; wired in the composition root (bootstrap).
@@ -132,8 +132,8 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                 .then(new RefangStage(refanger))
                 .then(new ExtractIndicatorsStage(extractor))
                 .then(new AttributeSourceStage(attributor, clock))
-                .then(new ClassifyIndicatorsStage(matchPolicy))
                 .then(new DeduplicateIndicatorsStage(deduplicate))
+                .then(new ClassifyIndicatorsStage(matchPolicy))
                 .then(new PrepareArtifactsStage(preparers))
                 .then(new WriteArtifactsStage(repository, projection, new DiagnosticFactory(clock)));
     }

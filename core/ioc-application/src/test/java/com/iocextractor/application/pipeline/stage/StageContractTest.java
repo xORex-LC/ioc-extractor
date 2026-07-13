@@ -57,20 +57,20 @@ class StageContractTest {
                         false),
                 diagnostic);
         assertPreservesContract(
-                new ClassifyIndicatorsStage(indicator -> StageTestSupport.classifiedIndicator(indicator)
-                        .classification()),
-                StageTestSupport.envelope(StageTestSupport.attributedIndicators(
-                        StageTestSupport.indicator("example.com")), false),
-                diagnostic);
-        assertPreservesContract(
                 new DeduplicateIndicatorsStage(true),
-                StageTestSupport.envelope(StageTestSupport.classifiedIndicators(
+                StageTestSupport.envelope(StageTestSupport.attributedIndicators(
                                 StageTestSupport.indicator("example.com")),
                         false),
                 diagnostic);
         assertPreservesContract(
+                new ClassifyIndicatorsStage(indicator -> StageTestSupport.classifiedIndicator(indicator)
+                        .classification()),
+                StageTestSupport.envelope(StageTestSupport.deduplicatedIndicators(
+                        StageTestSupport.indicator("example.com")), false),
+                diagnostic);
+        assertPreservesContract(
                 new PrepareArtifactsStage(List.of()),
-                StageTestSupport.envelope(new RetainedIndicators(List.of(), List.of()), false),
+                StageTestSupport.envelope(new RetainedIndicators(0, List.of()), false),
                 diagnostic);
         assertPreservesContract(
                 new WriteArtifactsStage(new NoopRepository(), ignored -> { },

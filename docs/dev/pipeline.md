@@ -65,7 +65,7 @@ record Result<T>(T value, Notification diagnostics) {}       // per-item/ста�
 ## Стадии конвейера
 
 ```
-read → refang → extract → attribute → classify → deduplicate(batch-local)
+read → refang → extract → attribute → deduplicate(batch-local) → classify(NETWORK)
      → prepare rows → policy checkpoint → canonical commit → projection
  (каждая — Stage/Filter; данные и метаданные идут в Envelope)
 ```
@@ -77,6 +77,12 @@ policy к этим диагностикам до `WriteArtifactsStage`; поэт
 при materialization write-plan непосредственно перед попыткой canonical write;
 диапазон после неуспешной попытки не переиспользуется. Неожиданный дефект mapper-а
 не превращается в element diagnostic и останавливает прогон.
+
+Batch-local dedup выполняется до feature extraction и rule evaluation: чистая
+классификация зависит только от `type|value`, поэтому решение для retained-копии
+не меняется, а дубликаты не оплачивают вычисление повторно. `MatchPolicy`
+применяется только к NETWORK; FILE-индикаторы проходят дальше с нейтральным
+`ClassificationDecision`, поскольку hash-артефакты match-коды не потребляют.
 
 Соответствие сервисам — в [services.md](../SERVICES-CATALOG.md). Оркестрацию собирает
 `ExtractIocsUseCase` (application): порядок стадий и `FailurePolicy`

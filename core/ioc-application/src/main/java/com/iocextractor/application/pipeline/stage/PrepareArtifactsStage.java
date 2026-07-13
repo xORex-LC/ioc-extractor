@@ -38,7 +38,7 @@ public final class PrepareArtifactsStage implements Stage<RetainedIndicators, Pr
             diagnostics.addAll(result.diagnostics());
         }
         var prepared = new PreparedArtifacts(
-                input.payload().extracted().size(), input.payload().retained().size(), plans);
+                input.payload().extracted(), input.payload().retained().size(), plans);
         return input.withPayload(prepared).withDiagnostics(diagnostics);
     }
 }

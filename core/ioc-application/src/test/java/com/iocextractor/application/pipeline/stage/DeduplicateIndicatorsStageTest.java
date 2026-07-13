@@ -16,12 +16,10 @@ class DeduplicateIndicatorsStageTest {
         var stage = new DeduplicateIndicatorsStage(true);
 
         var output = stage.process(StageTestSupport.envelope(
-                StageTestSupport.classifiedIndicators(first, duplicate, second), false));
+                StageTestSupport.attributedIndicators(first, duplicate, second), false));
 
-        assertThat(output.payload().extracted()).extracting(item -> item.indicator())
-                .containsExactly(first, duplicate, second);
-        assertThat(output.payload().retained()).extracting(item -> item.indicator())
-                .containsExactly(first, second);
+        assertThat(output.payload().extracted()).isEqualTo(3);
+        assertThat(output.payload().retained()).containsExactly(first, second);
     }
 
     @Test
@@ -31,9 +29,9 @@ class DeduplicateIndicatorsStageTest {
         var stage = new DeduplicateIndicatorsStage(false);
 
         var output = stage.process(StageTestSupport.envelope(
-                StageTestSupport.classifiedIndicators(first, duplicate), false));
+                StageTestSupport.attributedIndicators(first, duplicate), false));
 
-        assertThat(output.payload().retained()).extracting(item -> item.indicator())
-                .containsExactly(first, duplicate);
+        assertThat(output.payload().extracted()).isEqualTo(2);
+        assertThat(output.payload().retained()).containsExactly(first, duplicate);
     }
 }
