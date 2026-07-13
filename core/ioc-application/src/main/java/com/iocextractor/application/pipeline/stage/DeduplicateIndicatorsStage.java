@@ -3,6 +3,9 @@ package com.iocextractor.application.pipeline.stage;
 import com.iocextractor.application.pipeline.payload.AttributedIndicators;
 import com.iocextractor.application.pipeline.payload.DeduplicationDecision;
 import com.iocextractor.application.pipeline.payload.DeduplicatedIndicators;
+import com.iocextractor.application.observability.PipelineDecisionKind;
+import com.iocextractor.application.observability.PipelineItemDecision;
+import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticContextKeys;
 import com.iocextractor.diagnostics.DiagnosticFactory;
@@ -26,16 +29,21 @@ public final class DeduplicateIndicatorsStage implements Stage<AttributedIndicat
 
     private final boolean deduplicate;
     private final DiagnosticFactory diagnosticFactory;
+    private final PipelineDecisionTracer tracer;
 
     /**
      * Creates the stage.
      *
      * @param deduplicate whether within-batch de-duplication is enabled
      * @param diagnosticFactory factory for duplicate-drop diagnostics
+     * @param tracer gated operational decision boundary
      */
-    public DeduplicateIndicatorsStage(boolean deduplicate, DiagnosticFactory diagnosticFactory) {
+    public DeduplicateIndicatorsStage(boolean deduplicate,
+                                      DiagnosticFactory diagnosticFactory,
+                                      PipelineDecisionTracer tracer) {
         this.deduplicate = deduplicate;
         this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
+        this.tracer = Objects.requireNonNull(tracer, "tracer");
     }
 
     @Override
@@ -47,8 +55,19 @@ public final class DeduplicateIndicatorsStage implements Stage<AttributedIndicat
     public Envelope<DeduplicatedIndicators> process(Envelope<AttributedIndicators> input) {
         var extracted = input.payload().indicators();
         var result = deduplicate(extracted);
+        trace(result.decisions());
         return input.withPayload(new DeduplicatedIndicators(extracted.size(), result.retained(), result.decisions()))
                 .withDiagnostics(result.diagnostics());
+    }
+
+    private void trace(List<DeduplicationDecision> decisions) {
+        if (!tracer.isEnabled()) {
+            return;
+        }
+        decisions.forEach(decision -> tracer.trace(PipelineItemDecision
+                .builder(PipelineDecisionKind.DEDUPLICATION, decision.retained() ? "retained" : "dropped")
+                .item(decision.indicator().type().name(), decision.indicator().value())
+                .build()));
     }
 
     private DeduplicationResult deduplicate(List<Indicator> indicators) {

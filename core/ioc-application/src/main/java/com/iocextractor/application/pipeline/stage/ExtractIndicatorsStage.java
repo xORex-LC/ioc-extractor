@@ -5,6 +5,9 @@ import com.iocextractor.platform.etl.Stage;
 import com.iocextractor.platform.etl.StageId;
 import com.iocextractor.application.pipeline.payload.ExtractedIndicators;
 import com.iocextractor.application.pipeline.payload.RefangedText;
+import com.iocextractor.application.observability.PipelineDecisionKind;
+import com.iocextractor.application.observability.PipelineItemDecision;
+import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticContextKeys;
 import com.iocextractor.diagnostics.DiagnosticFactory;
@@ -26,16 +29,21 @@ public final class ExtractIndicatorsStage implements Stage<RefangedText, Extract
 
     private final IndicatorExtractor extractor;
     private final DiagnosticFactory diagnosticFactory;
+    private final PipelineDecisionTracer tracer;
 
     /**
      * Creates the stage.
      *
      * @param extractor indicator extractor
      * @param diagnosticFactory factory for element extraction diagnostics
+     * @param tracer gated operational decision boundary
      */
-    public ExtractIndicatorsStage(IndicatorExtractor extractor, DiagnosticFactory diagnosticFactory) {
+    public ExtractIndicatorsStage(IndicatorExtractor extractor,
+                                  DiagnosticFactory diagnosticFactory,
+                                  PipelineDecisionTracer tracer) {
         this.extractor = Objects.requireNonNull(extractor, "extractor");
         this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
+        this.tracer = Objects.requireNonNull(tracer, "tracer");
     }
 
     @Override
@@ -47,8 +55,21 @@ public final class ExtractIndicatorsStage implements Stage<RefangedText, Extract
     public Envelope<ExtractedIndicators> process(Envelope<RefangedText> input) {
         var text = input.payload().text();
         var outcome = extractor.extract(text);
+        trace(outcome.decisions());
         return input.withPayload(new ExtractedIndicators(text, outcome))
                 .withDiagnostics(diagnostics(outcome.decisions()));
+    }
+
+    private void trace(List<ExtractionDecision> decisions) {
+        if (!tracer.isEnabled()) {
+            return;
+        }
+        decisions.forEach(decision -> tracer.trace(PipelineItemDecision
+                .builder(PipelineDecisionKind.EXTRACTION, decision.status().name().toLowerCase())
+                .item(decision.type().name(), decision.span().value())
+                .pattern(decision.pattern())
+                .span(decision.span().start(), decision.span().end())
+                .build()));
     }
 
     private List<Diagnostic> diagnostics(List<ExtractionDecision> decisions) {

@@ -17,3 +17,4 @@ Driven-порты (выходные): контракты, которые при�
 | `artifact/` | Driven-порты side-effect-free preparation, canonical storage, projection, identity resolver, id-baseline и run-ledger |
 | `export/` | Driven-порты snapshot streaming, slice writer, manifest, revision/progress и export-ledger |
 | `sync/` | Driven-порты remote file transport и будущих sync-ledgers |
+| `observability/` | Gated structured per-item decision trace boundary |

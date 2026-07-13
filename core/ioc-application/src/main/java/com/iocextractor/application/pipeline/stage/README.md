@@ -28,3 +28,13 @@ composition.
 
 **Не импортируется:** соседние stage implementations, adapters, bootstrap,
 Spring, Logback/MDC.
+
+## TRACE-контракт
+
+Per-item TRACE идёт через application-owned `PipelineDecisionTracer`: каждая
+стадия сначала проверяет затвор адаптера и затем строит compact decision из уже
+рассчитанного outcome. Повторный вызов domain services ради лога запрещён.
+
+Обычная diagnostic occurrence использует ровно один путь: stage либо прикрепляет
+её к возвращаемому envelope, либо бросает typed `DiagnosticException`, если
+валидный payload вернуть невозможно.

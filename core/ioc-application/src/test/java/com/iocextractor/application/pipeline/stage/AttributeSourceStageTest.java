@@ -19,7 +19,8 @@ class AttributeSourceStageTest {
         var raw = new RawIndicator("example.com", IndicatorType.DOMAIN, 0);
         var indicator = StageTestSupport.indicator("example.com");
         var stage = new AttributeSourceStage(
-                (text, indicators) -> StageTestSupport.attributionOutcome(indicator), StageTestSupport.CLOCK);
+                (text, indicators) -> StageTestSupport.attributionOutcome(indicator),
+                StageTestSupport.CLOCK, StageTestSupport.TRACER);
 
         var output = stage.process(StageTestSupport.envelope(
                 new ExtractedIndicators("example.com", new ExtractionOutcome(
@@ -32,7 +33,8 @@ class AttributeSourceStageTest {
     void warns_when_an_indicator_has_no_source() {
         var orphan = new Indicator("example.com", IndicatorType.DOMAIN, new SourceContext(null, null));
         var stage = new AttributeSourceStage(
-                (text, indicators) -> StageTestSupport.attributionOutcome(orphan), StageTestSupport.CLOCK);
+                (text, indicators) -> StageTestSupport.attributionOutcome(orphan),
+                StageTestSupport.CLOCK, StageTestSupport.TRACER);
 
         var output = stage.process(StageTestSupport.envelope(new ExtractedIndicators(
                 "example.com", new ExtractionOutcome(
@@ -46,7 +48,8 @@ class AttributeSourceStageTest {
     void no_diagnostic_when_all_indicators_are_attributed() {
         var attributed = new Indicator("example.com", IndicatorType.DOMAIN, new SourceContext("Letter X", null));
         var stage = new AttributeSourceStage(
-                (text, indicators) -> StageTestSupport.attributionOutcome(attributed), StageTestSupport.CLOCK);
+                (text, indicators) -> StageTestSupport.attributionOutcome(attributed),
+                StageTestSupport.CLOCK, StageTestSupport.TRACER);
 
         var output = stage.process(StageTestSupport.envelope(new ExtractedIndicators(
                 "example.com", new ExtractionOutcome(

@@ -14,6 +14,7 @@ public enum EventAction {
     COMMAND_COMPLETE("command_complete", "cli", "CLI command execution completed."),
     STAGE_START("stage_start", "pipeline", "Pipeline stage execution started."),
     STAGE_COMPLETE("stage_complete", "pipeline", "Pipeline stage execution completed or failed."),
+    PIPELINE_ITEM_DECISION("pipeline_item_decision", "pipeline", "One explicitly enabled per-item pipeline decision was traced."),
     SOURCE_READ("source_read", "source", "Source document text was read."),
     ARTIFACT_PROJECT("artifact_project", "sink", "CSV projection was regenerated from canonical storage."),
     RETENTION_SWEEP("retention_sweep", "maintenance", "Retention sweep evaluated configured targets."),

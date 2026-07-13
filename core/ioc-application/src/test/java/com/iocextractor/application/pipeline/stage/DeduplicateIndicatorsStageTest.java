@@ -14,7 +14,8 @@ class DeduplicateIndicatorsStageTest {
         var first = StageTestSupport.indicator("first.example");
         var duplicate = StageTestSupport.indicator("first.example");
         var second = StageTestSupport.indicator("second.example");
-        var stage = new DeduplicateIndicatorsStage(true, StageTestSupport.DIAGNOSTICS);
+        var stage = new DeduplicateIndicatorsStage(
+                true, StageTestSupport.DIAGNOSTICS, StageTestSupport.TRACER);
 
         var output = stage.process(StageTestSupport.envelope(
                 StageTestSupport.attributedIndicators(first, duplicate, second), false));
@@ -34,7 +35,8 @@ class DeduplicateIndicatorsStageTest {
     void keeps_all_indicators_when_deduplication_disabled() {
         var first = StageTestSupport.indicator("first.example");
         var duplicate = StageTestSupport.indicator("first.example");
-        var stage = new DeduplicateIndicatorsStage(false, StageTestSupport.DIAGNOSTICS);
+        var stage = new DeduplicateIndicatorsStage(
+                false, StageTestSupport.DIAGNOSTICS, StageTestSupport.TRACER);
 
         var output = stage.process(StageTestSupport.envelope(
                 StageTestSupport.attributedIndicators(first, duplicate), false));

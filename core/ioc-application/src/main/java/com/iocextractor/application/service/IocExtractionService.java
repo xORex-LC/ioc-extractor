@@ -23,6 +23,7 @@ import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
+import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.domain.attribute.SourceAttributor;
 import com.iocextractor.domain.classify.MatchPolicy;
 import com.iocextractor.domain.extract.IndicatorExtractor;
@@ -67,12 +68,13 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                 PipelineObserver observer,
                                 DiagnosticSink diagnosticSink,
                                 FailurePolicy failurePolicy,
-                                int maxDiagnosticsPerRun) {
+                                int maxDiagnosticsPerRun,
+                                PipelineDecisionTracer decisionTracer) {
         this(
                 new PipelineRunner(failurePolicy, observer, diagnosticSink,
                         new DiagnosticFactory(Clock.systemUTC()), maxDiagnosticsPerRun),
                 pipeline(reader, refanger, extractor, attributor, matchPolicy, preparers,
-                        repository, projection, deduplicate, Clock.systemUTC()),
+                        repository, projection, deduplicate, Clock.systemUTC(), decisionTracer),
                 Clock.systemUTC(),
                 observabilityMode);
     }
@@ -126,15 +128,16 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                                                               CanonicalArtifactRepository repository,
                                                                               ArtifactProjection projection,
                                                                               boolean deduplicate,
-                                                                              Clock clock) {
+                                                                              Clock clock,
+                                                                              PipelineDecisionTracer decisionTracer) {
         var diagnostics = new DiagnosticFactory(clock);
         return Pipeline.<ExtractionCommand>start()
                 .then(new ReadSourceStage(reader, diagnostics))
-                .then(new RefangStage(refanger))
-                .then(new ExtractIndicatorsStage(extractor, diagnostics))
-                .then(new AttributeSourceStage(attributor, clock))
-                .then(new DeduplicateIndicatorsStage(deduplicate, diagnostics))
-                .then(new ClassifyIndicatorsStage(matchPolicy, diagnostics))
+                .then(new RefangStage(refanger, decisionTracer))
+                .then(new ExtractIndicatorsStage(extractor, diagnostics, decisionTracer))
+                .then(new AttributeSourceStage(attributor, clock, decisionTracer))
+                .then(new DeduplicateIndicatorsStage(deduplicate, diagnostics, decisionTracer))
+                .then(new ClassifyIndicatorsStage(matchPolicy, diagnostics, decisionTracer))
                 .then(new PrepareArtifactsStage(preparers))
                 .then(new WriteArtifactsStage(repository, projection, diagnostics));
     }

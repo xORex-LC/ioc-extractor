@@ -21,6 +21,7 @@
 | `export/` | Artifact Emission model: resolved plan, snapshot/manifest, formation saga, progress и retention descriptors |
 | `sync/` | Transport-neutral remote sync value objects, error taxonomy and retry policy |
 | `cadence/` | Framework-free interval/quiet-period scheduling policies с injected `Clock` |
+| `observability/` | Compact already-computed per-item decisions для outbound TRACE port |
 | `pipeline/` | `Envelope`/`Stage`/`PipelineRunner` и concrete stages текущего ETL |
 | `service/` | `IocExtractionService` — use-case boundary и запуск pipeline |
 

@@ -7,6 +7,10 @@ import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.MaskMatch;
 import com.iocextractor.domain.model.SourceContext;
+import com.iocextractor.application.observability.PipelineItemDecision;
+import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
+import com.iocextractor.application.pipeline.payload.DeduplicationDecision;
+import com.iocextractor.application.pipeline.payload.DeduplicatedIndicators;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -22,10 +26,11 @@ class ClassifyIndicatorsStageTest {
         var classifier = new ClassifyIndicatorsStage(indicator -> {
             calls.incrementAndGet();
             return decision(indicator);
-        }, StageTestSupport.DIAGNOSTICS);
+        }, StageTestSupport.DIAGNOSTICS, StageTestSupport.TRACER);
         var first = StageTestSupport.indicator("first.example");
         var duplicate = StageTestSupport.indicator("first.example");
-        var deduplicated = new DeduplicateIndicatorsStage(true, StageTestSupport.DIAGNOSTICS).process(
+        var deduplicated = new DeduplicateIndicatorsStage(
+                true, StageTestSupport.DIAGNOSTICS, StageTestSupport.TRACER).process(
                 StageTestSupport.envelope(StageTestSupport.attributedIndicators(first, duplicate), false));
 
         var output = classifier.process(deduplicated);
@@ -43,7 +48,7 @@ class ClassifyIndicatorsStageTest {
         var stage = new ClassifyIndicatorsStage(indicator -> {
             calls.incrementAndGet();
             return decision(indicator);
-        }, StageTestSupport.DIAGNOSTICS);
+        }, StageTestSupport.DIAGNOSTICS, StageTestSupport.TRACER);
         var first = StageTestSupport.indicator("first.example");
         var second = StageTestSupport.indicator("second.example");
 
@@ -63,7 +68,7 @@ class ClassifyIndicatorsStageTest {
         var stage = new ClassifyIndicatorsStage(indicator -> {
             calls.incrementAndGet();
             throw new AssertionError("FILE indicator must not reach MatchPolicy");
-        }, StageTestSupport.DIAGNOSTICS);
+        }, StageTestSupport.DIAGNOSTICS, StageTestSupport.TRACER);
         var hash = new Indicator("0123456789ABCDEF0123456789ABCDEF", IndicatorType.MD5,
                 new SourceContext("test-source", null));
 
@@ -81,10 +86,85 @@ class ClassifyIndicatorsStageTest {
         });
     }
 
+    @Test
+    void tracesMaterializedDecisionWithoutRepeatingClassification() {
+        var calls = new AtomicInteger();
+        var tracer = new RecordingTracer();
+        var stage = new ClassifyIndicatorsStage(indicator -> {
+            calls.incrementAndGet();
+            return decision(indicator);
+        }, StageTestSupport.DIAGNOSTICS, tracer);
+
+        stage.process(StageTestSupport.envelope(
+                StageTestSupport.deduplicatedIndicators(StageTestSupport.indicator("example.com")), false));
+
+        assertThat(calls).hasValue(1);
+        assertThat(tracer.decisions).singleElement().satisfies(decision -> {
+            assertThat(decision.kind().name()).isEqualTo("CLASSIFICATION");
+            assertThat(decision.outcome()).isEqualTo("matched");
+            assertThat(decision.rule()).isEqualTo("1");
+            assertThat(decision.pattern()).isEqualTo("is-registrable");
+        });
+    }
+
+    @Test
+    void syntheticLargeBatchStillClassifiesOncePerItemWithTracingEnabled() {
+        int batchSize = 10_000;
+        var calls = new AtomicInteger();
+        var tracer = new CountingTracer();
+        var stage = new ClassifyIndicatorsStage(indicator -> {
+            calls.incrementAndGet();
+            return decision(indicator);
+        }, StageTestSupport.DIAGNOSTICS, tracer);
+        var indicators = new java.util.ArrayList<Indicator>(batchSize);
+        var decisions = new java.util.ArrayList<DeduplicationDecision>(batchSize);
+        for (int index = 0; index < batchSize; index++) {
+            var indicator = StageTestSupport.indicator("item-" + index + ".example");
+            indicators.add(indicator);
+            decisions.add(new DeduplicationDecision(indicator, true));
+        }
+
+        stage.process(StageTestSupport.envelope(
+                new DeduplicatedIndicators(batchSize, indicators, decisions), false));
+
+        assertThat(calls).hasValue(batchSize);
+        assertThat(tracer.traces).hasValue(batchSize);
+    }
+
     private static ClassificationDecision decision(Indicator indicator) {
         return new ClassificationDecision(
                 new IndicatorFeatures(indicator.value(), indicator.value(),
                         false, false, false, HostKind.REGISTRABLE),
                 1, List.of("is-registrable"), new MaskMatch("u:hAS", "h:dAS"));
+    }
+
+    private static final class RecordingTracer implements PipelineDecisionTracer {
+
+        private final java.util.ArrayList<PipelineItemDecision> decisions = new java.util.ArrayList<>();
+
+        @Override
+        public boolean isEnabled() {
+            return true;
+        }
+
+        @Override
+        public void trace(PipelineItemDecision decision) {
+            decisions.add(decision);
+        }
+    }
+
+    private static final class CountingTracer implements PipelineDecisionTracer {
+
+        private final AtomicInteger traces = new AtomicInteger();
+
+        @Override
+        public boolean isEnabled() {
+            return true;
+        }
+
+        @Override
+        public void trace(PipelineItemDecision decision) {
+            traces.incrementAndGet();
+        }
     }
 }

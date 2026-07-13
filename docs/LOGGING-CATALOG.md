@@ -12,6 +12,7 @@ Generated from `EventAction` and `LogField`.
 | `command_complete` | cli | CLI command execution completed. |
 | `stage_start` | pipeline | Pipeline stage execution started. |
 | `stage_complete` | pipeline | Pipeline stage execution completed or failed. |
+| `pipeline_item_decision` | pipeline | One explicitly enabled per-item pipeline decision was traced. |
 | `source_read` | source | Source document text was read. |
 | `artifact_project` | sink | CSV projection was regenerated from canonical storage. |
 | `retention_sweep` | maintenance | Retention sweep evaluated configured targets. |
@@ -48,6 +49,16 @@ Generated from `EventAction` and `LogField`.
 | `ioc.source.id` | ioc | Logical source identifier. |
 | `ioc.mode` | ioc | Runtime mode: oneshot or daemon. |
 | `ioc.stage` | ioc | Current pipeline stage identifier. |
+| `ioc.decision.kind` | ioc | Pipeline processing step that made a per-item decision. |
+| `ioc.decision.outcome` | ioc | Stable outcome of a per-item pipeline decision. |
+| `ioc.decision.rule` | ioc | Rule or source marker selected by a pipeline decision. |
+| `ioc.decision.pattern` | ioc | Pattern or predicate set evaluated by a pipeline decision. |
+| `ioc.decision.result` | ioc | Compact materialized result of a pipeline decision. |
+| `ioc.item.identity` | ioc | Safe short identity of the item involved in a pipeline decision. |
+| `ioc.item.value` | ioc | TRACE-only item value with query-like data redacted. |
+| `ioc.indicator.type` | ioc | IOC type involved in a pipeline decision. |
+| `ioc.span.start` | ioc | Inclusive source-text offset of a matched item. |
+| `ioc.span.end` | ioc | Exclusive source-text offset of a matched item. |
 | `ioc.source.path` | ioc | Normalized source document path. |
 | `ioc.source.content_hash` | ioc | Content hash of the source document. |
 | `ioc.artifact.name` | ioc | Configured artifact name. |

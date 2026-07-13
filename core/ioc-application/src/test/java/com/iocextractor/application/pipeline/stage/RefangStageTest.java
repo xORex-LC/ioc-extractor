@@ -12,7 +12,8 @@ class RefangStageTest {
 
     @Test
     void refangs_text() {
-        var stage = new RefangStage(text -> new RefangOutcome(text.replace("hxxp", "http"), List.of()));
+        var stage = new RefangStage(
+                text -> new RefangOutcome(text.replace("hxxp", "http"), List.of()), StageTestSupport.TRACER);
 
         var output = stage.process(StageTestSupport.envelope(new SourceText("hxxp://example.com"), false));
 

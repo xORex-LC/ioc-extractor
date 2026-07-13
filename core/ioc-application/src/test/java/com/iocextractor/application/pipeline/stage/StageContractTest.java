@@ -38,19 +38,20 @@ class StageContractTest {
                 StageTestSupport.commandEnvelope(false),
                 diagnostic);
         assertPreservesContract(
-                new RefangStage(text -> new RefangOutcome(text.replace("hxxp", "http"), List.of())),
+                new RefangStage(text -> new RefangOutcome(text.replace("hxxp", "http"), List.of()),
+                        StageTestSupport.TRACER),
                 StageTestSupport.envelope(new SourceText("hxxp://example.com"), false),
                 diagnostic);
         assertPreservesContract(
                 new ExtractIndicatorsStage(text -> new ExtractionOutcome(
                         List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of()),
-                        StageTestSupport.DIAGNOSTICS),
+                        StageTestSupport.DIAGNOSTICS, StageTestSupport.TRACER),
                 StageTestSupport.envelope(new RefangedText(new RefangOutcome("example.com", List.of())), false),
                 diagnostic);
         assertPreservesContract(
                 new AttributeSourceStage((text, rawIndicators) ->
                         StageTestSupport.attributionOutcome(StageTestSupport.indicator("example.com")),
-                        StageTestSupport.CLOCK),
+                        StageTestSupport.CLOCK, StageTestSupport.TRACER),
                 StageTestSupport.envelope(new ExtractedIndicators(
                         "example.com",
                         new ExtractionOutcome(
@@ -58,14 +59,14 @@ class StageContractTest {
                         false),
                 diagnostic);
         assertPreservesContract(
-                new DeduplicateIndicatorsStage(true, StageTestSupport.DIAGNOSTICS),
+                new DeduplicateIndicatorsStage(true, StageTestSupport.DIAGNOSTICS, StageTestSupport.TRACER),
                 StageTestSupport.envelope(StageTestSupport.attributedIndicators(
                                 StageTestSupport.indicator("example.com")),
                         false),
                 diagnostic);
         assertPreservesContract(
                 new ClassifyIndicatorsStage(indicator -> StageTestSupport.classifiedIndicator(indicator)
-                        .classification(), StageTestSupport.DIAGNOSTICS),
+                        .classification(), StageTestSupport.DIAGNOSTICS, StageTestSupport.TRACER),
                 StageTestSupport.envelope(StageTestSupport.deduplicatedIndicators(
                         StageTestSupport.indicator("example.com")), false),
                 diagnostic);

@@ -3,6 +3,9 @@ package com.iocextractor.adapter.out.sink.csv;
 import com.iocextractor.application.artifact.ArtifactIdSequence;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
+import com.iocextractor.application.observability.PipelineItemDecision;
+import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
 import com.iocextractor.domain.classify.ClassificationDecision;
@@ -62,6 +65,28 @@ class CsvArtifactPreparerTest {
                 .hasMessage("mapper defect");
     }
 
+    @Test
+    void tracesRouteDecisionsWithoutRecomputingClassification() {
+        var tracer = new RecordingTracer();
+        var definition = new CsvArtifactDefinition(
+                "hashes", Set.of(IndicatorType.MD5), new TestMapper(ignored -> { }),
+                ArtifactIdStrategy.ASCENDING, 100);
+        var preparer = new CsvArtifactPreparer(
+                definition,
+                new ArtifactIdSequence(definition.idStrategy(), definition.idStart()),
+                new DiagnosticFactory(Clock.systemUTC()),
+                "source-key",
+                tracer);
+
+        preparer.prepare(List.of(indicator("md5", IndicatorType.MD5), indicator("sha1", IndicatorType.SHA1)));
+
+        assertThat(tracer.decisions)
+                .extracting(PipelineItemDecision::outcome)
+                .containsExactly("routed", "filtered");
+        assertThat(tracer.decisions).allSatisfy(decision ->
+                assertThat(decision.artifact()).isEqualTo("hashes"));
+    }
+
     private CsvArtifactPreparer preparer(RowMapper mapper) {
         var definition = new CsvArtifactDefinition(
                 "hashes", Set.of(IndicatorType.MD5), mapper, ArtifactIdStrategy.ASCENDING, 100);
@@ -69,14 +94,34 @@ class CsvArtifactPreparerTest {
                 definition,
                 new ArtifactIdSequence(definition.idStrategy(), definition.idStart()),
                 new DiagnosticFactory(Clock.systemUTC()),
-                "source-key");
+                "source-key",
+                NoopPipelineDecisionTracer.INSTANCE);
     }
 
     private ClassifiedIndicator indicator(String value) {
-        var indicator = new Indicator(value, IndicatorType.MD5, new SourceContext("source", null));
+        return indicator(value, IndicatorType.MD5);
+    }
+
+    private ClassifiedIndicator indicator(String value, IndicatorType type) {
+        var indicator = new Indicator(value, type, new SourceContext("source", null));
         var features = new IndicatorFeatures(value, value, false, false, false, HostKind.UNKNOWN);
         return new ClassifiedIndicator(indicator,
                 new ClassificationDecision(features, -1, List.of(), new MaskMatch(null, null)));
+    }
+
+    private static final class RecordingTracer implements PipelineDecisionTracer {
+
+        private final java.util.ArrayList<PipelineItemDecision> decisions = new java.util.ArrayList<>();
+
+        @Override
+        public boolean isEnabled() {
+            return true;
+        }
+
+        @Override
+        public void trace(PipelineItemDecision decision) {
+            decisions.add(decision);
+        }
     }
 
     @FunctionalInterface

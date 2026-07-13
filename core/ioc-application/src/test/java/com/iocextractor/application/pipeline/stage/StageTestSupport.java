@@ -11,6 +11,7 @@ import com.iocextractor.application.pipeline.payload.AttributedIndicators;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 import com.iocextractor.application.pipeline.payload.DeduplicationDecision;
 import com.iocextractor.application.pipeline.payload.DeduplicatedIndicators;
+import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.domain.attribute.AttributionDecision;
 import com.iocextractor.domain.attribute.AttributionOutcome;
@@ -32,6 +33,7 @@ final class StageTestSupport {
 
     static final Clock CLOCK = Clock.fixed(Instant.parse("2026-06-21T00:00:00Z"), ZoneOffset.UTC);
     static final DiagnosticFactory DIAGNOSTICS = new DiagnosticFactory(CLOCK);
+    static final NoopPipelineDecisionTracer TRACER = NoopPipelineDecisionTracer.INSTANCE;
 
     private StageTestSupport() {
     }

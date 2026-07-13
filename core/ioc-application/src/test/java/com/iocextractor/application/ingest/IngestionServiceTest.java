@@ -18,6 +18,7 @@ import com.iocextractor.application.artifact.PreparedArtifactRow;
 import com.iocextractor.diagnostics.result.FailurePolicy;
 import com.iocextractor.diagnostics.result.Result;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
@@ -321,7 +322,8 @@ class IngestionServiceTest {
                 "daemon",
                 new NoopPipelineObserver(),
                 NoopDiagnosticSink.INSTANCE,
-                FailurePolicy.failFast(), 10_000, new MemoryRepository());
+                FailurePolicy.failFast(), 10_000, new MemoryRepository(),
+                NoopPipelineDecisionTracer.INSTANCE);
     }
 
     private IocExtractionServiceFactory failingExtractionFactory() {
@@ -339,7 +341,8 @@ class IngestionServiceTest {
                 "daemon",
                 new NoopPipelineObserver(),
                 NoopDiagnosticSink.INSTANCE,
-                FailurePolicy.failFast(), 10_000, new MemoryRepository());
+                FailurePolicy.failFast(), 10_000, new MemoryRepository(),
+                NoopPipelineDecisionTracer.INSTANCE);
     }
 
     private ClassificationDecision classificationDecision(Indicator indicator) {

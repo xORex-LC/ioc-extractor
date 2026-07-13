@@ -28,7 +28,8 @@ errors/diagnostics/observability, Commons CSV/IO, SLF4J API.
 - legacy/current projection path формирует CSV из canonical repository;
 - `CsvArtifactPreparer` выполняет config-driven filtering/mapping до policy
   checkpoint; только `RowMappingException` становится element diagnostic,
-  остальные mapper defects останавливают run;
+  остальные mapper defects останавливают run; route/filter/mapping decisions
+  передаются в gated application TRACE port без повторной классификации;
 - public id остаётся deferred slot до commit; `from: id` не допускает
   `when-type` или transforms, что проверяется bootstrap config preflight;
   mapping SPI не получает временный id, а id-provider возвращает пустой slot;

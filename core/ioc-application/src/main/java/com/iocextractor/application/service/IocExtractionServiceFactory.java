@@ -5,6 +5,7 @@ import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
+import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.diagnostics.result.FailurePolicy;
 import com.iocextractor.domain.attribute.SourceAttributor;
@@ -35,6 +36,7 @@ public final class IocExtractionServiceFactory {
     private final FailurePolicy failurePolicy;
     private final int maxDiagnosticsPerRun;
     private final CanonicalArtifactRepository repository;
+    private final PipelineDecisionTracer decisionTracer;
 
     /** Creates the factory with explicit extraction policies and canonical storage. */
     public IocExtractionServiceFactory(SourceReader reader,
@@ -48,7 +50,8 @@ public final class IocExtractionServiceFactory {
                                        DiagnosticSink diagnosticSink,
                                        FailurePolicy failurePolicy,
                                        int maxDiagnosticsPerRun,
-                                       CanonicalArtifactRepository repository) {
+                                       CanonicalArtifactRepository repository,
+                                       PipelineDecisionTracer decisionTracer) {
         this.reader = Objects.requireNonNull(reader, "reader");
         this.refanger = Objects.requireNonNull(refanger, "refanger");
         this.extractor = Objects.requireNonNull(extractor, "extractor");
@@ -64,6 +67,7 @@ public final class IocExtractionServiceFactory {
         }
         this.maxDiagnosticsPerRun = maxDiagnosticsPerRun;
         this.repository = Objects.requireNonNull(repository, "repository");
+        this.decisionTracer = Objects.requireNonNull(decisionTracer, "decisionTracer");
     }
 
     /**
@@ -76,6 +80,6 @@ public final class IocExtractionServiceFactory {
     public ExtractIocsUseCase create(List<ArtifactPreparer> preparers, ArtifactProjection projection) {
         return new IocExtractionService(reader, refanger, extractor, attributor, matchPolicy,
                 preparers, repository, projection, deduplicate, observabilityMode, observer, diagnosticSink,
-                failurePolicy, maxDiagnosticsPerRun);
+                failurePolicy, maxDiagnosticsPerRun, decisionTracer);
     }
 }

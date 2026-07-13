@@ -21,7 +21,8 @@ class ExtractIndicatorsStageTest {
     void extracts_raw_indicators_and_keeps_text_for_next_stage() {
         var raw = new RawIndicator("example.com", IndicatorType.DOMAIN, 0);
         var stage = new ExtractIndicatorsStage(
-                text -> new ExtractionOutcome(List.of(raw), List.of()), StageTestSupport.DIAGNOSTICS);
+                text -> new ExtractionOutcome(List.of(raw), List.of()),
+                StageTestSupport.DIAGNOSTICS, StageTestSupport.TRACER);
 
         var output = stage.process(StageTestSupport.envelope(
                 new RefangedText(new RefangOutcome("example.com", List.of())), false));
@@ -36,7 +37,8 @@ class ExtractIndicatorsStageTest {
                 IndicatorType.DOMAIN, "domain-pattern", new Span(8, 19, "example.com"),
                 ExtractionDecisionStatus.DROPPED_OVERLAP);
         var stage = new ExtractIndicatorsStage(
-                text -> new ExtractionOutcome(List.of(), List.of(dropped)), StageTestSupport.DIAGNOSTICS);
+                text -> new ExtractionOutcome(List.of(), List.of(dropped)),
+                StageTestSupport.DIAGNOSTICS, StageTestSupport.TRACER);
 
         var output = stage.process(StageTestSupport.envelope(
                 new RefangedText(new RefangOutcome("https://example.com", List.of())), false));
@@ -61,7 +63,7 @@ class ExtractIndicatorsStageTest {
                 ExtractionDecisionStatus.DROPPED_OVERLAP);
         var stage = new ExtractIndicatorsStage(
                 text -> new ExtractionOutcome(List.of(), List.of(accepted, ambiguous)),
-                StageTestSupport.DIAGNOSTICS);
+                StageTestSupport.DIAGNOSTICS, StageTestSupport.TRACER);
 
         var output = stage.process(StageTestSupport.envelope(
                 new RefangedText(new RefangOutcome("https://example.com", List.of())), false));

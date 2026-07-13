@@ -5,7 +5,10 @@ import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.ArtifactWritePlan;
 import com.iocextractor.application.artifact.PreparedArtifactRow;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.application.observability.PipelineDecisionKind;
+import com.iocextractor.application.observability.PipelineItemDecision;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
+import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticContextKeys;
 import com.iocextractor.diagnostics.DiagnosticFactory;
@@ -24,6 +27,7 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
     private final ArtifactIdSequence ids;
     private final DiagnosticFactory diagnosticFactory;
     private final String sourceKey;
+    private final PipelineDecisionTracer tracer;
 
     /**
      * Creates a preparer for one configured artifact.
@@ -32,15 +36,18 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
      * @param ids deferred public-id sequence
      * @param diagnosticFactory factory for element mapping diagnostics
      * @param sourceKey stable ingestion source key, or {@code null} in oneshot mode
+     * @param tracer gated operational decision boundary
      */
     public CsvArtifactPreparer(CsvArtifactDefinition definition,
                                ArtifactIdSequence ids,
                                DiagnosticFactory diagnosticFactory,
-                               String sourceKey) {
+                               String sourceKey,
+                               PipelineDecisionTracer tracer) {
         this.definition = Objects.requireNonNull(definition, "definition");
         this.ids = Objects.requireNonNull(ids, "ids");
         this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
         this.sourceKey = sourceKey;
+        this.tracer = Objects.requireNonNull(tracer, "tracer");
     }
 
     @Override
@@ -54,13 +61,17 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
         var diagnostics = new ArrayList<Diagnostic>();
         for (int ordinal = 0; ordinal < indicators.size(); ordinal++) {
             ClassifiedIndicator classified = indicators.get(ordinal);
-            if (!definition.accepts().contains(classified.indicator().type())
-                    || !definition.filter().accepts(classified)) {
+            boolean accepted = definition.accepts().contains(classified.indicator().type())
+                    && definition.filter().accepts(classified);
+            if (!accepted) {
+                trace(classified, "filtered");
                 continue;
             }
             try {
                 rows.add(prepareRow(classified));
+                trace(classified, "routed");
             } catch (RowMappingException failure) {
+                trace(classified, "mapping_failed");
                 diagnostics.add(diagnosticFactory.create(SinkDiagnosticCodes.ROW_MAPPING_FAILED)
                         .with("sink", definition.name())
                         .with(DiagnosticContextKeys.ARTIFACT, definition.name())
@@ -76,6 +87,16 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
         var plan = new ArtifactWritePlan(
                 definition.name(), definition.mapper().header(), rows, ids);
         return Result.of(plan, diagnostics);
+    }
+
+    private void trace(ClassifiedIndicator classified, String outcome) {
+        if (!tracer.isEnabled()) {
+            return;
+        }
+        tracer.trace(PipelineItemDecision.builder(PipelineDecisionKind.ROUTING, outcome)
+                .item(classified.indicator().type().name(), classified.indicator().value())
+                .artifact(definition.name())
+                .build());
     }
 
     private PreparedArtifactRow prepareRow(ClassifiedIndicator classified) {

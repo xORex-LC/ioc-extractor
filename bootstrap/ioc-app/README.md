@@ -49,6 +49,11 @@ exclude, так как оба datasource создаются проектом я�
 durable checkpoints saga в ECS actions/fields, не добавляя SLF4J-зависимость в
 application core.
 
+`LoggingPipelineDecisionTracer` — второй outbound adapter: он реализует двойной
+затвор `per-item-trace-enabled × logger TRACE`, строит ECS event только после
+обоих проверок, пишет safe short identity и маскирует URL query. Application
+stages передают ему только уже вычисленные решения.
+
 ## Зависимости
 
 **Зависит от:** selected platform/core/adapters modules, Spring Boot, ECS

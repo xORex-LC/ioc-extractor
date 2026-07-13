@@ -74,6 +74,7 @@ import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.port.out.ingest.SourcePreparerFactory;
+import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.application.port.out.export.ArtifactRevisionReader;
 import com.iocextractor.application.port.out.export.ArtifactSliceWriter;
 import com.iocextractor.application.port.out.export.ExportObserver;
@@ -261,6 +262,13 @@ public class AppConfig {
     }
 
     @Bean
+    public PipelineDecisionTracer pipelineDecisionTracer(IocProperties props) {
+        return new LoggingPipelineDecisionTracer(
+                LoggerFactory.getLogger(LoggingPipelineDecisionTracer.class),
+                props.observability().perItemTraceEnabled());
+    }
+
+    @Bean
     public ExportPlanCatalog exportPlanCatalog(IocProperties props,
                                                DiagnosticSink diagnosticSink,
                                                Clock clock) {
@@ -284,13 +292,14 @@ public class AppConfig {
                                                                    SourceAttributor attributor,
                                                                    MatchPolicy matchPolicy,
                                                                    DiagnosticSink diagnosticSink,
+                                                                   PipelineDecisionTracer decisionTracer,
                                                                    JdbcCanonicalArtifactRepository repository,
                                                                    IocProperties props) {
         return new IocExtractionServiceFactory(reader, refanger, extractor, attributor, matchPolicy,
                 props.pipeline().deduplicate(), props.observability().mode().token(),
                 new LoggingPipelineObserver(), diagnosticSink,
                 props.pipeline().failurePolicy().toPolicy(), props.pipeline().maxDiagnosticsPerRun(),
-                repository);
+                repository, decisionTracer);
     }
 
     @Bean
@@ -302,10 +311,11 @@ public class AppConfig {
     public ExtractIocsUseCase extractIocsUseCase(IocExtractionServiceFactory factory,
                                                  ArtifactIdBaseline artifactIdBaseline,
                                                  CsvArtifactProjection csvArtifactProjection,
+                                                 PipelineDecisionTracer decisionTracer,
                                                  Clock clock,
                                                  IocProperties props) {
         List<ArtifactPreparer> preparers = artifactPreparers(
-                artifactDefinitions(props, artifactIdBaseline), null, clock);
+                artifactDefinitions(props, artifactIdBaseline), null, clock, decisionTracer);
         return factory.create(preparers, csvArtifactProjection);
     }
 
@@ -313,6 +323,7 @@ public class AppConfig {
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public SourcePreparerFactory sourcePreparerFactory(IocProperties props,
                                                        ArtifactIdBaseline artifactIdBaseline,
+                                                       PipelineDecisionTracer decisionTracer,
                                                        Clock clock) {
         var artifacts = artifactDefinitions(props, artifactIdBaseline);
         Map<String, ArtifactIdSequence> ids = new LinkedHashMap<>();
@@ -321,7 +332,8 @@ public class AppConfig {
         }
         return source -> new com.iocextractor.application.ingest.SourcePreparers(artifacts.stream()
                 .map(artifact -> new CsvArtifactPreparer(
-                        artifact, ids.get(artifact.name()), new DiagnosticFactory(clock), source.key().value()))
+                        artifact, ids.get(artifact.name()), new DiagnosticFactory(clock),
+                        source.key().value(), decisionTracer))
                 .map(ArtifactPreparer.class::cast)
                 .toList());
     }
@@ -846,13 +858,15 @@ public class AppConfig {
 
     private List<ArtifactPreparer> artifactPreparers(List<CsvArtifactDefinition> artifacts,
                                                      String sourceKey,
-                                                     Clock clock) {
+                                                     Clock clock,
+                                                     PipelineDecisionTracer decisionTracer) {
         return artifacts.stream()
                 .map(artifact -> new CsvArtifactPreparer(
                         artifact,
                         new ArtifactIdSequence(artifact.idStrategy(), artifact.idStart()),
                         new DiagnosticFactory(clock),
-                        sourceKey))
+                        sourceKey,
+                        decisionTracer))
                 .map(ArtifactPreparer.class::cast)
                 .toList();
     }

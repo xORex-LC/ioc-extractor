@@ -3,6 +3,9 @@ package com.iocextractor.application.pipeline.stage;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 import com.iocextractor.application.pipeline.payload.DeduplicatedIndicators;
 import com.iocextractor.application.pipeline.payload.RetainedIndicators;
+import com.iocextractor.application.observability.PipelineDecisionKind;
+import com.iocextractor.application.observability.PipelineItemDecision;
+import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticContextKeys;
 import com.iocextractor.diagnostics.DiagnosticFactory;
@@ -27,11 +30,15 @@ public final class ClassifyIndicatorsStage implements Stage<DeduplicatedIndicato
 
     private final MatchPolicy matchPolicy;
     private final DiagnosticFactory diagnosticFactory;
+    private final PipelineDecisionTracer tracer;
 
     /** Creates the classification stage. */
-    public ClassifyIndicatorsStage(MatchPolicy matchPolicy, DiagnosticFactory diagnosticFactory) {
+    public ClassifyIndicatorsStage(MatchPolicy matchPolicy,
+                                   DiagnosticFactory diagnosticFactory,
+                                   PipelineDecisionTracer tracer) {
         this.matchPolicy = Objects.requireNonNull(matchPolicy, "matchPolicy");
         this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
+        this.tracer = Objects.requireNonNull(tracer, "tracer");
     }
 
     @Override
@@ -48,10 +55,29 @@ public final class ClassifyIndicatorsStage implements Stage<DeduplicatedIndicato
                 diagnostics.add(unsupported(indicator));
                 continue;
             }
-            classified.add(new ClassifiedIndicator(indicator, classify(indicator)));
+            var decision = classify(indicator);
+            classified.add(new ClassifiedIndicator(indicator, decision));
+            trace(indicator, decision);
         }
         return input.withPayload(new RetainedIndicators(input.payload().extracted(), classified))
                 .withDiagnostics(diagnostics);
+    }
+
+    private void trace(Indicator indicator, ClassificationDecision decision) {
+        if (!tracer.isEnabled()) {
+            return;
+        }
+        String outcome = indicator.type().category() == IndicatorCategory.FILE
+                ? "not_applicable"
+                : decision.matchedRuleIndex() >= 0 ? "matched" : "unmatched";
+        var builder = PipelineItemDecision.builder(PipelineDecisionKind.CLASSIFICATION, outcome)
+                .item(indicator.type().name(), indicator.value());
+        if (decision.matchedRuleIndex() >= 0) {
+            builder.rule(Integer.toString(decision.matchedRuleIndex()))
+                    .pattern(String.join(",", decision.matchedPredicates()))
+                    .result("url=" + decision.match().urlMatch() + ",host=" + decision.match().hostMatch());
+        }
+        tracer.trace(builder.build());
     }
 
     private ClassificationDecision classify(Indicator indicator) {
