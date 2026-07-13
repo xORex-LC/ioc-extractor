@@ -20,7 +20,7 @@ artifacts directly.
 ## Зависимости
 
 **Зависит от:** `ioc-application`, platform errors/diagnostics/observability,
-Spring Integration file support, Spring Retry.
+Spring Integration file support.
 
 **Не импортируется:** domain internals, concrete CSV sink internals, bootstrap.
 
