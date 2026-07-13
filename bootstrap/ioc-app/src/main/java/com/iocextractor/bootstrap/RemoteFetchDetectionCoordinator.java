@@ -4,6 +4,7 @@ import com.iocextractor.application.port.in.sync.RemoteFetchCommand;
 import com.iocextractor.application.sync.RemoteChangeBatchDetected;
 import com.iocextractor.application.sync.RemoteFetchSource;
 import com.iocextractor.application.sync.RemoteSourceMonitor;
+import com.iocextractor.application.sync.RemoteTransportException;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
@@ -169,7 +170,9 @@ public final class RemoteFetchDetectionCoordinator implements RemoteFetchDetecti
         } catch (RuntimeException failure) {
             healthState.recordFetchDetectionFailure(
                     source.sourceId(), source.endpoint(), reason.name(), failure, elapsed(startedNanos));
-            logFailure(source, reason, failure);
+            if (!(failure instanceof RemoteTransportException)) {
+                logFailure(source, reason, failure);
+            }
         } finally {
             closeIdle(source);
             state.complete();

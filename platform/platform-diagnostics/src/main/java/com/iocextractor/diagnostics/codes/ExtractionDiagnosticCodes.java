@@ -9,8 +9,6 @@ import com.iocextractor.diagnostics.DiagnosticSeverity;
  * Diagnostic codes for IOC extraction.
  */
 public enum ExtractionDiagnosticCodes implements DiagnosticCode {
-    PATTERN_INVALID(DiagnosticSeverity.FATAL, DiagnosticImpact.RUN, "extraction.pattern-invalid",
-            "Extraction pattern {pattern} is invalid: {reason}"),
     INDICATOR_SKIPPED(DiagnosticSeverity.DEBUG, DiagnosticImpact.ELEMENT, "extraction.indicator-skipped",
             "Indicator {indicator} was skipped: {reason}"),
     AMBIGUOUS_VALUE(DiagnosticSeverity.WARN, DiagnosticImpact.ELEMENT, "extraction.ambiguous-value",

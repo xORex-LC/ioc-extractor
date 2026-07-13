@@ -224,7 +224,9 @@ class OnDemandExportIntegrationTest {
                         1, java.time.Duration.ofMillis(1), 1.0d,
                         java.time.Duration.ofMillis(1), false), ignored -> { }),
                 new CollectingDiagnosticSink(),
-                clock);
+                clock,
+                new com.iocextractor.application.sync.SyncDiagnosticReporter(
+                        new CollectingDiagnosticSink(), clock));
 
         assertThat(guard.canDelete(descriptor)).isFalse();
         var command = new com.iocextractor.application.port.in.sync.ArtifactPublishCommand(

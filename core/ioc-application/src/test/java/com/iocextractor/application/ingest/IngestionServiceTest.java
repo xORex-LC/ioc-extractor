@@ -24,6 +24,8 @@ import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
+import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
+import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
 import com.iocextractor.domain.extract.RawIndicator;
 import com.iocextractor.domain.extract.ExtractionOutcome;
@@ -210,14 +212,79 @@ class IngestionServiceTest {
 
         assertThatThrownBy(() -> service.ingest(new IngestSourceCommand(
                 Path.of("inbox/source.html"), key, Instant.parse("2026-06-22T00:00:00Z"))))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessage("ledger unavailable");
+                .isInstanceOfSatisfying(DiagnosticException.class, failure -> {
+                    assertThat(failure.diagnostic().code()).isEqualTo(IngestDiagnosticCodes.LEDGER_WRITE_FAILED);
+                    assertThat(failure).hasRootCauseMessage("ledger unavailable");
+                });
 
         assertThat(ledger.find(key)).get()
                 .extracting(IngestionRecord::status)
                 .isEqualTo(IngestionStatus.FAILED);
         assertThat(lifecycle.events).containsExactly("claim", "fail");
         assertThat(events.events()).isEmpty();
+    }
+
+    @Test
+    void physicalClaimFailureCarriesExactIngestDiagnosticForFinalRetryBoundary() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        lifecycle.claimFailure = new IllegalStateException("processing move failed");
+        var service = new IngestionService(
+                ledger, lifecycle, source -> new SourcePreparers(List.of()), extractionFactory());
+
+        assertThatThrownBy(() -> service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source.html"), key, Instant.parse("2026-06-22T00:00:00Z"))))
+                .isInstanceOfSatisfying(DiagnosticException.class, failure -> {
+                    assertThat(failure.diagnostic().code()).isEqualTo(IngestDiagnosticCodes.CLAIM_FAILED);
+                    assertThat(failure.diagnostic().context())
+                            .containsEntry("source", Path.of("inbox/source.html"));
+                    assertThat(failure).hasRootCauseMessage("processing move failed");
+                });
+    }
+
+    @Test
+    void recoveryFailureEmitsAfterRecoveryBoundaryAndRemainsTyped() {
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        lifecycle.findProcessingFailure = new IllegalStateException("processing scan failed");
+        var diagnostics = new CollectingDiagnosticSink();
+        var service = new IngestionService(
+                ledger, lifecycle, source -> new SourcePreparers(List.of()), extractionFactory(),
+                new MemoryRunLedger(), new CollectingProjection(),
+                new RecordingControlEventPublisher(), clock, diagnostics);
+
+        assertThatThrownBy(service::recoverIncomplete)
+                .isInstanceOfSatisfying(DiagnosticException.class, failure ->
+                        assertThat(failure.diagnostic().code()).isEqualTo(IngestDiagnosticCodes.RECOVERY_FAILED));
+
+        assertThat(diagnostics.diagnostics()).singleElement().satisfies(diagnostic -> {
+            assertThat(diagnostic.code()).isEqualTo(IngestDiagnosticCodes.RECOVERY_FAILED);
+            assertThat(diagnostic.context()).containsEntry("source", "recovery-scan");
+        });
+    }
+
+    @Test
+    void deadLetterFailureCarriesExactDiagnosticWithoutPretendingLedgerTransitionSucceeded() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.record = new IngestionRecord(key, IngestionStatus.CLAIMED,
+                Path.of("inbox/source.html"), Path.of("processing/source.html"), null,
+                Instant.EPOCH, Instant.EPOCH, null);
+        var lifecycle = new MemoryLifecycle();
+        lifecycle.failRecoveredFailure = new IllegalStateException("failed move unavailable");
+        var service = new IngestionService(
+                ledger, lifecycle, source -> new SourcePreparers(List.of()), extractionFactory());
+
+        assertThatThrownBy(() -> service.reject(key, "pipeline failed"))
+                .isInstanceOfSatisfying(DiagnosticException.class, failure -> {
+                    assertThat(failure.diagnostic().code()).isEqualTo(IngestDiagnosticCodes.DEAD_LETTER_FAILED);
+                    assertThat(failure).hasRootCauseMessage("failed move unavailable");
+                });
+
+        assertThat(ledger.find(key)).get()
+                .extracting(IngestionRecord::status)
+                .isEqualTo(IngestionStatus.CLAIMED);
     }
 
     @Test
@@ -456,10 +523,16 @@ class IngestionServiceTest {
     private static final class MemoryLifecycle implements SourceLifecycle {
         private final List<String> events = new ArrayList<>();
         private List<ArchivedSourceUnit> processingSources = List.of();
+        private RuntimeException claimFailure;
+        private RuntimeException findProcessingFailure;
+        private RuntimeException failRecoveredFailure;
 
         @Override
         public SourceUnit claim(Path source, SourceKey key, Instant detectedAt) {
             events.add("claim");
+            if (claimFailure != null) {
+                throw claimFailure;
+            }
             return new SourceUnit(key, source, Path.of("processing/" + source.getFileName()), detectedAt);
         }
 
@@ -490,11 +563,17 @@ class IngestionServiceTest {
         @Override
         public Path fail(ArchivedSourceUnit source, String reason) {
             events.add("failRecovered");
+            if (failRecoveredFailure != null) {
+                throw failRecoveredFailure;
+            }
             return Path.of("failed/" + source.processingPath().getFileName());
         }
 
         @Override
         public List<ArchivedSourceUnit> findProcessingSources() {
+            if (findProcessingFailure != null) {
+                throw findProcessingFailure;
+            }
             return processingSources;
         }
     }

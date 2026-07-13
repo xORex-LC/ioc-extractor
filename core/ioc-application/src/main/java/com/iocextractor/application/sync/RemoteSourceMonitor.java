@@ -24,6 +24,8 @@ public final class RemoteSourceMonitor {
     private final List<RemoteFetchSource> sources;
     private final int maxBatchSize;
     private final Clock clock;
+    private final Retrier retrier;
+    private final SyncDiagnosticReporter diagnosticReporter;
 
     /** Creates a monitor with a bounded event batch size. */
     public RemoteSourceMonitor(FileTransport transport,
@@ -31,7 +33,9 @@ public final class RemoteSourceMonitor {
                                RemoteFetchInFlightRegistry inFlight,
                                List<RemoteFetchSource> sources,
                                int maxBatchSize,
-                               Clock clock) {
+                               Clock clock,
+                               Retrier retrier,
+                               SyncDiagnosticReporter diagnosticReporter) {
         this.transport = Objects.requireNonNull(transport, "transport");
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.inFlight = Objects.requireNonNull(inFlight, "inFlight");
@@ -41,6 +45,8 @@ public final class RemoteSourceMonitor {
         }
         this.maxBatchSize = maxBatchSize;
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.retrier = Objects.requireNonNull(retrier, "retrier");
+        this.diagnosticReporter = Objects.requireNonNull(diagnosticReporter, "diagnosticReporter");
     }
 
     /** Detects fetchable identities for the command selection and returns control events. */
@@ -56,7 +62,7 @@ public final class RemoteSourceMonitor {
     private void detectSource(RemoteFetchSource source, List<RemoteChangeBatchDetected> events) {
         RemoteFetchSources.SourceMatchers matchers = RemoteFetchSources.compileMatchers(source);
         List<RemoteObject> batch = new ArrayList<>(maxBatchSize);
-        for (RemoteObject object : transport.list(source.endpoint(), source.remotePath())) {
+        for (RemoteObject object : list(source)) {
             if (!matchers.matches(object) || fetched(object) || inFlight.contains(object.identity())) {
                 continue;
             }
@@ -68,6 +74,15 @@ public final class RemoteSourceMonitor {
         }
         if (!batch.isEmpty()) {
             events.add(event(source, batch));
+        }
+    }
+
+    private List<RemoteObject> list(RemoteFetchSource source) {
+        try {
+            return retrier.execute(() -> transport.list(source.endpoint(), source.remotePath()));
+        } catch (RemoteTransportException failure) {
+            diagnosticReporter.report(failure, source.endpoint(), source.remotePath(), "detection");
+            throw failure;
         }
     }
 

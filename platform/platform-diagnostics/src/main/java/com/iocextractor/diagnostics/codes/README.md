@@ -13,10 +13,10 @@ pipeline orchestration.
 
 | Подпапка / файл | Назначение |
 |---|---|
-| `ConfigDiagnosticCodes.java` | Ошибки конфигурации |
 | `SourceDiagnosticCodes.java` | Ошибки чтения источника |
 | `ExtractionDiagnosticCodes.java` | Ошибки извлечения IOC |
 | `ClassificationDiagnosticCodes.java` | Ошибки классификации |
+| `IngestDiagnosticCodes.java` | Ошибки claim, durable ledger, dead-letter и recovery ingest lifecycle |
 | `SinkDiagnosticCodes.java` | Ошибки записи артефактов |
 | `StorageDiagnosticCodes.java` | Ошибки durable storage: миграции, импорт, identity |
 | `SchemaDiagnosticCodes.java` | Guardrail-коды сверки схемы storage |

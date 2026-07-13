@@ -23,3 +23,10 @@ artifacts directly.
 Spring Integration file support, Spring Retry.
 
 **Не импортируется:** domain internals, concrete CSV sink internals, bootstrap.
+
+## Инварианты
+
+- `FileSourceMessageHandler` владеет final retry boundary: после исчерпания
+  попыток он сначала выполняет reject/dead-letter transition, затем эмитит
+  один typed `INGEST.*` diagnostic.
+- Локальный error-log не дублирует canonical diagnostic delivery.

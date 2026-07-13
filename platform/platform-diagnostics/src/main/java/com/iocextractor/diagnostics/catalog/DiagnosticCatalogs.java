@@ -2,7 +2,6 @@ package com.iocextractor.diagnostics.catalog;
 
 import com.iocextractor.diagnostics.DiagnosticCode;
 import com.iocextractor.diagnostics.codes.ClassificationDiagnosticCodes;
-import com.iocextractor.diagnostics.codes.ConfigDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.ExtractionDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.ExportDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
@@ -22,7 +21,6 @@ import java.util.List;
 public final class DiagnosticCatalogs {
 
     private static final List<DiagnosticCode> ALL = List.copyOf(concat(
-            ConfigDiagnosticCodes.values(),
             SourceDiagnosticCodes.values(),
             ExtractionDiagnosticCodes.values(),
             ClassificationDiagnosticCodes.values(),

@@ -3,18 +3,22 @@ package com.iocextractor.application.sync;
 import com.iocextractor.application.port.in.sync.RemoteFetchCommand;
 import com.iocextractor.application.port.out.sync.FileTransport;
 import com.iocextractor.application.port.out.sync.RemoteFetchLedger;
+import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.diagnostics.codes.SyncDiagnosticCodes;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RemoteSourceMonitorTest {
 
@@ -64,7 +68,7 @@ class RemoteSourceMonitorTest {
         FakeTransport transport = new FakeTransport(List.of(object("/two/a.htm", 1)));
         RemoteSourceMonitor monitor = new RemoteSourceMonitor(
                 transport, new FakeLedger(), new RemoteFetchInFlightRegistry(),
-                List.of(one, two), 10, CLOCK);
+                List.of(one, two), 10, CLOCK, retrier(), reporter());
 
         List<RemoteChangeBatchDetected> events = monitor.detect(new RemoteFetchCommand(
                 Optional.of("two"), Optional.empty(), false));
@@ -82,7 +86,8 @@ class RemoteSourceMonitorTest {
         RemoteFetchInFlightRegistry inFlight = new RemoteFetchInFlightRegistry();
         RemoteSourceMonitor monitor = new RemoteSourceMonitor(
                 transport, new FakeLedger(), inFlight,
-                List.of(source("source", "endpoint", "/incoming")), 10, CLOCK);
+                List.of(source("source", "endpoint", "/incoming")), 10, CLOCK,
+                retrier(), reporter());
         List<RemoteChangeBatchDetected> first = monitor.detect(new RemoteFetchCommand(false));
         inFlight.claim(first.getFirst().objects());
 
@@ -95,11 +100,39 @@ class RemoteSourceMonitorTest {
                 .satisfies(event -> assertThat(event.objects()).containsExactly(object));
     }
 
+    @Test
+    void detectionEmitsOneFinalTransportDiagnostic() {
+        FakeTransport transport = new FakeTransport(List.of());
+        transport.listFailure = new RemoteTransportException(RemoteErrorKind.UNREACHABLE, "offline");
+        var sink = new CollectingDiagnosticSink();
+        var monitor = new RemoteSourceMonitor(
+                transport, new FakeLedger(), new RemoteFetchInFlightRegistry(),
+                List.of(source("source", "endpoint", "/incoming")), 10, CLOCK,
+                retrier(), new SyncDiagnosticReporter(sink, CLOCK));
+
+        assertThatThrownBy(() -> monitor.detect(new RemoteFetchCommand(false)))
+                .isSameAs(transport.listFailure);
+
+        assertThat(sink.diagnostics()).singleElement().satisfies(diagnostic -> {
+            assertThat(diagnostic.code()).isEqualTo(SyncDiagnosticCodes.ENDPOINT_UNREACHABLE);
+            assertThat(diagnostic.context()).containsEntry("operation", "detection");
+        });
+    }
+
     private RemoteSourceMonitor monitor(FakeTransport transport, FakeLedger ledger, int maxBatchSize) {
         return new RemoteSourceMonitor(
                 transport, ledger, new RemoteFetchInFlightRegistry(),
                 List.of(source("source", "endpoint", "/incoming")),
-                maxBatchSize, CLOCK);
+                maxBatchSize, CLOCK, retrier(), reporter());
+    }
+
+    private Retrier retrier() {
+        return new Retrier(new RetryPolicy(
+                1, Duration.ofMillis(1), 1.0d, Duration.ofMillis(1), false), ignored -> { });
+    }
+
+    private SyncDiagnosticReporter reporter() {
+        return new SyncDiagnosticReporter(new CollectingDiagnosticSink(), CLOCK);
     }
 
     private RemoteFetchSource source(String id, String endpoint, String remotePath) {
@@ -113,6 +146,7 @@ class RemoteSourceMonitorTest {
     private static final class FakeTransport implements FileTransport {
         private final List<RemoteObject> objects;
         private final java.util.ArrayList<String> listCalls = new java.util.ArrayList<>();
+        private RemoteTransportException listFailure;
 
         private FakeTransport(List<RemoteObject> objects) {
             this.objects = List.copyOf(objects);
@@ -121,6 +155,9 @@ class RemoteSourceMonitorTest {
         @Override
         public List<RemoteObject> list(String endpoint, String remotePath) {
             listCalls.add(endpoint + ":" + remotePath);
+            if (listFailure != null) {
+                throw listFailure;
+            }
             return objects;
         }
 

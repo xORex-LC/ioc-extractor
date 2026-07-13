@@ -140,7 +140,9 @@ class DaemonIngestE2ETest {
                 inbox,
                 new Retrier(new RetryPolicy(
                         1, Duration.ofMillis(1), 1.0d, Duration.ofMillis(1), false), ignored -> { }),
-                Clock.systemUTC());
+                Clock.systemUTC(),
+                new com.iocextractor.application.sync.SyncDiagnosticReporter(
+                        new com.iocextractor.diagnostics.sink.CollectingDiagnosticSink(), Clock.systemUTC()));
 
         var fetched = fetcher.fetch(new com.iocextractor.application.port.in.sync.RemoteFetchCommand(false));
         Path landed = inbox.resolve("remote-source.html");

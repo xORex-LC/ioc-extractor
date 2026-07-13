@@ -5,6 +5,10 @@ import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
 import com.iocextractor.application.port.in.ingest.IngestSourceResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
+import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.diagnostics.DiagnosticException;
+import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -34,7 +38,8 @@ class FileSourceMessageHandlerTest {
                 reject,
                 Clock.fixed(Instant.parse("2026-06-22T00:00:00Z"), ZoneOffset.UTC),
                 2,
-                Duration.ZERO);
+                Duration.ZERO,
+                new CollectingDiagnosticSink());
 
         assertThatThrownBy(() -> handler.handle(source.toFile()))
                 .hasMessageContaining("Source ingestion failed after retries");
@@ -42,6 +47,64 @@ class FileSourceMessageHandlerTest {
         assertThat(ingest.attempts).isEqualTo(2);
         assertThat(reject.key).isNotNull();
         assertThat(reject.reason).isEqualTo("boom");
+    }
+
+    @Test
+    void emitsTypedIngestDiagnosticOnceAfterRetriesAndRejection() throws Exception {
+        Path source = Files.writeString(tempDir.resolve("source.html"), "ioc");
+        var diagnostic = Diagnostic.builder(IngestDiagnosticCodes.CLAIM_FAILED,
+                        Clock.fixed(Instant.parse("2026-06-22T00:00:00Z"), ZoneOffset.UTC))
+                .with("source", source)
+                .with("reason", "claim failed")
+                .build();
+        var diagnostics = new CollectingDiagnosticSink();
+        var handler = new FileSourceMessageHandler(
+                new FileSourceHasher(),
+                command -> {
+                    throw new DiagnosticException(diagnostic);
+                },
+                (key, reason) -> { },
+                Clock.systemUTC(),
+                3,
+                Duration.ZERO,
+                diagnostics);
+
+        assertThatThrownBy(() -> handler.handle(source.toFile()))
+                .hasMessageContaining("Source ingestion failed after retries");
+
+        assertThat(diagnostics.diagnostics()).containsExactly(diagnostic);
+    }
+
+    @Test
+    void rejectionDiagnosticReplacesEarlierAttemptDiagnostic() throws Exception {
+        Path source = Files.writeString(tempDir.resolve("source.html"), "ioc");
+        Clock clock = Clock.fixed(Instant.parse("2026-06-22T00:00:00Z"), ZoneOffset.UTC);
+        var claimFailure = Diagnostic.builder(IngestDiagnosticCodes.CLAIM_FAILED, clock)
+                .with("source", source)
+                .with("reason", "claim failed")
+                .build();
+        var deadLetterFailure = Diagnostic.builder(IngestDiagnosticCodes.DEAD_LETTER_FAILED, clock)
+                .with("source", "ABC123")
+                .with("reason", "failed area unavailable")
+                .build();
+        var diagnostics = new CollectingDiagnosticSink();
+        var handler = new FileSourceMessageHandler(
+                new FileSourceHasher(),
+                command -> {
+                    throw new DiagnosticException(claimFailure);
+                },
+                (key, reason) -> {
+                    throw new DiagnosticException(deadLetterFailure);
+                },
+                clock,
+                2,
+                Duration.ZERO,
+                diagnostics);
+
+        assertThatThrownBy(() -> handler.handle(source.toFile()))
+                .hasCauseInstanceOf(DiagnosticException.class);
+
+        assertThat(diagnostics.diagnostics()).containsExactly(deadLetterFailure);
     }
 
     private static final class FailingIngestUseCase implements IngestSourceUseCase {

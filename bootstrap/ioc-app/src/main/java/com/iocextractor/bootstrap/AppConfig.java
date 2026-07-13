@@ -739,6 +739,7 @@ public class AppConfig {
                                              ObjectProvider<RunLedger> runLedger,
                                              ObjectProvider<ArtifactProjection> projection,
                                              ControlEventPublisher controlEventPublisher,
+                                             DiagnosticSink diagnosticSink,
                                              Clock clock) {
         return new IngestionService(
                 ledger,
@@ -748,7 +749,8 @@ public class AppConfig {
                 runLedger.getIfAvailable(NoopRunLedger::new),
                 projection.getIfAvailable(() -> NoopArtifactProjection.INSTANCE),
                 controlEventPublisher,
-                clock);
+                clock,
+                diagnosticSink);
     }
 
     @Bean

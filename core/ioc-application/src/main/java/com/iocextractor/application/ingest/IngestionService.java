@@ -17,6 +17,11 @@ import com.iocextractor.application.port.out.ingest.SourcePreparerFactory;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import com.iocextractor.platform.events.NoopControlEventPublisher;
+import com.iocextractor.diagnostics.DiagnosticException;
+import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
+import com.iocextractor.diagnostics.sink.DiagnosticSink;
+import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
 
 import java.nio.file.Path;
 import java.time.Clock;
@@ -39,6 +44,8 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     private final ArtifactProjection projection;
     private final ControlEventPublisher eventPublisher;
     private final Clock clock;
+    private final DiagnosticSink diagnosticSink;
+    private final DiagnosticFactory diagnostics;
 
     public IngestionService(IngestionLedger ledger,
                             SourceLifecycle sourceLifecycle,
@@ -55,7 +62,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                             RunLedger runLedger,
                             ArtifactProjection projection) {
         this(ledger, sourceLifecycle, sourcePreparerFactory, extractionFactory, runLedger, projection,
-                NoopControlEventPublisher.INSTANCE, Clock.systemUTC());
+                NoopControlEventPublisher.INSTANCE, Clock.systemUTC(), NoopDiagnosticSink.INSTANCE);
     }
 
     public IngestionService(IngestionLedger ledger,
@@ -66,6 +73,19 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                             ArtifactProjection projection,
                             ControlEventPublisher eventPublisher,
                             Clock clock) {
+        this(ledger, sourceLifecycle, sourcePreparerFactory, extractionFactory, runLedger, projection,
+                eventPublisher, clock, NoopDiagnosticSink.INSTANCE);
+    }
+
+    public IngestionService(IngestionLedger ledger,
+                            SourceLifecycle sourceLifecycle,
+                            SourcePreparerFactory sourcePreparerFactory,
+                            IocExtractionServiceFactory extractionFactory,
+                            RunLedger runLedger,
+                            ArtifactProjection projection,
+                            ControlEventPublisher eventPublisher,
+                            Clock clock,
+                            DiagnosticSink diagnosticSink) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.sourceLifecycle = Objects.requireNonNull(sourceLifecycle, "sourceLifecycle");
         this.sourcePreparerFactory = Objects.requireNonNull(sourcePreparerFactory, "sourcePreparerFactory");
@@ -74,6 +94,8 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         this.projection = Objects.requireNonNull(projection, "projection");
         this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
+        this.diagnostics = new DiagnosticFactory(clock);
     }
 
     @Override
@@ -84,31 +106,50 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
             return handleExisting(command, existing.get());
         }
 
-        SourceUnit unit = sourceLifecycle.claim(command.source(), command.key(), command.detectedAt());
+        SourceUnit unit = claim(command);
         try {
             ledger.markClaimed(unit);
         } catch (RuntimeException e) {
-            sourceLifecycle.fail(unit, e.getMessage());
-            ledger.markFailed(command.key(), e.getMessage());
-            throw e;
+            var failure = ledgerFailure(command.key(), "mark-claimed", e);
+            try {
+                sourceLifecycle.fail(unit, e.getMessage());
+            } catch (RuntimeException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            try {
+                ledger.markFailed(command.key(), e.getMessage());
+            } catch (RuntimeException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            throw failure;
         }
         return processClaimed(unit);
     }
 
     @Override
     public List<IngestSourceResult> recoverIncomplete() {
-        List<IngestSourceResult> results = new ArrayList<>();
-        for (IngestionRecord record : ledger.findIncomplete()) {
-            results.add(recover(record));
-        }
-        for (ArchivedSourceUnit orphan : sourceLifecycle.findProcessingSources()) {
-            if (ledger.find(orphan.key()).isEmpty()) {
-                sourceLifecycle.fail(orphan, "orphan processing source without ledger record");
-                ledger.markFailed(orphan.key(), "orphan processing source without ledger record");
-                results.add(new IngestSourceResult(orphan.key(), IngestionStatus.FAILED, false, null));
+        try {
+            List<IngestSourceResult> results = new ArrayList<>();
+            for (IngestionRecord record : ledger.findIncomplete()) {
+                try {
+                    results.add(recover(record));
+                } catch (RuntimeException failure) {
+                    if (isRecoveryFailure(failure)) {
+                        throw failure;
+                    }
+                    throw recoveryFailure(record.key(), failure);
+                }
             }
+            for (ArchivedSourceUnit orphan : sourceLifecycle.findProcessingSources()) {
+                recoverOrphan(orphan, results);
+            }
+            return results;
+        } catch (RuntimeException failure) {
+            if (!isRecoveryFailure(failure)) {
+                throw recoveryFailure(new SourceKey("recovery-scan"), failure);
+            }
+            throw failure;
         }
-        return results;
     }
 
     @Override
@@ -116,9 +157,21 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         Objects.requireNonNull(key, "key");
         var record = ledger.find(key);
         if (record.isPresent()) {
-            failRecord(record.get(), reason);
+            try {
+                failRecord(record.get(), reason);
+            } catch (RuntimeException failure) {
+                throw new DiagnosticException(diagnostics.create(IngestDiagnosticCodes.DEAD_LETTER_FAILED)
+                        .with("source", key.value())
+                        .with("reason", reason(failure))
+                        .cause(failure)
+                        .build());
+            }
         }
-        ledger.markFailed(key, reason);
+        try {
+            ledger.markFailed(key, reason);
+        } catch (RuntimeException failure) {
+            throw ledgerFailure(key, "mark-failed", failure);
+        }
     }
 
     private IngestSourceResult handleExisting(IngestSourceCommand command, IngestionRecord record) {
@@ -130,6 +183,62 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
             return new IngestSourceResult(command.key(), IngestionStatus.FAILED, false, null);
         }
         return recover(record);
+    }
+
+    private SourceUnit claim(IngestSourceCommand command) {
+        try {
+            return sourceLifecycle.claim(command.source(), command.key(), command.detectedAt());
+        } catch (RuntimeException failure) {
+            throw new DiagnosticException(diagnostics.create(IngestDiagnosticCodes.CLAIM_FAILED)
+                    .with("source", command.source())
+                    .with("reason", reason(failure))
+                    .cause(failure)
+                    .build());
+        }
+    }
+
+    private void recoverOrphan(ArchivedSourceUnit orphan, List<IngestSourceResult> results) {
+        if (ledger.find(orphan.key()).isPresent()) {
+            return;
+        }
+        try {
+            String reason = "orphan processing source without ledger record";
+            sourceLifecycle.fail(orphan, reason);
+            ledger.markFailed(orphan.key(), reason);
+            results.add(new IngestSourceResult(orphan.key(), IngestionStatus.FAILED, false, null));
+        } catch (RuntimeException failure) {
+            throw recoveryFailure(orphan.key(), failure);
+        }
+    }
+
+    private DiagnosticException ledgerFailure(SourceKey key, String operation, RuntimeException failure) {
+        return new DiagnosticException(diagnostics.create(IngestDiagnosticCodes.LEDGER_WRITE_FAILED)
+                .with("source", key.value())
+                .with("operation", operation)
+                .with("reason", reason(failure))
+                .cause(failure)
+                .build());
+    }
+
+    private DiagnosticException recoveryFailure(SourceKey key, RuntimeException failure) {
+        var diagnostic = diagnostics.create(IngestDiagnosticCodes.RECOVERY_FAILED)
+                .with("source", key.value())
+                .with("reason", reason(failure))
+                .cause(failure)
+                .build();
+        diagnosticSink.emit(diagnostic);
+        return new DiagnosticException(diagnostic);
+    }
+
+    private boolean isRecoveryFailure(RuntimeException failure) {
+        return failure instanceof DiagnosticException diagnosticFailure
+                && diagnosticFailure.diagnostic().code() == IngestDiagnosticCodes.RECOVERY_FAILED;
+    }
+
+    private String reason(RuntimeException failure) {
+        return failure.getMessage() == null || failure.getMessage().isBlank()
+                ? failure.getClass().getSimpleName()
+                : failure.getMessage();
     }
 
     private IngestSourceResult recover(IngestionRecord record) {

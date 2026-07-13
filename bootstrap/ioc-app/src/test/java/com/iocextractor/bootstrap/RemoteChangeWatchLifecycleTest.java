@@ -14,6 +14,10 @@ import com.iocextractor.application.sync.RemoteFetchSource;
 import com.iocextractor.application.sync.RemoteObject;
 import com.iocextractor.application.sync.RemoteObjectIdentity;
 import com.iocextractor.application.sync.RemoteSourceMonitor;
+import com.iocextractor.application.sync.Retrier;
+import com.iocextractor.application.sync.RetryPolicy;
+import com.iocextractor.application.sync.SyncDiagnosticReporter;
+import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import com.iocextractor.platform.events.RecordingControlEventPublisher;
 import org.junit.jupiter.api.Test;
 
@@ -79,7 +83,10 @@ class RemoteChangeWatchLifecycleTest {
         return new RemoteFetchDetectionCoordinator(
                 List.of(source),
                 new RemoteSourceMonitor(transport, new FakeLedger(), new RemoteFetchInFlightRegistry(),
-                        List.of(source), 10, CLOCK),
+                        List.of(source), 10, CLOCK,
+                        new Retrier(new RetryPolicy(
+                                1, Duration.ofMillis(1), 1.0d, Duration.ofMillis(1), false), ignored -> { }),
+                        new SyncDiagnosticReporter(new CollectingDiagnosticSink(), CLOCK)),
                 new RecordingControlEventPublisher(),
                 new TransportRegistry(List.of(new TransportRegistry.Binding(
                         "primary", transport, transport::closeIdle, transport))),

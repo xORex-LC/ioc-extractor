@@ -4,6 +4,8 @@ import com.iocextractor.application.port.in.sync.FetchRemoteObjectsCommand;
 import com.iocextractor.application.port.in.sync.RemoteFetchCommand;
 import com.iocextractor.application.port.out.sync.FileTransport;
 import com.iocextractor.application.port.out.sync.RemoteFetchLedger;
+import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.diagnostics.codes.SyncDiagnosticCodes;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -58,6 +60,47 @@ class RemoteFetchServiceTest {
         assertThat(stagingFiles()).isEmpty();
         assertThat(ledger.find(object.identity()))
                 .hasValueSatisfying(record -> assertThat(record.status()).isEqualTo(RemoteFetchStatus.FAILED));
+    }
+
+    @Test
+    void emitsFinalTransportDiagnosticOnlyAfterFailedLedgerTransition() {
+        RemoteObject object = object("/share/a.htm", 10);
+        FakeTransport transport = new FakeTransport(List.of(object));
+        transport.failGet = true;
+        FakeLedger ledger = new FakeLedger();
+        var sink = new CollectingDiagnosticSink();
+        var service = service(transport, ledger, source(), sink);
+
+        var result = service.fetch(new RemoteFetchCommand(false));
+
+        assertThat(result.failed()).isOne();
+        assertThat(ledger.find(object.identity()))
+                .hasValueSatisfying(record -> assertThat(record.status()).isEqualTo(RemoteFetchStatus.FAILED));
+        assertThat(sink.diagnostics()).singleElement().satisfies(diagnostic -> {
+            assertThat(diagnostic.code()).isEqualTo(SyncDiagnosticCodes.TRANSPORT_TRANSIENT);
+            assertThat(diagnostic.context()).containsEntry("operation", "fetch")
+                    .containsEntry("path", "/share/a.htm");
+        });
+    }
+
+    @Test
+    void listingRetriesBeforeEmittingOneFinalDiagnostic() {
+        FakeTransport transport = new FakeTransport(List.of());
+        transport.listFailure = new RemoteTransportException(RemoteErrorKind.TRANSIENT, "listing failed");
+        var sink = new CollectingDiagnosticSink();
+        var service = new RemoteFetchService(
+                transport, new FakeLedger(), List.of(source()), tempDir,
+                new Retrier(new RetryPolicy(
+                        2, Duration.ofMillis(1), 1.0d, Duration.ofMillis(1), false), ignored -> { }),
+                CLOCK, new SyncDiagnosticReporter(sink, CLOCK));
+
+        assertThatThrownBy(() -> service.fetch(new RemoteFetchCommand(false)))
+                .isSameAs(transport.listFailure);
+
+        assertThat(transport.listCalls).hasSize(2);
+        assertThat(sink.diagnostics()).singleElement()
+                .satisfies(diagnostic -> assertThat(diagnostic.code())
+                        .isEqualTo(SyncDiagnosticCodes.TRANSPORT_TRANSIENT));
     }
 
     @Test
@@ -130,7 +173,8 @@ class RemoteFetchServiceTest {
         var service = new RemoteFetchService(
                 transport, ledger, sources, tempDir,
                 new Retrier(new RetryPolicy(1, Duration.ofMillis(1), 1.0d,
-                        Duration.ofMillis(1), false), ignored -> { }), CLOCK);
+                        Duration.ofMillis(1), false), ignored -> { }), CLOCK,
+                reporter());
 
         var result = service.fetch(new RemoteFetchCommand(Optional.of("two"), false));
 
@@ -149,7 +193,8 @@ class RemoteFetchServiceTest {
         var service = new RemoteFetchService(
                 transport, ledger, sources, tempDir,
                 new Retrier(new RetryPolicy(1, Duration.ofMillis(1), 1.0d,
-                        Duration.ofMillis(1), false), ignored -> { }), CLOCK);
+                        Duration.ofMillis(1), false), ignored -> { }), CLOCK,
+                reporter());
 
         var result = service.fetch(new RemoteFetchCommand(
                 Optional.empty(), Optional.of("endpoint-one"), false));
@@ -190,11 +235,22 @@ class RemoteFetchServiceTest {
     }
 
     private RemoteFetchService service(FakeTransport transport, FakeLedger ledger) {
-        return service(transport, ledger, new RemoteFetchSource(
-                "src", "endpoint", "/share", List.of("*"), List.of("*.part", ".*")));
+        return service(transport, ledger, source());
+    }
+
+    private RemoteFetchSource source() {
+        return new RemoteFetchSource(
+                "src", "endpoint", "/share", List.of("*"), List.of("*.part", ".*"));
     }
 
     private RemoteFetchService service(FakeTransport transport, FakeLedger ledger, RemoteFetchSource source) {
+        return service(transport, ledger, source, new CollectingDiagnosticSink());
+    }
+
+    private RemoteFetchService service(FakeTransport transport,
+                                       FakeLedger ledger,
+                                       RemoteFetchSource source,
+                                       CollectingDiagnosticSink sink) {
         return new RemoteFetchService(
                 transport,
                 ledger,
@@ -202,7 +258,12 @@ class RemoteFetchServiceTest {
                 tempDir,
                 new Retrier(new RetryPolicy(1, Duration.ofMillis(1), 1.0d,
                         Duration.ofMillis(1), false), ignored -> { }),
-                CLOCK);
+                CLOCK,
+                new SyncDiagnosticReporter(sink, CLOCK));
+    }
+
+    private SyncDiagnosticReporter reporter() {
+        return new SyncDiagnosticReporter(new CollectingDiagnosticSink(), CLOCK);
     }
 
     private RemoteObject object(String path, long size) {
@@ -229,6 +290,7 @@ class RemoteFetchServiceTest {
         private boolean failGet;
         private boolean writeThenFail;
         private RuntimeException unexpectedGetFailure;
+        private RemoteTransportException listFailure;
 
         private FakeTransport(List<RemoteObject> objects) {
             this.objects = List.copyOf(objects);
@@ -237,6 +299,9 @@ class RemoteFetchServiceTest {
         @Override
         public List<RemoteObject> list(String endpoint, String remotePath) {
             listCalls.add(endpoint + ":" + remotePath);
+            if (listFailure != null) {
+                throw listFailure;
+            }
             return objects;
         }
 

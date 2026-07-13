@@ -35,6 +35,10 @@ SQLite/JDBC, CSV projection implementation или logging. Все внешние
   consumers делают claim-check и читают durable revision сами.
 - Failure `ControlEventPublisher` не влияет на итог ingest. Событие является
   latency hint; correctness остаётся за durable ledgers и downstream poll/backstop.
+- Claim, ledger и dead-letter failures возвращаются как typed `INGEST.*` carriers;
+  final retry boundary эмитит occurrence ровно один раз.
+- Startup recovery сама владеет `INGEST.RECOVERY_FAILED`, потому что над ней нет
+  message-handler retry boundary. Diagnostic не подменяет ledger/file transition.
 
 ## Границы ответственности
 

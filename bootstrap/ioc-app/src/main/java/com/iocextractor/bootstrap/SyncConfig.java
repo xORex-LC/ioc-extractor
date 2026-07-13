@@ -23,6 +23,7 @@ import com.iocextractor.application.sync.RemoteFetchSource;
 import com.iocextractor.application.sync.RemoteSourceMonitor;
 import com.iocextractor.application.sync.Retrier;
 import com.iocextractor.application.sync.RetryPolicy;
+import com.iocextractor.application.sync.SyncDiagnosticReporter;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.platform.concurrent.BoundedKeyedSerialExecutor;
@@ -118,6 +119,12 @@ public class SyncConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "ioc.sync", name = "enabled", havingValue = "true")
+    public SyncDiagnosticReporter syncDiagnosticReporter(DiagnosticSink diagnostics, Clock clock) {
+        return new SyncDiagnosticReporter(diagnostics, clock);
+    }
+
+    @Bean
     @Lazy
     @ConditionalOnExpression("'${ioc.sync.enabled:false}' == 'true' && "
             + "'${ioc.sync.fetch.enabled:false}' == 'true' && "
@@ -126,11 +133,12 @@ public class SyncConfig {
             TransportRegistry transports,
             RemoteFetchLedger ledger,
             Retrier syncRetrier,
+            SyncDiagnosticReporter diagnosticReporter,
             IocProperties props,
             Clock clock) {
         return new RemoteFetchService(
                 transports, ledger, fetchSources(props), Path.of(props.ingestion().dirs().inbox()),
-                syncRetrier, clock);
+                syncRetrier, clock, diagnosticReporter);
     }
 
     @Bean
@@ -142,10 +150,13 @@ public class SyncConfig {
             TransportRegistry transports,
             RemoteFetchLedger ledger,
             RemoteFetchInFlightRegistry inFlight,
+            Retrier syncRetrier,
+            SyncDiagnosticReporter diagnosticReporter,
             IocProperties props,
             Clock clock) {
         return new RemoteSourceMonitor(
-                transports, ledger, inFlight, fetchSources(props), DEFAULT_FETCH_BATCH_SIZE, clock);
+                transports, ledger, inFlight, fetchSources(props), DEFAULT_FETCH_BATCH_SIZE,
+                clock, syncRetrier, diagnosticReporter);
     }
 
     @Bean(destroyMethod = "close")
@@ -183,10 +194,12 @@ public class SyncConfig {
             TransportRegistry transports,
             Retrier syncRetrier,
             DiagnosticSink diagnostics,
+            SyncDiagnosticReporter diagnosticReporter,
             IocProperties props,
             Clock clock) {
         return new ArtifactPublishService(
-                catalog, ledger, transports, publishTargets(props), syncRetrier, diagnostics, clock);
+                catalog, ledger, transports, publishTargets(props), syncRetrier, diagnostics,
+                clock, diagnosticReporter);
     }
 
     @Bean

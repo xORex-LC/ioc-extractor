@@ -4,6 +4,9 @@ import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
 import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.diagnostics.DiagnosticCategory;
+import com.iocextractor.diagnostics.DiagnosticException;
+import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
@@ -32,19 +35,22 @@ public final class FileSourceMessageHandler {
     private final Clock clock;
     private final int maxAttempts;
     private final Duration backoff;
+    private final DiagnosticSink diagnosticSink;
 
     public FileSourceMessageHandler(FileSourceHasher hasher,
                                     IngestSourceUseCase useCase,
                                     RejectIngestionUseCase rejectUseCase,
                                     Clock clock,
                                     int maxAttempts,
-                                    Duration backoff) {
+                                    Duration backoff,
+                                    DiagnosticSink diagnosticSink) {
         this.hasher = Objects.requireNonNull(hasher, "hasher");
         this.useCase = Objects.requireNonNull(useCase, "useCase");
         this.rejectUseCase = Objects.requireNonNull(rejectUseCase, "rejectUseCase");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.maxAttempts = Math.max(1, maxAttempts);
         this.backoff = backoff == null ? Duration.ZERO : backoff;
+        this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
     }
 
     public void handle(File file) {
@@ -69,15 +75,24 @@ public final class FileSourceMessageHandler {
                 }
             }
         }
-        LogEvents.error(log)
-                .action(EventAction.SOURCE_READ)
-                .outcome(EventOutcome.FAILURE)
-                .field(LogField.FILE_PATH, source)
-                .field(LogField.IOC_SOURCE_CONTENT_HASH, key.value())
-                .message("source ingestion failed")
-                .log(last);
-        rejectUseCase.reject(key, last == null ? "source ingestion failed" : last.getMessage());
-        throw new IocExtractorException("Source ingestion failed after retries: " + source, last);
+        RuntimeException terminal = last;
+        try {
+            rejectUseCase.reject(key, last == null ? "source ingestion failed" : last.getMessage());
+        } catch (RuntimeException rejectionFailure) {
+            if (last != null) {
+                rejectionFailure.addSuppressed(last);
+            }
+            terminal = rejectionFailure;
+        }
+        emitIngestDiagnostic(terminal);
+        throw new IocExtractorException("Source ingestion failed after retries: " + source, terminal);
+    }
+
+    private void emitIngestDiagnostic(RuntimeException failure) {
+        if (failure instanceof DiagnosticException diagnosticFailure
+                && diagnosticFailure.diagnostic().category() == DiagnosticCategory.INGEST) {
+            diagnosticSink.emit(diagnosticFailure.diagnostic());
+        }
     }
 
     private void sleep() {

@@ -60,10 +60,11 @@ public class IngestFlowConfiguration {
     public FileSourceMessageHandler fileSourceMessageHandler(FileSourceHasher hasher,
                                                              IngestSourceUseCase useCase,
                                                              RejectIngestionUseCase rejectUseCase,
+                                                             com.iocextractor.diagnostics.sink.DiagnosticSink diagnosticSink,
                                                              IngestAdapterProperties properties,
                                                              Clock ingestClock) {
         return new FileSourceMessageHandler(hasher, useCase, rejectUseCase, ingestClock,
-                properties.retry().maxAttempts(), properties.retry().backoff());
+                properties.retry().maxAttempts(), properties.retry().backoff(), diagnosticSink);
     }
 
     @Bean

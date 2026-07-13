@@ -12,6 +12,10 @@ import com.iocextractor.application.sync.RemoteFetchStatus;
 import com.iocextractor.application.sync.RemoteObject;
 import com.iocextractor.application.sync.RemoteObjectIdentity;
 import com.iocextractor.application.sync.RemoteSourceMonitor;
+import com.iocextractor.application.sync.Retrier;
+import com.iocextractor.application.sync.RetryPolicy;
+import com.iocextractor.application.sync.SyncDiagnosticReporter;
+import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import com.iocextractor.platform.events.RecordingControlEventPublisher;
 import org.junit.jupiter.api.Test;
@@ -171,7 +175,7 @@ class RemoteFetchDetectionCoordinatorTest {
         try (RemoteFetchDetectionCoordinator coordinator = new RemoteFetchDetectionCoordinator(
                 List.of(source("one")),
                 new RemoteSourceMonitor(transport, new FakeLedger(), new RemoteFetchInFlightRegistry(),
-                        List.of(source("one")), 10, CLOCK),
+                        List.of(source("one")), 10, CLOCK, retrier(), reporter()),
                 new RecordingControlEventPublisher(),
                 registry(() -> { }),
                 healthState,
@@ -204,7 +208,7 @@ class RemoteFetchDetectionCoordinatorTest {
         return new RemoteFetchDetectionCoordinator(
                 configuredSources,
                 new RemoteSourceMonitor(transport, new FakeLedger(), new RemoteFetchInFlightRegistry(),
-                        configuredSources, 10, CLOCK),
+                        configuredSources, 10, CLOCK, retrier(), reporter()),
                 publisher,
                 registry(closeIdle),
                 healthState,
@@ -217,6 +221,15 @@ class RemoteFetchDetectionCoordinatorTest {
         FakeTransport transport = new FakeTransport();
         return new TransportRegistry(List.of(new TransportRegistry.Binding(
                 "endpoint-one", transport, idleMaintenance, () -> { })));
+    }
+
+    private Retrier retrier() {
+        return new Retrier(new RetryPolicy(
+                1, Duration.ofMillis(1), 1.0d, Duration.ofMillis(1), false), ignored -> { });
+    }
+
+    private SyncDiagnosticReporter reporter() {
+        return new SyncDiagnosticReporter(new CollectingDiagnosticSink(), CLOCK);
     }
 
     private RemoteFetchSource source(String id) {

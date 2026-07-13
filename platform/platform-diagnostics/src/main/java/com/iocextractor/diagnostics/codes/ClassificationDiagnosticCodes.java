@@ -9,8 +9,6 @@ import com.iocextractor.diagnostics.DiagnosticSeverity;
  * Diagnostic codes for indicator classification.
  */
 public enum ClassificationDiagnosticCodes implements DiagnosticCode {
-    AMBIGUOUS_MATCH(DiagnosticSeverity.WARN, DiagnosticImpact.ELEMENT, "classify.ambiguous-match",
-            "Indicator {indicator} matched multiple classification rules: {candidates}"),
     UNSUPPORTED_INDICATOR_TYPE(DiagnosticSeverity.ERROR, DiagnosticImpact.ELEMENT, "classify.unsupported-indicator-type",
             "Indicator type {type} is not supported by classifier {classifier}");
 

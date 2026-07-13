@@ -36,6 +36,7 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
     private final Retrier retrier;
     private final DiagnosticSink diagnostics;
     private final Clock clock;
+    private final SyncDiagnosticReporter diagnosticReporter;
 
     /** Creates a framework-free publish saga use case. */
     public ArtifactPublishService(CompletedSliceCatalog sliceCatalog,
@@ -44,7 +45,8 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
                                   List<PublishTarget> targets,
                                   Retrier retrier,
                                   DiagnosticSink diagnostics,
-                                  Clock clock) {
+                                  Clock clock,
+                                  SyncDiagnosticReporter diagnosticReporter) {
         this.sliceCatalog = Objects.requireNonNull(sliceCatalog, "sliceCatalog");
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.transport = Objects.requireNonNull(transport, "transport");
@@ -52,6 +54,7 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
         this.retrier = Objects.requireNonNull(retrier, "retrier");
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.diagnosticReporter = Objects.requireNonNull(diagnosticReporter, "diagnosticReporter");
     }
 
     @Override
@@ -188,19 +191,18 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
         try {
             found = sliceCatalog.find(record.profile(), record.sliceName());
         } catch (RuntimeException failure) {
-            counters.failed++;
+            PublishRecord inProgress = moveToInProgress(record);
+            markFailed(inProgress, failureReason(failure.getMessage()), null, counters);
             return Optional.empty();
         }
         if (found.isEmpty()) {
-            emitLocalSliceInvalid(record, "local slice is missing");
-            counters.failed++;
+            failInvalidLocalSlice(record, "local slice is missing", counters);
             return Optional.empty();
         }
         CompletedSlice slice = found.orElseThrow();
         if (!slice.sliceId().equals(record.sliceId())
                 || !slice.manifestSha256().equals(record.manifestSha256())) {
-            emitLocalSliceInvalid(record, "local slice no longer matches publish ledger binding");
-            counters.failed++;
+            failInvalidLocalSlice(record, "local slice no longer matches publish ledger binding", counters);
             return Optional.empty();
         }
         return Optional.of(slice);
@@ -309,8 +311,12 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
         PublishRecord inProgress = moveToInProgress(record);
         RemoteMarker marker;
         try {
-            marker = readRemoteMarker(inProgress);
-        } catch (RemoteTransportException | IllegalStateException failure) {
+            marker = retrier.execute(() -> readRemoteMarker(inProgress));
+        } catch (RemoteTransportException failure) {
+            markFailed(inProgress, failure.getMessage(), null, counters);
+            diagnosticReporter.report(failure, inProgress.endpoint(), inProgress.remotePath(), "publish-marker-read");
+            return;
+        } catch (IllegalStateException failure) {
             markFailed(inProgress, failure.getMessage(), null, counters);
             return;
         }
@@ -332,8 +338,8 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
             return;
         }
         String reason = "remote _SUCCESS mismatch";
-        emitPublishVerifyFailed(record, reason);
         markFailed(record, reason, marker.content(), counters);
+        emitPublishVerifyFailed(record, reason);
     }
 
     private void publishNewSlice(PublishRecord record,
@@ -346,6 +352,10 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
                             record.endpoint(), record.remotePath(), slice.directory(), SUCCESS_MARKER)));
         } catch (RemoteTransportException | IllegalStateException failure) {
             markFailed(record, failure.getMessage(), null, counters);
+            if (failure instanceof RemoteTransportException transportFailure) {
+                diagnosticReporter.report(
+                        transportFailure, record.endpoint(), record.remotePath(), "publish");
+            }
             return;
         }
         markSucceeded(record, receipt.verification(), counters);
@@ -414,6 +424,14 @@ public final class ArtifactPublishService implements ArtifactPublishUseCase {
                 .with("targetId", record.targetId())
                 .with("reason", reason);
         diagnostics.emit(builder.build());
+    }
+
+    private void failInvalidLocalSlice(PublishRecord record,
+                                       String reason,
+                                       ExecutionCounters counters) {
+        PublishRecord inProgress = moveToInProgress(record);
+        markFailed(inProgress, reason, null, counters);
+        emitLocalSliceInvalid(inProgress, reason);
     }
 
     private static final class LedgerCounters {

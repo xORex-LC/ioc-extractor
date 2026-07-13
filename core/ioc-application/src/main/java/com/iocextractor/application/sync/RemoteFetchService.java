@@ -34,6 +34,7 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
     private final Path inbox;
     private final Retrier retrier;
     private final Clock clock;
+    private final SyncDiagnosticReporter diagnosticReporter;
 
     /** Creates a framework-free read-only remote fetch use case. */
     public RemoteFetchService(FileTransport transport,
@@ -41,13 +42,15 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
                               List<RemoteFetchSource> sources,
                               Path inbox,
                               Retrier retrier,
-                              Clock clock) {
+                              Clock clock,
+                              SyncDiagnosticReporter diagnosticReporter) {
         this.transport = Objects.requireNonNull(transport, "transport");
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
         this.inbox = Objects.requireNonNull(inbox, "inbox").toAbsolutePath().normalize();
         this.retrier = Objects.requireNonNull(retrier, "retrier");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.diagnosticReporter = Objects.requireNonNull(diagnosticReporter, "diagnosticReporter");
     }
 
     @Override
@@ -56,7 +59,7 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
         FetchCounters counters = new FetchCounters();
         for (RemoteFetchSource source : RemoteFetchSources.selected(sources, command)) {
             RemoteFetchSources.SourceMatchers matchers = RemoteFetchSources.compileMatchers(source);
-            for (RemoteObject object : transport.list(source.endpoint(), source.remotePath())) {
+            for (RemoteObject object : list(source)) {
                 if (!matchers.matches(object)) {
                     counters.skipped++;
                     continue;
@@ -106,15 +109,25 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
             ledger.markFetched(identity, finalPath.toString(), clock.instant());
             counters.fetched++;
         } catch (RemoteTransportException failure) {
-            cleanup(staging);
+            cleanup(staging, failure);
             ledger.markFailed(identity, failure.getMessage(), clock.instant());
+            diagnosticReporter.report(failure, source.endpoint(), object.path(), "fetch");
             counters.failed++;
         } catch (IOException | UncheckedIOException failure) {
-            cleanup(staging);
+            cleanup(staging, failure);
             ledger.markFailed(identity, failure.getMessage(), clock.instant());
             counters.failed++;
         } catch (RuntimeException failure) {
-            cleanup(staging);
+            cleanup(staging, failure);
+            throw failure;
+        }
+    }
+
+    private List<RemoteObject> list(RemoteFetchSource source) {
+        try {
+            return retrier.execute(() -> transport.list(source.endpoint(), source.remotePath()));
+        } catch (RemoteTransportException failure) {
+            diagnosticReporter.report(failure, source.endpoint(), source.remotePath(), "listing");
             throw failure;
         }
     }
@@ -187,14 +200,15 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
         }
     }
 
-    private void cleanup(Path staging) {
+    private void cleanup(Path staging, Throwable originalFailure) {
         if (staging == null) {
             return;
         }
         try {
             Files.deleteIfExists(staging);
         } catch (IOException e) {
-            throw new UncheckedIOException("Failed to cleanup remote fetch staging file", e);
+            originalFailure.addSuppressed(new UncheckedIOException(
+                    "Failed to cleanup remote fetch staging file", e));
         }
     }
 

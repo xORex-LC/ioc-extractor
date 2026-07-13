@@ -25,26 +25,8 @@ import static java.util.stream.Collectors.toMap;
  */
 class CatalogReferenceRatchetTest {
 
-    /**
-     * Known unreferenced diagnostic contracts that OBS-D1 will burn down.
-     * Config codes are deliberately retained here until the D1 catalog review
-     * decides whether ADR 0016 made them obsolete.
-     */
-    private static final Set<String> ALLOWED_UNREFERENCED_DIAGNOSTIC_IDS = Set.of(
-            "CLASSIFY.AMBIGUOUS_MATCH",
-            "CONFIG.INVALID_PROPERTY",
-            "CONFIG.UNKNOWN_POLICY",
-            "EXTRACTION.PATTERN_INVALID",
-            "INGEST.CLAIM_FAILED",
-            "INGEST.LEDGER_WRITE_FAILED",
-            "INGEST.RECOVERY_FAILED",
-            "SYNC.AUTH_FAILED",
-            "SYNC.CREDENTIAL_MISSING",
-            "SYNC.ENDPOINT_UNKNOWN",
-            "SYNC.ENDPOINT_UNREACHABLE",
-            "SYNC.PERMISSION_DENIED",
-            "SYNC.REMOTE_NOT_FOUND",
-            "SYNC.TRANSPORT_TRANSIENT");
+    /** OBS-D1 completed producer migration: every retained catalog constant is live. */
+    private static final Set<String> ALLOWED_UNREFERENCED_DIAGNOSTIC_IDS = Set.of();
 
     @Test
     void every_catalog_constant_is_referenced_or_explicitly_allowlisted() {

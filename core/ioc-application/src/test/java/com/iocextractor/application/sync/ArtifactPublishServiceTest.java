@@ -227,8 +227,9 @@ class ArtifactPublishServiceTest {
         FakeTransport transport = new FakeTransport();
         transport.failPublishForEndpoint = "endpoint-a";
 
+        var diagnostics = diagnostics();
         var result = publishAfterReconcile(
-                service(catalog(slice), ledger, transport, targets("reputation"), diagnostics()),
+                service(catalog(slice), ledger, transport, targets("reputation"), diagnostics),
                 new ArtifactPublishCommand(Optional.of("reputation"), false));
 
         assertThat(result.succeeded()).isEqualTo(1);
@@ -237,6 +238,11 @@ class ArtifactPublishServiceTest {
                 assertThat(record.status()).isEqualTo(PublishStatus.FAILED));
         assertThat(ledger.find("slice-one", "target-b")).hasValueSatisfying(record ->
                 assertThat(record.status()).isEqualTo(PublishStatus.SUCCEEDED));
+        assertThat(diagnostics.diagnostics()).singleElement().satisfies(diagnostic -> {
+            assertThat(diagnostic.code()).isEqualTo(SyncDiagnosticCodes.TRANSPORT_TRANSIENT);
+            assertThat(diagnostic.context()).containsEntry("endpoint", "endpoint-a")
+                    .containsEntry("operation", "publish");
+        });
     }
 
     @Test
@@ -330,6 +336,8 @@ class ArtifactPublishServiceTest {
 
         assertThat(result.attempted()).isOne();
         assertThat(result.failed()).isOne();
+        assertThat(ledger.find("slice-one", "target-a"))
+                .hasValueSatisfying(record -> assertThat(record.status()).isEqualTo(PublishStatus.FAILED));
         assertThat(diagnostics.diagnostics())
                 .singleElement()
                 .satisfies(diagnostic -> assertThat(diagnostic.code())
@@ -366,7 +374,8 @@ class ArtifactPublishServiceTest {
                 new Retrier(new RetryPolicy(1, java.time.Duration.ofMillis(1), 1.0d,
                         java.time.Duration.ofMillis(1), false), ignored -> { }),
                 diagnostics,
-                CLOCK);
+                CLOCK,
+                new SyncDiagnosticReporter(diagnostics, CLOCK));
     }
 
     private FakeCatalog catalog(CompletedSlice... slices) {

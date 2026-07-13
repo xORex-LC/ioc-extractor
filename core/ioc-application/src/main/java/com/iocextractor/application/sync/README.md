@@ -13,6 +13,7 @@ value objects и политики, которые одинаковы для SMB/
 | `RemoteErrorKind` / `RemoteErrorDisposition` | Закрытая transport-neutral error axis и retry decision |
 | `RemoteTransportException` | Исключение, через которое adapters сообщают нейтральный remote error |
 | `RetryPolicy` / `Retrier` | Micro-retry executor для `RETRY_NOW` ошибок |
+| `SyncDiagnosticReporter` | Единое отображение final `RemoteErrorKind` в `SYNC.*` diagnostics |
 | `RemoteObject` / `RemoteObjectIdentity` | Metadata и fetch-ledger identity удалённого файла |
 | `RemoteFetchInFlightRegistry` | Process-local suppression повторной эмиссии уже поставленных в очередь identity |
 | `RemoteFetchSource` | Transport-neutral configured read-only source |
@@ -30,6 +31,10 @@ value objects и политики, которые одинаковы для SMB/
 
 - Retryability не настраивается оператором: `RemoteErrorKind` сам несёт disposition.
 - `Retrier` повторяет только `RETRY_NOW`; `RETRY_LATER` остаётся macro-retry задачей scheduler.
+- Transport diagnostic эмитится один раз после исчерпания micro-retry; если операция
+  имеет durable state, сначала фиксируется `FAILED`, затем уходит diagnostic.
+- Diagnostic остаётся observational fact: он не заменяет fetch/publish ledger transition
+  и не попадает в payload control events.
 - Payload остаётся файловым (`Path`), но lifecycle потоков/соединений не попадает в application.
 - Commit marker name — один безопасный leaf segment; remote path остаётся transport path.
 - `PublishRecord` key = `(sliceId, targetId)`; profile/sliceName/manifest/endpoint/path — immutable binding.
