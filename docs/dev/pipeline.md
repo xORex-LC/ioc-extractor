@@ -31,7 +31,7 @@ interface Stage<I, O> {                 // Filter
     Envelope<O> process(Envelope<I> in);
 }
 
-record Result<T>(T value, Notification diagnostics) {}       // per-item/стадийный исход
+record Result<T>(T value, List<Diagnostic> diagnostics) {}    // per-item/стадийный исход
 ```
 
 - **Envelope** неизменяем; стадия возвращает новый Envelope, обогащая `meta`/
@@ -55,6 +55,7 @@ record Result<T>(T value, Notification diagnostics) {}       // per-item/ста�
 - **Diagnostic budget:** `ioc.pipeline.max-diagnostics-per-run` ограничивает
   retained diagnostics (по умолчанию 10 000). Первый `ERROR/FATAL` не скрывается,
   а усечение представлено `PIPELINE.DIAGNOSTICS_SUPPRESSED` и счётчиками по severity.
+  Summary эмитится и при normal completion, и перед policy rejection.
   `ExtractionResult` публикует immutable diagnostics, summary и
   `COMPLETED | COMPLETED_WITH_WARNINGS | COMPLETED_WITH_ERRORS`.
 - **PipelineObserver** (port) — framework-free seam наблюдаемости: `PipelineRunner`
@@ -114,6 +115,11 @@ Batch-local dedup выполняется до feature extraction и rule evaluat
 **Реализовано (этап 9):** reusable часть конвейера вынесена в
 `platform/platform-etl` (`com.iocextractor.platform.etl`). IOC-specific payloads,
 stage classes и ключи metadata attributes остались в `ioc-application`.
+
+**Реализовано (ADR-0017):** runner исполняет exactly-once diagnostic
+delivery, configurable policy и bounded outcome. Domain возвращает pure refang/
+extraction/classification/attribution decisions; application использует их и для
+pipeline payload, и для gated TRACE без повторных domain calls.
 
 ## Референсы
 

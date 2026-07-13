@@ -19,8 +19,8 @@ generated `LOGGING-CATALOG.md`, пин severity→level, reference-ratchet) уж
 реализован отдельно (`752d186..aca604e`) и ADR не требовал: там применялись
 уже принятые правила. Данный ADR фиксирует именно **решения**.
 
-Дизайн-диалог: [worknote/observability-hardening.md](../worknote/observability-hardening.md)
-(gitignored, рабочая память итерации).
+Дизайн-диалог: `docs/worknote/observability-hardening.md`
+(локальная рабочая память итерации, не часть published ADR).
 
 ## Контекст и проблема
 
@@ -735,3 +735,55 @@ ratchet empty, architecture tests.
 [dev/LOGGING-TAXONOMY.md](../dev/LOGGING-TAXONOMY.md) ·
 [LOGGING-CATALOG.md](../LOGGING-CATALOG.md), [DIAGNOSTICS-CATALOG.md](../DIAGNOSTICS-CATALOG.md) ·
 шаг 1 блока OBS: `752d186..aca604e` (ratchet-baseline: `2681c4d`).
+
+## Дополнение 2026-07-13 — итог реализации
+
+Это датированное дополнение заменяет только implementation-status в
+начале ADR: срезы 1–9 и итоговый review завершены. Решения 1–8
+не меняются; ниже фиксируется точная форма их исполнения.
+
+Implementation chain:
+
+| Срез | Коммит(ы) |
+|---|---|
+| 1 | `354c5c6` |
+| 2 | `28b2f53` |
+| 3 | `49ecfd9`, `3d2d1d0`; follow-up bounded/UX fix `53077c9` |
+| 4 | `ad7b08b` |
+| 5 | `4038173`; ordering/performance fix `5b44f11` |
+| 6 | `2c18bbd` |
+| 7 | `0dee6cd` |
+| 8 | `ae7f268` |
+| 9 | `32b4202` |
+| Итоговый review | terminal-delivery fix `d34b733`, cleanup `c990b98` |
+
+Уточнения по live code:
+
+1. `RefangDecision` хранит applied rule и число replacements, а не
+   before/after metadata каждой замены. Это сохраняет полную rule-level
+   объяснимость TRACE и ограничивает аллокации числом rules, а не
+   числом replacements. Extraction по-прежнему несёт exact pattern/span/status.
+2. Batch-local dedup передвинут до classification: decision — чистая
+   функция `type|value`, поэтому retained outcome не меняется, а дубликаты
+   не оплачивают feature extraction. `MatchPolicy` вызывается только для
+   NETWORK; FILE получает neutral decision.
+3. `CLASSIFY.AMBIGUOUS_MATCH` удалён. Декларативная policy намеренно
+   first-match-wins, rules могут пересекаться, и домен не считает это defect.
+   Эмитить такой код без нового domain invariant означало бы ложный WARN.
+4. `INGEST.DEAD_LETTER_FAILED` добавлен к трём запланированным INGEST
+   constants: physical failed-area transition — отдельная operation boundary,
+   которую
+   `LEDGER_WRITE_FAILED` описать не может.
+5. Routing decision формирует `adapter-sink-csv`, потому что именно там
+   известны configured artifact filter и typed mapping result. Адаптер передаёт
+   compact application-owned `PipelineItemDecision` через порт; logging импорт в
+   application/adaptor mapping не появился.
+6. Final review запинил ещё два edge cases: durable `FAILED` на повторе
+   ingest не превращается в ложный success и не теряет исходную typed
+   diagnostic; suppression summary эмитится не только при normal completion,
+   но и перед policy rejection.
+
+Не реализованы и остаются явными seams: durable `DiagnosticOccurrence`,
+report/JSONL, element quarantine/reprocess, threshold policies, i18n, metrics и
+OpenTelemetry consumers. Они не требуют брокера и не меняют anti-broker/
+ledger-first доктрину.

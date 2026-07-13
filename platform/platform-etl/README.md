@@ -5,6 +5,9 @@
 Generic Pipes-and-Filters ETL kernel: `Envelope`, `EnvelopeMeta`, `Stage`,
 `StageId`, `Pipeline`, `PipelineRunner` and `PipelineObserver`.
 
+`PipelineRunner` доставляет stage-local diagnostic delta exactly once до
+`FailurePolicy`, сохраняет stopping code/cause и возвращает bounded summary.
+
 **Правило слоя:** ETL kernel не знает о IOC-предметке, конкретных payload,
 stage names, logging implementation или IO adapters.
 

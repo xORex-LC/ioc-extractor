@@ -10,18 +10,21 @@
 лёгкое добавление новых ошибок, использование диагностики как **мета-данных** в
 конвейере обработки, и развязку продюсеров от способа доставки.
 
-> Статус: **реализовано базовое ядро** в `platform/platform-diagnostics`:
-> модель, каталоги кодов, `Result`/`Notification`, `FailurePolicy`, renderer и
-> sink-порты. Bridge в operational logging живёт отдельно в
-> `platform/platform-diagnostics-logging`. Operational logging шире диагностики;
+> Статус: **реализовано** по [ADR-0017](../ADR/0017-diagnostics-first-class-outcome.md).
+> `platform-diagnostics` даёт модель, generated catalog, impact, bounded outcome,
+> `FailurePolicy`, renderer и sink-порты; `PipelineRunner` доставляет
+> stage diagnostics exactly once и возвращает summary. Bridge в operational
+> logging живёт отдельно в `platform-diagnostics-logging`. Operational logging
+> шире диагностики;
 > политика логирования фонового сервиса — в [logging.md](LOGGING.md), таксономия
 > log events — в [logging-taxonomy.md](LOGGING-TAXONOMY.md).
 
-Категория `SYNC` покрывает transport-neutral endpoint/auth/permission/not-found/transient
-ошибки, credential/config failures, несовпадение remote publish marker и валидацию
-локального completed slice discovery. SMB-типы не входят в diagnostic contract:
-адаптер переводит их в `RemoteErrorKind`, а полный опубликованный список генерируется
-в [diagnostic-catalog.md](../DIAGNOSTICS-CATALOG.md). Control-plane события ADR 0013 пока
+Категория `SYNC` покрывает final transport-neutral
+endpoint/auth/permission/not-found/transient failures, несовпадение remote publish marker
+и валидацию локального completed slice. Configuration/credential references
+отбиваются strict boot-preflight и не дублируются runtime codes. SMB-типы не
+входят в diagnostic contract: адаптер переводит их в `RemoteErrorKind`, а полный
+список генерируется в [DIAGNOSTICS-CATALOG.md](../DIAGNOSTICS-CATALOG.md). Control-plane события ADR 0013
 не получают отдельную категорию `EVENTS`: publish/dispatch/admission являются
 operational log/health signals, а не самостоятельными диагностическими кодами обработки
 данных.
@@ -29,15 +32,20 @@ operational log/health signals, а не самостоятельными диа�
 ## Принцип разделения
 
 ```
-producers (domain / application / adapters)
-    │  собирают Diagnostic(code, context)         ← только данные
-    ▼
-Result<T> / Notification ──▶ FailurePolicy (fail-fast | collect-and-continue)
-    │
-    ├──▶ DiagnosticRenderer (port) ──▶ MessageSource: шаблон[code] + context → текст
-    └──▶ DiagnosticSink (port) ──▶ LoggingSink | ReportSink | PipelineMetadata
-DiagnosticCode catalog (КОД) ──▶ генерация «карты ошибок» (docs)
+Envelope contour:
+stage Result<T> → Envelope diagnostics → bounded accumulator
+                → DiagnosticSink delta → FailurePolicy → ExtractionResult
+
+Saga contour:
+final retry/state failure → durable FAILED transition → DiagnosticSink
+
+DiagnosticCode catalog (code) → generated DIAGNOSTICS-CATALOG.md
 ```
+
+Эти контуры не смешиваются. В pipeline diagnostic является частью
+processing outcome и участвует в policy. В ingest/sync/export saga решение
+принимают retry и durable state machine, а diagnostic фиксирует final fact и не
+заменяет ledger transition.
 
 ## Доменная модель
 
@@ -47,7 +55,8 @@ DiagnosticCode catalog (КОД) ──▶ генерация «карты оши
 |---|---|
 | `code` | ссылка на запись каталога (`DiagnosticCode`) |
 | `severity` | TRACE / DEBUG / INFO / WARN / ERROR / FATAL |
-| `category` | SOURCE / EXTRACTION / CLASSIFY / SINK / CONFIG / VALIDATION / … |
+| `category` | CONFIG / SOURCE / EXTRACTION / CLASSIFY / SINK / INGEST / STORAGE / EXPORT / SYNC / PIPELINE |
+| `impact` | ELEMENT / RUN / OPERATION; immutable metadata кода, не выводится из severity |
 | `context` | структурные поля-данные (`Map<String,Object>`): source, stage, indicator, value, … |
 | `cause` | опциональная причина (`Throwable`) |
 | `timestamp` | момент возникновения |
@@ -55,34 +64,35 @@ DiagnosticCode catalog (КОД) ──▶ генерация «карты оши
 Продюсер строит диагностику данными, **без текста**:
 
 ```java
-// design sketch — продюсер отдаёт данные, не сообщение
-return Diagnostic.of(ExtractionCodes.AMBIGUOUS_CLASSIFICATION)
-        .with("indicator", value)
-        .with("host", host)
-        .with("candidates", List.of("variant2", "variant4"))
+return diagnosticFactory.create(SinkDiagnosticCodes.ROW_MAPPING_FAILED)
+        .with(DiagnosticContextKeys.ARTIFACT, artifact)
+        .with(DiagnosticContextKeys.TYPE, indicator.type())
+        .with(DiagnosticContextKeys.INDICATOR, indicator.value())
+        .with("reason", reason)
         .build();
 ```
 
 ## Каталог ошибок (в коде)
 
 Канонический источник истины — **каталог кодов в коде**. Добавить ошибку =
-добавить запись в каталог. Каталог **перечислим** → из него генерируется карта
-ошибок (документация). Запись кода несёт: стабильный id, категорию, severity по
-умолчанию, ключ шаблона сообщения по умолчанию.
+добавить enum-constant в категориальный catalog. Запись несёт стабильный id,
+category, default severity, impact, message key и default template. Новый constant
+должен сразу иметь production producer: root `CatalogReferenceRatchetTest` держит
+allowlist пустым.
 
 ```java
-// design sketch — группа кодов как перечислимый каталог
-public enum ExtractionCodes implements DiagnosticCode {
-    PATTERN_INVALID   (Category.CONFIG,     Severity.FATAL, "extraction.pattern.invalid"),
-    AMBIGUOUS_CLASSIFICATION(Category.CLASSIFY, Severity.WARN, "extraction.classify.ambiguous"),
-    INDICATOR_SKIPPED (Category.EXTRACTION, Severity.DEBUG, "extraction.indicator.skipped");
-    // id, category, defaultSeverity, messageKey
+public enum ExtractionDiagnosticCodes implements DiagnosticCode {
+    INDICATOR_SKIPPED(DiagnosticSeverity.DEBUG, DiagnosticImpact.ELEMENT,
+            "extraction.indicator-skipped", "Indicator {indicator} was skipped: {reason}"),
+    AMBIGUOUS_VALUE(DiagnosticSeverity.WARN, DiagnosticImpact.ELEMENT,
+            "extraction.ambiguous-value", "Value {value} is ambiguous: {reason}");
 }
 ```
 
-Группы каталога по подсистемам: `SourceCodes`, `ExtractionCodes`, `ClassifyCodes`,
-`SinkCodes`, `ConfigCodes`, … Стабильный id (напр. `EXTRACTION.INDICATOR_SKIPPED`)
-используется в логах, отчётах и как ключ карты ошибок.
+Актуальные группы регистрируются в `DiagnosticCatalogs`; их не дублируем в
+ручной таблице. Опубликованный generated catalog —
+[DIAGNOSTICS-CATALOG.md](../DIAGNOSTICS-CATALOG.md); он обновляется только через
+`-Dioc.docs.update=true` и пинится doc-sync тестом.
 
 ## Сообщения и шаблоны (декларативно, для UX)
 
@@ -98,31 +108,38 @@ public enum ExtractionCodes implements DiagnosticCode {
 
 ```properties
 # messages.properties (UX-слой, опционально; дефолт — в каталоге)
-extraction.classify.ambiguous = Неоднозначная классификация {indicator}: кандидаты {candidates}
+sink.row-mapping-failed = Артефакт {artifact} отклонил индикатор: {reason}
 ```
 
 ## Поток ошибок как данные
 
-- **Result/Outcome<T>** = значение + `List<Diagnostic>`; и/или **Notification**
-  (Fowler) для накопления по прогону/элементу.
-- **FailurePolicy** (Strategy, декларативно): `fail-fast` | `collect-and-continue`.
-  Один «битый» элемент не роняет прогон — диагностики собираются и идут в отчёт.
-- **Фатальное** — `DiagnosticException` (несёт `Diagnostic`), ловится/транслируется
-  на границах адаптеров (адаптерные исключения не текут в домен).
-- **Мета-инфо пайплайна:** стадии прикрепляют диагностики к результату
-  (`skipped`, `ambiguous`, `refanged`, `deduped`) — это вход для отчётов и
-  наблюдаемости.
+- Stage возвращает `Result<T>`/новый `Envelope` с append-only batch diagnostics.
+  Одна occurrence либо attach-ится, либо бросается в `DiagnosticException`,
+  но не обоими каналами.
+- `PipelineRunner` эмитит только delta новой стадии внутри её MDC scope,
+  затем применяет `FailurePolicy`. Policy rejection не re-emit'ит уже
+  доставленную diagnostic; generic exception стадии превращается в
+  `PIPELINE.STAGE_FAILED`.
+- `fail-fast` останавливается на ERROR/FATAL после стадии; `collect-and-continue`
+  пропускает ERROR и останавливается на FATAL. Production daemon явно выбирает
+  collect; application default остаётся fail-fast.
+- `BoundedNotification` держит не более `ioc.pipeline.max-diagnostics-per-run`
+  occurrences (default 10 000), не скрывает первые ERROR/FATAL и добавляет
+  `PIPELINE.DIAGNOSTICS_SUPPRESSED`. Summary включает suppressed occurrences.
+- `ExtractionResult` возвращает diagnostics, `DiagnosticSummary` и
+  `COMPLETED | COMPLETED_WITH_WARNINGS | COMPLETED_WITH_ERRORS`. Для oneshot
+  последний status даёт exit code `3`; daemon сохраняет degraded outcome в
+  `IngestSourceResult`.
 
 ## Порты и адаптеры
 
 | Порт | Тип | Адаптеры |
 |---|---|---|
-| `DiagnosticSink` | out | **реализовано:** `CollectingDiagnosticSink`, `NoopDiagnosticSink`; `LoggingDiagnosticSink` — через bridge-модуль observability; `ReportDiagnosticSink` — будущий |
+| `DiagnosticSink` | out | `CollectingDiagnosticSink`, `NoopDiagnosticSink`; `LoggingDiagnosticSink` + non-throwing `ResilientDiagnosticSink` в bridge; durable report/quarantine — seam |
 | `DiagnosticRenderer` | out | **реализовано:** `TemplateDiagnosticRenderer` (дефолтные шаблоны каталога); `MessageSourceRenderer` (i18n) — отложен |
-| `MessageCatalog` | out | резолв шаблона по коду (bundle/yaml + дефолт каталога) — **отложен до i18n-шага** (см. [dev/0008](../ADR/0008-stage-6-8-implementation-followups.md)) |
 
 Ядро подсистемы (модель, каталог, Notification/Result, порты) — агностично, без
-фреймворков; адаптеры (MessageSource, логирование, отчёты) — снаружи.
+фреймворков; логирование и будущие i18n/report adapters остаются снаружи.
 
 ## Карта ошибок
 
@@ -131,13 +148,20 @@ category → severity → шаблон → где возникает) — для
 разработчиков, и как реестр для отчётов. Генерация — отдельный инструмент/тест,
 не рантайм-зависимость.
 
-Опубликованный generated artifact — [diagnostic-catalog.md](../DIAGNOSTICS-CATALOG.md).
+Опубликованный generated artifact — [DIAGNOSTICS-CATALOG.md](../DIAGNOSTICS-CATALOG.md).
 Категория `EXPORT` полностью покрывает executable boundaries Artifact Emission:
 unsupported mode, snapshot read, slice write, invalid manifest/tree, отсутствие
 atomic publish, ledger CAS conflict и recovery failure. Код создаётся рядом с
 producer-ом: config resolution — bootstrap, snapshot/ledger — JDBC adapter,
 filesystem/manifest — CSV adapter, recovery policy — application. Cadence
 `SKIPPED` и успешные checkpoints являются operational events, а не ошибками.
+
+SOURCE/EXTRACTION/CLASSIFY/SINK/PIPELINE producers живут на точной
+stage/adapter boundary. Preparation отделена от canonical commit: typed row defect
+становится ELEMENT diagnostic до side effect, programming/storage defect остаётся
+RUN failure. INGEST владеет claim/ledger/dead-letter/recovery boundaries. SYNC маппит
+`RemoteErrorKind` после retry exhaustion и durable `FAILED`; diagnostics не попадают
+в control-event payload.
 
 ## Связь с operational logging
 
@@ -197,12 +221,14 @@ Observer/Event (sinks) · Template/MessageFormat.
    чистая) + `Notification.throwIfRejected` на orchestration boundary.
 3. **Сделано:** карта ошибок (генерация из каталога, doc-sync тест). i18n шаблонов
    (`MessageCatalog`/`MessageSource`) — **отложено**.
+4. **Сделано (ADR-0017):** impact, producer migration, exactly-once delivery,
+   configurable bounded outcome, completion status, preparation checkpoint,
+   redaction/resilience и ingest/sync final diagnostics. Reference ratchet
+   allowlist пуст.
 
-> **Открытый долг:** диагностика частично остаётся инфраструктурным контуром:
-> каталоги и bridge есть, `PipelineRunner` умеет останавливать поток через
-> `DiagnosticException`, но большинство production producer-ов всё ещё бросают
-> `IocExtractorException` без построения typed `Diagnostic`. План интеграции —
-> [dev/0008](../ADR/0008-stage-6-8-implementation-followups.md).
+> **Seam:** durable report/quarantine и stable occurrence identity не входили в
+> OBS-D1. Они зарегистрированы как OBS-4 в [KNOWN-ISSUES.md](../KNOWN-ISSUES.md) и
+> не имитируются best-effort logging sink-ом.
 
 Мост в логи (`LoggingDiagnosticSink`, ECS/MDC) — **отдельная подсистема
 observability** ([logging.md](LOGGING.md)); реализуется своим этапом, а не здесь.

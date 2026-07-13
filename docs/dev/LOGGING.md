@@ -5,9 +5,9 @@ Operational logging для `oneshot` CLI и `daemon`/stream-режима.
 записи артефактов, retry, latency, ошибки и технический контекст. Диагностика
 конвейера может попадать в этот поток, но не является его центром.
 
-> Статус: **реализовано базовое ядро этапа 8**: MDC scope, code taxonomy,
-> LogEvent helper, stage/adapters events, ECS JSON rolling file для
-> `daemon`-профиля и `LoggingDiagnosticSink`. `event.dataset` на этом этапе
+> Статус: **реализовано**: MDC scope, generated taxonomy,
+> LogEvent helper, stage/adapters events, ECS JSON rolling file, resilient/redacting
+> `LoggingDiagnosticSink` и gated structured per-item TRACE. `event.dataset`
 > задаётся encoder-ом статически как `ioc-extractor`; детализация событий идёт
 > через `event.action` и `ioc.*`. Дальнейшее расширение событий добавляется
 > рядом с новыми producer-ами.
@@ -27,7 +27,7 @@ transport exceptions проходят через общую error taxonomy. По
 | Модель | Назначение | Пример | Где живёт |
 |---|---|---|---|
 | Log event | операционное событие выполнения приложения | файл захвачен, sink записал CSV, retry начался | logging/observability |
-| Diagnostic | результат/проблема обработки данных в pipeline | IOC пропущен, классификация неоднозначна | diagnostics |
+| Diagnostic | результат/проблема обработки данных в pipeline | IOC пропущен, row mapping отклонён | diagnostics |
 | Exception | сбой исполнения или нарушение контракта | Tika не прочитал файл, CSV не записан | слой возникновения + трансляция |
 | Metric | числовое состояние/счётчик | очередь, duration, processed_total | future metrics adapter |
 
@@ -58,7 +58,7 @@ dead-letter sidecar или JSONL.
 | CLI adapter | запуск команды, source path, dry-run | SLF4J + MDC |
 | Ingest adapter | detect/claim/stabilize/move/retry/dead-letter | SLF4J + MDC |
 | Application pipeline | stage started/completed, counters, duration | SLF4J / LogEvent helper |
-| Domain services | редкие DEBUG/TRACE решения без инфраструктурных деталей | SLF4J или diagnostic result |
+| Domain services | возвращают pure decision outcomes | не знают SLF4J/ECS; TRACE формирует application |
 | Out adapters | IO: CSV projection/export, JDBC storage, projection written | SLF4J |
 | Diagnostics bridge | diagnostic result rendered as log event | `LoggingDiagnosticSink` |
 | Export observer (bootstrap) | formation checkpoints/recovery, profile/slice/revision | `ExportObserver` → SLF4J + MDC |
@@ -73,6 +73,7 @@ dead-letter sidecar или JSONL.
 | Application pipeline | задаёт `run_id`, stage scope, counters, duration | не выбирает appender/rolling policy |
 | Adapter | логирует инфраструктурные действия своей технологии | не реализует бизнес-классификацию IOC |
 | `LoggingDiagnosticSink` | переводит `Diagnostic` в обычный log event | не является главным каналом логирования |
+| `LoggingPipelineDecisionTracer` | пишет structured per-item decisions из готовых outcomes | не повторяет domain calls и не влияет на policy |
 | Logback / ECS encoder | форматирует и пишет события | не содержит бизнес-правил |
 
 ## Режимы вывода
@@ -108,6 +109,31 @@ var/
     ├── ioc-extractor.ecs.json  # ECS JSON lines
     └── diagnostics.jsonl       # optional later, if diagnostics split from app log
 ```
+
+## Structured per-item TRACE
+
+Per-item решения пишутся одним `event.action=pipeline_item_decision` и
+различаются `ioc.decision.kind`: `REFANG`, `EXTRACTION`, `CLASSIFICATION`,
+`ATTRIBUTION`, `DEDUPLICATION`, `ROUTING`. Эмиттер открывается только при
+одновременном выполнении двух условий:
+
+```text
+ioc.observability.per-item-trace-enabled = true
+AND logger TRACE enabled
+```
+
+Application проверяет gate до сборки decision DTO; adapter повторно
+проверяет его до render/log call. Оба gate-off сценария дают ноль
+renderer calls. TRACE читает только уже вычисленные domain/application outcomes:
+
+- refang — applied rule + число replacements; per-replacement spans не материализуются;
+- extraction — pattern, half-open span и kept/dropped status;
+- classification — features, selected rule/predicates и mask result; только NETWORK;
+- attribution/dedup/routing — selected marker, dedup key и artifact outcome.
+
+`ioc.item.identity` — short SHA-256 + type/span. Raw value допускается только
+в этом явно открытом TRACE; URL query маскируется. WARN/ERROR
+diagnostic renderer вместо raw `indicator|item|value` пишет short hash.
 
 ## Spring Boot и ECS encoder
 
@@ -267,7 +293,8 @@ ECS JSON:
 Логи могут содержать IOC, пути и source labels:
 
 - `INFO` не пишет полный список IOC;
-- значения IOC — только `DEBUG`/`TRACE` и коротким scope;
+- значения IOC — только в явно gated per-item `TRACE`; WARN/ERROR/FATAL
+  renderer заменяет raw value short hash;
 - токены/query лучше маскировать или писать short hash, если они не нужны для
   расследования;
 - исключения логируются с context, но без дампа всего входного документа;
@@ -276,7 +303,7 @@ ECS JSON:
 `ecs.version` в примере — output encoder'а; приложение не проставляет это поле
 вручную.
 
-## Definition of Done для этапа 8
+## Исполненный контракт
 
 - Есть `MdcScope`, покрытый тестом на очистку контекста.
 - Есть минимальные logging constants для стартовых `event.action` и `ioc.*` fields.
@@ -288,6 +315,10 @@ ECS JSON:
 - `oneshot` остаётся удобным в console.
 - Тесты проверяют отсутствие MDC-протечек и корректный mapping ключевых событий —
   изолированно (in-memory appender / `OutputCapture`, без реальных файлов).
+- Severity mapping запинен для всех шести уровней; sink failure изолирован
+  non-throwing decorator-ом.
+- Structured TRACE тестирует оба закрытых gate, query redaction и отсутствие
+  повторной classification.
 
 ## Референсы
 

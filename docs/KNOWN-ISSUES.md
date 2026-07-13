@@ -46,11 +46,12 @@
 
 | ID | Долг | Статус | Эфф. | Источник |
 |---|---|---|---|---|
-| OBS-D1 | **Продьюсеры диагностик.** Export/sync/storage/schema уже эмитят typed diagnostics; extraction pipeline пока даёт только `SOURCE.MARKERS_UNMATCHED`, а runtime data failures в source/extraction/classify/sink/ingest всё ещё преимущественно бросают `IocExtractorException`. `CatalogReferenceRatchetTest` фиксирует baseline: 24 из 43 кодов пока без production bytecode reference (burn-down для D1; это не доказательство вызова sink). Мигрировать runtime-data sites на `Diagnostic` и реально включить collect-and-continue. | частично | M | dev/0008, `2681c4d` |
+| OBS-D1 | **Диагностика как first-class outcome.** Закрыто по ADR-0017: impact и generated catalog; exactly-once runner delivery; configurable fail-fast/collect и bounded summary; completion outcome; side-effect-free row preparation до policy checkpoint; pure domain decisions + gated TRACE; SOURCE/EXTRACTION/CLASSIFY/SINK/PIPELINE/INGEST/SYNC producers. Ratchet allowlist пуст. | закрыт | M | `354c5c6..32b4202`, `d34b733`, ADR/0017 |
 | OBS-D3 | **ECS-типы строками** — `event.duration` / `ioc.rows` идут через MDC (только `String`); ECS типизирует `event.duration` как `long` → риск mapping-конфликта в Elasticsearch. | открыт | M | dev/0008 |
 | OBS-1 | **Таблица `Severity → log.level`** — закрыто: `LOGGING-TAXONOMY.md` публикует FATAL/ERROR→error, WARN→warn, INFO→info, DEBUG→debug, TRACE→trace; `LoggingDiagnosticSinkTest` пинит все шесть значений. | закрыт | S | `5ba28b1` |
 | OBS-2 | **`SINK.CHARSET_UNMAPPABLE` — полноценная диагностика непредставимых символов на выходе.** Долг относится только к мутабельной `CsvArtifactProjection`: сейчас она заменяет непредставимые символы и пишет WARN без `DiagnosticSink`, счётчик считает writer-чанки, а не значения. Immutable slice writers используют `CodingErrorAction.REPORT` и намеренно fail-fast, поэтому в этот долг не входят. Протащить diagnostics через projection boundary для collect-and-continue + точный счёт по значению. | частично | M | review |
 | OBS-3 | **Таксономия логов и generated catalog.** Закрыто: `EventAction`/`LogField` несут metadata, `LOGGING-CATALOG.md` генерируется и doc-sync тестируется; stale actions удалены, CSV projection эмитит `artifact_project`, а `CatalogReferenceRatchetTest` не даёт добавить неиспользуемую action без осознанного решения. | закрыт | S | `752d186`, `8277ab7`, `2681c4d` |
+| OBS-4 | **Durable diagnostic occurrences/report/quarantine.** Текущий `DiagnosticSink` best-effort и synchronous. При реальной потребности в audit/reprocess ввести `DiagnosticOccurrence` (run/source/stage/sequence/stable id), durable `ReportDiagnosticSink`/`QuarantineStore` и явно решить, является ли write частью processing outcome. Не извлекать durable identity из MDC; не превращать diagnostics в control events/broker без триггера. | seam | L | ADR/0017 реш. 7–8 |
 
 ## 5. Надёжность конфига (`CFG`)
 
@@ -65,9 +66,9 @@
 
 | ID | Долг | Статус | Эфф. | Источник |
 |---|---|---|---|---|
-| CODE-1 | **Телескопические конструкторы** — `IocExtractionService` (6 шт.), `CsvArtifactDefinition`; свернуть в builder/factory. | открыт | M | review |
+| CODE-1 | **Длинный composition contract extraction.** Шесть convenience-конструкторов удалены: `IocExtractionService` имеет production и explicit test constructor, `ExtractionResult` больше не маскирует completion defaults. Остался длинный dependency list в `IocExtractionServiceFactory`/production constructor; сворачивать только в осмысленный immutable dependency bundle, не в parameter-object ради счётчика. | частично | S | `2c18bbd`, review ADR-0017 |
 | CODE-2 | **Дублирование «bare IP» в legacy CSV lookup** — закрыто удалением `adapter-lookup-csv`; runtime использует доменный `NetworkAddressClassifier`/provider predicates и canonical row-key дедуп. | закрыт | S | review |
-| CODE-3 | **Повторная feature-extraction** — `featureExtractor.extract()` зовётся многократно на один индикатор (провайдеры + фильтр + matchPolicy); мемоизация в пределах батча. | открыт | M | review |
+| CODE-3 | **Повторная feature-extraction.** Закрыто materialized `ClassificationDecision`: dedup идёт до classification, `MatchPolicy` вызывается один раз только для NETWORK, providers/filter/TRACE читают один outcome. Counting и large-batch tests пинят контракт. | закрыт | M | `4038173`, `5b44f11`, `ae7f268` |
 | CODE-4 | **Хрупкий `DiagnosticCatalogTest`** — закрыто: хардкод размера удалён; registration discovery и generated catalog doc-sync проверяют полноту и свежесть контракта без привязки к числу кодов. | закрыт | S | `adc795b` |
 
 ## 7. Архитектура / модульность (`ARCH`)
@@ -125,7 +126,8 @@
 - **ING-1** — retention reaper реализован: один `RetentionPolicy` + порт `RetentionStore` (`FileSystemRetentionStore`, реап листовых файлов рекурсивно) + `DaemonMaintenanceScheduler`; конфиг `ioc.maintenance.retention` (targets: done/failed, max-age/max-count, delete|archive).
 - **ING-4a** — durable `ingest_run` реализован: post-DB-commit crash-window восстанавливается startup recovery через адресную CSV-проекцию незавершённых артефактов.
 - **Кодировки I/O** — задекларированный `ioc.source.charset` теперь реально соблюдается (форс text/HTML через Tika `EncodingDetector`; docx/pdf — по дизайну нет), добавлен `ioc.sink.csv.charset` для CSV-проекций и export writers, непредставимые символы заменяются (не падаем), fail-fast на неизвестном имени кодировки.
-- **Атрибуция:** пустой `source` вместо `UNKNOWN` + первый реальный продьюсер диагностик (`SOURCE.MARKERS_UNMATCHED`), частично закрывает OBS-D1.
+- **Атрибуция:** пустой `source` вместо `UNKNOWN` + `SOURCE.MARKERS_UNMATCHED`;
+  остальной producer contour закрыт ADR-0017 (OBS-D1).
 
 > Связанные документы: [ADR/](ADR/) (история решений и исходные
 > `Открытые вопросы`), [dev/](dev/) (как устроены способности).

@@ -94,6 +94,7 @@ read (SourceReader)
 | `ExtractIocsUseCase` | driving (in) | Единая точка входа прикладного ядра |
 | `SourceReader` | driven (out) | Извлечение текста из документа любого формата |
 | `ArtifactPreparer` | driven (out) | Side-effect-free routing/mapping одного артефакта до policy checkpoint |
+| `PipelineDecisionTracer` | driven (out) | Gated TRACE уже вычисленных per-item outcomes без logging dependency в application/domain |
 | `ArtifactIdBaseline` | driven (out) | Чтение текущего public `max(id)` из canonical storage для продолжения id-последовательностей |
 | `CanonicalArtifactRepository` / `ArtifactProjection` | driven (out) | Canonical write/read с provenance и генерация CSV-проекций |
 | `PatternEngine` | domain SPI | Движок regex (RE2/J по умолчанию, JDK — замена) |
@@ -103,6 +104,11 @@ read (SourceReader)
 | `ControlEventPublisher` | platform driving port | Publish-only control-plane notification; delivery adapter живёт в bootstrap |
 | `FileTransport` | driven (out) | Stateless remote file operations + atomic multi-file publish intent |
 | `RemoteFetchLedger` / `PublishLedger` | driven (out) | Fetch idempotency и независимая per-slice/per-target delivery saga |
+
+Pipeline возвращает `ExtractionResult` с `CompletionStatus`, bounded diagnostics и
+`DiagnosticSummary`. `fail-fast`/`collect-and-continue` применяются до canonical
+commit после preparation stage. Saga-контуры ingest/export/sync остаются
+ledger-first: diagnostic наблюдает final transition, но не заменяет его.
 
 Remote sync не меняет extraction pipeline: fetch заканчивается в штатном inbox, а
 publish начинается только после локального export `_SUCCESS`. Подробный protocol и

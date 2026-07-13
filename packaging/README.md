@@ -69,6 +69,12 @@ After context refresh and before command runners, the application logs each winn
 as `ioc.some.key <- source`. The report never includes configuration values, so
 credentials supplied through the environment file remain absent from it.
 
+Production template явно задаёт
+`ioc.pipeline.failure-policy=collect-and-continue` и diagnostic budget 10 000:
+element-level defects не локируют валидные rows, но run/FATAL failure по-прежнему
+ведёт к retry/dead-letter. Per-item TRACE по умолчанию закрыт и требует
+одновременно `ioc.observability.per-item-trace-enabled=true` и logger level `TRACE`.
+
 ## Local deployment
 
 For a development/test host, run deployment from the source checkout as an

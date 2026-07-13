@@ -52,3 +52,7 @@ JDBC/transport-backed use case. Поэтому `--help` и некорректн�
 service DB и SMB session. `sync all` валидирует обе операции до разрешения любого
 use case и только после успешного preflight выполняет fetch, затем publish. Итоговая
 строка содержит детерминированные счётчики; ненулевой `failed` даёт exit code `1`.
+
+`extract` печатает completion/diagnostic summary. `COMPLETED_WITH_ERRORS`
+возвращает exit code `3`, чтобы не пересекаться с picocli `SOFTWARE=1` и
+`USAGE=2`.

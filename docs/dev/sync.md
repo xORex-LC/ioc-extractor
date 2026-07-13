@@ -214,6 +214,26 @@ Preflight выполняется до lazy resolution JDBC/transport graph. `syn
 обе половины до первого IO, затем выполняет fetch → publish. `--dry-run` не меняет
 inbox, remote storage или ledgers. Ненулевой failed-counter возвращает exit code `1`.
 
+## Final transport diagnostics
+
+SMB adapter переводит library failures в `RemoteTransportException` +
+`RemoteErrorKind`. Application `SyncDiagnosticReporter` единообразно маппит final
+failure после micro-retry:
+
+| RemoteErrorKind | Diagnostic |
+|---|---|
+| `UNREACHABLE` | `SYNC.ENDPOINT_UNREACHABLE` |
+| `AUTH_FAILED` | `SYNC.AUTH_FAILED` |
+| `PERMISSION_DENIED` | `SYNC.PERMISSION_DENIED` |
+| `NOT_FOUND` | `SYNC.REMOTE_NOT_FOUND` |
+| `TRANSIENT` | `SYNC.TRANSPORT_TRANSIENT` |
+
+Listing, detection, fetch, marker-read и publish используют одно правило. Если у
+операции есть durable fetch/publish record, сначала успешно фиксируется
+`FAILED`, затем эмитится diagnostic. Он не заменяет state transition и не
+попадает в control-event payload. Unknown endpoint/credential reference — boot/config
+failure ADR-0016, а не runtime `SYNC.*` code.
+
 ## Health и наблюдаемость
 
 Daemon actuator contributor `sync` публикует:

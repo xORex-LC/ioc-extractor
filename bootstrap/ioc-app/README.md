@@ -54,6 +54,10 @@ application core.
 обоих проверок, пишет safe short identity и маскирует URL query. Application
 stages передают ему только уже вычисленные решения.
 
+Composition root выбирает typed `PipelineFailurePolicy`, diagnostic budget и
+non-throwing diagnostics bridge. Default application config — `fail-fast`; production
+daemon template явно задаёт `collect-and-continue` и budget 10 000.
+
 ## Зависимости
 
 **Зависит от:** selected platform/core/adapters modules, Spring Boot, ECS

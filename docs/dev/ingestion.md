@@ -318,13 +318,17 @@ canonical write. Обратный поток берёт только completed e
 
 ## 9. Ошибки, ретраи, dead-letter
 
-- SI `error-channel` + `RequestHandlerRetryAdvice` (spring-retry): экспоненциальный
-  backoff, N попыток.
-- После исчерпания — источник в `failed/` + sidecar `.<имя>.error` с диагностикой.
-- Один «ядовитый» файл не блокирует поток (политика `collect-and-continue`).
-- Категоризация и трансляция ошибок идут через общий exception/diagnostics
-  контур; typed `Diagnostic` producer-ы в production path остаются открытым
-  техническим долгом (OBS-D1) в [KNOWN-ISSUES.md](../KNOWN-ISSUES.md).
+- `FileSourceMessageHandler` выполняет N попыток с configured fixed backoff.
+- После exhaustion final boundary сначала выполняет reject/dead-letter,
+  если use case ещё не вернул durable `FAILED`, затем доставляет один
+  typed `INGEST.*` diagnostic. Предыдущая attempt failure сохраняется как cause,
+  а не как вторая occurrence.
+- `INGEST.CLAIM_FAILED`, `LEDGER_WRITE_FAILED`, `DEAD_LETTER_FAILED` и
+  `RECOVERY_FAILED` покрывают файловый lifecycle. Startup recovery эмитит свой
+  final diagnostic само, потому что над ним нет message-handler boundary.
+- Один «ядовитый» файл не блокирует поток. Pipeline policy отдельно решает
+  судьбу element defects до canonical commit: production daemon использует
+  `collect-and-continue`, но FATAL/run failure всё равно ведёт к whole-file retry/dead-letter.
 
 ## 10. Параллелизм и backpressure
 
