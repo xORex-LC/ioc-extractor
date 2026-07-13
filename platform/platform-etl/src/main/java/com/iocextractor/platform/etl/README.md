@@ -18,7 +18,7 @@ Tika, CSV или logging/MDC.
 | `EnvelopeMeta.java` | Generic run/source/stage metadata + extension attributes |
 | `Stage.java` | Контракт одного filter-шагa |
 | `Pipeline.java` | Type-safe список стадий |
-| `PipelineRunner.java` | Последовательное исполнение стадий + `FailurePolicy` |
+| `PipelineRunner.java` | Последовательное исполнение, delta-delivery, bounded accumulation + `FailurePolicy` |
 | `PipelineRunResult.java` | Финальный Envelope + типизированный diagnostic summary |
 | `PipelineObserver.java` | Порт operational events для runner |
 | `NoopPipelineObserver.java` | No-op observer для тестов/простых конструкторов |
@@ -31,3 +31,6 @@ Tika, CSV или logging/MDC.
 
 **Не импортируется:** `adapter`, `bootstrap`, Spring, Logback/MDC, Tika,
 commons-csv, picocli, `ioc-domain`, `ioc-application`.
+
+Suppression summary доставляется и при normal completion, и перед policy
+rejection: stopping diagnostic не маскирует факт усечения.

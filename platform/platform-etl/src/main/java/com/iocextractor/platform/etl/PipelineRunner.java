@@ -126,7 +126,12 @@ public final class PipelineRunner {
                     delta.forEach(diagnosticSink::emit);
                     bounded.addAll(delta);
                     current = compact(next, bounded.diagnostics());
-                    rejectIfRequired(current.diagnostics());
+                    try {
+                        rejectIfRequired(current.diagnostics());
+                    } catch (DiagnosticException rejection) {
+                        emitSuppressionSummary(current.diagnostics());
+                        throw rejection;
+                    }
                     observer.stageCompleted(stageInput.meta(), System.nanoTime() - startedAt);
                 } catch (StageProcessingFailure failure) {
                     observer.stageFailed(stageInput.meta(), System.nanoTime() - startedAt, failure.propagated());
@@ -144,9 +149,7 @@ public final class PipelineRunner {
                 throw new StageExecutionException("Failed to close stage scope: " + stage.name(), ex);
             }
         }
-        current.diagnostics().stream()
-                .filter(diagnostic -> diagnostic.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED)
-                .forEach(diagnosticSink::emit);
+        emitSuppressionSummary(current.diagnostics());
         return new PipelineRunResult<>(cast(current), bounded.summary());
     }
 
@@ -182,6 +185,13 @@ public final class PipelineRunner {
         new Notification()
                 .addAll(diagnostics)
                 .throwIfRejected(failurePolicy);
+    }
+
+    private void emitSuppressionSummary(List<Diagnostic> diagnostics) {
+        diagnostics.stream()
+                .filter(diagnostic -> diagnostic.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED)
+                .findFirst()
+                .ifPresent(diagnosticSink::emit);
     }
 
     private String reason(RuntimeException exception) {

@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.in.ingest;
 
 import com.iocextractor.application.ingest.SourceKey;
+import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
 import com.iocextractor.application.port.in.ingest.IngestSourceResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
@@ -107,6 +108,28 @@ class FileSourceMessageHandlerTest {
         assertThat(diagnostics.diagnostics()).containsExactly(deadLetterFailure);
     }
 
+    @Test
+    void durableFailedRetryPreservesEarlierTypedFailureWithoutSecondRejection() throws Exception {
+        Path source = Files.writeString(tempDir.resolve("source.html"), "ioc");
+        Clock clock = Clock.fixed(Instant.parse("2026-06-22T00:00:00Z"), ZoneOffset.UTC);
+        var diagnostic = Diagnostic.builder(IngestDiagnosticCodes.LEDGER_WRITE_FAILED, clock)
+                .with("source", "ABC123")
+                .with("reason", "ledger unavailable")
+                .build();
+        var diagnostics = new CollectingDiagnosticSink();
+        var reject = new RecordingRejectUseCase();
+        var ingest = new FailedAfterFirstAttemptUseCase(diagnostic);
+        var handler = new FileSourceMessageHandler(
+                new FileSourceHasher(), ingest, reject, clock, 3, Duration.ZERO, diagnostics);
+
+        assertThatThrownBy(() -> handler.handle(source.toFile()))
+                .hasCauseInstanceOf(DiagnosticException.class);
+
+        assertThat(ingest.attempts).isEqualTo(2);
+        assertThat(reject.key).isNull();
+        assertThat(diagnostics.diagnostics()).containsExactly(diagnostic);
+    }
+
     private static final class FailingIngestUseCase implements IngestSourceUseCase {
         private int attempts;
 
@@ -114,6 +137,24 @@ class FileSourceMessageHandlerTest {
         public IngestSourceResult ingest(IngestSourceCommand command) {
             attempts++;
             throw new IllegalStateException("boom");
+        }
+    }
+
+    private static final class FailedAfterFirstAttemptUseCase implements IngestSourceUseCase {
+        private final Diagnostic diagnostic;
+        private int attempts;
+
+        private FailedAfterFirstAttemptUseCase(Diagnostic diagnostic) {
+            this.diagnostic = diagnostic;
+        }
+
+        @Override
+        public IngestSourceResult ingest(IngestSourceCommand command) {
+            attempts++;
+            if (attempts == 1) {
+                throw new DiagnosticException(diagnostic);
+            }
+            return new IngestSourceResult(command.key(), IngestionStatus.FAILED, false, null);
         }
     }
 

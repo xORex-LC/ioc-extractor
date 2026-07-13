@@ -27,6 +27,6 @@ Spring Integration file support, Spring Retry.
 ## Инварианты
 
 - `FileSourceMessageHandler` владеет final retry boundary: после исчерпания
-  попыток он сначала выполняет reject/dead-letter transition, затем эмитит
-  один typed `INGEST.*` diagnostic.
+  попыток он выполняет reject/dead-letter transition, если use case ещё
+  не вернул durable `FAILED`, затем эмитит один typed `INGEST.*` diagnostic.
 - Локальный error-log не дублирует canonical diagnostic delivery.

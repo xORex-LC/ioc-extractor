@@ -1,8 +1,10 @@
 package com.iocextractor.adapter.in.ingest;
 
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
+import com.iocextractor.application.port.in.ingest.IngestSourceResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
+import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.diagnostics.DiagnosticCategory;
 import com.iocextractor.diagnostics.DiagnosticException;
@@ -57,9 +59,19 @@ public final class FileSourceMessageHandler {
         Path source = file.toPath();
         var key = hasher.sha256(source);
         RuntimeException last = null;
+        boolean alreadyRejected = false;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                useCase.ingest(new IngestSourceCommand(source, key, Instant.now(clock)));
+                IngestSourceResult result = useCase.ingest(
+                        new IngestSourceCommand(source, key, Instant.now(clock)));
+                if (result.status() == IngestionStatus.FAILED) {
+                    alreadyRejected = true;
+                    if (last == null) {
+                        last = new IocExtractorException(
+                                "Source is already marked failed: " + source);
+                    }
+                    break;
+                }
                 LogEvents.info(log)
                         .action(EventAction.SOURCE_READ)
                         .outcome(EventOutcome.SUCCESS)
@@ -76,13 +88,15 @@ public final class FileSourceMessageHandler {
             }
         }
         RuntimeException terminal = last;
-        try {
-            rejectUseCase.reject(key, last == null ? "source ingestion failed" : last.getMessage());
-        } catch (RuntimeException rejectionFailure) {
-            if (last != null) {
-                rejectionFailure.addSuppressed(last);
+        if (!alreadyRejected) {
+            try {
+                rejectUseCase.reject(key, last == null ? "source ingestion failed" : last.getMessage());
+            } catch (RuntimeException rejectionFailure) {
+                if (last != null) {
+                    rejectionFailure.addSuppressed(last);
+                }
+                terminal = rejectionFailure;
             }
-            terminal = rejectionFailure;
         }
         emitIngestDiagnostic(terminal);
         throw new IocExtractorException("Source ingestion failed after retries: " + source, terminal);

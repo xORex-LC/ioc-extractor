@@ -91,6 +91,31 @@ class PipelineRunnerTest {
     }
 
     @Test
+    void failFastStillEmitsSuppressionSummaryBeforeStopping() {
+        var warning = diagnostic(DiagnosticSeverity.WARN);
+        var error = diagnostic(DiagnosticSeverity.ERROR);
+        var diagnostics = new CollectingDiagnosticSink();
+        var pipeline = Pipeline.<String>start()
+                .then(new DiagnosticStage(warning))
+                .then(new DiagnosticStage(error));
+        var runner = new PipelineRunner(FailurePolicy.failFast(),
+                new NoopPipelineObserver(), diagnostics, new DiagnosticFactory(CLOCK), 1);
+
+        assertThatThrownBy(() -> runner.run(Envelope.of("start", meta()), pipeline))
+                .isInstanceOf(DiagnosticException.class)
+                .extracting("diagnostic")
+                .isEqualTo(error);
+
+        assertThat(diagnostics.diagnostics()).extracting(diagnostic -> diagnostic.code())
+                .containsExactly(
+                        PipelineDiagnosticCodes.STAGE_FAILED,
+                        PipelineDiagnosticCodes.STAGE_FAILED,
+                        PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED);
+        assertThat(diagnostics.diagnostics().getLast().context())
+                .containsEntry("suppressedCount", 1L);
+    }
+
+    @Test
     void opens_and_closes_observer_scope_around_stage_execution() {
         var seen = new ArrayList<String>();
         var events = new ArrayList<String>();
