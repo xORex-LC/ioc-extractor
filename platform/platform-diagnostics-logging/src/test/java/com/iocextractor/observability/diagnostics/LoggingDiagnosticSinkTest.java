@@ -7,6 +7,8 @@ import ch.qos.logback.core.read.ListAppender;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
+import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
+import com.iocextractor.diagnostics.render.TemplateDiagnosticRenderer;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
@@ -67,6 +69,42 @@ class LoggingDiagnosticSinkTest {
         assertThat(event.getLevel()).isEqualTo(Level.ERROR);
         assertThat(event.getThrowableProxy()).isNotNull();
         assertThat(event.getThrowableProxy().getMessage()).isEqualTo("boom");
+    }
+
+    @Test
+    void redacts_raw_indicator_from_error_message_without_mutating_policy_context() {
+        var appender = appender();
+        String rawIndicator = "https://example.test/path?token=secret";
+        var diagnostic = Diagnostic.builder(SinkDiagnosticCodes.ROW_MAPPING_FAILED, CLOCK)
+                .with("sink", "masks")
+                .with("indicator", rawIndicator)
+                .with("reason", "invalid row for " + rawIndicator)
+                .build();
+        var renderer = new TemplateDiagnosticRenderer(new RedactingDiagnosticContextFormatter());
+        var sink = new LoggingDiagnosticSink(logger, renderer);
+
+        sink.emit(diagnostic);
+
+        assertThat(appender.list).singleElement().satisfies(event -> {
+            assertThat(event.getFormattedMessage())
+                    .doesNotContain(rawIndicator, "token=secret")
+                    .contains("[redacted:sha256:");
+        });
+        assertThat(diagnostic.context()).containsEntry("indicator", rawIndicator);
+    }
+
+    @Test
+    void keeps_raw_indicator_for_explicit_debug_diagnostic() {
+        String rawIndicator = "example.test";
+        var diagnostic = Diagnostic.builder(SinkDiagnosticCodes.ROW_MAPPING_FAILED, CLOCK)
+                .severity(DiagnosticSeverity.DEBUG)
+                .with("sink", "masks")
+                .with("indicator", rawIndicator)
+                .with("reason", "traceable")
+                .build();
+        var renderer = new TemplateDiagnosticRenderer(new RedactingDiagnosticContextFormatter());
+
+        assertThat(renderer.render(diagnostic)).contains(rawIndicator);
     }
 
     @ParameterizedTest

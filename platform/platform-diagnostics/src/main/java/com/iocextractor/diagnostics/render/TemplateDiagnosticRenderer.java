@@ -13,6 +13,17 @@ import java.util.regex.Pattern;
 public final class TemplateDiagnosticRenderer implements DiagnosticRenderer {
 
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{([^{}]+)}");
+    private final DiagnosticContextFormatter contextFormatter;
+
+    /** Creates a renderer that exposes context values unchanged. */
+    public TemplateDiagnosticRenderer() {
+        this((diagnostic, key, value) -> String.valueOf(value));
+    }
+
+    /** Creates a renderer with an explicit context formatting strategy. */
+    public TemplateDiagnosticRenderer(DiagnosticContextFormatter contextFormatter) {
+        this.contextFormatter = Objects.requireNonNull(contextFormatter, "contextFormatter");
+    }
 
     @Override
     public String render(Diagnostic diagnostic) {
@@ -23,7 +34,7 @@ public final class TemplateDiagnosticRenderer implements DiagnosticRenderer {
             var key = matcher.group(1);
             var value = diagnostic.context().get(key);
             matcher.appendReplacement(rendered, Matcher.quoteReplacement(
-                    value == null ? matcher.group(0) : String.valueOf(value)));
+                    value == null ? matcher.group(0) : contextFormatter.format(diagnostic, key, value)));
         }
         matcher.appendTail(rendered);
         return rendered.toString();

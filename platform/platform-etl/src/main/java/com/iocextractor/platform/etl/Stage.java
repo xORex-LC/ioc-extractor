@@ -18,6 +18,11 @@ public interface Stage<I, O> {
     /**
      * Processes one envelope and returns a new envelope.
      *
+     * <p>A stage reports recoverable processing facts by appending diagnostics
+     * to the returned envelope. A stopping failure is reported by throwing a
+     * {@code DiagnosticException}; the same occurrence must never be both
+     * attached and thrown.</p>
+     *
      * @param input input envelope
      * @return output envelope
      */

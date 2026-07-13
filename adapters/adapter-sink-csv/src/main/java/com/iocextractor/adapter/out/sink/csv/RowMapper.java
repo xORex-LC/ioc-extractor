@@ -16,7 +16,7 @@ public interface RowMapper {
     List<String> header();
 
     /** Ordered cell values aligned to {@link #header()}; {@code null} = NULL. */
-    List<String> toRow(long id, ClassifiedIndicator indicator);
+    List<String> toRow(ClassifiedIndicator indicator);
 
     /**
      * Returns the configured public-id column, when present.

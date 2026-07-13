@@ -13,12 +13,12 @@ composition.
 
 | Файл | Назначение |
 |---|---|
-| `ReadSourceStage.java` | `SourceReader` → `SourceText` |
+| `ReadSourceStage.java` | `SourceReader` → `SourceText`; `SOURCE.EMPTY_TEXT` через envelope |
 | `RefangStage.java` | `Refanger` → `RefangedText` |
-| `ExtractIndicatorsStage.java` | `IndicatorExtractor` → `ExtractedIndicators` |
+| `ExtractIndicatorsStage.java` | `IndicatorExtractor` → `ExtractedIndicators` + overlap diagnostics |
 | `AttributeSourceStage.java` | `SourceAttributor` → `AttributedIndicators` |
-| `DeduplicateIndicatorsStage.java` | within-batch dedup by `Indicator.dedupKey()` |
-| `ClassifyIndicatorsStage.java` | one materialized `ClassificationDecision` per retained indicator; rule evaluation only for NETWORK |
+| `DeduplicateIndicatorsStage.java` | within-batch dedup decisions + `PIPELINE.ITEM_SKIPPED` batch |
+| `ClassifyIndicatorsStage.java` | one materialized decision per retained indicator; NETWORK rules + unsupported-category guard |
 | `PrepareArtifactsStage.java` | side-effect-free artifact routing/mapping и сбор element diagnostics |
 | `WriteArtifactsStage.java` | deferred-id materialization, canonical commit, projection / dry-run summary |
 

@@ -8,5 +8,5 @@ import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
  */
 public interface ValueProvider {
 
-    String provide(long id, ClassifiedIndicator indicator);
+    String provide(ClassifiedIndicator indicator);
 }

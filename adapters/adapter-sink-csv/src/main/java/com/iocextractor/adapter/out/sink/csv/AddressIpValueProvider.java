@@ -11,7 +11,7 @@ import com.iocextractor.domain.feature.NetworkAddressClassifier;
 public final class AddressIpValueProvider implements ValueProvider {
 
     @Override
-    public String provide(long id, ClassifiedIndicator classified) {
+    public String provide(ClassifiedIndicator classified) {
         var indicator = classified.indicator();
         return NetworkAddressClassifier.isBareIp(indicator, classified.classification().features())
                 ? indicator.value() : null;

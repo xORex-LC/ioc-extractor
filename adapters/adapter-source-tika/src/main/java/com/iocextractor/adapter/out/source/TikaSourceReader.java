@@ -1,12 +1,15 @@
 package com.iocextractor.adapter.out.source;
 
 import com.iocextractor.application.port.out.SourceReader;
-import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.diagnostics.DiagnosticException;
+import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.codes.SourceDiagnosticCodes;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
 import com.iocextractor.observability.logging.LogEvents;
 import org.apache.tika.detect.EncodingDetector;
+import org.apache.tika.exception.UnsupportedFormatException;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.metadata.TikaCoreProperties;
 import org.apache.tika.parser.AutoDetectParser;
@@ -20,6 +23,8 @@ import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
+import java.util.Objects;
 
 /**
  * Format-agnostic {@link SourceReader} backed by Apache Tika. Auto-detects the
@@ -37,17 +42,28 @@ public final class TikaSourceReader implements SourceReader {
 
     private static final Logger log = LoggerFactory.getLogger(TikaSourceReader.class);
 
-    private final Parser parser = new AutoDetectParser();
+    private final Parser parser;
 
     /** Forced input charset for text/HTML, or {@code null} for Tika auto-detect. */
     private final Charset forcedCharset;
+    private final DiagnosticFactory diagnosticFactory;
 
     public TikaSourceReader() {
-        this(null);
+        this(null, new DiagnosticFactory(Clock.systemUTC()));
     }
 
     public TikaSourceReader(Charset forcedCharset) {
+        this(forcedCharset, new DiagnosticFactory(Clock.systemUTC()));
+    }
+
+    public TikaSourceReader(Charset forcedCharset, DiagnosticFactory diagnosticFactory) {
+        this(new AutoDetectParser(), forcedCharset, diagnosticFactory);
+    }
+
+    TikaSourceReader(Parser parser, Charset forcedCharset, DiagnosticFactory diagnosticFactory) {
+        this.parser = Objects.requireNonNull(parser, "parser");
         this.forcedCharset = forcedCharset;
+        this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
     }
 
     @Override
@@ -65,15 +81,33 @@ public final class TikaSourceReader implements SourceReader {
                     .message("source read")
                     .log();
             return text;
-        } catch (Exception e) {
-            LogEvents.error(log)
-                    .action(EventAction.SOURCE_READ)
-                    .outcome(EventOutcome.FAILURE)
-                    .field(LogField.IOC_SOURCE_PATH, source)
-                    .message("source read failed")
-                    .log(e);
-            throw new IocExtractorException("Failed to read source: " + source, e);
+        } catch (UnsupportedFormatException failure) {
+            var diagnostic = diagnosticFactory.create(SourceDiagnosticCodes.UNSUPPORTED_FORMAT)
+                    .with("source", source)
+                    .with("format", extension(source))
+                    .cause(failure)
+                    .build();
+            throw new DiagnosticException(diagnostic);
+        } catch (Exception failure) {
+            var diagnostic = diagnosticFactory.create(SourceDiagnosticCodes.READ_FAILED)
+                    .with("source", source)
+                    .with("reason", reason(failure))
+                    .cause(failure)
+                    .build();
+            throw new DiagnosticException(diagnostic);
         }
+    }
+
+    private static String extension(Path source) {
+        String name = source.getFileName().toString();
+        int separator = name.lastIndexOf('.');
+        return separator < 0 ? "unknown" : name.substring(separator + 1);
+    }
+
+    private static String reason(Exception failure) {
+        return failure.getMessage() == null || failure.getMessage().isBlank()
+                ? failure.getClass().getSimpleName()
+                : failure.getMessage();
     }
 
     private ParseContext parseContext() {

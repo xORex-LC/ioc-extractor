@@ -12,11 +12,11 @@ Outbound source adapter implementing `SourceReader` with Apache Tika.
 | Подпапка / файл | Назначение |
 |---|---|
 | `pom.xml` | Maven module descriptor |
-| `src/main/java/com/iocextractor/adapter/out/source/` | Tika-backed source reader |
+| `src/main/java/com/iocextractor/adapter/out/source/` | Tika-backed source reader; typed `SOURCE.READ_FAILED` / `SOURCE.UNSUPPORTED_FORMAT` boundary |
 
 ## Зависимости
 
-**Зависит от:** `ioc-application`, `ioc-platform-errors`,
+**Зависит от:** `ioc-application`, `ioc-platform-diagnostics`,
 `ioc-platform-observability`, Tika, SLF4J API.
 
 **Не импортируется:** bootstrap and other adapters.

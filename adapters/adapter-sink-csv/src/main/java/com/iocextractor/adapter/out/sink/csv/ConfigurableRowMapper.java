@@ -52,15 +52,15 @@ public final class ConfigurableRowMapper implements RowMapper {
     }
 
     @Override
-    public List<String> toRow(long id, ClassifiedIndicator indicator) {
+    public List<String> toRow(ClassifiedIndicator indicator) {
         List<String> row = new ArrayList<>(columns.size());
         for (ColumnSpec column : columns) {
-            row.add(cell(column, id, indicator));
+            row.add(cell(column, indicator));
         }
         return row;
     }
 
-    private String cell(ColumnSpec column, long id, ClassifiedIndicator classified) {
+    private String cell(ColumnSpec column, ClassifiedIndicator classified) {
         String value;
         if (CONST.equals(column.from())) {
             value = column.value();
@@ -69,7 +69,7 @@ public final class ConfigurableRowMapper implements RowMapper {
             if (provider == null) {
                 throw new IocExtractorException("Unknown value provider: " + column.from());
             }
-            value = provider.provide(id, classified);
+            value = provider.provide(classified);
         }
         if (column.whenType() != null && classified.indicator().type() != column.whenType()) {
             return null;

@@ -35,8 +35,15 @@ class CsvArtifactPreparerTest {
         var result = preparer.prepare(List.of(indicator("bad"), indicator("good")));
 
         assertThat(result.diagnostics()).singleElement()
-                .extracting(diagnostic -> diagnostic.code())
-                .isEqualTo(SinkDiagnosticCodes.ROW_MAPPING_FAILED);
+                .satisfies(diagnostic -> {
+                    assertThat(diagnostic.code()).isEqualTo(SinkDiagnosticCodes.ROW_MAPPING_FAILED);
+                    assertThat(diagnostic.context())
+                            .containsEntry("indicator", "bad")
+                            .containsEntry("type", IndicatorType.MD5)
+                            .containsEntry("source", "source-key")
+                            .containsEntry("artifact", "hashes")
+                            .containsEntry("ordinal", 0);
+                });
         assertThat(result.value().rows()).hasSize(1);
         assertThat(result.value().materialize().rows()).singleElement().satisfies(row -> {
             assertThat(row.value("id")).isEqualTo("100");
@@ -86,9 +93,9 @@ class CsvArtifactPreparerTest {
         }
 
         @Override
-        public List<String> toRow(long id, ClassifiedIndicator classified) {
+        public List<String> toRow(ClassifiedIndicator classified) {
             behavior.accept(classified.indicator().value());
-            return List.of(Long.toString(id), classified.indicator().value());
+            return java.util.Arrays.asList(null, classified.indicator().value());
         }
 
         @Override

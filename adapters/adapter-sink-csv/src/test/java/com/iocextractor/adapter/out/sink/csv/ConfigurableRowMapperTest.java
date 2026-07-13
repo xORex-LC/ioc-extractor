@@ -61,8 +61,8 @@ class ConfigurableRowMapperTest {
                 new ColumnSpec("host_match", "match.host", null, null, null),
                 new ColumnSpec("score", "const", null, null, null),
                 new ColumnSpec("source", "source.label", null, null, null)));
-        List<String> row = m.toRow(186, indicator("EXAMPLE.com", IndicatorType.DOMAIN, "Письмо X"));
-        assertThat(row).containsExactly("186", "example.com", "u:hAS", "h:dAS", null, "Письмо X");
+        List<String> row = m.toRow(indicator("EXAMPLE.com", IndicatorType.DOMAIN, "Письмо X"));
+        assertThat(row).containsExactly(null, "example.com", "u:hAS", "h:dAS", null, "Письмо X");
     }
 
     @Test
@@ -70,7 +70,7 @@ class ConfigurableRowMapperTest {
         ConfigurableRowMapper m = mapper(List.of(
                 new ColumnSpec("hash_md5", "value", null, IndicatorType.MD5, List.of("upper")),
                 new ColumnSpec("hash_sha256", "value", null, IndicatorType.SHA256, List.of("upper"))));
-        List<String> row = m.toRow(1, indicator("abcdef", IndicatorType.MD5, null));
+        List<String> row = m.toRow(indicator("abcdef", IndicatorType.MD5, null));
         assertThat(row).containsExactly("ABCDEF", null);
     }
 
@@ -78,14 +78,14 @@ class ConfigurableRowMapperTest {
     void strip_prefix_transform() {
         ConfigurableRowMapper m = mapper(List.of(
                 new ColumnSpec("source", "source.label", null, null, List.of("strip-prefix:Письмо "))));
-        List<String> row = m.toRow(1, indicator("x", IndicatorType.SHA256, "Письмо ФСТЭК"));
+        List<String> row = m.toRow(indicator("x", IndicatorType.SHA256, "Письмо ФСТЭК"));
         assertThat(row).containsExactly("ФСТЭК");
     }
 
     @Test
     void unknown_provider_fails_fast() {
         ConfigurableRowMapper m = mapper(List.of(new ColumnSpec("x", "nope", null, null, null)));
-        assertThatThrownBy(() -> m.toRow(1, indicator("x", IndicatorType.URL, null)))
+        assertThatThrownBy(() -> m.toRow(indicator("x", IndicatorType.URL, null)))
                 .isInstanceOf(IocExtractorException.class);
     }
 
@@ -105,7 +105,7 @@ class ConfigurableRowMapperTest {
                 new ColumnSpec("host_match", "match.host", null, null, null),
                 new ColumnSpec("url_match_copy", "match.url", null, null, null)));
 
-        assertThat(mapper.toRow(1, classified)).containsExactly("u:hAS", "h:dAS", "u:hAS");
+        assertThat(mapper.toRow(classified)).containsExactly("u:hAS", "h:dAS", "u:hAS");
         assertThat(featureCalls).hasValue(1);
     }
 }

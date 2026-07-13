@@ -63,7 +63,9 @@ class PayloadTypeTest {
         var indicator = indicator("example.com");
         var indicators = new ArrayList<>(List.of(indicator));
 
-        var deduplicated = new DeduplicatedIndicators(2, indicators);
+        var decisions = List.of(new DeduplicationDecision(indicator, true),
+                new DeduplicationDecision(indicator, false));
+        var deduplicated = new DeduplicatedIndicators(2, indicators, decisions);
         indicators.clear();
 
         assertThat(deduplicated.extracted()).isEqualTo(2);

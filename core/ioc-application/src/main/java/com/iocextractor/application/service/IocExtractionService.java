@@ -127,14 +127,15 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                                                               ArtifactProjection projection,
                                                                               boolean deduplicate,
                                                                               Clock clock) {
+        var diagnostics = new DiagnosticFactory(clock);
         return Pipeline.<ExtractionCommand>start()
-                .then(new ReadSourceStage(reader))
+                .then(new ReadSourceStage(reader, diagnostics))
                 .then(new RefangStage(refanger))
-                .then(new ExtractIndicatorsStage(extractor))
+                .then(new ExtractIndicatorsStage(extractor, diagnostics))
                 .then(new AttributeSourceStage(attributor, clock))
-                .then(new DeduplicateIndicatorsStage(deduplicate))
-                .then(new ClassifyIndicatorsStage(matchPolicy))
+                .then(new DeduplicateIndicatorsStage(deduplicate, diagnostics))
+                .then(new ClassifyIndicatorsStage(matchPolicy, diagnostics))
                 .then(new PrepareArtifactsStage(preparers))
-                .then(new WriteArtifactsStage(repository, projection, new DiagnosticFactory(clock)));
+                .then(new WriteArtifactsStage(repository, projection, diagnostics));
     }
 }

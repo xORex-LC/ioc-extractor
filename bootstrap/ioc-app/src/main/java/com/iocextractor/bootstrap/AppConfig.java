@@ -113,6 +113,7 @@ import com.iocextractor.domain.refang.RefangRule;
 import com.iocextractor.domain.refang.ReplacementRefanger;
 import com.iocextractor.domain.refang.Refanger;
 import com.iocextractor.observability.diagnostics.LoggingDiagnosticSink;
+import com.iocextractor.observability.diagnostics.RedactingDiagnosticContextFormatter;
 import com.iocextractor.observability.diagnostics.ResilientDiagnosticSink;
 import com.iocextractor.observability.logging.LoggingPipelineObserver;
 import com.iocextractor.platform.events.ControlEventPublisher;
@@ -230,8 +231,8 @@ public class AppConfig {
     }
 
     @Bean
-    public SourceReader sourceReader(IocProperties props) {
-        return new TikaSourceReader(sourceCharset(props));
+    public SourceReader sourceReader(IocProperties props, Clock clock) {
+        return new TikaSourceReader(sourceCharset(props), new DiagnosticFactory(clock));
     }
 
     @Bean
@@ -250,7 +251,7 @@ public class AppConfig {
 
     @Bean
     public DiagnosticRenderer diagnosticRenderer() {
-        return new TemplateDiagnosticRenderer();
+        return new TemplateDiagnosticRenderer(new RedactingDiagnosticContextFormatter());
     }
 
     @Bean

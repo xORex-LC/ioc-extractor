@@ -9,7 +9,9 @@ import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.SourceContext;
 import com.iocextractor.application.pipeline.payload.AttributedIndicators;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.application.pipeline.payload.DeduplicationDecision;
 import com.iocextractor.application.pipeline.payload.DeduplicatedIndicators;
+import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.domain.attribute.AttributionDecision;
 import com.iocextractor.domain.attribute.AttributionOutcome;
 import com.iocextractor.domain.attribute.SourceMarker;
@@ -29,6 +31,7 @@ import java.util.List;
 final class StageTestSupport {
 
     static final Clock CLOCK = Clock.fixed(Instant.parse("2026-06-21T00:00:00Z"), ZoneOffset.UTC);
+    static final DiagnosticFactory DIAGNOSTICS = new DiagnosticFactory(CLOCK);
 
     private StageTestSupport() {
     }
@@ -78,6 +81,10 @@ final class StageTestSupport {
     }
 
     static DeduplicatedIndicators deduplicatedIndicators(Indicator... indicators) {
-        return new DeduplicatedIndicators(indicators.length, List.of(indicators));
+        var retained = List.of(indicators);
+        var decisions = retained.stream()
+                .map(indicator -> new DeduplicationDecision(indicator, true))
+                .toList();
+        return new DeduplicatedIndicators(indicators.length, retained, decisions);
     }
 }

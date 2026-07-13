@@ -31,6 +31,7 @@ errors/diagnostics/observability, Commons CSV/IO, SLF4J API.
   остальные mapper defects останавливают run;
 - public id остаётся deferred slot до commit; `from: id` не допускает
   `when-type` или transforms, что проверяется bootstrap config preflight;
+  mapping SPI не получает временный id, а id-provider возвращает пустой slot;
 - `CsvArtifactSliceWriter` получает callback-stream из `SnapshotSliceReader`,
   пишет data/manifest/`_SUCCESS` в staging и публикует каталог одним
   `ATOMIC_MOVE`;

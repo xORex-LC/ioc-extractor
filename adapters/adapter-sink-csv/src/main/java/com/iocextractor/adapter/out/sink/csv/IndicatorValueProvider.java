@@ -6,7 +6,7 @@ import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 public final class IndicatorValueProvider implements ValueProvider {
 
     @Override
-    public String provide(long id, ClassifiedIndicator indicator) {
+    public String provide(ClassifiedIndicator indicator) {
         return indicator.indicator().value();
     }
 }

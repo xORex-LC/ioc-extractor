@@ -7,6 +7,7 @@ import com.iocextractor.application.artifact.PreparedArtifactRow;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.diagnostics.DiagnosticContextKeys;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
 import com.iocextractor.diagnostics.result.Result;
@@ -62,7 +63,11 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
             } catch (RowMappingException failure) {
                 diagnostics.add(diagnosticFactory.create(SinkDiagnosticCodes.ROW_MAPPING_FAILED)
                         .with("sink", definition.name())
-                        .with("indicator", "#" + ordinal + ":" + classified.indicator().type())
+                        .with(DiagnosticContextKeys.ARTIFACT, definition.name())
+                        .with(DiagnosticContextKeys.INDICATOR, classified.indicator().value())
+                        .with(DiagnosticContextKeys.TYPE, classified.indicator().type())
+                        .with(DiagnosticContextKeys.SOURCE, sourceKey(classified))
+                        .with(DiagnosticContextKeys.ORDINAL, ordinal)
                         .with("reason", reason(failure))
                         .cause(failure)
                         .build());
@@ -74,7 +79,7 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
     }
 
     private PreparedArtifactRow prepareRow(ClassifiedIndicator classified) {
-        List<String> values = definition.mapper().toRow(0, classified);
+        List<String> values = definition.mapper().toRow(classified);
         var row = new LinkedHashMap<String, String>();
         List<String> header = definition.mapper().header();
         for (int index = 0; index < header.size(); index++) {

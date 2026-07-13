@@ -14,6 +14,7 @@ core не зависит на logging.
 | Файл | Назначение |
 |---|---|
 | `LoggingDiagnosticSink.java` | `DiagnosticSink`, пишущий diagnostic log events |
+| `RedactingDiagnosticContextFormatter.java` | hash-redaction raw IOC для INFO и выше |
 
 ## Зависимости
 

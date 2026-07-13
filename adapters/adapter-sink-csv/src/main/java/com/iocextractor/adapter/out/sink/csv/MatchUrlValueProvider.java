@@ -6,7 +6,7 @@ import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 public final class MatchUrlValueProvider implements ValueProvider {
 
     @Override
-    public String provide(long id, ClassifiedIndicator indicator) {
+    public String provide(ClassifiedIndicator indicator) {
         return indicator.classification().match().urlMatch();
     }
 }

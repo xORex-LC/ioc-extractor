@@ -22,10 +22,10 @@ class ClassifyIndicatorsStageTest {
         var classifier = new ClassifyIndicatorsStage(indicator -> {
             calls.incrementAndGet();
             return decision(indicator);
-        });
+        }, StageTestSupport.DIAGNOSTICS);
         var first = StageTestSupport.indicator("first.example");
         var duplicate = StageTestSupport.indicator("first.example");
-        var deduplicated = new DeduplicateIndicatorsStage(true).process(
+        var deduplicated = new DeduplicateIndicatorsStage(true, StageTestSupport.DIAGNOSTICS).process(
                 StageTestSupport.envelope(StageTestSupport.attributedIndicators(first, duplicate), false));
 
         var output = classifier.process(deduplicated);
@@ -43,7 +43,7 @@ class ClassifyIndicatorsStageTest {
         var stage = new ClassifyIndicatorsStage(indicator -> {
             calls.incrementAndGet();
             return decision(indicator);
-        });
+        }, StageTestSupport.DIAGNOSTICS);
         var first = StageTestSupport.indicator("first.example");
         var second = StageTestSupport.indicator("second.example");
 
@@ -63,7 +63,7 @@ class ClassifyIndicatorsStageTest {
         var stage = new ClassifyIndicatorsStage(indicator -> {
             calls.incrementAndGet();
             throw new AssertionError("FILE indicator must not reach MatchPolicy");
-        });
+        }, StageTestSupport.DIAGNOSTICS);
         var hash = new Indicator("0123456789ABCDEF0123456789ABCDEF", IndicatorType.MD5,
                 new SourceContext("test-source", null));
 

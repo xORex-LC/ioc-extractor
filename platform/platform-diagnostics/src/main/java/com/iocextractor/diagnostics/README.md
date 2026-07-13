@@ -15,16 +15,17 @@ bootstrap. Producer-код может создавать диагностики,
 | Подпапка / файл | Назначение |
 |---|---|
 | `Diagnostic.java` | Неизменяемые диагностические данные |
+| `DiagnosticContextKeys.java` | Общие context keys на границе producer/renderer |
 | `DiagnosticBuilder.java` | Builder с управляемым `Clock` |
 | `DiagnosticFactory.java` | Фабрика builders с инжектируемым `Clock` |
 | `DiagnosticCode.java` | Контракт стабильного кода диагностики |
-| `DiagnosticException.java` | Исключение, переносящее fatal diagnostic |
+| `DiagnosticException.java` | Исключение, переносящее stopping diagnostic |
 | `DiagnosticSeverity.java` | Уровни severity |
 | `DiagnosticCategory.java` | Категории диагностики, включая formation-only `EXPORT` и delivery `SYNC` |
 | `codes/` | Стартовые enum-каталоги кодов |
 | `catalog/` | Агрегация и проверяемые entries каталога |
 | `result/` | `Result`, `Notification`, `FailurePolicy` |
-| `render/` | Рендеринг диагностик в текст |
+| `render/` | Рендеринг диагностик в текст + strategy форматирования context |
 | `sink/` | Порты и базовые sinks |
 
 ## Зависимости

@@ -22,7 +22,7 @@
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
-            <artifactId>ioc-platform-errors</artifactId>
+            <artifactId>ioc-platform-diagnostics</artifactId>
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>

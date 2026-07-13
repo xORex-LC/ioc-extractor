@@ -34,7 +34,7 @@ class StageContractTest {
                 .build();
 
         assertPreservesContract(
-                new ReadSourceStage(source -> "source text"),
+                new ReadSourceStage(source -> "source text", StageTestSupport.DIAGNOSTICS),
                 StageTestSupport.commandEnvelope(false),
                 diagnostic);
         assertPreservesContract(
@@ -43,7 +43,8 @@ class StageContractTest {
                 diagnostic);
         assertPreservesContract(
                 new ExtractIndicatorsStage(text -> new ExtractionOutcome(
-                        List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of())),
+                        List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of()),
+                        StageTestSupport.DIAGNOSTICS),
                 StageTestSupport.envelope(new RefangedText(new RefangOutcome("example.com", List.of())), false),
                 diagnostic);
         assertPreservesContract(
@@ -57,14 +58,14 @@ class StageContractTest {
                         false),
                 diagnostic);
         assertPreservesContract(
-                new DeduplicateIndicatorsStage(true),
+                new DeduplicateIndicatorsStage(true, StageTestSupport.DIAGNOSTICS),
                 StageTestSupport.envelope(StageTestSupport.attributedIndicators(
                                 StageTestSupport.indicator("example.com")),
                         false),
                 diagnostic);
         assertPreservesContract(
                 new ClassifyIndicatorsStage(indicator -> StageTestSupport.classifiedIndicator(indicator)
-                        .classification()),
+                        .classification(), StageTestSupport.DIAGNOSTICS),
                 StageTestSupport.envelope(StageTestSupport.deduplicatedIndicators(
                         StageTestSupport.indicator("example.com")), false),
                 diagnostic);

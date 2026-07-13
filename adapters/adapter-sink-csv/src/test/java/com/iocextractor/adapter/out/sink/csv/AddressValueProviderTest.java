@@ -30,8 +30,8 @@ class AddressValueProviderTest {
     void bare_ip_goes_to_ip_column_only() {
         var bareIp = indicator("1.2.3.4", IndicatorType.IPV4);
 
-        assertThat(ip.provide(1, bareIp)).isEqualTo("1.2.3.4");
-        assertThat(url.provide(1, bareIp)).isNull();
+        assertThat(ip.provide(bareIp)).isEqualTo("1.2.3.4");
+        assertThat(url.provide(bareIp)).isNull();
     }
 
     @Test
@@ -40,18 +40,18 @@ class AddressValueProviderTest {
         var ipWithPort = indicator("5.6.7.8:8080/Payload.exe", IndicatorType.IPV4);
         var schemeIpUrl = indicator("https://1.2.3.4/payload.exe", IndicatorType.URL);
 
-        assertThat(url.provide(1, ipWithPort)).isEqualTo("5.6.7.8:8080/Payload.exe");
-        assertThat(ip.provide(1, ipWithPort)).isNull();
-        assertThat(url.provide(1, schemeIpUrl)).isEqualTo("https://1.2.3.4/payload.exe");
-        assertThat(ip.provide(1, schemeIpUrl)).isNull();
+        assertThat(url.provide(ipWithPort)).isEqualTo("5.6.7.8:8080/Payload.exe");
+        assertThat(ip.provide(ipWithPort)).isNull();
+        assertThat(url.provide(schemeIpUrl)).isEqualTo("https://1.2.3.4/payload.exe");
+        assertThat(ip.provide(schemeIpUrl)).isNull();
     }
 
     @Test
     void domain_addresses_go_to_url_column_only() {
         var domain = indicator("example.com/path", IndicatorType.DOMAIN);
 
-        assertThat(url.provide(1, domain)).isEqualTo("example.com/path");
-        assertThat(ip.provide(1, domain)).isNull();
+        assertThat(url.provide(domain)).isEqualTo("example.com/path");
+        assertThat(ip.provide(domain)).isNull();
     }
 
     private ClassifiedIndicator indicator(String value, IndicatorType type) {

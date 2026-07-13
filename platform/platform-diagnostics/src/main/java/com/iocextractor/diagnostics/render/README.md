@@ -13,6 +13,7 @@
 | Подпапка / файл | Назначение |
 |---|---|
 | `DiagnosticRenderer.java` | Порт рендеринга |
+| `DiagnosticContextFormatter.java` | Strategy форматирования одного context value |
 | `TemplateDiagnosticRenderer.java` | Простая подстановка `{key}` из context |
 
 ## Зависимости
