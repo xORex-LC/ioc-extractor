@@ -9,6 +9,9 @@ formation saga/change detection/forward recovery.
 Extraction возвращает first-class completion/diagnostic outcome. Pure domain
 decisions материализуются один раз; application stages используют их
 для policy outcome и передают в gated observability port без SLF4J dependency.
+`ExtractionCommand.runId` обязателен и задаётся driving boundary: oneshot CLI
+создаёт новый correlation id, daemon передаёт durable `ingest_run.run_id`.
+`ExtractionResult` возвращает тот же id из terminal envelope.
 
 **Правило слоя:** application работает через ports and domain/platform
 contracts. It does not import concrete adapters, Spring or runtime logging.

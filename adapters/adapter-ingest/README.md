@@ -29,4 +29,8 @@ Spring Integration file support.
 - `FileSourceMessageHandler` владеет final retry boundary: после исчерпания
   попыток он выполняет reject/dead-letter transition, если use case ещё
   не вернул durable `FAILED`, затем эмитит один typed `INGEST.*` diagnostic.
+- После структурно завершённой extraction handler публикует terminal
+  `source_ingest` с durable run id, completion и отдельными severity counts.
+  `COMPLETED_WITH_ERRORS` имеет `event.outcome=failure`; duplicate skip не
+  получает вымышленный extraction completion.
 - Локальный error-log не дублирует canonical diagnostic delivery.

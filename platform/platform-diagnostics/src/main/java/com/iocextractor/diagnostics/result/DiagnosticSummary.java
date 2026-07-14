@@ -40,7 +40,11 @@ public record DiagnosticSummary(long total,
 
     /** Returns whether the run observed an error or fatal diagnostic. */
     public boolean hasErrors() {
-        return bySeverity.getOrDefault(DiagnosticSeverity.ERROR, 0L) > 0
-                || bySeverity.getOrDefault(DiagnosticSeverity.FATAL, 0L) > 0;
+        return count(DiagnosticSeverity.ERROR) > 0 || count(DiagnosticSeverity.FATAL) > 0;
+    }
+
+    /** Returns the number of observed diagnostics at one severity. */
+    public long count(DiagnosticSeverity severity) {
+        return bySeverity.getOrDefault(Objects.requireNonNull(severity, "severity"), 0L);
     }
 }

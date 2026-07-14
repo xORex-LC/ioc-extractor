@@ -14,6 +14,7 @@ Generated from `EventAction` and `LogField`.
 | `stage_complete` | pipeline | Pipeline stage execution completed or failed. |
 | `pipeline_item_decision` | pipeline | One explicitly enabled per-item pipeline decision was traced. |
 | `source_read` | source | Source document text was read. |
+| `source_ingest` | source | Source ingestion reached a terminal handled outcome. |
 | `artifact_project` | sink | CSV projection was regenerated from canonical storage. |
 | `retention_sweep` | maintenance | Retention sweep evaluated configured targets. |
 | `schema_migrate` | storage | Database schema migration progressed or failed. |
@@ -86,6 +87,15 @@ Generated from `EventAction` and `LogField`.
 | `ioc.sync.oldest_age` | ioc | Age of the oldest pending sync work item. |
 | `ioc.sync.shed_to_reconcile` | ioc | Whether work was shed to periodic reconciliation. |
 | `ioc.sync.abandoned_work` | ioc | Number of abandoned sync work items. |
+| `ioc.completion.status` | ioc | Typed completion status of a structurally finished processing run. |
+| `ioc.diagnostic.total` | ioc | Total diagnostics observed during the run, including suppressed occurrences. |
+| `ioc.diagnostic.suppressed` | ioc | Diagnostics suppressed by the per-run retention budget. |
+| `ioc.diagnostic.count.fatal` | ioc | FATAL diagnostics observed during the run. |
+| `ioc.diagnostic.count.error` | ioc | ERROR diagnostics observed during the run. |
+| `ioc.diagnostic.count.warn` | ioc | WARN diagnostics observed during the run. |
+| `ioc.diagnostic.count.info` | ioc | INFO diagnostics observed during the run. |
+| `ioc.diagnostic.count.debug` | ioc | DEBUG diagnostics observed during the run. |
+| `ioc.diagnostic.count.trace` | ioc | TRACE diagnostics observed during the run. |
 | `ioc.diagnostic.code` | ioc | Stable diagnostic code. |
 | `ioc.diagnostic.category` | ioc | Diagnostic processing category. |
 | `ioc.diagnostic.severity` | ioc | Diagnostic severity independent of log level. |

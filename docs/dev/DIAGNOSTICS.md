@@ -131,7 +131,9 @@ sink.row-mapping-failed = Артефакт {artifact} отклонил инди�
 - `ExtractionResult` возвращает diagnostics, `DiagnosticSummary` и
   `COMPLETED | COMPLETED_WITH_WARNINGS | COMPLETED_WITH_ERRORS`. Для oneshot
   последний status даёт exit code `3`; daemon сохраняет degraded outcome в
-  `IngestSourceResult`.
+  `IngestSourceResult`. Оба driving boundary публикуют run id, status,
+  total/suppressed и отдельные severity counts; daemon связывает pipeline с тем
+  же durable `ingest_run.run_id`.
 
 ## Порты и адаптеры
 

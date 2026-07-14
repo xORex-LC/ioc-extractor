@@ -76,6 +76,9 @@ class IngestionServiceTest {
 
         assertThat(result.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
         assertThat(result.duplicate()).isFalse();
+        assertThat(result.extractionResultOptional()).get()
+                .extracting(extraction -> extraction.runId())
+                .isEqualTo("run-1");
         assertThat(sink.written).isEqualTo(1);
         assertThat(projection.artifacts).containsExactly("masks");
         assertThat(runLedger.status).isEqualTo(IngestRunStatus.COMPLETED);

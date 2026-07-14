@@ -25,3 +25,8 @@ picocli.
 парсинг root help и выполнение остальных команд не разрешают JDBC/service-DB
 graph; recovery и export создаются только после фактического вызова
 `ioc export --profile ...`.
+
+`ExtractCommand` создаёт run id до `command_start`, передаёт его application
+use case и публикует terminal completion как операторский контракт. Stdout
+содержит run id, `CompletionStatus`, total/suppressed и ненулевые severity
+counts; `COMPLETED_WITH_ERRORS` возвращает отдельный exit code `3`.

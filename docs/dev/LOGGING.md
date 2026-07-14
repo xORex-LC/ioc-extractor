@@ -309,8 +309,12 @@ ECS JSON:
 
 - Есть `MdcScope`, покрытый тестом на очистку контекста.
 - Есть минимальные logging constants для стартовых `event.action` и `ioc.*` fields.
-- `IocExtractionService` задаёт `ioc.run.id` (run) и stage scopes из `Envelope.meta`.
+- Driving boundary задаёт `ioc.run.id`; application переносит его через
+  `Envelope.meta`, а observer открывает run/stage scopes.
 - Основные стадии пишут operational log events со счётчиками/duration.
+- CLI и daemon terminal events публикуют `ioc.completion.status`, total,
+  suppressed и отдельные severity counters; duplicate skip остаётся отдельным
+  `source_ingest` без синтетического completion.
 - `Diagnostic` может быть отрендерен в log event через `LoggingDiagnosticSink`,
   но logging не зависит от diagnostics.
 - `daemon`-профиль пишет ECS JSON rolling file.

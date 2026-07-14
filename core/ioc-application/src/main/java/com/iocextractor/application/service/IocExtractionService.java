@@ -36,7 +36,6 @@ import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 
 /**
  * Application core: the ETL pipeline expressed against ports only.
@@ -101,7 +100,7 @@ public final class IocExtractionService implements ExtractIocsUseCase {
     @Override
     public ExtractionResult extract(ExtractionCommand command) {
         var normalizedSource = command.source().toAbsolutePath().normalize();
-        var meta = EnvelopeMeta.initial(UUID.randomUUID().toString(), normalizedSource.toString(), clock)
+        var meta = EnvelopeMeta.initial(command.runId(), normalizedSource.toString(), clock)
                 .withAttribute(PipelineMetaAttributes.SOURCE_PATH, normalizedSource)
                 .withAttribute(PipelineMetaAttributes.DRY_RUN, command.dryRun())
                 .withAttribute(PipelineMetaAttributes.MODE, observabilityMode);
@@ -111,6 +110,7 @@ public final class IocExtractionService implements ExtractIocsUseCase {
         var diagnosticSummary = pipelineResult.diagnosticSummary();
 
         return new ExtractionResult(
+                output.meta().runId(),
                 summary.extracted(),
                 summary.retained(),
                 new LinkedHashMap<>(summary.writtenPerArtifact()),

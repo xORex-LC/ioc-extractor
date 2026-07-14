@@ -256,6 +256,9 @@ dataframe/
   и так несёт ingestion-ledger (`CLAIMED → полный репроцесс`), а run-ledger даёт
   наблюдаемость фаз write→project. Artifact export использует отдельные
   `export_run`/`export_progress`, не перегружая ingest ledger.
+- **Единая корреляция:** id, возвращённый `RunLedger.startIngest`, передаётся в
+  extraction command и затем совпадает в pipeline MDC, `ExtractionResult`,
+  control event и terminal `source_ingest`.
 - **Авторитет id:** единый thread-safe `ArtifactIdSequence(strategy,
   start=canonical maxId+1)` (как в oneshot), общий через сессию демона. Диапазон
   резервируется после policy checkpoint и не возвращается при failed commit;
@@ -326,6 +329,10 @@ canonical write. Обратный поток берёт только completed e
 - `INGEST.CLAIM_FAILED`, `LEDGER_WRITE_FAILED`, `DEAD_LETTER_FAILED` и
   `RECOVERY_FAILED` покрывают файловый lifecycle. Startup recovery эмитит свой
   final diagnostic само, потому что над ним нет message-handler boundary.
+- Успешно обработанный source завершается structured `source_ingest`: INFO для
+  clean completion, WARN/success для completion с warnings и WARN/failure для
+  structurally completed run с errors. Точный статус и diagnostic counts идут
+  отдельными `ioc.*` полями; duplicate skip не притворяется extraction run.
 - Один «ядовитый» файл не блокирует поток. Pipeline policy отдельно решает
   судьбу element defects до canonical commit: production daemon использует
   `collect-and-continue`, но FATAL/run failure всё равно ведёт к whole-file retry/dead-letter.

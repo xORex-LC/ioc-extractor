@@ -39,7 +39,7 @@ final class StageTestSupport {
     }
 
     static Envelope<ExtractionCommand> commandEnvelope(boolean dryRun) {
-        var command = new ExtractionCommand(Path.of("input.html"), dryRun);
+        var command = new ExtractionCommand("test-run", Path.of("input.html"), dryRun);
         return Envelope.of(command, meta(command.source(), dryRun));
     }
 

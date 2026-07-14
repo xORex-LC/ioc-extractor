@@ -76,7 +76,8 @@ class GoldenPipelineTest {
 
     @Test
     void pipeline_output_matches_golden_and_repeated_extract_updates_only_provenance() throws Exception {
-        useCase.extract(new ExtractionCommand(Path.of("src/test/resources/golden/source.html"), false));
+        useCase.extract(new ExtractionCommand(
+                "golden-first", Path.of("src/test/resources/golden/source.html"), false));
 
         assertThat(normalize(Files.readString(Path.of("target/golden/masks.csv"))))
                 .isEqualTo(goldenResource("golden/expected-masks.csv"));
@@ -92,7 +93,8 @@ class GoldenPipelineTest {
         Map<String, Long> firstRevisions = revisions();
         Map<String, Map<String, Long>> firstOccurrences = sourceOccurrences();
 
-        useCase.extract(new ExtractionCommand(Path.of("src/test/resources/golden/source.html"), false));
+        useCase.extract(new ExtractionCommand(
+                "golden-second", Path.of("src/test/resources/golden/source.html"), false));
 
         assertThat(projectionContent()).isEqualTo(firstProjection);
         assertThat(publicRowCounts()).isEqualTo(firstRows);

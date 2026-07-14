@@ -41,7 +41,9 @@ record Result<T>(T value, List<Diagnostic> diagnostics) {}    // per-item/ста
 - **EnvelopeMeta** — generic-контракт: корреляция (`runId`, `sourceId`),
   текущий `StageId`, время создания и расширяемые `attributes`. IOC/application
   поля (`ioc.source.path`, `ioc.mode`, `ioc.dry_run`) задаются application-ключами,
-  а не полями platform-типа.
+  а не полями platform-типа. `runId` задаёт driving boundary: CLI создаёт его
+  до start-event, daemon передаёт id уже открытого durable `ingest_run`;
+  application не генерирует скрытый fallback.
 - **Stage** — чистый Filter; порядок собирает `Pipeline.start().then(s1).then(s2)…`,
   исполняет `PipelineRunner` и применяет `FailurePolicy` после каждой стадии
   (`Notification.throwIfRejected` бросает `DiagnosticException` при stop).
@@ -57,7 +59,8 @@ record Result<T>(T value, List<Diagnostic> diagnostics) {}    // per-item/ста
   а усечение представлено `PIPELINE.DIAGNOSTICS_SUPPRESSED` и счётчиками по severity.
   Summary эмитится ровно один раз на любом terminal path, включая stage throw.
   `ExtractionResult` публикует immutable diagnostics, summary и
-  `COMPLETED | COMPLETED_WITH_WARNINGS | COMPLETED_WITH_ERRORS`.
+  `COMPLETED | COMPLETED_WITH_WARNINGS | COMPLETED_WITH_ERRORS`, а также тот же
+  `runId`, который прошёл через terminal envelope.
 - **PipelineObserver** (port) — framework-free seam наблюдаемости: `PipelineRunner`
   открывает run-scope, внутри него stage-scopes и шлёт
   `stageStarted/Completed/Failed` через порт. ECS/MDC реализация

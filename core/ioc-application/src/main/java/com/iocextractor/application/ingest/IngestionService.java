@@ -256,7 +256,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         ExtractionResult extraction;
         try {
             extraction = extractionFactory.create(sourcePreparers.preparers(), NoopArtifactProjection.INSTANCE)
-                .extract(new ExtractionCommand(unit.processingPath(), false));
+                    .extract(new ExtractionCommand(run.runId(), unit.processingPath(), false));
             runLedger.markDbCommitted(run.runId());
             dbCommitted = true;
             for (String artifactName : sourcePreparers.artifactNames()) {
