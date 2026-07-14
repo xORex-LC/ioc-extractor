@@ -56,7 +56,7 @@ class LoggingPipelineDecisionTracerTest {
         var appender = appender();
         var tracer = new LoggingPipelineDecisionTracer(logger, true);
 
-        tracer.trace(decision("https://example.com/path?token=secret#fragment"));
+        tracer.trace(decision("https://user:password@example.com/path?token=secret#fragment"));
 
         assertThat(appender.list).singleElement().satisfies(event -> {
             assertThat(event.getLevel()).isEqualTo(Level.TRACE);
@@ -69,11 +69,11 @@ class LoggingPipelineDecisionTracerTest {
                     .containsEntry(LogField.IOC_SPAN_START.key(), "8")
                     .containsEntry(LogField.IOC_SPAN_END.key(), "61")
                     .containsEntry(LogField.IOC_ITEM_VALUE.key(),
-                            "https://example.com/path?<redacted>#fragment");
+                            "https://<redacted>@example.com/path?<redacted>#fragment");
             assertThat(event.getMDCPropertyMap().get(LogField.IOC_ITEM_IDENTITY.key()))
                     .startsWith("url:")
                     .endsWith("@8:61")
-                    .doesNotContain("secret");
+                    .doesNotContain("password", "secret");
         });
     }
 

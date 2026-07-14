@@ -832,3 +832,238 @@ ADR (гонка recovery⊥poller, отсутствие resume-протокол�
 hashing вне bounded boundary, poison после failed claim), зарегистрированы как
 **ING-10..ING-13** в [KNOWN-ISSUES](../KNOWN-ISSUES.md) и в скоуп 0017 не
 входят.
+
+## Дополнение 2026-07-14 — дизайн закрытия стендовых отклонений
+
+Это дополнение конкретизирует способ закрытия четырёх отклонений выше. Оно не
+меняет Решения 1–8 и не расширяет скоуп до ING-10..ING-13. Локальные фиксы в
+отдельных call sites отклонены: затронутые свойства являются контрактами
+cross-cutting подсистем и должны иметь одно место владения.
+
+### 1. Единая политика безопасного представления log values
+
+Redaction разделяется на две независимые операции:
+
+1. **Sanitization чувствительных компонентов** выполняется на всех уровнях.
+   URL query и credentials не отображаются ни на DEBUG, ни на TRACE;
+   самостоятельное secret/token value допустимо в diagnostic context только
+   под явно обозначенным sensitive key и всегда скрывается.
+2. **Disclosure самого IOC** зависит от severity. DEBUG/TRACE могут показать
+   очищенное значение индикатора; INFO/WARN/ERROR/FATAL показывают только
+   `[redacted:sha256:<short-hash>]`.
+
+Short hash вычисляется от исходного значения, а не от очищенного: это сохраняет
+стабильную идентичность конкретного IOC, не раскрывая его. Произвольный поиск
+«похожих на токен» подстрок не вводится — эвристика давала бы ложные
+срабатывания и не могла бы служить security boundary. Producers обязаны
+передавать raw IOC через известные `DiagnosticContextKeys`; новые настоящие
+secret-поля требуют явного sensitive-key контракта.
+
+Одна stateless-реализация, например `SensitiveLogValueSanitizer`, размещается в
+`platform-observability` и не зависит от diagnostics/SLF4J. Её используют:
+
+- `RedactingDiagnosticContextFormatter` для raw keys и для их вхождений в
+  соседние context values;
+- `LoggingPipelineDecisionTracer` вместо собственного `redactQuery()`.
+
+Sanitizer работает линейным scan по строке, не парсит IOC через `URI` и не
+нормализует его: частичные/нестандартные IOC являются допустимым входом, а
+observability-код не должен менять их семантику или бросать parsing exception.
+Новая внешняя библиотека и regex-эвристики не нужны.
+
+Исполнимые проверки:
+
+- parameterized test по всем `DiagnosticSeverity`: query/credentials
+  отсутствуют всегда, base IOC виден только на DEBUG/TRACE;
+- INFO+ hash соответствует исходному, а не sanitized значению;
+- embedded raw value, malformed/partial URL, fragment и значение без query;
+- одинаковый sanitizer contract у diagnostic renderer и structured TRACE;
+- исходный immutable diagnostic context не мутируется.
+
+### 2. Run lifecycle как bracketed observation scope
+
+`ioc.run.id`, source id/path и mode принадлежат всему pipeline run, а не
+отдельной стадии. `PipelineObserver` получает framework-free lifecycle seam:
+
+```java
+default AutoCloseable openRun(EnvelopeMeta meta) {
+    return () -> { };
+}
+```
+
+`LoggingPipelineObserver.openRun(...)` открывает `MdcScope` со стабильными
+run-полями. `openStage(...)` открывает вложенный scope только для `ioc.stage`.
+Вложенные scopes обязаны восстановить предыдущее MDC-состояние при закрытии;
+runner остаётся синхронным и не обещает неявное распространение `ThreadLocal`
+через executor/reactive boundary.
+
+В `PipelineRunner.runWithOutcome(...)` terminal delivery оформляется одной
+структурной веткой:
+
+```text
+open run scope
+  try
+    open/close stage scopes and execute stages
+  finally
+    emit suppression summary once
+close run scope
+```
+
+Специальные вызовы summary для success и policy rejection удаляются. `finally`
+использует последний уже материализованный `current.diagnostics()`, а не
+повторный `BoundedNotification.diagnostics()`: повторная материализация создала
+бы другой synthetic diagnostic с новым timestamp. На stage throw действует
+инвариант Stage attach-XOR-throw, поэтому последним консистентным snapshot
+остаётся вход абортировавшей стадии; её typed terminal diagnostic уже эмитится
+отдельно внутри stage scope.
+
+Suppression summary становится RUN-сигналом: он имеет `ioc.run.id`, но после
+закрытия stage scope намеренно не имеет ложного `ioc.stage`. `DiagnosticSink`
+по-прежнему изолируется `ResilientDiagnosticSink` в composition root; runner не
+дублирует retry/swallow policy observational bridge.
+
+Обязательные тесты:
+
+- normal completion, policy rejection, typed/generic stage throw;
+- suppression в ранней стадии и throw в последующей → ровно одна summary;
+- отсутствие suppression → отсутствие synthetic emission;
+- summary эмитится до закрытия run scope и после закрытия stage scope;
+- pre-existing MDC восстанавливается;
+- два параллельных синхронных run на разных потоках не смешивают run id.
+
+Micrometer Context Propagation/Spring task decorators остаются будущей точкой
+расширения только при появлении реальной async stage boundary; в текущий
+синхронный ETL они не добавляются.
+
+### 3. Единая run identity и terminal completion на driving boundaries
+
+Pipeline UUID перестаёт неявно генерироваться внутри `IocExtractionService`.
+`ExtractionCommand` получает обязательный `runId` без optional/default и без
+двухаргументного compatibility-конструктора:
+
+- oneshot CLI создаёт id до `COMMAND_START`, логирует его и передаёт use case;
+- daemon после `RunLedger.startIngest(...)` передаёт durable `run.runId()`;
+- `EnvelopeMeta`, diagnostics, `ExtractionResult`, ingest saga и control event
+  используют один и тот же id;
+- `ExtractionResult` явно возвращает `runId`, полученный из terminal envelope.
+
+Тем самым исчезает текущий разрыв, при котором durable `ingest_run` и вложенный
+extraction pipeline получают разные UUID. Correlation id является метаданными
+вызова use case и задаётся driving boundary; application не имеет скрытого
+fallback-генератора.
+
+Logging taxonomy расширяется только вместе с producers:
+
+- `EventAction.SOURCE_INGEST` для terminal daemon boundary; существующий
+  `SOURCE_READ` остаётся собственностью source reader;
+- `ioc.completion.status`;
+- `ioc.diagnostic.total`, `ioc.diagnostic.suppressed` и точные counters
+  `ioc.diagnostic.count.{fatal,error,warn,info,debug,trace}`.
+
+Поля добавляются через `LogField`, а `LOGGING-CATALOG.md` регенерируется.
+До OBS-D3 числовые значения проходят через текущий MDC-string bridge; это не
+повод публиковать непрозрачную строку-map вместо отдельно запрашиваемых полей.
+
+Terminal presentation закрепляется так:
+
+| Completion | Log level | `event.outcome` | Driving result |
+|---|---|---|---|
+| `COMPLETED` | INFO | `success` | exit 0 / daemon success |
+| `COMPLETED_WITH_WARNINGS` | WARN | `success` | exit 0 / daemon success with warnings |
+| `COMPLETED_WITH_ERRORS` | WARN | `failure` | exit 3 / structurally completed daemon run |
+
+`event.outcome` не получает нестандартное значение `degraded`: точный оттенок
+живёт в `ioc.completion.status`, а ECS-поле остаётся `success|failure|unknown`.
+WARN для terminal degraded event делает состояние заметным, но не создаёт
+второй ERROR поверх уже эмитированных element diagnostics.
+
+Oneshot stdout печатает run id, completion, total/suppressed и ненулевые
+severity counts перед row counters. Daemon `FileSourceMessageHandler` использует
+`IngestSourceResult.extractionResult` и публикует те же данные как structured
+fields. Duplicate skip, у которого extraction result отсутствует, не получает
+синтетический completion: он логируется отдельным сообщением как успешно
+обработанный duplicate.
+
+Проверки включают CLI stdout + exit 0/3, daemon structured capture для всех
+трёх completion statuses, отсутствие NPE на duplicate и равенство run id в
+ledger/result/MDC/terminal event.
+
+### 4. Typed exception translation на mapping SPI boundary
+
+`ConfigurableRowMapper` не ловит произвольный `RuntimeException`. Такой catch
+ошибочно превратил бы NPE, registry/configuration error и programming defect в
+ELEMENT defect и разрешил бы commit после повреждения инварианта.
+
+Контракт разделяется на два уровня:
+
+- `MappingValueException` — provider/transform явно сообщает о редком,
+  ожидаемом data-dependent отказе для текущего элемента;
+- `RowMappingException` — mapper переводит только `MappingValueException` и
+  добавляет безопасную локализацию: column, component kind и зарегистрированное
+  имя provider/transform.
+
+```text
+provider / transform
+  ├─ MappingValueException → RowMappingException → SINK.ROW_MAPPING_FAILED
+  └─ other RuntimeException → PIPELINE.STAGE_FAILED
+```
+
+`ValueProvider` и `Transform` получают Javadoc-контракт: typed exception
+разрешена только для input-dependent невозможности построить cell. Unknown
+provider/transform, invalid registry state и нарушенный code invariant к этому
+классу не относятся. `CsvArtifactPreparer` добавляет в diagnostic только safe
+metadata (`artifact`, `column`, component kind/name, type, ordinal, source и
+redacted indicator identity); raw value продолжает подчиняться общей logging
+policy.
+
+Текущие встроенные providers/transforms являются total-функциями. Искусственная
+валидация или специально падающий production-компонент ради активации policy не
+вводятся: это создало бы вымышленное бизнес-правило. Достижимость контракта
+доказывается producer contract-тестом через настоящие `ConfigurableRowMapper` и
+`CsvArtifactPreparer` с зарегистрированным typed-failing provider/transform, а
+не fake `RowMapper`.
+
+Интеграционный checkpoint обязан доказать:
+
+- COLLECT сохраняет только валидные rows и возвращает
+  `COMPLETED_WITH_ERRORS`;
+- fail-fast не резервирует ID, не вызывает canonical write и не projection;
+- exact diagnostic содержит safe element identity и mapping location;
+- неожиданный `IllegalStateException` остаётся RUN
+  `PIPELINE.STAGE_FAILED`;
+- happy path не создаёт дополнительных result-wrapper allocations — на нём
+  добавляется только дешёвый exception boundary.
+
+Если появится реальный output invariant (`required`, `one-of`, format
+constraint), он подключается отдельным typed `RowConstraint` через тот же
+protocol. До появления такого правила DSL не расширяется (YAGNI).
+
+### Границы реализации и нарезка
+
+Новые зависимости между слоями не вводятся:
+
+- `platform-observability` владеет sanitizer, run MDC implementation и logging
+  taxonomy;
+- `platform-etl` владеет run lifecycle и exactly-once terminal delivery;
+- `platform-diagnostics-logging` применяет общую redaction policy;
+- `ioc-application` переносит явную run identity и completion outcome;
+- driving adapters отвечают только за представление outcome оператору;
+- `adapter-sink-csv` владеет mapping exception translation;
+- bootstrap остаётся composition root.
+
+Spring Batch skip policy, Bean Validation, Micrometer Observation и URL parsing
+library для этих исправлений не применяются: они увеличили бы coupling, но не
+решили бы классификацию failure и ownership lifecycle.
+
+Предлагаемая последовательность implementation commits:
+
+1. `FIX: enforce sensitive log value sanitization`;
+2. `FIX: scope terminal diagnostics to pipeline run`;
+3. `FEATURE: publish correlated extraction completion`;
+4. `FIX: classify typed row mapping failures`.
+
+В каждом commit обновляются затронутые dev/module docs и generated catalog.
+После каждого проходят targeted reactor tests, после четвёртого — полный
+`./mvnw verify`, link-check и `git diff --check`. Ни один из этих commits не
+должен менять startup ordering, retry/resume, hashing/claim boundary или durable
+recovery protocol из ING-10..ING-13.

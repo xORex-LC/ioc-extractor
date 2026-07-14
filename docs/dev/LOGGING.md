@@ -132,8 +132,9 @@ renderer calls. TRACE читает только уже вычисленные do
 - attribution/dedup/routing — selected marker, dedup key и artifact outcome.
 
 `ioc.item.identity` — short SHA-256 + type/span. Raw value допускается только
-в этом явно открытом TRACE; URL query маскируется. WARN/ERROR
-diagnostic renderer вместо raw `indicator|item|value` пишет short hash.
+в этом явно открытом TRACE; URL query и credentials маскируются на любом
+уровне. INFO/WARN/ERROR/FATAL diagnostic renderer вместо raw
+`indicator|item|value` пишет short hash.
 
 ## Spring Boot и ECS encoder
 
@@ -293,10 +294,9 @@ ECS JSON:
 Логи могут содержать IOC, пути и source labels:
 
 - `INFO` не пишет полный список IOC;
-- значения IOC — только в явно gated per-item `TRACE`; WARN/ERROR/FATAL
-  renderer заменяет raw value short hash;
-- токены/query лучше маскировать или писать short hash, если они не нужны для
-  расследования;
+- raw IOC разрешён только на `DEBUG`/явно gated per-item `TRACE`;
+  INFO/WARN/ERROR/FATAL renderer заменяет raw value short hash;
+- URL query и credentials маскируются независимо от log level;
 - исключения логируются с context, но без дампа всего входного документа;
 - operational logs и JSONL не коммитятся.
 
@@ -317,8 +317,8 @@ ECS JSON:
   изолированно (in-memory appender / `OutputCapture`, без реальных файлов).
 - Severity mapping запинен для всех шести уровней; sink failure изолирован
   non-throwing decorator-ом.
-- Structured TRACE тестирует оба закрытых gate, query redaction и отсутствие
-  повторной classification.
+- Structured TRACE тестирует оба закрытых gate, общий query/credentials
+  sanitizer и отсутствие повторной classification.
 
 ## Референсы
 

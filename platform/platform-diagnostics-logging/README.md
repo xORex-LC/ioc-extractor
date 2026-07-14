@@ -12,7 +12,7 @@ platform modules. Diagnostics core remains logging-free.
 | Подпапка / файл | Назначение |
 |---|---|
 | `pom.xml` | Maven module descriptor |
-| `src/main/java/com/iocextractor/observability/diagnostics/` | logging sink, resilient delivery decorator и raw-IOC redaction formatter |
+| `src/main/java/com/iocextractor/observability/diagnostics/` | logging sink, resilient delivery decorator и raw-IOC redaction formatter using the shared observability sanitizer |
 | `src/test/java/com/iocextractor/observability/diagnostics/` | Bridge tests |
 
 ## Зависимости

@@ -4,6 +4,7 @@ import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticContextKeys;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.render.DiagnosticContextFormatter;
+import com.iocextractor.observability.SensitiveLogValueSanitizer;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -21,12 +22,12 @@ public final class RedactingDiagnosticContextFormatter implements DiagnosticCont
 
     @Override
     public String format(Diagnostic diagnostic, String key, Object value) {
-        if (allowsRawValue(diagnostic.severity()) || !RAW_VALUE_KEYS.contains(key)) {
-            return allowsRawValue(diagnostic.severity())
-                    ? String.valueOf(value)
-                    : redactEmbeddedRawValues(diagnostic, String.valueOf(value));
+        boolean allowsRaw = allowsRawValue(diagnostic.severity());
+        String text = String.valueOf(value);
+        if (RAW_VALUE_KEYS.contains(key)) {
+            return allowsRaw ? SensitiveLogValueSanitizer.sanitize(text) : redacted(text);
         }
-        return redacted(String.valueOf(value));
+        return redactEmbeddedRawValues(diagnostic, text, allowsRaw);
     }
 
     private static boolean allowsRawValue(DiagnosticSeverity severity) {
@@ -43,7 +44,7 @@ public final class RedactingDiagnosticContextFormatter implements DiagnosticCont
         }
     }
 
-    private static String redactEmbeddedRawValues(Diagnostic diagnostic, String text) {
+    private static String redactEmbeddedRawValues(Diagnostic diagnostic, String text, boolean allowsRaw) {
         String redacted = text;
         for (String key : RAW_VALUE_KEYS) {
             Object rawValue = diagnostic.context().get(key);
@@ -51,7 +52,10 @@ public final class RedactingDiagnosticContextFormatter implements DiagnosticCont
                 continue;
             }
             String raw = String.valueOf(rawValue);
-            redacted = redacted.replace(raw, redacted(raw));
+            String replacement = allowsRaw
+                    ? SensitiveLogValueSanitizer.sanitize(raw)
+                    : redacted(raw);
+            redacted = redacted.replace(raw, replacement);
         }
         return redacted;
     }

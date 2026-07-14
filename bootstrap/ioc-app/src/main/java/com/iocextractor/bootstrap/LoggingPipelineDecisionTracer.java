@@ -5,6 +5,7 @@ import com.iocextractor.application.port.out.observability.PipelineDecisionTrace
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
+import com.iocextractor.observability.SensitiveLogValueSanitizer;
 import com.iocextractor.observability.logging.LogEvents;
 import org.slf4j.Logger;
 
@@ -64,7 +65,7 @@ public final class LoggingPipelineDecisionTracer implements PipelineDecisionTrac
                 .field(LogField.IOC_DECISION_OUTCOME, decision.outcome())
                 .field(LogField.IOC_ITEM_IDENTITY, identity(decision));
         field(event, LogField.IOC_INDICATOR_TYPE, decision.indicatorType());
-        field(event, LogField.IOC_ITEM_VALUE, redactQuery(decision.value()));
+        field(event, LogField.IOC_ITEM_VALUE, SensitiveLogValueSanitizer.sanitize(decision.value()));
         field(event, LogField.IOC_DECISION_RULE, decision.rule());
         field(event, LogField.IOC_DECISION_PATTERN, decision.pattern());
         field(event, LogField.IOC_DECISION_RESULT, decision.result());
@@ -92,20 +93,6 @@ public final class LoggingPipelineDecisionTracer implements PipelineDecisionTrac
                 ? ""
                 : "@" + decision.spanStart() + ":" + decision.spanEnd();
         return type + ":" + shortHash(value) + span;
-    }
-
-    private static String redactQuery(String value) {
-        if (value == null) {
-            return null;
-        }
-        int query = value.indexOf('?');
-        if (query < 0) {
-            return value;
-        }
-        int fragment = value.indexOf('#', query);
-        return fragment < 0
-                ? value.substring(0, query) + "?<redacted>"
-                : value.substring(0, query) + "?<redacted>" + value.substring(fragment);
     }
 
     private static String shortHash(String value) {
