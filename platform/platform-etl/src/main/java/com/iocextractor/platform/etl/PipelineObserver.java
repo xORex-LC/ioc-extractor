@@ -6,6 +6,19 @@ package com.iocextractor.platform.etl;
 public interface PipelineObserver {
 
     /**
+     * Opens one pipeline-run scope. Implementations may expose stable
+     * correlation metadata through MDC or another thread-local bridge. The
+     * returned scope is closed after terminal diagnostic delivery.
+     *
+     * @param meta initial run metadata
+     * @return closeable run scope
+     */
+    default AutoCloseable openRun(EnvelopeMeta meta) {
+        return () -> {
+        };
+    }
+
+    /**
      * Opens stage execution scope. Implementations may use it for MDC or
      * similar thread-local context. The returned scope is always closed by the
      * runner.

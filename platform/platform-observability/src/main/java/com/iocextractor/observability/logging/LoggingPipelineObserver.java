@@ -17,13 +17,17 @@ public final class LoggingPipelineObserver implements PipelineObserver {
     private static final Logger log = LoggerFactory.getLogger(LoggingPipelineObserver.class);
 
     @Override
-    public AutoCloseable openStage(EnvelopeMeta meta) {
+    public AutoCloseable openRun(EnvelopeMeta meta) {
         return MdcScope.open()
                 .put(LogField.IOC_RUN_ID, meta.runId())
                 .put(LogField.IOC_SOURCE_ID, meta.sourceId())
                 .put(LogField.IOC_SOURCE_PATH, meta.attributes().get(LogField.IOC_SOURCE_PATH.key()))
-                .put(LogField.IOC_STAGE, meta.stage().value())
                 .put(LogField.IOC_MODE, meta.attributes().get(LogField.IOC_MODE.key()));
+    }
+
+    @Override
+    public AutoCloseable openStage(EnvelopeMeta meta) {
+        return MdcScope.open().put(LogField.IOC_STAGE, meta.stage().value());
     }
 
     @Override

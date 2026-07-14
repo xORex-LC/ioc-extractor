@@ -126,7 +126,52 @@ class PipelineRunnerTest {
                 .run(Envelope.of("start", meta().withAttribute("mode", "daemon")), pipeline);
 
         assertThat(seen).containsExactly("READ_SOURCE");
-        assertThat(events).containsExactly("open:READ_SOURCE", "started:READ_SOURCE", "completed:READ_SOURCE", "close");
+        assertThat(events).containsExactly(
+                "open-run:run-1",
+                "open-stage:READ_SOURCE",
+                "started:READ_SOURCE",
+                "completed:READ_SOURCE",
+                "close-stage",
+                "close-run");
+    }
+
+    @Test
+    void emitsSuppressionSummaryOnceWhenALaterStageThrows() {
+        var diagnostics = new CollectingDiagnosticSink();
+        var pipeline = Pipeline.<String>start()
+                .then(new DiagnosticStage(diagnostic(DiagnosticSeverity.WARN)))
+                .then(new DiagnosticStage(diagnostic(DiagnosticSeverity.WARN)))
+                .then(new ThrowingStage(new IllegalStateException("boom")));
+        var runner = new PipelineRunner(FailurePolicy.collectAndContinue(),
+                new NoopPipelineObserver(), diagnostics, new DiagnosticFactory(CLOCK), 1);
+
+        assertThatThrownBy(() -> runner.run(Envelope.of("start", meta()), pipeline))
+                .isInstanceOf(DiagnosticException.class)
+                .hasRootCauseMessage("boom");
+
+        assertThat(diagnostics.diagnostics())
+                .filteredOn(diagnostic -> diagnostic.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED)
+                .singleElement()
+                .satisfies(summary -> assertThat(summary.context()).containsEntry("suppressedCount", 1L));
+    }
+
+    @Test
+    void emitsSuppressionSummaryAfterStageScopeAndBeforeRunScopeClose() {
+        var events = new ArrayList<String>();
+        var observer = new RecordingObserver(events);
+        var pipeline = Pipeline.<String>start()
+                .then(new DiagnosticStage(diagnostic(DiagnosticSeverity.WARN)))
+                .then(new DiagnosticStage(diagnostic(DiagnosticSeverity.WARN)));
+        var runner = new PipelineRunner(FailurePolicy.collectAndContinue(), observer, diagnostic -> {
+            if (diagnostic.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED) {
+                events.add("summary");
+            }
+        }, new DiagnosticFactory(CLOCK), 1);
+
+        runner.run(Envelope.of("start", meta()), pipeline);
+
+        assertThat(events).containsSubsequence("close-stage", "summary", "close-run");
+        assertThat(events).containsOnlyOnce("summary");
     }
 
     @Test
@@ -231,9 +276,15 @@ class PipelineRunnerTest {
     private record RecordingObserver(List<String> events) implements PipelineObserver {
 
         @Override
+        public AutoCloseable openRun(EnvelopeMeta meta) {
+            events.add("open-run:" + meta.runId());
+            return () -> events.add("close-run");
+        }
+
+        @Override
         public AutoCloseable openStage(EnvelopeMeta meta) {
-            events.add("open:" + meta.stage().value());
-            return () -> events.add("close");
+            events.add("open-stage:" + meta.stage().value());
+            return () -> events.add("close-stage");
         }
 
         @Override

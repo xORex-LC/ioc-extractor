@@ -120,6 +120,8 @@ sink.row-mapping-failed = Артефакт {artifact} отклонил инди�
   затем применяет `FailurePolicy`. Policy rejection не re-emit'ит уже
   доставленную diagnostic; generic exception стадии превращается в
   `PIPELINE.STAGE_FAILED`.
+- Terminal `PIPELINE.DIAGNOSTICS_SUPPRESSED` эмитится ровно один раз внутри
+  run scope и вне stage scope на success, policy rejection и stage throw.
 - `fail-fast` останавливается на ERROR/FATAL после стадии; `collect-and-continue`
   пропускает ERROR и останавливается на FATAL. Production daemon явно выбирает
   collect; application default остаётся fail-fast.

@@ -112,45 +112,53 @@ public final class PipelineRunner {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(pipeline, "pipeline");
 
+        try (var ignored = observer.openRun(input.meta())) {
+            return executeInRunScope(input, pipeline);
+        } catch (RuntimeException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new StageExecutionException("Failed to close pipeline run scope", ex);
+        }
+    }
+
+    private <I, O> PipelineRunResult<O> executeInRunScope(Envelope<I> input, Pipeline<I, O> pipeline) {
         var bounded = new BoundedNotification(maxDiagnosticsPerRun, diagnosticFactory);
         bounded.addAll(input.diagnostics());
         Envelope<?> current = compact(input, bounded.diagnostics());
-        for (Stage<?, ?> stage : pipeline.stages()) {
-            var stageInput = current.atStage(stage.name());
-            try (var ignored = observer.openStage(stageInput.meta())) {
-                observer.stageStarted(stageInput.meta());
-                long startedAt = System.nanoTime();
-                try {
-                    Envelope<?> next = executeStage(stage, stageInput);
-                    List<Diagnostic> delta = delta(stageInput.diagnostics(), next.diagnostics());
-                    delta.forEach(diagnosticSink::emit);
-                    bounded.addAll(delta);
-                    current = compact(next, bounded.diagnostics());
+        try {
+            for (Stage<?, ?> stage : pipeline.stages()) {
+                var stageInput = current.atStage(stage.name());
+                try (var ignored = observer.openStage(stageInput.meta())) {
+                    observer.stageStarted(stageInput.meta());
+                    long startedAt = System.nanoTime();
                     try {
+                        Envelope<?> next = executeStage(stage, stageInput);
+                        List<Diagnostic> delta = delta(stageInput.diagnostics(), next.diagnostics());
+                        delta.forEach(diagnosticSink::emit);
+                        bounded.addAll(delta);
+                        current = compact(next, bounded.diagnostics());
                         rejectIfRequired(current.diagnostics());
-                    } catch (DiagnosticException rejection) {
-                        emitSuppressionSummary(current.diagnostics());
-                        throw rejection;
+                        observer.stageCompleted(stageInput.meta(), System.nanoTime() - startedAt);
+                    } catch (StageProcessingFailure failure) {
+                        observer.stageFailed(stageInput.meta(), System.nanoTime() - startedAt, failure.propagated());
+                        throw failure.propagated();
+                    } catch (RuntimeException ex) {
+                        observer.stageFailed(stageInput.meta(), System.nanoTime() - startedAt, ex);
+                        throw ex;
                     }
-                    observer.stageCompleted(stageInput.meta(), System.nanoTime() - startedAt);
-                } catch (StageProcessingFailure failure) {
-                    observer.stageFailed(stageInput.meta(), System.nanoTime() - startedAt, failure.propagated());
-                    throw failure.propagated();
                 } catch (RuntimeException ex) {
-                    observer.stageFailed(stageInput.meta(), System.nanoTime() - startedAt, ex);
+                    // Stage/policy failures (already reported above) and any unchecked
+                    // failure from closing the observer scope propagate unchanged.
                     throw ex;
+                } catch (Exception ex) {
+                    // Only a checked exception from AutoCloseable.close() reaches here.
+                    throw new StageExecutionException("Failed to close stage scope: " + stage.name(), ex);
                 }
-            } catch (RuntimeException ex) {
-                // Stage/policy failures (already reported above) and any unchecked
-                // failure from closing the observer scope propagate unchanged.
-                throw ex;
-            } catch (Exception ex) {
-                // Only a checked exception from AutoCloseable.close() reaches here.
-                throw new StageExecutionException("Failed to close stage scope: " + stage.name(), ex);
             }
+            return new PipelineRunResult<>(cast(current), bounded.summary());
+        } finally {
+            emitSuppressionSummary(current.diagnostics());
         }
-        emitSuppressionSummary(current.diagnostics());
-        return new PipelineRunResult<>(cast(current), bounded.summary());
     }
 
     private Envelope<?> executeStage(Stage<?, ?> stage, Envelope<?> input) {

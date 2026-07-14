@@ -3,7 +3,8 @@
 ## Назначение
 
 Operational logging helpers: MDC scope, stable log fields/actions/outcomes,
-sensitive-value sanitization and pipeline logging observer.
+sensitive-value sanitization and pipeline logging observer with nested
+run/stage scopes.
 
 **Правило слоя:** observability не содержит domain/application business rules и
 не настраивает runtime appenders; `logback-spring.xml` живёт в `ioc-app`.

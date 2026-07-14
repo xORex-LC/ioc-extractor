@@ -55,13 +55,14 @@ record Result<T>(T value, List<Diagnostic> diagnostics) {}    // per-item/ста
 - **Diagnostic budget:** `ioc.pipeline.max-diagnostics-per-run` ограничивает
   retained diagnostics (по умолчанию 10 000). Первый `ERROR/FATAL` не скрывается,
   а усечение представлено `PIPELINE.DIAGNOSTICS_SUPPRESSED` и счётчиками по severity.
-  Summary эмитится и при normal completion, и перед policy rejection.
+  Summary эмитится ровно один раз на любом terminal path, включая stage throw.
   `ExtractionResult` публикует immutable diagnostics, summary и
   `COMPLETED | COMPLETED_WITH_WARNINGS | COMPLETED_WITH_ERRORS`.
 - **PipelineObserver** (port) — framework-free seam наблюдаемости: `PipelineRunner`
-  открывает stage-scope и шлёт `stageStarted/Completed/Failed` через порт. ECS/MDC
-  реализация (`LoggingPipelineObserver`) живёт в `platform-observability`; ядро
-  конвейера остаётся без logging-зависимостей (default — `NoopPipelineObserver`).
+  открывает run-scope, внутри него stage-scopes и шлёт
+  `stageStarted/Completed/Failed` через порт. ECS/MDC реализация
+  (`LoggingPipelineObserver`) живёт в `platform-observability`; ядро конвейера
+  остаётся без logging-зависимостей (default — `NoopPipelineObserver`).
 
 ## Стадии конвейера
 
