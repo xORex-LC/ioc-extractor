@@ -199,9 +199,15 @@ artifacts:
 
 - `ConfigurableRowMapper`, провайдеры и трансформации — в адаптере вывода
   (`adapter/out/sink/csv`): форматирование — адаптерная забота.
-- `CsvArtifactPreparer` ловит только typed `RowMappingException`: это ожидаемый
-  data-dependent element failure. Неожиданный `RuntimeException` mapper-а
-  считается дефектом и останавливает run, а не маскируется продолжением.
+- Provider/transform сообщает ожидаемый input-dependent отказ только через
+  `MappingValueException` с operator-safe reason. `ConfigurableRowMapper`
+  переводит его в `RowMappingException` и добавляет column, component kind и
+  зарегистрированное имя; `CsvArtifactPreparer` превращает только этот исход в
+  `SINK.ROW_MAPPING_FAILED`. Неожиданный `RuntimeException`, отсутствующий
+  registry key или нарушенный invariant остаются RUN failure, а не маскируются
+  продолжением. Raw indicator хранится под известным diagnostic context key и
+  редактируется renderer-ом; exception chain ожидаемого отказа в diagnostic не
+  прикладывается.
 - `ArtifactIdSequence` принадлежит application-модели, thread-safe и общий для
   daemon session. Failed commit оставляет gap: id unique/stable, но не gapless.
 - Application-стадия вызывает **доменную** `MatchPolicy` один раз на retained
@@ -213,6 +219,9 @@ artifacts:
 - Расширение: новый провайдер/трансформация = новый класс, реализующий
   `ValueProvider`/`Transform` с уникальным ключом (бин, собирается в реестр) —
   конфиг ссылается по ключу. Код существующих артефактов не меняется (OCP).
+  Текущие built-ins являются total-функциями; typed failure contract проверяется
+  настоящим mapper/preparer с тестовым зарегистрированным компонентом, без
+  вымышленного production validation rule.
 
 ## Кодировка вывода (граница выхода)
 

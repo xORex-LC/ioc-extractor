@@ -4,6 +4,9 @@ package com.iocextractor.diagnostics;
 public final class DiagnosticContextKeys {
 
     public static final String ARTIFACT = "artifact";
+    public static final String COLUMN = "column";
+    public static final String COMPONENT_KIND = "componentKind";
+    public static final String COMPONENT_NAME = "componentName";
     public static final String INDICATOR = "indicator";
     public static final String ITEM = "item";
     public static final String ORDINAL = "ordinal";

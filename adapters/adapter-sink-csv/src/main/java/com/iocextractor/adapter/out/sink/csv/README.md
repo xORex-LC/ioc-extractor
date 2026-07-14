@@ -22,6 +22,7 @@ dataframe и формирование immutable export slices. Схема арт
 | `ColumnSpec.java` | Декларативная спека колонки (`name/from/value/when-type/transform`) |
 | `ValueProvider.java` + `*ValueProvider` | Источники значений: `id`, `value`, `source.label`, `match.url`, `match.host`, `address.url`, `address.ip` |
 | `Transform.java` + `*Transform` | Трансформации: `lower`, `lower-host` (только хост), `upper`, `strip-prefix` |
+| `MappingValueException.java`, `RowMappingException.java` | Typed input rejection на SPI boundary и его локализация до element diagnostic |
 | `IdGenerator.java` | Последовательность id артефакта (ascending/descending) |
 | `CsvArtifactProjection.java` | Производная CSV-проекция из canonical JDBC storage |
 | `CsvArtifactSliceWriter.java` | Реализация `ArtifactSliceWriter`: staging, inspection/recovery и atomic publish; синхронный `SnapshotRowConsumer` |
@@ -48,6 +49,13 @@ adapter отвечает за projection-файл и immutable export slices.
 `match.*`, `address.*` и artifact filters читают уже materialized features/match
 из `ClassifiedIndicator`; adapter не вызывает `MatchPolicy` или
 `IndicatorFeatureExtractor` повторно для каждой колонки.
+
+Provider/transform бросает `MappingValueException` только для ожидаемого
+input-dependent отказа и обязан дать operator-safe reason. Mapper переводит
+только этот тип и добавляет column/component location. Любой другой
+`RuntimeException` считается programming/config defect и остаётся RUN failure;
+preparer не прикладывает exception chain к ожидаемому element diagnostic, чтобы
+cause message не обходил общую redaction policy.
 
 ## Immutable slice protocol
 

@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -29,11 +30,19 @@ class CsvArtifactPreparerTest {
 
     @Test
     void continuesOnlyAfterTypedRowMappingFailureAndDefersIds() {
-        var preparer = preparer(new TestMapper(value -> {
-            if ("bad".equals(value)) {
-                throw new RowMappingException("invalid row");
+        ValueProvider validatingProvider = classified -> {
+            if ("bad".equals(classified.indicator().value())) {
+                throw new MappingValueException("invalid row");
             }
-        }));
+            return classified.indicator().value();
+        };
+        var mapper = new ConfigurableRowMapper(
+                List.of(
+                        new ColumnSpec("id", "id", null, null, null),
+                        new ColumnSpec("value", "validated", null, null, null)),
+                Map.of("id", new IdValueProvider(), "validated", validatingProvider),
+                Map.of());
+        var preparer = preparer(mapper);
 
         var result = preparer.prepare(List.of(indicator("bad"), indicator("good")));
 
@@ -45,7 +54,11 @@ class CsvArtifactPreparerTest {
                             .containsEntry("type", IndicatorType.MD5)
                             .containsEntry("source", "source-key")
                             .containsEntry("artifact", "hashes")
-                            .containsEntry("ordinal", 0);
+                            .containsEntry("ordinal", 0)
+                            .containsEntry("column", "value")
+                            .containsEntry("componentKind", "provider")
+                            .containsEntry("componentName", "validated");
+                    assertThat(diagnostic.cause()).isEmpty();
                 });
         assertThat(result.value().rows()).hasSize(1);
         assertThat(result.value().materialize().rows()).singleElement().satisfies(row -> {

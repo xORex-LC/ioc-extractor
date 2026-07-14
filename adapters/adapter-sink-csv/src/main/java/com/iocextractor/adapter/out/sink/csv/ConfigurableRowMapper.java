@@ -1,22 +1,26 @@
 package com.iocextractor.adapter.out.sink.csv;
 
-import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.common.IocExtractorException;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static com.iocextractor.adapter.out.sink.csv.RowMappingException.ComponentKind.PROVIDER;
+import static com.iocextractor.adapter.out.sink.csv.RowMappingException.ComponentKind.TRANSFORM;
+
 /**
  * Generic {@link RowMapper} driven by declarative {@link ColumnSpec}s plus
  * registries of {@link ValueProvider}s and {@link Transform}s. Adding an output
  * format is configuration, not code.
  *
- * <p>Per column: {@code const} uses the literal value (null ⇒ CSV NULL), otherwise
- * the named provider supplies it; a {@code when-type} gate nulls the cell for other
- * indicator types; finally the ordered transforms are applied. The DSL is limited
- * by design — no expressions or conditions beyond {@code when-type}.
+ * <p>Per column: a {@code when-type} gate nulls the cell for other indicator
+ * types; {@code const} then uses the literal value (null ⇒ CSV NULL), otherwise
+ * the named provider supplies it; finally the ordered transforms are applied.
+ * The DSL is limited by design — no expressions or conditions beyond
+ * {@code when-type}.
  */
 public final class ConfigurableRowMapper implements RowMapper {
 
@@ -61,28 +65,36 @@ public final class ConfigurableRowMapper implements RowMapper {
     }
 
     private String cell(ColumnSpec column, ClassifiedIndicator classified) {
+        if (column.whenType() != null && classified.indicator().type() != column.whenType()) {
+            return null;
+        }
         String value;
         if (CONST.equals(column.from())) {
             value = column.value();
         } else {
-            ValueProvider provider = providers.get(column.from());
-            if (provider == null) {
-                throw new IocExtractorException("Unknown value provider: " + column.from());
-            }
-            value = provider.provide(classified);
-        }
-        if (column.whenType() != null && classified.indicator().type() != column.whenType()) {
-            return null;
+            value = provide(column, classified);
         }
         if (value != null && column.transform() != null) {
             for (String spec : column.transform()) {
-                value = applyTransform(spec, value);
+                value = applyTransform(column, spec, value);
             }
         }
         return value;
     }
 
-    private String applyTransform(String spec, String value) {
+    private String provide(ColumnSpec column, ClassifiedIndicator classified) {
+        ValueProvider provider = providers.get(column.from());
+        if (provider == null) {
+            throw new IocExtractorException("Unknown value provider: " + column.from());
+        }
+        try {
+            return provider.provide(classified);
+        } catch (MappingValueException failure) {
+            throw new RowMappingException(column.name(), PROVIDER, column.from(), failure);
+        }
+    }
+
+    private String applyTransform(ColumnSpec column, String spec, String value) {
         int sep = spec.indexOf(':');
         String name = sep < 0 ? spec : spec.substring(0, sep);
         String arg = sep < 0 ? null : spec.substring(sep + 1);
@@ -90,6 +102,10 @@ public final class ConfigurableRowMapper implements RowMapper {
         if (transform == null) {
             throw new IocExtractorException("Unknown transform: " + name);
         }
-        return transform.apply(value, arg);
+        try {
+            return transform.apply(value, arg);
+        } catch (MappingValueException failure) {
+            throw new RowMappingException(column.name(), TRANSFORM, name, failure);
+        }
     }
 }

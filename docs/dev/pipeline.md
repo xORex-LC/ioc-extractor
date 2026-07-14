@@ -76,9 +76,11 @@ read → refang → extract → attribute → deduplicate(batch-local) → class
 ```
 
 `PrepareArtifactsStage` выполняет type/filter routing и mapping без durable IO,
-накапливая только typed `SINK.ROW_MAPPING_FAILED`. `PipelineRunner` применяет
-policy к этим диагностикам до `WriteArtifactsStage`; поэтому fail-fast не
-резервирует id и не оставляет частичный commit. Финальные public id резервируются
+накапливая только typed `SINK.ROW_MAPPING_FAILED`: provider/transform явно
+сообщает input-dependent rejection через `MappingValueException`, а mapper
+добавляет точную location. `PipelineRunner` применяет policy к этим диагностикам
+до `WriteArtifactsStage`; поэтому fail-fast не резервирует id и не оставляет
+частичный commit. Финальные public id резервируются
 при materialization write-plan непосредственно перед попыткой canonical write;
 диапазон после неуспешной попытки не переиспользуется. Неожиданный дефект mapper-а
 не превращается в element diagnostic и останавливает прогон.

@@ -125,6 +125,10 @@ sink.row-mapping-failed = Артефакт {artifact} отклонил инди�
 - `fail-fast` останавливается на ERROR/FATAL после стадии; `collect-and-continue`
   пропускает ERROR и останавливается на FATAL. Production daemon явно выбирает
   collect; application default остаётся fail-fast.
+- `SINK.ROW_MAPPING_FAILED` возникает только из typed `MappingValueException`
+  provider/transform-а и несёт safe location (`artifact`, `column`, component
+  kind/name, type, ordinal, source и redacted indicator identity). Любой иной
+  mapper exception остаётся `PIPELINE.STAGE_FAILED`.
 - `BoundedNotification` держит не более `ioc.pipeline.max-diagnostics-per-run`
   occurrences (default 10 000), не скрывает первые ERROR/FATAL и добавляет
   `PIPELINE.DIAGNOSTICS_SUPPRESSED`. Summary включает suppressed occurrences.

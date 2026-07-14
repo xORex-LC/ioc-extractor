@@ -18,6 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.iocextractor.adapter.out.sink.csv.RowMappingException.ComponentKind.PROVIDER;
+import static com.iocextractor.adapter.out.sink.csv.RowMappingException.ComponentKind.TRANSFORM;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -75,6 +77,21 @@ class ConfigurableRowMapperTest {
     }
 
     @Test
+    void when_type_gate_skips_provider_for_an_unrelated_indicator() {
+        ValueProvider typeSpecific = ignored -> {
+            throw new AssertionError("provider must not run outside its when-type gate");
+        };
+        var m = new ConfigurableRowMapper(
+                List.of(new ColumnSpec(
+                        "hash_md5", "md5-only", null, IndicatorType.MD5, null)),
+                Map.of("md5-only", typeSpecific),
+                Map.of());
+
+        assertThat(m.toRow(indicator("abcdef", IndicatorType.SHA256, null)))
+                .containsExactly((String) null);
+    }
+
+    @Test
     void strip_prefix_transform() {
         ConfigurableRowMapper m = mapper(List.of(
                 new ColumnSpec("source", "source.label", null, null, List.of("strip-prefix:Письмо "))));
@@ -87,6 +104,56 @@ class ConfigurableRowMapperTest {
         ConfigurableRowMapper m = mapper(List.of(new ColumnSpec("x", "nope", null, null, null)));
         assertThatThrownBy(() -> m.toRow(indicator("x", IndicatorType.URL, null)))
                 .isInstanceOf(IocExtractorException.class);
+    }
+
+    @Test
+    void translatesOnlyTypedProviderRejectionAndAddsMappingLocation() {
+        var m = new ConfigurableRowMapper(
+                List.of(new ColumnSpec("mask", "validated", null, null, null)),
+                Map.of("validated", ignored -> {
+                    throw new MappingValueException("value does not satisfy provider contract");
+                }),
+                Map.of());
+
+        assertThatThrownBy(() -> m.toRow(indicator("secret.example", IndicatorType.URL, null)))
+                .isInstanceOfSatisfying(RowMappingException.class, failure -> {
+                    assertThat(failure.column()).isEqualTo("mask");
+                    assertThat(failure.componentKind()).isEqualTo(PROVIDER);
+                    assertThat(failure.componentName()).isEqualTo("validated");
+                    assertThat(failure).hasMessageContaining("value does not satisfy provider contract")
+                            .hasCauseInstanceOf(MappingValueException.class);
+                });
+    }
+
+    @Test
+    void translatesOnlyTypedTransformRejectionAndAddsMappingLocation() {
+        var m = new ConfigurableRowMapper(
+                List.of(new ColumnSpec("mask", "value", null, null, List.of("validated:strict"))),
+                Map.of("value", classified -> classified.indicator().value()),
+                Map.of("validated", (value, arg) -> {
+                    throw new MappingValueException("value does not satisfy transform contract");
+                }));
+
+        assertThatThrownBy(() -> m.toRow(indicator("secret.example", IndicatorType.URL, null)))
+                .isInstanceOfSatisfying(RowMappingException.class, failure -> {
+                    assertThat(failure.column()).isEqualTo("mask");
+                    assertThat(failure.componentKind()).isEqualTo(TRANSFORM);
+                    assertThat(failure.componentName()).isEqualTo("validated");
+                });
+    }
+
+    @Test
+    void does_not_downgrade_unexpected_provider_defect_to_element_failure() {
+        var m = new ConfigurableRowMapper(
+                List.of(new ColumnSpec("mask", "broken", null, null, null)),
+                Map.of("broken", ignored -> {
+                    throw new IllegalStateException("provider invariant broken");
+                }),
+                Map.of());
+
+        assertThatThrownBy(() -> m.toRow(indicator("example.com", IndicatorType.DOMAIN, null)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("provider invariant broken");
     }
 
     @Test
