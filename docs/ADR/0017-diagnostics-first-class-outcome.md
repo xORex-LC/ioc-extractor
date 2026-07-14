@@ -787,3 +787,48 @@ Implementation chain:
 report/JSONL, element quarantine/reprocess, threshold policies, i18n, metrics и
 OpenTelemetry consumers. Они не требуют брокера и не меняют anti-broker/
 ledger-first доктрину.
+
+## Дополнение 2026-07-14 — верификация на стенде: отклонения реализации
+
+Стенд-тестирование RC 0.1.1 подтвердило основной контракт (exactly-once,
+budget/suppression counts, оба TRACE-затвора, dedup→classify единожды,
+typed terminal INGEST/SYNC diagnostics, sync-деградация/восстановление) и
+выявило **четыре отклонения реализации от принятых решений**. Решения 1–8 не
+пересматриваются; ниже — зазоры исполнения, подлежащие закрытию до тега 0.1.1.
+
+1. **Redaction неполон на DEBUG/TRACE (нарушение Решения 7).**
+   `RedactingDiagnosticContextFormatter` для DEBUG/TRACE возвращает raw value
+   без query/token-маскирования — `EXTRACTION.INDICATOR_SKIPPED` (DEBUG)
+   рендерит URL query целиком; structured-TRACE-путь при этом маскирует
+   корректно. Решение 7 требует «URL query и токены маскируются либо short
+   hash» без оговорки об уровне. Закрытие: query/token-redaction в formatter
+   независимо от severity (raw остаётся только для самого значения индикатора
+   на DEBUG/TRACE) + выравнивание dev/LOGGING.md на фактический контракт.
+2. **Degraded completion невидим на driving boundaries (недореализация
+   Решения 3).** Oneshot: exit code 3 есть, обещанный вывод summary — нет
+   (только счётчики строк). Daemon: `FileSourceMessageHandler` игнорирует
+   `IngestSourceResult.extractionResult` — терминальный лог «source ingested,
+   outcome=success» без `CompletionStatus`/counts/run-id. Закрытие: CLI
+   печатает completion + suppressed/severity counts; daemon-лог несёт
+   completion status, counts и run-id, `event.outcome` отражает деградацию.
+3. **Suppression summary вне MDC scope и не на всех abort-путях (зазор
+   Решения 2/7).** Финальная эмиссия `PIPELINE.DIAGNOSTICS_SUPPRESSED`
+   выполняется после закрытия последнего stage-scope (без `ioc.run.id`);
+   на stage-throw аборте summary не эмитится вовсе (policy-rejection путь
+   закрыт фиксом `d34b733`). Закрытие: run-scope MDC вокруг `run()` +
+   эмиссия summary на всех терминальных путях.
+4. **`SINK.ROW_MAPPING_FAILED` — dormant producer (зазор Решения 4).**
+   `RowMappingException` не бросается ни одним production-путём:
+   `ConfigurableRowMapper` не классифицирует data-зависимые сбои
+   провайдеров/трансформов → element-ERROR недостижим и
+   `COLLECT`/`COMPLETED_WITH_ERRORS` фактически не активируемы данными.
+   Ratchet это законно пропустил (reference ≠ эмиссия — его Javadoc честен).
+   Закрытие: классификация data-зависимых ошибок маппинга в
+   `RowMappingException` на границе mapper'а; programming defects остаются
+   `PIPELINE.STAGE_FAILED` (Решение 4 не меняется).
+
+Латентные daemon-баги, вскрытые тем же прогоном, но существовавшие до этого
+ADR (гонка recovery⊥poller, отсутствие resume-протокола retry×run-ledger,
+hashing вне bounded boundary, poison после failed claim), зарегистрированы как
+**ING-10..ING-13** в [KNOWN-ISSUES](../KNOWN-ISSUES.md) и в скоуп 0017 не
+входят.

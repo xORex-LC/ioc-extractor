@@ -27,6 +27,10 @@
 | ING-7 | **Инкрементальная запись локальных датафреймов** — `CsvArtifactProjection` всё ещё полностью перечитывает артефакт из БД и переписывает мутабельный `*_generated.csv` (atomic temp→move) на каждый write. Immutable export из 0012 уже cadence-driven и не зависит от этой проекции, но локальный always-fresh путь остаётся O(N). Остаётся: дельта/кэш либо отказ от per-write projection. | seam | M | review, dev/0012 |
 | ING-8 | **Web driving-adapter** — HTTP как третья точка входа рядом с CLI/file-poll: ops (ING-3) → REST-ингест/запросы → TAXII/STIX-сервер (синергия с EXP-1) + BFF под фронтенд. Эндпоинты живут в отдельном `adapter-web`. **Требование:** REST-эндпоинты, дёргающие use-cases, обязаны открывать `MdcScope` (run-id), как CLI/демон, иначе прогоны теряют корреляцию в логах. **Связка с актуатором:** при выносе web за loopback `management.endpoint.health.show-details` нужно закрыть auth / перевести в `when-authorized` (сейчас `always` безопасен только из-за loopback-бинда). | seam | L | review |
 | ING-9 | **Коллизия имён при архивации вложенных targets** — `FileSystemRetentionStore.archive` раньше сплющивал вложенное дерево до имени файла. Фикс: `RetentionEntry` несёт корень цели (`baseDir`), архив зеркалит относительный подпуть под archive-dir; после удаления partition-target это остаётся защитой для будущих вложенных targets. | закрыт | S | review (ревью ING-1) |
+| ING-10 | **Гонка startup recovery ⊥ ingestion poller.** `IngestionRecoveryRunner` — `ApplicationRunner` (после refresh), а SI-poller — `SmartLifecycle` с `autoStartup=true` (стартует во время refresh) → файл на старте обрабатывается двумя прогонами: дубль-экстракция, задвоенные diagnostics, застрявший `PROJECTION_COMPLETED`-run, ложный `INGEST.DEAD_LETTER_FAILED`. `concurrency: 1` не помогает (разные lifecycle-ветки). Данные целы (row_key keep-first). Фикс: `autoStartup=false` + старт flow по завершении recovery (lifecycle phase/gate) + per-source-key сериализация. Митигация до фикса: дренировать inbox перед плановым рестартом (runbook). **План: 0.1.2.** | открыт | M | стенд-тест 2026-07-14 (RC 0.1.1) |
+| ING-11 | **Retry × run-ledger: нет resume-протокола.** Retry в `FileSourceMessageHandler` оборачивает весь `useCase.ingest()`; `processClaimed` безусловно `startIngest` на каждой попытке; `markFailed` — только при `!dbCommitted` → сбой проекции (диск/права) даёт N `DB_COMMITTED`-ранов одного source; `IngestRunRecoveryService` не синхронизирован с file-ledger (`CLAIMED`) → после рестарта лишняя полная экстракция. Данные целы, платим CPU/diagnostics/проекции + id-gaps; самовосстанавливается. Нужен resume-протокол: после `DB_COMMITTED` повторять только projection/archive (не extraction/commit) + синхронизация run-ledger ↔ file-ledger; требует мини-дизайна (меняется сага ING-4a). **План: 0.1.2.** | открыт | M | стенд-тест 2026-07-14 (RC 0.1.1) |
+| ING-12 | **Hashing вне bounded/diagnostic boundary.** `hasher.sha256(source)` в `FileSourceMessageHandler.handle` стоит до retry-цикла и вне terminal-протокола: нечитаемый файл (mode 000) = generic stacktrace каждый poll, без ledger-записи, dead-letter и typed-диагностики; файл вечно в inbox (другие файлы не блокирует). Включить hashing в bounded terminal protocol; до content-key использовать identity из path/size/mtime fingerprint (прецедент — sync-ledger). **План: фикс до тега 0.1.1 (дёшево, один адаптер).** | открыт | S | стенд-тест 2026-07-14 (RC 0.1.1) |
+| ING-13 | **Failed claim превращает файл в вечный poison.** `FileIngestionLedger.markFailed` синтезирует запись с `Path.of("unknown")` (клейм упал до создания записи), `IngestionService.handleExisting(FAILED)` возвращает статус, не решая судьбу файла в inbox → бесконечные повторные доставки с generic «already marked failed» без typed-кода; файл не будет обработан даже после устранения причины без ручного вмешательства (удалить ledger-запись + файл — runbook). Фикс: явная судьба файла (pre-claim dead-letter/quarantine или terminal-фильтр). **План: полумера в 0.1.1** (однократный typed-лог вместо per-poll generic), **полный фикс — 0.1.2.** | открыт | M | стенд-тест 2026-07-14 (RC 0.1.1) |
 
 ## 2. Обогащение вывода (`OUT`)
 
@@ -101,8 +105,12 @@
 
 ## Рекомендованный порядок
 
-1. **Hardening-проход (дёшево, высокая отдача при онбординге источников):**
-   `OPS-1` (проверить мульти-источник) + `CFG-1`/`CFG-2`/`CFG-3` (fail-fast конфиг).
+0. **До тега 0.1.1:** доводка контракта ADR-0017 по находкам стенда
+   (дополнение 2026-07-14 в [ADR/0017](ADR/0017-diagnostics-first-class-outcome.md))
+   + `ING-12` + полумера `ING-13`.
+1. **0.1.2 — ingest lifecycle hardening:** `ING-10`, `ING-11` (с мини-дизайном
+   resume-протокола), полный `ING-13`; заодно `OPS-1` (мульти-источник) —
+   верификация на том же стенде.
 2. **Ценность данных:** `OUT-1` (обогащение meta-колонок).
 3. **Фича по выбору:** `EXT-1` (IPv6/email, почти весь config-driven) или `EXP-1`
    (STIX-экспорт — модель готова).
