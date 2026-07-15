@@ -6,6 +6,7 @@ import com.iocextractor.application.pipeline.PipelineMetaAttributes;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionRequest;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
+import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
@@ -13,6 +14,7 @@ import com.iocextractor.platform.etl.Envelope;
 import com.iocextractor.platform.etl.Stage;
 import com.iocextractor.platform.etl.StageId;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Objects;
 
@@ -49,6 +51,7 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
     public Envelope<ArtifactWriteSummary> process(Envelope<PreparedArtifacts> input) {
         var payload = input.payload();
         var written = new LinkedHashMap<String, Integer>();
+        var projectionDiagnostics = new ArrayList<Diagnostic>();
         if (!input.meta().booleanAttribute(PipelineMetaAttributes.DRY_RUN, false)) {
             for (var plan : payload.plans()) {
                 int inserted;
@@ -58,8 +61,9 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
                     throw writeFailure("canonical", plan.artifactName(), failure);
                 }
                 try {
-                    projection.project(new ArtifactProjectionRequest(
+                    var outcome = projection.project(new ArtifactProjectionRequest(
                             input.meta().runId(), plan.artifactName()));
+                    projectionDiagnostics.addAll(outcome.diagnostics());
                 } catch (RuntimeException failure) {
                     throw writeFailure("projection", plan.artifactName(), failure);
                 }
@@ -69,7 +73,7 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
         return input.withPayload(new ArtifactWriteSummary(
                 payload.extracted(),
                 payload.retained(),
-                written));
+                written)).withDiagnostics(projectionDiagnostics);
     }
 
     private DiagnosticException writeFailure(String sink, String artifact, RuntimeException failure) {

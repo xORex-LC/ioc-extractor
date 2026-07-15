@@ -2,6 +2,7 @@ package com.iocextractor.diagnostics.result;
 
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.DiagnosticImpact;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 
@@ -13,16 +14,18 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Per-run diagnostic accumulator with a hard retained-item budget.
+ * Per-run diagnostic accumulator with a retained-item budget for element and run occurrences.
  *
  * <p>The first rejecting diagnostic is retained even when it arrives after the
- * budget is exhausted. A synthetic summary makes suppression visible.</p>
+ * budget is exhausted. Low-cardinality operation diagnostics remain visible
+ * outside that budget. A synthetic summary makes suppression visible.</p>
  */
 public final class BoundedNotification {
 
     private final int limit;
     private final DiagnosticFactory factory;
     private final List<Diagnostic> retained = new ArrayList<>();
+    private int budgetedRetained;
     private long suppressed;
     private boolean hasErrorOrWorse;
     private boolean hasFatal;
@@ -46,8 +49,14 @@ public final class BoundedNotification {
     /** Adds one diagnostic while preserving the first error and fatal signals. */
     public void add(Diagnostic diagnostic) {
         Objects.requireNonNull(diagnostic, "diagnostic");
-        if (retained.size() < limit) {
+        if (diagnostic.code().impact() == DiagnosticImpact.OPERATION) {
             retained.add(diagnostic);
+            trackRetained(diagnostic);
+            return;
+        }
+        if (budgetedRetained < limit) {
+            retained.add(diagnostic);
+            budgetedRetained++;
             trackRetained(diagnostic);
             return;
         }
@@ -63,7 +72,7 @@ public final class BoundedNotification {
         suppress(diagnostic);
     }
 
-    /** Returns the bounded snapshot plus a synthetic suppression diagnostic. */
+    /** Returns the bounded high-cardinality snapshot, operation occurrences and suppression summary. */
     public List<Diagnostic> diagnostics() {
         if (suppressed == 0) {
             return List.copyOf(retained);
@@ -94,11 +103,19 @@ public final class BoundedNotification {
     }
 
     private int lowestSeverityIndex() {
-        int selected = 0;
-        for (int index = 1; index < retained.size(); index++) {
-            if (retained.get(index).severity().compareTo(retained.get(selected).severity()) < 0) {
+        int selected = -1;
+        for (int index = 0; index < retained.size(); index++) {
+            var candidate = retained.get(index);
+            if (candidate.code().impact() == DiagnosticImpact.OPERATION) {
+                continue;
+            }
+            if (selected < 0
+                    || candidate.severity().compareTo(retained.get(selected).severity()) < 0) {
                 selected = index;
             }
+        }
+        if (selected < 0) {
+            throw new IllegalStateException("budget exhausted without a budgeted diagnostic");
         }
         return selected;
     }

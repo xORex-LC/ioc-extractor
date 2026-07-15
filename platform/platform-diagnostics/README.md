@@ -6,8 +6,9 @@ Framework-free diagnostics subsystem: diagnostic model, codes, catalog, result,
 notification, failure policy, rendering and sink ports.
 
 Catalog codes несут immutable `ELEMENT | RUN | OPERATION` impact.
-`BoundedNotification`/`DiagnosticSummary` дают точный bounded run outcome,
-не скрывая first ERROR/FATAL от failure policy.
+`BoundedNotification`/`DiagnosticSummary` дают точный bounded run outcome:
+ELEMENT/RUN occurrences ограничены бюджетом, low-cardinality OPERATION
+occurrences остаются видимыми, first ERROR/FATAL не скрывается от failure policy.
 
 **Правило слоя:** diagnostics core не пишет в SLF4J и не знает про pipeline,
 domain, adapters или bootstrap.

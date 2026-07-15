@@ -3,6 +3,7 @@ package com.iocextractor.diagnostics.result;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
 
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +28,24 @@ public record DiagnosticSummary(long total,
     /** Returns an empty summary. */
     public static DiagnosticSummary empty() {
         return new DiagnosticSummary(0, 0, Map.of());
+    }
+
+    /**
+     * Returns this summary extended with retained terminal diagnostics.
+     *
+     * <p>The appended diagnostics are not suppression artifacts, so the
+     * suppression count is preserved.</p>
+     */
+    public DiagnosticSummary plusDiagnostics(Collection<Diagnostic> diagnostics) {
+        Objects.requireNonNull(diagnostics, "diagnostics");
+        if (diagnostics.isEmpty()) {
+            return this;
+        }
+        var counts = new EnumMap<DiagnosticSeverity, Long>(DiagnosticSeverity.class);
+        counts.putAll(bySeverity);
+        diagnostics.forEach(diagnostic -> counts.merge(
+                Objects.requireNonNull(diagnostic, "diagnostic").severity(), 1L, Long::sum));
+        return new DiagnosticSummary(total + diagnostics.size(), suppressed, counts);
     }
 
     static DiagnosticSummary of(List<Diagnostic> diagnostics,

@@ -26,10 +26,13 @@ import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.diagnostics.DiagnosticException;
+import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
 import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.application.pipeline.CompletionStatus;
 import com.iocextractor.domain.extract.RawIndicator;
 import com.iocextractor.domain.extract.ExtractionOutcome;
 import com.iocextractor.domain.refang.RefangOutcome;
@@ -93,6 +96,45 @@ class IngestionServiceTest {
                 .isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
         assertThat(lifecycle.events).containsExactly("claim", "archive");
         assertArtifactsChanged(events, "run-1", List.of("masks"));
+    }
+
+    @Test
+    void emits_projection_diagnostic_once_and_merges_it_into_daemon_completion() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        var runLedger = new MemoryRunLedger();
+        var diagnostic = new DiagnosticFactory(clock).create(IngestDiagnosticCodes.SOURCE_UNREADABLE)
+                .severity(DiagnosticSeverity.WARN)
+                .with("source", "run-1")
+                .with("reason", "lossy projection")
+                .build();
+        var projection = new CollectingProjection(new ProjectionOutcome(1, List.of(diagnostic)));
+        var diagnosticSink = new CollectingDiagnosticSink();
+        var service = new IngestionService(
+                ledger,
+                lifecycle,
+                source -> new SourcePreparers(List.of(new CountingPreparer())),
+                extractionFactory(),
+                runLedger,
+                projection,
+                new RecordingControlEventPublisher(),
+                clock,
+                diagnosticSink);
+
+        var result = service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source.html"), key, Instant.parse("2026-06-22T00:00:00Z")));
+
+        assertThat(diagnosticSink.diagnostics()).containsExactly(diagnostic);
+        assertThat(result.extractionResultOptional()).get().satisfies(extraction -> {
+            assertThat(extraction.completionStatus()).isEqualTo(CompletionStatus.COMPLETED_WITH_WARNINGS);
+            assertThat(extraction.diagnostics())
+                    .extracting(entry -> entry.code().id())
+                    .containsExactly("SOURCE.MARKERS_UNMATCHED", "INGEST.SOURCE_UNREADABLE");
+            assertThat(extraction.diagnosticSummary().total()).isEqualTo(2);
+            assertThat(extraction.diagnosticSummary().suppressed()).isZero();
+            assertThat(extraction.diagnosticSummary().count(DiagnosticSeverity.WARN)).isEqualTo(2);
+        });
     }
 
     @Test
@@ -506,11 +548,20 @@ class IngestionServiceTest {
 
     private static final class CollectingProjection implements ArtifactProjection {
         private final List<ArtifactProjectionRequest> requests = new ArrayList<>();
+        private final ProjectionOutcome outcome;
+
+        private CollectingProjection() {
+            this(ProjectionOutcome.clean(0));
+        }
+
+        private CollectingProjection(ProjectionOutcome outcome) {
+            this.outcome = outcome;
+        }
 
         @Override
         public ProjectionOutcome project(ArtifactProjectionRequest request) {
             requests.add(request);
-            return ProjectionOutcome.clean(0);
+            return outcome;
         }
     }
 

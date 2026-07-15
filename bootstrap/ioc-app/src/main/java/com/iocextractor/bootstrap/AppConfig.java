@@ -726,8 +726,10 @@ public class AppConfig {
 
     @Bean
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
-    public Integer ingestRunRecovery(RunLedger runLedger, ArtifactProjection csvArtifactProjection) {
-        return new IngestRunRecoveryService(runLedger, csvArtifactProjection).recover();
+    public Integer ingestRunRecovery(RunLedger runLedger,
+                                     ArtifactProjection csvArtifactProjection,
+                                     DiagnosticSink diagnosticSink) {
+        return new IngestRunRecoveryService(runLedger, csvArtifactProjection, diagnosticSink).recover();
     }
 
     @Bean

@@ -130,14 +130,19 @@ sink.row-mapping-failed = Артефакт {artifact} отклонил инди�
   kind/name, type, ordinal, source и redacted indicator identity). Любой иной
   mapper exception остаётся `PIPELINE.STAGE_FAILED`.
 - `BoundedNotification` держит не более `ioc.pipeline.max-diagnostics-per-run`
-  occurrences (default 10 000), не скрывает первые ERROR/FATAL и добавляет
-  `PIPELINE.DIAGNOSTICS_SUPPRESSED`. Summary включает suppressed occurrences.
+  высококардинальных ELEMENT/RUN occurrences (default 10 000), не скрывает
+  первые ERROR/FATAL и добавляет `PIPELINE.DIAGNOSTICS_SUPPRESSED`. Агрегированные
+  OPERATION occurrences проходят вне этого бюджета; summary включает и их, и
+  suppressed occurrences.
 - `ExtractionResult` возвращает diagnostics, `DiagnosticSummary` и
   `COMPLETED | COMPLETED_WITH_WARNINGS | COMPLETED_WITH_ERRORS`. Для oneshot
   последний status даёт exit code `3`; daemon сохраняет degraded outcome в
   `IngestSourceResult`. Оба driving boundary публикуют run id, status,
   total/suppressed и отдельные severity counts; daemon связывает pipeline с тем
   же durable `ingest_run.run_id`.
+- Advisory diagnostics успешной post-commit projection возвращаются через
+  `ProjectionOutcome`: oneshot присоединяет их к envelope, daemon доставляет и
+  объединяет с `ExtractionResult`, startup recovery только доставляет occurrence.
 
 ## Порты и адаптеры
 

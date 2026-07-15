@@ -3,6 +3,7 @@ package com.iocextractor.application.artifact;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionRequest;
 import com.iocextractor.application.port.out.artifact.RunLedger;
+import com.iocextractor.diagnostics.sink.DiagnosticSink;
 
 import java.util.Objects;
 
@@ -13,10 +14,14 @@ public final class IngestRunRecoveryService {
 
     private final RunLedger runLedger;
     private final ArtifactProjection projection;
+    private final DiagnosticSink diagnosticSink;
 
-    public IngestRunRecoveryService(RunLedger runLedger, ArtifactProjection projection) {
+    public IngestRunRecoveryService(RunLedger runLedger,
+                                    ArtifactProjection projection,
+                                    DiagnosticSink diagnosticSink) {
         this.runLedger = Objects.requireNonNull(runLedger, "runLedger");
         this.projection = Objects.requireNonNull(projection, "projection");
+        this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
     }
 
     /**
@@ -34,7 +39,9 @@ public final class IngestRunRecoveryService {
             }
             if (run.status() == IngestRunStatus.DB_COMMITTED) {
                 for (String artifact : run.artifacts()) {
-                    projection.project(new ArtifactProjectionRequest(run.runId(), artifact));
+                    projection.project(new ArtifactProjectionRequest(run.runId(), artifact))
+                            .diagnostics()
+                            .forEach(diagnosticSink::emit);
                 }
                 runLedger.markProjectionCompleted(run.runId());
             }

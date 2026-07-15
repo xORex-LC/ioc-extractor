@@ -12,6 +12,8 @@ import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepositor
 import com.iocextractor.application.port.out.artifact.ProjectionOutcome;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -62,6 +64,26 @@ class WriteArtifactsStageTest {
         assertThat(repository.artifacts).isEmpty();
         assertThat(projected).isEmpty();
         assertThat(ids.reserve(1).start()).isEqualTo(10);
+    }
+
+    @Test
+    void attaches_projection_diagnostics_to_the_stage_envelope() {
+        var warning = StageTestSupport.DIAGNOSTICS.create(IngestDiagnosticCodes.SOURCE_UNREADABLE)
+                .severity(DiagnosticSeverity.WARN)
+                .with("source", "projection")
+                .with("reason", "lossy value")
+                .build();
+        var requests = new ArrayList<String>();
+        var stage = new WriteArtifactsStage(new RecordingRepository(), request -> {
+            requests.add(request.runId() + ":" + request.artifactName());
+            return new ProjectionOutcome(1, List.of(warning));
+        }, StageTestSupport.DIAGNOSTICS);
+
+        var output = stage.process(StageTestSupport.envelope(
+                new PreparedArtifacts(1, 1, List.of(plan("masks"))), false));
+
+        assertThat(requests).containsExactly("run-1:masks");
+        assertThat(output.diagnostics()).containsExactly(warning);
     }
 
     @Test

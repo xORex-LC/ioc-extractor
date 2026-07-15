@@ -2,6 +2,7 @@ package com.iocextractor.diagnostics.result;
 
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import org.junit.jupiter.api.Test;
 
@@ -53,5 +54,29 @@ class BoundedNotificationTest {
 
         assertThat(notification.diagnostics().getFirst().severity())
                 .isEqualTo(DiagnosticSeverity.FATAL);
+    }
+
+    @Test
+    void operation_diagnostic_stays_visible_without_consuming_or_being_displaced_by_budget() {
+        var notification = new BoundedNotification(1, FACTORY);
+        var operationWarning = FACTORY.create(IngestDiagnosticCodes.SOURCE_UNREADABLE)
+                .severity(DiagnosticSeverity.WARN)
+                .with("source", "source-1")
+                .with("reason", "lossy projection")
+                .build();
+        notification.add(operationWarning);
+        notification.add(FACTORY.create(PipelineDiagnosticCodes.ITEM_SKIPPED)
+                .with("item", "one").with("stage", "test").with("reason", "bad").build());
+        notification.add(FACTORY.create(PipelineDiagnosticCodes.STAGE_FAILED)
+                .with("stage", "test").with("reason", "failed").build());
+
+        assertThat(notification.diagnostics())
+                .extracting(diagnostic -> diagnostic.code().id())
+                .containsExactly(
+                        "INGEST.SOURCE_UNREADABLE",
+                        "PIPELINE.STAGE_FAILED",
+                        "PIPELINE.DIAGNOSTICS_SUPPRESSED");
+        assertThat(notification.summary().total()).isEqualTo(3);
+        assertThat(notification.summary().suppressed()).isOne();
     }
 }

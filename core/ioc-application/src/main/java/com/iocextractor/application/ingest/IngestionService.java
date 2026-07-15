@@ -19,6 +19,7 @@ import com.iocextractor.application.port.out.ingest.SourcePreparerFactory;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import com.iocextractor.platform.events.NoopControlEventPublisher;
+import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
@@ -265,9 +266,13 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                     .extract(new ExtractionCommand(run.runId(), unit.processingPath(), false));
             runLedger.markDbCommitted(run.runId());
             dbCommitted = true;
+            var projectionDiagnostics = new ArrayList<Diagnostic>();
             for (String artifactName : sourcePreparers.artifactNames()) {
-                projection.project(new ArtifactProjectionRequest(run.runId(), artifactName));
+                var outcome = projection.project(new ArtifactProjectionRequest(run.runId(), artifactName));
+                outcome.diagnostics().forEach(diagnosticSink::emit);
+                projectionDiagnostics.addAll(outcome.diagnostics());
             }
+            extraction = extraction.withAdditionalDiagnostics(projectionDiagnostics);
             runLedger.markProjectionCompleted(run.runId());
         } catch (RuntimeException e) {
             if (!dbCommitted) {

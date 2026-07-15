@@ -21,6 +21,7 @@ Actuator. Он работает только через ports из `application.
 | `ArtifactIdSequence.java` / `ArtifactIdReservation.java` | Thread-safe монотонное резервирование непересекающихся id-range перед commit |
 | `StableArtifactId.java` | Результат stable id allocation |
 | `IngestRun*.java` / `RunLedger`-model | Durable checkpoint model для write→project recovery |
+| `IngestRunRecoveryService.java` | Re-project DB_COMMITTED runs и доставляет advisory projection diagnostics |
 
 ## Границы
 

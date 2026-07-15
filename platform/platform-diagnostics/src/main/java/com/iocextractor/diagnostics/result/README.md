@@ -14,8 +14,8 @@
 |---|---|
 | `Result.java` | Значение + diagnostics |
 | `Notification.java` | Mutable per-run/per-item collector |
-| `BoundedNotification.java` | Per-run budget + suppression summary without hiding first error |
-| `DiagnosticSummary.java` | Immutable counts for application outcomes |
+| `BoundedNotification.java` | ELEMENT/RUN budget + unbounded OPERATION occurrences + suppression summary |
+| `DiagnosticSummary.java` | Immutable counts and terminal-diagnostic merge for application outcomes |
 | `FailureDecision.java` | Результат оценки политики |
 | `FailurePolicy.java` | Strategy fail-fast / collect-and-continue |
 

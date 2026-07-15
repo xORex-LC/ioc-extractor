@@ -4,6 +4,11 @@ import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionRequest;
 import com.iocextractor.application.port.out.artifact.ProjectionOutcome;
 import com.iocextractor.application.port.out.artifact.RunLedger;
+import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
+import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -15,6 +20,9 @@ import java.util.Objects;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class IngestRunRecoveryServiceTest {
+
+    private static final DiagnosticFactory DIAGNOSTICS = new DiagnosticFactory(
+            java.time.Clock.fixed(Instant.EPOCH, java.time.ZoneOffset.UTC));
 
     @Test
     void reprojects_db_committed_runs_and_marks_them_completed() {
@@ -28,7 +36,7 @@ class IngestRunRecoveryServiceTest {
                 null));
         var projection = new CollectingProjection();
         Snapshot before = Snapshot.capture(projection.rows);
-        var service = new IngestRunRecoveryService(ledger, projection);
+        var service = new IngestRunRecoveryService(ledger, projection, NoopDiagnosticSink.INSTANCE);
 
         assertThat(service.recover()).isEqualTo(1);
 
@@ -54,7 +62,7 @@ class IngestRunRecoveryServiceTest {
                 null));
         var projection = new CollectingProjection();
         Snapshot before = Snapshot.capture(projection.rows);
-        var service = new IngestRunRecoveryService(ledger, projection);
+        var service = new IngestRunRecoveryService(ledger, projection, NoopDiagnosticSink.INSTANCE);
 
         service.recover();
 
@@ -75,7 +83,7 @@ class IngestRunRecoveryServiceTest {
                 null));
         var projection = new CollectingProjection();
         Snapshot before = Snapshot.capture(projection.rows);
-        var service = new IngestRunRecoveryService(ledger, projection);
+        var service = new IngestRunRecoveryService(ledger, projection, NoopDiagnosticSink.INSTANCE);
 
         service.recover();
 
@@ -84,16 +92,50 @@ class IngestRunRecoveryServiceTest {
         assertThat(Snapshot.capture(projection.rows)).isEqualTo(before);
     }
 
+    @Test
+    void emits_projection_diagnostics_with_the_durable_run_identity() {
+        var ledger = new MemoryRunLedger(new IngestRun(
+                "run-4", "source-4", IngestRunStatus.DB_COMMITTED, List.of("masks"),
+                Instant.EPOCH, Instant.EPOCH, null));
+        var warning = DIAGNOSTICS.create(IngestDiagnosticCodes.SOURCE_UNREADABLE)
+                .severity(DiagnosticSeverity.WARN)
+                .with("source", "run-4")
+                .with("reason", "lossy projection")
+                .build();
+        var projection = new CollectingProjection(new ProjectionOutcome(2, List.of(warning)));
+        var sink = new CollectingDiagnosticSink();
+
+        new IngestRunRecoveryService(ledger, projection, sink).recover();
+
+        assertThat(projection.requests).singleElement().satisfies(request -> {
+            assertThat(request.runId()).isEqualTo("run-4");
+            assertThat(request.artifactName()).isEqualTo("masks");
+        });
+        assertThat(sink.diagnostics()).containsExactly(warning);
+        assertThat(ledger.status("run-4")).isEqualTo(IngestRunStatus.COMPLETED);
+    }
+
     private static final class CollectingProjection implements ArtifactProjection {
         private final List<ArtifactProjectionRequest> requests = new ArrayList<>();
         private final Map<String, List<String>> rows = Map.of(
                 "masks", List.of("1:example.com", "2:example.org"),
                 "hashes", List.of("10:ABCD"));
+        private final ProjectionOutcome outcome;
+
+        private CollectingProjection() {
+            this(null);
+        }
+
+        private CollectingProjection(ProjectionOutcome outcome) {
+            this.outcome = outcome;
+        }
 
         @Override
         public ProjectionOutcome project(ArtifactProjectionRequest request) {
             requests.add(request);
-            return ProjectionOutcome.clean(rows.getOrDefault(request.artifactName(), List.of()).size());
+            return outcome == null
+                    ? ProjectionOutcome.clean(rows.getOrDefault(request.artifactName(), List.of()).size())
+                    : outcome;
         }
     }
 

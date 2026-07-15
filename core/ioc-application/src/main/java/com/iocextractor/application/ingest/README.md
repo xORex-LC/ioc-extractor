@@ -30,6 +30,9 @@ SQLite/JDBC, CSV projection implementation или logging. Все внешние
 - `RunLedger` фиксирует write -> projection -> completed checkpoints для
   canonical artifacts; сбой до DB commit помечает run как `FAILED`, сбой после DB
   commit оставляет работу для startup recovery.
+- Успешная projection может вернуть advisory diagnostics: use case доставляет
+  каждую occurrence один раз, объединяет её с extraction summary и пересчитывает
+  completion до terminal driving result.
 - `CanonicalArtifactsChanged` публикуется только после `runLedger.markCompleted`
   и source archive. Событие несёт `runId` и artifact names, но не revision:
   consumers делают claim-check и читают durable revision сами.

@@ -4,6 +4,8 @@ import com.iocextractor.application.pipeline.CompletionStatus;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.result.DiagnosticSummary;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -36,6 +38,25 @@ public record ExtractionResult(String runId,
         Objects.requireNonNull(completionStatus, "completionStatus");
         diagnostics = List.copyOf(Objects.requireNonNull(diagnostics, "diagnostics"));
         Objects.requireNonNull(diagnosticSummary, "diagnosticSummary");
+    }
+
+    /** Returns this result augmented with low-cardinality terminal diagnostics. */
+    public ExtractionResult withAdditionalDiagnostics(Collection<Diagnostic> additionalDiagnostics) {
+        Objects.requireNonNull(additionalDiagnostics, "additionalDiagnostics");
+        if (additionalDiagnostics.isEmpty()) {
+            return this;
+        }
+        var combinedDiagnostics = new ArrayList<>(diagnostics);
+        combinedDiagnostics.addAll(additionalDiagnostics);
+        var combinedSummary = diagnosticSummary.plusDiagnostics(additionalDiagnostics);
+        return new ExtractionResult(
+                runId,
+                extracted,
+                retained,
+                writtenPerArtifact,
+                CompletionStatus.from(combinedSummary),
+                combinedDiagnostics,
+                combinedSummary);
     }
 
 }

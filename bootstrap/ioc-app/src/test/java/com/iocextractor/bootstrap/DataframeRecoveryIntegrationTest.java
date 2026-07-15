@@ -20,6 +20,7 @@ import com.iocextractor.application.artifact.IngestRun;
 import com.iocextractor.application.artifact.IngestRunRecoveryService;
 import com.iocextractor.application.artifact.IngestRunStatus;
 import com.iocextractor.application.port.out.artifact.RunLedger;
+import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
 import com.zaxxer.hikari.HikariDataSource;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.QuoteMode;
@@ -110,7 +111,8 @@ class DataframeRecoveryIntegrationTest {
                 .extracting(incompleteRun -> incompleteRun.status()).isEqualTo(IngestRunStatus.DB_COMMITTED);
 
         // ---- startup recovery ----
-        int recovered = new IngestRunRecoveryService(runLedger, projection).recover();
+        int recovered = new IngestRunRecoveryService(
+                runLedger, projection, NoopDiagnosticSink.INSTANCE).recover();
 
         // no data loss: projection now exactly mirrors canonical truth, run closed
         assertThat(recovered).isEqualTo(1);
