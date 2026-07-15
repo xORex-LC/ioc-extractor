@@ -14,6 +14,7 @@ Generated from `DiagnosticCatalogs`.
 | `SINK.WRITE_FAILED` | SINK | FATAL | RUN | `sink.write-failed` | Sink {sink} failed to write artifact {artifact}: {reason} |
 | `SINK.ROW_MAPPING_FAILED` | SINK | ERROR | ELEMENT | `sink.row-mapping-failed` | Sink {sink} failed to map row for indicator {indicator}: {reason} |
 | `INGEST.CLAIM_FAILED` | INGEST | FATAL | OPERATION | `ingest.claim-failed` | Source {source} could not be claimed for ingestion: {reason} |
+| `INGEST.SOURCE_UNREADABLE` | INGEST | ERROR | OPERATION | `ingest.source-unreadable` | Source {source} could not be read for ingestion identity: {reason} |
 | `INGEST.LEDGER_WRITE_FAILED` | INGEST | FATAL | OPERATION | `ingest.ledger-write-failed` | Ingestion ledger update failed for source {source}: {reason} |
 | `INGEST.DEAD_LETTER_FAILED` | INGEST | ERROR | OPERATION | `ingest.dead-letter-failed` | Source {source} could not be moved to the failed area: {reason} |
 | `INGEST.RECOVERY_FAILED` | INGEST | ERROR | OPERATION | `ingest.recovery-failed` | Ingestion recovery failed for source {source}: {reason} |

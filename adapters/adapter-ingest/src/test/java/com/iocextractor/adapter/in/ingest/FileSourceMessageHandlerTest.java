@@ -11,7 +11,9 @@ import com.iocextractor.application.port.in.ExtractionResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
 import com.iocextractor.application.port.in.ingest.IngestSourceResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
+import com.iocextractor.application.port.in.ingest.IngestionRejectionResult;
 import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
+import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
@@ -37,6 +39,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -131,6 +134,66 @@ class FileSourceMessageHandlerTest {
     }
 
     @Test
+    void unreadableSourceIsDurablyRejectedAndDiagnosedOnlyOnce() {
+        var ingestCalls = new AtomicInteger();
+        var reject = new RecordingRejectUseCase();
+        var diagnostics = new CollectingDiagnosticSink();
+        var handler = new FileSourceMessageHandler(
+                new FileSourceHasher(),
+                command -> {
+                    ingestCalls.incrementAndGet();
+                    throw new AssertionError("unreadable source must not reach ingestion");
+                },
+                reject,
+                Clock.fixed(Instant.parse("2026-06-22T00:00:00Z"), ZoneOffset.UTC),
+                2,
+                Duration.ZERO,
+                diagnostics);
+
+        handler.handle(tempDir.toFile());
+        SourceKey firstKey = reject.key;
+        handler.handle(tempDir.toFile());
+
+        assertThat(ingestCalls).hasValue(0);
+        assertThat(reject.attempts).isEqualTo(2);
+        assertThat(reject.key).isEqualTo(firstKey);
+        assertThat(diagnostics.diagnostics()).singleElement().satisfies(diagnostic -> {
+            assertThat(diagnostic.code()).isEqualTo(IngestDiagnosticCodes.SOURCE_UNREADABLE);
+            assertThat(diagnostic.context())
+                    .containsEntry("source", tempDir)
+                    .containsKey("reason");
+        });
+    }
+
+    @Test
+    void interruptedHashRetryIsNotMisclassifiedAsUnreadableSource() {
+        var reject = new RecordingRejectUseCase();
+        var diagnostics = new CollectingDiagnosticSink();
+        var handler = new FileSourceMessageHandler(
+                new FileSourceHasher(),
+                command -> {
+                    throw new AssertionError("unreadable source must not reach ingestion");
+                },
+                reject,
+                Clock.systemUTC(),
+                2,
+                Duration.ofSeconds(1),
+                diagnostics);
+
+        Thread.currentThread().interrupt();
+        try {
+            assertThatThrownBy(() -> handler.handle(tempDir.toFile()))
+                    .isInstanceOf(IocExtractorException.class)
+                    .hasMessageContaining("Interrupted while waiting for ingest retry");
+        } finally {
+            Thread.interrupted();
+        }
+
+        assertThat(reject.attempts).isZero();
+        assertThat(diagnostics.diagnostics()).isEmpty();
+    }
+
+    @Test
     void emitsTypedIngestDiagnosticOnceAfterRetriesAndRejection() throws Exception {
         Path source = Files.writeString(tempDir.resolve("source.html"), "ioc");
         var diagnostic = Diagnostic.builder(IngestDiagnosticCodes.CLAIM_FAILED,
@@ -144,7 +207,7 @@ class FileSourceMessageHandlerTest {
                 command -> {
                     throw new DiagnosticException(diagnostic);
                 },
-                (key, reason) -> { },
+                (key, reason) -> IngestionRejectionResult.REJECTED,
                 Clock.systemUTC(),
                 3,
                 Duration.ZERO,
@@ -210,11 +273,32 @@ class FileSourceMessageHandlerTest {
         assertThat(diagnostics.diagnostics()).containsExactly(diagnostic);
     }
 
+    @Test
+    void alreadyRejectedSourceDoesNotCreateAPerPollFailure() throws Exception {
+        Path source = Files.writeString(tempDir.resolve("failed.html"), "ioc");
+        var reject = new RecordingRejectUseCase();
+        var diagnostics = new CollectingDiagnosticSink();
+        var handler = new FileSourceMessageHandler(
+                new FileSourceHasher(),
+                command -> new IngestSourceResult(
+                        command.key(), IngestionStatus.FAILED, false, null),
+                reject,
+                Clock.systemUTC(),
+                2,
+                Duration.ZERO,
+                diagnostics);
+
+        handler.handle(source.toFile());
+
+        assertThat(reject.attempts).isZero();
+        assertThat(diagnostics.diagnostics()).isEmpty();
+    }
+
     private FileSourceMessageHandler handler(IngestSourceUseCase useCase) {
         return new FileSourceMessageHandler(
                 new FileSourceHasher(),
                 useCase,
-                (key, reason) -> { },
+                (key, reason) -> IngestionRejectionResult.REJECTED,
                 Clock.systemUTC(),
                 1,
                 Duration.ZERO,
@@ -274,11 +358,16 @@ class FileSourceMessageHandlerTest {
     private static final class RecordingRejectUseCase implements RejectIngestionUseCase {
         private SourceKey key;
         private String reason;
+        private int attempts;
 
         @Override
-        public void reject(SourceKey key, String reason) {
+        public IngestionRejectionResult reject(SourceKey key, String reason) {
+            attempts++;
             this.key = key;
             this.reason = reason;
+            return attempts == 1
+                    ? IngestionRejectionResult.REJECTED
+                    : IngestionRejectionResult.ALREADY_REJECTED;
         }
     }
 

@@ -20,4 +20,18 @@ class FileSourceHasherTest {
         assertThat(new FileSourceHasher().sha256(source).value())
                 .isEqualTo("7354a0024740d89096dc6137ff3bb47df328ab8ea22f20e88c059d387e58aeae");
     }
+
+    @Test
+    void metadataFingerprintIsStableForTheSameObservationAndChangesWithContentSize() throws Exception {
+        Path source = Files.writeString(tempDir.resolve("source.html"), "ioc");
+        var hasher = new FileSourceHasher();
+
+        var first = hasher.fingerprint(source);
+        var repeated = hasher.fingerprint(source);
+        Files.writeString(source, "larger-ioc-source");
+        var changed = hasher.fingerprint(source);
+
+        assertThat(repeated).isEqualTo(first);
+        assertThat(changed).isNotEqualTo(first);
+    }
 }

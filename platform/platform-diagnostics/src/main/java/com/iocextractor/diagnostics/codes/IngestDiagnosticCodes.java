@@ -11,6 +11,8 @@ import com.iocextractor.diagnostics.DiagnosticSeverity;
 public enum IngestDiagnosticCodes implements DiagnosticCode {
     CLAIM_FAILED(DiagnosticSeverity.FATAL, DiagnosticImpact.OPERATION, "ingest.claim-failed",
             "Source {source} could not be claimed for ingestion: {reason}"),
+    SOURCE_UNREADABLE(DiagnosticSeverity.ERROR, DiagnosticImpact.OPERATION, "ingest.source-unreadable",
+            "Source {source} could not be read for ingestion identity: {reason}"),
     LEDGER_WRITE_FAILED(DiagnosticSeverity.FATAL, DiagnosticImpact.OPERATION, "ingest.ledger-write-failed",
             "Ingestion ledger update failed for source {source}: {reason}"),
     DEAD_LETTER_FAILED(DiagnosticSeverity.ERROR, DiagnosticImpact.OPERATION, "ingest.dead-letter-failed",

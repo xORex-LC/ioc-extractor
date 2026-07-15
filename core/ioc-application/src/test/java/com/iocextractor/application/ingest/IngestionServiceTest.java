@@ -1,6 +1,7 @@
 package com.iocextractor.application.ingest;
 
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
+import com.iocextractor.application.port.in.ingest.IngestionRejectionResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceResult;
 import com.iocextractor.application.artifact.IngestRun;
 import com.iocextractor.application.artifact.IngestRunStatus;
@@ -194,8 +195,9 @@ class IngestionServiceTest {
                 .isEqualTo(IngestionStatus.CLAIMED);
         assertThat(lifecycle.events).containsExactly("claim");
 
-        service.reject(key, "source sink unavailable");
+        IngestionRejectionResult rejection = service.reject(key, "source sink unavailable");
 
+        assertThat(rejection).isEqualTo(IngestionRejectionResult.REJECTED);
         assertThat(ledger.find(key)).get()
                 .extracting(IngestionRecord::status)
                 .isEqualTo(IngestionStatus.FAILED);
@@ -288,6 +290,24 @@ class IngestionServiceTest {
         assertThat(ledger.find(key)).get()
                 .extracting(IngestionRecord::status)
                 .isEqualTo(IngestionStatus.CLAIMED);
+    }
+
+    @Test
+    void repeatedTerminalRejectionIsAnIdempotentNoOp() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.markFailed(key, "unreadable source");
+        var lifecycle = new MemoryLifecycle();
+        var service = new IngestionService(
+                ledger, lifecycle, source -> new SourcePreparers(List.of()), extractionFactory());
+
+        IngestionRejectionResult result = service.reject(key, "unreadable source again");
+
+        assertThat(result).isEqualTo(IngestionRejectionResult.ALREADY_REJECTED);
+        assertThat(lifecycle.events).isEmpty();
+        assertThat(ledger.find(key)).get()
+                .extracting(IngestionRecord::reason)
+                .isEqualTo("unreadable source");
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.iocextractor.application.port.in.ExtractionResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
 import com.iocextractor.application.port.in.ingest.IngestSourceResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
+import com.iocextractor.application.port.in.ingest.IngestionRejectionResult;
 import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
 import com.iocextractor.application.port.in.ingest.RecoverIngestionUseCase;
 import com.iocextractor.application.artifact.NoopArtifactProjection;
@@ -153,10 +154,13 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     }
 
     @Override
-    public void reject(SourceKey key, String reason) {
+    public IngestionRejectionResult reject(SourceKey key, String reason) {
         Objects.requireNonNull(key, "key");
         var record = ledger.find(key);
         if (record.isPresent()) {
+            if (record.orElseThrow().status() == IngestionStatus.FAILED) {
+                return IngestionRejectionResult.ALREADY_REJECTED;
+            }
             try {
                 failRecord(record.get(), reason);
             } catch (RuntimeException failure) {
@@ -172,6 +176,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         } catch (RuntimeException failure) {
             throw ledgerFailure(key, "mark-failed", failure);
         }
+        return IngestionRejectionResult.REJECTED;
     }
 
     private IngestSourceResult handleExisting(IngestSourceCommand command, IngestionRecord record) {

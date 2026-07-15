@@ -12,6 +12,8 @@ decisions материализуются один раз; application stages и�
 `ExtractionCommand.runId` обязателен и задаётся driving boundary: oneshot CLI
 создаёт новый correlation id, daemon передаёт durable `ingest_run.run_id`.
 `ExtractionResult` возвращает тот же id из terminal envelope.
+Terminal ingestion rejection идемпотентен: driving adapter различает впервые
+записанный `REJECTED` и уже durable `ALREADY_REJECTED`, не читая ledger напрямую.
 
 **Правило слоя:** application работает через ports and domain/platform
 contracts. It does not import concrete adapters, Spring or runtime logging.

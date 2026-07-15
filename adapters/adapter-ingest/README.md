@@ -29,6 +29,11 @@ Spring Integration file support.
 - `FileSourceMessageHandler` владеет final retry boundary: после исчерпания
   попыток он выполняет reject/dead-letter transition, если use case ещё
   не вернул durable `FAILED`, затем эмитит один typed `INGEST.*` diagnostic.
+- Content hashing входит в тот же bounded retry/backoff. Если содержимое
+  прочитать нельзя, handler использует fingerprint `path+size+mtime` только как
+  terminal ledger identity и один раз эмитит `INGEST.SOURCE_UNREADABLE`.
+  Повторный poll того же durable `FAILED` завершается тихо; физический
+  pre-claim quarantine остаётся отдельным ING-13.
 - После структурно завершённой extraction handler публикует terminal
   `source_ingest` с durable run id, completion и отдельными severity counts.
   `COMPLETED_WITH_ERRORS` имеет `event.outcome=failure`; duplicate skip не

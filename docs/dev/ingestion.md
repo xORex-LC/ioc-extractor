@@ -190,8 +190,11 @@ inbox/  ──claim──▶  processing/  ──success──▶  done/ (archiv
 ## 7. Идемпотентность, статусы и восстановление
 
 **Модель идемпотентности — по типу источника:**
-- **Whole-file:** ключ = **content-hash (sha256 файла)** — ловит переименования и
-  повторные дропы того же содержимого.
+- **Whole-file:** штатный ключ = **content-hash (sha256 файла)** — ловит
+  переименования и повторные дропы того же содержимого. Если содержимое нельзя
+  прочитать даже после bounded retry, fingerprint `absolute path + size + mtime`
+  используется только как terminal failure identity: он не выдаётся за
+  подтверждённый content hash и не доходит до успешного extraction.
 - **Tail:** ключ = **checkpoint** = идентичность файла (path + inode/маркер
   создания) + байтовое смещение + маркер ротации + id/hash записи. У растущего
   файла нет единого content-hash — прогресс трекается смещением/чекпоинтом.
@@ -322,13 +325,18 @@ canonical write. Обратный поток берёт только completed e
 ## 9. Ошибки, ретраи, dead-letter
 
 - `FileSourceMessageHandler` выполняет N попыток с configured fixed backoff.
+- Content hashing входит в те же N bounded attempts. После exhaustion handler
+  строит metadata fingerprint, durably отклоняет observation и один раз
+  доставляет `INGEST.SOURCE_UNREADABLE`; повторный poll того же fingerprint
+  получает `ALREADY_REJECTED` и не создаёт новый diagnostic/stacktrace.
 - После exhaustion final boundary сначала выполняет reject/dead-letter,
   если use case ещё не вернул durable `FAILED`, затем доставляет один
   typed `INGEST.*` diagnostic. Предыдущая attempt failure сохраняется как cause,
   а не как вторая occurrence.
-- `INGEST.CLAIM_FAILED`, `LEDGER_WRITE_FAILED`, `DEAD_LETTER_FAILED` и
-  `RECOVERY_FAILED` покрывают файловый lifecycle. Startup recovery эмитит свой
-  final diagnostic само, потому что над ним нет message-handler boundary.
+- `INGEST.SOURCE_UNREADABLE`, `CLAIM_FAILED`, `LEDGER_WRITE_FAILED`,
+  `DEAD_LETTER_FAILED` и `RECOVERY_FAILED` покрывают файловый lifecycle.
+  Startup recovery эмитит свой final diagnostic само, потому что над ним нет
+  message-handler boundary.
 - Успешно обработанный source завершается structured `source_ingest`: INFO для
   clean completion, WARN/success для completion с warnings и WARN/failure для
   structurally completed run с errors. Точный статус и diagnostic counts идут
@@ -336,6 +344,11 @@ canonical write. Обратный поток берёт только completed e
 - Один «ядовитый» файл не блокирует поток. Pipeline policy отдельно решает
   судьбу element defects до canonical commit: production daemon использует
   `collect-and-continue`, но FATAL/run failure всё равно ведёт к whole-file retry/dead-letter.
+
+Полумера ING-13 намеренно не объявляется quarantine-протоколом: pre-claim
+`FAILED` пока хранит placeholder paths и оставляет исходный файл в inbox.
+Durable rejection убирает per-poll log storm, но физическая судьба такого файла
+будет закрыта отдельной моделью pre-claim dead-letter/quarantine в 0.1.2.
 
 ## 10. Параллелизм и backpressure
 

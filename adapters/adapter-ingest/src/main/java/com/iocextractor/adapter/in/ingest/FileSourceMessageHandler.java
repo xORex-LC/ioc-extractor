@@ -7,11 +7,15 @@ import com.iocextractor.application.port.in.ExtractionResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
 import com.iocextractor.application.port.in.ingest.IngestSourceResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
+import com.iocextractor.application.port.in.ingest.IngestionRejectionResult;
 import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
 import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticCategory;
 import com.iocextractor.diagnostics.DiagnosticException;
+import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
+import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
 import com.iocextractor.diagnostics.result.DiagnosticSummary;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.observability.EventAction;
@@ -44,6 +48,7 @@ public final class FileSourceMessageHandler {
     private final int maxAttempts;
     private final Duration backoff;
     private final DiagnosticSink diagnosticSink;
+    private final DiagnosticFactory diagnostics;
 
     public FileSourceMessageHandler(FileSourceHasher hasher,
                                     IngestSourceUseCase useCase,
@@ -59,11 +64,18 @@ public final class FileSourceMessageHandler {
         this.maxAttempts = Math.max(1, maxAttempts);
         this.backoff = backoff == null ? Duration.ZERO : backoff;
         this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
+        this.diagnostics = new DiagnosticFactory(clock);
     }
 
     public void handle(File file) {
         Path source = file.toPath();
-        var key = hasher.sha256(source);
+        SourceKey key;
+        try {
+            key = hashWithRetries(source);
+        } catch (HashingExhaustedException exhausted) {
+            rejectUnreadable(source, exhausted.failure());
+            return;
+        }
         RuntimeException last = null;
         boolean alreadyRejected = false;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -71,11 +83,10 @@ public final class FileSourceMessageHandler {
                 IngestSourceResult result = useCase.ingest(
                         new IngestSourceCommand(source, key, Instant.now(clock)));
                 if (result.status() == IngestionStatus.FAILED) {
-                    alreadyRejected = true;
                     if (last == null) {
-                        last = new IocExtractorException(
-                                "Source is already marked failed: " + source);
+                        return;
                     }
+                    alreadyRejected = true;
                     break;
                 }
                 logHandledSource(result, source, key);
@@ -102,11 +113,51 @@ public final class FileSourceMessageHandler {
         throw new IocExtractorException("Source ingestion failed after retries: " + source, terminal);
     }
 
+    private SourceKey hashWithRetries(Path source) {
+        RuntimeException last = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return hasher.sha256(source);
+            } catch (RuntimeException failure) {
+                last = failure;
+                if (attempt < maxAttempts) {
+                    sleep();
+                }
+            }
+        }
+        throw new HashingExhaustedException(Objects.requireNonNull(last, "hashing failure"));
+    }
+
+    private void rejectUnreadable(Path source, RuntimeException hashingFailure) {
+        SourceKey fallbackKey = hasher.fingerprint(source);
+        Diagnostic diagnostic = diagnostics.create(IngestDiagnosticCodes.SOURCE_UNREADABLE)
+                .with("source", source)
+                .with("reason", reason(hashingFailure))
+                .cause(hashingFailure)
+                .build();
+        IngestionRejectionResult rejection;
+        try {
+            rejection = rejectUseCase.reject(fallbackKey, reason(hashingFailure));
+        } catch (RuntimeException rejectionFailure) {
+            emitIngestDiagnostic(rejectionFailure);
+            throw new IocExtractorException("Failed to reject unreadable source: " + source, rejectionFailure);
+        }
+        if (rejection == IngestionRejectionResult.REJECTED) {
+            diagnosticSink.emit(diagnostic);
+        }
+    }
+
     private void emitIngestDiagnostic(RuntimeException failure) {
         if (failure instanceof DiagnosticException diagnosticFailure
                 && diagnosticFailure.diagnostic().category() == DiagnosticCategory.INGEST) {
             diagnosticSink.emit(diagnosticFailure.diagnostic());
         }
+    }
+
+    private String reason(RuntimeException failure) {
+        return failure.getMessage() == null || failure.getMessage().isBlank()
+                ? failure.getClass().getSimpleName()
+                : failure.getMessage();
     }
 
     private void logHandledSource(IngestSourceResult result, Path source, SourceKey key) {
@@ -165,6 +216,20 @@ public final class FileSourceMessageHandler {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IocExtractorException("Interrupted while waiting for ingest retry", e);
+        }
+    }
+
+    private static final class HashingExhaustedException extends RuntimeException {
+
+        private final RuntimeException failure;
+
+        private HashingExhaustedException(RuntimeException failure) {
+            super(failure);
+            this.failure = failure;
+        }
+
+        private RuntimeException failure() {
+            return failure;
         }
     }
 }
