@@ -1,6 +1,7 @@
 package com.iocextractor.application.artifact;
 
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionRequest;
 import com.iocextractor.application.port.out.artifact.RunLedger;
 
 import java.util.Objects;
@@ -33,7 +34,7 @@ public final class IngestRunRecoveryService {
             }
             if (run.status() == IngestRunStatus.DB_COMMITTED) {
                 for (String artifact : run.artifacts()) {
-                    projection.project(artifact);
+                    projection.project(new ArtifactProjectionRequest(run.runId(), artifact));
                 }
                 runLedger.markProjectionCompleted(run.runId());
             }

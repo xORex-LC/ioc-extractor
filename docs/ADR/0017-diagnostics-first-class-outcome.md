@@ -1068,3 +1068,138 @@ library для этих исправлений не применяются: он
 `./mvnw verify`, link-check и `git diff --check`. Ни один из этих commits не
 должен менять startup ordering, retry/resume, hashing/claim boundary или durable
 recovery protocol из ING-10..ING-13.
+
+## Дополнение 2026-07-15 — OBS-2: projection outcome входит в completion contract
+
+**Supersedes:** это дополнение заменяет только пример post-commit CSV
+projection как direct-only advisory в Решении 4 и заключительный абзац того же
+решения про прямую эмиссию `SINK.CHARSET_UNMAPPABLE`. Остальные Решения 1–8,
+включая checkpoint до canonical commit, две дороги диагностики и разделение
+envelope/saga-контуров, не меняются.
+
+Причина пересмотра: direct WARN делал потерю символов наблюдаемой в логах, но
+оставлял driving outcome «чистым». Для оператора это противоречие: canonical
+storage успешно committed, однако производный CSV фактически деградировал, а
+CLI/daemon сообщали `COMPLETED`. Мутабельная локальная проекция является частью
+результата текущего extraction/ingest run, даже когда daemon выполняет её после
+DB checkpoint ради crash recovery. Поэтому advisory должен одновременно иметь
+typed occurrence и участвовать в terminal completion, не становясь задним
+числом policy/rollback-сигналом.
+
+### Контракт projection boundary
+
+`ArtifactProjection` возвращает immutable outcome:
+
+```java
+ProjectionOutcome project(ArtifactProjectionRequest request);
+
+record ArtifactProjectionRequest(String runId, String artifactName) { }
+
+record ProjectionOutcome(int projectedRows, List<Diagnostic> diagnostics) { }
+```
+
+`runId` задаёт caller: в oneshot это `EnvelopeMeta.runId`, в daemon/recovery —
+durable `ingest_run.runId`. Projection adapter не создаёт correlation identity
+и не зависит от logging/MDC. Нормальный return означает успешно установленный
+derived artifact; exception означает hard failure. Outcome не содержит
+собственного completion/status boolean: это не самостоятельный use case.
+
+Возвращаемые diagnostics могут иметь только advisory severity (`WARN` и ниже),
+что проверяется инвариантом outcome. Post-commit `ERROR/FATAL` не может
+возвращаться как данные: policy увидела бы его после необратимого side effect.
+Настоящий сбой projection бросается. В oneshot его по-прежнему переводит в
+`SINK.WRITE_FAILED` `WriteArtifactsStage`; daemon/recovery сохраняют своё
+существующее exception/retry ownership. Адаптер является producer diagnostic,
+но не владельцем доставки и не пишет observational копию того же WARN через
+`LogEvents`.
+
+### Typed producer и точный счёт
+
+Добавляется `SINK.CHARSET_UNMAPPABLE`: severity `WARN`, impact `OPERATION`, одна
+occurrence на artifact projection. Context содержит run id, artifact, path,
+charset, число затронутых value occurrences, data rows и header values; raw
+значения и непредставимые символы не публикуются.
+
+Единица счёта — логическое CSV value occurrence, а не символ и не вызов
+`Writer.write`. Значение с несколькими bad characters считается один раз;
+повтор того же значения в разных cells — по одному разу на cell. Header
+учитывается отдельно, потому что его replacement также делает projection
+lossy. Проверка выполняется локальным `CharsetEncoder.canEncode` до передачи
+значения в `CSVPrinter`; сам writer сохраняет `CodingErrorAction.REPLACE`.
+`CountingCharsetWriter` удаляется как принципиально неточный: writer chunks не
+совпадают с границами CSV values.
+
+Дополнительная проверка остаётся O(total characters) и не создаёт второй копии
+artifact. Полная materialization/rewrite уже O(N); её оптимизация остаётся
+ING-7. Immutable export slices не входят в OBS-2 и сохраняют
+`CodingErrorAction.REPORT`, поскольку их bytes участвуют в immutable hash и
+publication contract.
+
+### Единоличная доставка по трём путям
+
+```text
+CsvArtifactProjection
+  -> ProjectionOutcome(advisory diagnostics)
+       |-- oneshot: WriteArtifactsStage -> Envelope -> PipelineRunner -> sink
+       |-- daemon: IngestionService -> sink + merged ExtractionResult
+       `-- recovery: IngestRunRecoveryService -> sink
+```
+
+- **Oneshot:** `WriteArtifactsStage` batch-append'ит diagnostics в envelope;
+  `PipelineRunner` эмитит их exactly once. Summary приводит результат к
+  `COMPLETED_WITH_WARNINGS`; CLI сохраняет exit 0.
+- **Daemon:** actual projection остаётся после `markDbCommitted`, иначе
+  разрушился бы durable write→projection checkpoint. `IngestionService` эмитит
+  outcome diagnostics один раз через resilient sink, объединяет их с исходным
+  `ExtractionResult` и заново выводит `CompletionStatus`. Terminal handler
+  публикует только summary/status и не переэмитит отдельные occurrences.
+- **Startup recovery:** recovery service передаёт durable run id и эмитит
+  outcome diagnostics до `PROJECTION_COMPLETED`. Новый `ExtractionResult` не
+  синтезируется: driving invocation уже отсутствует, а run-ledger остаётся
+  state machine, не diagnostic report store.
+
+### Budget и terminal semantics
+
+`max-diagnostics-per-run` ограничивает высококардинальные ELEMENT/RUN
+occurrences envelope-контура. Projection producer агрегирован и структурно
+ограничен одной OPERATION occurrence на artifact; этот terminal advisory не
+подавляется при исчерпанном retained budget, аналогично synthetic suppression
+summary. При объединении `DiagnosticSummary.total` и severity counts растут,
+`suppressed` не меняется, а completion вычисляется после merge.
+
+Failure policy после projection не переоценивается. Итоговая семантика:
+
+| Projection | Canonical storage | Completion | Driving outcome |
+|---|---|---|---|
+| без replacement | committed | `COMPLETED` либо прежний более строгий статус | без изменения |
+| replacement выполнен | committed | минимум `COMPLETED_WITH_WARNINGS` | exit 0 / daemon success with warnings |
+| hard failure | уже может быть committed | результата нет | oneshot `SINK.WRITE_FAILED`; daemon/recovery — существующий exception/retry path |
+
+`event.outcome` terminal completion при replacement остаётся `success`, level —
+WARN. Это честно разделяет durability и качество derived representation:
+данные не потеряны в canonical truth, но опубликованная локальная проекция
+lossy. Retry/resume после `DB_COMMITTED` не меняется и остаётся ING-11.
+OBS-2 не вводит новую terminal-классификацию daemon hard failures под видом
+charset advisory.
+
+### Границы и реализация
+
+- `platform-diagnostics` владеет catalog code и immutable summary merge;
+- `ioc-application` — request/outcome, out-port, exactly-once orchestration и
+  completion merge;
+- `adapter-sink-csv` — charset/CSV detection и diagnostic production без
+  решения policy;
+- bootstrap собирает существующий resilient sink;
+- driving adapters только отображают вычисленный terminal result.
+
+Реализация разбивается на три атомарных commit:
+
+1. `FEATURE: expose artifact projection outcome`;
+2. `FEATURE: include projection diagnostics in completion`;
+3. `FIX: diagnose lossy CSV projection`.
+
+Первые два commit подготавливают consumers при clean production outcome;
+producer активируется третьим вместе с exact-count tests, удалением
+`CountingCharsetWriter`, regenerated `DIAGNOSTICS-CATALOG.md`, dev/module docs и
+закрытием OBS-2. Финальный gate: полный `./mvnw verify` и стендовый smoke
+windows-1251 с непредставимым Unicode value.

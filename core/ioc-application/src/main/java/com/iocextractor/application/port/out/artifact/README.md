@@ -14,9 +14,12 @@ Driven-порты для canonical artifact storage, artifact identity, CSV proj
 | `ArtifactIdentityResolver.java` | Artifact-specific row key extraction |
 | `ArtifactIdentityStore.java` | Guardrail-хранилище identity formula hash + epoch |
 | `ArtifactProjection.java` | Projection-порт для производных артефактов |
+| `ArtifactProjectionRequest.java` | Обязательные run/artifact identity одной projection operation |
+| `ProjectionOutcome.java` | Immutable row count + advisory diagnostics успешно установленной проекции |
 | `RunLedger.java` | Durable checkpoint store для write→project recovery |
 
 ## Границы
 
 Порты не задают SQL/CSV-диалект или пути файлов. Эти детали принадлежат adapter
-layer.
+layer. Projection hard failure выражается исключением; outcome допускает только
+advisory diagnostics, потому что canonical commit к этому моменту уже выполнен.

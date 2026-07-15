@@ -4,6 +4,7 @@ import com.iocextractor.application.pipeline.payload.ArtifactWriteSummary;
 import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
 import com.iocextractor.application.pipeline.PipelineMetaAttributes;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionRequest;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
@@ -57,7 +58,8 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
                     throw writeFailure("canonical", plan.artifactName(), failure);
                 }
                 try {
-                    projection.project(plan.artifactName());
+                    projection.project(new ArtifactProjectionRequest(
+                            input.meta().runId(), plan.artifactName()));
                 } catch (RuntimeException failure) {
                     throw writeFailure("projection", plan.artifactName(), failure);
                 }

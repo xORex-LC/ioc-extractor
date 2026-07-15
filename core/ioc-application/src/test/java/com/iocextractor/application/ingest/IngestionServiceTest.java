@@ -6,6 +6,8 @@ import com.iocextractor.application.port.in.ingest.IngestSourceResult;
 import com.iocextractor.application.artifact.IngestRun;
 import com.iocextractor.application.artifact.IngestRunStatus;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionRequest;
+import com.iocextractor.application.port.out.artifact.ProjectionOutcome;
 import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
@@ -81,7 +83,10 @@ class IngestionServiceTest {
                 .extracting(extraction -> extraction.runId())
                 .isEqualTo("run-1");
         assertThat(sink.written).isEqualTo(1);
-        assertThat(projection.artifacts).containsExactly("masks");
+        assertThat(projection.requests).singleElement().satisfies(request -> {
+            assertThat(request.runId()).isEqualTo("run-1");
+            assertThat(request.artifactName()).isEqualTo("masks");
+        });
         assertThat(runLedger.status).isEqualTo(IngestRunStatus.COMPLETED);
         assertThat(ledger.find(key)).get()
                 .extracting(IngestionRecord::status)
@@ -500,11 +505,12 @@ class IngestionServiceTest {
     }
 
     private static final class CollectingProjection implements ArtifactProjection {
-        private final List<String> artifacts = new ArrayList<>();
+        private final List<ArtifactProjectionRequest> requests = new ArrayList<>();
 
         @Override
-        public void project(String artifactName) {
-            artifacts.add(artifactName);
+        public ProjectionOutcome project(ArtifactProjectionRequest request) {
+            requests.add(request);
+            return ProjectionOutcome.clean(0);
         }
     }
 

@@ -8,7 +8,8 @@ public interface ArtifactProjection {
     /**
      * Refreshes one derived artifact from canonical truth.
      *
-     * @param artifactName artifact to project
+     * @param request projection operation identity
+     * @return successfully installed projection outcome
      */
-    void project(String artifactName);
+    ProjectionOutcome project(ArtifactProjectionRequest request);
 }

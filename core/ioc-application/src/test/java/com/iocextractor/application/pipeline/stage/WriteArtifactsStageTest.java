@@ -9,6 +9,7 @@ import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.artifact.PreparedArtifactRow;
 import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
+import com.iocextractor.application.port.out.artifact.ProjectionOutcome;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import org.junit.jupiter.api.Test;
@@ -27,7 +28,10 @@ class WriteArtifactsStageTest {
     void commits_plans_in_order_and_projects_after_each_write() {
         var repository = new RecordingRepository();
         var projected = new ArrayList<String>();
-        var stage = new WriteArtifactsStage(repository, projected::add,
+        var stage = new WriteArtifactsStage(repository, request -> {
+            projected.add(request.artifactName());
+            return ProjectionOutcome.clean(1);
+        },
                 new DiagnosticFactory(StageTestSupport.CLOCK));
         var prepared = new PreparedArtifacts(2, 1, List.of(plan("masks"), plan("hashes")));
 
@@ -45,7 +49,10 @@ class WriteArtifactsStageTest {
         var repository = new RecordingRepository();
         var projected = new ArrayList<String>();
         var ids = new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 10);
-        var stage = new WriteArtifactsStage(repository, projected::add,
+        var stage = new WriteArtifactsStage(repository, request -> {
+            projected.add(request.artifactName());
+            return ProjectionOutcome.clean(1);
+        },
                 new DiagnosticFactory(StageTestSupport.CLOCK));
         var prepared = new PreparedArtifacts(1, 1, List.of(plan("masks", ids)));
 
@@ -61,7 +68,9 @@ class WriteArtifactsStageTest {
     void identifies_post_commit_projection_failure() {
         var repository = new RecordingRepository();
         var stage = new WriteArtifactsStage(repository,
-                ignored -> { throw new IllegalStateException("disk full"); },
+                ignored -> {
+                    throw new IllegalStateException("disk full");
+                },
                 new DiagnosticFactory(StageTestSupport.CLOCK));
         var prepared = new PreparedArtifacts(1, 1, List.of(plan("masks")));
 

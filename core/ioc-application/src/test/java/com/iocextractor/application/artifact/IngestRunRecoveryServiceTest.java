@@ -1,6 +1,8 @@
 package com.iocextractor.application.artifact;
 
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionRequest;
+import com.iocextractor.application.port.out.artifact.ProjectionOutcome;
 import com.iocextractor.application.port.out.artifact.RunLedger;
 import org.junit.jupiter.api.Test;
 
@@ -30,7 +32,12 @@ class IngestRunRecoveryServiceTest {
 
         assertThat(service.recover()).isEqualTo(1);
 
-        assertThat(projection.artifacts).containsExactly("masks", "hashes");
+        assertThat(projection.requests)
+                .extracting(ArtifactProjectionRequest::runId)
+                .containsOnly("run-1");
+        assertThat(projection.requests)
+                .extracting(ArtifactProjectionRequest::artifactName)
+                .containsExactly("masks", "hashes");
         assertThat(ledger.status("run-1")).isEqualTo(IngestRunStatus.COMPLETED);
         assertThat(Snapshot.capture(projection.rows)).isEqualTo(before);
     }
@@ -51,7 +58,7 @@ class IngestRunRecoveryServiceTest {
 
         service.recover();
 
-        assertThat(projection.artifacts).isEmpty();
+        assertThat(projection.requests).isEmpty();
         assertThat(ledger.status("run-2")).isEqualTo(IngestRunStatus.FAILED);
         assertThat(Snapshot.capture(projection.rows)).isEqualTo(before);
     }
@@ -72,20 +79,21 @@ class IngestRunRecoveryServiceTest {
 
         service.recover();
 
-        assertThat(projection.artifacts).isEmpty();
+        assertThat(projection.requests).isEmpty();
         assertThat(ledger.status("run-3")).isEqualTo(IngestRunStatus.COMPLETED);
         assertThat(Snapshot.capture(projection.rows)).isEqualTo(before);
     }
 
     private static final class CollectingProjection implements ArtifactProjection {
-        private final List<String> artifacts = new ArrayList<>();
+        private final List<ArtifactProjectionRequest> requests = new ArrayList<>();
         private final Map<String, List<String>> rows = Map.of(
                 "masks", List.of("1:example.com", "2:example.org"),
                 "hashes", List.of("10:ABCD"));
 
         @Override
-        public void project(String artifactName) {
-            artifacts.add(artifactName);
+        public ProjectionOutcome project(ArtifactProjectionRequest request) {
+            requests.add(request);
+            return ProjectionOutcome.clean(rows.getOrDefault(request.artifactName(), List.of()).size());
         }
     }
 

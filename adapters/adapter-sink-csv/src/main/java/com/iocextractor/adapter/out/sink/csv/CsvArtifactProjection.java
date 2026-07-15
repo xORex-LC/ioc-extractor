@@ -3,6 +3,8 @@ package com.iocextractor.adapter.out.sink.csv;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionRequest;
+import com.iocextractor.application.port.out.artifact.ProjectionOutcome;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.observability.EventAction;
 import com.iocextractor.observability.EventOutcome;
@@ -55,13 +57,17 @@ public final class CsvArtifactProjection implements ArtifactProjection {
     /**
      * Rewrites the CSV projection for one artifact from current canonical data.
      *
-     * @param artifactName artifact to project
+     * @param request projection operation identity
+     * @return successfully installed projection outcome
      */
     @Override
-    public void project(String artifactName) {
+    public ProjectionOutcome project(ArtifactProjectionRequest request) {
+        Objects.requireNonNull(request, "request");
+        String artifactName = request.artifactName();
         List<String> header = requireHeader(artifactName);
         CanonicalArtifact artifact = repository.load(artifactName);
         write(artifactName, header, artifact);
+        return ProjectionOutcome.clean(artifact.rows().size());
     }
 
     private void write(String artifactName, List<String> header, CanonicalArtifact artifact) {
