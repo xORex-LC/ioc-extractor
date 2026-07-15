@@ -14,8 +14,8 @@ Driven-порты для canonical artifact storage, artifact identity, CSV proj
 | `ArtifactIdentityResolver.java` | Artifact-specific row key extraction |
 | `ArtifactIdentityStore.java` | Guardrail-хранилище identity formula hash + epoch |
 | `ArtifactProjection.java` | Projection-порт для производных артефактов |
-| `ArtifactProjectionRequest.java` | Обязательные run/artifact identity одной projection operation |
-| `ProjectionOutcome.java` | Immutable row count + advisory diagnostics успешно установленной проекции |
+| `ArtifactProjectionCommand.java` | Обязательные run/artifact identity одной projection operation |
+| `ArtifactProjectionResult.java` | Immutable row count + advisory diagnostics успешно установленной проекции |
 | `RunLedger.java` | Durable checkpoint store для write→project recovery |
 
 ## Границы

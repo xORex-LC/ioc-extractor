@@ -16,7 +16,7 @@ import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
-import com.iocextractor.application.port.out.artifact.ProjectionOutcome;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.domain.model.IndicatorType;
 import org.junit.jupiter.api.Test;
@@ -76,7 +76,7 @@ class StageContractTest {
                 StageTestSupport.envelope(new RetainedIndicators(0, List.of()), false),
                 diagnostic);
         assertPreservesContract(
-                new WriteArtifactsStage(new NoopRepository(), ignored -> ProjectionOutcome.clean(0),
+                new WriteArtifactsStage(new NoopRepository(), ignored -> ArtifactProjectionResult.clean(0),
                         new DiagnosticFactory(StageTestSupport.CLOCK)),
                 StageTestSupport.envelope(new PreparedArtifacts(0, 0, List.of()), true),
                 diagnostic);

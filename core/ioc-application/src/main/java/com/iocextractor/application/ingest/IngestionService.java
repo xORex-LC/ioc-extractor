@@ -11,7 +11,7 @@ import com.iocextractor.application.port.in.ingest.RecoverIngestionUseCase;
 import com.iocextractor.application.artifact.NoopArtifactProjection;
 import com.iocextractor.application.artifact.NoopRunLedger;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
-import com.iocextractor.application.port.out.artifact.ArtifactProjectionRequest;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
 import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
@@ -268,7 +268,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
             dbCommitted = true;
             var projectionDiagnostics = new ArrayList<Diagnostic>();
             for (String artifactName : sourcePreparers.artifactNames()) {
-                var outcome = projection.project(new ArtifactProjectionRequest(run.runId(), artifactName));
+                var outcome = projection.project(new ArtifactProjectionCommand(run.runId(), artifactName));
                 outcome.diagnostics().forEach(diagnosticSink::emit);
                 projectionDiagnostics.addAll(outcome.diagnostics());
             }

@@ -252,6 +252,10 @@ dataframe/
 - **Проекция:** после успешного commit БД `IngestionService` вызывает
   `ArtifactProjection.project(...)` — `CsvArtifactProjection` перечитывает артефакт
   из БД и атомарно (`*.tmp → ATOMIC_MOVE`) переписывает `*_generated.csv`.
+  Успешная lossy-проекция возвращает `SINK.CHARSET_UNMAPPABLE`: daemon доставляет
+  occurrence и объединяет её с `ExtractionResult`, поэтому terminal status
+  становится минимум `COMPLETED_WITH_WARNINGS`; rollback уже committed canonical
+  truth и повторная failure-policy evaluation не выполняются.
 - **Сага и run-ledger:** per-file шаг — `STARTED → DB_COMMITTED → PROJECTION_COMPLETED
   → COMPLETED` (`ingest_run` в service-БД). При падении после commit БД и до проекции
   startup-recovery (`IngestRunRecoveryService`) доспроецирует незавершённый
@@ -341,6 +345,9 @@ canonical write. Обратный поток берёт только completed e
   clean completion, WARN/success для completion с warnings и WARN/failure для
   structurally completed run с errors. Точный статус и diagnostic counts идут
   отдельными `ioc.*` полями; duplicate skip не притворяется extraction run.
+- Startup recovery доставляет advisory projection occurrence с durable run id,
+  но не синтезирует новый `ExtractionResult`: исходный driving invocation уже
+  завершился аварийно, а run-ledger остаётся state machine, не report store.
 - Один «ядовитый» файл не блокирует поток. Pipeline policy отдельно решает
   судьбу element defects до canonical commit: production daemon использует
   `collect-and-continue`, но FATAL/run failure всё равно ведёт к whole-file retry/dead-letter.

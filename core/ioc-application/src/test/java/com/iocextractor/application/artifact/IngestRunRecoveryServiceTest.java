@@ -1,8 +1,8 @@
 package com.iocextractor.application.artifact;
 
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
-import com.iocextractor.application.port.out.artifact.ArtifactProjectionRequest;
-import com.iocextractor.application.port.out.artifact.ProjectionOutcome;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
 import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
@@ -41,10 +41,10 @@ class IngestRunRecoveryServiceTest {
         assertThat(service.recover()).isEqualTo(1);
 
         assertThat(projection.requests)
-                .extracting(ArtifactProjectionRequest::runId)
+                .extracting(ArtifactProjectionCommand::runId)
                 .containsOnly("run-1");
         assertThat(projection.requests)
-                .extracting(ArtifactProjectionRequest::artifactName)
+                .extracting(ArtifactProjectionCommand::artifactName)
                 .containsExactly("masks", "hashes");
         assertThat(ledger.status("run-1")).isEqualTo(IngestRunStatus.COMPLETED);
         assertThat(Snapshot.capture(projection.rows)).isEqualTo(before);
@@ -102,7 +102,7 @@ class IngestRunRecoveryServiceTest {
                 .with("source", "run-4")
                 .with("reason", "lossy projection")
                 .build();
-        var projection = new CollectingProjection(new ProjectionOutcome(2, List.of(warning)));
+        var projection = new CollectingProjection(new ArtifactProjectionResult(2, List.of(warning)));
         var sink = new CollectingDiagnosticSink();
 
         new IngestRunRecoveryService(ledger, projection, sink).recover();
@@ -116,25 +116,25 @@ class IngestRunRecoveryServiceTest {
     }
 
     private static final class CollectingProjection implements ArtifactProjection {
-        private final List<ArtifactProjectionRequest> requests = new ArrayList<>();
+        private final List<ArtifactProjectionCommand> requests = new ArrayList<>();
         private final Map<String, List<String>> rows = Map.of(
                 "masks", List.of("1:example.com", "2:example.org"),
                 "hashes", List.of("10:ABCD"));
-        private final ProjectionOutcome outcome;
+        private final ArtifactProjectionResult outcome;
 
         private CollectingProjection() {
             this(null);
         }
 
-        private CollectingProjection(ProjectionOutcome outcome) {
+        private CollectingProjection(ArtifactProjectionResult outcome) {
             this.outcome = outcome;
         }
 
         @Override
-        public ProjectionOutcome project(ArtifactProjectionRequest request) {
+        public ArtifactProjectionResult project(ArtifactProjectionCommand request) {
             requests.add(request);
             return outcome == null
-                    ? ProjectionOutcome.clean(rows.getOrDefault(request.artifactName(), List.of()).size())
+                    ? ArtifactProjectionResult.clean(rows.getOrDefault(request.artifactName(), List.of()).size())
                     : outcome;
         }
     }

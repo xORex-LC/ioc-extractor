@@ -6,8 +6,8 @@ import com.iocextractor.application.port.in.ingest.IngestSourceResult;
 import com.iocextractor.application.artifact.IngestRun;
 import com.iocextractor.application.artifact.IngestRunStatus;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
-import com.iocextractor.application.port.out.artifact.ArtifactProjectionRequest;
-import com.iocextractor.application.port.out.artifact.ProjectionOutcome;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
 import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
@@ -109,7 +109,7 @@ class IngestionServiceTest {
                 .with("source", "run-1")
                 .with("reason", "lossy projection")
                 .build();
-        var projection = new CollectingProjection(new ProjectionOutcome(1, List.of(diagnostic)));
+        var projection = new CollectingProjection(new ArtifactProjectionResult(1, List.of(diagnostic)));
         var diagnosticSink = new CollectingDiagnosticSink();
         var service = new IngestionService(
                 ledger,
@@ -547,19 +547,19 @@ class IngestionServiceTest {
     }
 
     private static final class CollectingProjection implements ArtifactProjection {
-        private final List<ArtifactProjectionRequest> requests = new ArrayList<>();
-        private final ProjectionOutcome outcome;
+        private final List<ArtifactProjectionCommand> requests = new ArrayList<>();
+        private final ArtifactProjectionResult outcome;
 
         private CollectingProjection() {
-            this(ProjectionOutcome.clean(0));
+            this(ArtifactProjectionResult.clean(0));
         }
 
-        private CollectingProjection(ProjectionOutcome outcome) {
+        private CollectingProjection(ArtifactProjectionResult outcome) {
             this.outcome = outcome;
         }
 
         @Override
-        public ProjectionOutcome project(ArtifactProjectionRequest request) {
+        public ArtifactProjectionResult project(ArtifactProjectionCommand request) {
             requests.add(request);
             return outcome;
         }

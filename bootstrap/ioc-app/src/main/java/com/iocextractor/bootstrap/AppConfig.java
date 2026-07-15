@@ -497,13 +497,15 @@ public class AppConfig {
 
     @Bean
     public CsvArtifactProjection csvArtifactProjection(JdbcCanonicalArtifactRepository jdbcCanonicalArtifactRepository,
-                                                       IocProperties props) {
+                                                       IocProperties props,
+                                                       Clock clock) {
         return new CsvArtifactProjection(
                 jdbcCanonicalArtifactRepository,
                 artifactHeaders(props),
                 canonicalArtifactPaths(props),
                 writeFormat(props.sink().csv()),
-                csvCharset(props));
+                csvCharset(props),
+                new DiagnosticFactory(clock));
     }
 
     // ---- immutable artifact export (resolved only by export command/scheduler) ----

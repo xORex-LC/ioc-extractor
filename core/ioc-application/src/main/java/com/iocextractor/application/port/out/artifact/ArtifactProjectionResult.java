@@ -15,10 +15,10 @@ import java.util.Objects;
  * @param projectedRows rows materialized into the derived artifact
  * @param diagnostics advisory diagnostics observed while projecting
  */
-public record ProjectionOutcome(int projectedRows, List<Diagnostic> diagnostics) {
+public record ArtifactProjectionResult(int projectedRows, List<Diagnostic> diagnostics) {
 
     /** Validates row counts and the post-commit advisory-only invariant. */
-    public ProjectionOutcome {
+    public ArtifactProjectionResult {
         if (projectedRows < 0) {
             throw new IllegalArgumentException("projectedRows must not be negative");
         }
@@ -29,7 +29,7 @@ public record ProjectionOutcome(int projectedRows, List<Diagnostic> diagnostics)
     }
 
     /** Returns a successful projection outcome without diagnostics. */
-    public static ProjectionOutcome clean(int projectedRows) {
-        return new ProjectionOutcome(projectedRows, List.of());
+    public static ArtifactProjectionResult clean(int projectedRows) {
+        return new ArtifactProjectionResult(projectedRows, List.of());
     }
 }

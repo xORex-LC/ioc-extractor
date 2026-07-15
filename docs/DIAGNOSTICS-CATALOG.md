@@ -13,6 +13,7 @@ Generated from `DiagnosticCatalogs`.
 | `CLASSIFY.UNSUPPORTED_INDICATOR_TYPE` | CLASSIFY | ERROR | ELEMENT | `classify.unsupported-indicator-type` | Indicator type {type} is not supported by classifier {classifier} |
 | `SINK.WRITE_FAILED` | SINK | FATAL | RUN | `sink.write-failed` | Sink {sink} failed to write artifact {artifact}: {reason} |
 | `SINK.ROW_MAPPING_FAILED` | SINK | ERROR | ELEMENT | `sink.row-mapping-failed` | Sink {sink} failed to map row for indicator {indicator}: {reason} |
+| `SINK.CHARSET_UNMAPPABLE` | SINK | WARN | OPERATION | `sink.charset-unmappable` | Artifact {artifact} projection to {charset} replaced unrepresentable values: {affectedValues} data value(s), {affectedHeaderValues} header value(s) across {affectedRows} row(s) |
 | `INGEST.CLAIM_FAILED` | INGEST | FATAL | OPERATION | `ingest.claim-failed` | Source {source} could not be claimed for ingestion: {reason} |
 | `INGEST.SOURCE_UNREADABLE` | INGEST | ERROR | OPERATION | `ingest.source-unreadable` | Source {source} could not be read for ingestion identity: {reason} |
 | `INGEST.LEDGER_WRITE_FAILED` | INGEST | FATAL | OPERATION | `ingest.ledger-write-failed` | Ingestion ledger update failed for source {source}: {reason} |

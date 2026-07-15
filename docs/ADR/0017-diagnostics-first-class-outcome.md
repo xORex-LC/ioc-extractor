@@ -1203,3 +1203,20 @@ producer активируется третьим вместе с exact-count tes
 `CountingCharsetWriter`, regenerated `DIAGNOSTICS-CATALOG.md`, dev/module docs и
 закрытием OBS-2. Финальный gate: полный `./mvnw verify` и стендовый smoke
 windows-1251 с непредставимым Unicode value.
+
+### Реализационное уточнение 2026-07-15
+
+`PipelineRunner` сохраняет единый generic-протокол и вызывает pure policy hook
+после каждой стадии, включая terminal write stage. Это не является новой
+post-commit точкой принятия решения: `ProjectionOutcome` конструктивно запрещает
+ERROR/FATAL, поэтому hook не может отвергнуть committed результат. Специальный
+stage flag для пропуска вызова не вводится — он усложнил бы общий ETL-контракт,
+не изменяя observable behavior. Реализация: `79e85e8`, `3dda716` и
+`FIX: diagnose lossy CSV projection`.
+
+Имена value objects из design sketch приведены к исполнимой port-конвенции
+проекта: `ArtifactProjectionRequest` реализован как
+`ArtifactProjectionCommand`, `ProjectionOutcome` — как
+`ArtifactProjectionResult`. Семантика полей и инварианты не меняются; суффиксы
+`Command`/`Result` требуются `ArchitectureTest.ports_are_interfaces`, чтобы
+concrete DTO в `application.port..` не размывали правило «ports — interfaces».

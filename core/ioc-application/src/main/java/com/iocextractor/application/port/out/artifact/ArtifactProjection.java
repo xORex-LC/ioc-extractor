@@ -11,5 +11,5 @@ public interface ArtifactProjection {
      * @param request projection operation identity
      * @return successfully installed projection outcome
      */
-    ProjectionOutcome project(ArtifactProjectionRequest request);
+    ArtifactProjectionResult project(ArtifactProjectionCommand request);
 }

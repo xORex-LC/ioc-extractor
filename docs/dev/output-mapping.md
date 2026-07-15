@@ -226,12 +226,16 @@ artifacts:
 ## Кодировка вывода (граница выхода)
 
 `ioc.sink.csv.charset` (дефолт `UTF-8`) — кодировка **всех** generated CSV
-projection и immutable export slice файлов:
+projection и immutable export slice файлов, но их failure-контракты различаются:
 
-- применяется в `CsvArtifactProjection` и export slice writers;
-- **непредставимый символ** в целевой кодировке (напр. emoji в cp1251)
-  **заменяется**, а не роняет батч (`CodingErrorAction.REPLACE`); для UTF-8 это
-  no-op;
+- мутабельная `CsvArtifactProjection` заменяет непредставимый символ
+  (`CodingErrorAction.REPLACE`) и возвращает одну advisory diagnostic
+  `SINK.CHARSET_UNMAPPABLE` на артефакт. Она точно считает затронутые data
+  values, rows и header values; raw values в context не попадают. Completion
+  становится минимум `COMPLETED_WITH_WARNINGS`, canonical truth уже сохранена;
+- immutable export slice использует `CodingErrorAction.REPORT` и падает до
+  публикации: его bytes входят в hash/manifest contract и не могут быть lossy;
+- для UTF-8 замена не требуется;
 - неизвестное имя кодировки → fail-fast на старте.
 
 Входная кодировка источника — отдельный knob `ioc.source.charset` (см.

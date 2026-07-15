@@ -13,7 +13,7 @@ import com.iocextractor.application.pipeline.stage.PrepareArtifactsStage;
 import com.iocextractor.application.pipeline.stage.WriteArtifactsStage;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
-import com.iocextractor.application.port.out.artifact.ProjectionOutcome;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
@@ -148,7 +148,7 @@ class TypedMappingFailurePolicyTest {
                 .then(new PrepareArtifactsStage(List.of(preparer)))
                 .then(new WriteArtifactsStage(repository, ignored -> {
                     projections.incrementAndGet();
-                    return ProjectionOutcome.clean(0);
+                    return ArtifactProjectionResult.clean(0);
                 },
                         new DiagnosticFactory(CLOCK)));
     }

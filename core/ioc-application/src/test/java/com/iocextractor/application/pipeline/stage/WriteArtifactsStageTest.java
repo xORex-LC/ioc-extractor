@@ -9,7 +9,7 @@ import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.artifact.PreparedArtifactRow;
 import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
-import com.iocextractor.application.port.out.artifact.ProjectionOutcome;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
@@ -32,7 +32,7 @@ class WriteArtifactsStageTest {
         var projected = new ArrayList<String>();
         var stage = new WriteArtifactsStage(repository, request -> {
             projected.add(request.artifactName());
-            return ProjectionOutcome.clean(1);
+            return ArtifactProjectionResult.clean(1);
         },
                 new DiagnosticFactory(StageTestSupport.CLOCK));
         var prepared = new PreparedArtifacts(2, 1, List.of(plan("masks"), plan("hashes")));
@@ -53,7 +53,7 @@ class WriteArtifactsStageTest {
         var ids = new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 10);
         var stage = new WriteArtifactsStage(repository, request -> {
             projected.add(request.artifactName());
-            return ProjectionOutcome.clean(1);
+            return ArtifactProjectionResult.clean(1);
         },
                 new DiagnosticFactory(StageTestSupport.CLOCK));
         var prepared = new PreparedArtifacts(1, 1, List.of(plan("masks", ids)));
@@ -76,7 +76,7 @@ class WriteArtifactsStageTest {
         var requests = new ArrayList<String>();
         var stage = new WriteArtifactsStage(new RecordingRepository(), request -> {
             requests.add(request.runId() + ":" + request.artifactName());
-            return new ProjectionOutcome(1, List.of(warning));
+            return new ArtifactProjectionResult(1, List.of(warning));
         }, StageTestSupport.DIAGNOSTICS);
 
         var output = stage.process(StageTestSupport.envelope(

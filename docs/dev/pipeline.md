@@ -85,6 +85,14 @@ read → refang → extract → attribute → deduplicate(batch-local) → class
 диапазон после неуспешной попытки не переиспользуется. Неожиданный дефект mapper-а
 не превращается в element diagnostic и останавливает прогон.
 
+Успешная post-commit projection может вернуть advisory diagnostics через
+`ArtifactProjectionResult`. `WriteArtifactsStage` batch-append'ит их в envelope, runner
+доставляет обычным delta-протоколом, а summary вычисляет минимум
+`COMPLETED_WITH_WARNINGS`. Generic runner формально выполняет pure policy hook
+после каждой стадии, но advisory-only invariant outcome гарантирует, что после
+необратимого canonical commit он не может отвергнуть результат; hard projection
+failure по-прежнему становится `SINK.WRITE_FAILED`.
+
 Batch-local dedup выполняется до feature extraction и rule evaluation: чистая
 классификация зависит только от `type|value`, поэтому решение для retained-копии
 не меняется, а дубликаты не оплачивают вычисление повторно. `MatchPolicy`

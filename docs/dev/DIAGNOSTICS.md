@@ -141,8 +141,13 @@ sink.row-mapping-failed = Артефакт {artifact} отклонил инди�
   total/suppressed и отдельные severity counts; daemon связывает pipeline с тем
   же durable `ingest_run.run_id`.
 - Advisory diagnostics успешной post-commit projection возвращаются через
-  `ProjectionOutcome`: oneshot присоединяет их к envelope, daemon доставляет и
+  `ArtifactProjectionResult`: oneshot присоединяет их к envelope, daemon доставляет и
   объединяет с `ExtractionResult`, startup recovery только доставляет occurrence.
+- `SINK.CHARSET_UNMAPPABLE` — одна OPERATION/WARN occurrence на успешно
+  установленную lossy CSV projection. Context содержит run/artifact/path/charset
+  и точные counts data values/rows/header values, но не исходные значения;
+  advisory-only invariant не позволяет failure policy отвергнуть уже committed
+  результат.
 
 ## Порты и адаптеры
 

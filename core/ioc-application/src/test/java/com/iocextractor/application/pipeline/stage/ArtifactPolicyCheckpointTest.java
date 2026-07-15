@@ -10,7 +10,7 @@ import com.iocextractor.application.artifact.PreparedArtifactRow;
 import com.iocextractor.application.pipeline.payload.RetainedIndicators;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
-import com.iocextractor.application.port.out.artifact.ProjectionOutcome;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
@@ -87,7 +87,7 @@ class ArtifactPolicyCheckpointTest {
             CanonicalArtifactRepository repository) {
         return Pipeline.<RetainedIndicators>start()
                 .then(new PrepareArtifactsStage(List.of(preparer)))
-                .then(new WriteArtifactsStage(repository, ignored -> ProjectionOutcome.clean(0),
+                .then(new WriteArtifactsStage(repository, ignored -> ArtifactProjectionResult.clean(0),
                         new DiagnosticFactory(StageTestSupport.CLOCK)));
     }
 

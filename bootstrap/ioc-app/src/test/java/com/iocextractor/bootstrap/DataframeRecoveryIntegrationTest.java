@@ -21,6 +21,7 @@ import com.iocextractor.application.artifact.IngestRunRecoveryService;
 import com.iocextractor.application.artifact.IngestRunStatus;
 import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
+import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.zaxxer.hikari.HikariDataSource;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.QuoteMode;
@@ -93,7 +94,8 @@ class DataframeRecoveryIntegrationTest {
                         .setNullString("NULL")
                         .setQuoteMode(QuoteMode.ALL_NON_NULL)
                         .build(),
-                StandardCharsets.UTF_8);
+                StandardCharsets.UTF_8,
+                new DiagnosticFactory(CLOCK));
         RunLedger runLedger = new JdbcRunLedger(serviceDataSource, CLOCK);
 
         // ---- crash window: canonical committed, run marked DB_COMMITTED, projection NOT written ----

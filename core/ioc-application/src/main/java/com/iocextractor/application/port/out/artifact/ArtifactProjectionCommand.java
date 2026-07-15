@@ -8,10 +8,10 @@ import java.util.Objects;
  * @param runId correlation identifier supplied by the calling operation
  * @param artifactName configured artifact to project
  */
-public record ArtifactProjectionRequest(String runId, String artifactName) {
+public record ArtifactProjectionCommand(String runId, String artifactName) {
 
     /** Validates required projection identity. */
-    public ArtifactProjectionRequest {
+    public ArtifactProjectionCommand {
         runId = requireText(runId, "runId");
         artifactName = requireText(artifactName, "artifactName");
     }

@@ -1,8 +1,8 @@
 package com.iocextractor.application.artifact;
 
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
-import com.iocextractor.application.port.out.artifact.ArtifactProjectionRequest;
-import com.iocextractor.application.port.out.artifact.ProjectionOutcome;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
 
 import java.util.Objects;
 
@@ -18,8 +18,8 @@ public final class NoopArtifactProjection implements ArtifactProjection {
     }
 
     @Override
-    public ProjectionOutcome project(ArtifactProjectionRequest request) {
+    public ArtifactProjectionResult project(ArtifactProjectionCommand request) {
         Objects.requireNonNull(request, "request");
-        return ProjectionOutcome.clean(0);
+        return ArtifactProjectionResult.clean(0);
     }
 }
