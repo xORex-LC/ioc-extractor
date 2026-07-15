@@ -125,6 +125,7 @@ public final class PipelineRunner {
         var bounded = new BoundedNotification(maxDiagnosticsPerRun, diagnosticFactory);
         bounded.addAll(input.diagnostics());
         Envelope<?> current = compact(input, bounded.diagnostics());
+        RuntimeException runFailure = null;
         try {
             for (Stage<?, ?> stage : pipeline.stages()) {
                 var stageInput = current.atStage(stage.name());
@@ -156,8 +157,11 @@ public final class PipelineRunner {
                 }
             }
             return new PipelineRunResult<>(cast(current), bounded.summary());
+        } catch (RuntimeException ex) {
+            runFailure = ex;
+            throw ex;
         } finally {
-            emitSuppressionSummary(current.diagnostics());
+            emitSuppressionSummary(current.diagnostics(), runFailure);
         }
     }
 
@@ -195,11 +199,20 @@ public final class PipelineRunner {
                 .throwIfRejected(failurePolicy);
     }
 
-    private void emitSuppressionSummary(List<Diagnostic> diagnostics) {
-        diagnostics.stream()
-                .filter(diagnostic -> diagnostic.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED)
-                .findFirst()
-                .ifPresent(diagnosticSink::emit);
+    private void emitSuppressionSummary(List<Diagnostic> diagnostics, RuntimeException runFailure) {
+        try {
+            diagnostics.stream()
+                    .filter(diagnostic -> diagnostic.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED)
+                    .findFirst()
+                    .ifPresent(diagnosticSink::emit);
+        } catch (RuntimeException deliveryFailure) {
+            // A sink violating the non-throwing delivery contract must not
+            // replace the pipeline failure as the reported cause of the run.
+            if (runFailure == null) {
+                throw deliveryFailure;
+            }
+            runFailure.addSuppressed(deliveryFailure);
+        }
     }
 
     private String reason(RuntimeException exception) {

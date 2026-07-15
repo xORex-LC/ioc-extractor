@@ -756,6 +756,7 @@ Implementation chain:
 | 8 | `ae7f268` |
 | 9 | `32b4202` |
 | Итоговый review | terminal-delivery fix `d34b733`, cleanup `c990b98` |
+| Стендовые отклонения 1–4 | `d39da37`, `e8c4d3b`, `0ffba22`, `557de88` |
 
 Уточнения по live code:
 

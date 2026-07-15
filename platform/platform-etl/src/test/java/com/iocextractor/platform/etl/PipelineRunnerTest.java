@@ -207,6 +207,43 @@ class PipelineRunnerTest {
         });
     }
 
+    @Test
+    void throwingSinkOnTerminalSummaryDoesNotMaskTheStageFailure() {
+        var sinkFailure = new IllegalStateException("summary delivery down");
+        var stageFailure = new DiagnosticException(diagnostic(DiagnosticSeverity.FATAL));
+        var pipeline = Pipeline.<String>start()
+                .then(new DiagnosticStage(diagnostic(DiagnosticSeverity.WARN)))
+                .then(new DiagnosticStage(diagnostic(DiagnosticSeverity.WARN)))
+                .then(new ThrowingStage(stageFailure));
+        var runner = new PipelineRunner(FailurePolicy.collectAndContinue(), new NoopPipelineObserver(),
+                diagnostic -> {
+                    if (diagnostic.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED) {
+                        throw sinkFailure;
+                    }
+                }, new DiagnosticFactory(CLOCK), 1);
+
+        assertThatThrownBy(() -> runner.run(Envelope.of("start", meta()), pipeline))
+                .isSameAs(stageFailure)
+                .satisfies(thrown -> assertThat(thrown.getSuppressed()).contains(sinkFailure));
+    }
+
+    @Test
+    void throwingSinkOnTerminalSummarySurfacesOnCleanCompletion() {
+        var sinkFailure = new IllegalStateException("summary delivery down");
+        var pipeline = Pipeline.<String>start()
+                .then(new DiagnosticStage(diagnostic(DiagnosticSeverity.WARN)))
+                .then(new DiagnosticStage(diagnostic(DiagnosticSeverity.WARN)));
+        var runner = new PipelineRunner(FailurePolicy.collectAndContinue(), new NoopPipelineObserver(),
+                diagnostic -> {
+                    if (diagnostic.code() == PipelineDiagnosticCodes.DIAGNOSTICS_SUPPRESSED) {
+                        throw sinkFailure;
+                    }
+                }, new DiagnosticFactory(CLOCK), 1);
+
+        assertThatThrownBy(() -> runner.run(Envelope.of("start", meta()), pipeline))
+                .isSameAs(sinkFailure);
+    }
+
     private PipelineRunner runner(FailurePolicy policy, CollectingDiagnosticSink diagnostics) {
         return new PipelineRunner(policy, new NoopPipelineObserver(), diagnostics, new DiagnosticFactory(CLOCK));
     }

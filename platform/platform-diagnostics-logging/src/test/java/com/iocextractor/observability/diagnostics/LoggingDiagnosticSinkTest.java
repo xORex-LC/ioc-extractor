@@ -108,6 +108,39 @@ class LoggingDiagnosticSinkTest {
     }
 
     @ParameterizedTest
+    @MethodSource("allSeverities")
+    void hides_query_and_credentials_at_every_severity(DiagnosticSeverity severity) {
+        String rawIndicator = "http://user:secret@evil.example/path?token=abc#frag";
+        var diagnostic = Diagnostic.builder(SinkDiagnosticCodes.ROW_MAPPING_FAILED, CLOCK)
+                .severity(severity)
+                .with("sink", "masks")
+                .with("indicator", rawIndicator)
+                .with("reason", "rejected " + rawIndicator)
+                .build();
+        var renderer = new TemplateDiagnosticRenderer(new RedactingDiagnosticContextFormatter());
+
+        String rendered = renderer.render(diagnostic);
+
+        assertThat(rendered)
+                .doesNotContain("secret")
+                .doesNotContain("token=abc");
+        if (severity == DiagnosticSeverity.DEBUG || severity == DiagnosticSeverity.TRACE) {
+            assertThat(rendered)
+                    .contains("evil.example")
+                    .contains("?<redacted>")
+                    .contains("#frag");
+        } else {
+            assertThat(rendered)
+                    .doesNotContain("evil.example")
+                    .contains("[redacted:sha256:");
+        }
+    }
+
+    private static Stream<DiagnosticSeverity> allSeverities() {
+        return Stream.of(DiagnosticSeverity.values());
+    }
+
+    @ParameterizedTest
     @MethodSource("severityLevels")
     void maps_diagnostic_severity_to_the_published_log_level(DiagnosticSeverity severity, Level expectedLevel) {
         var appender = appender();
