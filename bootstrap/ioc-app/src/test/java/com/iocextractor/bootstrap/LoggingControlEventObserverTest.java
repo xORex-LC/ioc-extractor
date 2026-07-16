@@ -4,6 +4,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.iocextractor.observability.LogField;
 import com.iocextractor.platform.events.ControlEvent;
 import com.iocextractor.platform.events.ControlEventMetadata;
 import org.junit.jupiter.api.AfterEach;
@@ -11,6 +12,8 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -38,6 +41,8 @@ class LoggingControlEventObserverTest {
 
         assertThat(appender.list.stream().map(logEvent -> logEvent.getLevel()).toList())
                 .containsExactly(Level.DEBUG, Level.DEBUG, Level.ERROR, Level.ERROR);
+        assertThat(appender.list).allSatisfy(logEvent -> assertThat(eventFields(logEvent))
+                .containsEntry(LogField.IOC_EVENT_VERSION.key(), 1L));
     }
 
     private ControlEvent event() {
@@ -53,6 +58,12 @@ class LoggingControlEventObserverTest {
         appender.start();
         logger.addAppender(appender);
         return appender;
+    }
+
+    private static Map<String, Object> eventFields(ILoggingEvent event) {
+        var fields = new LinkedHashMap<String, Object>();
+        event.getKeyValuePairs().forEach(pair -> fields.put(pair.key, pair.value));
+        return fields;
     }
 
     private record TestControlEvent(ControlEventMetadata metadata) implements ControlEvent {

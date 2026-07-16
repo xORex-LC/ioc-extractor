@@ -22,6 +22,8 @@ import org.slf4j.LoggerFactory;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,7 +51,7 @@ class LoggingDiagnosticSinkTest {
         ILoggingEvent event = appender.list.getFirst();
         assertThat(event.getLevel()).isEqualTo(Level.WARN);
         assertThat(event.getFormattedMessage()).isEqualTo("rendered diagnostic");
-        assertThat(event.getMDCPropertyMap())
+        assertThat(eventFields(event))
                 .containsEntry(LogField.EVENT_ACTION.key(), EventAction.DIAGNOSTIC_EMIT.value())
                 .containsEntry(LogField.EVENT_OUTCOME.key(), EventOutcome.UNKNOWN.value())
                 .containsEntry(LogField.IOC_DIAGNOSTIC_CODE.key(), PipelineDiagnosticCodes.STAGE_FAILED.id())
@@ -171,6 +173,12 @@ class LoggingDiagnosticSinkTest {
         appender.start();
         logger.addAppender(appender);
         return appender;
+    }
+
+    private static Map<String, Object> eventFields(ILoggingEvent event) {
+        var fields = new LinkedHashMap<String, Object>();
+        event.getKeyValuePairs().forEach(pair -> fields.put(pair.key, pair.value));
+        return fields;
     }
 
     private Diagnostic diagnostic(DiagnosticSeverity severity, Throwable cause) {

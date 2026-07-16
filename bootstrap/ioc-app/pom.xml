@@ -122,12 +122,6 @@
             <artifactId>commons-csv</artifactId>
         </dependency>
 
-        <!-- ECS encoder referenced by logback-spring.xml (daemon profile) -->
-        <dependency>
-            <groupId>co.elastic.logging</groupId>
-            <artifactId>logback-ecs-encoder</artifactId>
-        </dependency>
-
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -28,6 +28,14 @@ logging:
     com.hierynomus.smbj.connection.Connection: WARN
   file:
     path: var/logs
+  structured:
+    ecs:
+      service:
+        name: ioc-extractor
+        version: 0.1.0-SNAPSHOT
+    json:
+      add:
+        "event.dataset": ioc-extractor
 
 # HTTP surface — only active in daemon mode (web is non-web otherwise). Bound to
 # loopback by default; exposes health/info for ops. No 'shutdown' endpoint. This

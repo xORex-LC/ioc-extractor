@@ -2,9 +2,9 @@
 
 ## Назначение
 
-Framework-free контракты operational observability: имена полей, action/outcome
-таксономия и `MdcScope`. Пакет задаёт стабильный logging contract, но не
-форматирует JSON и не выбирает appenders.
+Framework-free контракты operational observability: typed field schema,
+action/outcome taxonomy и string-only `MdcScope`. Пакет задаёт стабильный
+logging contract, но не форматирует JSON и не выбирает appenders.
 
 **Правило слоя:** observability может знать о SLF4J MDC как о logging boundary,
 но не содержит бизнес-правил IOC, adapter IO деталей или diagnostics core logic.
@@ -13,7 +13,8 @@ Framework-free контракты operational observability: имена поле
 
 | Файл / подпапка | Назначение |
 |---|---|
-| `LogField.java` | Stable ECS/custom field names |
+| `LogField.java` | Stable ECS/custom field names with JSON scalar type |
+| `LogValueType.java` | Closed `STRING|LONG|BOOLEAN` schema |
 | `EventAction.java` | Stable `event.action` values |
 | `EventOutcome.java` | Stable `event.outcome` values |
 | `ObservabilityMode.java` | Runtime mode: `oneshot` / `daemon` |
@@ -28,7 +29,7 @@ producer adapter находится в bootstrap, чтобы generic observabili
 зависел от application export model.
 
 Remote sync расширяет taxonomy actions
-`sync_fetch_start|sync_fetch_complete|sync_publish_start|sync_publish_complete|remote_fetch|remote_publish`
+`sync_fetch_start|sync_fetch_complete|sync_publish_start|sync_publish_complete`
 и fields `ioc.sync.endpoint`, `ioc.sync.files`, `ioc.sync.target`. Transport-specific
 details и credentials в observability core не попадают.
 

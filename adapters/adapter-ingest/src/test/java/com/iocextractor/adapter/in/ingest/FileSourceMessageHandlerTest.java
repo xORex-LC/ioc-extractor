@@ -37,6 +37,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -81,16 +82,16 @@ class FileSourceMessageHandlerTest {
         ILoggingEvent event = appender.list.getFirst();
         assertThat(event.getLevel()).isEqualTo(expectedLevel);
         assertThat(event.getFormattedMessage()).isEqualTo(expectedMessage);
-        assertThat(event.getMDCPropertyMap())
+        assertThat(eventFields(event))
                 .containsEntry(LogField.EVENT_ACTION.key(), EventAction.SOURCE_INGEST.value())
                 .containsEntry(LogField.EVENT_OUTCOME.key(), expectedOutcome.value())
                 .containsEntry(LogField.IOC_RUN_ID.key(), "run-17")
                 .containsEntry(LogField.IOC_COMPLETION_STATUS.key(), status.toString())
-                .containsEntry(LogField.IOC_DIAGNOSTIC_TOTAL.key(), Long.toString(summary.total()))
-                .containsEntry(LogField.IOC_DIAGNOSTIC_SUPPRESSED.key(), Long.toString(summary.suppressed()))
-                .containsEntry(LogField.IOC_DIAGNOSTIC_FATAL_COUNT.key(), Long.toString(summary.count(DiagnosticSeverity.FATAL)))
-                .containsEntry(LogField.IOC_DIAGNOSTIC_ERROR_COUNT.key(), Long.toString(summary.count(DiagnosticSeverity.ERROR)))
-                .containsEntry(LogField.IOC_DIAGNOSTIC_WARN_COUNT.key(), Long.toString(summary.count(DiagnosticSeverity.WARN)));
+                .containsEntry(LogField.IOC_DIAGNOSTIC_TOTAL.key(), summary.total())
+                .containsEntry(LogField.IOC_DIAGNOSTIC_SUPPRESSED.key(), summary.suppressed())
+                .containsEntry(LogField.IOC_DIAGNOSTIC_FATAL_COUNT.key(), summary.count(DiagnosticSeverity.FATAL))
+                .containsEntry(LogField.IOC_DIAGNOSTIC_ERROR_COUNT.key(), summary.count(DiagnosticSeverity.ERROR))
+                .containsEntry(LogField.IOC_DIAGNOSTIC_WARN_COUNT.key(), summary.count(DiagnosticSeverity.WARN));
     }
 
     @Test
@@ -105,7 +106,7 @@ class FileSourceMessageHandlerTest {
         assertThat(appender.list).hasSize(1);
         ILoggingEvent event = appender.list.getFirst();
         assertThat(event.getFormattedMessage()).isEqualTo("source duplicate skipped");
-        assertThat(event.getMDCPropertyMap())
+        assertThat(eventFields(event))
                 .containsEntry(LogField.EVENT_ACTION.key(), EventAction.SOURCE_INGEST.value())
                 .containsEntry(LogField.EVENT_OUTCOME.key(), EventOutcome.SUCCESS.value())
                 .doesNotContainKeys(LogField.IOC_RUN_ID.key(), LogField.IOC_COMPLETION_STATUS.key());
@@ -313,6 +314,12 @@ class FileSourceMessageHandlerTest {
         appender.start();
         logger.addAppender(appender);
         return appender;
+    }
+
+    private static Map<String, Object> eventFields(ILoggingEvent event) {
+        var fields = new LinkedHashMap<String, Object>();
+        event.getKeyValuePairs().forEach(pair -> fields.put(pair.key, pair.value));
+        return fields;
     }
 
     private static Stream<Arguments> completionOutcomes() {

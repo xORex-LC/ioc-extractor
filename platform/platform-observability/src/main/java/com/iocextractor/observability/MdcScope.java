@@ -25,11 +25,29 @@ public final class MdcScope implements AutoCloseable {
     }
 
     public MdcScope put(LogField field, Object value) {
-        return put(field.key(), value);
+        Objects.requireNonNull(field, "field");
+        if (field.valueType() != LogValueType.STRING) {
+            throw new IllegalArgumentException(
+                    "MDC accepts only STRING fields; " + field.key() + " is " + field.valueType());
+        }
+        return put(field.key(), value == null ? null : String.valueOf(value));
     }
 
-    public MdcScope put(String key, Object value) {
-        Objects.requireNonNull(key, "key");
+    /**
+     * Temporarily removes one catalogued field from MDC.
+     *
+     * <p>The previous value is restored when the scope closes. This supports
+     * event-local structured fields that intentionally override ambient MDC.
+     *
+     * @param field field to hide
+     * @return this scope
+     */
+    public MdcScope hide(LogField field) {
+        Objects.requireNonNull(field, "field");
+        return put(field.key(), null);
+    }
+
+    private MdcScope put(String key, String value) {
         if (closed) {
             throw new IllegalStateException("MDC scope is already closed");
         }
@@ -39,7 +57,7 @@ public final class MdcScope implements AutoCloseable {
         if (value == null) {
             MDC.remove(key);
         } else {
-            MDC.put(key, String.valueOf(value));
+            MDC.put(key, value);
         }
         return this;
     }

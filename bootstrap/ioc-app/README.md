@@ -60,7 +60,7 @@ daemon template явно задаёт `collect-and-continue` и budget 10 000.
 
 ## Зависимости
 
-**Зависит от:** selected platform/core/adapters modules, Spring Boot, ECS
-Logback encoder.
+**Зависит от:** selected platform/core/adapters modules, Spring Boot and its
+Logback `StructuredLogEncoder`.
 
 **Не импортируется:** no inner module depends on `ioc-app`.

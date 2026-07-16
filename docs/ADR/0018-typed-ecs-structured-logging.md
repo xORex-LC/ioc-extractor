@@ -824,6 +824,22 @@ OBS-D3 считается закрытым, когда:
 5. Structured console output — отдельное операторское решение; OBS-D3
    сохраняет human-readable oneshot console.
 
+## Реализация 2026-07-16
+
+Решение реализовано последовательностью:
+
+1. `da9ff3f` — принят и опубликован дизайн;
+2. `a8867f9` — Spring Boot baseline обновлён до 3.4.13;
+3. `e4e0ea5` — `LogField` стал исполнимой scalar schema, JDBC escape keys
+   зарегистрированы, generated catalog получил JSON type;
+4. `FEATURE: emit typed ECS structured log fields` — `LogEvent` переведён на
+   SLF4J key/value pairs, `MdcScope` ограничен строками, Elastic encoder удалён,
+   Boot ECS formatter и JSON/async/collision regressions включены.
+
+OBS-D3 закрыт. OBS-5 остаётся seam: текущая реализация исправляет producer
+wire types, но намеренно не устанавливает Elasticsearch templates и не меняет
+уже существующие mappings.
+
 ## Источники
 
 - [Spring Boot 3.4 — Structured Logging](https://docs.spring.io/spring-boot/3.4/reference/features/logging.html#features.logging.structured)

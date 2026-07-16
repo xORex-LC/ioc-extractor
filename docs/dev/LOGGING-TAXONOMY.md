@@ -4,19 +4,21 @@
 все будущие случаи, а **правила именования и маленькое ядро**, чтобы проект мог
 легко добавлять новые поля и `event.action` без ломки схемы.
 
-> Статус: **реализованный seed-контракт этапа 8**. Документ намеренно компактный:
-> расширяемость важнее преждевременного полного словаря.
+> Статус: **реализованный typed-контракт ADR-0018**. Документ намеренно
+> компактный: расширяемость важнее преждевременного полного словаря.
 
 ## Принцип
 
 - ECS-поля используем без переименования.
 - Проектные поля кладём только в namespace `ioc.*`.
 - `event.action` — стабильный machine-readable глагол.
-- `event.dataset` в seed-реализации задаётся Logback/ECS encoder-ом как
-  статическое `ioc-extractor`; per-event dataset через MDC не используется,
-  потому что официальный encoder фильтрует reserved ECS keys из MDC.
+- `event.dataset` задаётся Boot ECS formatter-у как статическое
+  `ioc-extractor`; per-event dataset не используется.
 - `message` — человекочитаемый текст, не контракт.
 - Новое поле или action добавляется там, где появляется реальная потребность.
+- Тип `LogField` (`STRING|LONG|BOOLEAN`) является частью стабильного контракта.
+- Ambient string correlation идёт через MDC; event-local fields — через SLF4J
+  key/value pairs. Numeric/boolean MDC запрещён.
 - Diagnostic-поля добавляются только к событиям, связанным с диагностикой
   обработки данных.
 
@@ -31,7 +33,7 @@
 | `message` | человекочитаемый текст |
 | `service.name` | `ioc-extractor` |
 | `service.version` | версия приложения, когда доступна |
-| `event.dataset` | статическое значение encoder-а: `ioc-extractor` |
+| `event.dataset` | статическое значение Boot formatter-а: `ioc-extractor` |
 | `event.action` | действие |
 | `event.outcome` | `success`, `failure`, `unknown` |
 
@@ -49,6 +51,8 @@
 `ioc.source.id`. ECS `trace.id` / `transaction.id` используем только при наличии
 совместимого внешнего tracing/APM-контекста, чтобы не подменять семантику ECS.
 **Длительности** — ECS `event.duration` (нс), а не кастомный `ioc.duration_ms`.
+JSON type каждого field публикуется в generated catalog; смена типа требует
+mapping migration и rollover/reindex существующего Elasticsearch index.
 
 Per-item поля (`ioc.indicator.*`, `ioc.dedup.key`) не входят в базовый набор:
 они допускаются только для `DEBUG`/`TRACE` и добавляются отдельным решением.
@@ -94,3 +98,7 @@ Diagnostic не определяет log event, а только добавляе
 5. Поля с IOC/token/query не выводить на `INFO` без маскирования или short hash.
 6. Каталог actions и полей генерируется из code constants; не дублировать его
    таблицы вручную в capability-доках.
+7. Новый field добавлять с первым producer-ом и обязательным JSON scalar type.
+   Arbitrary string keys и silent `String.valueOf` fallback запрещены.
+8. Event-local field побеждает одноимённый ambient MDC field; duplicate JSON
+   members не являются допустимым merge protocol.

@@ -12,6 +12,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -60,17 +62,17 @@ class LoggingPipelineDecisionTracerTest {
 
         assertThat(appender.list).singleElement().satisfies(event -> {
             assertThat(event.getLevel()).isEqualTo(Level.TRACE);
-            assertThat(event.getMDCPropertyMap())
+            assertThat(eventFields(event))
                     .containsEntry(LogField.EVENT_ACTION.key(), EventAction.PIPELINE_ITEM_DECISION.value())
                     .containsEntry(LogField.IOC_DECISION_KIND.key(), "extraction")
                     .containsEntry(LogField.IOC_DECISION_OUTCOME.key(), "accepted")
                     .containsEntry(LogField.IOC_INDICATOR_TYPE.key(), "URL")
                     .containsEntry(LogField.IOC_DECISION_PATTERN.key(), "url-pattern")
-                    .containsEntry(LogField.IOC_SPAN_START.key(), "8")
-                    .containsEntry(LogField.IOC_SPAN_END.key(), "61")
+                    .containsEntry(LogField.IOC_SPAN_START.key(), 8L)
+                    .containsEntry(LogField.IOC_SPAN_END.key(), 61L)
                     .containsEntry(LogField.IOC_ITEM_VALUE.key(),
                             "https://<redacted>@example.com/path?<redacted>#fragment");
-            assertThat(event.getMDCPropertyMap().get(LogField.IOC_ITEM_IDENTITY.key()))
+            assertThat((String) eventFields(event).get(LogField.IOC_ITEM_IDENTITY.key()))
                     .startsWith("url:")
                     .endsWith("@8:61")
                     .doesNotContain("password", "secret");
@@ -104,6 +106,12 @@ class LoggingPipelineDecisionTracerTest {
         appender.start();
         logger.addAppender(appender);
         return appender;
+    }
+
+    private static Map<String, Object> eventFields(ILoggingEvent event) {
+        var fields = new LinkedHashMap<String, Object>();
+        event.getKeyValuePairs().forEach(pair -> fields.put(pair.key, pair.value));
+        return fields;
     }
 
     private static final class PreparingListAppender extends ListAppender<ILoggingEvent> {

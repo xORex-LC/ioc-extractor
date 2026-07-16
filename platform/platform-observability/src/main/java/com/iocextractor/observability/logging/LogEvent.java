@@ -5,14 +5,13 @@ import com.iocextractor.observability.EventOutcome;
 import com.iocextractor.observability.LogField;
 import com.iocextractor.observability.MdcScope;
 import org.slf4j.Logger;
+import org.slf4j.spi.LoggingEventBuilder;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * Builder for one SLF4J log call with scoped MDC event fields.
- */
+/** Builder for one SLF4J log call with typed event-local structured fields. */
 public final class LogEvent {
 
     enum Level {
@@ -69,14 +68,14 @@ public final class LogEvent {
         if (!enabled()) {
             return;
         }
-        try (var ignored = scope()) {
-            write(throwable);
+        try (var ignored = collisionScope()) {
+            write(builder(), throwable);
         }
     }
 
-    private MdcScope scope() {
+    private MdcScope collisionScope() {
         var scope = MdcScope.open();
-        fields.forEach((field, value) -> scope.put(field, value));
+        fields.keySet().forEach(scope::hide);
         return scope;
     }
 
@@ -90,44 +89,21 @@ public final class LogEvent {
         };
     }
 
-    private void write(Throwable throwable) {
-        var text = message != null ? message : "";
-        switch (level) {
-            case TRACE -> {
-                if (throwable == null) {
-                    logger.trace(text);
-                } else {
-                    logger.trace(text, throwable);
-                }
-            }
-            case DEBUG -> {
-                if (throwable == null) {
-                    logger.debug(text);
-                } else {
-                    logger.debug(text, throwable);
-                }
-            }
-            case INFO -> {
-                if (throwable == null) {
-                    logger.info(text);
-                } else {
-                    logger.info(text, throwable);
-                }
-            }
-            case WARN -> {
-                if (throwable == null) {
-                    logger.warn(text);
-                } else {
-                    logger.warn(text, throwable);
-                }
-            }
-            case ERROR -> {
-                if (throwable == null) {
-                    logger.error(text);
-                } else {
-                    logger.error(text, throwable);
-                }
-            }
+    private LoggingEventBuilder builder() {
+        return switch (level) {
+            case TRACE -> logger.atTrace();
+            case DEBUG -> logger.atDebug();
+            case INFO -> logger.atInfo();
+            case WARN -> logger.atWarn();
+            case ERROR -> logger.atError();
+        };
+    }
+
+    private void write(LoggingEventBuilder builder, Throwable throwable) {
+        fields.forEach((field, value) -> builder.addKeyValue(field.key(), value));
+        if (throwable != null) {
+            builder.setCause(throwable);
         }
+        builder.log(message != null ? message : "");
     }
 }

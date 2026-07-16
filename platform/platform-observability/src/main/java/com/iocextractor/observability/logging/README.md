@@ -2,17 +2,19 @@
 
 ## Назначение
 
-Тонкие helpers для записи operational log events через SLF4J без ручного
-дублирования MDC boilerplate в producer-коде.
+Тонкие helpers для записи operational log events через typed SLF4J key/value
+pairs без ручного дублирования transport boilerplate в producer-коде.
 
-**Правило слоя:** helpers только выставляют event fields вокруг одного log call.
-Они не формируют JSON вручную и не выбирают appenders.
+**Правило слоя:** helpers нормализуют catalogued event fields и выполняют один
+log call. Они не формируют JSON вручную и не выбирают appenders. Ambient
+correlation остаётся в string-only MDC.
 
 ## Структура
 
 | Файл | Назначение |
 |---|---|
-| `LogEvent.java` | Builder одного log event |
+| `LogEvent.java` | Builder одного typed log event; event-local fields побеждают одноимённый MDC |
+| `LogValueNormalizer.java` | Fail-fast normalization по `LogValueType` |
 | `LogEvents.java` | Factory methods для уровней |
 | `LoggingPipelineObserver.java` | Bridge `PipelineObserver` → stage log events |
 

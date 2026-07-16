@@ -6,6 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.iocextractor.platform.concurrent.WorkAdmission;
 import com.iocextractor.platform.concurrent.WorkKey;
+import com.iocextractor.observability.LogField;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
@@ -13,6 +14,8 @@ import org.slf4j.LoggerFactory;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.RejectedExecutionException;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,6 +44,12 @@ class SyncKeyedExecutorObserverTest {
 
         assertThat(appender.list.stream().map(event -> event.getLevel()).toList())
                 .containsExactly(Level.WARN, Level.ERROR, Level.ERROR);
+        assertThat(eventFields(appender.list.getFirst()))
+                .containsEntry(LogField.IOC_SYNC_QUEUE_DEPTH.key(), 64L)
+                .containsEntry(LogField.IOC_SYNC_SHED_TO_RECONCILE.key(), true);
+        assertThat(eventFields(appender.list.getLast()))
+                .containsEntry(LogField.IOC_SYNC_ABANDONED_WORK.key(), 2L)
+                .containsEntry(LogField.IOC_SYNC_SHED_TO_RECONCILE.key(), true);
         assertThat(healthState.keyedExecutorSignals().get("endpoint-a"))
                 .satisfies(signal -> {
                     assertThat(signal.shedToReconcile()).isTrue();
@@ -75,6 +84,12 @@ class SyncKeyedExecutorObserverTest {
         appender.start();
         logger.addAppender(appender);
         return appender;
+    }
+
+    private static Map<String, Object> eventFields(ILoggingEvent event) {
+        var fields = new LinkedHashMap<String, Object>();
+        event.getKeyValuePairs().forEach(pair -> fields.put(pair.key, pair.value));
+        return fields;
     }
 
     private static final class PreparingListAppender extends ListAppender<ILoggingEvent> {

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 class MdcScopeTest {
@@ -19,13 +20,13 @@ class MdcScopeTest {
     @Test
     void puts_values_and_removes_owned_keys_on_close() {
         try (var ignored = MdcScope.open()
-                .put(LogField.EVENT_ACTION, EventAction.STAGE_START.value())
+                .put(LogField.IOC_SOURCE_ID, "source-1")
                 .put(LogField.IOC_RUN_ID, "run-1")) {
-            assertThat(MDC.get(LogField.EVENT_ACTION.key())).isEqualTo("stage_start");
+            assertThat(MDC.get(LogField.IOC_SOURCE_ID.key())).isEqualTo("source-1");
             assertThat(MDC.get(LogField.IOC_RUN_ID.key())).isEqualTo("run-1");
         }
 
-        assertThat(MDC.get(LogField.EVENT_ACTION.key())).isNull();
+        assertThat(MDC.get(LogField.IOC_SOURCE_ID.key())).isNull();
         assertThat(MDC.get(LogField.IOC_RUN_ID.key())).isNull();
     }
 
@@ -64,5 +65,29 @@ class MdcScopeTest {
 
         assertThatIllegalStateException()
                 .isThrownBy(() -> scope.put(LogField.IOC_RUN_ID, "run-1"));
+    }
+
+    @Test
+    void rejects_non_string_fields() {
+        var scope = MdcScope.open();
+
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> scope.put(LogField.IOC_ROWS, 7))
+                .withMessageContaining(LogField.IOC_ROWS.key())
+                .withMessageContaining("LONG");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> scope.put(LogField.IOC_SYNC_SHED_TO_RECONCILE, true))
+                .withMessageContaining("BOOLEAN");
+    }
+
+    @Test
+    void hide_restores_the_previous_value() {
+        MDC.put(LogField.IOC_RUN_ID.key(), "ambient");
+
+        try (var ignored = MdcScope.open().hide(LogField.IOC_RUN_ID)) {
+            assertThat(MDC.get(LogField.IOC_RUN_ID.key())).isNull();
+        }
+
+        assertThat(MDC.get(LogField.IOC_RUN_ID.key())).isEqualTo("ambient");
     }
 }

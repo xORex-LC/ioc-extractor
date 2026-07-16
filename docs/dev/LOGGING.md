@@ -5,12 +5,12 @@ Operational logging для `oneshot` CLI и `daemon`/stream-режима.
 записи артефактов, retry, latency, ошибки и технический контекст. Диагностика
 конвейера может попадать в этот поток, но не является его центром.
 
-> Статус: **реализовано**: MDC scope, generated taxonomy,
-> LogEvent helper, stage/adapters events, ECS JSON rolling file, resilient/redacting
-> `LoggingDiagnosticSink` и gated structured per-item TRACE. `event.dataset`
-> задаётся encoder-ом статически как `ioc-extractor`; детализация событий идёт
-> через `event.action` и `ioc.*`. Дальнейшее расширение событий добавляется
-> рядом с новыми producer-ами.
+> Статус: **реализовано**: dual-channel structured logging, generated typed
+> taxonomy, stage/adapters events, Boot ECS JSON rolling file,
+> resilient/redacting `LoggingDiagnosticSink` и gated structured per-item TRACE.
+> Ambient string correlation передаётся через MDC; event-local strings,
+> numbers и booleans — через SLF4J 2 key/value pairs. `event.dataset`
+> статически равен `ioc-extractor`.
 
 Remote sync использует ECS actions `sync_fetch_start|complete`,
 `sync_publish_start|complete`, `sync_work_admission`, `sync_work_dispatch`,
@@ -55,13 +55,13 @@ dead-letter sidecar или JSONL.
 | Источник | Какие события пишет | Как |
 |---|---|---|
 | Application bootstrap | старт/остановка, профиль, версия, конфиг | SLF4J |
-| CLI adapter | запуск команды, source path, dry-run | SLF4J + MDC |
-| Ingest adapter | detect/claim/stabilize/move/retry/dead-letter | SLF4J + MDC |
-| Application pipeline | stage started/completed, counters, duration | SLF4J / LogEvent helper |
+| CLI adapter | запуск команды, source path, dry-run | `LogEvent`; run correlation — MDC |
+| Ingest adapter | detect/claim/stabilize/move/retry/dead-letter | `LogEvent`; ambient context — MDC |
+| Application pipeline | stage started/completed, counters, duration | `LogEvent` + typed key/value pairs |
 | Domain services | возвращают pure decision outcomes | не знают SLF4J/ECS; TRACE формирует application |
 | Out adapters | IO: CSV projection/export, JDBC storage, projection written | SLF4J |
 | Diagnostics bridge | diagnostic result rendered as log event | `LoggingDiagnosticSink` |
-| Export observer (bootstrap) | formation checkpoints/recovery, profile/slice/revision | `ExportObserver` → SLF4J + MDC |
+| Export observer (bootstrap) | formation checkpoints/recovery, profile/slice/revision | `ExportObserver` → `LogEvent` |
 | Export schedulers (bootstrap) | cadence failures, slice-retention sweep/blocks | `LogEvent` helper; ошибка tick не останавливает daemon |
 | Event/sync observers (bootstrap) | control-event publish/dispatch и keyed executor degradation | `ControlEventObserver`, `KeyedSerialExecutorObserver` |
 
@@ -74,7 +74,7 @@ dead-letter sidecar или JSONL.
 | Adapter | логирует инфраструктурные действия своей технологии | не реализует бизнес-классификацию IOC |
 | `LoggingDiagnosticSink` | переводит `Diagnostic` в обычный log event | не является главным каналом логирования |
 | `LoggingPipelineDecisionTracer` | пишет structured per-item decisions из готовых outcomes | не повторяет domain calls и не влияет на policy |
-| Logback / ECS encoder | форматирует и пишет события | не содержит бизнес-правил |
+| Boot `StructuredLogEncoder` | форматирует SLF4J event в ECS JSON и пишет его через Logback | не содержит бизнес-правил |
 
 ## Режимы вывода
 
@@ -138,54 +138,44 @@ renderer calls. TRACE читает только уже вычисленные do
 
 ## Spring Boot и ECS encoder
 
-Текущий проект использует Spring Boot `3.3.5`. Для него практичный вариант —
-официальный Elastic `ecs-logging-java`:
+Проект использует Spring Boot `3.4.13` и встроенный
+`org.springframework.boot.logging.logback.StructuredLogEncoder`. Daemon
+rolling appender остаётся явно настроенным в `logback-spring.xml`, а encoder
+получает формат `ecs`:
 
 ```xml
-<dependency>
-    <groupId>co.elastic.logging</groupId>
-    <artifactId>logback-ecs-encoder</artifactId>
-    <version>${ecs-logging-java.version}</version>
-</dependency>
+<encoder class="org.springframework.boot.logging.logback.StructuredLogEncoder">
+    <format>ecs</format>
+    <charset>UTF-8</charset>
+</encoder>
 ```
 
-И `logback-spring.xml` с `co.elastic.logging.logback.EcsEncoder` или готовыми
-Spring Boot include-файлами Elastic:
+`service.name`, `service.version` и статический `event.dataset` задаются через
+`logging.structured.*` в `application.yml`. Дополнительная зависимость
+`logback-ecs-encoder` отсутствует. Boot formatter сериализует MDC как строки,
+а `ILoggingEvent.getKeyValuePairs()` — с исходными scalar types; текущий output
+публикует `ecs.version=8.11`.
 
-```xml
-<include resource="org/springframework/boot/logging/logback/defaults.xml"/>
-<include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
-<include resource="org/springframework/boot/logging/logback/file-appender.xml"/>
-<include resource="co/elastic/logging/logback/boot/ecs-console-appender.xml"/>
-<include resource="co/elastic/logging/logback/boot/ecs-file-appender.xml"/>
-```
+JSON wire format является операторским контрактом. Переход со старого Elastic
+encoder меняет набор/порядок служебных полей и ECS version. Если Elasticsearch
+уже создал `keyword` mapping для прежних строковых counters, producer fix не
+исправит существующий индекс: нужен rollover/reindex. Генерация и установка
+component template зарегистрированы отдельным seam OBS-5.
 
-После будущего перехода на Spring Boot `3.4+` можно рассмотреть встроенный
-structured logging без дополнительной Elastic-зависимости:
+## MDC, event-local fields и correlation
 
-```yaml
-logging:
-  structured:
-    format:
-      console: ecs
-      file: ecs
-```
+Structured event использует два стандартных канала SLF4J:
 
-Решение для текущего этапа: **использовать `ecs-logging-java` с Logback**, потому
-что проект уже на Spring Boot 3.3.x и Logback является стандартным backend.
-При upgrade до Boot 3.4+ сравнить встроенный ECS formatter и Elastic encoder по
-поддержке MDC/custom fields, rolling setup и совместимости с нужным ECS output.
-Версию ECS (`ecs.version`) проставляет encoder — в коде её не хардкодим.
-
-## MDC / correlation
+- MDC — ambient context, который должен попасть и в сторонние framework logs;
+  он принимает только `LogField` типа `STRING`;
+- SLF4J key/value pairs — поля конкретной occurrence, включая `LONG` и
+  `BOOLEAN`; `LogEvent` проверяет и нормализует их по `LogField`.
 
 MDC — **производное от `Envelope.meta`** ([pipeline.md](pipeline.md)): источник
 истины по корреляции — конверт, проходящий через стадии. `ioc.run.id`, source и
 mode живут в run scope; вложенный stage scope добавляет только `ioc.stage`.
 Оба снимаются в `close()`. Terminal run diagnostics поэтому сохраняют
-корреляцию, но не получают ложную последнюю стадию. MDC лишь делает корреляцию
-доступной логгеру и потокобезопасной в daemon-пуле — это не отдельный «контекст»
-и не дубль состояния.
+корреляцию, но не получают ложную последнюю стадию.
 
 Каноничная корреляция приложения — project fields. ECS `trace.id`/`transaction.id`
 используем только когда есть совместимый tracing id (W3C/APM) или внешний trace.
@@ -204,13 +194,13 @@ run id.
 | `ioc.source.content_hash` | custom | после стабилизации файла |
 | `ioc.artifact.name` | custom | запись sink/projection |
 
-`event.dataset` — ECS-поле encoder-а. В официальном `logback-ecs-encoder` оно
-сериализуется до MDC, а одноимённый MDC-key фильтруется как reserved ECS key.
-Поэтому seed-реализация задаёт его статически (`ioc-extractor`) в
-`logback-spring.xml`; per-event детализация идёт через `event.action`,
-`ioc.stage`, `ioc.artifact.name`, `ioc.diagnostic.*` и другие поля. Per-item поля
-(`ioc.indicator.*`, `ioc.dedup.key`) — только в коротком scope и преимущественно
-на `DEBUG`/`TRACE`.
+`event.dataset` задаётся статически (`ioc-extractor`) через
+`logging.structured.json.add`; per-event детализация идёт через `event.action`,
+`ioc.stage`, `ioc.artifact.name`, `ioc.diagnostic.*` и другие catalog fields.
+Если event-local key совпал с ambient MDC key, event-local значение побеждает:
+`LogEvent` временно скрывает MDC member на время logger call и затем
+восстанавливает его. В JSON поэтому нет duplicate keys и typed value не
+деградирует до строки.
 
 Helper `MdcScope`, наполняемый из `Envelope.meta` (реализовано, этап 8):
 
@@ -223,7 +213,8 @@ try (MdcScope ignored = MdcScope.open()
 ```
 
 `MdcScope` обязан очищать добавленные ключи в `close()`, иначе daemon-поток
-получит протечки контекста между источниками.
+получит протечки контекста между источниками. Числовой/boolean field положить в
+MDC невозможно: это fail-fast programming defect.
 
 ## Уровни логирования
 
@@ -251,7 +242,7 @@ ECS JSON:
 ```json
 {
   "@timestamp": "2026-06-21T04:00:01.123Z",
-  "ecs.version": "...",
+  "ecs.version": "8.11",
   "log.level": "INFO",
   "message": "artifact written",
   "service.name": "ioc-extractor",
@@ -302,13 +293,17 @@ ECS JSON:
 - исключения логируются с context, но без дампа всего входного документа;
 - operational logs и JSONL не коммитятся.
 
-`ecs.version` в примере — output encoder'а; приложение не проставляет это поле
-вручную.
+`ecs.version` в примере — output Boot formatter-а; приложение не проставляет
+это поле вручную.
 
 ## Исполненный контракт
 
-- Есть `MdcScope`, покрытый тестом на очистку контекста.
-- Есть минимальные logging constants для стартовых `event.action` и `ioc.*` fields.
+- Есть string-only `MdcScope`, покрытый тестами очистки, nested restore и
+  запрета numeric/boolean fields.
+- Есть typed `LogField` schema (`STRING|LONG|BOOLEAN`) и generated
+  `LOGGING-CATALOG.md`.
+- `LogEvent` использует SLF4J key/value pairs; arbitrary string keys удалены,
+  collision contract и async hand-off покрыты тестами.
 - Driving boundary задаёт `ioc.run.id`; application переносит его через
   `Envelope.meta`, а observer открывает run/stage scopes.
 - Основные стадии пишут operational log events со счётчиками/duration.
@@ -317,10 +312,11 @@ ECS JSON:
   `source_ingest` без синтетического completion.
 - `Diagnostic` может быть отрендерен в log event через `LoggingDiagnosticSink`,
   но logging не зависит от diagnostics.
-- `daemon`-профиль пишет ECS JSON rolling file.
+- `daemon`-профиль пишет ECS JSON rolling file через Boot
+  `StructuredLogEncoder`; duration/counts — JSON numbers, flags — booleans.
 - `oneshot` остаётся удобным в console.
-- Тесты проверяют отсутствие MDC-протечек и корректный mapping ключевых событий —
-  изолированно (in-memory appender / `OutputCapture`, без реальных файлов).
+- Тесты проверяют отсутствие MDC-протечек, typed key/value pairs, async snapshot
+  и representative ECS JSON file.
 - Severity mapping запинен для всех шести уровней; sink failure изолирован
   non-throwing decorator-ом.
 - Structured TRACE тестирует оба закрытых gate, общий query/credentials
@@ -329,5 +325,5 @@ ECS JSON:
 ## Референсы
 
 - Elastic Common Schema: <https://www.elastic.co/docs/reference/ecs>
-- ECS Logging Java: <https://www.elastic.co/docs/reference/ecs/logging/java/setup>
+- SLF4J fluent logging: <https://www.slf4j.org/manual.html#fluent>
 - Spring Boot structured logging: <https://docs.spring.io/spring-boot/reference/features/logging.html#features.logging.structured>

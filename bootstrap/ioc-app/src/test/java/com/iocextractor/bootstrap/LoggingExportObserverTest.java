@@ -20,7 +20,9 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -51,20 +53,19 @@ class LoggingExportObserverTest {
                 "run-1", "reputation", ExportRunStatus.FAILED, "slice-1", HASH,
                 null, NOW, NOW.plusSeconds(1), "failure"));
 
-        assertThat(appender.list).extracting(event -> event.getMDCPropertyMap()
-                        .get(LogField.EVENT_ACTION.key()))
+        assertThat(appender.list).extracting(event -> eventFields(event).get(LogField.EVENT_ACTION.key()))
                 .containsExactly(
                         EventAction.EXPORT_START.value(),
                         EventAction.EXPORT_SLICE_WRITE.value(),
                         EventAction.EXPORT_RECOVER.value(),
                         EventAction.EXPORT_COMPLETE.value());
-        assertThat(appender.list).allSatisfy(event -> assertThat(event.getMDCPropertyMap())
+        assertThat(appender.list).allSatisfy(event -> assertThat(eventFields(event))
                 .containsEntry(LogField.IOC_RUN_ID.key(), "run-1")
                 .containsEntry(LogField.IOC_EXPORT_PROFILE.key(), "reputation")
                 .containsEntry(LogField.IOC_EXPORT_SLICE_ID.key(), "run-1"));
-        assertThat(appender.list.get(1).getMDCPropertyMap())
-                .containsEntry(LogField.IOC_EXPORT_REVISION.key(), "7");
-        assertThat(appender.list.getLast().getMDCPropertyMap())
+        assertThat(eventFields(appender.list.get(1)))
+                .containsEntry(LogField.IOC_EXPORT_REVISION.key(), 7L);
+        assertThat(eventFields(appender.list.getLast()))
                 .containsEntry(LogField.EVENT_OUTCOME.key(), EventOutcome.FAILURE.value());
     }
 
@@ -86,6 +87,12 @@ class LoggingExportObserverTest {
         appender.start();
         logger.addAppender(appender);
         return appender;
+    }
+
+    private static Map<String, Object> eventFields(ILoggingEvent event) {
+        var fields = new LinkedHashMap<String, Object>();
+        event.getKeyValuePairs().forEach(pair -> fields.put(pair.key, pair.value));
+        return fields;
     }
 
     private static final class PreparingListAppender extends ListAppender<ILoggingEvent> {

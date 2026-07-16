@@ -2,7 +2,8 @@
 
 ## Назначение
 
-Bridge module that maps diagnostics to operational log events.
+Bridge module that maps diagnostics to operational log events with typed
+SLF4J key/value fields.
 
 **Правило слоя:** bridge зависит только на diagnostics and observability
 platform modules. Diagnostics core remains logging-free.
