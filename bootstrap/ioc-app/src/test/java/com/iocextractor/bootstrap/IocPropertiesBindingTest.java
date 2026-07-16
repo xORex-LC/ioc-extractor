@@ -372,7 +372,11 @@ class IocPropertiesBindingTest {
                             .isNotInstanceOf(NullPointerException.class);
                     assertThat(fieldErrors(context.getStartupFailure()))
                             .extracting(FieldError::getField)
-                            .contains("name", "endpoint", "remotePath", "exclude");
+                            .contains(
+                                    "sync.fetch.sources[0].name",
+                                    "sync.fetch.sources[0].endpoint",
+                                    "sync.fetch.sources[0].remotePath",
+                                    "sync.fetch.sources[0].exclude");
                 });
     }
 
