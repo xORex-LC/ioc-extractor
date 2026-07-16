@@ -25,7 +25,7 @@ public final class LogEvent {
 
     private final Logger logger;
     private final Level level;
-    private final Map<String, Object> fields = new LinkedHashMap<>();
+    private final Map<LogField, Object> fields = new LinkedHashMap<>();
     private String message;
 
     LogEvent(Logger logger, Level level) {
@@ -46,11 +46,13 @@ public final class LogEvent {
     }
 
     public LogEvent field(LogField field, Object value) {
-        return field(field.key(), value);
-    }
-
-    public LogEvent field(String key, Object value) {
-        fields.put(Objects.requireNonNull(key, "key"), value);
+        Objects.requireNonNull(field, "field");
+        var normalized = LogValueNormalizer.normalize(field, value);
+        if (normalized == null) {
+            fields.remove(field);
+        } else {
+            fields.put(field, normalized);
+        }
         return this;
     }
 
@@ -74,7 +76,7 @@ public final class LogEvent {
 
     private MdcScope scope() {
         var scope = MdcScope.open();
-        fields.forEach(scope::put);
+        fields.forEach((field, value) -> scope.put(field, value));
         return scope;
     }
 

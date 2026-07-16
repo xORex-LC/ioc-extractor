@@ -39,63 +39,70 @@ Generated from `EventAction` and `LogField`.
 
 ## Fields
 
-| Field | Namespace | Description |
-|---|---|---|
-| `event.action` | ecs | Stable machine-readable action of the event. |
-| `event.type` | ecs | ECS event type classification. |
-| `event.outcome` | ecs | Stable success, failure, or unknown outcome. |
-| `event.duration` | ecs | Event duration in nanoseconds. |
-| `file.path` | ecs | Input or output file path. |
-| `ioc.run.id` | ioc | Unique pipeline run identifier. |
-| `ioc.source.id` | ioc | Logical source identifier. |
-| `ioc.mode` | ioc | Runtime mode: oneshot or daemon. |
-| `ioc.stage` | ioc | Current pipeline stage identifier. |
-| `ioc.decision.kind` | ioc | Pipeline processing step that made a per-item decision. |
-| `ioc.decision.outcome` | ioc | Stable outcome of a per-item pipeline decision. |
-| `ioc.decision.rule` | ioc | Rule or source marker selected by a pipeline decision. |
-| `ioc.decision.pattern` | ioc | Pattern or predicate set evaluated by a pipeline decision. |
-| `ioc.decision.result` | ioc | Compact materialized result of a pipeline decision. |
-| `ioc.item.identity` | ioc | Safe short identity of the item involved in a pipeline decision. |
-| `ioc.item.value` | ioc | TRACE-only item value with query-like data redacted. |
-| `ioc.indicator.type` | ioc | IOC type involved in a pipeline decision. |
-| `ioc.span.start` | ioc | Inclusive source-text offset of a matched item. |
-| `ioc.span.end` | ioc | Exclusive source-text offset of a matched item. |
-| `ioc.source.path` | ioc | Normalized source document path. |
-| `ioc.source.content_hash` | ioc | Content hash of the source document. |
-| `ioc.artifact.name` | ioc | Configured artifact name. |
-| `ioc.rows` | ioc | Number of rows in the operation. |
-| `ioc.db.role` | ioc | Logical database role. |
-| `ioc.schema.version` | ioc | Observed database schema version. |
-| `ioc.migration.version` | ioc | Schema migration version. |
-| `ioc.identity.epoch` | ioc | Artifact identity epoch. |
-| `ioc.affected_rows` | ioc | Number of rows affected by an operation. |
-| `ioc.export.profile` | ioc | Configured immutable export profile. |
-| `ioc.export.slice.id` | ioc | Immutable export slice identifier. |
-| `ioc.export.revision` | ioc | Maximum canonical revision covered by an export slice. |
-| `ioc.event.id` | ioc | Stable control-event identifier. |
-| `ioc.event.type` | ioc | Stable project control-event type. |
-| `ioc.event.version` | ioc | Control-event payload contract version. |
-| `ioc.event.correlation_id` | ioc | Control-event correlation identifier. |
-| `ioc.event.causation_id` | ioc | Event or command identifier that caused this event. |
-| `ioc.event.handler` | ioc | Local control-event handler name. |
-| `ioc.sync.endpoint` | ioc | Logical sync endpoint name without transport secrets. |
-| `ioc.sync.files` | ioc | Number of files in the sync operation. |
-| `ioc.sync.target` | ioc | Logical publish target name. |
-| `ioc.sync.key` | ioc | Key used to serialize sync work. |
-| `ioc.sync.queue_depth` | ioc | Number of queued sync work items. |
-| `ioc.sync.running` | ioc | Number of active sync work items. |
-| `ioc.sync.oldest_age` | ioc | Age of the oldest pending sync work item. |
-| `ioc.sync.shed_to_reconcile` | ioc | Whether work was shed to periodic reconciliation. |
-| `ioc.sync.abandoned_work` | ioc | Number of abandoned sync work items. |
-| `ioc.completion.status` | ioc | Typed completion status of a structurally finished processing run. |
-| `ioc.diagnostic.total` | ioc | Total diagnostics observed during the run, including suppressed occurrences. |
-| `ioc.diagnostic.suppressed` | ioc | Diagnostics suppressed by the per-run retention budget. |
-| `ioc.diagnostic.count.fatal` | ioc | FATAL diagnostics observed during the run. |
-| `ioc.diagnostic.count.error` | ioc | ERROR diagnostics observed during the run. |
-| `ioc.diagnostic.count.warn` | ioc | WARN diagnostics observed during the run. |
-| `ioc.diagnostic.count.info` | ioc | INFO diagnostics observed during the run. |
-| `ioc.diagnostic.count.debug` | ioc | DEBUG diagnostics observed during the run. |
-| `ioc.diagnostic.count.trace` | ioc | TRACE diagnostics observed during the run. |
-| `ioc.diagnostic.code` | ioc | Stable diagnostic code. |
-| `ioc.diagnostic.category` | ioc | Diagnostic processing category. |
-| `ioc.diagnostic.severity` | ioc | Diagnostic severity independent of log level. |
+| Field | Namespace | JSON type | Description |
+|---|---|---|---|
+| `event.action` | ecs | `string` | Stable machine-readable action of the event. |
+| `event.type` | ecs | `string` | ECS event type classification. |
+| `event.outcome` | ecs | `string` | Stable success, failure, or unknown outcome. |
+| `event.duration` | ecs | `long` | Event duration in nanoseconds. |
+| `file.path` | ecs | `string` | Input or output file path. |
+| `ioc.run.id` | ioc | `string` | Unique pipeline run identifier. |
+| `ioc.source.id` | ioc | `string` | Logical source identifier. |
+| `ioc.mode` | ioc | `string` | Runtime mode: oneshot or daemon. |
+| `ioc.stage` | ioc | `string` | Current pipeline stage identifier. |
+| `ioc.decision.kind` | ioc | `string` | Pipeline processing step that made a per-item decision. |
+| `ioc.decision.outcome` | ioc | `string` | Stable outcome of a per-item pipeline decision. |
+| `ioc.decision.rule` | ioc | `string` | Rule or source marker selected by a pipeline decision. |
+| `ioc.decision.pattern` | ioc | `string` | Pattern or predicate set evaluated by a pipeline decision. |
+| `ioc.decision.result` | ioc | `string` | Compact materialized result of a pipeline decision. |
+| `ioc.item.identity` | ioc | `string` | Safe short identity of the item involved in a pipeline decision. |
+| `ioc.item.value` | ioc | `string` | TRACE-only item value with query-like data redacted. |
+| `ioc.indicator.type` | ioc | `string` | IOC type involved in a pipeline decision. |
+| `ioc.span.start` | ioc | `long` | Inclusive source-text offset of a matched item. |
+| `ioc.span.end` | ioc | `long` | Exclusive source-text offset of a matched item. |
+| `ioc.source.path` | ioc | `string` | Normalized source document path. |
+| `ioc.source.content_hash` | ioc | `string` | Content hash of the source document. |
+| `ioc.artifact.name` | ioc | `string` | Configured artifact name. |
+| `ioc.rows` | ioc | `long` | Number of rows in the operation. |
+| `ioc.db.role` | ioc | `string` | Logical database role. |
+| `ioc.schema.version` | ioc | `long` | Observed database schema version. |
+| `ioc.migration.version` | ioc | `long` | Schema migration version. |
+| `ioc.identity.epoch` | ioc | `long` | Artifact identity epoch. |
+| `ioc.legacy_import.name` | ioc | `string` | Legacy import source name. |
+| `ioc.legacy_import.scanned` | ioc | `long` | Legacy records scanned during import. |
+| `ioc.legacy_import.imported` | ioc | `long` | Legacy records imported. |
+| `ioc.legacy_import.skipped` | ioc | `long` | Legacy records skipped during import. |
+| `ioc.legacy_import.failed` | ioc | `long` | Legacy records that failed import. |
+| `ioc.storage.sqlite.tuning` | ioc | `string` | Selected SQLite tuning profile. |
+| `ioc.storage.sqlite.max_pool_size` | ioc | `long` | Configured maximum SQLite connection pool size. |
+| `ioc.storage.sqlite.write_max` | ioc | `long` | Configured maximum concurrent SQLite writers. |
+| `ioc.storage.sqlite.read_max` | ioc | `long` | Configured maximum concurrent SQLite readers. |
+| `ioc.storage.sqlite.busy_timeout_ms` | ioc | `long` | Effective SQLite busy timeout in milliseconds. |
+| `ioc.export.profile` | ioc | `string` | Configured immutable export profile. |
+| `ioc.export.slice.id` | ioc | `string` | Immutable export slice identifier. |
+| `ioc.export.revision` | ioc | `long` | Maximum canonical revision covered by an export slice. |
+| `ioc.event.id` | ioc | `string` | Stable control-event identifier. |
+| `ioc.event.type` | ioc | `string` | Stable project control-event type. |
+| `ioc.event.version` | ioc | `long` | Control-event payload contract version. |
+| `ioc.event.correlation_id` | ioc | `string` | Control-event correlation identifier. |
+| `ioc.event.causation_id` | ioc | `string` | Event or command identifier that caused this event. |
+| `ioc.event.handler` | ioc | `string` | Local control-event handler name. |
+| `ioc.sync.endpoint` | ioc | `string` | Logical sync endpoint name without transport secrets. |
+| `ioc.sync.files` | ioc | `long` | Number of files in the sync operation. |
+| `ioc.sync.target` | ioc | `string` | Logical publish target name. |
+| `ioc.sync.key` | ioc | `string` | Key used to serialize sync work. |
+| `ioc.sync.queue_depth` | ioc | `long` | Number of queued sync work items. |
+| `ioc.sync.shed_to_reconcile` | ioc | `boolean` | Whether work was shed to periodic reconciliation. |
+| `ioc.sync.abandoned_work` | ioc | `long` | Number of abandoned sync work items. |
+| `ioc.completion.status` | ioc | `string` | Typed completion status of a structurally finished processing run. |
+| `ioc.diagnostic.total` | ioc | `long` | Total diagnostics observed during the run, including suppressed occurrences. |
+| `ioc.diagnostic.suppressed` | ioc | `long` | Diagnostics suppressed by the per-run retention budget. |
+| `ioc.diagnostic.count.fatal` | ioc | `long` | FATAL diagnostics observed during the run. |
+| `ioc.diagnostic.count.error` | ioc | `long` | ERROR diagnostics observed during the run. |
+| `ioc.diagnostic.count.warn` | ioc | `long` | WARN diagnostics observed during the run. |
+| `ioc.diagnostic.count.info` | ioc | `long` | INFO diagnostics observed during the run. |
+| `ioc.diagnostic.count.debug` | ioc | `long` | DEBUG diagnostics observed during the run. |
+| `ioc.diagnostic.count.trace` | ioc | `long` | TRACE diagnostics observed during the run. |
+| `ioc.diagnostic.code` | ioc | `string` | Stable diagnostic code. |
+| `ioc.diagnostic.category` | ioc | `string` | Diagnostic processing category. |
+| `ioc.diagnostic.severity` | ioc | `string` | Diagnostic severity independent of log level. |

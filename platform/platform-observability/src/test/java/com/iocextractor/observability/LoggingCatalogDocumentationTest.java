@@ -47,11 +47,12 @@ class LoggingCatalogDocumentationTest {
                     action.value(), action.area(), escapePipes(action.description())));
         }
         builder.append("\n## Fields\n\n");
-        builder.append("| Field | Namespace | Description |\n");
-        builder.append("|---|---|---|\n");
+        builder.append("| Field | Namespace | JSON type | Description |\n");
+        builder.append("|---|---|---|---|\n");
         for (var field : LogField.values()) {
-            builder.append("| `%s` | %s | %s |%n".formatted(
-                    field.key(), namespace(field), escapePipes(field.description())));
+            builder.append("| `%s` | %s | `%s` | %s |%n".formatted(
+                    field.key(), namespace(field), field.valueType().name().toLowerCase(),
+                    escapePipes(field.description())));
         }
         return builder.toString();
     }

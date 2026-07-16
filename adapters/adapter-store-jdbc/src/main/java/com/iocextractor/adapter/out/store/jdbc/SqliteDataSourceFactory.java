@@ -52,11 +52,11 @@ public final class SqliteDataSourceFactory {
                 .action(EventAction.DB_OPEN)
                 .outcome(EventOutcome.SUCCESS)
                 .field(LogField.IOC_DB_ROLE, settings.role())
-                .field("ioc.storage.sqlite.tuning", settings.tuning())
-                .field("ioc.storage.sqlite.max_pool_size", settings.maxPoolSize())
-                .field("ioc.storage.sqlite.write_max", settings.writeMax())
-                .field("ioc.storage.sqlite.read_max", settings.readMax())
-                .field("ioc.storage.sqlite.busy_timeout_ms", pragmas.busyTimeout().toMillis())
+                .field(LogField.IOC_STORAGE_SQLITE_TUNING, settings.tuning())
+                .field(LogField.IOC_STORAGE_SQLITE_MAX_POOL_SIZE, settings.maxPoolSize())
+                .field(LogField.IOC_STORAGE_SQLITE_WRITE_MAX, settings.writeMax())
+                .field(LogField.IOC_STORAGE_SQLITE_READ_MAX, settings.readMax())
+                .field(LogField.IOC_STORAGE_SQLITE_BUSY_TIMEOUT_MS, pragmas.busyTimeout().toMillis())
                 .message("sqlite datasource initialized")
                 .log();
         return dataSource;

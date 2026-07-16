@@ -37,6 +37,9 @@ runtime JDBC drivers.
   selector slice.
 - SQLite connection PRAGMAs are installed as Xerial `SQLiteConfig` driver
   properties on physical connection creation, not on every pool borrow.
+- Storage startup/import events use only catalogued `LogField` keys; pool,
+  timeout and import counters therefore share the typed logging schema instead
+  of declaring adapter-local string keys.
 - Dataframe business tables are reconciled additively from `ioc.sink.artifacts`:
   missing tables/columns are created, order changes are ignored, and
   drop/rename/type drift fails before mutation. Internal `_`-prefixed columns are

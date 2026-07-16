@@ -280,7 +280,7 @@ public final class LegacyLedgerImporter {
                 .action(EventAction.LEDGER_IMPORT)
                 .outcome(EventOutcome.SUCCESS)
                 .field(LogField.FILE_PATH, file.toString())
-                .field("ioc.legacy_import.name", name)
+                .field(LogField.IOC_LEGACY_IMPORT_NAME, name)
                 .message("legacy ingestion ledger imported")
                 .log();
     }
@@ -289,10 +289,10 @@ public final class LegacyLedgerImporter {
         LogEvents.info(LOGGER)
                 .action(EventAction.LEDGER_IMPORT)
                 .outcome(summary.failed() == 0 ? EventOutcome.SUCCESS : EventOutcome.FAILURE)
-                .field("ioc.legacy_import.scanned", summary.scanned())
-                .field("ioc.legacy_import.imported", summary.imported())
-                .field("ioc.legacy_import.skipped", summary.skipped())
-                .field("ioc.legacy_import.failed", summary.failed())
+                .field(LogField.IOC_LEGACY_IMPORT_SCANNED, summary.scanned())
+                .field(LogField.IOC_LEGACY_IMPORT_IMPORTED, summary.imported())
+                .field(LogField.IOC_LEGACY_IMPORT_SKIPPED, summary.skipped())
+                .field(LogField.IOC_LEGACY_IMPORT_FAILED, summary.failed())
                 .message("legacy ingestion ledger import finished")
                 .log();
     }
