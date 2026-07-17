@@ -12,7 +12,6 @@ import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.domain.extract.RawIndicator;
 import com.iocextractor.domain.extract.ExtractionOutcome;
 import com.iocextractor.domain.refang.RefangOutcome;
-import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;

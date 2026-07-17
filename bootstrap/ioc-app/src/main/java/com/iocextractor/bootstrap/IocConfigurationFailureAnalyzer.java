@@ -1,7 +1,6 @@
 package com.iocextractor.bootstrap;
 
 import org.springframework.boot.context.properties.bind.UnboundConfigurationPropertiesException;
-import org.springframework.boot.context.properties.source.ConfigurationProperty;
 import org.springframework.boot.diagnostics.AbstractFailureAnalyzer;
 import org.springframework.boot.diagnostics.FailureAnalysis;
 

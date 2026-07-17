@@ -107,7 +107,6 @@ import com.iocextractor.domain.feature.IndicatorNormalizer;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.extract.PatternEngine;
 import com.iocextractor.domain.extract.RegexIndicatorExtractor;
-import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.MaskMatch;
 import com.iocextractor.domain.refang.RefangRule;
