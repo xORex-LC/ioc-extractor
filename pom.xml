@@ -13,12 +13,13 @@
 
     <groupId>com.iocextractor</groupId>
     <artifactId>ioc-extractor-parent</artifactId>
-    <version>0.1.0</version>
+    <version>${revision}</version>
     <packaging>pom</packaging>
     <name>ioc-extractor-parent</name>
     <description>Parent reactor for the IOC extractor: dependency/plugin management and module aggregation</description>
 
     <properties>
+        <revision>0.1.1-SNAPSHOT</revision>
         <java.version>21</java.version>
         <picocli.version>4.7.6</picocli.version>
         <re2j.version>1.7</re2j.version>
