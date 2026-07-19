@@ -1,4 +1,4 @@
-org.springframework.boot.env.EnvironmentPostProcessor=\
+org.springframework.boot.EnvironmentPostProcessor=\
 com.iocextractor.bootstrap.DaemonWebEnvironmentPostProcessor
 
 org.springframework.boot.diagnostics.FailureAnalyzer=\

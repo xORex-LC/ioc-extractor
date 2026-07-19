@@ -24,7 +24,7 @@ import com.iocextractor.platform.concurrent.WorkAdmission;
 import com.iocextractor.platform.concurrent.WorkKey;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.boot.actuate.health.Status;
+import org.springframework.boot.health.contributor.Status;
 
 import java.nio.file.Path;
 import java.time.Clock;

@@ -12,7 +12,7 @@ import java.util.List;
  * Spring Boot ECS encoder that contributes the static {@code event.dataset}
  * through the same context-pair stream as event-local {@code event.*} fields.
  *
- * <p>Spring Boot 3.5 renders ECS context pairs as nested JSON. A static
+ * <p>Spring Boot 4 renders ECS context pairs as nested JSON. A static
  * {@code logging.structured.json.add.event.dataset} member and dynamic
  * {@code event.*} context pairs would therefore create two top-level
  * {@code event} objects. Contributing the dataset as a context pair lets the

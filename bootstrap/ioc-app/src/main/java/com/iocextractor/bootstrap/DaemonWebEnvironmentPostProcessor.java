@@ -1,7 +1,7 @@
 package com.iocextractor.bootstrap;
 
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.env.EnvironmentPostProcessor;
+import org.springframework.boot.EnvironmentPostProcessor;
 import org.springframework.core.Ordered;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
@@ -24,15 +24,6 @@ import java.util.Map;
 public class DaemonWebEnvironmentPostProcessor implements EnvironmentPostProcessor, Ordered {
 
     private static final String PROPERTY_SOURCE_NAME = "iocDaemonWeb";
-    private static final String DATA_SOURCE_AUTO_CONFIGURATION =
-            "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration";
-    private static final String ONESHOT_AUTO_CONFIGURATION_EXCLUSIONS = String.join(",",
-            DATA_SOURCE_AUTO_CONFIGURATION,
-            "org.springframework.boot.actuate.autoconfigure.jdbc.DataSourceHealthContributorAutoConfiguration",
-            "org.springframework.boot.actuate.autoconfigure.metrics.jdbc.DataSourcePoolMetricsAutoConfiguration",
-            "org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration",
-            "org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration",
-            "org.springframework.boot.autoconfigure.sql.init.SqlInitializationAutoConfiguration");
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
@@ -42,15 +33,12 @@ public class DaemonWebEnvironmentPostProcessor implements EnvironmentPostProcess
                     PROPERTY_SOURCE_NAME,
                     Map.of(
                             "spring.main.web-application-type", "servlet",
-                            "spring.main.lazy-initialization", "false",
-                            "spring.autoconfigure.exclude", DATA_SOURCE_AUTO_CONFIGURATION)));
+                            "spring.main.lazy-initialization", "false")));
             return;
         }
         environment.getPropertySources().addFirst(new MapPropertySource(
                 PROPERTY_SOURCE_NAME,
-                Map.of(
-                        "spring.main.lazy-initialization", "true",
-                        "spring.autoconfigure.exclude", ONESHOT_AUTO_CONFIGURATION_EXCLUSIONS)));
+                Map.of("spring.main.lazy-initialization", "true")));
     }
 
     @Override

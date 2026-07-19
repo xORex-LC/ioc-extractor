@@ -467,7 +467,7 @@ ioc:
 |---|---|---|
 | Инжест-каркас | `spring-boot-starter-integration` + `spring-integration-file` | только `adapter-ingest`/`ioc-app`; poller/watch, фильтры, error-channel |
 | Ретраи/backoff | `spring-retry` (+ `spring-aspects`, если нужен AOP advice) | только `adapter-ingest` |
-| Health/метрики | `spring-boot-starter-actuator` + `spring-boot-starter-web` | health contributors + HTTP `/actuator/health`; web включается **только в daemon** (`DaemonWebEnvironmentPostProcessor`), loopback-bind. См. [dev/0010](../ADR/0010-health-actuator.md) |
+| Health/метрики | `spring-boot-starter-actuator` + `spring-boot-starter-webmvc` | health contributors + HTTP `/actuator/health`; web включается **только в daemon** (`DaemonWebEnvironmentPostProcessor`), loopback-bind. См. [dev/0010](../ADR/0010-health-actuator.md) |
 | Хэш содержимого | JDK `MessageDigest` (`SHA-256`) | новой зависимости не требуется |
 | Durable ledger + run-ledger + canonical | `spring-jdbc`/`JdbcClient` + `org.xerial:sqlite-jdbc` + Hikari | `ioc.ingestion.ledger.type: file \| jdbc`; service-datasource создаётся в любом daemon (нужен для run-ledger), dataframe-datasource — при `storage.dataframe.type=jdbc` (default); schema через `user_version`, DB health через `quick_check`/PRAGMA |
 | Immutable export | JDBC snapshot + commons-csv + Jackson | application saga/cadence за портами; JDBC/CSV/JSON остаются в трёх adapter-модулях |

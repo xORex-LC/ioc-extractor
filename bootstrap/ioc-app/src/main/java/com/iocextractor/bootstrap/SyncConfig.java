@@ -31,7 +31,7 @@ import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
 import com.iocextractor.platform.events.ControlEventObserver;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;

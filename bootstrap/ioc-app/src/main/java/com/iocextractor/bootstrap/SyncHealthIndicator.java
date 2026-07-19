@@ -11,9 +11,9 @@ import com.iocextractor.application.sync.PublishTarget;
 import com.iocextractor.application.sync.RemoteFetchSource;
 import com.iocextractor.platform.concurrent.KeyedSerialExecutorSnapshot;
 import com.iocextractor.platform.concurrent.KeyedWorkSnapshot;
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.HealthIndicator;
-import org.springframework.boot.actuate.health.Status;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthIndicator;
+import org.springframework.boot.health.contributor.Status;
 
 import java.time.Clock;
 import java.time.Duration;

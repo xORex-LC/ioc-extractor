@@ -2,10 +2,9 @@ package com.iocextractor;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.http.ResponseEntity;
+import org.springframework.test.web.servlet.client.RestTestClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -31,33 +30,29 @@ import static org.assertj.core.api.Assertions.assertThat;
         "ioc.ingestion.ledger.path=target/test-mgmt/ledger",
         "spring.main.banner-mode=off"
 })
+@AutoConfigureRestTestClient
 class DaemonManagementEndpointTest {
 
-    @LocalServerPort
-    int port;
-
     @Autowired
-    TestRestTemplate rest;
+    RestTestClient rest;
 
     @Test
     void health_endpoint_is_exposed_in_daemon_mode() {
-        ResponseEntity<String> response = rest.getForEntity(
-                "http://localhost:" + port + "/actuator/health", String.class);
-
         // Exposed and serving the health document. UP -> 200, partial DOWN -> 503;
         // either proves the endpoint is reachable (the point of ING-3).
-        assertThat(response.getStatusCode().value()).isIn(200, 503);
-        assertThat(response.getBody())
-                .contains("\"status\"")
-                .contains("\"jdbcStorage\"")
-                .contains("\"dataframeStorage\"")
-                .contains("\"artifactStorage\"");
+        rest.get().uri("/actuator/health").exchange()
+                .expectStatus().value(status -> assertThat(status).isIn(200, 503))
+                .expectBody(String.class).value(body -> assertThat(body)
+                        .contains("\"status\"")
+                        .contains("\"jdbcStorage\"")
+                        .contains("\"dataframeStorage\"")
+                        .contains("\"artifactStorage\""));
 
         for (String component : new String[]{"jdbcStorage", "dataframeStorage", "artifactStorage"}) {
-            ResponseEntity<String> componentResponse = rest.getForEntity(
-                    "http://localhost:" + port + "/actuator/health/" + component, String.class);
-            assertThat(componentResponse.getStatusCode().value()).isEqualTo(200);
-            assertThat(componentResponse.getBody()).contains("\"status\":\"UP\"");
+            rest.get().uri("/actuator/health/{component}", component).exchange()
+                    .expectStatus().isOk()
+                    .expectBody(String.class)
+                    .value(body -> assertThat(body).contains("\"status\":\"UP\""));
         }
     }
 }

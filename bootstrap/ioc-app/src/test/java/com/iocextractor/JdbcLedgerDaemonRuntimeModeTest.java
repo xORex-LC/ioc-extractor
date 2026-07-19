@@ -11,7 +11,7 @@ import com.iocextractor.bootstrap.DaemonExportScheduler;
 import com.iocextractor.bootstrap.DaemonSliceRetentionScheduler;
 import com.iocextractor.bootstrap.ExportHealthIndicator;
 import com.zaxxer.hikari.HikariDataSource;
-import org.springframework.boot.actuate.health.Status;
+import org.springframework.boot.health.contributor.Status;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;

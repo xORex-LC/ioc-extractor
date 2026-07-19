@@ -8,8 +8,8 @@ import com.iocextractor.application.export.ExportRunStatus;
 import com.iocextractor.application.port.out.export.ArtifactRevisionReader;
 import com.iocextractor.application.port.out.export.ExportProgressStore;
 import com.iocextractor.application.port.out.export.ExportRunReader;
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthIndicator;
 
 import java.time.Clock;
 import java.time.Duration;

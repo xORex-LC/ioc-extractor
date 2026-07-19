@@ -10,7 +10,7 @@ import com.iocextractor.application.export.ExportProgress;
 import com.iocextractor.application.export.ExportRun;
 import com.iocextractor.application.export.ExportRunStatus;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.actuate.health.Status;
+import org.springframework.boot.health.contributor.Status;
 
 import java.time.Clock;
 import java.time.Instant;

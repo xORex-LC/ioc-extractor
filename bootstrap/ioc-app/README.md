@@ -39,11 +39,10 @@ context использует `spring.main.lazy-initialization=true`: validation-
 dataframe datasource, миграции или тяжёлые use cases.
 В daemon mode `DaemonWebEnvironmentPostProcessor` принудительно возвращает eager initialization,
 чтобы schema migration/recovery завершились до запуска poller-ов и scheduler-ов.
-В oneshot также отключены стандартные Boot JDBC auto-configurations: storage, migrations и
-transactions собираются явно в composition root/JDBC adapter, поэтому type-discovery не должен
-материализовать lazy datasource до выбора CLI-команды. Daemon сохраняет прежние JDBC health/metrics
-auto-configurations; post-processor оставляет ему только базовый `DataSourceAutoConfiguration`
-exclude, так как оба datasource создаются проектом явно.
+Spring Boot 4 подключён через focused starters. JDBC auto-configuration module отсутствует в
+runtime graph: storage, migrations и transactions по-прежнему собираются явно в composition
+root/JDBC adapter, а `DaemonWebEnvironmentPostProcessor` больше не поддерживает строковый список
+несуществующих JDBC exclusions.
 
 `LoggingExportObserver` — bootstrap adapter application-порта: он переводит
 durable checkpoints saga в ECS actions/fields, не добавляя SLF4J-зависимость в
@@ -62,6 +61,6 @@ daemon template явно задаёт `collect-and-continue` и budget 10 000.
 
 **Зависит от:** selected platform/core/adapters modules, Spring Boot and its
 Logback `StructuredLogEncoder`; `IocEcsStructuredLogEncoder` сохраняет static
-`event.dataset` внутри nested ECS context-pair object Boot 3.5.
+`event.dataset` внутри nested ECS context-pair object Boot 4.
 
 **Не импортируется:** no inner module depends on `ioc-app`.

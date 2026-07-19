@@ -51,7 +51,9 @@ class DaemonRuntimeModeTest {
         var beanFactory = ((ConfigurableApplicationContext) context).getBeanFactory();
         assertThat(beanFactory.containsSingleton("dataframeStorageDataSource")).isTrue();
         assertThat(beanFactory.containsSingleton("dataframeFormatSchemaMigration")).isTrue();
-        assertThat(context.containsBean("dbHealthContributor")).isTrue();
+        // Boot JDBC auto-configuration is intentionally absent; project-owned indicators below
+        // expose the service and dataframe checks without a duplicate aggregate contributor.
+        assertThat(context.containsBean("dbHealthContributor")).isFalse();
         assertThat(ingestSourceUseCase).isNotNull();
         assertThat(context.getBeansOfType(CliRunner.class)).isEmpty();
         assertThat(context.getBeansOfType(IntegrationFlow.class))

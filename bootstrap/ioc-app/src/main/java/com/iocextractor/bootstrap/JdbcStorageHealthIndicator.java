@@ -2,8 +2,8 @@ package com.iocextractor.bootstrap;
 
 import com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealth;
 import com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealthProbe;
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthIndicator;
 
 /**
  * Actuator adapter for JDBC storage health. The JDBC/PRAGMA checks live in the

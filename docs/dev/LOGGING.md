@@ -138,9 +138,9 @@ renderer calls. TRACE читает только уже вычисленные do
 
 ## Spring Boot и ECS encoder
 
-Проект использует Spring Boot `3.5.16` и встроенный
-`org.springframework.boot.logging.logback.StructuredLogEncoder`. Начиная с
-Boot 3.5 ECS context pairs сериализуются как nested JSON. Daemon rolling
+Проект использует Spring Boot `4.0.7` и встроенный
+`org.springframework.boot.logging.logback.StructuredLogEncoder`. ECS context
+pairs сериализуются как nested JSON. Daemon rolling
 appender остаётся явно настроенным в `logback-spring.xml`, а небольшой
 bootstrap-адаптер сохраняет статический dataset в том же context-pair stream,
 что и динамические `event.*`:

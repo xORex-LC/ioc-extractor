@@ -1,7 +1,7 @@
 package com.iocextractor.bootstrap;
 
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthIndicator;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
