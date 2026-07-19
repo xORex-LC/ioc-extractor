@@ -54,12 +54,19 @@ cd ioc-extractor
 # build (only the bootstrap/ioc-app module produces a bootable jar)
 ./mvnw -q -DskipTests package          # -> bootstrap/ioc-app/target/ioc-app-0.1.0.jar
 
+# inspect packaged build identity without starting Spring
+java -jar bootstrap/ioc-app/target/ioc-app-0.1.0.jar --version
+
 # one-shot run
 java -jar bootstrap/ioc-app/target/ioc-app-0.1.0.jar extract --source source/ioc-source.htm [--dry-run]
 
 # export one configured immutable profile slice from accumulated SQLite truth
 java -jar bootstrap/ioc-app/target/ioc-app-0.1.0.jar export --profile reputation-lists
 ```
+
+The installed launcher exposes the same lightweight identity path as
+`ioc --version` (or `ioc -V`). Product version is always present; Git commit and
+build time are printed only when embedded by the build.
 
 ## Daemon mode
 

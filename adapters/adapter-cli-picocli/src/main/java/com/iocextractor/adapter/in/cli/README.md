@@ -20,6 +20,8 @@
 | `SyncPublishCommand.java` | Явная публикация completed slices с фильтрами profile/target/endpoint |
 | `SyncAllCommand.java` | Полностью preflight-валидируемая последовательность fetch → publish |
 | `HealthCommand.java` | Запрос actuator health у отдельного daemon process |
+| `ApplicationBuildInfoReader.java` | JDK-only reader packaged `META-INF/build-info.properties` |
+| `BuildInfoVersionProvider.java` | Человекочитаемый Picocli output для `-V/--version` |
 | `EarlyCliLauncher.java` | Help, health и ошибки синтаксиса до запуска Spring context |
 | `CliRunner.java` | Мост Spring Boot ↔ picocli, проброс exit-кода |
 
@@ -30,7 +32,8 @@
 - `ioc sync fetch [--source <name>] [--endpoint <name>] [--dry-run]`;
 - `ioc sync publish [--profile <name>] [--target <name>] [--endpoint <name>] [--dry-run]`;
 - `ioc sync all [fetch/publish filters] [--dry-run]`;
-- `ioc health [--json]`.
+- `ioc health [--json]`;
+- `ioc --version` (`ioc -V`).
 
 `EarlyCliLauncher` строит read-only Picocli model из тех же аннотированных command-классов.
 Root/subcommand help, version, синтаксически некорректный ввод и `health` поэтому завершаются
@@ -38,6 +41,11 @@ Root/subcommand help, version, синтаксически некорректны
 Spring composition root. Для раннего `health` адрес по умолчанию берётся из JVM properties
 `server.address`/`server.port`, затем из `SERVER_ADDRESS`/`SERVER_PORT`, затем используется
 `127.0.0.1:8081`; нестандартный endpoint также можно явно задать CLI-опциями.
+
+Version provider читает тот же `META-INF/build-info.properties`, который
+публикует runnable module. Product version обязательна; commit и build time
+выводятся только при фактическом наличии. Этот путь не использует Spring
+`BuildProperties`, не обращается к Git и не придумывает значения `unknown`.
 
 `ExportCommand` сначала вызывает IO-free profile validator и только затем
 разрешает через `ObjectProvider` storage-backed export use case. Построение root

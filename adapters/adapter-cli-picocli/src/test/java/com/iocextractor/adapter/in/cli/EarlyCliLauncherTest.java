@@ -33,6 +33,27 @@ class EarlyCliLauncherTest {
     }
 
     @Test
+    void handlesVersionWithoutSpringGraph() {
+        OptionalInt result = launcher.executeIfHandled("--version");
+
+        assertThat(result).hasValue(0);
+        assertThat(out.toString())
+                .contains("ioc-extractor 0.1.1-test")
+                .contains("built: 2026-07-19T10:30:00Z")
+                .doesNotContain("unknown");
+        assertThat(err.toString()).isEmpty();
+    }
+
+    @Test
+    void handlesShortVersionOptionWithoutSpringGraph() {
+        OptionalInt result = launcher.executeIfHandled("-V");
+
+        assertThat(result).hasValue(0);
+        assertThat(out.toString()).contains("ioc-extractor 0.1.1-test");
+        assertThat(err.toString()).isEmpty();
+    }
+
+    @Test
     void handlesNestedHelpAfterBoundOptionsWithoutCreatingCommand() {
         OptionalInt result = launcher.executeIfHandled(
                 "sync", "fetch", "--source", "incoming", "--help");

@@ -159,7 +159,7 @@ supported contract не входят. Их появление является �
 
 | ID | Контроль | Состояние | Enforcement / evidence |
 |---|---|---|---|
-| `SEC-REL-1` | Version → tag → commit → build metadata → SHA-256 identity chain | Designed | Slice 2 реализовал embedded version/time и explicit optional commit; tag, checksum и publish enforcement добавляются slices 3–5 по [RELEASE-PROCESS.md](RELEASE-PROCESS.md) |
+| `SEC-REL-1` | Version → tag → commit → build metadata → SHA-256 identity chain | Designed | Slices 2–3 реализовали embedded identity и lightweight CLI verification; packaging, tag, checksum и publish enforcement добавляются slices 4–5 по [RELEASE-PROCESS.md](RELEASE-PROCESS.md) |
 | `SEC-REL-2` | Exact-candidate dependency scan до tag | Configured | manual `Dependency Security` run является release gate; первый remote run ещё требуется |
 | `SEC-REL-3` | SBOM как release asset | Planned | trigger — выбран consumer/use case; формат и retention фиксируются до включения |
 | `SEC-REL-4` | Build provenance/attestation | Planned | trigger — доверенная CI release build и consumer verification; ориентир — [SLSA](https://slsa.dev/spec/v1.2/) |

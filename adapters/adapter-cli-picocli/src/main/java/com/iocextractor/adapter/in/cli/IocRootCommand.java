@@ -13,6 +13,7 @@ import picocli.CommandLine.Spec;
 @Command(
         name = "ioc",
         mixinStandardHelpOptions = true,
+        versionProvider = BuildInfoVersionProvider.class,
         description = "IOC extraction toolkit.",
         subcommands = {ExtractCommand.class, ExportCommand.class, SyncCommand.class, HealthCommand.class})
 public final class IocRootCommand implements Runnable {

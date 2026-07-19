@@ -33,9 +33,10 @@ Spring/Actuator. Export use cases зарегистрированы как lazy b
 `ioc export` связывает `JdbcArtifactRevisionReader`, `JdbcSnapshotSliceReader`,
 `JdbcExportRunLedger`/progress store, `CsvArtifactSliceWriter` и Jackson codec.
 
-`EarlyCliLauncher` завершает root/subcommand help, `health` и синтаксические ошибки до
-`SpringApplication.run()`, поэтому эти пути вообще не создают Spring context. Оставшийся oneshot
-context использует `spring.main.lazy-initialization=true`: validation-only ветки не создают
+`EarlyCliLauncher` завершает root/subcommand help, `-V`/`--version`, `health` и
+синтаксические ошибки до `SpringApplication.run()`, поэтому эти пути вообще не
+создают Spring context. Оставшийся oneshot context использует
+`spring.main.lazy-initialization=true`: validation-only ветки не создают
 dataframe datasource, миграции или тяжёлые use cases.
 В daemon mode `DaemonWebEnvironmentPostProcessor` принудительно возвращает eager initialization,
 чтобы schema migration/recovery завершились до запуска poller-ов и scheduler-ов.
@@ -54,6 +55,8 @@ Release/CI build дополнительно передаёт уже разреш
 Actuator публикует доступные значения в `/actuator/info`. Production beans не
 требуют наличия `BuildProperties`, поэтому запуск из IDE без generated metadata
 остаётся допустимым.
+CLI `ioc --version` читает этот resource напрямую через JDK-only reader и потому
+завершается до Spring startup; version обязательна, commit/time остаются optional.
 
 `LoggingExportObserver` — bootstrap adapter application-порта: он переводит
 durable checkpoints saga в ECS actions/fields, не добавляя SLF4J-зависимость в
