@@ -12,8 +12,8 @@
 - ECS-поля используем без переименования.
 - Проектные поля кладём только в namespace `ioc.*`.
 - `event.action` — стабильный machine-readable глагол.
-- `event.dataset` задаётся Boot ECS formatter-у как статическое
-  `ioc-extractor`; per-event dataset не используется.
+- `event.dataset` задаётся bootstrap ECS encoder-ом как статическое
+  `ioc-extractor` в общем context-pair stream; per-event dataset не используется.
 - `message` — человекочитаемый текст, не контракт.
 - Новое поле или action добавляется там, где появляется реальная потребность.
 - Тип `LogField` (`STRING|LONG|BOOLEAN`) является частью стабильного контракта.
@@ -33,7 +33,7 @@
 | `message` | человекочитаемый текст |
 | `service.name` | `ioc-extractor` |
 | `service.version` | версия приложения, когда доступна |
-| `event.dataset` | статическое значение Boot formatter-а: `ioc-extractor` |
+| `event.dataset` | статическое значение bootstrap ECS encoder-а: `ioc-extractor` |
 | `event.action` | действие |
 | `event.outcome` | `success`, `failure`, `unknown` |
 

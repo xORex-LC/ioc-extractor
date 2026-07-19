@@ -61,6 +61,7 @@ daemon template явно задаёт `collect-and-continue` и budget 10 000.
 ## Зависимости
 
 **Зависит от:** selected platform/core/adapters modules, Spring Boot and its
-Logback `StructuredLogEncoder`.
+Logback `StructuredLogEncoder`; `IocEcsStructuredLogEncoder` сохраняет static
+`event.dataset` внутри nested ECS context-pair object Boot 3.5.
 
 **Не импортируется:** no inner module depends on `ioc-app`.

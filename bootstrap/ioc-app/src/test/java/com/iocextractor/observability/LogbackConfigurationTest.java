@@ -4,6 +4,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.LoggingEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.iocextractor.bootstrap.IocEcsStructuredLogEncoder;
 import org.slf4j.event.KeyValuePair;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.logging.logback.StructuredLogEncoder;
@@ -25,8 +26,9 @@ class LogbackConfigurationTest {
         var config = Files.readString(Path.of("src/main/resources/logback-spring.xml"));
 
         assertThat(config).contains("<springProfile name=\"daemon\">");
-        assertThat(config).contains("org.springframework.boot.logging.logback.StructuredLogEncoder");
+        assertThat(config).contains("com.iocextractor.bootstrap.IocEcsStructuredLogEncoder");
         assertThat(config).contains("<format>ecs</format>");
+        assertThat(config).contains("<eventDataset>${SERVICE_NAME}</eventDataset>");
         assertThat(config).doesNotContain("co.elastic.logging");
         assertThat(config).contains("SizeAndTimeBasedRollingPolicy");
         assertThat(config).contains("${LOG_PATH}/ioc-extractor.ecs.json");
@@ -47,26 +49,28 @@ class LogbackConfigurationTest {
 
         assertThat(logFile).exists();
         var json = new ObjectMapper().readTree(Files.readString(logFile));
-        assertThat(json.path("ecs.version").asText()).isEqualTo("8.11");
-        assertThat(json.path("service.name").asText()).isEqualTo("ioc-extractor");
-        assertThat(json.path("service.version").asText()).isEqualTo("0.1.0-SNAPSHOT");
-        assertThat(json.path("event.dataset").asText()).isEqualTo("ioc-extractor");
-        assertThat(json.path(LogField.EVENT_ACTION.key()).asText()).isEqualTo(EventAction.APP_START.value());
-        assertThat(json.path(LogField.EVENT_DURATION.key()).isIntegralNumber()).isTrue();
-        assertThat(json.path(LogField.EVENT_DURATION.key()).longValue()).isEqualTo(18_324_056L);
-        assertThat(json.path(LogField.IOC_ROWS.key()).isIntegralNumber()).isTrue();
-        assertThat(json.path(LogField.IOC_ROWS.key()).longValue()).isEqualTo(58L);
-        assertThat(json.path(LogField.IOC_SYNC_SHED_TO_RECONCILE.key()).isBoolean()).isTrue();
-        assertThat(json.path(LogField.IOC_SYNC_SHED_TO_RECONCILE.key()).booleanValue()).isTrue();
-        assertThat(json.path(LogField.IOC_RUN_ID.key()).isTextual()).isTrue();
-        assertThat(json.path(LogField.IOC_RUN_ID.key()).asText()).isEqualTo("00017");
-        assertThat(json.path(LogField.IOC_MODE.key()).asText()).isEqualTo("daemon");
+        assertThat(json.path("ecs").path("version").asText()).isEqualTo("8.11");
+        assertThat(json.path("service").path("name").asText()).isEqualTo("ioc-extractor");
+        assertThat(json.path("service").path("version").asText()).isEqualTo("0.1.0-SNAPSHOT");
+        assertThat(json.path("event").path("dataset").asText()).isEqualTo("ioc-extractor");
+        assertThat(json.path("event").path("action").asText()).isEqualTo(EventAction.APP_START.value());
+        assertThat(json.path("event").path("outcome").asText()).isEqualTo(EventOutcome.SUCCESS.value());
+        assertThat(json.path("event").path("duration").isIntegralNumber()).isTrue();
+        assertThat(json.path("event").path("duration").longValue()).isEqualTo(18_324_056L);
+        assertThat(json.path("ioc").path("rows").isIntegralNumber()).isTrue();
+        assertThat(json.path("ioc").path("rows").longValue()).isEqualTo(58L);
+        assertThat(json.path("ioc").path("sync").path("shed_to_reconcile").isBoolean()).isTrue();
+        assertThat(json.path("ioc").path("sync").path("shed_to_reconcile").booleanValue()).isTrue();
+        assertThat(json.path("ioc").path("run").path("id").isTextual()).isTrue();
+        assertThat(json.path("ioc").path("run").path("id").asText()).isEqualTo("00017");
+        assertThat(json.path("ioc").path("mode").asText()).isEqualTo("daemon");
     }
 
     private StructuredLogEncoder ecsEncoder(LoggerContext context) {
-        var encoder = new StructuredLogEncoder();
+        var encoder = new IocEcsStructuredLogEncoder();
         encoder.setContext(context);
         encoder.setFormat("ecs");
+        encoder.setEventDataset("ioc-extractor");
         encoder.start();
         return encoder;
     }
@@ -94,8 +98,7 @@ class LogbackConfigurationTest {
         var environment = new StandardEnvironment();
         environment.getPropertySources().addFirst(new MapPropertySource("test", Map.of(
                 "logging.structured.ecs.service.name", "ioc-extractor",
-                "logging.structured.ecs.service.version", "0.1.0-SNAPSHOT",
-                "logging.structured.json.add.event.dataset", "ioc-extractor")));
+                "logging.structured.ecs.service.version", "0.1.0-SNAPSHOT")));
         return environment;
     }
 }

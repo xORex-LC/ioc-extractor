@@ -74,7 +74,7 @@ dead-letter sidecar или JSONL.
 | Adapter | логирует инфраструктурные действия своей технологии | не реализует бизнес-классификацию IOC |
 | `LoggingDiagnosticSink` | переводит `Diagnostic` в обычный log event | не является главным каналом логирования |
 | `LoggingPipelineDecisionTracer` | пишет structured per-item decisions из готовых outcomes | не повторяет domain calls и не влияет на policy |
-| Boot `StructuredLogEncoder` | форматирует SLF4J event в ECS JSON и пишет его через Logback | не содержит бизнес-правил |
+| Boot `StructuredLogEncoder` + `IocEcsStructuredLogEncoder` | форматирует SLF4J event в ECS JSON; bootstrap-обёртка добавляет static dataset в общий context-pair stream | не содержит бизнес-правил |
 
 ## Режимы вывода
 
@@ -138,23 +138,31 @@ renderer calls. TRACE читает только уже вычисленные do
 
 ## Spring Boot и ECS encoder
 
-Проект использует Spring Boot `3.4.13` и встроенный
-`org.springframework.boot.logging.logback.StructuredLogEncoder`. Daemon
-rolling appender остаётся явно настроенным в `logback-spring.xml`, а encoder
-получает формат `ecs`:
+Проект использует Spring Boot `3.5.16` и встроенный
+`org.springframework.boot.logging.logback.StructuredLogEncoder`. Начиная с
+Boot 3.5 ECS context pairs сериализуются как nested JSON. Daemon rolling
+appender остаётся явно настроенным в `logback-spring.xml`, а небольшой
+bootstrap-адаптер сохраняет статический dataset в том же context-pair stream,
+что и динамические `event.*`:
 
 ```xml
-<encoder class="org.springframework.boot.logging.logback.StructuredLogEncoder">
+<encoder class="com.iocextractor.bootstrap.IocEcsStructuredLogEncoder">
     <format>ecs</format>
     <charset>UTF-8</charset>
+    <eventDataset>${SERVICE_NAME}</eventDataset>
 </encoder>
 ```
 
-`service.name`, `service.version` и статический `event.dataset` задаются через
-`logging.structured.*` в `application.yml`. Дополнительная зависимость
-`logback-ecs-encoder` отсутствует. Boot formatter сериализует MDC как строки,
-а `ILoggingEvent.getKeyValuePairs()` — с исходными scalar types; текущий output
-публикует `ecs.version=8.11`.
+`service.name` и `service.version` задаются через `logging.structured.*` в
+`application.yml`; `event.dataset` берётся из того же `service.name` через
+`springProperty` в `logback-spring.xml`. `IocEcsStructuredLogEncoder` временно
+добавляет dataset к копии event-local pairs перед делегированием Boot encoder-у
+и восстанавливает исходный event после encode. Это обходит конфликт двух
+отдельных nested-объектов `event`, который возникает при сочетании
+`logging.structured.json.add.event.dataset` и динамических `event.*`.
+Дополнительная зависимость `logback-ecs-encoder` отсутствует. Boot formatter
+сериализует MDC как строки, а `ILoggingEvent.getKeyValuePairs()` — с исходными
+scalar types; текущий output публикует `ecs.version=8.11`.
 
 JSON wire format является операторским контрактом. Переход со старого Elastic
 encoder меняет набор/порядок служебных полей и ECS version. Если Elasticsearch
@@ -194,8 +202,8 @@ run id.
 | `ioc.source.content_hash` | custom | после стабилизации файла |
 | `ioc.artifact.name` | custom | запись sink/projection |
 
-`event.dataset` задаётся статически (`ioc-extractor`) через
-`logging.structured.json.add`; per-event детализация идёт через `event.action`,
+`event.dataset` задаётся статически (`ioc-extractor`) bootstrap-энкодером;
+per-event детализация идёт через `event.action`,
 `ioc.stage`, `ioc.artifact.name`, `ioc.diagnostic.*` и другие catalog fields.
 Если event-local key совпал с ambient MDC key, event-local значение побеждает:
 `LogEvent` временно скрывает MDC member на время logger call и затем
@@ -242,20 +250,23 @@ ECS JSON:
 ```json
 {
   "@timestamp": "2026-06-21T04:00:01.123Z",
-  "ecs.version": "8.11",
-  "log.level": "INFO",
+  "ecs": {"version": "8.11"},
+  "log": {"level": "INFO"},
   "message": "artifact written",
-  "service.name": "ioc-extractor",
-  "service.version": "0.1.0",
-  "event.dataset": "ioc-extractor",
-  "event.action": "artifact_project",
-  "event.category": ["file"],
-  "event.type": ["creation"],
-  "event.outcome": "success",
-  "ioc.run.id": "01J...",
-  "ioc.stage": "sink",
-  "ioc.artifact.name": "masks",
-  "ioc.rows": 58
+  "service": {"name": "ioc-extractor", "version": "0.1.0"},
+  "event": {
+    "dataset": "ioc-extractor",
+    "action": "artifact_project",
+    "category": ["file"],
+    "type": ["creation"],
+    "outcome": "success"
+  },
+  "ioc": {
+    "run": {"id": "01J..."},
+    "stage": "sink",
+    "artifact": {"name": "masks"},
+    "rows": 58
+  }
 }
 ```
 
@@ -263,11 +274,14 @@ ECS JSON:
 
 ```json
 {
-  "event.action": "indicator_skip",
-  "event.outcome": "failure",
-  "ioc.diagnostic.code": "EXTRACTION.INDICATOR_SKIPPED",
-  "ioc.diagnostic.category": "EXTRACTION",
-  "ioc.diagnostic.severity": "WARN"
+  "event": {"action": "indicator_skip", "outcome": "failure"},
+  "ioc": {
+    "diagnostic": {
+      "code": "EXTRACTION.INDICATOR_SKIPPED",
+      "category": "EXTRACTION",
+      "severity": "WARN"
+    }
+  }
 }
 ```
 
@@ -312,8 +326,9 @@ ECS JSON:
   `source_ingest` без синтетического completion.
 - `Diagnostic` может быть отрендерен в log event через `LoggingDiagnosticSink`,
   но logging не зависит от diagnostics.
-- `daemon`-профиль пишет ECS JSON rolling file через Boot
-  `StructuredLogEncoder`; duration/counts — JSON numbers, flags — booleans.
+- `daemon`-профиль пишет nested ECS JSON rolling file через Boot
+  `StructuredLogEncoder` и bootstrap dataset-адаптер; duration/counts — JSON
+  numbers, flags — booleans.
 - `oneshot` остаётся удобным в console.
 - Тесты проверяют отсутствие MDC-протечек, typed key/value pairs, async snapshot
   и representative ECS JSON file.
