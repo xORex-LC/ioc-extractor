@@ -1,7 +1,11 @@
 package com.iocextractor;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.info.BuildProperties;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.client.RestTestClient;
@@ -36,6 +40,9 @@ class DaemonManagementEndpointTest {
     @Autowired
     RestTestClient rest;
 
+    @Autowired
+    ObjectProvider<BuildProperties> buildPropertiesProvider;
+
     @Test
     void health_endpoint_is_exposed_in_daemon_mode() {
         // Exposed and serving the health document. UP -> 200, partial DOWN -> 503;
@@ -53,6 +60,36 @@ class DaemonManagementEndpointTest {
                     .expectStatus().isOk()
                     .expectBody(String.class)
                     .value(body -> assertThat(body).contains("\"status\":\"UP\""));
+        }
+    }
+
+    @Test
+    void info_endpoint_exposes_embedded_build_identity() throws JsonProcessingException {
+        var body = rest.get().uri("/actuator/info").exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .returnResult()
+                .getResponseBody();
+
+        assertThat(body).isNotNull();
+        var build = new ObjectMapper().readTree(body).path("build");
+        var buildProperties = buildPropertiesProvider.getIfAvailable();
+        if (buildProperties == null) {
+            assertThat(build.isMissingNode()).isTrue();
+            return;
+        }
+
+        assertThat(build.path("group").asText()).isEqualTo(buildProperties.getGroup());
+        assertThat(build.path("artifact").asText()).isEqualTo(buildProperties.getArtifact());
+        assertThat(build.path("name").asText()).isEqualTo(buildProperties.getName());
+        assertThat(build.path("version").asText()).isEqualTo(buildProperties.getVersion());
+        assertThat(build.path("time").asText()).isEqualTo(buildProperties.getTime().toString());
+
+        var commit = buildProperties.get("commit");
+        if (commit == null) {
+            assertThat(build.has("commit")).isFalse();
+        } else {
+            assertThat(build.path("commit").asText()).isEqualTo(commit);
         }
     }
 }

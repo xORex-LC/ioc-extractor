@@ -153,16 +153,23 @@ bootstrap-адаптер сохраняет статический dataset в т
 </encoder>
 ```
 
-`service.name` и `service.version` задаются через `logging.structured.*` в
-`application.yml`; `event.dataset` берётся из того же `service.name` через
-`springProperty` в `logback-spring.xml`. `IocEcsStructuredLogEncoder` временно
-добавляет dataset к копии event-local pairs перед делегированием Boot encoder-у
-и восстанавливает исходный event после encode. Это обходит конфликт двух
-отдельных nested-объектов `event`, который возникает при сочетании
-`logging.structured.json.add.event.dataset` и динамических `event.*`.
-Дополнительная зависимость `logback-ecs-encoder` отсутствует. Boot formatter
-сериализует MDC как строки, а `ILoggingEvent.getKeyValuePairs()` — с исходными
-scalar types; текущий output публикует `ecs.version=8.11`.
+`service.name` задаётся через `logging.structured.*` в `application.yml`, а
+`service.version` фильтруется Maven из `@project.version@` и тем самым совпадает
+с `build.version` executable jar. `event.dataset` берётся из того же
+`service.name` через `springProperty` в `logback-spring.xml`.
+`IocEcsStructuredLogEncoder` временно добавляет dataset к копии event-local
+pairs перед делегированием Boot encoder-у и восстанавливает исходный event после
+encode. Это обходит конфликт двух отдельных nested-объектов `event`, который
+возникает при сочетании `logging.structured.json.add.event.dataset` и
+динамических `event.*`. Дополнительная зависимость `logback-ecs-encoder`
+отсутствует. Boot formatter сериализует MDC как строки, а
+`ILoggingEvent.getKeyValuePairs()` — с исходными scalar types; текущий output
+публикует `ecs.version=8.11`.
+
+Версия не задаётся вручную в logging config или тестах. Контрактный тест читает
+generated build-info и проверяет, что та же effective Maven version попала в
+реальный ECS JSON. Optional `build.commit` относится к build identity и
+`/actuator/info`; в ECS service fields он намеренно не дублируется.
 
 JSON wire format является операторским контрактом. Переход со старого Elastic
 encoder меняет набор/порядок служебных полей и ECS version. Если Elasticsearch
@@ -253,7 +260,7 @@ ECS JSON:
   "ecs": {"version": "8.11"},
   "log": {"level": "INFO"},
   "message": "artifact written",
-  "service": {"name": "ioc-extractor", "version": "0.1.0"},
+  "service": {"name": "ioc-extractor", "version": "X.Y.Z"},
   "event": {
     "dataset": "ioc-extractor",
     "action": "artifact_project",

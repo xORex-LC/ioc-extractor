@@ -32,7 +32,7 @@ logging:
     ecs:
       service:
         name: ioc-extractor
-        version: 0.1.0-SNAPSHOT
+        version: "@project.version@"
 
 # HTTP surface — only active in daemon mode (web is non-web otherwise). Bound to
 # loopback by default; exposes health/info for ops. No 'shutdown' endpoint. This

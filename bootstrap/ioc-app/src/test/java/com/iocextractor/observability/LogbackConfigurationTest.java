@@ -5,12 +5,14 @@ import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.LoggingEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.iocextractor.bootstrap.IocEcsStructuredLogEncoder;
-import org.slf4j.event.KeyValuePair;
 import org.junit.jupiter.api.Test;
+import org.slf4j.event.KeyValuePair;
+import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.logging.logback.StructuredLogEncoder;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.io.ClassPathResource;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -36,12 +38,19 @@ class LogbackConfigurationTest {
 
     @Test
     void boot_ecs_encoder_preserves_json_scalar_types_and_string_correlation() throws IOException {
+        var configuredVersion = new YamlPropertySourceLoader()
+                .load("application", new ClassPathResource("application.yml"))
+                .getFirst()
+                .getProperty("logging.structured.ecs.service.version");
+        assertThat(configuredVersion).isInstanceOf(String.class);
+        var buildVersion = (String) configuredVersion;
+        assertThat(buildVersion).isNotBlank();
         var logFile = Path.of("target/test-logs/daemon-programmatic/ioc-extractor.ecs.json");
         Files.createDirectories(logFile.getParent());
         Files.deleteIfExists(logFile);
 
         var context = new LoggerContext();
-        context.putObject(Environment.class.getName(), environment());
+        context.putObject(Environment.class.getName(), environment(buildVersion));
         var encoder = ecsEncoder(context);
         byte[] encoded = encoder.encode(loggingEvent(context));
         Files.write(logFile, encoded);
@@ -51,7 +60,7 @@ class LogbackConfigurationTest {
         var json = new ObjectMapper().readTree(Files.readString(logFile));
         assertThat(json.path("ecs").path("version").asText()).isEqualTo("8.11");
         assertThat(json.path("service").path("name").asText()).isEqualTo("ioc-extractor");
-        assertThat(json.path("service").path("version").asText()).isEqualTo("0.1.0-SNAPSHOT");
+        assertThat(json.path("service").path("version").asText()).isEqualTo(buildVersion);
         assertThat(json.path("event").path("dataset").asText()).isEqualTo("ioc-extractor");
         assertThat(json.path("event").path("action").asText()).isEqualTo(EventAction.APP_START.value());
         assertThat(json.path("event").path("outcome").asText()).isEqualTo(EventOutcome.SUCCESS.value());
@@ -94,11 +103,11 @@ class LogbackConfigurationTest {
         return event;
     }
 
-    private StandardEnvironment environment() {
+    private StandardEnvironment environment(String buildVersion) {
         var environment = new StandardEnvironment();
         environment.getPropertySources().addFirst(new MapPropertySource("test", Map.of(
                 "logging.structured.ecs.service.name", "ioc-extractor",
-                "logging.structured.ecs.service.version", "0.1.0-SNAPSHOT")));
+                "logging.structured.ecs.service.version", buildVersion)));
         return environment;
     }
 }

@@ -133,6 +133,20 @@ version manually:
 - release/deployment metadata records the Git commit and build time;
 - the published SHA-256 digest identifies the exact released jar bytes.
 
+The `build-info` execution belongs only to `bootstrap/ioc-app`. A normal local
+build omits commit metadata instead of inventing an `unknown` value. A build
+that already knows the immutable source revision injects the full SHA
+explicitly:
+
+```bash
+./mvnw -B -ntp -T 1C -Dbuild.commit=<full-git-sha> clean verify
+```
+
+The `embed-build-commit` Maven profile is activated by that property and writes
+it as `build.commit`; Maven Enforcer rejects a non-full or non-hexadecimal Git
+object ID. The application never invokes Git at runtime and does not depend on
+a `.git` directory being present.
+
 The intended operator-facing shape is:
 
 ```text

@@ -44,6 +44,17 @@ runtime graph: storage, migrations и transactions по-прежнему соб�
 root/JDBC adapter, а `DaemonWebEnvironmentPostProcessor` больше не поддерживает строковый список
 несуществующих JDBC exclusions.
 
+Executable jar содержит стандартный `META-INF/build-info.properties`, который
+создаётся goal `spring-boot:build-info` только в этом runnable module. Обычная
+локальная сборка включает Maven group/artifact/name/version и UTC build time.
+Release/CI build дополнительно передаёт уже разрешённый полный Git SHA через
+`-Dbuild.commit=<sha>`; профиль `embed-build-commit` добавляет его как
+`build.commit`, проверяя full hexadecimal object ID, не выполняя `git` и не
+требуя `.git` во время runtime.
+Actuator публикует доступные значения в `/actuator/info`. Production beans не
+требуют наличия `BuildProperties`, поэтому запуск из IDE без generated metadata
+остаётся допустимым.
+
 `LoggingExportObserver` — bootstrap adapter application-порта: он переводит
 durable checkpoints saga в ECS actions/fields, не добавляя SLF4J-зависимость в
 application core.
