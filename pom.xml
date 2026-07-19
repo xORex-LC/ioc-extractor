@@ -21,6 +21,9 @@
     <properties>
         <revision>0.1.1-SNAPSHOT</revision>
         <java.version>21</java.version>
+        <tomcat.version>11.0.24</tomcat.version>
+        <jackson-2-bom.version>2.21.5</jackson-2-bom.version>
+        <log4j2.version>2.25.5</log4j2.version>
         <picocli.version>4.7.6</picocli.version>
         <re2j.version>1.7</re2j.version>
         <tika.version>3.3.1</tika.version>
