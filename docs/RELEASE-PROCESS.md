@@ -251,6 +251,9 @@ git diff --check
 
 Also run release-specific checks:
 
+- a successful manual `Dependency Security` workflow on the exact candidate
+  commit, with no untriaged Critical/High findings and no unused suppression
+  rules;
 - documentation link validation;
 - shell syntax checks for packaging scripts;
 - rendered systemd unit validation;
