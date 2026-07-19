@@ -312,10 +312,37 @@ The tag-triggered release workflow:
 6. computes SHA-256;
 7. creates or updates a draft release;
 8. uploads the jar and checksum;
-9. publishes the release only after all required assets and notes exist.
+9. leaves publication as an explicit maintainer action after assets and notes
+   have been reviewed.
 
 The release job receives only the permissions required to create release
 assets. Pull-request validation jobs do not receive release write permission.
+
+The executable implementation is `.github/workflows/release.yml`, supported by
+the local helpers in `packaging/`. A `workflow_dispatch` run accepts the expected
+tag identity and defaults to build-only mode: it validates and builds the
+selected ref, uploads the jar/checksum as a short-lived workflow artifact, but
+does not create a GitHub Release. Enabling `create_draft` additionally requires
+that the named remote tag already select the checked-out commit. A `v*` tag push
+always follows the draft path. GitHub exposes manual dispatch only after the
+workflow file exists on the repository's default branch.
+
+Both paths enforce the project tag subset (`vX.Y.Z` or `vX.Y.Z-rc.N`), exact
+Maven-version equality and a non-SNAPSHOT version. Any path that creates a
+draft also requires an annotated tag selecting the checked-out commit. The
+workflow injects that resolved commit into `spring-boot:build-info`, runs the
+complete reactor `clean verify` once, and verifies the packaged metadata plus
+the lightweight `--version` output before naming public assets. The separate
+write-enabled job downloads those same workflow-artifact bytes; it never runs
+Maven.
+
+Curated notes live at `.github/release-notes/<tag>.md` in the tagged source.
+The release job creates only a draft. On rerun it may restore missing draft
+assets or metadata, but it downloads every existing required asset and requires
+exact byte equality. It never uses replacement/clobber behavior; different
+bytes under the same tag fail the release-integrity gate. Once a release is
+published, the automation treats it as read-only and only verifies its required
+assets.
 
 ### 6. Deploy and verify
 

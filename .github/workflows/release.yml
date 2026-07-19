@@ -1,0 +1,166 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Expected vX.Y.Z or vX.Y.Z-rc.N identity for the selected ref
+        required: true
+        type: string
+      create_draft:
+        description: Create or repair a draft release (the tag must already exist)
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.prepare.outputs.release_tag }}
+      release_version: ${{ steps.prepare.outputs.release_version }}
+      prerelease: ${{ steps.prepare.outputs.prerelease }}
+      asset_name: ${{ steps.prepare.outputs.asset_name }}
+      checksum_name: ${{ steps.prepare.outputs.checksum_name }}
+      asset_sha256: ${{ steps.prepare.outputs.asset_sha256 }}
+    steps:
+      - name: Check out exact source revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Resolve and validate release identity
+        id: identity
+        env:
+          MANUAL_RELEASE_TAG: ${{ inputs.release_tag }}
+          CREATE_DRAFT: ${{ inputs.create_draft }}
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == 'push' ]]; then
+            release_tag=${GITHUB_REF_NAME}
+          else
+            release_tag=${MANUAL_RELEASE_TAG}
+          fi
+
+          project_version=$(./mvnw -q help:evaluate \
+            -Dexpression=project.version -DforceStdout)
+          packaging/prepare-release-artifacts.sh \
+            --tag "${release_tag}" \
+            --project-version "${project_version}" \
+            --validate-only
+
+          source_commit=$(git rev-parse HEAD)
+          if [[ "${GITHUB_EVENT_NAME}" == 'push' || "${CREATE_DRAFT}" == 'true' ]]; then
+            tag_type=$(git cat-file -t "refs/tags/${release_tag}")
+            [[ "${tag_type}" == 'tag' ]] || {
+              echo "Release tag ${release_tag} must be annotated" >&2
+              exit 1
+            }
+            tag_commit=$(git rev-parse "refs/tags/${release_tag}^{commit}")
+            [[ "${tag_commit}" == "${source_commit}" ]] || {
+              echo "Tag ${release_tag} does not select checked-out commit ${source_commit}" >&2
+              exit 1
+            }
+          fi
+
+          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+          echo "project_version=${project_version}" >> "${GITHUB_OUTPUT}"
+          echo "source_commit=${source_commit}" >> "${GITHUB_OUTPUT}"
+
+      # This is the only Maven build in the workflow. The release job consumes
+      # the resulting workflow artifact and never rebuilds the application.
+      - name: Build and verify the complete reactor once
+        run: >-
+          ./mvnw -B -ntp -T 1C
+          -Dbuild.commit=${{ steps.identity.outputs.source_commit }}
+          clean verify
+
+      - name: Reject source-tree changes produced by the build
+        run: |
+          if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+            git status --short
+            exit 1
+          fi
+
+      - name: Inspect identity and prepare public assets
+        id: prepare
+        run: |
+          packaging/prepare-release-artifacts.sh \
+            --tag "${{ steps.identity.outputs.release_tag }}" \
+            --project-version "${{ steps.identity.outputs.project_version }}" \
+            --commit "${{ steps.identity.outputs.source_commit }}" \
+            --jar "bootstrap/ioc-app/target/ioc-app-${{ steps.identity.outputs.project_version }}.jar" \
+            --output-dir release-dist >> "${GITHUB_OUTPUT}"
+
+      - name: Upload immutable workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ steps.prepare.outputs.release_tag }}
+          path: |
+            release-dist/${{ steps.prepare.outputs.asset_name }}
+            release-dist/${{ steps.prepare.outputs.checksum_name }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  doc-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check documentation links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --offline --no-progress
+            docs README.md packaging/README.md .github/release-notes
+          fail: true
+
+  draft-release:
+    if: github.event_name == 'push' || inputs.create_draft
+    needs: [build, doc-links]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out exact source revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download the build job's exact bytes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.build.outputs.release_tag }}
+          path: release-dist
+
+      - name: Create or verify draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          packaging/publish-release-draft.sh \
+            --tag "${{ needs.build.outputs.release_tag }}" \
+            --version "${{ needs.build.outputs.release_version }}" \
+            --asset "release-dist/${{ needs.build.outputs.asset_name }}" \
+            --checksum "release-dist/${{ needs.build.outputs.checksum_name }}" \
+            --notes ".github/release-notes/${{ needs.build.outputs.release_tag }}.md"

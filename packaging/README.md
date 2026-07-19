@@ -9,6 +9,8 @@ Installing and operating **ioc-extractor** as a `systemd` daemon on Debian 11+.
 | `install.sh` | From-scratch installer (root): JDK 21 (manual), user, directories, jar, config, systemd unit. |
 | `deploy-local.sh` | Ordinary-user entry point: verify/build, immutable release activation, health gate and rollback. |
 | `deploy-local-root.sh` | Privileged activation phase called by `deploy-local.sh`; not a user entry point. |
+| `prepare-release-artifacts.sh` | Validates tag/Maven/embedded build identity and creates the public jar plus SHA-256 sidecar. |
+| `publish-release-draft.sh` | Idempotently creates or repairs a GitHub draft release without replacing different bytes. |
 | `uninstall.sh` | Stop/remove the service; `--purge` also deletes the directory and the user. |
 | `templates/ioc-extractor.service` | Unit template; placeholders `@PREFIX@/@JAVA_BIN@/@USER@/@GROUP@` are substituted at install time. |
 | `templates/application.yml` | Production override (daemon mode); deployed to `<prefix>/etc/application.yml`. |
@@ -17,8 +19,16 @@ Installing and operating **ioc-extractor** as a `systemd` daemon on Debian 11+.
 
 **Layer rule:** deployment material only (shell + templates), no Java code or
 business logic. Daemon mode and configuration are documented in
-[docs/ingestion.md](../docs/ingestion.md) and
+[docs/dev/ingestion.md](../docs/dev/ingestion.md) and
 [application.yml](../bootstrap/ioc-app/src/main/resources/application.yml).
+
+The release helpers are also the local executable contract behind
+`.github/workflows/release.yml`. `prepare-release-artifacts.sh --validate-only`
+checks tag/version identity before an expensive build. Its full mode reads
+`META-INF/build-info.properties`, verifies the no-Spring `--version` output,
+copies the exact bootable jar to the public `ioc-extractor-X.Y.Z.jar` name and
+generates its checksum. `publish-release-draft.sh` never publishes a release and
+never uses `--clobber`: an existing asset with different bytes is a hard failure.
 
 ## Java 21 — manual install only
 
@@ -224,7 +234,7 @@ Fetch leaves the remote source untouched and atomically lands files in `var/inbo
 Publish transfers only integrity-verified directories from `var/export`; delivery
 progress is durable in `ioc-service.db`. The target share ACL normally needs read
 for fetch and create/write/rename for publish. Delete permission is not required by
-the v1 flow. Details: [docs/sync.md](../docs/sync.md).
+the v1 flow. Details: [docs/dev/sync.md](../docs/dev/sync.md).
 
 ## Operate
 
@@ -251,8 +261,8 @@ sudo /srv/ioc-extractor/bin/ioc sync publish --profile reputation-lists
 The daemon exposes `/actuator/health` and `/actuator/info` on `127.0.0.1:8081`
 (loopback only; `server.port`/`server.address` to change). `ioc health` queries it
 and exits `0` UP / `1` DOWN / `2` unreachable (usable as a probe); raw
-`curl -s http://127.0.0.1:8081/actuator/health` also works. Details:
-[docs/dev/0010-health-actuator.md](../docs/dev/0010-health-actuator.md).
+`curl -s http://127.0.0.1:8081/actuator/health` also works. Rationale:
+[ADR-0010](../docs/ADR/0010-health-actuator.md).
 
 Flow: `var/inbox` → (quiet-period) → `var/processing` → `var/done` (or `var/failed`),
 IOC rows are written directly into canonical `var/db/ioc-dataframe.db`, and the CSV
