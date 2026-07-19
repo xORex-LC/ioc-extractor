@@ -56,7 +56,7 @@ done
 for value in "${RELEASE_RETENTION}" "${BACKUP_RETENTION}" "${HEALTH_ATTEMPTS}" "${HEALTH_INTERVAL}"; do
   [[ "${value}" =~ ^[1-9][0-9]*$ ]] || die "retention/time values must be positive integers"
 done
-for command in git sha256sum sudo flock; do
+for command in find git sha256sum sudo flock; do
   command -v "${command}" >/dev/null 2>&1 || die "required command not found: ${command}"
 done
 
@@ -82,18 +82,24 @@ DIRTY_SUFFIX=""
 [[ "${DIRTY}" != "true" ]] || DIRTY_SUFFIX=" (dirty)"
 
 log "verifying ${COMMIT}${DIRTY_SUFFIX}"
-./mvnw -B -ntp -T 1C verify
+MAVEN_ARGS=(-B -ntp -T 1C clean verify)
+if [[ "${DIRTY}" != "true" ]]; then
+  MAVEN_ARGS+=("-Dbuild.commit=${COMMIT}")
+fi
+./mvnw "${MAVEN_ARGS[@]}"
 
-JAR="$(find "${REPO_ROOT}/bootstrap/ioc-app/target" -maxdepth 1 -type f \
-  -name 'ioc-app-*.jar' ! -name '*.original' -printf '%T@ %p\n' \
-  | sort -nr | head -1 | sed 's/^[^ ]* //')"
-[[ -f "${JAR}" ]] || die "verified application jar not found: ${JAR}"
+mapfile -d '' -t JAR_CANDIDATES < <(find "${REPO_ROOT}/bootstrap/ioc-app/target" \
+  -maxdepth 1 -type f -name 'ioc-app-*.jar' ! -name '*.original' -print0)
+[[ "${#JAR_CANDIDATES[@]}" -eq 1 ]] \
+  || die "clean build must produce exactly one application jar; found ${#JAR_CANDIDATES[@]}"
+JAR="${JAR_CANDIDATES[0]}"
 JAR_SHA256="$(sha256sum "${JAR}" | awk '{print $1}')"
 log "activating release ${RELEASE_ID} (${JAR_SHA256})"
 
 sudo "${SCRIPT_DIR}/deploy-local-root.sh" \
   --prefix "${PREFIX}" \
   --jar "${JAR}" \
+  --jar-sha256 "${JAR_SHA256}" \
   --release-id "${RELEASE_ID}" \
   --commit "${COMMIT}" \
   --dirty "${DIRTY}" \

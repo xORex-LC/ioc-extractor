@@ -6,6 +6,7 @@ set -Eeuo pipefail
 SERVICE="ioc-extractor"
 PREFIX=""
 JAR=""
+EXPECTED_JAR_SHA256=""
 RELEASE_ID=""
 COMMIT=""
 DIRTY="false"
@@ -24,6 +25,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --prefix) PREFIX="${2:?}"; shift 2 ;;
     --jar) JAR="${2:?}"; shift 2 ;;
+    --jar-sha256) EXPECTED_JAR_SHA256="${2:?}"; shift 2 ;;
     --release-id) RELEASE_ID="${2:?}"; shift 2 ;;
     --commit) COMMIT="${2:?}"; shift 2 ;;
     --dirty) DIRTY="${2:?}"; shift 2 ;;
@@ -38,9 +40,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ "${EUID}" -eq 0 ]] || die "privileged activation must run as root"
+for command in curl flock sha256sum systemctl tar; do
+  command -v "${command}" >/dev/null 2>&1 || die "required command not found: ${command}"
+done
 [[ "${PREFIX}" == /* && "${PREFIX}" != "/" ]] || die "unsafe prefix: ${PREFIX}"
 [[ "${PREFIX}" != *[[:space:]]* ]] || die "prefix must not contain whitespace"
 [[ -f "${JAR}" && ! -L "${JAR}" ]] || die "application jar must be a regular non-symlink file"
+[[ "${EXPECTED_JAR_SHA256}" =~ ^[0-9a-f]{64}$ ]] || die "invalid application SHA-256"
+[[ "$(sha256sum "${JAR}" | awk '{print $1}')" == "${EXPECTED_JAR_SHA256}" ]] \
+  || die "application jar changed after unprivileged verification"
 [[ "${RELEASE_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || die "invalid release id"
 [[ "${COMMIT}" =~ ^[0-9a-f]{40}$ ]] || die "invalid commit SHA"
 [[ "${DIRTY}" == "true" || "${DIRTY}" == "false" ]] || die "invalid dirty flag"
@@ -48,9 +56,6 @@ for value in "${PORT}" "${RELEASE_RETENTION}" "${BACKUP_RETENTION}" "${HEALTH_AT
   [[ "${value}" =~ ^[1-9][0-9]*$ ]] || die "numeric arguments must be positive integers"
 done
 [[ "${PORT}" -le 65535 ]] || die "invalid port"
-for command in curl flock sha256sum systemctl tar; do
-  command -v "${command}" >/dev/null 2>&1 || die "required command not found: ${command}"
-done
 
 exec 9>/run/lock/ioc-extractor-deploy.lock
 flock -n 9 || die "another privileged deployment is already running"
@@ -104,8 +109,10 @@ if [[ ! -e "${PREFIX}/current" || ! -f "/etc/systemd/system/${SERVICE}.service" 
   log "bootstrapping ${PREFIX}"
   "${SCRIPT_DIR}/install.sh" --prefix "${PREFIX}" --jar "${JAR}" \
     --release-id "${RELEASE_ID}" --no-start "${INSTALL_JAVA_ARGS[@]}"
-  printf 'release.id=%s\ncommit=%s\ndirty=%s\nbuilt.at=%s\n' \
-    "${RELEASE_ID}" "${COMMIT}" "${DIRTY}" "${BUILT_AT}" \
+  [[ "$(sha256sum "${PREFIX}/releases/${RELEASE_ID}/ioc-app.jar" | awk '{print $1}')" \
+      == "${EXPECTED_JAR_SHA256}" ]] || die "installed application checksum mismatch"
+  printf 'release.id=%s\ncommit=%s\ndirty=%s\nbuilt.at=%s\nartifact.sha256=%s\n' \
+    "${RELEASE_ID}" "${COMMIT}" "${DIRTY}" "${BUILT_AT}" "${EXPECTED_JAR_SHA256}" \
     > "${PREFIX}/releases/${RELEASE_ID}/release.properties"
   chmod 0644 "${PREFIX}/releases/${RELEASE_ID}/release.properties"
   systemctl start "${SERVICE}"
@@ -157,7 +164,7 @@ PREVIOUS_DIR="${PREFIX}/${PREVIOUS_TARGET}"
 RELEASE_DIR="${PREFIX}/releases/${RELEASE_ID}"
 if [[ -e "${RELEASE_DIR}" ]]; then
   [[ -f "${RELEASE_DIR}/ioc-app.jar" ]] || die "existing release is incomplete"
-  [[ "$(sha256sum "${JAR}" | awk '{print $1}')" == \
+  [[ "${EXPECTED_JAR_SHA256}" == \
      "$(sha256sum "${RELEASE_DIR}/ioc-app.jar" | awk '{print $1}')" ]] \
     || die "release id collision with different artifact bytes"
 else
@@ -165,10 +172,13 @@ else
   rm -rf -- "${STAGING}"
   mkdir -p "${STAGING}"
   install -m 0644 "${JAR}" "${STAGING}/ioc-app.jar"
-  printf '%s  ioc-app.jar\n' "$(sha256sum "${STAGING}/ioc-app.jar" | awk '{print $1}')" \
+  [[ "$(sha256sum "${STAGING}/ioc-app.jar" | awk '{print $1}')" \
+      == "${EXPECTED_JAR_SHA256}" ]] || die "staged application checksum mismatch"
+  printf '%s  ioc-app.jar\n' "${EXPECTED_JAR_SHA256}" \
     > "${STAGING}/ioc-app.jar.sha256"
-  printf 'release.id=%s\ncommit=%s\ndirty=%s\nbuilt.at=%s\n' \
-    "${RELEASE_ID}" "${COMMIT}" "${DIRTY}" "${BUILT_AT}" > "${STAGING}/release.properties"
+  printf 'release.id=%s\ncommit=%s\ndirty=%s\nbuilt.at=%s\nartifact.sha256=%s\n' \
+    "${RELEASE_ID}" "${COMMIT}" "${DIRTY}" "${BUILT_AT}" "${EXPECTED_JAR_SHA256}" \
+    > "${STAGING}/release.properties"
   chmod 0644 "${STAGING}/release.properties" "${STAGING}/ioc-app.jar.sha256"
   mv "${STAGING}" "${RELEASE_DIR}"
 fi

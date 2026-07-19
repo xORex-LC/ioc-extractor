@@ -1,7 +1,6 @@
 # packaging
 
 Installing and operating **ioc-extractor** as a `systemd` daemon on Debian 11+.
-Release `0.1.0`.
 
 ## Contents
 
@@ -37,7 +36,7 @@ self-contained:
 <prefix>/                         # default /opt/ioc-extractor
 ├── jdk/                          # Temurin 21 (installed manually)
 ├── releases/
-│   └── <commit>-<timestamp>/       # immutable jar, checksum and build identity
+│   └── <deployment-id>/          # immutable jar, checksum and build identity
 ├── current -> releases/<active>    # atomically switched by deployment
 ├── backups/                        # offline SQLite snapshots for rollback
 ├── bin/ioc                         # oneshot CLI launcher through systemd-run
@@ -93,8 +92,12 @@ changes, make that loss of reproducibility explicit:
 ./packaging/deploy-local.sh --allow-dirty
 ```
 
-The unprivileged phase runs the complete `./mvnw -B -ntp -T 1C verify` gate and
-builds the bootable jar. Only then does it invoke the privileged activation helper:
+The unprivileged phase runs the complete `./mvnw -B -ntp -T 1C clean verify`
+gate and requires exactly one resulting bootable jar. A clean checkout embeds
+its full commit through `build.commit`; an explicitly allowed dirty checkout is
+identified as dirty and does not claim exact embedded commit identity. The
+artifact digest is rechecked across the privileged boundary before activation.
+Only then does the script invoke the privileged activation helper:
 
 1. first run bootstraps through `install.sh`, reusing an installed Java 21+ outside
    `/home` and downloading bundled Temurin only when no suitable system Java exists;
@@ -149,15 +152,37 @@ unset until there are production measurements.
 
 ```bash
 # 1) build the release jar (requires JDK 21; see the root README)
-./mvnw -q -DskipTests package        # -> bootstrap/ioc-app/target/ioc-app-0.1.0.jar
+./mvnw -q -DskipTests package
+APP_VERSION="$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdout)"
+APP_JAR="bootstrap/ioc-app/target/ioc-app-${APP_VERSION}.jar"
 
-# 2) install (the jar is auto-discovered next to the script or in target/)
+# 2) install explicitly (recommended)
+sudo packaging/install.sh --jar "${APP_JAR}" --no-start
+
+# Published asset: verify its sidecar before any host mutation
+sudo packaging/install.sh \
+  --jar /tmp/ioc-extractor-X.Y.Z.jar \
+  --checksum /tmp/ioc-extractor-X.Y.Z.jar.sha256 \
+  --release-id vX.Y.Z
+
+# Optional autodiscovery succeeds only when exactly one candidate exists
 sudo packaging/install.sh                         # prompts for the directory (default /opt/ioc-extractor)
 sudo packaging/install.sh --prefix /opt/ioc-extractor
 sudo packaging/install.sh --jdk-tarball /tmp/temurin21.tar.gz   # offline host
-sudo packaging/install.sh --jar /path/ioc-app-0.1.0.jar --no-start
-sudo packaging/install.sh --jar /path/ioc-app.jar --release-id 2ad7c09-manual --no-start
 ```
+
+`--jar` is the authoritative artifact selection. Autodiscovery searches the
+packaging directory, its `lib/` directory and the runnable module's `target/`,
+then accepts exactly one `ioc-app-*.jar` or `ioc-extractor-*.jar`; zero or
+multiple candidates are errors. Filename and modification time never determine
+the product version or winner.
+
+When `--checksum` is omitted but `<jar>.sha256` exists, the installer verifies
+that sidecar automatically. A malformed or mismatching checksum stops before
+Java provisioning, service changes or artifact activation. Without an explicit
+`--release-id`, standalone installation uses `sha256-<12 hex>` derived from the
+artifact bytes. Release automation passes a human-facing ID such as `vX.Y.Z`;
+local deployment keeps `<commit>-<timestamp>` (and an explicit dirty marker).
 
 The installer is **idempotent**: re-running upgrades the jar and the unit; an
 existing `etc/application.yml` is not overwritten (a `*.new` is written next to it)
@@ -209,6 +234,7 @@ journalctl -u ioc-extractor -f                 # ECS-JSON logs (+ <prefix>/var/l
 cp report.htm /opt/ioc-extractor/var/inbox/    # submit a source for processing
 sudo /srv/ioc-extractor/bin/ioc health         # daemon health as a table (exit 0/1/2)
 sudo /srv/ioc-extractor/bin/ioc health --json  # raw JSON for scripts
+sudo /srv/ioc-extractor/bin/ioc --version      # packaged product/build identity
 ```
 
 The jar is intentionally not executable and must not be run as root. The rendered
@@ -243,7 +269,7 @@ sudo packaging/uninstall.sh                 # remove the service, keep data
 sudo packaging/uninstall.sh --purge         # + delete the directory and the ioc user
 ```
 
-## Out of scope (0.1.0)
+## Out of scope
 
 A `.deb` package with maintainer scripts; OS-level log rotation (currently the
 built-in Logback rolling appender).

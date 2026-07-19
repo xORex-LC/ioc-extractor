@@ -52,16 +52,18 @@ git clone https://github.com/xORex-LC/ioc-extractor.git
 cd ioc-extractor
 
 # build (only the bootstrap/ioc-app module produces a bootable jar)
-./mvnw -q -DskipTests package          # -> bootstrap/ioc-app/target/ioc-app-0.1.0.jar
+./mvnw -q -DskipTests package
+APP_VERSION="$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdout)"
+APP_JAR="bootstrap/ioc-app/target/ioc-app-${APP_VERSION}.jar"
 
 # inspect packaged build identity without starting Spring
-java -jar bootstrap/ioc-app/target/ioc-app-0.1.0.jar --version
+java -jar "${APP_JAR}" --version
 
 # one-shot run
-java -jar bootstrap/ioc-app/target/ioc-app-0.1.0.jar extract --source source/ioc-source.htm [--dry-run]
+java -jar "${APP_JAR}" extract --source source/ioc-source.htm [--dry-run]
 
 # export one configured immutable profile slice from accumulated SQLite truth
-java -jar bootstrap/ioc-app/target/ioc-app-0.1.0.jar export --profile reputation-lists
+java -jar "${APP_JAR}" export --profile reputation-lists
 ```
 
 The installed launcher exposes the same lightweight identity path as
@@ -77,7 +79,7 @@ regenerate `*_generated.csv` projections from that store. See
 profile exports by `ioc.export.trigger` and reports per-profile export health.
 
 ```bash
-java -jar bootstrap/ioc-app/target/ioc-app-0.1.0.jar --ioc.runtime.mode=daemon
+java -jar "${APP_JAR}" --ioc.runtime.mode=daemon
 # then drop *.htm / *.html / *.docx into ./var/inbox
 ```
 

@@ -323,6 +323,13 @@ Deployment consumes the published jar and verifies its checksum before
 activation. The existing immutable release directory, SQLite backup, health
 gate, and rollback protocol remain the deployment authority.
 
+The standalone installer takes the exact artifact through `--jar` and consumes
+an explicit `--checksum` or an adjacent `<jar>.sha256`; a mismatch fails before
+host mutation. Optional autodiscovery accepts exactly one candidate and never
+selects by filename version or modification time. Local checkout deployment
+uses a commit-and-time deployment ID, builds from `clean verify`, and rechecks
+the expected artifact SHA-256 after crossing the privileged boundary.
+
 After activation, record and verify:
 
 - product version;

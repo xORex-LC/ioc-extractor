@@ -19,19 +19,20 @@
 # (a *.new is written instead) unless --force is given.
 #
 # Usage:
-#   sudo ./install.sh [--prefix DIR] [--jar PATH] [--release-id ID] [--user NAME]
+#   sudo ./install.sh [--prefix DIR] [--jar PATH] [--checksum PATH]
+#                     [--release-id ID] [--user NAME]
 #                     [--jdk-tarball PATH | --jdk-url URL | --system-java]
 #                     [--no-start] [--force] [--help]
 #
 set -Eeuo pipefail
 
 # ---- defaults --------------------------------------------------------------
-APP_VERSION="0.1.0"
 SERVICE="ioc-extractor"
 DEFAULT_PREFIX="/opt/ioc-extractor"
 PREFIX=""
 RUN_USER="ioc"
 JAR=""
+CHECKSUM=""
 JDK_TARBALL=""
 JDK_URL=""
 USE_SYSTEM_JAVA="false"
@@ -58,6 +59,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --prefix)       PREFIX="${2:?}"; shift 2 ;;
     --jar)          JAR="${2:?}"; shift 2 ;;
+    --checksum)     CHECKSUM="${2:?}"; shift 2 ;;
     --release-id)   RELEASE_ID="${2:?}"; shift 2 ;;
     --user)         RUN_USER="${2:?}"; shift 2 ;;
     --jdk-tarball)  JDK_TARBALL="${2:?}"; shift 2 ;;
@@ -71,7 +73,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ---- preflight -------------------------------------------------------------
-[[ "${EUID}" -eq 0 ]] || die "must run as root (use sudo)."
+for command in find sha256sum sed; do
+  command -v "${command}" >/dev/null 2>&1 || die "required command not found: ${command}"
+done
 
 if [[ -r /etc/os-release ]]; then
   # shellcheck disable=SC1091
@@ -101,25 +105,63 @@ if [[ -e "${PREFIX}/pom.xml" || -d "${PREFIX}/.git" ]]; then
   [[ "${FORCE}" == "true" ]] || die "refusing to install into a source tree at ${PREFIX} (pom.xml/.git present). Pick another --prefix or pass --force."
 fi
 
-# Locate the application jar.
+# Locate the application jar. Explicit selection is preferred; autodiscovery is
+# deliberately strict so stale artifacts can never win by name or mtime.
 if [[ -z "${JAR}" ]]; then
-  for cand in \
-      "${SCRIPT_DIR}/ioc-app-${APP_VERSION}.jar" \
-      "${SCRIPT_DIR}/lib/ioc-app-${APP_VERSION}.jar" \
-      "${SCRIPT_DIR}/../bootstrap/ioc-app/target/ioc-app-${APP_VERSION}.jar"; do
-    [[ -f "${cand}" ]] && { JAR="${cand}"; break; }
+  JAR_CANDIDATES=()
+  for candidate_dir in \
+      "${SCRIPT_DIR}" \
+      "${SCRIPT_DIR}/lib" \
+      "${SCRIPT_DIR}/../bootstrap/ioc-app/target"; do
+    [[ -d "${candidate_dir}" ]] || continue
+    while IFS= read -r -d '' cand; do
+      JAR_CANDIDATES+=("${cand}")
+    done < <(find "${candidate_dir}" -maxdepth 1 -type f \
+      \( -name 'ioc-app-*.jar' -o -name 'ioc-extractor-*.jar' \) \
+      ! -name '*.original' -print0)
   done
+  case "${#JAR_CANDIDATES[@]}" in
+    0) die "application jar not found; pass --jar PATH" ;;
+    1) JAR="${JAR_CANDIDATES[0]}" ;;
+    *)
+      printf '%s\n' "${JAR_CANDIDATES[@]}" >&2
+      die "multiple application jars found; pass --jar PATH explicitly"
+      ;;
+  esac
 fi
-[[ -n "${JAR}" && -f "${JAR}" ]] || die "application jar not found; pass --jar PATH (looked for ioc-app-${APP_VERSION}.jar)."
+[[ -f "${JAR}" && ! -L "${JAR}" ]] || die "application jar must be a regular non-symlink file: ${JAR}"
 log "using jar: ${JAR}"
 
-RELEASE_ID="${RELEASE_ID:-v${APP_VERSION}}"
+JAR_SHA256="$(sha256sum "${JAR}" | awk '{print $1}')"
+if [[ -z "${CHECKSUM}" && -f "${JAR}.sha256" ]]; then
+  CHECKSUM="${JAR}.sha256"
+fi
+if [[ -n "${CHECKSUM}" ]]; then
+  [[ -f "${CHECKSUM}" && ! -L "${CHECKSUM}" ]] \
+    || die "checksum must be a regular non-symlink file: ${CHECKSUM}"
+  mapfile -t CHECKSUM_LINES < <(sed '/^[[:space:]]*$/d' "${CHECKSUM}")
+  [[ "${#CHECKSUM_LINES[@]}" -eq 1 ]] \
+    || die "checksum file must contain exactly one non-empty line: ${CHECKSUM}"
+  read -r EXPECTED_SHA256 _ <<< "${CHECKSUM_LINES[0]}"
+  [[ "${EXPECTED_SHA256}" =~ ^[0-9a-fA-F]{64}$ ]] \
+    || die "checksum file does not start with a SHA-256 digest: ${CHECKSUM}"
+  [[ "${EXPECTED_SHA256,,}" == "${JAR_SHA256}" ]] \
+    || die "application jar checksum mismatch: ${JAR}"
+  log "verified checksum: ${CHECKSUM}"
+fi
+
+RELEASE_ID="${RELEASE_ID:-sha256-${JAR_SHA256:0:12}}"
 [[ "${RELEASE_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] \
   || die "release id must match [A-Za-z0-9][A-Za-z0-9._-]{0,127}: ${RELEASE_ID}"
 
 log "install prefix : ${PREFIX}"
 log "service user   : ${RUN_USER}"
 log "release id    : ${RELEASE_ID}"
+log "artifact sha256: ${JAR_SHA256}"
+
+# Artifact selection and checksum validation are intentionally safe to run
+# before privilege validation. No host state is changed above this boundary.
+[[ "${EUID}" -eq 0 ]] || die "must run as root (use sudo)."
 
 # ---- 1. Java (manual, no apt repositories) ---------------------------------
 java_major() { "$1" -version 2>&1 | sed -n 's/.*version "\([0-9]*\).*/\1/p' | head -1; }
@@ -223,7 +265,7 @@ RELEASE_DIR="${PREFIX}/releases/${RELEASE_ID}"
 if [[ -e "${RELEASE_DIR}" ]]; then
   [[ -f "${RELEASE_DIR}/ioc-app.jar" ]] \
     || die "release path exists but has no application jar: ${RELEASE_DIR}"
-  [[ "$(sha256sum "${JAR}" | awk '{print $1}')" == \
+  [[ "${JAR_SHA256}" == \
      "$(sha256sum "${RELEASE_DIR}/ioc-app.jar" | awk '{print $1}')" ]] \
     || die "release id already exists with different bytes: ${RELEASE_ID}"
   log "reusing immutable release ${RELEASE_ID}"
@@ -231,7 +273,10 @@ else
   log "deploying immutable release ${RELEASE_ID}"
   mkdir -p "${RELEASE_DIR}"
   install -m 0644 "${JAR}" "${RELEASE_DIR}/ioc-app.jar"
-  printf '%s  ioc-app.jar\n' "$(sha256sum "${RELEASE_DIR}/ioc-app.jar" | awk '{print $1}')" \
+  INSTALLED_SHA256="$(sha256sum "${RELEASE_DIR}/ioc-app.jar" | awk '{print $1}')"
+  [[ "${INSTALLED_SHA256}" == "${JAR_SHA256}" ]] \
+    || die "installed application jar checksum mismatch"
+  printf '%s  ioc-app.jar\n' "${INSTALLED_SHA256}" \
     > "${RELEASE_DIR}/ioc-app.jar.sha256"
 fi
 CURRENT_LINK="${PREFIX}/.current.$$"
