@@ -2,7 +2,7 @@
 
 - **Статус:** принято (дизайн); реализация ждёт
 - **Дата:** 2026-06-21
-- **Связано:** [../output-mapping.md](../dev/output-mapping.md),
+- **Связано:** [processing](../dev/processing.md),
   [../architecture.md](../ARCHITECTURE.md), [0001-streaming-ingestion.md](0001-streaming-ingestion.md)
 
 ## Контекст

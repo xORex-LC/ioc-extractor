@@ -27,10 +27,8 @@ delivery не меняются. Этот ADR реализует отложенн
 
 Связанные опубликованные документы:
 
-- [LOGGING.md](../dev/LOGGING.md);
-- [LOGGING-TAXONOMY.md](../dev/LOGGING-TAXONOMY.md);
+- [observability.md](../dev/observability.md);
 - [LOGGING-CATALOG.md](../LOGGING-CATALOG.md);
-- [DIAGNOSTICS.md](../dev/DIAGNOSTICS.md).
 
 ## Контекст
 

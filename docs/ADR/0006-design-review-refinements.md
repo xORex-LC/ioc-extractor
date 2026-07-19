@@ -2,8 +2,8 @@
 
 - **Статус:** принято (дизайн)
 - **Дата:** 2026-06-21
-- **Связано:** [../ingestion.md](../dev/ingestion.md), [../output-mapping.md](../dev/output-mapping.md),
-  [../extraction.md](../dev/extraction.md), [../architecture.md](../ARCHITECTURE.md),
+- **Связано:** [ingestion](../dev/ingestion.md), [processing](../dev/processing.md),
+  [architecture](../ARCHITECTURE.md),
   [0002-output-mapping-and-matching.md](0002-output-mapping-and-matching.md)
 
 ## Контекст

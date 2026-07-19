@@ -135,9 +135,9 @@ supported contract не входят. Их появление является �
 | `SEC-GOV-1` | Project-wide security policy и control registry | Manual | этот tracked документ, карта в [README.md](README.md), обязательный review вместе с изменением security boundary |
 | `SEC-ARC-1` | Inward dependency rule и изоляция внешних libraries в adapters | Enforced | module graph, ArchUnit и Maven reactor; [BOUNDARIES.md](BOUNDARIES.md) |
 | `SEC-CFG-1` | Strict `ioc.*` startup boundary | Enforced | unknown-key preflight, typed binding, semantic validation и `CONFIG.*` failure analysis; [ADR-0016](ADR/0016-config-preflight-strict-binding.md) |
-| `SEC-INP-1` | RE2-safe regex contract | Enforced | RE2/J по умолчанию, JDK fallback и RE2-compatible patterns; [extraction.md](dev/extraction.md) |
+| `SEC-INP-1` | RE2-safe regex contract | Enforced | RE2/J по умолчанию, JDK fallback и RE2-compatible patterns; [processing.md](dev/processing.md) |
 | `SEC-INP-2` | Bounded resource policy для document parsing | Planned | gap зарегистрирован как `SRC-2` в [KNOWN-ISSUES.md](KNOWN-ISSUES.md); activation — отдельный hardening slice |
-| `SEC-LOG-1` | Redaction чувствительных IOC/URL components и transport credentials | Enforced | `SensitiveLogValueSanitizer`, diagnostic formatter и regression tests; [LOGGING.md](dev/LOGGING.md) |
+| `SEC-LOG-1` | Redaction чувствительных IOC/URL components и transport credentials | Enforced | `SensitiveLogValueSanitizer`, diagnostic formatter и regression tests; [observability.md](dev/observability.md) |
 | `SEC-DATA-1` | Atomic durable protocols и checksummed immutable export slices | Enforced | ledgers, manifests, `_SUCCESS`, checksum verification и recovery contracts; [sync.md](dev/sync.md) |
 
 ### 4.2. Dependencies, CI и supply chain

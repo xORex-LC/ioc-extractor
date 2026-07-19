@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Exercises the whole classification chain (feature extraction + PSL host
  * classifier + the default 4-variant rules) against the buckets in
- * docs/extraction.md. Synthetic inputs only — no project artifacts.
+ * docs/dev/processing.md. Synthetic inputs only — no project artifacts.
  */
 class RuleBasedMatchPolicyTest {
 

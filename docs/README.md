@@ -7,7 +7,7 @@
 | Бакет | Тест: «этот документ…» |
 |---|---|
 | **`docs/*.md`** (корень, UPPERCASE) | …описывает весь проект или правило, действующее везде? (карты и закон) |
-| **[dev/](dev/)** | …объясняет, как внутри устроена одна способность, для того, кто будет менять её код? |
+| **[dev/](dev/)** (`lowercase-kebab-case.md`) | …объясняет, как внутри устроена одна способность, для того, кто будет менять её код? |
 | **[ADR/](ADR/)** | …фиксирует, почему мы приняли решение X на момент времени? (immutable) |
 | **[guides/](guides/)** | …рассказывает админу/интегратору, как этим пользоваться, эксплуатировать или расширять? |
 
@@ -28,26 +28,26 @@
 
 ## Способности (dev/): как это работает внутри
 
-Технические нарративы по способностям — для того, кто меняет код. Способность
-обычно пересекает несколько Maven-модулей; реестр отдельного модуля — в его
-`README.md` рядом с кодом.
+Короткие инженерные guidebook-документы по способностям — для того, кто меняет
+их поведение. Они фиксируют устойчивый runtime flow, границы, инварианты,
+failure/recovery semantics и точки расширения, но не пересказывают классы,
+полный YAML или историю реализации. Точные детали остаются рядом с кодом и в
+тестах; каждый guide явно указывает источники истины и триггеры обновления.
+Имена имеют форму `lowercase-kebab-case.md`; шаблон — [dev/template.md](dev/template.md).
 
 | Документ | О чём |
 |---|---|
-| [dev/extraction.md](dev/extraction.md) | Извлечение/нормализация IOC, PSL/onion-классификация и тест-корпус |
-| [dev/pipeline.md](dev/pipeline.md) | ETL-конвейер: Pipes-and-Filters (EIP) + Envelope + Result/Either |
-| [dev/output-mapping.md](dev/output-mapping.md) | Конфигурируемое заполнение артефактов: провайдеры + трансформации, декларативные колонки |
-| [dev/ingestion.md](dev/ingestion.md) | Стриминговый демон-инжест: детект, автомат каталогов, JDBC truth, CSV-проекции, идемпотентность, lifecycle |
-| [dev/sync.md](dev/sync.md) | Remote fetch/publish: SMB transport, ledgers, atomic protocols, CLI, scheduler lifecycle и health |
-| [dev/event-coordination.md](dev/event-coordination.md) | Event-driven координация: когда применять события, контракт `platform-events`, keyed single-flight, correctness-via-reconcile, anti-broker guardrails, эволюция к брокеру |
-| [dev/DIAGNOSTICS.md](dev/DIAGNOSTICS.md) | Диагностика обработки данных: каталог кодов, данные→сообщение, Result/Notification, bridge в logging |
-| [dev/LOGGING.md](dev/LOGGING.md) | Operational logging и трассировка: ECS JSON, rolling file, MDC, daemon/oneshot профили |
-| [dev/LOGGING-TAXONOMY.md](dev/LOGGING-TAXONOMY.md) | Таксономия логов: ECS mapping, `event.*`, project-specific поля `ioc.*`, связь с diagnostics |
-| [dev/CROSS-CUTTING.md](dev/CROSS-CUTTING.md) | Сквозные подсистемы (логирование, диагностика, ошибки) как модули за портами |
+| [dev/processing.md](dev/processing.md) | Чтение, refang, extraction, attribution, classification, mapping и policy-gated commit |
+| [dev/storage.md](dev/storage.md) | Canonical SQLite, row identity/provenance, public ID и CSV-проекции |
+| [dev/ingestion.md](dev/ingestion.md) | Daemon file lifecycle, durable ledgers, retry и recovery |
+| [dev/artifact-export.md](dev/artifact-export.md) | Consistent immutable export slices, manifest/marker и export saga |
+| [dev/sync.md](dev/sync.md) | Remote fetch/publish, transport boundary, ledgers и reconcile |
+| [dev/event-coordination.md](dev/event-coordination.md) | Event hints, consumer-owned admission и correctness-via-reconcile |
+| [dev/configuration.md](dev/configuration.md) | Strict `ioc.*` boundary, precedence, validation и registry preflight |
+| [dev/observability.md](dev/observability.md) | Diagnostics, failure policy, typed ECS logging, MDC и redaction |
 
-> Генерируемая карта `DIAGNOSTICS-CATALOG.md` остаётся в корне (это reference-артефакт
-> по всему проекту), а описание того, как устроена подсистема диагностики, живёт в
-> `dev/DIAGNOSTICS.md`.
+> Генерируемые `DIAGNOSTICS-CATALOG.md` и `LOGGING-CATALOG.md` остаются
+> reference-артефактами в корне; их контракты объясняет `dev/observability.md`.
 
 ## Решения (ADR/) и гайды
 
@@ -67,9 +67,11 @@ capability-документ или `KNOWN-ISSUES.md`.
   рядом с кодом (см. [CONVENTIONS.md](CONVENTIONS.md#readme-в-каждом-каталоге)).
 - ADR — immutable: принятое решение не редактируем под новую реальность, а
   добавляем supersede-ADR (или датированную надстройку) со ссылкой на старое.
-- После фичи или значимого рефактора обновляем затронутые доки в том же
-  изменении — dev-доку способности и задетые карты. Устаревший док — как
-  падающий тест.
+- После изменения capability-контракта обновляем затронутый guide и карты в том
+  же change. Переименование класса без изменения flow/invariant не требует
+  переписывать guide.
+- В dev/ не дублируем version matrix, class inventory, полный configuration
+  reference и generated catalogs. Ссылаемся на живой source of truth.
 - Генерируемые доки (напр. `DIAGNOSTICS-CATALOG.md`) генерируются, а не правятся
   руками: что можно вывести из кода — выводим, оно не рассинхронизируется.
 - Документы пишутся на русском; код, Javadoc и идентификаторы — на английском.

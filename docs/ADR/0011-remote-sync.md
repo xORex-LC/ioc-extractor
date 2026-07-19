@@ -187,8 +187,8 @@ publish_ledger`, затем стартует периодический цикл
 **10. Наблюдаемость — диагностика + ECS-логи (детальная таксономия).** Новая категория
 `DiagnosticCategory.SYNC` (`id` `SYNC.<NAME>`, `messageKey` `sync.<kebab>`) + ECS-события;
 статусы последнего fetch/publish (время, счётчики, ошибки) — в `ioc health`; `--dry-run`
-для sync — в духе `extract --dry-run`. Конвенции — [diagnostics.md](../dev/DIAGNOSTICS.md) /
-[logging-taxonomy.md](../dev/LOGGING-TAXONOMY.md).
+для sync — в духе `extract --dry-run`. Конвенции —
+[observability.md](../dev/observability.md).
 
 **Дисциплина полноты** (правило проекта): error-ось — *замкнутая*, фиксируем полно **в
 дизайне** сейчас; flow-коды, `event.action` и `ioc.*`-поля — ядро + рост, в

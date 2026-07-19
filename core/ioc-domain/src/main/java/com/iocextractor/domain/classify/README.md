@@ -22,7 +22,7 @@
 ## Заметки
 
 4-вариантная схема и правила — `application.yml` (`ioc.classify.rules`) и
-`docs/output-mapping.md` (декларативная классификация). Вид хоста (PSL) приходит
+`docs/dev/processing.md` (декларативная классификация). Вид хоста (PSL) приходит
 через признаки `domain.feature` (порт `HostClassifier`).
 Decision материализуется application-стадией ровно один раз на indicator;
 artifact providers и filters только читают его и не повторяют feature extraction.

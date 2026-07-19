@@ -4,7 +4,7 @@
   заменена storage-коллапсом** (см. ниже)
 - **Дата:** 2026-06-21
 - **Связано:** [../ingestion.md](../dev/ingestion.md), [../architecture.md](../ARCHITECTURE.md),
-  [../cross-cutting.md](../dev/CROSS-CUTTING.md), [../modularization.md](../MODULARIZATION.md)
+  [observability](../dev/observability.md), [modularization](../MODULARIZATION.md)
 
 > **Superseded (storage Step 1–3 / β-коллапс):** этот ADR — историческая запись
 > исходного дизайна с partition-staging, отдельным проходом агрегации и stable-id
@@ -69,7 +69,7 @@ CLI-запуск «один прогон → выход» остаётся по�
   libraries — later/optional. SHA-256 можно считать через JDK `MessageDigest`
   без `commons-codec`. Детали — в [../ingestion.md](../dev/ingestion.md).
 - Смыкается со сквозной **подсистемой ошибок** (политика fail-fast vs
-  collect-and-continue, dead-letter) — [../cross-cutting.md](../dev/CROSS-CUTTING.md).
+  collect-and-continue, dead-letter) — [observability](../dev/observability.md).
 
 ## Открытые вопросы
 

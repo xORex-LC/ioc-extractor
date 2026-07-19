@@ -35,10 +35,10 @@ observability подключён через порт `PipelineObserver`, три 
 
 ## Следствия
 
-- Отражено в доке: [diagnostics.md](../dev/DIAGNOSTICS.md) (статус этапов внедрения,
+- Отражено в доке: [diagnostics.md](../dev/observability.md) (статус этапов внедрения,
   `TemplateDiagnosticRenderer` вместо MessageSource, `MessageCatalog`/i18n отложены,
-  баннер про D1), [pipeline.md](../dev/pipeline.md) (реальный `Result`-record, `Pipeline`/
-  `PipelineRunner`/`PipelineObserver`, этап 7 как realized), [logging.md](../dev/LOGGING.md)
+  баннер про D1), [pipeline.md](../dev/processing.md) (реальный `Result`-record, `Pipeline`/
+  `PipelineRunner`/`PipelineObserver`, этап 7 как realized), [logging.md](../dev/observability.md)
   (актуальный API `MdcScope.open().put(...)`).
 - `event.dataset` статический (`ioc-extractor`) — уже синхронизировано в
   logging.md/logging-taxonomy.md (encoder фильтрует reserved ECS keys из MDC).

@@ -92,13 +92,14 @@ java -jar "${APP_JAR}" --ioc.runtime.mode=daemon
 | `address_blacklist` | `address_blacklist_generated.csv` | two columns: `forbidden_url` (domains/URLs/IP-URLs) and `forbidden_ip` (bare IP only) |
 | `hashes` | `hashes_list_generated.csv` | MD5 / SHA1 / SHA256 (UPPER-cased), routed to per-algorithm columns |
 
-Schemas, normalization and column filling are described in [docs/output-mapping.md](docs/dev/output-mapping.md).
+Schemas, normalization and column filling are described in [processing.md](docs/dev/processing.md).
 
 ## Configuration
 
 The single source of truth is [bootstrap/ioc-app/src/main/resources/application.yml](bootstrap/ioc-app/src/main/resources/application.yml),
-under the `ioc.*` tree (`runtime`, `storage`, `source`, `refang`, `engine`, `patterns`,
-`classify`, `sink`, `lookup`, `artifact-identity`, `export`, `ingestion`, `maintenance`). Override order:
+under the `ioc.*` tree (`runtime`, `storage`, `observability`, `source`, `refang`,
+`engine`, `patterns`, `classify`, `sink`, `pipeline`, `artifact-identity`,
+`ingestion`, `maintenance`, `export`, `sync`). Override order:
 
 ```text
 classpath:application.yml  <  ./configs/application.yml  <  CLI flags / env
@@ -135,7 +136,7 @@ A multi-module Maven reactor; **one external adapter = one library**:
 ```text
 platform/   cross-cutting subsystems behind ports (errors, diagnostics, etl, observability)
 core/       ioc-domain (pure Java) + ioc-application (use cases, ports, stages, ingest, artifact storage)
-adapters/   one library each: regex-re2j · psl · source-tika · lookup-csv · sink-csv · manifest-json-jackson · store-jdbc · ingest · cli-picocli
+adapters/   external integrations: regex-re2j · psl · source-tika · sink-csv · manifest-json-jackson · store-jdbc · transport-smb · ingest · cli-picocli
 bootstrap/  ioc-app — composition root + Spring Boot entry point (CLI/daemon, no web)
 ```
 
@@ -145,11 +146,11 @@ Principles, architecture and conventions live in [docs/](docs/) (in Russian):
 
 - [architecture.md](docs/ARCHITECTURE.md) — Clean Hexagonal + Onion, layers, the dependency rule;
 - [modularization.md](docs/MODULARIZATION.md) — the reactor module map;
-- [pipeline.md](docs/dev/pipeline.md) — the Pipes-and-Filters pipeline;
-- [output-mapping.md](docs/dev/output-mapping.md) — declarative artifact filling;
+- [processing.md](docs/dev/processing.md) — extraction, classification and declarative artifact filling;
+- [storage.md](docs/dev/storage.md) · [artifact-export.md](docs/dev/artifact-export.md) — canonical truth and immutable delivery slices;
 - [ingestion.md](docs/dev/ingestion.md) — the streaming daemon, JDBC truth and CSV projection;
 - [boundaries.md](docs/BOUNDARIES.md) — architectural boundary enforcement (ArchUnit + Enforcer);
-- [diagnostics.md](docs/dev/DIAGNOSTICS.md) · [logging.md](docs/dev/LOGGING.md) — diagnostics and ECS observability;
+- [observability.md](docs/dev/observability.md) — diagnostics and typed ECS observability;
 - [principles.md](docs/PRINCIPLES.md) · [conventions.md](docs/CONVENTIONS.md) — engineering principles and conventions.
 
 ## Development

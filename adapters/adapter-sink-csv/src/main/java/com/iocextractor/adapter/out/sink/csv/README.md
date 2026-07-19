@@ -39,7 +39,7 @@ dataframe и формирование immutable export slices. Схема арт
 
 Диалект: `;`, кавычки на не-null значениях, `null` → литерал `NULL`
 (`QuoteMode.ALL_NON_NULL` + `nullString`). DSL ограничен (см.
-`docs/output-mapping.md`): artifact `include`/`exclude`, провайдер/`const`,
+`docs/dev/processing.md`): artifact `include`/`exclude`, провайдер/`const`,
 `when-type`, упорядоченные `transform` — без выражений в конфиге. Реестры
 собираются в `bootstrap/AppConfig`.
 

@@ -78,6 +78,25 @@ public interface SourceReader {
 - README — навигация и правила границ; подробные контракты — в Javadoc.
 - README на русском; пути, имена типов и пакетов — как в коде.
 
+## Capability guides в `docs/dev`
+
+Dev-документ — короткая карта одной сквозной способности, а не словесная копия
+кода. Он обязан отвечать на вопросы: где начинается и заканчивается capability,
+каков основной runtime flow, какие инварианты нельзя нарушить, как ведут себя
+failure/recovery и где проверять актуальную механику.
+
+- Новый guide создаём из [dev/template.md](dev/template.md); имя —
+  `lowercase-kebab-case.md`.
+- Перечни классов, сигнатуры и точные module dependencies держим в co-located
+  `README.md`, Javadoc и коде.
+- Полный config reference, версии dependency и generated catalogs не копируем:
+  guide ссылается на их authoritative source.
+- Историю и rationale фиксирует ADR, открытый scope — `KNOWN-ISSUES.md`,
+  operator steps — `guides/`.
+- В каждом guide обязательны «Источники истины» и «Когда обновлять документ».
+  Изменение инварианта/границы обновляет guide в том же change; rename класса —
+  нет.
+
 ## Код
 
 - **Неизменяемость value objects.** Доменные модели — `record`; коллекции
@@ -112,4 +131,5 @@ public interface SourceReader {
 - **Проверяем логику, не текущие данные.** Тест-корпус (case-table + golden)
   живёт в тест-ресурсах; кейсы изолированы — добавление одного не ломает другие.
 - JUnit 5 + AssertJ; для case-table — параметризованные тесты (`@MethodSource`/CSV).
-  Детали корпуса — [extraction.md](dev/extraction.md#тест-корпус-и-изоляция-тестов).
+  Контракт обработки — [processing.md](dev/processing.md); точные fixtures и
+  case tables остаются рядом с тестами.

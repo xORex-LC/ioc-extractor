@@ -82,7 +82,7 @@ read (SourceReader)
 ```
 
 Подход к конвейеру (Pipes-and-Filters + `Envelope`/diagnostics) —
-[pipeline.md](dev/pipeline.md).
+[processing.md](dev/processing.md).
 
 Конвейер — цепочка независимых стадий: новую стадию/реализацию добавляем, не
 трогая остальные (OCP). Маршрутизация по типу индикатора и декларативным
@@ -137,7 +137,7 @@ publish начинается только после локального export
 Политика — **rule-based и декларативная**: тонкий вычислитель + реестр
 предикатов над признаками индикатора; сами правила и коды задаются конфигом
 (не зашиты в код). Модель — в
-[output-mapping.md](dev/output-mapping.md#декларативная-классификация-масок-matchurl--matchhost).
+[processing.md](dev/processing.md).
 
 > Ручной эталон использует только варианты 1 и 3; варианты 2 и 4 — по
 > авторитетному правилу, поэтому вывод на поддоменах/параметрах закономерно
@@ -146,7 +146,7 @@ publish начинается только после локального export
 ## Артефакты и заполнение
 
 Колонки и правила заполнения артефактов **декларативны в конфиге**, не в коде
-(provider/transform-модель). Детали — [output-mapping.md](dev/output-mapping.md).
+(provider/transform-модель). Детали — [processing.md](dev/processing.md).
 
 Текущие артефакты:
 
@@ -179,8 +179,7 @@ publish начинается только после локального export
 явное имя форсит text/HTML, docx/pdf — по дизайну нет); внутри — Unicode `String`.
 Выход всех CSV-проекций и export-срезов — в `ioc.sink.csv.charset`;
 непредставимые символы заменяются с WARN-сигналом, неизвестное имя кодировки —
-fail-fast. Детали — [extraction.md](dev/extraction.md) и
-[output-mapping.md](dev/output-mapping.md).
+fail-fast. Детали — [processing.md](dev/processing.md).
 
 **Форматы источников.** Контрактными тестами адаптера закреплены HTML (включая
 legacy `cp1251` при явном charset), PDF, DOCX и XLSX. Другие форматы, которые
@@ -236,6 +235,6 @@ canonical SQLite (one WAL read tx) ──▶ CSV files ──▶ manifest.json �
 
 - Многомодульная структура и правила зависимостей —
   [modularization.md](MODULARIZATION.md).
-- Сквозные подсистемы логирования, диагностики и ошибок —
-  [cross-cutting.md](dev/CROSS-CUTTING.md).
+- Диагностика, failure policy и structured logging —
+  [observability.md](dev/observability.md).
 - Автоматическая защита границ — [boundaries.md](BOUNDARIES.md).

@@ -1,280 +1,160 @@
 # Синхронизация с внешними хранилищами
 
-Remote sync обеспечивает два независимых потока поверх существующих bounded contexts:
+Sync соединяет внешнее файловое хранилище с локальными capability, не смешивая
+их ответственность:
 
 ```text
-remote source ──fetch──▶ var/inbox ──штатный ingest──▶ canonical SQLite
-canonical SQLite ──export──▶ immutable slice ──publish──▶ remote target
+remote source -> fetch -> local inbox -> ingestion -> canonical SQLite
+canonical SQLite -> export slice -> publish -> remote target
 ```
 
-Sync не извлекает IOC и не формирует CSV. Fetch заканчивается после атомарного
-появления файла в inbox; publish принимает только проверенный completed export slice.
-Транспорт скрыт за `FileTransport`; текущая реализация SMB2/3 находится в отдельном
+Fetch не извлекает IOC, publish не строит артефакты. Транспорт скрыт за
+`FileTransport`; текущая реализация SMB2/3 изолирована в
 `adapter-transport-smb`.
 
-## Конфигурация
-
-Функция выключена по умолчанию. Секреты передаются через environment placeholders;
-публиковать реальные значения в `application.yml` нельзя.
-В systemd deployment значения задаются в `etc/ioc-extractor.env` с режимом `0640`;
-generic unit разрешает исходящие `AF_INET/AF_INET6` соединения для SMB (обычно TCP/445),
-но не выдаёт процессу Linux capabilities и не требует CIFS mount.
-
-```yaml
-ioc:
-  sync:
-    enabled: true
-    retry: { max-attempts: 3, backoff: 1s, multiplier: 2.0, max-backoff: 30s, jitter: true }
-    endpoints:
-      - name: intel-share
-        transport: smb
-        smb:
-          host: files.example.org
-          share: intel
-          domain: CORP
-          username: ${SMB_USER}
-          password: ${SMB_PASSWORD}
-          encrypt: true
-          connect-timeout: 10s
-          request-timeout: 30s
-          idle-timeout: 5m
-    fetch:
-      enabled: true
-      interval: 1m
-      sources:
-        - name: incoming-intel
-          endpoint: intel-share
-          remote-path: /incoming
-          include: ["*.htm", "*.html", "*.docx"]
-          exclude: ["*.part", ".*"]
-    publish:
-      enabled: true
-      interval: 5m
-      targets:
-        - name: reputation-delivery
-          endpoint: intel-share
-          remote-path: /out/reputation
-          export-profile: reputation-lists
-```
-
-Имена endpoint/source/target уникальны. Ссылки на endpoint и export profile
-валидируются при binding; неизвестный transport отклоняется до первой операции.
-SMB-соединение создаётся лениво и переиспользуется внутри endpoint; credentials не
-входят в `toString()` и operational logs.
-
-`connect-timeout` ограничивает TCP connect (DNS resolution не входит в гарантированный
-wall-clock deadline), `request-timeout` ограничивает один SMB read/write/transact
-request, а `idle-timeout` определяет, сколько держать неиспользуемый cached client.
-Reader socket использует внутренний `SO_TIMEOUT=0`: живое соединение не закрывается
-только из-за отсутствия входящих пакетов. Устаревший `read-timeout` удалён после
-миграционного периода; используйте `request-timeout`.
-
-## Fetch: remote → inbox
-
-Источник read-only: v1 не выполняет remote move/delete/claim. Для каждого объекта
-identity равен `(path, size, modifiedAt)` и хранится в `remote_fetch_ledger`.
-
-Daemon-путь разделяет detection и execution:
-
-1. `RemoteSourceMonitor` делает `list`, include/exclude filtering и отсекает уже
-   `FETCHED` и process-local in-flight identities.
-2. Найденная bounded batch публикуется как control event `RemoteChangeBatchDetected`
-   без содержимого файлов.
-3. Bootstrap listener превращает событие в `FetchRemoteObjectsCommand` и ставит
-   work в keyed executor по endpoint. Перед admission identity атомарно claim-ится в
-   in-flight registry и освобождается после success/failure/rejection; поэтому медленная
-   загрузка не переэмитится на каждом monitor tick.
-4. `RemoteFetchService` скачивает уже переданные identities без повторного `list`.
-5. `get` пишет в скрытый `inbox/.sync-staging/*.part`.
-6. После close/fsync файл атомарно перемещается в финальное inbox-имя.
-7. Только после move ledger получает `FETCHED`.
-
-CLI/manual `sync fetch` остаётся reconcile-путём: он может выполнить detection и
-execution одним вызовом, сохраняя прежнее поведение команды.
-
-Занятое имя не перезаписывается: новая identity получает стабильный suffix. Ошибка
-download/move не оставляет include-visible partial file и безопасно повторяется.
-
-## Publish: completed slice → target
-
-Worklist строится `CompletedSliceCatalog` только из каталогов, прошедших цепочку
-`_SUCCESS → manifest hash → manifest decode → artifact size/hash → exact membership`.
-Staging игнорируется. Incomplete/corrupt final не превращается в publish work:
-profile discovery пропускает такой каталог с `SYNC.LOCAL_SLICE_INVALID`, а
-точечный lookup для уже известной ledger-pair остаётся строгим.
-
-Для каждой пары `(slice_id, target_id)` `publish_ledger` хранит независимую сагу:
+## Поток fetch
 
 ```text
-PENDING ─▶ IN_PROGRESS ─▶ SUCCEEDED
-                  └─────▶ FAILED ─▶ IN_PROGRESS
-PENDING|IN_PROGRESS|FAILED ─▶ ABANDONED
+periodic/startup/CHANGE_NOTIFY hint
+  -> detect: list + include/exclude + ledger/in-flight filtering
+  -> RemoteChangeBatchDetected
+  -> endpoint-keyed admission
+  -> download into hidden .sync-staging/*.part
+  -> fsync + atomic move into inbox
+  -> remote_fetch_ledger = FETCHED
 ```
 
-`FAILED` повторяется на следующем tick; `SUCCEEDED` и `ABANDONED` terminal. Адаптер
-копирует slice byte-for-byte во временный remote-каталог и делает `_SUCCESS`
-последней commit-точкой. Если после crash remote marker уже существует и совпадает с
-manifest hash, ledger восстанавливается вперёд в `SUCCEEDED`; mismatch даёт
-`SYNC.PUBLISH_VERIFY_FAILED`. Зависший `IN_PROGRESS` старше recovery cutoff также
-попадает в retryable read model: повторная попытка безопасна, потому что сначала
-проверяется remote `_SUCCESS`.
+Remote object identity — `(path, size, modifiedAt)`. Source остаётся read-only:
+успешный fetch не удаляет и не перемещает объект на remote стороне. Занятое
+локальное имя не перезаписывается; новая identity получает стабильный suffix.
 
-Slice retention блокирует каталог, пока хотя бы для одного настроенного target нет
-terminal pair, включая ещё не materialized row. Поэтому max-count остаётся best-effort
-при недоставленных срезах.
+Detection и execution разделены: monitor решает, *что* изменилось, а fetch
+service исполняет bounded command без повторного listing. Process-local
+in-flight claim снижает повторную постановку, durable ledger обеспечивает
+идемпотентность после restart.
 
-## Daemon lifecycle
+## Поток publish
 
-Порядок `SmartLifecycle`: fetch `50` → export `100` → publish `150` → slice retention
-`200`. Fetch watch lifecycle (`CHANGE_NOTIFY`, если включён) стартует перед periodic
-fetch scheduler и на каждом успешном открытии watch-сессии запускает обычный
-detection (`WATCH_ESTABLISHED`). Publish до запуска periodic executor и на каждом periodic tick reconciles
-completed slices × targets один раз на export profile, чтобы retention не обогнал discovery и потерянный
-`SliceCompleted` из normal export или export recovery не ждал restart. Periodic publish execution проходит через тот же
-keyed executor по endpoint, что и `SliceCompleted` fast-path; scheduler ждёт completion
-work-item перед idle-cleanup, поэтому fast-path и backstop не публикуют один endpoint
-параллельно. Оба sync scheduler последовательны, имеют overlap guard, изолируют ошибку одного
-source/target и используют следующий tick как macro retry. Shutdown завершает executor и закрывает
-idle transport sessions.
-
-### Event-driven coordination + reconcile backstop
-
-Sync использует гибридную модель: события дают low-latency hand-off, а periodic
-reconcile остаётся correctness backstop после потерянных событий, restart и crash
-windows. `platform-events` задаёт только framework-free event contract и publish
-port; текущая доставка — Spring bridge в `bootstrap`, а не встроенный брокер.
+Publish принимает только immutable slice, который прошёл `_SUCCESS`, manifest
+decode, hash/size и membership verification.
 
 ```text
-fetch interval      ──▶ RemoteSourceMonitor ──▶ RemoteChangeBatchDetected ──▶ endpoint-keyed fetch
-SMB CHANGE_NOTIFY   ──▶ doorbell debounce ─────▶ same RemoteSourceMonitor.detect(source)
-watch established   ──▶ recovery detect ───────▶ same RemoteSourceMonitor.detect(source)
-export complete/recovered complete ──▶ SliceCompleted event ──▶ publish concrete slice
-publish reconcile   ──▶ per-profile dir-listing × publish_ledger anti-join ──▶ verify only missing slices
-publish interval    ──▶ publish_ledger.findRetryable ──▶ publish pending/failed pairs
+completed slice x configured target
+  -> publish-ledger anti-join/retryable work
+  -> endpoint-keyed admission
+  -> copy into remote staging directory
+  -> verify
+  -> write remote _SUCCESS last
+  -> publish_ledger = SUCCEEDED
 ```
 
-Модель restart-safe: если процесс упал между discovery, remote commit и ledger update,
-следующий tick снова сверит durable state и доведёт незавершённую работу. Поэтому отсутствие
-новых файлов/срезов не является ошибкой: tick может закончиться `skipped`/already-`SUCCEEDED`
-и оставить health `UP`.
+Для пары `(slice_id, target_id)` ledger хранит сагу:
 
-### Optional SMB CHANGE_NOTIFY
-
-Для fetch-source можно включить transport-native push:
-
-```yaml
-ioc:
-  sync:
-    fetch:
-      sources:
-        - name: incoming-ioc
-          endpoint: delivery-share
-          remote-path: /incoming
-          include: [ "*.htm", "*.html", "*.docx" ]
-          exclude: [ "*.tmp", "*.part", ".*" ]
-          change-notify:
-            enabled: true
-            debounce: 3s
+```text
+PENDING -> IN_PROGRESS -> SUCCEEDED
+                   \-> FAILED -> IN_PROGRESS
+PENDING|IN_PROGRESS|FAILED -> ABANDONED
 ```
 
-Это **accelerator**, а не новый источник корректности. SMB watcher держит выделенный
-client/session/share/directory handle и вызывает только doorbell callback. Он не передаёт
-имена файлов, не делает `stat`, не скачивает данные и не заменяет polling. Notify-ответ
-с изменениями, overflow (`STATUS_NOTIFY_ENUM_DIR`) или успешное переоткрытие watch-сессии
-приводит к обычному `RemoteSourceMonitor.detect(source)`, где сохраняются include/exclude,
-in-flight dedup, ledger idempotency и bounded batch. Пустой успешный notify-ответ считается
-spurious wake/no-op: watcher просто re-arm'ит ожидание, а correctness остаётся за polling
-backstop.
+`SUCCEEDED` и `ABANDONED` terminal. Если после crash remote marker уже совпадает
+с manifest hash, recovery продвигает ledger вперёд без повторной публикации.
+Mismatch является ошибкой проверки, а не поводом перезаписать неизвестное
+состояние.
 
-Watcher бесконечно reconnect'ится с capped backoff из `ioc.sync.retry`, но игнорирует
-`max-attempts`: daemon-watch является long-running capability. Pending `watchAsync`
-закрывается bounded shutdown; плановый lease re-open выполняется периодически и тоже
-запускает `WATCH_ESTABLISHED` recovery-detect, чтобы закрыть окно между close и новым watch.
-Trailing debounce выбран как v1 trade-off: одиночный файл получает задержку `debounce`,
-зато серия `ADDED/MODIFIED/RENAMED` сворачивается в один detect без сложного автомата.
-После подтверждённого стабильного watch в health можно поднять `ioc.sync.fetch.interval`
-до более редкого backstop-значения, чтобы сократить холостые SMB listings. Polling при этом
-не выключается: он остаётся correctness-loop для потерянных notify, рестартов и ручных изменений.
+Retention не удаляет slice, пока для каждого настроенного target нет terminal
+pair. Поэтому ограничение количества срезов является best-effort при backlog
+доставки.
 
-Практический риск push-модели — файл может быть замечен во время записи. Базовая
-защита остаётся прежней: producer convention `*.tmp`/`*.part` + atomic rename,
-exclude rules, debounce и identity `(path,size,mtime)`. Если файл всё-таки был
-скачан частично, дописанная версия становится новой identity и будет обнаружена
-следующим detection/backstop.
+## Модель координации
 
-## CLI
+События и SMB `CHANGE_NOTIFY` сокращают latency, но не являются источником
+корректности:
 
-```bash
-ioc sync fetch [--source NAME] [--endpoint NAME] [--dry-run]
-ioc sync publish [--profile NAME] [--target NAME] [--endpoint NAME] [--dry-run]
-ioc sync all [--source NAME] [--profile NAME] [--target NAME] [--endpoint NAME] [--dry-run]
-```
+- periodic detection повторно находит неполученные remote identities;
+- periodic publish reconcile строит недостающие пары slice×target;
+- durable fetch/publish ledgers переживают restart;
+- все fast-path и reconcile работы одного endpoint проходят через один
+  `KeyedSerialExecutor`; разные endpoints могут исполняться параллельно;
+- admission overload может сбросить hint, потому что следующий reconcile
+  восстановит работу.
 
-Preflight выполняется до lazy resolution JDBC/transport graph. `sync all` проверяет
-обе половины до первого IO, затем выполняет fetch → publish. `--dry-run` не меняет
-inbox, remote storage или ledgers. Ненулевой failed-counter возвращает exit code `1`.
+`CHANGE_NOTIFY` — doorbell: callback не скачивает файл и не доверяет имени из
+уведомления, а запускает обычный detection. Overflow, reconnect и lease re-open
+также приводят к detection. Polling нельзя отключать после включения push.
 
-## Final transport diagnostics
+## Транспорт и security boundary
 
-SMB adapter переводит library failures в `RemoteTransportException` +
-`RemoteErrorKind`. Application `SyncDiagnosticReporter` единообразно маппит final
-failure после micro-retry:
+Endpoint config ссылается на credentials через environment placeholders.
+Пароли, username, host/share и query-like values не должны попадать в
+operational logs. Неизвестные transport/endpoint/profile отклоняются config
+preflight до первого I/O.
 
-| RemoteErrorKind | Diagnostic |
-|---|---|
-| `UNREACHABLE` | `SYNC.ENDPOINT_UNREACHABLE` |
-| `AUTH_FAILED` | `SYNC.AUTH_FAILED` |
-| `PERMISSION_DENIED` | `SYNC.PERMISSION_DENIED` |
-| `NOT_FOUND` | `SYNC.REMOTE_NOT_FOUND` |
-| `TRANSIENT` | `SYNC.TRANSPORT_TRANSIENT` |
+Для SMB:
 
-Listing, detection, fetch, marker-read и publish используют одно правило. Если у
-операции есть durable fetch/publish record, сначала успешно фиксируется
-`FAILED`, затем эмитится diagnostic. Он не заменяет state transition и не
-попадает в control-event payload. Unknown endpoint/credential reference — boot/config
-failure ADR-0016, а не runtime `SYNC.*` code.
+- `connect-timeout` ограничивает TCP connect;
+- `request-timeout` ограничивает один SMB request;
+- `idle-timeout` задаёт время жизни неиспользуемого cached client;
+- legacy `read-timeout` не поддерживается и получает migration hint.
 
-## Health и наблюдаемость
+Transport exception нормализуется в `RemoteErrorKind`, после чего application
+выдаёт единый `SYNC.*` diagnostic. Если существует durable work record, сначала
+фиксируется failure state, затем публикуется diagnostic.
 
-Daemon actuator contributor `sync` публикует:
+## Lifecycle и health
 
-- последний fetch по source и последний publish по target/profile;
-- `publishPending`, `publishInProgress`, `publishFailed` из агрегатного durable ledger
-  read model без загрузки исторических строк;
-- `retentionPinnedSlices`;
-- keyed executor state: running keys, queue depth per key, oldest age и последние
-  shed/failure/dispatch-rejected сигналы;
-- fetch detection state и remote change watch state: active/reconnecting/disabled,
-  detection duration, re-arm count, signal count, reconnect count и last error;
-- summary `UP|DEGRADED|DOWN|UNKNOWN` по endpoint.
+Daemon запускает fetch раньше export, publish — после export, retention — после
+publish discovery. Конкретные `SmartLifecycle` phase являются reference-level
+деталью bootstrap и должны проверяться в коде/тестах, а не копироваться сюда.
 
-Последние scheduler outcomes хранятся только в памяти процесса и после restart снова
-имеют `NEVER_RUN`; backlog и delivery terminal state остаются durable. Транзиентный
-`TRANSIENT`/`UNREACHABLE` transport outcome даёт `WARN` и `DEGRADED`; подтверждённый
-успех следующей операции того же source/target возвращает `UP`. Permanent/unexpected failure
-или durable `FAILED` pair переводит sync contributor в `DOWN`; отсутствие первого запуска — нет.
-Восстановимый executor shed остаётся видимым в details и `WARN`, но сам по себе не переводит
-contributor в `DOWN`: correctness сохраняет reconcile/backstop. Work/dispatch failure переводит
-health в `DOWN`; transient executor-сигнал очищается после следующего успешного work-item того же
-endpoint. Watch `RECONNECTING` отображается сразу, но переводит endpoint/contributor в
-`DEGRADED` только после grace-window: push — accelerator, а polling остаётся backstop.
-ECS actions: `sync_fetch_start|complete`,
-`sync_publish_start|complete`, `sync_work_admission`, `sync_work_dispatch`;
-пустые scheduler ticks логируются на `DEBUG`, реальная работа — на `INFO`;
-поля не содержат host/share/username/password. Полный каталог ошибок —
-[diagnostic-catalog.md](../DIAGNOSTICS-CATALOG.md).
+Health сводит durable backlog, последний outcome по source/target, pinned
+retention и состояние keyed executor/watch. Recoverable shed при работающем
+reconcile видим как degradation signal, но сам по себе не означает потерю
+корректности. Permanent transport/work failure или durable failed delivery
+поднимает более строгий status.
 
-## Границы v1
+CLI `sync fetch`, `sync publish` и `sync all` используют те же application
+контракты. `--dry-run` не меняет inbox, remote storage или ledgers.
 
-- только SMB transport; новый протокол добавляется отдельным adapter-модулем;
-- `CHANGE_NOTIFY` доступен только для SMB endpoint и остаётся optional. Если transport
-  не предоставляет `RemoteChangeSignalSource`, включённый `change-notify` fail-fast'ит
-  при startup, а не молча деградирует в polling;
-- fetch не удаляет remote source, publish не выполняет remote retention;
-- `CHANGE_NOTIFY` delete-events не используются для чистки `remote_fetch_ledger`: исторические
-  identities чистятся отдельной age-retention задачей, чтобы не связывать correctness с
-  ненадёжной доставкой delete-событий;
-- нет активной startup auth/write probe: endpoint status появляется после операции;
-- provisioning share/ACL и ротация динамических credentials остаются внешними задачами.
+## Инварианты
 
-Дизайн и журнал решений: [dev/0011-remote-sync.md](../ADR/0011-remote-sync.md).
+1. Fetch заканчивается атомарным появлением complete файла в inbox.
+2. Publish начинается только с verified completed slice.
+3. Remote `_SUCCESS` записывается последним и связывается с manifest hash.
+4. Ledger transition важнее события и лога.
+5. Работа одного endpoint сериализована; межendpointный параллелизм разрешён.
+6. Event/push может быть потерян без потери данных: reconcile обязан закрыть
+   путь.
+7. Sync не владеет extraction, canonical schema или export formation.
+
+## Как расширять
+
+- Новый протокол получает отдельный adapter за `FileTransport` и, при наличии
+  push, за `RemoteChangeSignalSource`.
+- Remote delete/move/retention требует отдельного решения о владении и не
+  добавляется скрытым side effect существующего fetch/publish.
+- Новый target использует существующую slice×target ledger семантику.
+- Межпроцессная доставка требует adapter-level durable outbox/broker design;
+  она не должна превращать `platform-events` в брокер.
+
+## Источники истины
+
+- Application ports/services: `core/ioc-application/.../sync/`.
+- SMB semantics: `adapters/adapter-transport-smb/README.md` и реализация модуля.
+- Scheduling, listeners, health: `bootstrap/ioc-app/.../sync/` и `AppConfig`.
+- Defaults/validation: `application.yml` и `IocProperties.Sync`.
+- CLI surface: `adapters/adapter-cli-picocli`.
+
+## Когда обновлять документ
+
+Обновите его при изменении remote identity, commit marker, ledger state
+machine, reconcile guarantee, endpoint serialization, ownership remote data
+или transport boundary. Добавление config field без изменения этих контрактов
+фиксируется в config reference, а не раздувает этот guide.
+
+## Связанные документы
+
+- [artifact-export.md](artifact-export.md) — контракт completed slice.
+- [event-coordination.md](event-coordination.md) — fast-path/backstop doctrine.
+- [configuration.md](configuration.md) — strict endpoint/profile references.
+- [observability.md](observability.md) — diagnostics и sensitive fields.
+- [ADR-0011](../ADR/0011-remote-sync.md) — решение remote sync.

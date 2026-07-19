@@ -2,7 +2,7 @@
 
 - **Статус:** принято (дизайн)
 - **Дата:** 2026-06-21
-- **Связано:** [../architecture.md](../ARCHITECTURE.md), [../pipeline.md](../dev/pipeline.md),
+- **Связано:** [architecture](../ARCHITECTURE.md), [processing](../dev/processing.md),
   [../boundaries.md](../BOUNDARIES.md), [../modularization.md](../MODULARIZATION.md)
 
 ## Контекст
@@ -24,7 +24,7 @@ ETL-конвейеру и детализируем защиту границ и 
 ## Следствия
 
 - На момент решения появился отдельный каталог сервисов (каталог + карта) и
-  [pipeline.md](../dev/pipeline.md) (подход к конвейеру) как авторитетные доки.
+  [processing.md](../dev/processing.md) (подход к конвейеру) как авторитетные доки.
   **Обновление 2026-07-19:** каталог удалён как дорогая дублирующая проекция;
   текущая карта ответственности живёт в [ARCHITECTURE.md](../ARCHITECTURE.md),
   [MODULARIZATION.md](../MODULARIZATION.md) и module README.

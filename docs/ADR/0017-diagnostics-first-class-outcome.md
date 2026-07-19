@@ -6,7 +6,7 @@
 (`354c5c6..3d2d1d0`), срезы 4–10 остаются планом. Закрывает **OBS-D1** из
 [KNOWN-ISSUES](../KNOWN-ISSUES.md) и задаёт контракт, на котором строится
 **OBS-2** (`SINK.CHARSET_UNMAPPABLE`). Является superseding-надстройкой над
-разделом «Открытый долг» [dev/DIAGNOSTICS.md](../dev/DIAGNOSTICS.md) и планом
+разделом «Открытый долг» текущего [dev/observability.md](../dev/observability.md) и планом
 интеграции из [0008](0008-stage-6-8-implementation-followups.md): механизм
 диагностики, введённый [0003](0003-diagnostics.md), получает **границу
 применения** — что обязано быть `Diagnostic`, что остаётся исключением, кто
@@ -394,7 +394,7 @@ artifact, source и безопасный item identity. «Полная иден�
 - **policy/report context** внутри `Diagnostic` — точные структурные данные,
   доступные доверенному in-process consumer;
 - **rendered/log context** — представление после redaction policy. Raw IOC
-  остаётся DEBUG/TRACE-only по [dev/LOGGING.md](../dev/LOGGING.md), URL query и
+  остаётся DEBUG/TRACE-only по [dev/observability.md](../dev/observability.md), URL query и
   токены маскируются либо заменяются short hash.
 
 Эмиссия остаётся per-diagnostic, но накопление bounded. Новый
@@ -731,8 +731,7 @@ ratchet empty, architecture tests.
 [0008](0008-stage-6-8-implementation-followups.md) — исходный план интеграции ·
 [0013](0013-event-driven-coordination.md) — anti-broker, claim-check, sagas ·
 [0016](0016-config-preflight-strict-binding.md) — boot-контур операторских ошибок ·
-[dev/DIAGNOSTICS.md](../dev/DIAGNOSTICS.md) · [dev/LOGGING.md](../dev/LOGGING.md) ·
-[dev/LOGGING-TAXONOMY.md](../dev/LOGGING-TAXONOMY.md) ·
+[dev/observability.md](../dev/observability.md) ·
 [LOGGING-CATALOG.md](../LOGGING-CATALOG.md), [DIAGNOSTICS-CATALOG.md](../DIAGNOSTICS-CATALOG.md) ·
 шаг 1 блока OBS: `752d186..aca604e` (ratchet-baseline: `2681c4d`).
 
