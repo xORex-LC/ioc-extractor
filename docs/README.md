@@ -21,6 +21,7 @@
 | [MODULARIZATION.md](MODULARIZATION.md) | Многомодульная структура: Maven-реактор, platform/core/adapters/bootstrap и правила зависимостей |
 | [BOUNDARIES.md](BOUNDARIES.md) | Защита архитектурных границ: ArchUnit, Maven Enforcer, JPMS (дорожная карта) |
 | [CONVENTIONS.md](CONVENTIONS.md) | Стандарт Javadoc, конвенция «README в каждом каталоге» (+ шаблон), правила кода |
+| [SECURITY-ENGINEERING.md](SECURITY-ENGINEERING.md) | Secure SDLC policy: активы и trust boundaries, security-контроли, vulnerability lifecycle, gates, evidence и roadmap |
 | [RELEASE-PROCESS.md](RELEASE-PROCESS.md) | Сквозной контракт версионирования, сборки, публикации, deployment и сопровождения релизов |
 | [SERVICES-CATALOG.md](SERVICES-CATALOG.md) | Каталог бизнес-сервисов (DDD) и карта: ответственности, порты, зависимости, целевые модули |
 | [DIAGNOSTICS-CATALOG.md](DIAGNOSTICS-CATALOG.md) | Генерируемая карта диагностических кодов из `DiagnosticCatalogs` |

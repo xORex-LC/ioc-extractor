@@ -5,6 +5,11 @@ publishing, deploying, and maintaining ioc-extractor releases. It applies to
 the whole Maven reactor and to the single bootable application produced by
 `bootstrap/ioc-app`.
 
+Project-wide security principles, control states, vulnerability disposition,
+suppression rules, and maturity roadmap are defined in
+[SECURITY-ENGINEERING.md](SECURITY-ENGINEERING.md). This release process
+consumes those controls; it does not redefine them.
+
 The process has four goals:
 
 1. one authoritative product version;
@@ -251,7 +256,8 @@ git diff --check
 
 Also run release-specific checks:
 
-- a successful manual `Dependency Security` workflow on the exact candidate
+- a successful manual `Dependency Security` workflow on the exact candidate,
+  as required by [SECURITY-ENGINEERING.md](SECURITY-ENGINEERING.md),
   commit, with no untriaged Critical/High findings and no unused suppression
   rules;
 - documentation link validation;
