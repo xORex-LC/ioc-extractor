@@ -57,3 +57,6 @@ CLAUDE.md
 AGENTS.md
 .claude
 .codex
+
+# Local design/work notes are scratch context, not published project documentation.
+/docs/worknote/

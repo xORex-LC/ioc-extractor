@@ -4,8 +4,9 @@
 
 **Принято, реализуется фазами.** Решение фиксирует вывод из эксплуатации
 runtime lookup/storage через CSV после перехода dataframe truth на SQLite/JDBC.
-Рабочий план и найденные риски ведутся в
-[worknote/csv-lookup-retirement.md](../worknote/csv-lookup-retirement.md).
+Рабочий план и найденные риски изначально велись в локальной scratch-note,
+которая намеренно не входит в публикуемую документацию. Устойчивые результаты
+реализации фиксируются ниже и в [KNOWN-ISSUES.md](../KNOWN-ISSUES.md).
 
 **Обновление 2026-07-08. Реализовано полностью (фазы 0–6), `./mvnw verify`
 зелёный.** Удалены `adapter-lookup-csv`, `CsvIocSink`, `JdbcLookupRepository`,

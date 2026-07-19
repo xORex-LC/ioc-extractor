@@ -31,8 +31,9 @@ Operations, а не как заявленный compliance level.
 - [KNOWN-ISSUES.md](KNOWN-ISSUES.md) регистрирует конкретные обнаруженные gaps и
   осознанные seams, но не каждую возможную идею из roadmap;
 - [ADR/](ADR/) фиксирует значимые и труднообратимые security-решения;
-- `docs/worknote/` хранит временный triage и исследование конкретной миграции,
-  но не заменяет tracked policy, issue или release evidence.
+- локальные scratch-notes могут хранить временный triage и исследование, но не
+  входят в публикуемую документацию и не заменяют tracked policy, issue или
+  release evidence.
 
 ## 1. Область действия и активы
 
@@ -147,7 +148,7 @@ supported contract не входят. Их появление является �
 | `SEC-SCA-2` | Dependabot dependency/malware alerts, security updates и weekly version updates для Maven/Actions | Configured | GitHub settings + [dependabot.yml](../.github/dependabot.yml); activation подтверждается после обработки default branch и первого cycle |
 | `SEC-SCA-3` | OWASP Dependency-Check aggregate по effective reactor graph | Configured | local scan проверен; [weekly/manual workflow](../.github/workflows/dependency-security.yml) и candidate gate требуют operational proof в default branch |
 | `SEC-SCA-4` | Узкие Dependency-Check suppressions без stale rules | Enforced | tracked [dependency-check-suppressions.xml](../dependency-check-suppressions.xml), `failBuildOnUnusedSuppressionRule=true` |
-| `SEC-CI-1` | Tests, golden E2E, boundaries и docs links на push/PR | Enforced | [ci.yml](../.github/workflows/ci.yml) и `./mvnw verify` |
+| `SEC-CI-1` | Tests, golden E2E, boundaries и docs links на push/PR | Enforced | Maven gate: `./mvnw verify`; отдельный `doc-links` job: [ci.yml](../.github/workflows/ci.yml) |
 | `SEC-CI-2` | NVD secret isolation и read-only security job | Configured | Environment `SECURITY CHECKS`, step-local `NVD_API_KEY`, `contents: read`, `deployment: false`; enforcement действует при запуске security workflow |
 | `SEC-CI-3` | Immutable full-SHA pinning сторонних Actions | Planned | текущие trusted Actions используют major tags; trigger — отдельный workflow-hardening change с Dependabot update contract |
 | `SEC-CI-4` | Dependency Review на PR dependency changes | Planned | trigger — добавление blocking PR control после baseline/dry run |

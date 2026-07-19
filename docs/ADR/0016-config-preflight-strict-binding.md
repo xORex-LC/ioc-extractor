@@ -6,8 +6,9 @@
 [KNOWN-ISSUES](../KNOWN-ISSUES.md) (CFG-1, CFG-2, CFG-4; CFG-3 уже закрыт
 удалением кода при β-collapse) как один класс проблем, а не точечными
 фиксами. Инвентарь проблем, верификация по коду, механика binding-трубы и
-порядок реализации — в
-[worknote/config-hardening.md](../worknote/config-hardening.md).
+порядок реализации изначально велись также в локальной scratch-note; она не
+входит в published documentation. Устойчивый контракт зафиксирован в этом ADR,
+итоговый статус долгов — в [KNOWN-ISSUES.md](../KNOWN-ISSUES.md).
 
 **Реализовано 2026-07-09** в диапазоне коммитов `b0e5157..8575527`
 (`b0e5157`, `9bb9e63`, `ec14c8d`, `da27b24`, `30f1884`, `3d45cdd`,
@@ -610,7 +611,7 @@ pure config→config и config→registry boundaries.
 
 ### Срез 7 — Документы, tracking и финальная верификация (выполняется текущим docs/tracking commit)
 
-**Цель.** Перевести ADR/worknote/KNOWN-ISSUES из design-state в shipped-state
+**Цель.** Перевести ADR и KNOWN-ISSUES из design-state в shipped-state
 после кода и закрепить operator-facing contract в документации.
 
 **Изменения документации:**
@@ -619,8 +620,8 @@ pure config→config и config→registry boundaries.
   - append-style обновить «Статус»: дата, commit range, какие срезы shipped;
   - в этом implementation plan пометить выполненные срезы с commit ids;
   - не переписывать исторический rationale.
-- `docs/worknote/config-hardening.md`
-  - отметить route as implemented, оставить как evidence/implementation ledger;
+- локальный implementation ledger:
+  - отметить route as implemented; устойчивые результаты перенести в ADR/docs;
   - убрать или зачеркнуть открытые вопросы, закрытые кодом.
 - `docs/KNOWN-ISSUES.md`
   - `CFG-1`, `CFG-2`, `CFG-4` перевести в `закрыт` со ссылкой на ADR/коммиты;

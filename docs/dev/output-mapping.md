@@ -107,7 +107,7 @@ canonical SQLite через узкий application-port `ArtifactIdBaseline`: ad
   `IndicatorNormalizer`) — не строковый парсинг в маппере. Вид хоста
   (`registrable`/`subdomain`) — через **порт `HostClassifier`** (адаптер на Guava
   PSL, `adapter-psl`), чтобы домен оставался без Guava (см.
-  [boundaries.md](../BOUNDARIES.md), [services.md](../SERVICES-CATALOG.md)).
+  [boundaries.md](../BOUNDARIES.md)).
 - Реестр **предикатов** над признаками: `has-query`, `has-path`, `has-port`,
   `has-path-or-port`, `is-ip`, `is-subdomain`, `is-registrable`, `is-onion`.
   Артефактные фильтры используют тот же реестр плюс специализированный

@@ -26,7 +26,8 @@
 /**
  * Secondary (driven) port: extract plain text from a source document,
  * regardless of its format. Implementations must not leak parser-specific
- * exceptions; failures are reported as {@link IocExtractorException}.
+ * exceptions; stopping failures are reported as a typed
+ * {@link DiagnosticException}.
  */
 public interface SourceReader {
     String readText(Path source);
@@ -96,9 +97,14 @@ public interface SourceReader {
 
 ## Тесты
 
-- **Изоляция от артефактов проекта.** Тесты **не** читают и не сверяются с
-  `source/*`, `dataframe/*`, прод-`application.yml`. Иначе смена источника, поля
-  выходного артефакта или одного значения конфига роняет тест — это запрещено.
+- **Unit/domain tests изолированы от артефактов проекта.** Они не читают
+  `source/*`, `dataframe/*` и production `application.yml`: смена операторских
+  данных или defaults не должна случайно менять тест логики.
+- **Contract tests могут читать production resources осознанно.** Проверки
+  binding/defaults, build-info, registries и logging configuration обязаны
+  сверяться с реальным `application.yml`, потому что именно его публичный
+  контракт они закрепляют. Такой тест явно называется `*ContractTest`,
+  `*PropertiesTest` либо документирует проверяемую production boundary.
 - **Тест владеет данными.** Фикстуры синтетические и минимальные, создаются в
   `@TempDir` или `src/test/resources` (тестовый контур, tmp); конфиг/политику тест
   задаёт сам (inline доменные объекты или тест-конфиг).

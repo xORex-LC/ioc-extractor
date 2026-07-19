@@ -14,8 +14,8 @@ Cross-cutting поверх **реализованного** storage-слоя (IN
 revision, JDBC snapshot, CSV/filesystem writer, service ledger и bootstrap lifecycle.
 **Переписан** после приземления SQLite-хранилища и
 β-коллапса (партиции и отдельный проход агрегации удалены) — прежняя редакция
-исходила из «перезаписи canonical-файла», что более неверно. Грунт — текущий код
-и [../ingestion.md](../dev/ingestion.md) / [../worknote/storage-layer.md](../worknote/storage-layer.md).
+исходила из «перезаписи canonical-файла», что более неверно. Грунт — текущий код,
+[../ingestion.md](../dev/ingestion.md) и [../ARCHITECTURE.md](../ARCHITECTURE.md).
 
 ## Контекст
 

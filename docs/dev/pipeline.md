@@ -99,9 +99,9 @@ Batch-local dedup выполняется до feature extraction и rule evaluat
 применяется только к NETWORK; FILE-индикаторы проходят дальше с нейтральным
 `ClassificationDecision`, поскольку hash-артефакты match-коды не потребляют.
 
-Соответствие сервисам — в [services.md](../SERVICES-CATALOG.md). Оркестрацию собирает
-`ExtractIocsUseCase` (application): порядок стадий и `FailurePolicy`
-конфигурируемы; стадии — порты, реализации внедряются в composition root.
+Оркестрацию собирает `ExtractIocsUseCase` (application): порядок стадий и
+`FailurePolicy` конфигурируемы; стадии реализуют generic ETL contract, а
+collaborators внедряются в composition root.
 
 ## Границы и фреймворки
 

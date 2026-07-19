@@ -2,7 +2,7 @@
 
 - **Статус:** принято (дизайн)
 - **Дата:** 2026-06-21
-- **Связано:** [../services.md](../SERVICES-CATALOG.md), [../pipeline.md](../dev/pipeline.md),
+- **Связано:** [../architecture.md](../ARCHITECTURE.md), [../pipeline.md](../dev/pipeline.md),
   [../boundaries.md](../BOUNDARIES.md), [../modularization.md](../MODULARIZATION.md)
 
 ## Контекст
@@ -23,8 +23,11 @@ ETL-конвейеру и детализируем защиту границ и 
 
 ## Следствия
 
-- Появляется [services.md](../SERVICES-CATALOG.md) (каталог + карта) и [pipeline.md](../dev/pipeline.md)
-  (подход к конвейеру) как авторитетные доки.
+- На момент решения появился отдельный каталог сервисов (каталог + карта) и
+  [pipeline.md](../dev/pipeline.md) (подход к конвейеру) как авторитетные доки.
+  **Обновление 2026-07-19:** каталог удалён как дорогая дублирующая проекция;
+  текущая карта ответственности живёт в [ARCHITECTURE.md](../ARCHITECTURE.md),
+  [MODULARIZATION.md](../MODULARIZATION.md) и module README.
 - `IocExtractionService` эволюционирует в явный `Pipeline` из `Stage`-ов с
   `Envelope`/`Result`, не меняя доменные сервисы.
 - [boundaries.md](../BOUNDARIES.md) дополнен конкретными ArchUnit/enforcer-правилами;

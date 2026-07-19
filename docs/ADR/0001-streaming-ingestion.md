@@ -11,7 +11,7 @@
 > sidecar. Они **удалены**: бизнес-данные теперь в canonical SQLite (truth), демон
 > пишет каждый файл прямо в canonical + CSV-проекция, id даёт единый `IdGenerator`.
 > Актуальный контур — [../ingestion.md](../dev/ingestion.md) и
-> [../worknote/storage-layer.md](../worknote/storage-layer.md). Ниже — как было.
+> [../ARCHITECTURE.md](../ARCHITECTURE.md). Ниже — как было.
 
 > **Поправки после ревью ([0006](0006-design-review-refinements.md)) и
 > модуляризации:** `SourceFeed` — не порт ядра, а adapter-local abstraction над

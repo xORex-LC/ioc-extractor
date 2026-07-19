@@ -22,9 +22,11 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
   primitives and diagnostics-logging bridge.
 - `domain` не зависит от application/adapters/bootstrap/platform и не тянет
   фреймворки или IO-библиотеки.
-- `application` зависит от `domain`, `platform-etl`, `platform-events` and diagnostics contracts.
-- `adapter` и `bootstrap` зависят внутрь; здесь — и только здесь — живут
-  фреймворки и внешние библиотеки (Spring, Tika, RE2/J, commons-csv, picocli).
+- `application` зависит от `domain`, `platform-etl`, `platform-events` и
+  diagnostics/errors contracts.
+- Технологии parsing/storage/transport/CLI и Spring wiring живут в adapters и
+  bootstrap (Tika, RE2/J, commons-csv, picocli, JDBC, SMBJ). Platform-модуль
+  observability осознанно владеет общей SLF4J API boundary, не бизнес-логикой.
 - Внутренние слои **никогда** не импортируют из внешних.
 
 ## Слои и пакеты
@@ -79,8 +81,8 @@ read (SourceReader)
   → commit canonical rows → project derived CSV
 ```
 
-Подход к конвейеру (Pipes-and-Filters + `Envelope`/diagnostics) — [pipeline.md](dev/pipeline.md);
-каталог и карта сервисов стадий — [services.md](SERVICES-CATALOG.md).
+Подход к конвейеру (Pipes-and-Filters + `Envelope`/diagnostics) —
+[pipeline.md](dev/pipeline.md).
 
 Конвейер — цепочка независимых стадий: новую стадию/реализацию добавляем, не
 трогая остальные (OCP). Маршрутизация по типу индикатора и декларативным
@@ -92,7 +94,7 @@ read (SourceReader)
 | Порт | Тип | Назначение |
 |---|---|---|
 | `ExtractIocsUseCase` | driving (in) | Единая точка входа прикладного ядра |
-| `SourceReader` | driven (out) | Извлечение текста из документа любого формата |
+| `SourceReader` | driven (out) | Формат-независимая граница извлечения текста из документа |
 | `ArtifactPreparer` | driven (out) | Side-effect-free routing/mapping одного артефакта до policy checkpoint |
 | `PipelineDecisionTracer` | driven (out) | Gated TRACE уже вычисленных per-item outcomes без logging dependency в application/domain |
 | `ArtifactIdBaseline` | driven (out) | Чтение текущего public `max(id)` из canonical storage для продолжения id-последовательностей |
@@ -180,6 +182,12 @@ publish начинается только после локального export
 fail-fast. Детали — [extraction.md](dev/extraction.md) и
 [output-mapping.md](dev/output-mapping.md).
 
+**Форматы источников.** Контрактными тестами адаптера закреплены HTML (включая
+legacy `cp1251` при явном charset), PDF, DOCX и XLSX. Другие форматы, которые
+распознаёт установленный набор Tika parsers, обрабатываются best-effort и не
+считаются поддерживаемым release-контрактом, пока не добавлены в corpus/contract
+tests.
+
 ## Immutable artifact export
 
 Canonical SQLite остаётся системой записи, а export — отдельным bounded context
@@ -210,21 +218,24 @@ canonical SQLite (one WAL read tx) ──▶ CSV files ──▶ manifest.json �
   Export health показывает последний success/failure, возраст среза и revision lag.
 - Slice retention ранжирует завершённые каталоги отдельно по profile и удаляет
   каталог целиком. Guard проверяется непосредственно перед delete; standalone
-  разрешает удаление, реализация из 0011 сможет pin-ить недоставленные срезы.
+  разрешает удаление, а `PublishLedgerSliceRetentionGuard` pin-ит недоставленные
+  срезы при включённом remote publish.
 
 Полный протокол, crash-матрица и rationale: [dev/0012](ADR/0012-streaming-dataframe-emission.md).
 
 ## Composition root
 
-`bootstrap/AppConfig` — единственное место, где фреймворк связывает
-агностичное ядро с конкретными адаптерами. Смена реализации (движок, reader,
-sink) — изменение здесь, и больше нигде. `IocProperties` — типобезопасная
-привязка дерева конфигурации `ioc.*`; вся внешняя специфика известна только тут.
+Модуль `bootstrap/ioc-app` — composition root: здесь Spring связывает
+агностичное ядро с конкретными адаптерами. Основной extraction/storage graph
+собирает `AppConfig`; remote sync и control-event wiring вынесены в `SyncConfig`
+и `EventCoordinationConfig`, а startup config boundary — в
+`ConfigPreflightConfiguration`. `IocProperties` задаёт типобезопасную привязку
+дерева конфигурации `ioc.*`.
 
-## Куда движемся
+## Связанные карты
 
-- Многомодульность (выделение слоёв и подсистем в Maven-модули) —
+- Многомодульная структура и правила зависимостей —
   [modularization.md](MODULARIZATION.md).
-- Сквозные подсистемы (логирование/диагностика/ошибки) за портами —
+- Сквозные подсистемы логирования, диагностики и ошибок —
   [cross-cutting.md](dev/CROSS-CUTTING.md).
 - Автоматическая защита границ — [boundaries.md](BOUNDARIES.md).

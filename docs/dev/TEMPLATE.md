@@ -47,7 +47,8 @@
 | `XxxService` | `XxxUseCase` (in) | `core/ioc-application` | … |
 | `YyyAdapter` | `ZzzPort` (out) | `adapter-…` | … |
 
-Связь с общим каталогом: [SERVICES-CATALOG.md](../SERVICES-CATALOG.md).
+Для cross-module ответственности ссылайтесь на [ARCHITECTURE.md](../ARCHITECTURE.md),
+а для конкретного модуля — на его `README.md`.
 
 ## Инварианты
 

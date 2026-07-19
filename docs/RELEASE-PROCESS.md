@@ -270,10 +270,9 @@ git diff --check
 
 Also run release-specific checks:
 
-- a successful manual `Dependency Security` workflow on the exact candidate,
-  as required by [SECURITY-ENGINEERING.md](SECURITY-ENGINEERING.md),
-  commit, with no untriaged Critical/High findings and no unused suppression
-  rules;
+- a successful manual `Dependency Security` workflow on the exact candidate
+  commit, as required by [SECURITY-ENGINEERING.md](SECURITY-ENGINEERING.md),
+  with no untriaged Critical/High findings and no unused suppression rules;
 - documentation link validation;
 - shell syntax checks for packaging scripts;
 - rendered systemd unit validation;

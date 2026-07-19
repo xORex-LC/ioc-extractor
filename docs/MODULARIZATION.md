@@ -13,13 +13,14 @@ adapters и bootstrap собираются как отдельные Maven-мо�
 - **Защита границ компиляцией.** Если `domain` — отдельный модуль без зависимости
   на Spring, нарушить правило «domain framework-free» становится физически
   нельзя: класс просто не найдётся.
-- **Выделяемость.** Агностичные подсистемы (логирование, ошибки, конфиг, движок
-  паттернов) можно переиспользовать в других приложениях/сервисах без копипасты.
+- **Выделяемость.** Агностичные подсистемы (диагностика, ETL, control events,
+  keyed concurrency и observability) можно переиспользовать в других
+  приложениях/сервисах без копипасты.
 - **Управляемость зависимостей.** Каждый модуль декларирует ровно то, что ему
   нужно; направление зависимостей видно в `pom.xml`, а не «на доверии».
 - **Параллельная сборка и изоляция тестов** по модулям.
 
-## Целевая структура реактора
+## Фактическая структура реактора
 
 ```
 ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <modules>)
@@ -27,17 +28,21 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 │   ├── platform-errors            (базовые ошибки/common-типы)
 │   ├── platform-diagnostics       (диагностика: catalog, result/policy, sinks/renderer)
 │   ├── platform-etl               (generic Envelope/Stage/Pipeline/PipelineRunner)
+│   ├── platform-events            (framework-free control-event contracts)
+│   ├── platform-concurrency       (keyed single-flight primitives)
 │   ├── platform-observability     (MdcScope, LogEvent, taxonomy, PipelineObserver impl)
 │   └── platform-diagnostics-logging (bridge: DiagnosticSink → LogEvent)
 ├── core/
 │   ├── ioc-domain                 (единый IOC bounded context; capability = пакеты + ArchUnit-DAG)
-│   └── ioc-application            (порты in/out + use cases + IOC ETL stages)
+│   ├── ioc-application            (порты in/out + use cases + IOC ETL stages)
+│   └── ioc-application-tck        (переиспользуемые contract tests driven-портов)
 ├── adapters/
 │   ├── adapter-regex-re2j         (PatternEngine → RE2J/JDK fallback)
 │   ├── adapter-source-tika        (SourceReader → Tika)
-│   ├── adapter-sink-csv           (ArtifactFiller + CSV projection/export slices → commons-csv)
+│   ├── adapter-sink-csv           (ArtifactPreparer + CSV projection/export slices → commons-csv)
 │   ├── adapter-manifest-json-jackson (SliceManifestCodec → Jackson)
 │   ├── adapter-store-jdbc         (service/dataframe storage → Spring JDBC + sqlite-jdbc)
+│   ├── adapter-transport-smb      (FileTransport → smbj)
 │   ├── adapter-psl                (HostClassifier → Guava PSL)
 │   ├── adapter-ingest             (daemon file ingest → Spring Integration)
 │   └── adapter-cli-picocli        (входной адаптер CLI)
@@ -58,15 +63,21 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
    └────────────────────────────────────────────────────────▶ platform/*
 ```
 
-- Базовые `platform/*` ни от кого внутри проекта не зависят. Интеграционные
-  platform-модули с явным названием bridge (например,
-  `platform-diagnostics-logging`) могут зависеть только на те platform-модули,
-  которые они связывают, и не должны тянуть application/domain/adapter.
+- `platform/*` образуют собственный направленный DAG и не тянут
+  application/domain/adapters: events, concurrency и errors автономны;
+  diagnostics зависит от errors; ETL — от diagnostics/errors; observability —
+  от ETL; diagnostics-logging bridge — от diagnostics/observability.
 - `platform-etl` зависит только на diagnostics/errors и не знает про IOC domain.
 - `ioc-domain` не зависит на application/adapters/bootstrap/platform-etl и
   остаётся framework-free.
-- `ioc-application` зависит на `ioc-domain`, `platform-etl` и diagnostics.
-- `adapters/*` зависят на `ioc-application` (+ свои библиотеки).
+- `ioc-application` зависит на `ioc-domain`, `platform-etl`, `platform-events`,
+  diagnostics и errors contracts.
+- Driving и infrastructure adapters зависят на нужный внутренний контракт:
+  большинство — на `ioc-application`, а domain SPI adapters (`adapter-regex-re2j`,
+  `adapter-psl`) — непосредственно на `ioc-domain`. Каждый адаптер подключает
+  только свою технологическую библиотеку/integration family.
+- `ioc-application-tck` содержит test-scope contract tests; реализации портов
+  подключают его только в тестовом scope.
 - `ioc-app` (bootstrap) зависит на всё и собирает исполняемый артефакт.
 
 ## Принципы нарезки на модули
@@ -80,19 +91,22 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 4. **Версии — централизованно** через root parent `dependencyManagement`; модули
    не дублируют версии.
 
-## Карта «сервис → модуль»
+## Карта ответственности по модулям
 
-Сервисы из [services.md](SERVICES-CATALOG.md) ложатся в модули так:
+Ответственности распределены по модулям так:
 
-| Модуль | Сервисы |
+| Модуль | Ответственности |
 |---|---|
 | `platform-diagnostics` | Diagnostics (модель, каталог, порты, sinks/renderer); может зависеть на `platform-errors` для `DiagnosticException` |
 | `platform-etl` | Generic ETL kernel: `Envelope`, `Stage`, `Pipeline`, `PipelineRunner`, `PipelineObserver` |
+| `platform-events` | Framework-free publish-only control-event contracts и observers; без broker/durable delivery mechanics |
+| `platform-concurrency` | Keyed single-flight execution, bounded admission и health snapshots |
 | `platform-observability` | Observability/logging: MdcScope, LogEvent, logging taxonomy, `LoggingPipelineObserver` |
 | `platform-diagnostics-logging` | Bridge `DiagnosticSink` → LogEvent/SLF4J (`LoggingDiagnosticSink`); зависит на `platform-diagnostics` + `platform-observability` |
 | `platform-errors` | базовые ошибки/common-типы и трансляция; нижний слой для `DiagnosticException` |
 | `ioc-domain` | Refanger, IndicatorExtractor, SourceAttributor, MatchPolicy, модели, feature extraction |
 | `ioc-application` | Pipeline/ingest use cases; framework-free Artifact Emission и Remote Sync models, retry/cadence, formation/delivery sagas, ports и policies |
+| `ioc-application-tck` | Переиспользуемые JUnit contract tests application ports, исполняемые каждой реализацией |
 | `adapter-regex-re2j` | PatternEngine implementation (RE2J + JDK fallback) |
 | `adapter-source-tika` | SourceReader (Tika) |
 | `adapter-sink-csv` | Artifact mapping, canonical CSV projection, callback-streaming immutable slices, integrity verification, atomic local publish и directory-level slice retention |

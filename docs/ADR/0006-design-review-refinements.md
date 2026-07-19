@@ -3,7 +3,7 @@
 - **Статус:** принято (дизайн)
 - **Дата:** 2026-06-21
 - **Связано:** [../ingestion.md](../dev/ingestion.md), [../output-mapping.md](../dev/output-mapping.md),
-  [../extraction.md](../dev/extraction.md), [../services.md](../SERVICES-CATALOG.md),
+  [../extraction.md](../dev/extraction.md), [../architecture.md](../ARCHITECTURE.md),
   [0002-output-mapping-and-matching.md](0002-output-mapping-and-matching.md)
 
 ## Контекст
@@ -28,7 +28,8 @@
 
 - Новые/уточнённые порты: `IngestSourceUseCase` (in), `HostClassifier` (domain
   port → `adapter-psl`); новые домен-сервисы `IndicatorNormalizer`,
-  `IndicatorFeatureExtractor` (см. [services.md](../SERVICES-CATALOG.md)).
+  `IndicatorFeatureExtractor` (актуальная карта — в
+  [ARCHITECTURE.md](../ARCHITECTURE.md)).
 - `IngestionLedger` хранит **статусы**, а не булево; восстановление —
   компенсациями.
 - Агрегатор владеет устойчивым `dedupKey → id`.

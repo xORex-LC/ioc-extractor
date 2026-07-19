@@ -19,8 +19,8 @@ generated `LOGGING-CATALOG.md`, пин severity→level, reference-ratchet) уж
 реализован отдельно (`752d186..aca604e`) и ADR не требовал: там применялись
 уже принятые правила. Данный ADR фиксирует именно **решения**.
 
-Дизайн-диалог: `docs/worknote/observability-hardening.md`
-(локальная рабочая память итерации, не часть published ADR).
+Дизайн-диалог изначально вёлся в локальной scratch-note; она намеренно не
+входит в published ADR/documentation.
 
 ## Контекст и проблема
 
