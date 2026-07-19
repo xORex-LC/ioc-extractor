@@ -75,6 +75,18 @@ producer-ов и gated TRACE является отдельным application con
 Выходная кодировка артефактов — отдельный knob `ioc.sink.csv.charset` (см.
 output-mapping).
 
+### Форматный контракт source adapter
+
+Runtime baseline — Apache Tika `3.3.1`; версия централизованно управляется parent
+POM. `TikaSourceReader` не выставляет наружу API POI/PDFBox и остаётся единственной
+границей document parsing.
+
+Совместимость закреплена синтетическими contract tests: legacy cp1251 HTML,
+PDF, DOCX и XLSX должны возвращать контрольный plain text. PDF/OOXML fixtures
+строятся средствами JDK, поэтому тесты не создают прямую зависимость на
+транзитивные parser libraries. Реальный HTML-flow дополнительно проходит через
+golden pipeline и daemon-ingest E2E.
+
 ## Классификация (нюансы PSL)
 
 4-вариантное rule-based правило на **Public Suffix List** (Guava, **incl.

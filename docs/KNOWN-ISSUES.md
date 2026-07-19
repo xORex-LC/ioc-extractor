@@ -102,6 +102,13 @@
 | OPS-6 | **Intra-endpoint parallel fetch (bounded).** Кросс-endpoint параллельность уже есть на всех стадиях (detection-пул по источникам, keyed executor с воркерами = числу endpoint'ов, publish submit-all-then-await): N хостов обрабатываются за `max`, не `sum`. **Внутри одного endpoint'а** работа намеренно последовательная двумя слоями — single-flight ключ executor'а + endpoint-lock вокруг одного cached SMB-клиента в `SmbFileTransport` (`withClient` держит лок на всю операцию) — поэтому батч из K файлов с одной шары качается последовательно. Seam: ограниченная параллельность скачиваний внутри endpoint'а = пул SMB-клиентов/сессий на endpoint (lifecycle, idle-reaper) + under-key concurrency в keyed executor (admission/health-модель); ledger/in-flight идемпотентность уже parallel-safe и переделки не требует. **Триггер активации — только по метрикам:** health `fetchDetection.detectDurationMs` + длительности fetch в ECS-логах показывают, что узкое место — последовательный прогон крупных батчей с *одной* шары (а не сеть/сервер), и время батча нарушает SLA. До сигнала — YAGNI; bounded pressure на один файловый сервер — осознанный инвариант текущего дизайна. | seam | L | CHANGE_NOTIFY review (обсуждение multi-endpoint параллельности) |
 | OPS-7 | **Ingest→export event fast-path (ADR 0014 Р2).** Закрыто: `CanonicalArtifactsChanged` из `IngestionService` (после `markCompleted`, per-run, claim-check без значения revision) + `nudge()` на `DaemonExportScheduler`: чек через `quiet-period` на его же single-thread executor'е, coalesce повторных nudge, follow-up-чек пока есть pending-работа, startup-nudge после recovery. Cadence остаётся единственным носителем quiet/max-cap-политики; periodic poll — обязательный backstop (после Р2 его можно делать редким). Выигрыш материализуется при `trigger.type: quiet-period`; при `interval` nudge — no-op. Детальный дизайн: [ADR/0014](ADR/0014-event-driven-ingest-to-delivery.md) «Детальный дизайн» → Р2. | закрыт | M | ADR/0014 Р2; commits `d28c74e`, `e265b0d`, `294b67c`, `aefb593` |
 
+## 9. Source parsing / dependency surface (`SRC`)
+
+| ID | Долг / seam | Статус | Эфф. | Источник |
+|---|---|---|---|---|
+| SRC-1 | **Минимизировать Tika parser set после определения supported formats.** Сейчас `tika-parsers-standard-package` обеспечивает широкий format-agnostic contour, но приносит parser modules и transitives, которые не входят в фактический HTML/DOCX/PDF/XLSX contract. Сначала опубликовать поддерживаемые форматы и закрепить их corpus/contract tests; затем сравнить umbrella package с явным набором HTML/text/Microsoft/PDF modules по размеру boot jar, dependency/CVE surface и качеству extraction. Сужать graph только если выигрыш оправдывает потерю неявно поддерживаемых форматов. Это optimization/packaging seam, не дефект корректности и не blocker 0.1.1. | seam | M | Tika 3.3.1 migration review; [dev/extraction](dev/extraction.md) |
+| SRC-2 | **Bounded resource policy для document parsing.** `SourceReader` обрабатывает потенциально недоверенные документы, а `BodyContentHandler(-1)` намеренно не ограничивает размер извлечённого текста. Нужен единый operator-facing contract: max input bytes, decompression ratio/depth, spool threshold и wall-clock budget/cancellation; настройки Tika `AutoDetectParserConfig` должны дополнять, а не подменять внешние file/time limits. Exhaustion обязан завершаться типизированной диагностикой и согласованным failure-policy outcome без частичного durable write. Это security/operational hardening seam; текущая миграция на Tika 3.3.1 его не создаёт и не делает release blocker. | seam | M | Tika 3.3.1 migration review; ADR/0017; [dev/extraction](dev/extraction.md) |
+
 ---
 
 ## Рекомендованный порядок
@@ -115,6 +122,9 @@
 2. **Ценность данных:** `OUT-1` (обогащение meta-колонок).
 3. **Фича по выбору:** `EXT-1` (IPv6/email, почти весь config-driven) или `EXP-1`
    (STIX-экспорт — модель готова).
+4. **Source parsing после релиза:** `SRC-2` активировать при расширении контура
+   недоверенных входов или по resource-инциденту; `SRC-1` — только после
+   утверждения supported-format catalog и измеримого выигрыша dependency surface.
 
 ## Недавно закрыто (для контекста)
 

@@ -23,7 +23,7 @@
         <java.version>21</java.version>
         <picocli.version>4.7.6</picocli.version>
         <re2j.version>1.7</re2j.version>
-        <tika.version>2.9.2</tika.version>
+        <tika.version>3.3.1</tika.version>
         <commons-csv.version>1.12.0</commons-csv.version>
         <commons-io.version>2.17.0</commons-io.version>
         <guava.version>33.3.1-jre</guava.version>
