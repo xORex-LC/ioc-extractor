@@ -272,7 +272,7 @@ properties не становятся поддерживаемыми только
 | `logging.level.com.iocextractor` | `INFO` | Детализация application logs. |
 | `logging.file.path` | `var/logs` | Rolling ECS JSON directory в daemon mode. |
 | `server.address` | `127.0.0.1` | Оставляйте loopback без authentication/exposure policy. |
-| `server.port` | `8081` | Actuator port для health checks. |
+| `server.port` | `8081` | Actuator port для health checks. `deploy-local.sh --port` и `install.sh --server-port` рендерят более приоритетный CLI override. |
 | `server.tomcat.threads.max` | `8` | Достаточно для loopback actuator-only surface. |
 | `server.tomcat.threads.min-spare` | `1` | Минимум idle request threads. |
 | `server.tomcat.accept-count` | `10` | Небольшая очередь connections. |

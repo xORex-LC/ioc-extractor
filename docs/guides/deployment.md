@@ -8,12 +8,13 @@ systemd distributions are best effort and require operator validation.
 
 | Path | Use it for | Guarantees |
 |---|---|---|
-| `packaging/install.sh` | A new host or a simple controlled upgrade from a prepared jar | Host provisioning, JDK, account, layout, immutable release activation and config preservation |
+| `packaging/install.sh` | A new host or a simple controlled upgrade from a prepared jar | Host provisioning, verified JDK, safe marked layout, immutable activation, config preservation and local storage health gate |
 | `packaging/deploy-local.sh` | Repeated deployments from a local checkout to a Debian/WSL test host | Clean `verify`, build identity, DB backup, atomic activation, health gate and automatic rollback |
 
-`install.sh` does not provide the automatic backup-and-health rollback transaction
-of `deploy-local.sh`. For production upgrades, take and verify a backup before
-running the installer and retain the previous release directory.
+`install.sh` restores the previous release/unit and restarts a previously active
+service when a later install step fails, but it does not create or restore a DB
+backup. For production upgrades, take and verify a backup before running it and
+retain the previous release directory.
 
 ## Prerequisites
 
@@ -26,6 +27,9 @@ running the installer and retain the previous release directory.
 
 Do not install over a source checkout. `/opt/ioc-extractor` is the recommended
 production prefix; `/srv/ioc-extractor` is the local-deployment default.
+The prefix must be a normalized dedicated directory: system roots, protected
+system subtrees, symlink traversal and non-empty unrelated directories are
+rejected. The daemon account must never resolve to UID 0.
 
 ## Fresh installation
 
@@ -47,9 +51,11 @@ sudo packaging/install.sh \
   --checksum "${APP_JAR}.sha256"
 ```
 
-The installer creates a dedicated `ioc` account, installs JDK 21 unless
-`--system-java` is selected, deploys an immutable release, installs the launcher
-and systemd unit, then starts the service.
+The installer creates a dedicated `ioc` account, installs the pinned Temurin 21
+archive unless `--system-java` is selected, verifies it against the pinned
+SHA-256 before staged extraction, deploys an immutable release, installs the
+launcher and systemd unit, then requires all local storage health components to
+become `UP`.
 
 For an offline host, transfer a trusted Temurin 21 tarball with the application:
 
@@ -57,8 +63,13 @@ For an offline host, transfer a trusted Temurin 21 tarball with the application:
 sudo packaging/install.sh \
   --jar /tmp/ioc-extractor.jar \
   --checksum /tmp/ioc-extractor.jar.sha256 \
-  --jdk-tarball /tmp/temurin-21.tar.gz
+  --jdk-tarball /tmp/temurin-21.tar.gz \
+  --jdk-sha256 <trusted-archive-sha256>
 ```
+
+A custom `--jdk-url` likewise requires `--jdk-sha256` and must use HTTPS. The
+default architecture-specific URL and digest are pinned in the release script;
+they do not follow a mutable `latest` endpoint.
 
 Use `--no-start` when configuration must be reviewed before first startup. Run
 `packaging/install.sh --help` for all installer options.
@@ -72,6 +83,7 @@ Use `--no-start` when configuration must be reviewed before first startup. Run
 ├── bin/ioc
 ├── etc/application.yml
 ├── etc/ioc-extractor.env
+├── etc/ioc-extractor.installation
 ├── var/db/
 ├── var/export/
 ├── var/inbox/  var/processing/  var/done/  var/failed/
@@ -80,7 +92,9 @@ Use `--no-start` when configuration must be reviewed before first startup. Run
 ```
 
 `releases/` is immutable. Operator-owned state lives under `etc/`, `var/` and
-`dataframe/`; it is not part of a release directory.
+`dataframe/`; it is not part of a release directory. The root-owned installation
+marker binds the exact prefix, service name and service user; do not edit or copy
+it to another directory.
 
 ## Configure and validate
 
@@ -91,8 +105,8 @@ Edit `<prefix>/etc/application.yml` using the
 ```bash
 sudo systemctl restart ioc-extractor
 sudo systemctl status ioc-extractor --no-pager
-sudo -u ioc /opt/ioc-extractor/bin/ioc --version
-sudo -u ioc /opt/ioc-extractor/bin/ioc health
+sudo /opt/ioc-extractor/bin/ioc --version
+sudo /opt/ioc-extractor/bin/ioc health
 sudo journalctl -u ioc-extractor -n 100 --no-pager
 ```
 
@@ -122,6 +136,11 @@ sudo packaging/install.sh \
   --release-id v0.1.1
 ```
 
+If the host uses a non-default actuator port, also pass `--server-port PORT`.
+The installer renders it as a command-line `--server.port` override and uses the
+same value for its health gate. Health timing is tunable through
+`--health-attempts` and `--health-interval`.
+
 The installer preserves an existing operator file. When a packaged template has
 changed it writes `application.yml.new` or `ioc-extractor.env.new` beside it.
 Compare the files; merge new supported properties into the operator copy; keep
@@ -145,12 +164,19 @@ Run this command as an ordinary user:
 ```
 
 It rejects a dirty checkout unless `--allow-dirty` is explicit, runs the full
-Maven gate, creates a release identified by commit and build time, backs up both
-SQLite databases, atomically switches `current`, starts the service and runs a
-local health gate. On failure it restores the previous symlink and DB backup.
+Maven gate, verifies that the build did not change the checkout, creates a
+release identified by commit and build time, backs up both SQLite databases,
+atomically switches `current`, starts the service and runs a local health gate.
+On failure it restores the previous symlink and DB backup. `--port PORT` becomes
+the daemon's high-precedence `--server.port` value, not merely the probe address.
 
 Use this path for a test stand, not as a substitute for a reviewed production
 release process.
+
+Rollback is deliberately bounded to the application symlink and two SQLite
+databases. It cannot reverse input files already moved by a briefly running new
+daemon, generated CSV/export files or completed remote writes. Pause input and
+optional synchronization before a rollback-sensitive migration.
 
 ## Manual application rollback
 
@@ -199,8 +225,9 @@ sudo packaging/uninstall.sh --prefix /opt/ioc-extractor
 ```
 
 `--purge` irreversibly removes the prefix, configuration, databases, artifacts,
-JDK and service account. Take an external backup and verify the exact prefix
-before using it.
+JDK and service account. It requires a valid installation marker and refuses UID
+0. A pre-marker installation must first be adopted by running the current
+installer once. Take an external backup and verify the exact prefix before purge.
 
 ## Post-deployment checklist
 

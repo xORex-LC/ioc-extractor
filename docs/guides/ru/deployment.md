@@ -8,12 +8,13 @@ installer baselines — Debian 11 и 12. Другие systemd-дистрибут
 
 | Способ | Назначение | Гарантии |
 |---|---|---|
-| `packaging/install.sh` | Новый хост или контролируемое обновление готовым jar | Host provisioning, JDK, account, layout, immutable activation, сохранение config |
+| `packaging/install.sh` | Новый хост или контролируемое обновление готовым jar | Host provisioning, verified JDK, safe marked layout, immutable activation, сохранение config и local storage health gate |
 | `packaging/deploy-local.sh` | Повторные deploy из локального checkout на Debian/WSL test host | Clean `verify`, build identity, DB backup, atomic activation, health gate и automatic rollback |
 
-`install.sh` не даёт автоматическую backup-and-health rollback transaction,
-которую выполняет `deploy-local.sh`. Перед production upgrade сделайте и
-проверьте backup, сохраните предыдущий release directory.
+Если поздний шаг установки завершится ошибкой, `install.sh` возвращает предыдущие
+release/unit и перезапускает ранее активный service, но не создаёт и не
+восстанавливает DB backup. Перед production upgrade сделайте и проверьте backup,
+сохраните предыдущий release directory.
 
 ## Требования
 
@@ -26,6 +27,9 @@ installer baselines — Debian 11 и 12. Другие systemd-дистрибут
 
 Не устанавливайте приложение поверх source checkout. Рекомендуемый production
 prefix — `/opt/ioc-extractor`, default local deployment — `/srv/ioc-extractor`.
+Prefix должен быть нормализованной выделенной директорией: системные корни,
+защищённые системные деревья, symlink traversal и непустые посторонние директории
+отклоняются. Daemon account не может иметь UID 0.
 
 ## Новая установка
 
@@ -47,9 +51,10 @@ sudo packaging/install.sh \
   --checksum "${APP_JAR}.sha256"
 ```
 
-Installer создаёт account `ioc`, устанавливает JDK 21 (если не выбран
-`--system-java`), размещает immutable release, launcher и systemd unit, затем
-запускает сервис.
+Installer создаёт account `ioc`, устанавливает pinned Temurin 21 (если не выбран
+`--system-java`), сверяет archive с pinned SHA-256 до staged extraction,
+размещает immutable release, launcher и systemd unit, затем требует `UP` от local
+storage health components.
 
 Для offline host перенесите доверенный Temurin 21 tarball:
 
@@ -57,8 +62,13 @@ Installer создаёт account `ioc`, устанавливает JDK 21 (ес�
 sudo packaging/install.sh \
   --jar /tmp/ioc-extractor.jar \
   --checksum /tmp/ioc-extractor.jar.sha256 \
-  --jdk-tarball /tmp/temurin-21.tar.gz
+  --jdk-tarball /tmp/temurin-21.tar.gz \
+  --jdk-sha256 <trusted-archive-sha256>
 ```
+
+Custom `--jdk-url` также требует `--jdk-sha256` и HTTPS. Default URL и digest для
+каждой поддержанной архитектуры зафиксированы в release script и не следуют за
+изменяемым endpoint `latest`.
 
 `--no-start` позволяет проверить config перед первым запуском. Все options:
 `packaging/install.sh --help`.
@@ -72,6 +82,7 @@ sudo packaging/install.sh \
 ├── bin/ioc
 ├── etc/application.yml
 ├── etc/ioc-extractor.env
+├── etc/ioc-extractor.installation
 ├── var/db/
 ├── var/export/
 ├── var/inbox/  var/processing/  var/done/  var/failed/
@@ -80,7 +91,9 @@ sudo packaging/install.sh \
 ```
 
 `releases/` неизменяем. Операторское состояние находится в `etc/`, `var/` и
-`dataframe/`, а не внутри release directory.
+`dataframe/`, а не внутри release directory. Root-owned installation marker
+связывает точный prefix, service name и service user; не редактируйте и не
+копируйте его в другую директорию.
 
 ## Конфигурация и проверка
 
@@ -91,8 +104,8 @@ sudo packaging/install.sh \
 ```bash
 sudo systemctl restart ioc-extractor
 sudo systemctl status ioc-extractor --no-pager
-sudo -u ioc /opt/ioc-extractor/bin/ioc --version
-sudo -u ioc /opt/ioc-extractor/bin/ioc health
+sudo /opt/ioc-extractor/bin/ioc --version
+sudo /opt/ioc-extractor/bin/ioc health
 sudo journalctl -u ioc-extractor -n 100 --no-pager
 ```
 
@@ -122,6 +135,11 @@ sudo packaging/install.sh \
   --release-id v0.1.1
 ```
 
+Для нестандартного actuator port передайте также `--server-port PORT`. Installer
+рендерит его как command-line override `--server.port` и проверяет health на том
+же порту. Timing health gate настраивается через `--health-attempts` и
+`--health-interval`.
+
 Существующий operator file не перезаписывается. Если packaged template изменён,
 installer создаёт `application.yml.new` или `ioc-extractor.env.new`. Сравните
 файлы, перенесите новые supported properties, сохранив site-specific paths,
@@ -144,10 +162,17 @@ file packaged template.
 ```
 
 Скрипт отклоняет dirty checkout без явного `--allow-dirty`, выполняет полный
-Maven gate, создаёт release с commit/build time, копирует обе SQLite DB, атомарно
-переключает `current`, запускает сервис и выполняет local health gate. При ошибке
-восстанавливает прежний symlink и DB backup. Это путь для test stand, а не замена
-reviewed production release process.
+Maven gate, проверяет, что build не изменил checkout, создаёт release с
+commit/build time, копирует обе SQLite DB, атомарно переключает `current`,
+запускает сервис и выполняет local health gate. При ошибке восстанавливает
+прежний symlink и DB backup. `--port PORT` становится high-precedence значением
+`--server.port` daemon. Это путь для test stand, а не замена reviewed production
+release process.
+
+Rollback намеренно ограничен application symlink и двумя SQLite DB. Он не может
+отменить input files, уже перемещённые успевшим запуститься новым daemon,
+сгенерированные CSV/export files или завершённые remote writes. Перед
+rollback-sensitive migration остановите подачу input и optional synchronization.
 
 ## Ручной application rollback
 
@@ -196,7 +221,9 @@ sudo packaging/uninstall.sh --prefix /opt/ioc-extractor
 ```
 
 `--purge` необратимо удаляет prefix, config, databases, artifacts, JDK и service
-account. Перед применением создайте внешний backup и проверьте точный prefix.
+account. Он требует valid installation marker и отклоняет UID 0. Pre-marker
+установка должна быть сначала принята одним запуском текущего installer. Перед
+purge создайте внешний backup и проверьте точный prefix.
 
 ## Post-deployment checklist
 

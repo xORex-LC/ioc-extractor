@@ -273,7 +273,7 @@ framework recognizes them.
 | `logging.level.com.iocextractor` | `INFO` | Application-specific verbosity. |
 | `logging.file.path` | `var/logs` | Rolling ECS JSON log directory in daemon mode. |
 | `server.address` | `127.0.0.1` | Keep loopback unless authentication and exposure policy are added. |
-| `server.port` | `8081` | Actuator port used by health checks. |
+| `server.port` | `8081` | Actuator port used by health checks. `deploy-local.sh --port` and `install.sh --server-port` render a higher-precedence CLI override. |
 | `server.tomcat.threads.max` | `8` | Sufficient for the loopback actuator-only surface. |
 | `server.tomcat.threads.min-spare` | `1` | Minimum idle request threads. |
 | `server.tomcat.accept-count` | `10` | Small pending connection queue. |

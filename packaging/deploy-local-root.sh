@@ -14,9 +14,11 @@ BUILT_AT=""
 PORT="8081"
 RELEASE_RETENTION="5"
 BACKUP_RETENTION="5"
-HEALTH_ATTEMPTS="4"
+HEALTH_ATTEMPTS="15"
 HEALTH_INTERVAL="2"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+# shellcheck source=packaging/install-layout.sh
+. "${SCRIPT_DIR}/install-layout.sh"
 
 log() { printf '\033[1;34m[activate]\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; exit 1; }
@@ -40,11 +42,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ "${EUID}" -eq 0 ]] || die "privileged activation must run as root"
-for command in curl flock sha256sum systemctl tar; do
+for command in awk chmod chown cmp curl find flock getent grep id install journalctl ln \
+    mkdir mktemp mv readlink realpath rm sed sha256sum sleep sort stat systemctl tar; do
   command -v "${command}" >/dev/null 2>&1 || die "required command not found: ${command}"
 done
-[[ "${PREFIX}" == /* && "${PREFIX}" != "/" ]] || die "unsafe prefix: ${PREFIX}"
-[[ "${PREFIX}" != *[[:space:]]* ]] || die "prefix must not contain whitespace"
+ioc_validate_prefix "${PREFIX}" || die "unsafe installation prefix"
+PREFIX="${IOC_VALIDATED_PREFIX}"
 [[ -f "${JAR}" && ! -L "${JAR}" ]] || die "application jar must be a regular non-symlink file"
 [[ "${EXPECTED_JAR_SHA256}" =~ ^[0-9a-f]{64}$ ]] || die "invalid application SHA-256"
 [[ "$(sha256sum "${JAR}" | awk '{print $1}')" == "${EXPECTED_JAR_SHA256}" ]] \
@@ -61,10 +64,11 @@ exec 9>/run/lock/ioc-extractor-deploy.lock
 flock -n 9 || die "another privileged deployment is already running"
 
 health_ready() {
-  local base="http://127.0.0.1:${PORT}/actuator/health" component
+  local base="http://127.0.0.1:${PORT}/actuator/health" component body
   for component in jdbcStorage dataframeStorage artifactStorage; do
-    curl --silent --fail --max-time 2 --output /dev/null \
-      "${base}/${component}" 2>/dev/null || return 1
+    body="$(curl --silent --fail --max-time 2 "${base}/${component}" 2>/dev/null)" || return 1
+    grep -Eq '^[[:space:]]*\{[[:space:]]*"status"[[:space:]]*:[[:space:]]*"UP"' \
+      <<< "${body}" || return 1
   done
 }
 
@@ -108,7 +112,8 @@ if [[ ! -e "${PREFIX}/current" || ! -f "/etc/systemd/system/${SERVICE}.service" 
   fi
   log "bootstrapping ${PREFIX}"
   "${SCRIPT_DIR}/install.sh" --prefix "${PREFIX}" --jar "${JAR}" \
-    --release-id "${RELEASE_ID}" --no-start "${INSTALL_JAVA_ARGS[@]}"
+    --release-id "${RELEASE_ID}" --server-port "${PORT}" --no-start \
+    "${INSTALL_JAVA_ARGS[@]}"
   [[ "$(sha256sum "${PREFIX}/releases/${RELEASE_ID}/ioc-app.jar" | awk '{print $1}')" \
       == "${EXPECTED_JAR_SHA256}" ]] || die "installed application checksum mismatch"
   printf 'release.id=%s\ncommit=%s\ndirty=%s\nbuilt.at=%s\nartifact.sha256=%s\n' \
@@ -131,17 +136,46 @@ fi
 # launch-mode and hardening fixes current without overwriting host configuration.
 RUN_USER="$(stat -c '%U' "${PREFIX}/var")"
 RUN_GROUP="$(stat -c '%G' "${PREFIX}/var")"
+ioc_validate_service_user "${RUN_USER}" || die "unsafe installed service account"
+MARKER="$(ioc_marker_path "${PREFIX}")"
+if [[ -e "${MARKER}" ]]; then
+  ioc_is_valid_marker "${PREFIX}" "${SERVICE}" "${RUN_USER}" \
+    || die "invalid or mismatched installation marker: ${MARKER}"
+elif ioc_is_legacy_installation "${PREFIX}"; then
+  log "adopting validated pre-marker installation at ${PREFIX}"
+  ioc_write_marker "${PREFIX}" "${SERVICE}" "${RUN_USER}"
+  chown root:"${RUN_GROUP}" "${MARKER}"
+  chmod 0640 "${MARKER}"
+else
+  die "existing prefix is not a validated ioc-extractor installation"
+fi
 if [[ -x "${PREFIX}/jdk/bin/java" ]]; then
   JAVA_BIN="${PREFIX}/jdk/bin/java"
 else
   JAVA_BIN="$(readlink -f "$(command -v java)")"
 fi
 [[ -x "${JAVA_BIN}" && "${JAVA_BIN}" != /home/* ]] || die "safe Java runtime not found for systemd unit"
+
+refresh_config_candidate() { # template installed-file
+  local template="$1" installed="$2"
+  if [[ -f "${installed}" ]] && cmp -s "${template}" "${installed}"; then
+    return
+  fi
+  if [[ -f "${installed}.new" ]] && ! cmp -s "${template}" "${installed}.new"; then
+    die "unreconciled configuration candidate would be overwritten: ${installed}.new"
+  fi
+  install -o root -g "${RUN_GROUP}" -m 0640 "${template}" "${installed}.new"
+  log "configuration template changed; review ${installed}.new"
+}
+refresh_config_candidate "${SCRIPT_DIR}/templates/application.yml" "${PREFIX}/etc/application.yml"
+refresh_config_candidate "${SCRIPT_DIR}/templates/ioc-extractor.env" "${PREFIX}/etc/ioc-extractor.env"
+
 UNIT="/etc/systemd/system/${SERVICE}.service"
 sed -e "s|@PREFIX@|${PREFIX}|g" \
     -e "s|@JAVA_BIN@|${JAVA_BIN}|g" \
     -e "s|@USER@|${RUN_USER}|g" \
     -e "s|@GROUP@|${RUN_GROUP}|g" \
+    -e "s|@SERVER_PORT_ARG@|--server.port=${PORT}|g" \
     "${SCRIPT_DIR}/templates/ioc-extractor.service" > "${UNIT}.tmp"
 install -o root -g root -m 0644 "${UNIT}.tmp" "${UNIT}"
 rm -f "${UNIT}.tmp"
@@ -158,7 +192,8 @@ sed -e "s|@PREFIX@|${PREFIX}|g" \
 install -o root -g "${RUN_GROUP}" -m 0750 "${PREFIX}/bin/ioc.tmp" "${PREFIX}/bin/ioc"
 rm -f "${PREFIX}/bin/ioc.tmp"
 PREVIOUS_TARGET="$(readlink "${PREFIX}/current")"
-[[ "${PREVIOUS_TARGET}" == releases/* ]] || die "current symlink points outside releases: ${PREVIOUS_TARGET}"
+ioc_is_release_target "${PREVIOUS_TARGET}" \
+  || die "current symlink points outside releases: ${PREVIOUS_TARGET}"
 PREVIOUS_DIR="${PREFIX}/${PREVIOUS_TARGET}"
 
 RELEASE_DIR="${PREFIX}/releases/${RELEASE_ID}"
@@ -198,7 +233,9 @@ rollback_on_error() {
     ln -s "${PREVIOUS_TARGET}" "${CURRENT_TMP}"
     mv -Tf "${CURRENT_TMP}" "${PREFIX}/current"
     if [[ -f "${BACKUP}" ]]; then
-      rm -rf -- "${PREFIX}/var/db"
+      FAILED_DB="${PREFIX}/var/db.failed-${RELEASE_ID}-$$"
+      [[ ! -e "${FAILED_DB}" ]] || FAILED_DB="${FAILED_DB}.retry"
+      [[ ! -e "${PREFIX}/var/db" ]] || mv "${PREFIX}/var/db" "${FAILED_DB}"
       tar -C "${PREFIX}/var" -xf "${BACKUP}"
     fi
     systemctl start "${SERVICE}" || true
@@ -216,6 +253,7 @@ log "stopping ${SERVICE} and backing up SQLite state"
 ROLLBACK_ARMED="true"
 systemctl stop "${SERVICE}"
 tar -C "${PREFIX}/var" -cf "${BACKUP}.tmp" db
+tar -tf "${BACKUP}.tmp" >/dev/null
 mv -f "${BACKUP}.tmp" "${BACKUP}"
 
 CURRENT_TMP="${PREFIX}/.current.$$"

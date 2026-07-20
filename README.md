@@ -197,8 +197,9 @@ docs/       project maps, capability guides, ADRs and operator guides
 ./mvnw -pl core/ioc-domain -am test
 ```
 
-CI runs the complete reactor gate and documentation link check on pushes and pull
-requests. Contribution rules are documented in [CONVENTIONS.md](docs/CONVENTIONS.md).
+CI runs the complete reactor gate, packaging safety contracts and documentation
+link check on pushes and pull requests. Contribution rules are documented in
+[CONVENTIONS.md](docs/CONVENTIONS.md).
 
 ## Technology stack
 

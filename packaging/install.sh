@@ -11,7 +11,7 @@
 #   <prefix>/jdk/                 manually-installed Temurin 21 runtime
 #   <prefix>/releases/<id>/       immutable application releases
 #   <prefix>/current              atomic symlink to the active release
-#   <prefix>/etc/                 application.yml + ioc-extractor.env (operator-editable)
+#   <prefix>/etc/                 operator config + root-owned installation marker
 #   <prefix>/var/                 db/ export/ inbox/ processing/ done/ failed/ ledger/ logs/
 #   <prefix>/dataframe/           generated CSV projections
 #
@@ -21,7 +21,9 @@
 # Usage:
 #   sudo ./install.sh [--prefix DIR] [--jar PATH] [--checksum PATH]
 #                     [--release-id ID] [--user NAME]
-#                     [--jdk-tarball PATH | --jdk-url URL | --system-java]
+#                     [--jdk-tarball PATH | --jdk-url URL] [--jdk-sha256 HEX]
+#                     [--system-java] [--server-port PORT]
+#                     [--health-attempts N] [--health-interval SECONDS]
 #                     [--no-start] [--force] [--help]
 #
 set -Eeuo pipefail
@@ -35,24 +37,74 @@ JAR=""
 CHECKSUM=""
 JDK_TARBALL=""
 JDK_URL=""
+JDK_SHA256=""
 USE_SYSTEM_JAVA="false"
 NO_START="false"
 FORCE="false"
 RELEASE_ID=""
+SERVER_PORT="8081"
+SERVER_PORT_EXPLICIT="false"
+HEALTH_ATTEMPTS="15"
+HEALTH_INTERVAL="2"
 SYSTEMD_AVAILABLE="false"
 SERVICE_WAS_ACTIVE="false"
 CLEANUP_TARBALL=""
+CLEANUP_JDK_STAGE=""
+RECOVERY_ARMED="false"
+PREVIOUS_TARGET=""
+UNIT_BACKUP=""
+UNIT_WRITTEN="false"
+CLEANUP_UNIT_STAGE=""
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+# shellcheck source=packaging/install-layout.sh
+. "${SCRIPT_DIR}/install-layout.sh"
 
 # ---- output helpers --------------------------------------------------------
 log()  { printf '\033[1;34m[install]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*" >&2; }
-die()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; exit 1; }
-trap 'die "failed at line $LINENO"' ERR
-trap '[[ -z "${CLEANUP_TARBALL:-}" ]] || rm -f -- "${CLEANUP_TARBALL}"' EXIT
+die()  {
+  printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2
+  if [[ "${RECOVERY_ARMED}" == "true" ]]; then
+    recover_install "${BASH_LINENO[0]:-?}" 1
+  fi
+  exit 1
+}
 
-usage() { sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0; }
+recover_install() {
+  local failed_line="${1:-?}" status="${2:-1}"
+  trap - ERR
+  warn "installation failed at line ${failed_line}"
+  if [[ "${RECOVERY_ARMED}" == "true" ]]; then
+    if [[ -n "${PREVIOUS_TARGET}" ]]; then
+      local current_tmp="${PREFIX}/.current.install-rollback.$$"
+      ln -s "${PREVIOUS_TARGET}" "${current_tmp}" 2>/dev/null || true
+      mv -Tf "${current_tmp}" "${PREFIX}/current" 2>/dev/null || true
+    fi
+    if [[ "${UNIT_WRITTEN}" == "true" && -n "${UNIT_BACKUP}" && -f "${UNIT_BACKUP}" ]]; then
+      install -o root -g root -m 0644 "${UNIT_BACKUP}" "/etc/systemd/system/${SERVICE}.service" 2>/dev/null || true
+      [[ "${SYSTEMD_AVAILABLE}" != "true" ]] || systemctl daemon-reload 2>/dev/null || true
+    elif [[ "${UNIT_WRITTEN}" == "true" ]]; then
+      rm -f "/etc/systemd/system/${SERVICE}.service" 2>/dev/null || true
+      [[ "${SYSTEMD_AVAILABLE}" != "true" ]] || systemctl daemon-reload 2>/dev/null || true
+    fi
+    if [[ "${SERVICE_WAS_ACTIVE}" == "true" ]]; then
+      systemctl start "${SERVICE}" 2>/dev/null \
+        || warn "previous ${SERVICE} instance could not be restarted automatically"
+    fi
+  fi
+  exit "${status}"
+}
+trap 'recover_install "$LINENO" "$?"' ERR
+cleanup_install_temporary_files() {
+  [[ -z "${CLEANUP_TARBALL:-}" ]] || rm -f -- "${CLEANUP_TARBALL}"
+  [[ -z "${CLEANUP_JDK_STAGE:-}" ]] || rm -rf -- "${CLEANUP_JDK_STAGE}"
+  [[ -z "${UNIT_BACKUP:-}" ]] || rm -f -- "${UNIT_BACKUP}"
+  [[ -z "${CLEANUP_UNIT_STAGE:-}" ]] || rm -f -- "${CLEANUP_UNIT_STAGE}"
+}
+trap cleanup_install_temporary_files EXIT
+
+usage() { sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0; }
 
 # ---- argument parsing ------------------------------------------------------
 while [[ $# -gt 0 ]]; do
@@ -64,7 +116,11 @@ while [[ $# -gt 0 ]]; do
     --user)         RUN_USER="${2:?}"; shift 2 ;;
     --jdk-tarball)  JDK_TARBALL="${2:?}"; shift 2 ;;
     --jdk-url)      JDK_URL="${2:?}"; shift 2 ;;
+    --jdk-sha256)   JDK_SHA256="${2:?}"; shift 2 ;;
     --system-java)  USE_SYSTEM_JAVA="true"; shift ;;
+    --server-port)  SERVER_PORT="${2:?}"; SERVER_PORT_EXPLICIT="true"; shift 2 ;;
+    --health-attempts) HEALTH_ATTEMPTS="${2:?}"; shift 2 ;;
+    --health-interval) HEALTH_INTERVAL="${2:?}"; shift 2 ;;
     --no-start)     NO_START="true"; shift ;;
     --force)        FORCE="true"; shift ;;
     -h|--help)      usage ;;
@@ -73,9 +129,27 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ---- preflight -------------------------------------------------------------
-for command in find sha256sum sed; do
+for command in awk chmod chown cmp curl find getent grep head id install ln mkdir mktemp \
+    mv ps readlink realpath rm sed sha256sum sleep tar uname useradd; do
   command -v "${command}" >/dev/null 2>&1 || die "required command not found: ${command}"
 done
+
+[[ "${SERVER_PORT}" =~ ^[1-9][0-9]*$ && "${SERVER_PORT}" -le 65535 ]] \
+  || die "server port must be an integer in 1..65535"
+for value in "${HEALTH_ATTEMPTS}" "${HEALTH_INTERVAL}"; do
+  [[ "${value}" =~ ^[1-9][0-9]*$ ]] || die "health timing values must be positive integers"
+done
+if [[ "${USE_SYSTEM_JAVA}" == "true" && ( -n "${JDK_TARBALL}" || -n "${JDK_URL}" || -n "${JDK_SHA256}" ) ]]; then
+  die "--system-java cannot be combined with JDK archive options"
+fi
+[[ -z "${JDK_TARBALL}" || -z "${JDK_URL}" ]] \
+  || die "--jdk-tarball and --jdk-url are mutually exclusive"
+if [[ -n "${JDK_TARBALL}" || -n "${JDK_URL}" ]]; then
+  [[ "${JDK_SHA256}" =~ ^[0-9a-fA-F]{64}$ ]] \
+    || die "custom JDK archive/URL requires --jdk-sha256"
+elif [[ -n "${JDK_SHA256}" ]]; then
+  die "--jdk-sha256 requires --jdk-tarball or --jdk-url"
+fi
 
 if [[ -r /etc/os-release ]]; then
   # shellcheck disable=SC1091
@@ -94,15 +168,12 @@ if [[ -z "${PREFIX}" ]]; then
   fi
   PREFIX="${PREFIX:-${DEFAULT_PREFIX}}"
 fi
-PREFIX="${PREFIX%/}"
-[[ "${PREFIX}" == /* ]] || die "prefix must be an absolute path: ${PREFIX}"
-case "${PREFIX}" in
-  /|/home|/home/*) warn "prefix under /home conflicts with systemd ProtectHome; /opt is recommended." ;;
-esac
+ioc_validate_prefix "${PREFIX}" || die "unsafe installation prefix"
+PREFIX="${IOC_VALIDATED_PREFIX}"
 
-# Guard: never install on top of the source checkout.
-if [[ -e "${PREFIX}/pom.xml" || -d "${PREFIX}/.git" ]]; then
-  [[ "${FORCE}" == "true" ]] || die "refusing to install into a source tree at ${PREFIX} (pom.xml/.git present). Pick another --prefix or pass --force."
+# Guard: never install on top of or anywhere below the source checkout.
+if ioc_is_inside_source_tree "${PREFIX}"; then
+  die "refusing to install inside a source tree: ${PREFIX}"
 fi
 
 # Locate the application jar. Explicit selection is preferred; autodiscovery is
@@ -163,53 +234,18 @@ log "artifact sha256: ${JAR_SHA256}"
 # before privilege validation. No host state is changed above this boundary.
 [[ "${EUID}" -eq 0 ]] || die "must run as root (use sudo)."
 
-# ---- 1. Java (manual, no apt repositories) ---------------------------------
-java_major() { "$1" -version 2>&1 | sed -n 's/.*version "\([0-9]*\).*/\1/p' | head -1; }
-
-JAVA_BIN=""
-if [[ "${USE_SYSTEM_JAVA}" == "true" ]]; then
-  command -v java >/dev/null 2>&1 || die "--system-java given but no java on PATH."
-  sysjava="$(command -v java)"
-  [[ "$(java_major "${sysjava}")" -ge 21 ]] || die "--system-java is < 21."
-  JAVA_BIN="${sysjava}"
-  log "using system java: ${JAVA_BIN}"
-elif [[ -x "${PREFIX}/jdk/bin/java" && "$(java_major "${PREFIX}/jdk/bin/java")" -ge 21 ]]; then
-  JAVA_BIN="${PREFIX}/jdk/bin/java"
-  log "reusing existing JDK at ${PREFIX}/jdk"
-else
-  # Manual tarball install into <prefix>/jdk.
-  tarball="${JDK_TARBALL}"
-  if [[ -z "${tarball}" ]]; then
-    arch="$(uname -m)"
-    case "${arch}" in
-      x86_64|amd64) a="x64" ;;
-      aarch64|arm64) a="aarch64" ;;
-      *) die "unsupported arch '${arch}' for JDK auto-download; provide --jdk-tarball." ;;
-    esac
-    url="${JDK_URL:-https://api.adoptium.net/v3/binary/latest/21/ga/linux/${a}/jdk/hotspot/normal/eclipse}"
-    command -v curl >/dev/null 2>&1 || die "curl required to download the JDK; install curl or pass --jdk-tarball."
-    tarball="$(mktemp /tmp/temurin21.XXXXXX.tar.gz)"
-    log "downloading Temurin 21 (${a}) from Adoptium…"
-    curl -fSL -m 600 -o "${tarball}" "${url}" || die "JDK download failed; on an offline host pass --jdk-tarball PATH."
-    CLEANUP_TARBALL="${tarball}"
-  fi
-  [[ -f "${tarball}" ]] || die "JDK tarball not found: ${tarball}"
-  log "installing JDK from tarball into ${PREFIX}/jdk"
-  rm -rf "${PREFIX}/jdk"
-  mkdir -p "${PREFIX}/jdk"
-  tar -xzf "${tarball}" -C "${PREFIX}/jdk" --strip-components=1
-  [[ -z "${CLEANUP_TARBALL}" ]] || rm -f "${CLEANUP_TARBALL}"
-  CLEANUP_TARBALL=""
-  JAVA_BIN="${PREFIX}/jdk/bin/java"
-  [[ -x "${JAVA_BIN}" ]] || die "JDK extraction did not yield ${JAVA_BIN}"
-  [[ "$(java_major "${JAVA_BIN}")" -ge 21 ]] || die "extracted JDK is < 21."
+# ---- 1. installation identity + service user -------------------------------
+ioc_validate_service_user "${RUN_USER}" || die "unsafe service account"
+MARKER="$(ioc_marker_path "${PREFIX}")"
+if [[ -e "${MARKER}" ]]; then
+  ioc_is_valid_marker "${PREFIX}" "${SERVICE}" "${RUN_USER}" \
+    || die "invalid or mismatched installation marker: ${MARKER}"
+elif ioc_is_legacy_installation "${PREFIX}"; then
+  warn "adopting validated pre-marker installation at ${PREFIX}"
+elif ! ioc_directory_is_empty "${PREFIX}"; then
+  die "refusing non-empty unmarked prefix: ${PREFIX}"
 fi
-log "java: $("${JAVA_BIN}" -version 2>&1 | head -1)"
-case "${JAVA_BIN}" in
-  /home/*) die "Java under /home is hidden by systemd ProtectHome; use the bundled JDK or a system JDK outside /home." ;;
-esac
 
-# ---- 2. service user -------------------------------------------------------
 if getent passwd "${RUN_USER}" >/dev/null; then
   log "user ${RUN_USER} already exists"
 else
@@ -219,18 +255,34 @@ else
 fi
 RUN_GROUP="$(id -gn "${RUN_USER}")"
 
-# Stop an existing instance before replacing its jar or moving live SQLite WAL
-# state. The service is started again at the end unless --no-start was requested.
+# Stop an existing instance before changing Java, the active release or live
+# SQLite state. Any later failure restores the previous current link and unit,
+# then attempts to restart the previous active service.
+if [[ -L "${PREFIX}/current" ]]; then
+  PREVIOUS_TARGET="$(readlink "${PREFIX}/current")"
+  ioc_is_release_target "${PREVIOUS_TARGET}" \
+    || die "current symlink points outside releases: ${PREVIOUS_TARGET}"
+  RECOVERY_ARMED="true"
+fi
+UNIT="/etc/systemd/system/${SERVICE}.service"
+if [[ -f "${UNIT}" ]]; then
+  UNIT_BACKUP="$(mktemp /tmp/${SERVICE}.service.XXXXXX)"
+  install -m 0600 "${UNIT}" "${UNIT_BACKUP}"
+fi
 if [[ "$(ps -p 1 -o comm= 2>/dev/null)" == "systemd" ]]; then
   SYSTEMD_AVAILABLE="true"
+  for command in journalctl systemctl; do
+    command -v "${command}" >/dev/null 2>&1 || die "${command} is required on a systemd host"
+  done
   if systemctl is-active --quiet "${SERVICE}"; then
     SERVICE_WAS_ACTIVE="true"
     log "stopping active ${SERVICE} for a consistent upgrade"
     systemctl stop "${SERVICE}"
+    RECOVERY_ARMED="true"
   fi
 fi
 
-# ---- 3. directory layout ---------------------------------------------------
+# ---- 2. directory layout + installation marker -----------------------------
 log "creating directory layout"
 mkdir -p \
   "${PREFIX}/releases" "${PREFIX}/backups" "${PREFIX}/bin" "${PREFIX}/etc" \
@@ -238,6 +290,82 @@ mkdir -p \
   "${PREFIX}/var/inbox" "${PREFIX}/var/processing" "${PREFIX}/var/done" \
   "${PREFIX}/var/failed" "${PREFIX}/var/ledger" "${PREFIX}/var/logs" \
   "${PREFIX}/dataframe"
+ioc_write_marker "${PREFIX}" "${SERVICE}" "${RUN_USER}"
+
+# ---- 3. verified Java runtime ----------------------------------------------
+java_major() { "$1" -version 2>&1 | sed -n 's/.*version "\([0-9]*\).*/\1/p' | head -1; }
+
+JAVA_BIN=""
+if [[ "${USE_SYSTEM_JAVA}" == "true" ]]; then
+  command -v java >/dev/null 2>&1 || die "--system-java given but no java on PATH"
+  JAVA_BIN="$(readlink -f "$(command -v java)")"
+  [[ "$(java_major "${JAVA_BIN}")" -ge 21 ]] || die "--system-java is < 21"
+  log "using system java: ${JAVA_BIN}"
+else
+  arch="$(uname -m)"
+  if [[ -z "${JDK_TARBALL}" && -z "${JDK_URL}" ]]; then
+    case "${arch}" in
+      x86_64|amd64)
+        JDK_URL="https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jdk_x64_linux_hotspot_21.0.11_10.tar.gz"
+        JDK_SHA256="4b2220e232a97997b436ca6ab15cbf70171ecff52958a46159dfa5a8c44ca4de"
+        ;;
+      aarch64|arm64)
+        JDK_URL="https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.11_10.tar.gz"
+        JDK_SHA256="8d498ec88e1c1989fab95c6784240ab92d011e29c54d20a3f9c324b13476f9ad"
+        ;;
+      *) die "unsupported arch '${arch}' for pinned JDK; provide --jdk-tarball and --jdk-sha256" ;;
+    esac
+  fi
+  JDK_SHA256="${JDK_SHA256,,}"
+
+  if [[ -x "${PREFIX}/jdk/bin/java"
+      && -f "${PREFIX}/jdk/.ioc-extractor-archive.sha256"
+      && "$(<"${PREFIX}/jdk/.ioc-extractor-archive.sha256")" == "${JDK_SHA256}"
+      && "$(java_major "${PREFIX}/jdk/bin/java")" -ge 21 ]]; then
+    JAVA_BIN="${PREFIX}/jdk/bin/java"
+    log "reusing verified JDK at ${PREFIX}/jdk"
+  else
+    tarball="${JDK_TARBALL}"
+    if [[ -n "${tarball}" ]]; then
+      [[ -f "${tarball}" && ! -L "${tarball}" ]] \
+        || die "JDK tarball must be a regular non-symlink file: ${tarball}"
+    else
+      [[ "${JDK_URL}" == https://* ]] || die "JDK URL must use HTTPS"
+      tarball="$(mktemp /tmp/temurin21.XXXXXX.tar.gz)"
+      CLEANUP_TARBALL="${tarball}"
+      log "downloading pinned Temurin 21 archive for ${arch}"
+      curl --proto '=https' --tlsv1.2 -fSL -m 600 -o "${tarball}" "${JDK_URL}" \
+        || die "JDK download failed; on an offline host pass a tarball and SHA-256"
+    fi
+    ACTUAL_JDK_SHA256="$(sha256sum "${tarball}" | awk '{print $1}')"
+    [[ "${ACTUAL_JDK_SHA256}" == "${JDK_SHA256}" ]] \
+      || die "JDK archive checksum mismatch"
+    if tar -tzf "${tarball}" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+      die "JDK archive contains an unsafe path"
+    fi
+
+    CLEANUP_JDK_STAGE="$(mktemp -d "${PREFIX}/.jdk-stage.XXXXXX")"
+    tar -xzf "${tarball}" -C "${CLEANUP_JDK_STAGE}" --strip-components=1 --no-same-owner
+    [[ -x "${CLEANUP_JDK_STAGE}/bin/java" ]] \
+      || die "JDK extraction did not yield bin/java"
+    [[ "$(java_major "${CLEANUP_JDK_STAGE}/bin/java")" -ge 21 ]] \
+      || die "extracted JDK is < 21"
+    printf '%s\n' "${JDK_SHA256}" > "${CLEANUP_JDK_STAGE}/.ioc-extractor-archive.sha256"
+
+    JDK_PREVIOUS="${PREFIX}/.jdk-previous.$$"
+    [[ ! -e "${JDK_PREVIOUS}" ]] || die "temporary JDK path already exists: ${JDK_PREVIOUS}"
+    [[ ! -e "${PREFIX}/jdk" ]] || mv "${PREFIX}/jdk" "${JDK_PREVIOUS}"
+    mv "${CLEANUP_JDK_STAGE}" "${PREFIX}/jdk"
+    CLEANUP_JDK_STAGE=""
+    [[ ! -e "${JDK_PREVIOUS}" ]] || rm -rf -- "${JDK_PREVIOUS}"
+    JAVA_BIN="${PREFIX}/jdk/bin/java"
+    log "installed verified JDK archive (${JDK_SHA256})"
+  fi
+fi
+log "java: $("${JAVA_BIN}" -version 2>&1 | head -1)"
+case "${JAVA_BIN}" in
+  /home/*) die "Java under /home is hidden by systemd ProtectHome" ;;
+esac
 
 # 0011/0012 consolidate both SQLite stores under var/db. Move the complete
 # database family only while the service is stopped; never guess if both layouts
@@ -271,13 +399,16 @@ if [[ -e "${RELEASE_DIR}" ]]; then
   log "reusing immutable release ${RELEASE_ID}"
 else
   log "deploying immutable release ${RELEASE_ID}"
-  mkdir -p "${RELEASE_DIR}"
-  install -m 0644 "${JAR}" "${RELEASE_DIR}/ioc-app.jar"
-  INSTALLED_SHA256="$(sha256sum "${RELEASE_DIR}/ioc-app.jar" | awk '{print $1}')"
+  RELEASE_STAGING="${PREFIX}/releases/.${RELEASE_ID}.tmp"
+  rm -rf -- "${RELEASE_STAGING}"
+  mkdir -p "${RELEASE_STAGING}"
+  install -m 0644 "${JAR}" "${RELEASE_STAGING}/ioc-app.jar"
+  INSTALLED_SHA256="$(sha256sum "${RELEASE_STAGING}/ioc-app.jar" | awk '{print $1}')"
   [[ "${INSTALLED_SHA256}" == "${JAR_SHA256}" ]] \
     || die "installed application jar checksum mismatch"
   printf '%s  ioc-app.jar\n' "${INSTALLED_SHA256}" \
-    > "${RELEASE_DIR}/ioc-app.jar.sha256"
+    > "${RELEASE_STAGING}/ioc-app.jar.sha256"
+  mv "${RELEASE_STAGING}" "${RELEASE_DIR}"
 fi
 CURRENT_LINK="${PREFIX}/.current.$$"
 ln -s "releases/${RELEASE_ID}" "${CURRENT_LINK}"
@@ -285,7 +416,12 @@ mv -Tf "${CURRENT_LINK}" "${PREFIX}/current"
 
 deploy_config() {  # src dst
   local src="$1" dst="$2"
-  if [[ -f "${dst}" && "${FORCE}" != "true" ]]; then
+  if [[ -f "${dst}" ]] && cmp -s "${src}" "${dst}"; then
+    log "configuration is current: ${dst}"
+  elif [[ -f "${dst}" && "${FORCE}" != "true" ]]; then
+    if [[ -f "${dst}.new" ]] && ! cmp -s "${src}" "${dst}.new"; then
+      die "unreconciled configuration candidate would be overwritten: ${dst}.new"
+    fi
     install -m 0640 "${src}" "${dst}.new"
     warn "kept existing ${dst}; wrote ${dst}.new (use --force to overwrite)"
   else
@@ -319,18 +455,43 @@ chmod -R go-w "${PREFIX}/releases" "${PREFIX}/backups" "${PREFIX}/etc"
 find "${PREFIX}/var" "${PREFIX}/dataframe" -type d -exec chmod 0750 {} +
 find "${PREFIX}/var" "${PREFIX}/dataframe" -type f -exec chmod 0640 {} +
 chmod 0640 "${PREFIX}/etc/application.yml" "${PREFIX}/etc/ioc-extractor.env"
+chmod 0640 "${MARKER}"
 [[ ! -f "${PREFIX}/etc/application.yml.new" ]] || chmod 0640 "${PREFIX}/etc/application.yml.new"
 [[ ! -f "${PREFIX}/etc/ioc-extractor.env.new" ]] || chmod 0640 "${PREFIX}/etc/ioc-extractor.env.new"
 
 # ---- 6. systemd unit -------------------------------------------------------
-UNIT="/etc/systemd/system/${SERVICE}.service"
 log "rendering ${UNIT}"
+SERVER_PORT_ARG=""
+[[ "${SERVER_PORT_EXPLICIT}" != "true" ]] || SERVER_PORT_ARG="--server.port=${SERVER_PORT}"
+CLEANUP_UNIT_STAGE="$(mktemp /tmp/${SERVICE}.rendered.XXXXXX)"
 sed -e "s|@PREFIX@|${PREFIX}|g" \
     -e "s|@JAVA_BIN@|${JAVA_BIN}|g" \
     -e "s|@USER@|${RUN_USER}|g" \
     -e "s|@GROUP@|${RUN_GROUP}|g" \
-    "${SCRIPT_DIR}/templates/ioc-extractor.service" > "${UNIT}"
-chmod 0644 "${UNIT}"
+    -e "s|@SERVER_PORT_ARG@|${SERVER_PORT_ARG}|g" \
+    "${SCRIPT_DIR}/templates/ioc-extractor.service" > "${CLEANUP_UNIT_STAGE}"
+install -o root -g root -m 0644 "${CLEANUP_UNIT_STAGE}" "${UNIT}"
+UNIT_WRITTEN="true"
+rm -f -- "${CLEANUP_UNIT_STAGE}"
+CLEANUP_UNIT_STAGE=""
+
+install_health_ready() {
+  local base="http://127.0.0.1:${SERVER_PORT}/actuator/health" component body
+  for component in jdbcStorage dataframeStorage artifactStorage; do
+    body="$(curl --silent --fail --max-time 2 "${base}/${component}")" || return 1
+    grep -Eq '^[[:space:]]*\{[[:space:]]*"status"[[:space:]]*:[[:space:]]*"UP"' \
+      <<< "${body}" || return 1
+  done
+}
+
+wait_for_install_health() {
+  local attempt
+  for ((attempt = 1; attempt <= HEALTH_ATTEMPTS; attempt++)); do
+    systemctl is-active --quiet "${SERVICE}" && install_health_ready && return 0
+    (( attempt == HEALTH_ATTEMPTS )) || sleep "${HEALTH_INTERVAL}"
+  done
+  return 1
+}
 
 if [[ "${SYSTEMD_AVAILABLE}" == "true" ]]; then
   systemctl daemon-reload
@@ -341,17 +502,19 @@ if [[ "${SYSTEMD_AVAILABLE}" == "true" ]]; then
     log "installed (not started; --no-start). Start with: systemctl start ${SERVICE}"
   else
     systemctl enable "${SERVICE}" >/dev/null
-    if systemctl is-active --quiet "${SERVICE}"; then
-      systemctl restart "${SERVICE}"
-    else
-      systemctl start "${SERVICE}"
+    systemctl start "${SERVICE}"
+    if ! wait_for_install_health; then
+      systemctl --no-pager --full status "${SERVICE}" || true
+      journalctl -u "${SERVICE}" -n 80 --no-pager || true
+      false
     fi
-    sleep 2
-    systemctl --no-pager --full status "${SERVICE}" | sed -n '1,6p' || true
+    systemctl --no-pager --full status "${SERVICE}" | sed -n '1,6p'
   fi
 else
   warn "systemd is not PID 1 here; unit written but not started. On the target host run: systemctl daemon-reload && systemctl enable --now ${SERVICE}"
 fi
+
+RECOVERY_ARMED="false"
 
 cat <<EOF
 

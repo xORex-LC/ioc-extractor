@@ -8,7 +8,7 @@ PORT="8081"
 ALLOW_DIRTY="false"
 RELEASE_RETENTION="5"
 BACKUP_RETENTION="5"
-HEALTH_ATTEMPTS="4"
+HEALTH_ATTEMPTS="15"
 HEALTH_INTERVAL="2"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
@@ -71,8 +71,9 @@ flock -n 9 || die "another local deployment is already running"
 COMMIT="$(git rev-parse HEAD)"
 SHORT_COMMIT="$(git rev-parse --short=12 HEAD)"
 BUILT_AT="$(date -u +%Y%m%dT%H%M%SZ)"
+INITIAL_WORKTREE_STATUS="$(git status --porcelain --untracked-files=all)"
 DIRTY="false"
-if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
+if [[ -n "${INITIAL_WORKTREE_STATUS}" ]]; then
   DIRTY="true"
   [[ "${ALLOW_DIRTY}" == "true" ]] || die "working tree is dirty; commit changes or pass --allow-dirty"
 fi
@@ -87,6 +88,10 @@ if [[ "${DIRTY}" != "true" ]]; then
   MAVEN_ARGS+=("-Dbuild.commit=${COMMIT}")
 fi
 ./mvnw "${MAVEN_ARGS[@]}"
+
+FINAL_WORKTREE_STATUS="$(git status --porcelain --untracked-files=all)"
+[[ "${FINAL_WORKTREE_STATUS}" == "${INITIAL_WORKTREE_STATUS}" ]] \
+  || die "build or a concurrent edit changed the source tree; refusing ambiguous artifact identity"
 
 mapfile -d '' -t JAR_CANDIDATES < <(find "${REPO_ROOT}/bootstrap/ioc-app/target" \
   -maxdepth 1 -type f -name 'ioc-app-*.jar' ! -name '*.original' -print0)

@@ -21,12 +21,14 @@ best effort and must be validated by the operator.
 | `uninstall.sh` | Remove the unit safely; retain data by default or purge only when explicit. |
 | `deploy-local.sh` | Ordinary-user entry point: clean verify/build, then privileged local activation. |
 | `deploy-local-root.sh` | Root-only activation transaction with DB backup, health gate and rollback. Do not call directly. |
+| `install-layout.sh` | Shared safe-prefix, installation-marker and service-account contract. |
 | `prepare-release-artifacts.sh` | Validate tag/Maven/build identity and produce checksummed public jar assets. |
 | `publish-release-draft.sh` | Create or repair the GitHub draft release for prepared immutable assets. |
 | `templates/application.yml` | Full production daemon override; safe baseline plus disabled optional integrations. |
 | `templates/ioc-extractor.env` | JVM options and secret environment placeholders. |
 | `templates/ioc-extractor.service` | Hardened systemd unit template. |
 | `templates/ioc` | Installed host launcher for CLI and health operations. |
+| `tests/` | Temporary-directory packaging contract checks; no host provisioning. |
 
 ## Operator documentation
 
@@ -70,23 +72,31 @@ so activation never replaces operator data.
 ```text
 sudo ./packaging/install.sh [--prefix DIR] [--jar PATH] [--checksum PATH]
     [--release-id ID] [--user NAME]
-    [--jdk-tarball PATH | --jdk-url URL | --system-java]
+    [--jdk-tarball PATH | --jdk-url URL] [--jdk-sha256 HEX]
+    [--system-java] [--server-port PORT]
+    [--health-attempts N] [--health-interval SECONDS]
     [--no-start] [--force]
 ```
 
 Key contracts:
 
-- must run as root and refuses unsafe/non-absolute prefixes;
-- refuses to install over a source checkout unless `--force` is explicit;
-- accepts exactly one regular bootable jar and verifies an optional checksum;
-- requires Java 21 or installs a dedicated Temurin 21 distribution;
+- must run as root and accepts only a normalized dedicated prefix outside
+  protected system trees;
+- refuses source checkouts and non-empty unrelated directories without a bypass;
+- writes a root-owned installation marker binding prefix, service and non-root
+  service account; destructive lifecycle operations require that marker;
+- accepts exactly one regular application jar and verifies an optional checksum;
+- requires Java 21 or installs the architecture-specific pinned Temurin 21
+  archive after SHA-256 verification and staging extraction;
 - creates a unique immutable release and atomically replaces `current`;
 - preserves existing operator config and writes changed templates as `*.new`;
-- renders the systemd unit with exact paths and starts it unless `--no-start`;
+- renders the systemd unit with exact paths and optional `--server-port`, starts
+  it unless `--no-start`, and requires storage health to become `UP`;
 - re-running with the same release ID is allowed only when bytes are identical.
 
-`--force` also permits overwriting operator configuration. It is not the normal
-upgrade path; reconcile `*.new` files as described in the deployment guide.
+`--force` permits overwriting operator configuration only. It never bypasses
+prefix, source-tree, marker, user or checksum safety. Reconcile `*.new` files as
+described in the deployment guide.
 
 The installer does not provide the database backup and automatic rollback
 transaction of `deploy-local.sh`.
@@ -101,7 +111,11 @@ transaction of `deploy-local.sh`.
 
 It runs as an ordinary user, serializes deployments with a lock and always runs
 the complete Maven `clean verify` gate. A dirty tree is rejected unless
-`--allow-dirty` is explicit and receives a visible dirty release identity.
+`--allow-dirty` is explicit and receives a visible dirty release identity. The
+tree is compared again after the build so generated/concurrent changes cannot be
+published under the wrong commit identity. `--port` is rendered into the daemon
+unit as the high-precedence `--server.port` override and is also used by the
+health gate.
 
 The privileged phase:
 
@@ -115,6 +129,10 @@ The privileged phase:
 
 Remote sync health is deliberately not a deployment gate: an unavailable
 optional SMB server must not roll back a locally healthy application release.
+The automatic rollback covers the active application symlink and both SQLite
+databases. It cannot reverse files already moved by ingestion, generated
+projections/export slices or completed remote side effects; pause input and
+optional synchronization when testing a rollback-sensitive migration.
 
 ## `uninstall.sh`
 
@@ -124,8 +142,15 @@ sudo ./packaging/uninstall.sh [--prefix DIR] [--user NAME] [--purge]
 
 Without `--purge`, the script stops/disables the service and removes its unit but
 keeps the prefix, account, config and all data. `--purge` permanently deletes the
-validated prefix and service account. It refuses to purge a source checkout or
-an empty/root prefix.
+marker-validated prefix and non-root service account. A legacy pre-marker install
+must first be adopted by one safe `install.sh` run before purge is available.
+
+## Automated packaging gate
+
+CI runs ShellCheck, shell syntax checks, installation-layout contracts and a
+rendered `systemd-analyze verify`. These tests pin dangerous-target rejection,
+marker/user semantics and explicit server-port rendering. End-to-end host
+activation and rollback still belong on a disposable systemd test stand.
 
 ## Release helper contracts
 

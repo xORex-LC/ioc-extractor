@@ -28,6 +28,20 @@ jobs:
       - name: Build, test & verify boundaries
         run: ./mvnw -B -ntp -T 1C verify
 
+  packaging-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check lifecycle scripts
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes shellcheck
+          fi
+          shellcheck -x packaging/*.sh packaging/templates/ioc packaging/tests/*.sh
+          packaging/tests/packaging-contract-test.sh
+
   # Documentation links are enforced by the build too: a moved/renamed doc that
   # leaves a dangling relative link fails CI instead of drifting silently.
   # Offline mode checks local file/anchor existence only (no flaky external URLs).

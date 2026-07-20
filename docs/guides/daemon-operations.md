@@ -17,9 +17,9 @@ sudo journalctl -u ioc-extractor -f
 Use the installed launcher for application commands:
 
 ```bash
-sudo -u ioc /opt/ioc-extractor/bin/ioc --version
-sudo -u ioc /opt/ioc-extractor/bin/ioc health
-sudo -u ioc /opt/ioc-extractor/bin/ioc health --json
+sudo /opt/ioc-extractor/bin/ioc --version
+sudo /opt/ioc-extractor/bin/ioc health
+sudo /opt/ioc-extractor/bin/ioc health --json
 ```
 
 The default prefix is `/opt/ioc-extractor`; substitute the selected installation

@@ -24,7 +24,7 @@ logging:
 # reviewed exposure policy are added.
 server:
   address: 127.0.0.1
-  port: 8081
+  port: 8081                 # deploy-local/install --server-port may override via CLI
   tomcat:
     threads:
       max: 8

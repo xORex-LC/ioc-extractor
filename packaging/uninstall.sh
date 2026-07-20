@@ -16,6 +16,9 @@ SERVICE="ioc-extractor"
 PREFIX="/opt/ioc-extractor"
 RUN_USER="ioc"
 PURGE="false"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+# shellcheck source=packaging/install-layout.sh
+. "${SCRIPT_DIR}/install-layout.sh"
 
 log()  { printf '\033[1;34m[uninstall]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*" >&2; }
@@ -32,8 +35,31 @@ while [[ $# -gt 0 ]]; do
     *) die "unknown argument: $1 (see --help)" ;;
   esac
 done
-PREFIX="${PREFIX%/}"
 [[ "${EUID}" -eq 0 ]] || die "must run as root (use sudo)."
+for command in find getent id ps readlink realpath rm; do
+  command -v "${command}" >/dev/null 2>&1 || die "required command not found: ${command}"
+done
+if [[ "$(ps -p 1 -o comm= 2>/dev/null)" == "systemd" ]]; then
+  command -v systemctl >/dev/null 2>&1 || die "required command not found: systemctl"
+fi
+if [[ "${PURGE}" == "true" ]]; then
+  command -v userdel >/dev/null 2>&1 || die "required command not found: userdel"
+fi
+ioc_validate_prefix "${PREFIX}" || die "unsafe installation prefix"
+PREFIX="${IOC_VALIDATED_PREFIX}"
+ioc_validate_service_user "${RUN_USER}" || die "unsafe service account"
+
+MARKER="$(ioc_marker_path "${PREFIX}")"
+if [[ -e "${MARKER}" ]]; then
+  ioc_is_valid_marker "${PREFIX}" "${SERVICE}" "${RUN_USER}" \
+    || die "invalid or mismatched installation marker: ${MARKER}"
+elif ioc_is_legacy_installation "${PREFIX}"; then
+  [[ "${PURGE}" != "true" ]] \
+    || die "legacy installation has no safety marker; run install.sh once to adopt it before purge"
+  warn "removing service for a validated legacy installation without purging data"
+else
+  die "prefix is not a validated ioc-extractor installation: ${PREFIX}"
+fi
 
 UNIT="/etc/systemd/system/${SERVICE}.service"
 if [[ "$(ps -p 1 -o comm= 2>/dev/null)" == "systemd" ]]; then
@@ -47,10 +73,8 @@ if [[ -f "${UNIT}" ]]; then
 fi
 
 if [[ "${PURGE}" == "true" ]]; then
-  if [[ -e "${PREFIX}/pom.xml" || -d "${PREFIX}/.git" ]]; then
-    die "refusing to purge a source tree at ${PREFIX} (pom.xml/.git present)."
-  fi
-  [[ -n "${PREFIX}" && "${PREFIX}" != "/" ]] || die "unsafe prefix: '${PREFIX}'"
+  ioc_is_valid_marker "${PREFIX}" "${SERVICE}" "${RUN_USER}" \
+    || die "refusing purge without a valid installation marker"
   log "purging ${PREFIX}"
   rm -rf "${PREFIX}"
   if getent passwd "${RUN_USER}" >/dev/null; then

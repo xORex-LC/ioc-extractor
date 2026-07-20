@@ -135,9 +135,25 @@ jobs:
             docs README.md packaging/README.md .github/release-notes
           fail: true
 
+  packaging-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check lifecycle scripts
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes shellcheck
+          fi
+          shellcheck -x packaging/*.sh packaging/templates/ioc packaging/tests/*.sh
+          packaging/tests/packaging-contract-test.sh
+
   draft-release:
     if: github.event_name == 'push' || inputs.create_draft
-    needs: [build, doc-links]
+    needs: [build, doc-links, packaging-contracts]
     runs-on: ubuntu-latest
     permissions:
       contents: write
