@@ -13,6 +13,8 @@ dataframe/*_generated.csv
 *.log
 *.ecs.json
 /var/
+/.dev/
+/.dependency-check-data/
 
 # BlueJ files
 *.ctxt

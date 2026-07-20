@@ -169,6 +169,7 @@ core/       pure IOC domain plus application use cases and ports
 adapters/   Tika, RE2/J, CSV, JDBC/SQLite, SMB, ingest and CLI boundaries
 bootstrap/  Spring Boot composition root and the only runnable module
 packaging/  host installer, deployment scripts and systemd templates
+tools/      reproducible developer, smoke, security and CI leaf commands
 docs/       project maps, capability guides, ADRs and operator guides
 ```
 
@@ -195,6 +196,17 @@ docs/       project maps, capability guides, ADRs and operator guides
 
 # Focus one module and build its upstream dependencies.
 ./mvnw -pl core/ioc-domain -am test
+```
+
+Reproducible helper commands for fixtures, isolated daemon runtime, smoke tests,
+ECS log queries and local CI leaves are documented in
+[tools/README.md](tools/README.md). They write developer state only under
+gitignored `.dev/`:
+
+```bash
+tools/dev/doctor.sh dev
+tools/dev/fixture.sh --size 1000 --seed 42
+tools/dev/smoke.sh all
 ```
 
 CI runs the complete reactor gate, packaging safety contracts and documentation

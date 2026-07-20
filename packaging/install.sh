@@ -478,8 +478,9 @@ CLEANUP_UNIT_STAGE=""
 install_health_ready() {
   local base="http://127.0.0.1:${SERVER_PORT}/actuator/health" component body
   for component in jdbcStorage dataframeStorage artifactStorage; do
-    body="$(curl --silent --fail --max-time 2 "${base}/${component}")" || return 1
-    grep -Eq '^[[:space:]]*\{[[:space:]]*"status"[[:space:]]*:[[:space:]]*"UP"' \
+    body="$(curl --noproxy '*' --silent --fail --max-time 2 \
+      "${base}/${component}")" || return 1
+    grep -Eq '"status"[[:space:]]*:[[:space:]]*"UP"' \
       <<< "${body}" || return 1
   done
 }

@@ -66,8 +66,9 @@ flock -n 9 || die "another privileged deployment is already running"
 health_ready() {
   local base="http://127.0.0.1:${PORT}/actuator/health" component body
   for component in jdbcStorage dataframeStorage artifactStorage; do
-    body="$(curl --silent --fail --max-time 2 "${base}/${component}" 2>/dev/null)" || return 1
-    grep -Eq '^[[:space:]]*\{[[:space:]]*"status"[[:space:]]*:[[:space:]]*"UP"' \
+    body="$(curl --noproxy '*' --silent --fail --max-time 2 \
+      "${base}/${component}" 2>/dev/null)" || return 1
+    grep -Eq '"status"[[:space:]]*:[[:space:]]*"UP"' \
       <<< "${body}" || return 1
   done
 }
