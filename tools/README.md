@@ -3,8 +3,9 @@
 ## Назначение
 
 Воспроизводимые developer/CI-инструменты поверх Maven wrapper и bootable jar.
-Каталог содержит логику, которую затем могут вызывать Makefile, GitHub Actions
-или разработчик напрямую. Он не заменяет Maven lifecycle и не содержит
+Корневой [`Makefile`](../Makefile) — стабильный интерфейс для людей и CI, а этот
+каталог содержит вызываемую им реализацию. Скрипты можно вызывать напрямую для
+расширенных параметров. Tools-layer не заменяет Maven lifecycle и не содержит
 production deployment automation — она остаётся в [`packaging/`](../packaging/README.md).
 
 ## Состав
@@ -14,6 +15,22 @@ production deployment automation — она остаётся в [`packaging/`](.
 | [`dev/`](dev/README.md) | Doctor, IOC fixtures, изолированный daemon runtime, smoke и ECS log queries |
 | [`ci/`](ci/README.md) | Неинтерактивные leaf-gates для build, docs, packaging и Dependency-Check |
 | [`tests/`](tests/README.md) | Contract-тесты самого tools-layer |
+
+Начальная точка:
+
+```bash
+make help
+make doctor
+make bootstrap  # repo-local lychee, если его нет в PATH
+make pre-push
+```
+
+`make pre-push` последовательно выполняет те же leaf scripts, а значит те же
+Maven, shell-contract и offline-documentation gates, что обычный GitHub CI.
+Workflows вызывают scripts напрямую, не зависят от Makefile и остаются
+прозрачными.
+Scheduled Dependency-Check остаётся отдельной сетевой проверкой
+(`make security-scan`), потому что требует NVD API.
 
 Все runtime-файлы developer environment создаются только под `/.dev/` и
 игнорируются Git. Скрипты не должны писать business data напрямую в SQLite:

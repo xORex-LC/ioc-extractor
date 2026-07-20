@@ -10,6 +10,8 @@
 
 | Команда | Назначение |
 |---|---|
+| `bootstrap.sh lychee` | Установить закреплённый lychee в `.dev/tools/bin` с SHA-256 verification |
+| `app.sh …` | Запустить public CLI через единственный найденный bootable jar; optional isolated workspace |
 | `doctor.sh [core|dev|ci|security|all]` | Проверить обязательные и optional prerequisites без установки пакетов |
 | `fixture.sh …` | Сгенерировать детерминированный HTML/text IOC fixture и JSON manifest |
 | `runtime.sh … up|down|status|reset` | Управлять изолированным daemon под `.dev/runtime` |
@@ -36,6 +38,16 @@ tools/dev/logs.sh errors
 tools/dev/runtime.sh down
 tools/dev/smoke.sh all
 ```
+
+Основной интерфейс для повседневной работы — корневой `Makefile`: `make help`
+показывает цели и принимаемые `NAME=value` параметры. Прямой вызов scripts
+остаётся доступен для редких расширенных комбинаций.
+
+`lychee` отсутствует в обычных Ubuntu APT repositories. `make bootstrap`
+загружает закреплённый pre-built release для Linux x86_64/aarch64, проверяет
+коммитнутый SHA-256 и атомарно устанавливает binary под `.dev/tools/bin` без
+`sudo`, Snap или Rust toolchain. System-wide `lychee` из `PATH` также
+поддерживается.
 
 `reset` удаляет только предварительно проверенный workspace внутри repo-local
 `.dev/`; symlink и внешние пути отклоняются. Runtime по умолчанию не включает

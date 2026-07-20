@@ -50,15 +50,16 @@ canonical SQLite truth → CSV projections → immutable export slices → optio
 
 ## Quick start
 
-JDK 21 is required. Maven itself is not required because the repository includes
-the Maven Wrapper.
+JDK 21 and GNU Make are required. Maven itself is not required because the
+repository includes the Maven Wrapper.
 
 ```bash
 git clone https://github.com/xORex-LC/ioc-extractor.git
 cd ioc-extractor
 
-# The release-quality gate: tests, architecture rules, contracts and golden E2E.
-./mvnw -q verify
+# Discover the supported developer commands and run the release-quality gate.
+make help
+make verify
 
 APP_VERSION="$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdout)"
 APP_JAR="bootstrap/ioc-app/target/ioc-app-${APP_VERSION}.jar"
@@ -191,11 +192,14 @@ docs/       project maps, capability guides, ADRs and operator guides
 ## Development
 
 ```bash
-./mvnw test
-./mvnw verify
+make test
+make verify
 
 # Focus one module and build its upstream dependencies.
-./mvnw -pl core/ioc-domain -am test
+make test-module MODULE=core/ioc-domain
+
+# Run one class or method.
+make test-one MODULE=core/ioc-domain TEST=DefaultIndicatorNormalizerTest#strips_trailing_semicolon
 ```
 
 Reproducible helper commands for fixtures, isolated daemon runtime, smoke tests,
@@ -204,9 +208,11 @@ ECS log queries and local CI leaves are documented in
 gitignored `.dev/`:
 
 ```bash
-tools/dev/doctor.sh dev
-tools/dev/fixture.sh --size 1000 --seed 42
-tools/dev/smoke.sh all
+make doctor-dev
+make fixture SIZE=1000 SEED=42
+make smoke
+make bootstrap  # installs the pinned repo-local lychee binary without sudo
+make pre-push   # same leaf scripts and regular gates as GitHub CI
 ```
 
 CI runs the complete reactor gate, packaging safety contracts and documentation

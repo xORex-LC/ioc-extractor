@@ -32,6 +32,7 @@ check_command() { # command required description
 check_command bash true "developer scripts"
 check_command java true "JDK 21 application and fixture generator"
 check_command git true "source identity and CI checks"
+check_command make true "developer command facade"
 [[ -x "${DEV_REPO_ROOT}/mvnw" ]] || { echo "[missing]  ./mvnw      Maven wrapper" >&2; FAILED="true"; }
 
 if command -v java >/dev/null 2>&1; then
@@ -52,7 +53,14 @@ fi
 
 if [[ "${MODE}" == ci || "${MODE}" == all ]]; then
   check_command shellcheck true "shell quality gate"
-  check_command lychee true "offline documentation links"
+  if command -v lychee >/dev/null 2>&1; then
+    printf '[ok]       %-12s %s\n' "lychee" "offline documentation links"
+  elif [[ -x "${DEV_ROOT}/tools/bin/lychee" ]]; then
+    printf '[local]    %-12s %s\n' "lychee" ".dev/tools/bin/lychee"
+  else
+    printf '[missing]  %-12s %s\n' "lychee" "run 'make bootstrap'" >&2
+    FAILED="true"
+  fi
 fi
 
 if [[ "${MODE}" == security || "${MODE}" == all ]]; then

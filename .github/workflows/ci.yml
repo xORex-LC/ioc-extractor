@@ -26,7 +26,7 @@ jobs:
       # Single gate: the reactor build runs ArchUnit + Enforcer + golden e2e.
       # Module boundaries are enforced inside the build, not by extra CI steps.
       - name: Build, test & verify boundaries
-        run: ./mvnw -B -ntp -T 1C verify
+        run: tools/ci/build.sh
 
   packaging-contracts:
     runs-on: ubuntu-latest
@@ -39,19 +39,16 @@ jobs:
             sudo apt-get update
             sudo apt-get install --yes shellcheck
           fi
-          shellcheck -x packaging/*.sh packaging/templates/ioc packaging/tests/*.sh
-          packaging/tests/packaging-contract-test.sh
+          tools/ci/packaging.sh
 
-  # Documentation links are enforced by the build too: a moved/renamed doc that
-  # leaves a dangling relative link fails CI instead of drifting silently.
-  # Offline mode checks local file/anchor existence only (no flaky external URLs).
   doc-links:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      # Offline mode checks local file/anchor existence only (no flaky external URLs).
+      - name: Install pinned link checker
+        run: tools/dev/bootstrap.sh lychee
+
       - name: Check documentation links
-        uses: lycheeverse/lychee-action@v2
-        with:
-          args: "--offline --no-progress docs README.md"
-          fail: true
+        run: tools/ci/docs.sh

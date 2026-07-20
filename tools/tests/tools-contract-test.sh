@@ -85,6 +85,8 @@ fi
 
 for script in \
     tools/dev/common.sh \
+    tools/dev/app.sh \
+    tools/dev/bootstrap.sh \
     tools/dev/doctor.sh \
     tools/dev/fixture.sh \
     tools/dev/logs.sh \
@@ -101,10 +103,22 @@ for script in \
 done
 
 "${REPO_ROOT}/tools/dev/doctor.sh" core >/dev/null
+"${REPO_ROOT}/tools/dev/bootstrap.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/runtime.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/smoke.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/submit.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/database.sh" --help >/dev/null
 "${REPO_ROOT}/tools/ci/dependency-security.sh" --help >/dev/null
+make --no-print-directory -s -C "${REPO_ROOT}" help \
+  | grep -q 'test-one' || fail "Make help lost the targeted-test command"
+if grep -REq '^[[:space:]]*(run:[[:space:]]*)?make([[:space:]]|$)' \
+    "${REPO_ROOT}/.github/workflows"; then
+  fail "GitHub workflow depends on the developer-facing Make facade"
+fi
+grep -Fq 'run: tools/ci/build.sh' "${REPO_ROOT}/.github/workflows/ci.yml" \
+  || fail "GitHub CI build does not call the canonical leaf script"
+grep -Fq 'tools/ci/dependency-security.sh scan' \
+  "${REPO_ROOT}/.github/workflows/dependency-security.yml" \
+  || fail "Dependency Security workflow does not call the canonical leaf script"
 
 printf '[tools-contract] PASS\n'

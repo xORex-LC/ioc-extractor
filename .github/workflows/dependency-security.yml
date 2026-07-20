@@ -51,14 +51,7 @@ jobs:
             exit 1
           fi
 
-          ./mvnw -B -ntp \
-            dependency-check:aggregate \
-            -DdataDirectory="${DEPENDENCY_CHECK_DATA}" \
-            -DnvdApiKeyEnvironmentVariable=NVD_API_KEY \
-            -DassemblyAnalyzerEnabled=false \
-            -DossindexAnalyzerEnabled=false \
-            -Dformats=HTML,JSON \
-            -DfailBuildOnCVSS=7.0
+          tools/ci/dependency-security.sh scan
 
       - name: Save Dependency-Check data
         if: always() && steps.dependency-check-cache.outcome == 'success'
