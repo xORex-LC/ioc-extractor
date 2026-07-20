@@ -203,10 +203,6 @@ public final class HealthCommand implements Callable<Integer> {
         });
     }
 
-    private void renderDetail(String key, Object value, int indent) {
-        renderDetail(key, value, indent, key.length());
-    }
-
     private void renderDetail(String key, Object value, int indent, int keyWidth) {
         if (value instanceof Map<?, ?> map && !map.isEmpty()) {
             System.out.printf("%s%s%n", " ".repeat(indent), key);

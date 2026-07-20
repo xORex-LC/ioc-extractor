@@ -6,7 +6,6 @@ import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.export.ArtifactRevision;
 import com.iocextractor.common.IocExtractorException;
-import com.iocextractor.domain.model.SourceContext;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -191,10 +190,6 @@ class JdbcArtifactRepositoriesTest {
             values.put(pairs[i], pairs[i + 1]);
         }
         return ArtifactRow.ordered(values);
-    }
-
-    private SourceContext source() {
-        return new SourceContext(null, null);
     }
 
     private List<String> sourceRows(String artifactName) {

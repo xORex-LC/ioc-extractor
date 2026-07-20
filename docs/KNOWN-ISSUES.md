@@ -52,6 +52,7 @@
 | ID | Долг | Статус | Эфф. | Источник |
 |---|---|---|---|---|
 | CODE-1 | **Длинный composition contract extraction.** Шесть convenience-конструкторов удалены: `IocExtractionService` имеет production и explicit test constructor, `ExtractionResult` больше не маскирует completion defaults. Остался длинный dependency list в `IocExtractionServiceFactory`/production constructor; сворачивать только в осмысленный immutable dependency bundle, не в parameter-object ради счётчика. | частично | S | `2c18bbd`, review ADR-0017 |
+| CODE-5 | **Единый nullness-контракт и build gate.** Сейчас Eclipse JDT в `automatic`-режиме выбирает разные транзитивные аннотации по classpath модуля (Spring, JSR-305, JSpecify), тогда как Maven/CI nullness не проверяет. Если проект принимает строгую null-safety, сделать это отдельным срезом: выбрать JSpecify как прямой контракт, вводить `@NullMarked` постепенно с явными `@Nullable` на границах и подключить один воспроизводимый анализатор к Maven/CI. До этого `tools/eclipse-jdt.prefs` подавляет только шумный `nullUncheckedConversion`, не скрывая диагностики реального и потенциального null-доступа. Не blocker 0.1.1. | seam | M | IDE warnings review 2026-07-20 |
 
 ## 6. Архитектура / модульность (`ARCH`)
 

@@ -16,6 +16,19 @@ production deployment automation — она остаётся в [`packaging/`](.
 | [`ci/`](ci/README.md) | Неинтерактивные leaf-gates для build, docs, packaging и Dependency-Check |
 | [`tests/`](tests/README.md) | Contract-тесты самого tools-layer |
 
+Файл [`eclipse-jdt.prefs`](eclipse-jdt.prefs) задаёт узкую IDE-политику для
+Eclipse JDT: игнорируется только `nullUncheckedConversion` на границе generic
+method references и сторонних null-аннотаций. Реальные и потенциальные
+null-доступы не отключаются. VS Code Java подключает файл через локальный
+`java.settings.url`; путь должен указывать на текущий checkout.
+
+```json
+{
+  "java.compile.nullAnalysis.mode": "automatic",
+  "java.settings.url": "/absolute/path/to/ioc-extractor/tools/eclipse-jdt.prefs"
+}
+```
+
 Начальная точка:
 
 ```bash

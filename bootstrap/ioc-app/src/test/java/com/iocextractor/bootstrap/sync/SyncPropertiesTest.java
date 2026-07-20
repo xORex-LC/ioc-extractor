@@ -79,10 +79,6 @@ class SyncPropertiesTest {
                 List.of("*.htm"), List.of("*.part"), null);
     }
 
-    private IocProperties.Sync.Publish.Target target(String name, String endpoint, String profile) {
-        return new IocProperties.Sync.Publish.Target(name, endpoint, "/out", profile);
-    }
-
     private IocProperties withSync(IocProperties source, IocProperties.Sync sync) {
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),

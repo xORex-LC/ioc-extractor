@@ -1009,10 +1009,6 @@ public class AppConfig {
         return (value == null || value.isBlank()) ? null : value;
     }
 
-    private static String blankToEmpty(String value) {
-        return value == null ? "" : value.trim();
-    }
-
     /**
      * Output charset for generated CSV projections and export slices. Blank or
      * absent {@code ioc.sink.csv.charset} means UTF-8.

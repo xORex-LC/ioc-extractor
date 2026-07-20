@@ -160,8 +160,8 @@ public abstract class ExportRunLedgerContractTest {
 
         assertThatThrownBy(() -> ledger.finish(started.runId(), ExportRunStatus.AVAILABLE,
                 ExportRunStatus.COMPLETED, List.of(wrongProfile)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("profile");
+                .isInstanceOfSatisfying(IllegalArgumentException.class,
+                        failure -> assertThat(failure).hasMessageContaining("profile"));
 
         assertThat(ledger.find(started.runId())).get()
                 .extracting(ExportRun::status)
@@ -194,8 +194,9 @@ public abstract class ExportRunLedgerContractTest {
 
         assertThatThrownBy(() -> ledger.transition(skipped.runId(), ExportRunStatus.STARTED,
                 ExportRunStatus.STAGED, MANIFEST_HASH, null))
-                .isInstanceOf(DiagnosticException.class)
-                .hasMessageContaining("EXPORT.STATE_TRANSITION_CONFLICT");
+                .isInstanceOfSatisfying(DiagnosticException.class,
+                        failure -> assertThat(failure)
+                                .hasMessageContaining("EXPORT.STATE_TRANSITION_CONFLICT"));
 
         ExportRun staged = started("run-manifest-conflict");
         ledger.tryStart(staged);
@@ -203,8 +204,9 @@ public abstract class ExportRunLedgerContractTest {
                 ExportRunStatus.STAGED, MANIFEST_HASH, null);
         assertThatThrownBy(() -> ledger.transition(staged.runId(), ExportRunStatus.STARTED,
                 ExportRunStatus.STAGED, "d".repeat(64), null))
-                .isInstanceOf(DiagnosticException.class)
-                .hasMessageContaining("EXPORT.STATE_TRANSITION_CONFLICT");
+                .isInstanceOfSatisfying(DiagnosticException.class,
+                        failure -> assertThat(failure)
+                                .hasMessageContaining("EXPORT.STATE_TRANSITION_CONFLICT"));
     }
 
     protected ExportRun started(String runId) {
