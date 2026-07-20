@@ -1,173 +1,210 @@
 # ioc-extractor
 
-*An ETL pipeline for Indicators of Compromise (IOC): from a messy document to ready-to-use reputation lists.*
+*An ETL pipeline that turns messy documents into durable, ready-to-deliver IOC reputation lists.*
 
 [![CI](https://github.com/xORex-LC/ioc-extractor/actions/workflows/ci.yml/badge.svg)](https://github.com/xORex-LC/ioc-extractor/actions/workflows/ci.yml)
 ![Java](https://img.shields.io/badge/Java-21-orange)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3-6DB33F)
-![Build](https://img.shields.io/badge/build-Maven%20(multi--module)-C71A36)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0-6DB33F)
+![Build](https://img.shields.io/badge/build-Maven%20reactor-C71A36)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
-**ioc-extractor** ingests a document (often a Word export — `cp1251`, disorganized),
-**refangs** defanged IOCs (`hxxp[:]//`, `[.]`, `[:]`), detects and normalizes them,
-classifies network masks, attributes a `source` from section headers, de-duplicates,
-and emits several reputation artifacts as CSV. It runs both as a one-shot CLI and as a
-streaming daemon backed by SQLite dataframe storage.
+**ioc-extractor** reads documents that contain Indicators of Compromise, refangs
+obfuscated values such as `hxxp[:]//` and `[.]`, detects and normalizes IOCs,
+classifies network masks, attributes their source from document section headers,
+and stores the result in canonical SQLite storage. From that durable truth it
+maintains reputation-list CSV projections and can produce immutable delivery
+slices for remote publication.
 
 ```text
-hxxps[:]//bad[.]example[.]com/down/x.exe   ─┐
-sub[.]example[.]com                          │   refang → detect → classify       masks / ip_list /
-185[.]100[.]87[.]250                         ├──────────────────────────────▶  address_blacklist / hashes
-1[.]2[.]3[.]4:8080/payload[.]exe             │   attribute → dedup → write        (CSV reputation lists)
-e3b0c44298fc1c149afbf4c8996fb924…           ─┘
+messy document
+      │
+      ▼
+ refang → detect → attribute → deduplicate → classify → prepare → policy checkpoint
+      │
+      ▼
+canonical SQLite truth → CSV projections → immutable export slices → optional SMB publish
 ```
 
 ## Features
 
-- **Refang** of defanged IOCs — ordered replacement rules (in config, not code).
-- **Detection** on the **RE2/J** engine (linear-time, ReDoS-safe; `java.util.regex` fallback).
-- **Mask classification** via the **Public Suffix List** — a declarative 4-variant `url_match`/`host_match` scheme.
-- **Source attribution** from header markers (`БИБ-…`, `Письмо ФСТЭК России …`).
-- **Multiple artifacts from a single run** — each with its own schema, id-space and normalization.
-- **Config-driven DSL** — a new output format is added by editing `application.yml` (column specs + provider/transform/filter registries), **no code**.
-- **Two run modes**: a one-shot CLI (`extract`) and a streaming **daemon** (Spring Integration: `inbox` → JDBC dataframe truth → CSV projection, ledger, retry, crash recovery).
-- **Immutable artifact export**: manual `ioc export --profile …` or daemon cadence; one WAL snapshot streams to CSV + manifest + `_SUCCESS`, with durable recovery and slice retention.
-- **Observability**: ECS-JSON logs (Logback) + a diagnostics subsystem behind ports.
-- **Clean hexagonal architecture** whose boundaries are enforced by the **build** (ArchUnit + Maven Enforcer), not by review.
-
-## Pipeline
-
-Pipes-and-Filters on top of `platform-etl`; every stage is observed by a `PipelineObserver`:
-
-```text
-ReadSource → Refang → ExtractIndicators → AttributeSource → Deduplicate → WriteArtifacts
-```
+- **Format-agnostic input** through Apache Tika: HTML/text, DOCX, PDF and other
+  formats supported by the configured parser set.
+- **Safe IOC extraction** with RE2/J by default and an optional JDK regex engine;
+  all configured patterns remain RE2-compatible.
+- **Configurable refang and classification** with ordered replacement rules,
+  Public Suffix List awareness and a declarative four-variant mask policy.
+- **Canonical SQLite storage** with keep-first cross-run deduplication, source
+  provenance, independent artifact identities and crash-recoverable ledgers.
+- **Config-driven CSV artifacts** with independent schemas, filters, ID spaces,
+  providers and transforms. A genuinely new sink or wire format remains an
+  adapter-level extension.
+- **One-shot and daemon operation**: run a command and exit, or continuously
+  ingest stable files from an inbox with retry, recovery and retention.
+- **Immutable exports and remote synchronization**: export complete profile
+  slices, fetch source documents over SMB and publish completed slices using
+  durable ledgers plus periodic reconciliation.
+- **Operational visibility** through typed diagnostics, ECS JSON logs, a CLI
+  health view and a loopback actuator endpoint in daemon mode.
+- **Enforced architecture**: ArchUnit, Maven Enforcer and contract tests verify
+  module boundaries, configuration and documentation during `verify`.
 
 ## Quick start
 
-Requires **JDK 21** (not available in Debian repositories — install it manually; see [Deployment](#deployment-debian-11)). Maven is not required — a wrapper `./mvnw` is committed.
+JDK 21 is required. Maven itself is not required because the repository includes
+the Maven Wrapper.
 
 ```bash
 git clone https://github.com/xORex-LC/ioc-extractor.git
 cd ioc-extractor
 
-# build (only the bootstrap/ioc-app module produces a bootable jar)
-./mvnw -q -DskipTests package
+# The release-quality gate: tests, architecture rules, contracts and golden E2E.
+./mvnw -q verify
+
 APP_VERSION="$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdout)"
 APP_JAR="bootstrap/ioc-app/target/ioc-app-${APP_VERSION}.jar"
 
-# inspect packaged build identity without starting Spring
 java -jar "${APP_JAR}" --version
-
-# one-shot run
-java -jar "${APP_JAR}" extract --source source/ioc-source.htm [--dry-run]
-
-# export one configured immutable profile slice from accumulated SQLite truth
+java -jar "${APP_JAR}" extract --source source/ioc-source.htm
 java -jar "${APP_JAR}" export --profile reputation-lists
 ```
 
-The installed launcher exposes the same lightweight identity path as
-`ioc --version` (or `ioc -V`). Product version is always present; Git commit and
-build time are printed only when embedded by the build.
+An `extract` run adds new rows to the existing canonical database; it does not
+replace the accumulated dataset. Use `--dry-run` to execute extraction without a
+durable write. Exit code `3` means the run completed with error diagnostics and
+may still have committed valid rows under `collect-and-continue` policy.
 
-## Daemon mode
+Run `java -jar "${APP_JAR}" --help` or `ioc --help` after installation for the
+current command surface. Main commands are `extract`, `export`, `sync` and
+`health`.
 
-With `ioc.runtime.mode=daemon`, sources are dropped into `./var/inbox`, pass a
-stability quiet-period, are written directly into the JDBC dataframe store, and
-regenerate `*_generated.csv` projections from that store. See
-[docs/ingestion.md](docs/dev/ingestion.md). The daemon also schedules immutable
-profile exports by `ioc.export.trigger` and reports per-profile export health.
+## Run modes
+
+### One-shot CLI
+
+`oneshot` is the default. The requested command runs and the process exits. It is
+suited to manual extraction, export and synchronization jobs.
+
+### Daemon
+
+Daemon mode watches `./var/inbox`, waits until a file is stable, claims it into
+`./var/processing`, writes valid data to canonical storage and moves the source
+to `./var/done` or `./var/failed`. Export and remote-sync schedulers run in the
+same long-lived process; the actuator health endpoint binds to loopback.
 
 ```bash
 java -jar "${APP_JAR}" --ioc.runtime.mode=daemon
-# then drop *.htm / *.html / *.docx into ./var/inbox
 ```
 
-## Output artifacts
+For production, use the packaged systemd deployment rather than starting the
+daemon manually. See the [deployment guide](docs/guides/deployment.md) and
+[daemon operations guide](docs/guides/daemon-operations.md).
 
-| Artifact | File | Contents |
-|---|---|---|
-| `masks` | `masks_list_generated.csv` | network masks (domains, subdomains, URLs, IP-with-port) with `url_match`/`host_match` codes |
-| `ip_list` | `ip_list_generated.csv` | bare IPv4 addresses |
-| `address_blacklist` | `address_blacklist_generated.csv` | two columns: `forbidden_url` (domains/URLs/IP-URLs) and `forbidden_ip` (bare IP only) |
-| `hashes` | `hashes_list_generated.csv` | MD5 / SHA1 / SHA256 (UPPER-cased), routed to per-algorithm columns |
+## Data and delivery model
 
-Schemas, normalization and column filling are described in [processing.md](docs/dev/processing.md).
+SQLite is the business-data source of truth. Files under `dataframe/` are
+regenerated mutable projections and must not be edited as input. One-shot and
+daemon ingestion both accumulate into the same canonical model.
+
+| Layer | Purpose |
+|---|---|
+| Canonical dataframe DB | Durable rows, public IDs, deduplication and provenance |
+| CSV projections | Current mutable view of configured reputation artifacts |
+| Immutable export slice | Consistent profile snapshot with `manifest.json` and `_SUCCESS` |
+| Remote publication | Idempotent delivery of completed slices through a publish ledger |
+
+Default projections include masks, bare IPv4 addresses, an address blacklist and
+file hashes. Their schemas are configured in the packaged defaults and explained
+in [processing](docs/dev/processing.md). The external delivery contract is
+described in [artifact export](docs/dev/artifact-export.md).
 
 ## Configuration
 
-The single source of truth is [bootstrap/ioc-app/src/main/resources/application.yml](bootstrap/ioc-app/src/main/resources/application.yml),
-under the `ioc.*` tree (`runtime`, `storage`, `observability`, `source`, `refang`,
-`engine`, `patterns`, `classify`, `sink`, `pipeline`, `artifact-identity`,
-`ingestion`, `maintenance`, `export`, `sync`). Override order:
+The packaged defaults are embedded in the runnable jar. Repository-local
+overrides may be placed in `./configs/application.yml`; installed deployments
+load `<prefix>/etc/application.yml`. CLI options, system properties and
+environment variables have higher precedence.
 
-```text
-classpath:application.yml  <  ./configs/application.yml  <  CLI flags / env
-```
+The complete operator-facing property reference, accepted values and selection
+guidance live in the [configuration guide](docs/guides/configuration.md). A full
+production override template is available at
+[packaging/templates/application.yml](packaging/templates/application.yml).
 
-Everything source-, output- and policy-specific lives in config, never hard-coded.
+The `ioc.*` boundary is strict: unknown YAML keys, CLI properties, system
+properties and `IOC_*` environment variables fail startup instead of being
+silently ignored.
 
-## Deployment (Debian 11+)
+## Deployment
 
-[packaging/install.sh](packaging/install.sh) installs JDK 21 (from a tarball, **no
-apt repositories**), creates a dedicated system user, lays out the directories,
-deploys the jar + config and brings up a hardened systemd unit in daemon mode.
+The supported deployment tooling targets systemd hosts and provisions a
+dedicated account, JDK 21, immutable releases, operator-owned configuration and
+runtime directories. Debian 11 and 12 are the tested installer baselines; other
+compatible distributions are best effort.
 
 ```bash
-sudo packaging/install.sh                 # prompts for the directory (default /opt/ioc-extractor)
+sudo packaging/install.sh
 systemctl status ioc-extractor
 journalctl -u ioc-extractor -f
 ```
 
-For repeatable deployment of the current checkout to a local WSL/Debian test
-runtime, including verify, SQLite backup, health gating and rollback:
+For repeatable deployment of the current checkout to a local Debian/WSL test
+runtime, including `verify`, database backup, health gating and rollback:
 
 ```bash
 ./packaging/deploy-local.sh --prefix /srv/ioc-extractor
 ```
 
-Offline host: `sudo packaging/install.sh --jdk-tarball /path/temurin-21.tar.gz`.
-See [packaging/README.md](packaging/README.md) for details.
+See [packaging/README.md](packaging/README.md) for the script reference and the
+[deployment guide](docs/guides/deployment.md) for installation, upgrade,
+configuration reconciliation, rollback and uninstall procedures.
 
 ## Repository layout
 
-A multi-module Maven reactor; **one external adapter = one library**:
+The project is a multi-module Maven reactor. Dependencies point inward; every
+adapter owns one external library or integration family behind an application
+port.
 
 ```text
-platform/   cross-cutting subsystems behind ports (errors, diagnostics, etl, observability)
-core/       ioc-domain (pure Java) + ioc-application (use cases, ports, stages, ingest, artifact storage)
-adapters/   external integrations: regex-re2j · psl · source-tika · sink-csv · manifest-json-jackson · store-jdbc · transport-smb · ingest · cli-picocli
-bootstrap/  ioc-app — composition root + Spring Boot entry point (CLI/daemon, no web)
+platform/   framework-free cross-cutting contracts and implementations
+core/       pure IOC domain plus application use cases and ports
+adapters/   Tika, RE2/J, CSV, JDBC/SQLite, SMB, ingest and CLI boundaries
+bootstrap/  Spring Boot composition root and the only runnable module
+packaging/  host installer, deployment scripts and systemd templates
+docs/       project maps, capability guides, ADRs and operator guides
 ```
 
 ## Documentation
 
-Principles, architecture and conventions live in [docs/](docs/) (in Russian):
-
-- [architecture.md](docs/ARCHITECTURE.md) — Clean Hexagonal + Onion, layers, the dependency rule;
-- [modularization.md](docs/MODULARIZATION.md) — the reactor module map;
-- [processing.md](docs/dev/processing.md) — extraction, classification and declarative artifact filling;
-- [storage.md](docs/dev/storage.md) · [artifact-export.md](docs/dev/artifact-export.md) — canonical truth and immutable delivery slices;
-- [ingestion.md](docs/dev/ingestion.md) — the streaming daemon, JDBC truth and CSV projection;
-- [boundaries.md](docs/BOUNDARIES.md) — architectural boundary enforcement (ArchUnit + Enforcer);
-- [observability.md](docs/dev/observability.md) — diagnostics and typed ECS observability;
-- [principles.md](docs/PRINCIPLES.md) · [conventions.md](docs/CONVENTIONS.md) — engineering principles and conventions.
+- [Architecture](docs/ARCHITECTURE.md), [modularization](docs/MODULARIZATION.md)
+  and [boundaries](docs/BOUNDARIES.md) — system maps and dependency rules.
+- [Processing](docs/dev/processing.md), [storage](docs/dev/storage.md),
+  [ingestion](docs/dev/ingestion.md), [artifact export](docs/dev/artifact-export.md),
+  [sync](docs/dev/sync.md), [configuration](docs/dev/configuration.md) and
+  [observability](docs/dev/observability.md) — capability maps for developers.
+- [Operator guides](docs/guides/README.md) — deployment, complete configuration,
+  daemon operation and remote storage synchronization.
+- [Security engineering](docs/SECURITY-ENGINEERING.md) and
+  [release process](docs/RELEASE-PROCESS.md) — project-wide operational policy.
+- [ADRs](docs/ADR/README.md) — immutable decision history.
+- [Known issues](docs/KNOWN-ISSUES.md) — open debt and deliberate seams.
 
 ## Development
 
 ```bash
-./mvnw test       # unit tests across the reactor
-./mvnw verify     # the real gate: tests + ArchUnit (boundaries) + Enforcer + golden e2e
+./mvnw test
+./mvnw verify
+
+# Focus one module and build its upstream dependencies.
+./mvnw -pl core/ioc-domain -am test
 ```
 
-Architectural boundaries are kept by the build, not by review ([docs/boundaries.md](docs/BOUNDARIES.md)).
-CI runs `./mvnw -B -ntp -T 1C verify` on every push and pull request.
+CI runs the complete reactor gate and documentation link check on pushes and pull
+requests. Contribution rules are documented in [CONVENTIONS.md](docs/CONVENTIONS.md).
 
-## Stack
+## Technology stack
 
-Spring Boot · Spring Integration · picocli · Apache Tika · RE2/J (regex, JDK
-fallback) · Apache Commons CSV · Guava (Public Suffix List) · Logback + ECS
-encoder · JUnit 5 / AssertJ · ArchUnit.
+Java 21 · Spring Boot 4 · Spring Integration · Spring JDBC · SQLite JDBC ·
+HikariCP · picocli · Apache Tika · RE2/J · Apache Commons CSV · Guava PSL · SMBJ ·
+Jackson · SLF4J 2 / Logback ECS · JUnit 5 · AssertJ · ArchUnit
 
 ## License
 

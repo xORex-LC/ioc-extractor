@@ -13,42 +13,257 @@ spring:
     active: daemon          # activates the daemon logback profile / ECS file appender
 
 logging:
+  level:
+    root: INFO
+    com.iocextractor: INFO
+    com.hierynomus.smbj.connection.Connection: WARN
   file:
     path: var/logs          # rolling ECS-JSON log under <prefix>/var/logs
+
+# Actuator-only HTTP surface. Keep loopback-only unless authentication and a
+# reviewed exposure policy are added.
+server:
+  address: 127.0.0.1
+  port: 8081
+  tomcat:
+    threads:
+      max: 8
+      min-spare: 1
+    accept-count: 10
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      status:
+        order: down,out-of-service,degraded,unknown,up
+        http-mapping:
+          degraded: 200
+      show-details: always
 
 ioc:
   runtime:
     mode: daemon            # also forced on the command line by the systemd unit
   observability:
     mode: daemon            # ECS logging tuned for a long-running process
+    per-item-trace-enabled: false
   pipeline:
     # Preserve a structurally completed ingestion saga while surfacing a
     # degraded extraction outcome for recoverable per-element errors.
+    deduplicate: true
     failure-policy: collect-and-continue
     max-diagnostics-per-run: 10000
   # Keep durable SQLite state separate from CSV references/projections. SQLite
   # creates WAL/SHM sidecars next to each DB, so var/db is the backup unit.
   storage:
     service:
+      type: jdbc
       url: "jdbc:sqlite:./var/db/ioc-service.db"
+      sqlite:
+        tuning: low-memory
+      pool:
+        write-max: 1
+        read-max: 2
     dataframe:
+      type: jdbc
       url: "jdbc:sqlite:./var/db/ioc-dataframe.db"
+      sqlite:
+        tuning: low-memory
+      pool:
+        write-max: 1
+        read-max: 2
 
-  # ---- Common operator knobs (uncomment & adjust as needed) ----------------
-  # ingestion:
-  #   patterns:
-  #     include: [ "*.htm", "*.html", "*.docx", "*.pdf" ]
-  #   stability:
-  #     quiet-period: 10s     # wait for a file to stop changing before ingest
-  #   detect:
-  #     reconcile-interval: 30s
-  # source:
-  #   charset: windows-1251   # charset hint for legacy Word-exported HTML
-  #   section-markers:
-  #     - "БИБ-\\d+"
-  #     - "Письмо ФСТЭК России[^№]*№\\s*[\\d/]+"
+  # ---- Source reading and extraction ---------------------------------------
+  source:
+    type: auto
+    charset: auto             # use windows-1251 only for misdetected legacy HTML/text
+    section-markers:
+      - "БИБ-\\d+"
+      - "Письмо ФСТЭК России[^№]*№\\s*[\\d/]+"
+
+  # Ordered literal replacements: keep specific protocol tokens before hxxp.
+  refang:
+    rules:
+      - { from: "hxxps", to: "https" }
+      - { from: "hxxp",  to: "http" }
+      - { from: "[.]",   to: "." }
+      - { from: "[:]",   to: ":" }
+      - { from: "(dot)", to: "." }
+      - { from: "[at]",  to: "@" }
+
+  engine: re2j
+  patterns:
+    SHA256: "\\b[0-9a-fA-F]{64}\\b"
+    SHA1:   "\\b[0-9a-fA-F]{40}\\b"
+    MD5:    "\\b[0-9a-fA-F]{32}\\b"
+    URL:    "https?://[^\\s;,<>\"']+"
+    IPV4:   "\\b(?:\\d{1,3}\\.){3}\\d{1,3}(?:[:/][^\\s;,<>\"']*)?"
+    DOMAIN: "\\b(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,}(?:/[^\\s;,<>\"']*)?"
+
+  # First-match-wins network-mask classification.
+  classify:
+    rules:
+      - { when: [ has-query ],        url-match: "u:hAS,pEX", host-match: null }
+      - { when: [ has-path-or-port ], url-match: "u:hEX,dEX", host-match: null }
+      - { when: [ is-subdomain ],     url-match: "u:hEX",     host-match: "h:dEX" }
+      - { when: [],                   url-match: "u:hAS",     host-match: "h:dAS" }
+
+  # ---- Mutable CSV projections ---------------------------------------------
+  # These schemas are a durable external contract. Prefer changing only paths,
+  # charset or enablement unless a coordinated schema migration is intended.
+  # A constant column may set `value`; optional column selectors are `type`,
+  # `when-type` and ordered `transform` entries, all demonstrated below.
+  # value: "custom-value"    # example constant payload
+  sink:
+    csv:
+      delimiter: ";"
+      quote: "\""
+      null-literal: "NULL"
+      charset: UTF-8
+    artifacts:
+      - name: masks
+        enabled: true
+        path: "./dataframe/masks_list_generated.csv"
+        accepts: [ IPV4, DOMAIN, URL ]
+        exclude: [ is-bare-ip ]
+        id: { strategy: ascending, start: auto }
+        columns:
+          - { name: id,              from: id }
+          - { name: mask,            from: value, transform: [ lower-host ] }
+          - { name: url_match,       from: match.url }
+          - { name: host_match,      from: match.host }
+          - { name: score,           from: const, type: INTEGER }
+          - { name: time_last_seen,  from: const }
+          - { name: time_first_seen, from: const }
+          - { name: threat_type,     from: const }
+          - { name: source,          from: source.label }
+          - { name: description,     from: const }
+      - name: ip_list
+        enabled: true
+        path: "./dataframe/ip_list_generated.csv"
+        accepts: [ IPV4 ]
+        include: [ is-bare-ip ]
+        id: { strategy: ascending, start: auto }
+        columns:
+          - { name: id,              from: id }
+          - { name: ip,              from: value }
+          - { name: score,           from: const, type: INTEGER }
+          - { name: time_last_seen,  from: const }
+          - { name: time_first_seen, from: const }
+          - { name: threat_type,     from: const }
+          - { name: source,          from: source.label, transform: [ "strip-prefix:Письмо " ] }
+          - { name: description,     from: const }
+      - name: address_blacklist
+        enabled: true
+        path: "./dataframe/address_blacklist_generated.csv"
+        accepts: [ IPV4, DOMAIN, URL ]
+        columns:
+          - { name: forbidden_url, from: address.url, transform: [ lower-host ] }
+          - { name: forbidden_ip,  from: address.ip,  transform: [ lower-host ] }
+      - name: hashes
+        enabled: true
+        path: "./dataframe/hashes_list_generated.csv"
+        accepts: [ MD5, SHA1, SHA256 ]
+        id: { strategy: ascending, start: auto }
+        columns:
+          - { name: id,              from: id }
+          - { name: hash_md5,        from: value, when-type: MD5,    transform: [ upper ] }
+          - { name: hash_sha256,     from: value, when-type: SHA256, transform: [ upper ] }
+          - { name: hash_sha1,       from: value, when-type: SHA1,   transform: [ upper ] }
+          - { name: score,           from: const, type: INTEGER }
+          - { name: time_last_seen,  from: const }
+          - { name: time_first_seen, from: const }
+          - { name: threat_type,     from: const }
+          - { name: source,          from: source.label, transform: [ "strip-prefix:Письмо " ] }
+          - { name: description,     from: const }
+
+  artifact-identity:
+    artifacts:
+      # epoch: 2              # optional controlled identity migration
+      - { name: masks, key-columns: [ mask ] }
+      - { name: ip_list, key-columns: [ ip ] }
+      - { name: address_blacklist, key-columns: [ forbidden_url, forbidden_ip ], key-mode: first-non-empty }
+      - { name: hashes, key-columns: [ hash_md5, hash_sha1, hash_sha256 ], key-mode: first-non-empty }
+
+  # ---- Immutable export -----------------------------------------------------
+  export:
+    enabled: true
+    root: "./var/export"
+    trigger:
+      type: interval
+      interval: 5m
+      quiet-period: 5m
+      max-cap: 1h
+    profiles:
+      - name: reputation-lists
+        output-mode: complete
+        artifacts: [ masks, ip_list, hashes ]
+      - name: address-blacklist
+        output-mode: complete
+        artifacts: [ address_blacklist ]
+    retention:
+      max-age: 7d
+      max-count: 3
+
+  # ---- Whole-file daemon ingestion -----------------------------------------
+  ingestion:
+    dirs:
+      inbox: "./var/inbox"
+      processing: "./var/processing"
+      done: "./var/done"
+      failed: "./var/failed"
+    patterns:
+      include: [ "*.htm", "*.html", "*.docx" ]  # add "*.pdf" when required
+      exclude: [ "*.tmp", "*.part", ".*" ]
+    detect:
+      use-watch-service: true
+      reconcile-interval: 30s
+      max-messages-per-poll: 50
+    stability:
+      quiet-period: 10s
+    retry:
+      max-attempts: 3
+      backoff: 5s
+    ledger:
+      type: file
+      path: "./var/ledger"
+    concurrency: 1             # reserved in 0.1.1; ingestion remains synchronous
+
+  # ---- Leaf-file retention --------------------------------------------------
+  maintenance:
+    retention:
+      enabled: false
+      interval: 1h
+      initial-delay: 5m
+      targets:
+        - { name: done, dir: "./var/done", max-age: 30d, max-count: 0, action: delete }
+        - { name: failed, dir: "./var/failed", max-age: 90d, max-count: 0, action: delete }
+        # Archive form (replace a target above):
+        # - { name: failed, dir: "./var/failed", max-age: 90d, max-count: 0,
+        #     action: archive, archive-dir: "./var/archive/failed" }
 
   # ---- Remote synchronization over SMB (disabled until uncommented) --------
+  sync:
+    enabled: false
+    retry:
+      max-attempts: 3
+      backoff: 1s
+      multiplier: 2.0
+      max-backoff: 30s
+      jitter: true
+    endpoints: []
+    fetch:
+      enabled: false
+      interval: 1m
+      sources: []
+    publish:
+      enabled: false
+      interval: 5m
+      targets: []
+
+  # To enable SMB, replace the complete sync block above with this example.
   # Credentials come from etc/ioc-extractor.env. Never put a plaintext password
   # into this YAML. Fetch is read-only on the remote source; publish writes an
   # immutable export slice and its _SUCCESS marker atomically.

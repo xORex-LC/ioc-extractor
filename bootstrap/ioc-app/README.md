@@ -14,8 +14,8 @@ adapters.
 |---|---|
 | `pom.xml` | Executable app Maven module |
 | `src/main/java/com/iocextractor/` | Application entrypoint and bootstrap config |
-| `src/main/resources/` | Runtime `application.yml` and `logback-spring.xml` |
-| `src/test/java/com/iocextractor/` | Context, architecture and golden e2e tests |
+| `src/main/resources/` | Runtime `application.yml`, Logback config and Spring configuration metadata/hints |
+| `src/test/java/com/iocextractor/` | Context, architecture, configuration/documentation contracts and golden e2e tests |
 
 ## Artifact export graph
 

@@ -22,7 +22,7 @@ Restart=on-failure
 RestartSec=5s
 # Spring Boot / JVM SIGTERM shutdown returns 143 (128+15); treat as clean stop.
 SuccessExitStatus=143
-# Leave one full default SMB read timeout plus Spring/JVM shutdown headroom.
+# Leave one full default SMB request timeout plus Spring/JVM shutdown headroom.
 TimeoutStopSec=60s
 
 # ---- Sandboxing / hardening -------------------------------------------------
@@ -62,7 +62,7 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 UMask=0027
 
 # Writable runtime state: SQLite DB/WAL/SHM, immutable export slices, inbox flow,
-# ledgers/logs and generated CSV projections/lookups.
+# ledgers/logs and generated CSV projections.
 # (Note: keep the install prefix OUTSIDE /home so ProtectHome does not hide it; /opt is correct.)
 ReadWritePaths=@PREFIX@/var @PREFIX@/dataframe
 

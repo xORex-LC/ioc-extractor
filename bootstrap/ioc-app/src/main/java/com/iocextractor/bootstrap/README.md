@@ -21,6 +21,7 @@ Composition root и конфигурация. Единственное мест�
 | `IocConfigurationOverrideReporter.java` | Value-free startup report выигравших external `ioc.*` overrides |
 | `ConfigRegistryCatalog.java` | Composition-root registry factories/keys для providers, transforms, filters и predicates |
 | `ConfigRegistryPreflight.java` | Eager startup check config→registry ссылок до обработки файла/записи |
+| `ConfigurationDocumentationContractTest` (test tree) | Reflection-based completeness operator guides, production-template binding/preflight и drift hints относительно enum/registry catalogs |
 | `*Type.java`, `*Mode.java`, `*Strategy.java`, `SyncTransport.java`, `RetentionActionType.java`, `IdStart.java` | Typed selector/value grammar для `IocProperties` и ранних consumers |
 | `AppConfig.java` | Сборка основного extraction/export/storage graph |
 | `EventCoordinationConfig.java` | Spring bridge для `ControlEventPublisher` и observer wiring |

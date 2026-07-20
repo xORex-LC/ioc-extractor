@@ -1,285 +1,195 @@
 # packaging
 
-Installing and operating **ioc-extractor** as a `systemd` daemon on Debian 11+.
+## Purpose
+
+Host installation and deployment boundary for ioc-extractor. This directory
+contains shell entry points and rendered host templates; it contains no Java
+runtime logic.
+
+**Boundary rule:** scripts may build, install and operate the application but
+must not duplicate extraction, storage or synchronization behavior. Operator
+procedures live in `docs/guides/` and are linked below.
+
+Debian 11 and 12 are the tested installer baselines. Other systemd hosts are
+best effort and must be validated by the operator.
 
 ## Contents
 
-| File | Purpose |
+| File | Responsibility |
 |---|---|
-| `install.sh` | From-scratch installer (root): JDK 21 (manual), user, directories, jar, config, systemd unit. |
-| `deploy-local.sh` | Ordinary-user entry point: verify/build, immutable release activation, health gate and rollback. |
-| `deploy-local-root.sh` | Privileged activation phase called by `deploy-local.sh`; not a user entry point. |
-| `prepare-release-artifacts.sh` | Validates tag/Maven/embedded build identity and creates the public jar plus SHA-256 sidecar. |
-| `publish-release-draft.sh` | Idempotently creates or repairs a GitHub draft release without replacing different bytes. |
-| `uninstall.sh` | Stop/remove the service; `--purge` also deletes the directory and the user. |
-| `templates/ioc-extractor.service` | Unit template; placeholders `@PREFIX@/@JAVA_BIN@/@USER@/@GROUP@` are substituted at install time. |
-| `templates/application.yml` | Production override (daemon mode); deployed to `<prefix>/etc/application.yml`. |
-| `templates/ioc-extractor.env` | `EnvironmentFile` with `JAVA_OPTS`. |
-| `templates/ioc` | Host CLI launcher rendered to `<prefix>/bin/ioc`. |
+| `install.sh` | Provision a host, JDK 21, service account, immutable release, configuration, launcher and systemd unit. |
+| `uninstall.sh` | Remove the unit safely; retain data by default or purge only when explicit. |
+| `deploy-local.sh` | Ordinary-user entry point: clean verify/build, then privileged local activation. |
+| `deploy-local-root.sh` | Root-only activation transaction with DB backup, health gate and rollback. Do not call directly. |
+| `prepare-release-artifacts.sh` | Validate tag/Maven/build identity and produce checksummed public jar assets. |
+| `publish-release-draft.sh` | Create or repair the GitHub draft release for prepared immutable assets. |
+| `templates/application.yml` | Full production daemon override; safe baseline plus disabled optional integrations. |
+| `templates/ioc-extractor.env` | JVM options and secret environment placeholders. |
+| `templates/ioc-extractor.service` | Hardened systemd unit template. |
+| `templates/ioc` | Installed host launcher for CLI and health operations. |
 
-**Layer rule:** deployment material only (shell + templates), no Java code or
-business logic. Daemon mode and configuration are documented in
-[docs/dev/ingestion.md](../docs/dev/ingestion.md) and
-[application.yml](../bootstrap/ioc-app/src/main/resources/application.yml).
+## Operator documentation
 
-The release helpers are also the local executable contract behind
-`.github/workflows/release.yml`. `prepare-release-artifacts.sh --validate-only`
-checks tag/version identity before an expensive build. Its full mode reads
-`META-INF/build-info.properties`, verifies the no-Spring `--version` output,
-copies the exact bootable jar to the public `ioc-extractor-X.Y.Z.jar` name and
-generates its checksum. `publish-release-draft.sh` never publishes a release and
-never uses `--clobber`: an existing asset with different bytes is a hard failure.
+- [Deployment, upgrade and rollback](../docs/guides/deployment.md)
+- [Complete configuration reference](../docs/guides/configuration.md)
+- [Daemon operations](../docs/guides/daemon-operations.md)
+- [Remote storage synchronization](../docs/guides/remote-storage-sync.md)
 
-## Java 21 — manual install only
+The guides are canonical procedures. This README documents only the scripts,
+templates and packaging invariants beside their files.
 
-Debian 11 repositories do not ship JDK 21, so the installer installs **Temurin 21
-from a tarball** (no apt repositories are added) into `<prefix>/jdk` —
-self-contained:
+## Installed layout
 
-- offline host: `--jdk-tarball /path/OpenJDK21-jdk_x64_linux_hotspot.tar.gz`;
-- host with internet: the tarball is downloaded from Adoptium automatically (or `--jdk-url`);
-- if the host already has `java ≥ 21`: `--system-java`.
-
-## Layout (single-dir)
+The installer creates one self-contained prefix:
 
 ```text
-<prefix>/                         # default /opt/ioc-extractor
-├── jdk/                          # Temurin 21 (installed manually)
-├── releases/
-│   └── <deployment-id>/          # immutable jar, checksum and build identity
-├── current -> releases/<active>    # atomically switched by deployment
-├── backups/                        # offline SQLite snapshots for rollback
-├── bin/ioc                         # oneshot CLI launcher through systemd-run
-├── etc/application.yml           # override (operator-editable)
-├── etc/ioc-extractor.env         # JAVA_OPTS + optional SMB credentials
+<prefix>/
+├── jdk/                         # private Temurin 21 unless --system-java
+├── releases/<release-id>/       # immutable application releases
+│   └── ioc-app.jar
+├── current -> releases/<id>     # atomically switched active release
+├── bin/ioc                      # host launcher
+├── etc/
+│   ├── application.yml          # operator-owned override
+│   └── ioc-extractor.env        # JVM settings and secrets
+├── backups/                     # local deployment backups
 ├── var/
-│   ├── db/                       # ioc-dataframe.db + ioc-service.db (+ WAL/SHM)
-│   ├── export/                   # immutable completed export slices
+│   ├── db/                      # canonical dataframe + service ledgers
+│   ├── export/                  # immutable slices and delivery state
 │   ├── inbox/ processing/ done/ failed/
 │   └── ledger/ logs/
-└── dataframe/                    # generated CSV projections
+└── dataframe/                   # generated mutable CSV projections
 ```
 
-The service `WorkingDirectory` is `<prefix>`, so the application's relative paths
-(`./var/...`, `./dataframe/...`) resolve inside the install directory.
+Release files are root-owned and immutable. The service account owns writable
+runtime state. `etc/`, `var/` and `dataframe/` stay outside release directories
+so activation never replaces operator data.
 
-## Configuration overrides
+## `install.sh`
 
-The packaged `application.yml` is the baseline. The normal Spring Boot order is
-`CLI > system properties > environment > configuration files`; the deployed
-`etc/application.yml` is an external configuration file and remains
-operator-owned across releases. Environment names beginning with `IOC_` are
-reserved for the application's `ioc.*` configuration tree. A misspelled or
-unrelated `IOC_*` variable is therefore a deployment error and prevents startup;
-use a different prefix for host-local variables that do not configure
-ioc-extractor.
-
-After context refresh and before command runners, the application logs each winning external IOC override
-as `ioc.some.key <- source`. The report never includes configuration values, so
-credentials supplied through the environment file remain absent from it.
-
-Production template явно задаёт
-`ioc.pipeline.failure-policy=collect-and-continue` и diagnostic budget 10 000:
-element-level defects не локируют валидные rows, но run/FATAL failure по-прежнему
-ведёт к retry/dead-letter. Per-item TRACE по умолчанию закрыт и требует
-одновременно `ioc.observability.per-item-trace-enabled=true` и logger level `TRACE`.
-
-## Local deployment
-
-For a development/test host, run deployment from the source checkout as an
-ordinary user (never through `sudo`):
-
-```bash
-./packaging/deploy-local.sh
-# explicit equivalent for the current WSL test runtime:
-./packaging/deploy-local.sh --prefix /srv/ioc-extractor --port 8081
+```text
+sudo ./packaging/install.sh [--prefix DIR] [--jar PATH] [--checksum PATH]
+    [--release-id ID] [--user NAME]
+    [--jdk-tarball PATH | --jdk-url URL | --system-java]
+    [--no-start] [--force]
 ```
 
-The command refuses a dirty worktree by default. To deliberately test uncommitted
-changes, make that loss of reproducibility explicit:
+Key contracts:
 
-```bash
-./packaging/deploy-local.sh --allow-dirty
+- must run as root and refuses unsafe/non-absolute prefixes;
+- refuses to install over a source checkout unless `--force` is explicit;
+- accepts exactly one regular bootable jar and verifies an optional checksum;
+- requires Java 21 or installs a dedicated Temurin 21 distribution;
+- creates a unique immutable release and atomically replaces `current`;
+- preserves existing operator config and writes changed templates as `*.new`;
+- renders the systemd unit with exact paths and starts it unless `--no-start`;
+- re-running with the same release ID is allowed only when bytes are identical.
+
+`--force` also permits overwriting operator configuration. It is not the normal
+upgrade path; reconcile `*.new` files as described in the deployment guide.
+
+The installer does not provide the database backup and automatic rollback
+transaction of `deploy-local.sh`.
+
+## `deploy-local.sh`
+
+```text
+./packaging/deploy-local.sh [--prefix DIR] [--port PORT] [--allow-dirty]
+    [--release-retention N] [--backup-retention N]
+    [--health-attempts N] [--health-interval SECONDS]
 ```
 
-The unprivileged phase runs the complete `./mvnw -B -ntp -T 1C clean verify`
-gate and requires exactly one resulting bootable jar. A clean checkout embeds
-its full commit through `build.commit`; an explicitly allowed dirty checkout is
-identified as dirty and does not claim exact embedded commit identity. The
-artifact digest is rechecked across the privileged boundary before activation.
-Only then does the script invoke the privileged activation helper:
+It runs as an ordinary user, serializes deployments with a lock and always runs
+the complete Maven `clean verify` gate. A dirty tree is rejected unless
+`--allow-dirty` is explicit and receives a visible dirty release identity.
 
-1. first run bootstraps through `install.sh`, reusing an installed Java 21+ outside
-   `/home` and downloading bundled Temurin only when no suitable system Java exists;
-2. later runs stage an immutable `releases/<id>` directory;
-3. the daemon stops and `var/db` is archived offline;
-4. `current` switches atomically and the daemon starts;
-5. service JDBC, dataframe JDBC and artifact-directory health components must
-   become `UP` in four quiet attempts separated by two seconds;
-6. failure restores both the previous `current` target and SQLite snapshot.
+The privileged phase:
 
-Remote sync health is deliberately not a deployment gate: an unavailable SMB
-endpoint must not roll back an otherwise valid application/storage upgrade.
-Defaults keep five releases and five DB backups. `flock` prevents overlapping
-local activations. Configuration and `ioc-extractor.env` remain host-owned and
-are not replaced during regular deployments.
+1. verifies the exact jar checksum and release metadata;
+2. stops the active service;
+3. backs up both SQLite databases as one recovery point;
+4. installs a new immutable release and atomically switches `current`;
+5. starts the service and checks local actuator health;
+6. restores the previous release and database backup if the gate fails;
+7. retains only the configured number of releases and backups.
 
-## Systemd hardening
+Remote sync health is deliberately not a deployment gate: an unavailable
+optional SMB server must not roll back a locally healthy application release.
 
-The unit runs the daemon as a dedicated non-root user with no Linux capabilities
-(`CapabilityBoundingSet=` and `AmbientCapabilities=` are empty). The filesystem is
-read-only except `<prefix>/var` and `<prefix>/dataframe`; private `/tmp` and
-private device visibility are enabled; kernel module/log/tunable, clock, hostname,
-namespace, keyring, IPC, realtime scheduling, process personality and
-foreign-architecture syscall surfaces are restricted. `StartLimitIntervalSec=5min`
-and `StartLimitBurst=10` prevent a tight restart loop when configuration,
-permissions or paths are broken.
+## `uninstall.sh`
 
-Application/JDK/config files are owned by `root`; only `var` and `dataframe` are
-owned by the service user. `UMask=0027` and mode `0640` on the environment file
-keep SQLite data, generated artifacts and SMB credentials unavailable to other
-users. The service needs no CIFS mount and no `CAP_SYS_ADMIN`: smbj opens an ordinary
-outbound TCP connection, normally to port 445. `AF_UNIX/AF_INET/AF_INET6` are the
-only allowed socket families. Egress IPs are intentionally not hard-coded in the
-generic unit because SMB endpoint hostnames and addresses are operator-owned and
-may change through DNS; enforce a host-specific egress allowlist in a systemd
-drop-in or firewall where the deployment has stable target addresses.
-
-Core dumps are disabled (`LimitCORE=0`) because source documents and extracted IOCs
-may be sensitive. `LimitNOFILE=65536` leaves room for file-polling and logging
-handles, while `TasksMax=512` caps runaway JVM thread growth without constraining
-the current daemon workload.
-
-Resource controls are intentionally conservative: `MemoryHigh=768M` and
-`MemoryMax=1G` sit above the default `-Xmx512m` heap from `ioc-extractor.env`,
-leaving room for JVM native memory while still bounding the process. If operators
-raise `-Xmx`, they must raise these cgroup limits together. `CPUQuota=200%` limits
-the daemon to roughly two CPU cores. `IOAccounting=true` and `IOWeight=100` enable
-I/O accounting and a neutral best-effort weight; hard I/O bandwidth caps are left
-unset until there are production measurements.
-
-## Install
-
-```bash
-# 1) build the release jar (requires JDK 21; see the root README)
-./mvnw -q -DskipTests package
-APP_VERSION="$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdout)"
-APP_JAR="bootstrap/ioc-app/target/ioc-app-${APP_VERSION}.jar"
-
-# 2) install explicitly (recommended)
-sudo packaging/install.sh --jar "${APP_JAR}" --no-start
-
-# Published asset: verify its sidecar before any host mutation
-sudo packaging/install.sh \
-  --jar /tmp/ioc-extractor-X.Y.Z.jar \
-  --checksum /tmp/ioc-extractor-X.Y.Z.jar.sha256 \
-  --release-id vX.Y.Z
-
-# Optional autodiscovery succeeds only when exactly one candidate exists
-sudo packaging/install.sh                         # prompts for the directory (default /opt/ioc-extractor)
-sudo packaging/install.sh --prefix /opt/ioc-extractor
-sudo packaging/install.sh --jdk-tarball /tmp/temurin21.tar.gz   # offline host
+```text
+sudo ./packaging/uninstall.sh [--prefix DIR] [--user NAME] [--purge]
 ```
 
-`--jar` is the authoritative artifact selection. Autodiscovery searches the
-packaging directory, its `lib/` directory and the runnable module's `target/`,
-then accepts exactly one `ioc-app-*.jar` or `ioc-extractor-*.jar`; zero or
-multiple candidates are errors. Filename and modification time never determine
-the product version or winner.
+Without `--purge`, the script stops/disables the service and removes its unit but
+keeps the prefix, account, config and all data. `--purge` permanently deletes the
+validated prefix and service account. It refuses to purge a source checkout or
+an empty/root prefix.
 
-When `--checksum` is omitted but `<jar>.sha256` exists, the installer verifies
-that sidecar automatically. A malformed or mismatching checksum stops before
-Java provisioning, service changes or artifact activation. Without an explicit
-`--release-id`, standalone installation uses `sha256-<12 hex>` derived from the
-artifact bytes. Release automation passes a human-facing ID such as `vX.Y.Z`;
-local deployment keeps `<commit>-<timestamp>` (and an explicit dirty marker).
+## Release helper contracts
 
-The installer is **idempotent**: re-running upgrades the jar and the unit; an
-existing `etc/application.yml` is not overwritten (a `*.new` is written next to it)
-unless `--force` is given. The installer **refuses** to install into a directory
-containing `pom.xml`/`.git` (a source tree) without `--force`.
+`prepare-release-artifacts.sh` accepts only `vX.Y.Z` or `vX.Y.Z-rc.N`, rejects a
+SNAPSHOT or tag/version mismatch, verifies embedded build version/commit/time and
+the lightweight `--version` output, then creates a jar and SHA-256 sidecar without
+overwriting existing assets.
 
-During an upgrade the installer stops an active service before replacing the jar.
-Legacy databases at `var/ioc-service.db` and `dataframe/ioc-dataframe.db` are moved,
-together with WAL/SHM sidecars, into `var/db`. If both old and new primary files
-exist, installation stops for manual reconciliation instead of selecting one.
+`publish-release-draft.sh` validates the annotated tag, exact commit, release
+notes and asset checksums before creating or repairing a GitHub draft. It never
+publishes the release automatically.
 
-The installer no longer accepts legacy seed CSV files. Canonical business data
-lives in `var/db/ioc-dataframe.db`; files under `dataframe/` are generated
-projections and may be recreated from SQLite truth.
+The GitHub release workflow builds the reactor once, rejects source-tree changes
+produced by the build and passes the same prepared assets to the draft step.
 
-## SQLite state and backup
+## Configuration contract
 
-Both databases are durable state and live together under `<prefix>/var/db`:
+The embedded classpath configuration supplies application defaults. The
+installed `etc/application.yml` is an external override and remains
+operator-owned across releases. Effective application precedence is:
 
-- `ioc-dataframe.db` is canonical business truth;
-- `ioc-service.db` contains ingest/export/sync ledgers and recovery state.
-
-The directory, not an individual `.db` file, is the writable/backup unit because
-SQLite WAL mode may create adjacent `-wal` and `-shm` files. For a simple consistent
-offline backup, stop the service and copy `var/db`; use SQLite's online backup API
-if stopping is not acceptable. CSV files in `dataframe` are generated projections
-and immutable delivery slices live separately in `var/export`.
-
-## SMB sync
-
-Remote sync is disabled by default. To enable it:
-
-1. uncomment and adapt the `ioc.sync` example in `etc/application.yml`;
-2. set `SMB_USER` and `SMB_PASSWORD` in `etc/ioc-extractor.env`;
-3. keep the environment file `root:<service-group>` mode `0640`;
-4. restart the service and inspect the `sync` actuator health component.
-
-Fetch leaves the remote source untouched and atomically lands files in `var/inbox`.
-Publish transfers only integrity-verified directories from `var/export`; delivery
-progress is durable in `ioc-service.db`. The target share ACL normally needs read
-for fetch and create/write/rename for publish. Delete permission is not required by
-the v1 flow. Details: [docs/dev/sync.md](../docs/dev/sync.md).
-
-## Operate
-
-```bash
-systemctl status ioc-extractor
-journalctl -u ioc-extractor -f                 # ECS-JSON logs (+ <prefix>/var/logs/)
-cp report.htm /opt/ioc-extractor/var/inbox/    # submit a source for processing
-sudo /srv/ioc-extractor/bin/ioc health         # daemon health as a table (exit 0/1/2)
-sudo /srv/ioc-extractor/bin/ioc health --json  # raw JSON for scripts
-sudo /srv/ioc-extractor/bin/ioc --version      # packaged product/build identity
+```text
+packaged defaults < external YAML < environment < system properties < CLI
 ```
 
-The jar is intentionally not executable and must not be run as root. The rendered
-`bin/ioc` launcher creates a short-lived hardened systemd unit under the `ioc`
-service account, loads the host `application.yml` and `ioc-extractor.env`, and
-forces `oneshot`/non-web mode without stopping the daemon. Examples:
+Unknown `ioc.*` keys from any channel fail startup. The full template deliberately
+shows every supported section and complete list element shapes. Remote sync stays
+disabled and secrets remain environment placeholders.
 
-```bash
-sudo /srv/ioc-extractor/bin/ioc export --profile reputation-lists
-sudo /srv/ioc-extractor/bin/ioc sync fetch
-sudo /srv/ioc-extractor/bin/ioc sync publish --profile reputation-lists
-```
+On upgrade, a changed packaged template is written beside the existing file as
+`application.yml.new` or `ioc-extractor.env.new`; it is never silently merged.
 
-The daemon exposes `/actuator/health` and `/actuator/info` on `127.0.0.1:8081`
-(loopback only; `server.port`/`server.address` to change). `ioc health` queries it
-and exits `0` UP / `1` DOWN / `2` unreachable (usable as a probe); raw
-`curl -s http://127.0.0.1:8081/actuator/health` also works. Rationale:
-[ADR-0010](../docs/ADR/0010-health-actuator.md).
+## Systemd contract
 
-Flow: `var/inbox` → (quiet-period) → `var/processing` → `var/done` (or `var/failed`),
-IOC rows are written directly into canonical `var/db/ioc-dataframe.db`, and the CSV
-projections configured in `application.yml` are refreshed from it. Export emits
-immutable, manifest-verified slices under `var/export/<profile>/<slice>/`; optional
-SMB publish delivers those slices independently per configured target.
+The rendered service:
 
-After editing `etc/application.yml`: `systemctl restart ioc-extractor`.
+- runs as the dedicated non-login account;
+- sets the prefix as `WorkingDirectory`;
+- forces daemon mode and the servlet health surface on the command line;
+- loads `etc/application.yml` and `etc/ioc-extractor.env`;
+- binds actuator to loopback by default;
+- permits writes only to declared state directories;
+- applies filesystem, privilege, capability, syscall and resource hardening;
+- uses a bounded JVM heap while leaving native-memory headroom;
+- restarts on failure with start-rate limiting.
 
-## Uninstall
+SMB endpoint hostnames are operator-owned, so the generic unit cannot apply a
+fixed `IPAddressAllow` network allowlist. Network segmentation and egress policy
+belong to the deployment environment.
 
-```bash
-sudo packaging/uninstall.sh                 # remove the service, keep data
-sudo packaging/uninstall.sh --purge         # + delete the directory and the ioc user
-```
+## SMB permission boundary
 
-## Out of scope
+Fetch source directories require read/list only; the application never deletes
+remote source files. Publish targets require create, write, rename **and delete**
+permission for application-owned temporary/incomplete directories and retry
+cleanup. Consumers should receive read-only access to completed targets.
 
-A `.deb` package with maintainer scripts; OS-level log rotation (currently the
-built-in Logback rolling appender).
+## Data ownership
+
+- `ioc-dataframe.db` is canonical business truth and provenance.
+- `ioc-service.db` contains ingestion, export and synchronization ledgers.
+- `dataframe/*.csv` files are generated mutable projections.
+- `var/export` contains immutable slices, manifests and completion markers.
+- `var/done` and `var/failed` retain source evidence until configured retention.
+
+Back up both databases together with the matching application/configuration
+release. Procedures are in the deployment and daemon operation guides.

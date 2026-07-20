@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# ioc-extractor — installer for Debian 11+ (systemd daemon).
+# ioc-extractor — installer for Debian 11/12 (systemd daemon).
 #
-# Provisions the host from scratch: installs a JDK 21 (manually, from a tarball
-# — Debian repos do not ship JDK 21), creates a dedicated system user and the
+# Provisions the host from scratch: installs a JDK 21 from a tarball for a
+# portable runtime baseline, creates a dedicated system user and the
 # runtime directory layout, deploys the application jar + config, installs and
 # starts the systemd service.
 #

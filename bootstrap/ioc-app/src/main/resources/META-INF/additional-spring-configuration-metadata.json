@@ -1,0 +1,88 @@
+{
+  "hints": [
+    {
+      "name": "ioc.engine",
+      "values": [
+        { "value": "re2j", "description": "Linear-time RE2/J engine; the production default." },
+        { "value": "jdk", "description": "JDK regular-expression engine; patterns must remain RE2-compatible." }
+      ]
+    },
+    {
+      "name": "ioc.runtime.mode",
+      "values": [
+        { "value": "oneshot", "description": "Run a CLI command and exit." },
+        { "value": "daemon", "description": "Run the long-lived ingestion, export, sync and health services." }
+      ]
+    },
+    {
+      "name": "ioc.storage.service.type",
+      "values": [ { "value": "jdbc", "description": "SQLite-backed service ledgers through JDBC." } ]
+    },
+    {
+      "name": "ioc.storage.dataframe.type",
+      "values": [ { "value": "jdbc", "description": "Canonical SQLite dataframe storage through JDBC." } ]
+    },
+    {
+      "name": "ioc.storage.service.sqlite.tuning",
+      "values": [
+        { "value": "low-memory", "description": "Bounded caches and conservative production defaults." },
+        { "value": "balanced", "description": "Larger caches and memory-backed temporary storage for a host with spare memory." },
+        { "value": "high-throughput", "description": "Large caches and memory maps for a dedicated high-memory host after load testing." }
+      ]
+    },
+    {
+      "name": "ioc.storage.dataframe.sqlite.tuning",
+      "values": [
+        { "value": "low-memory", "description": "Bounded caches and conservative production defaults." },
+        { "value": "balanced", "description": "Larger caches and memory-backed temporary storage for a host with spare memory." },
+        { "value": "high-throughput", "description": "Large caches and memory maps for a dedicated high-memory host after load testing." }
+      ]
+    },
+    {
+      "name": "ioc.observability.mode",
+      "values": [
+        { "value": "oneshot", "description": "Console-oriented logging for short-lived CLI commands." },
+        { "value": "daemon", "description": "Long-running ECS JSON file logging." }
+      ]
+    },
+    {
+      "name": "ioc.pipeline.failure-policy",
+      "values": [
+        { "value": "fail-fast", "description": "Stop before durable write when an error diagnostic is present." },
+        { "value": "collect-and-continue", "description": "Commit valid rows and report a completed-with-errors outcome." }
+      ]
+    },
+    {
+      "name": "ioc.source.type",
+      "values": [ { "value": "auto", "description": "Let Apache Tika detect the document format." } ]
+    },
+    {
+      "name": "ioc.source.charset",
+      "values": [ { "value": "auto", "description": "Let Apache Tika detect the input charset." } ],
+      "providers": [
+        { "name": "handle-as", "parameters": { "target": "java.nio.charset.Charset" } }
+      ]
+    },
+    {
+      "name": "ioc.sink.csv.charset",
+      "providers": [
+        { "name": "handle-as", "parameters": { "target": "java.nio.charset.Charset" } }
+      ]
+    },
+    {
+      "name": "ioc.patterns.keys",
+      "values": [
+        { "value": "IPV4" }, { "value": "DOMAIN" }, { "value": "URL" },
+        { "value": "MD5" }, { "value": "SHA1" }, { "value": "SHA256" }
+      ]
+    },
+    {
+      "name": "ioc.export.trigger.type",
+      "values": [ { "value": "interval" }, { "value": "quiet-period" } ]
+    },
+    {
+      "name": "ioc.ingestion.ledger.type",
+      "values": [ { "value": "file" }, { "value": "jdbc" } ]
+    }
+  ]
+}

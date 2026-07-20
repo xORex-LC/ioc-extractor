@@ -49,13 +49,19 @@ operations are available manually through the CLI (`ioc sync fetch|publish|all`)
 
 ### 1.2 Three principles that explain all of the behavior
 
-**1. Idempotency through ledgers.** Every downloaded file and every delivered
-"slice × target" pair is recorded in a local database. Therefore:
+**1. Durable idempotency through ledgers.** Every downloaded file and every
+delivered "slice × target" pair is recorded in a local database. Therefore:
 
-- the same file is never downloaded twice;
+- completed fetches are not intentionally downloaded again;
 - the same slice is never delivered to the same target twice;
 - after a restart or a crash the system does not start from scratch — it
   continues from where it stopped, checking against the ledger.
+
+Fetch is an at-least-once transfer around a narrow crash window: the local file
+is made visible before the durable fetch record is closed. A process crash
+between those steps can download the object again under a collision-safe local
+name. Canonical ingest deduplication prevents duplicate business rows, but the
+transport does not claim distributed exactly-once delivery.
 
 For fetch, "the same file" means the triple **path + size + modification
 time**. If a file on the share changed (was appended to, re-uploaded) — that is
@@ -312,8 +318,10 @@ the administrator's job.
 - Login/password are passed via environment variables only
   (`${SMB_USER}` / `${SMB_PASSWORD}`).
 - In the systemd deployment they live in `etc/ioc-extractor.env` with mode `0640`.
-- The password never reaches logs, health output or thread names; in memory it
-  is wiped right after authentication.
+- The password never reaches logs, health output or thread names. Temporary
+  character-array copies are cleared after use, while the endpoint credential
+  remains in process memory for as long as the client factory may need to
+  connect or reconnect.
 - Password rotation = update the env file and restart the service. There is no
   hot rotation.
 
@@ -341,6 +349,9 @@ The `sync` health contributor (daemon actuator, loopback `:8081`, and the
 
 Reading rules:
 
+- `UNKNOWN` — no conclusive operation has run yet. This is normal immediately
+  after startup for an optional source/target: startup does not perform an
+  authentication or remote write probe solely to make health turn green;
 - `DEGRADED` — a transient problem (network, overload): the system retries on
   its own. React only if the status persists beyond your SLA.
   A short `RECONNECTING` on the watch is normal after a real disconnect; it
@@ -361,13 +372,15 @@ INFO, degradation at WARN, permanent errors at ERROR.
 ```bash
 ioc sync fetch   [--source NAME] [--endpoint NAME] [--dry-run]
 ioc sync publish [--profile NAME] [--target NAME] [--endpoint NAME] [--dry-run]
-ioc sync all     [--dry-run]      # fetch, then publish
-ioc health
+ioc sync all     [--source NAME] [--profile NAME] [--target NAME] [--endpoint NAME] [--dry-run]
+ioc health [--component sync] [--json] [--url URL | --host HOST --port PORT]
 ```
 
-`--dry-run` shows what would be done without touching the share, the inbox or
-the ledgers — handy for validating configuration and permissions. A non-zero
-failure count yields exit code 1 (script-friendly).
+`--dry-run` may read remote metadata to show what would be done, but it does not
+change the share, the inbox or the ledgers. It is useful for validating
+selection and read access; publish write/delete permission still needs an
+end-to-end test on a dedicated target. A non-zero failure count yields exit
+code 1 (script-friendly).
 
 ---
 

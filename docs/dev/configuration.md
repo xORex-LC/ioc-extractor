@@ -92,13 +92,16 @@ work. Конкретные adapters связываются только в compo
 
 - External defaults/schema: `bootstrap/ioc-app/src/main/resources/application.yml`.
 - Typed model: `IocProperties` и selector/value types.
+- Operator contract: [configuration guide](../guides/configuration.md), полный
+  production template и `ConfigurationDocumentationContractTest`.
 - Strict boundary: `IocEnvironmentPropertyMatcher`,
   `IocUnknownConfigurationPreflight`, `IocConfigPreflight`,
   `ConfigRegistryPreflight`, `IocConfigurationFailureAnalyzer`.
 - Lifecycle: `ConfigPreflightConfiguration`, `EarlyCliLauncher`,
   `DaemonWebEnvironmentPostProcessor`.
 - Contract tests: `IocPropertiesBindingTest`, unknown-key/preflight/analyzer/
-  override reporter tests and application context tests.
+  override reporter tests, `ConfigurationDocumentationContractTest` and
+  application context tests.
 
 ## Когда обновлять документ
 
