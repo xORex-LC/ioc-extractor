@@ -5,10 +5,15 @@
 - **Связано:** [observability](../dev/observability.md), [processing](../dev/processing.md),
   [0003-diagnostics.md](0003-diagnostics.md)
 
+> **Обслуживание документации 2026-07-21:** исторические `logging.md` и
+> `logging-taxonomy.md` объединены в текущую capability-карту
+> [observability.md](../dev/observability.md). Их имена ниже обозначают
+> исходные design documents на момент принятия решения.
+
 ## Контекст
 
-Заказчик составил дизайн operational logging ([logging.md](../dev/observability.md) +
-[logging-taxonomy.md](../dev/observability.md)) на основе ECS и поставил вопрос:
+Заказчик составил дизайн operational logging (`logging.md` +
+`logging-taxonomy.md`) на основе ECS и поставил вопрос:
 объединять ли логирование и диагностику в один этап. Ревью дизайна зафиксировало
 несколько уточнений и одно отменённое прежнее решение.
 

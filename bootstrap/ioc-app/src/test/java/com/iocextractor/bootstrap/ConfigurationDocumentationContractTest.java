@@ -38,7 +38,9 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
  * drift. The typed properties record remains the schema; this test makes every
  * newly added record component fail the build until both guide languages are
  * updated and verifies the shipped daemon template through the real binder and
- * semantic preflights.
+ * semantic preflights. Guide checks prove structural coverage of property names
+ * and closed vocabulary, not the semantic accuracy of prose, recommendations or
+ * documented defaults; those remain review responsibilities.
  */
 class ConfigurationDocumentationContractTest {
 
@@ -52,10 +54,10 @@ class ConfigurationDocumentationContractTest {
         String english = read(reactorRoot().resolve("docs/guides/configuration.md"));
         String russian = read(reactorRoot().resolve("docs/guides/ru/configuration.md"));
 
-        assertThat(missingBacktickedPaths(english, paths))
+        assertThat(missingBacktickedTokens(english, paths))
                 .as("typed ioc.* properties missing from the English operator guide")
                 .isEmpty();
-        assertThat(missingBacktickedPaths(russian, paths))
+        assertThat(missingBacktickedTokens(russian, paths))
                 .as("typed ioc.* properties missing from the Russian operator guide")
                 .isEmpty();
     }
@@ -138,11 +140,21 @@ class ConfigurationDocumentationContractTest {
 
         String english = read(reactorRoot().resolve("docs/guides/configuration.md"));
         String russian = read(reactorRoot().resolve("docs/guides/ru/configuration.md"));
-        assertThat(values.stream().filter(value -> !english.contains(value)).toList())
+        assertThat(missingBacktickedTokens(english, values))
                 .as("registry/selector values missing from the English operator guide")
                 .isEmpty();
-        assertThat(values.stream().filter(value -> !russian.contains(value)).toList())
+        assertThat(missingBacktickedTokens(russian, values))
                 .as("registry/selector values missing from the Russian operator guide")
+                .isEmpty();
+    }
+
+    @Test
+    void vocabularyCoverageRequiresExactBacktickedTokens() {
+        String proseWithAccidentalMatches = "deleted over smb-server";
+
+        assertThat(missingBacktickedTokens(proseWithAccidentalMatches, Set.of("delete", "smb")))
+                .containsExactlyInAnyOrder("delete", "smb");
+        assertThat(missingBacktickedTokens("use `delete` over `smb`", Set.of("delete", "smb")))
                 .isEmpty();
     }
 
@@ -181,9 +193,9 @@ class ConfigurationDocumentationContractTest {
         }
     }
 
-    private static List<String> missingBacktickedPaths(String guide, Collection<String> paths) {
-        return paths.stream()
-                .filter(path -> !guide.contains("`" + path + "`"))
+    private static List<String> missingBacktickedTokens(String guide, Collection<String> tokens) {
+        return tokens.stream()
+                .filter(token -> !guide.contains("`" + token + "`"))
                 .toList();
     }
 

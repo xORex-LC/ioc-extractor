@@ -22,7 +22,8 @@ inbox
        -> run completion
   -> archive into done
 
-terminal failure -> failed + error sidecar
+post-claim terminal failure -> failed + error sidecar
+pre-claim terminal failure  -> may remain in inbox (ING-13)
 ```
 
 Spring Integration является только driving adapter в `adapter-ingest`.
@@ -100,8 +101,10 @@ STARTED -> DB_COMMITTED -> PROJECTION_COMPLETED -> COMPLETED
 
 Retry чтения, hashing и обработки реализован явно в file message handler с
 bounded backoff. Spring Retry не является частью текущего контракта. После
-исчерпания попыток источник перемещается в `failed`, ledger получает terminal
-состояние, а причина сохраняется без утечки исходного IOC в INFO/WARN логи.
+успешного claim исчерпание попыток перемещает источник в `failed`; сбой до claim
+может оставить его в `inbox` из-за ING-13. В обоих случаях ledger получает
+terminal состояние, а причина сохраняется без утечки исходного IOC в INFO/WARN
+логи. Поддерживаемого requeue/clear use case пока нет.
 
 Retention ограничивает рост рабочих каталогов по времени/количеству. Она не
 должна удалять источник, который всё ещё нужен recovery. Health отражает

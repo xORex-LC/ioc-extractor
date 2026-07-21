@@ -23,6 +23,21 @@ sudo /opt/ioc-extractor/bin/ioc health --json
 
 Default prefix — `/opt/ioc-extractor`; при другой установке замените его.
 
+### Безопасный planned restart
+
+До закрытия ING-10 выполняйте planned restart только в idle maintenance window:
+
+1. приостановите local и remote producers, чтобы новые sources не поступали;
+2. дождитесь завершения текущего source и пустых `var/inbox` и
+   `var/processing`, включая временные/частичные files;
+3. проверьте local health и последние diagnostics `INGEST.*`;
+4. перезапустите service, подтвердите health и только затем возобновите intake.
+
+Процедура уменьшает exposure к гонке startup recovery/poller, но не является
+recovery и не делает существующую `FAILED` identity retryable. Если idle window
+обеспечить нельзя, сохраните state и используйте reviewed maintenance procedure,
+не удаляя ledger records.
+
 ## Подача source document
 
 Daemon обрабатывает целые файлы, а не дописываемый byte stream:
@@ -30,7 +45,8 @@ Daemon обрабатывает целые файлы, а не дописыва�
 ```text
 inbox → stability wait → atomic claim в processing
       → canonical DB commit → CSV projection → done
-      └ terminal failure                         → failed
+      └ post-claim terminal failure              → failed
+pre-claim terminal failure → может остаться в inbox (ING-13)
 ```
 
 Локальный файл копируйте с временным исключённым suffix и переименовывайте после
@@ -58,11 +74,13 @@ public IDs; повторный IOC сохраняется один раз, а so
 diagnostics. Валидные строки при этом записываются, поэтому logs/health следует
 проверять и для source, попавшего в `done`.
 
-После bounded retries terminal failure перемещается в `var/failed`, а ledger
-фиксирует terminal state. В 0.2.0 нет поддерживаемой команды очистки или requeue
-этой identity. Не редактируйте ledger files или SQLite tables вручную. Сохраните
-source/logs, исправьте причину и используйте reviewed recovery procedure;
-идентичный content может остаться terminally deduplicated.
+После bounded retries, следующих за успешным claim, terminal source перемещается
+в `var/failed`, а ledger фиксирует terminal state. При pre-claim failure source
+может остаться в `var/inbox` из-за ING-13. В 0.2.0 нет поддерживаемой команды
+очистки или requeue такой identity. Не переносите source для повторной подачи и
+не редактируйте ledger files/SQLite tables вручную. Сохраните source там, где он
+остался, вместе с logs, исправьте причину и используйте reviewed recovery
+procedure; идентичный content может остаться terminally deduplicated.
 
 ## Health checks
 
@@ -115,7 +133,8 @@ TRACE включайте только на короткое контролиру
 
 1. Остановите автоматическую resubmission со стороны producer.
 2. Зафиксируйте filename, timestamp, build version и diagnostic codes.
-3. Сохраните source в `var/failed` как потенциально sensitive.
+3. Сохраните source там, где он остался (`var/failed` либо `var/inbox` для
+   известного pre-claim пути ING-13), как потенциально sensitive.
 4. Отделите input format/content, config, storage, permission и resource failures.
 5. Проверьте canonical/projection health и факт возможного commit.
 6. Исправьте причину и примените approved recovery procedure. Не удаляйте ledger

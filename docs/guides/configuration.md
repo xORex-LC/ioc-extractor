@@ -137,7 +137,7 @@ contract and must be tested against existing databases and consumers.
 | `ioc.sink.artifacts[].columns[].value` | string or null | optional | Literal used by `const`. |
 | `ioc.sink.artifacts[].columns[].type` | `TEXT`, `INTEGER`, `REAL`, `BLOB`, `NUMERIC` | inferred/text | SQLite affinity, mainly for constant columns. |
 | `ioc.sink.artifacts[].columns[].when-type` | IOC type | optional | Emits the provider only for the selected IOC type. |
-| `ioc.sink.artifacts[].columns[].transform` | ordered list | optional | `lower`, `lower-host`, `upper`, or `strip-prefix:<text>`. Not allowed on deferred `id`. |
+| `ioc.sink.artifacts[].columns[].transform` | ordered list | optional | Registered keys are `lower`, `lower-host`, `upper`, and `strip-prefix`; the parameterized form is `strip-prefix:<text>`. Not allowed on deferred `id`. |
 
 ## Canonical artifact identity
 
@@ -227,7 +227,7 @@ baseline for SQLite and deterministic file handling.
 | `ioc.ingestion.dirs.inbox` | path | `./var/inbox` | Operators place completed or still-copying source files here. |
 | `ioc.ingestion.dirs.processing` | path | `./var/processing` | Claimed work owned by the daemon. |
 | `ioc.ingestion.dirs.done` | path | `./var/done` | Successfully completed inputs. |
-| `ioc.ingestion.dirs.failed` | path | `./var/failed` | Terminally failed inputs for investigation or requeue. |
+| `ioc.ingestion.dirs.failed` | path | `./var/failed` | Claimed inputs that failed terminally, retained for investigation and reviewed recovery. |
 | `ioc.ingestion.patterns.include` | non-empty glob list | HTML, HTM, DOCX | Add PDF or other supported formats explicitly. |
 | `ioc.ingestion.patterns.exclude` | glob list | temp/partial/hidden files | Exclusions win over inclusions. |
 | `ioc.ingestion.detect.use-watch-service` | boolean | `true` | Low-latency local hint. Disable on unreliable network filesystems; reconcile remains authoritative. |

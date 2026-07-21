@@ -25,6 +25,22 @@ sudo /opt/ioc-extractor/bin/ioc health --json
 The default prefix is `/opt/ioc-extractor`; substitute the selected installation
 prefix when different.
 
+### Planned restart safety
+
+Until ING-10 is fixed, schedule a planned restart only in an idle maintenance
+window:
+
+1. pause local and remote producers so no new source can arrive;
+2. wait for the current source to complete and for both `var/inbox` and
+   `var/processing` to become empty, including temporary/partial files;
+3. confirm local health and review recent `INGEST.*` diagnostics;
+4. restart the service, confirm health, then resume producers.
+
+This reduces exposure to the startup recovery/poller race; it is not a recovery
+procedure and does not make an existing `FAILED` identity retryable. If an idle
+window cannot be established, preserve state and use a reviewed maintenance
+procedure instead of deleting ledger records.
+
 ## Submit a source document
 
 The daemon processes whole files, not an appended byte stream. Its lifecycle is:
@@ -32,7 +48,8 @@ The daemon processes whole files, not an appended byte stream. Its lifecycle is:
 ```text
 inbox → stability wait → atomic claim into processing
       → canonical DB commit → CSV projection → done
-      └ terminal failure                         → failed
+      └ post-claim terminal failure              → failed
+pre-claim terminal failure → may remain in inbox (ING-13)
 ```
 
 For a local file, copy with a temporary excluded suffix and rename when complete:
@@ -61,11 +78,13 @@ Recoverable item-level errors under `collect-and-continue` can produce a complet
 run with diagnostics. Valid rows may still be committed, and logs/health must be
 reviewed even when the source reaches `done`.
 
-After bounded retries, a terminal source failure is moved to `var/failed` and a
-durable terminal ledger state is recorded. Version 0.2.0 has no supported command
-that clears or requeues that terminal identity. Do not edit ledger files or SQLite
-tables manually. Preserve the failed source and logs, correct the cause, and use a
-reviewed recovery procedure; identical content may remain terminally deduplicated.
+After bounded retries following a successful claim, a terminal source failure is
+moved to `var/failed` and a durable terminal ledger state is recorded. A pre-claim
+failure may remain in `var/inbox` because of ING-13. Version 0.2.0 has no supported
+command that clears or requeues either terminal identity. Do not move the source
+for resubmission or edit ledger files/SQLite tables manually. Preserve the source
+where it was left together with its logs, correct the cause, and use a reviewed
+recovery procedure; identical content may remain terminally deduplicated.
 
 ## Health checks
 
@@ -127,7 +146,8 @@ For startup failures:
 1. Stop automated resubmission by the producer.
 2. Record the source filename, timestamp, build version and relevant diagnostic
    codes.
-3. Preserve the source in `var/failed`; treat it as potentially sensitive.
+3. Preserve the source where it was left (`var/failed`, or `var/inbox` for the
+   known pre-claim ING-13 path); treat it as potentially sensitive.
 4. Determine whether the cause is input format/content, configuration, storage,
    permissions or resource exhaustion.
 5. Check canonical and projection health before deciding whether any data was

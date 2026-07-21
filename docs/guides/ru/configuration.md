@@ -137,7 +137,7 @@ charset или enabled. Schema/identity changes меняют durable contract и
 | `ioc.sink.artifacts[].columns[].value` | строка или null | опционален | Literal для `const`. |
 | `ioc.sink.artifacts[].columns[].type` | `TEXT`, `INTEGER`, `REAL`, `BLOB`, `NUMERIC` | inferred/text | SQLite affinity, прежде всего для constant columns. |
 | `ioc.sink.artifacts[].columns[].when-type` | IOC type | опционален | Provider выводится только для выбранного IOC type. |
-| `ioc.sink.artifacts[].columns[].transform` | упорядоченный список | опционален | `lower`, `lower-host`, `upper`, `strip-prefix:<text>`. Для deferred `id` запрещён. |
+| `ioc.sink.artifacts[].columns[].transform` | упорядоченный список | опционален | Зарегистрированы `lower`, `lower-host`, `upper` и `strip-prefix`; параметризованная форма — `strip-prefix:<text>`. Для deferred `id` запрещён. |
 
 ## Canonical artifact identity
 
@@ -227,7 +227,7 @@ filesystem, чтобы claims использовали atomic move. Concurrency 
 | `ioc.ingestion.dirs.inbox` | путь | `./var/inbox` | Сюда оператор помещает завершённые или ещё копирующиеся files. |
 | `ioc.ingestion.dirs.processing` | путь | `./var/processing` | Claimed work, принадлежащий daemon. |
 | `ioc.ingestion.dirs.done` | путь | `./var/done` | Успешно завершённые inputs. |
-| `ioc.ingestion.dirs.failed` | путь | `./var/failed` | Terminal failures для анализа или requeue. |
+| `ioc.ingestion.dirs.failed` | путь | `./var/failed` | Claimed inputs с terminal failure, сохраняемые для анализа и reviewed recovery. |
 | `ioc.ingestion.patterns.include` | непустой glob list | HTML, HTM, DOCX | PDF и другие supported formats добавляются явно. |
 | `ioc.ingestion.patterns.exclude` | glob list | temp/partial/hidden | Exclusions имеют приоритет. |
 | `ioc.ingestion.detect.use-watch-service` | boolean | `true` | Low-latency local hint. На ненадёжной network filesystem отключите; reconcile остаётся authoritative. |
