@@ -30,3 +30,8 @@ graph; recovery и export создаются только после факти�
 use case и публикует terminal completion как операторский контракт. Stdout
 содержит run id, `CompletionStatus`, total/suppressed и ненулевые severity
 counts; `COMPLETED_WITH_ERRORS` возвращает отдельный exit code `3`.
+
+`-V`/`--version` читает обязательный `META-INF/build-info.properties` до
+старта Spring. Отсутствующая или некорректная build identity не подменяется
+fallback-версией: CLI возвращает exit code `1` и одну операторскую строку в
+stderr без stack trace.

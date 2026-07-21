@@ -54,6 +54,26 @@ class EarlyCliLauncherTest {
     }
 
     @Test
+    void reportsMissingBuildIdentityWithoutStackTrace() {
+        var emptyClassLoader = new ClassLoader(null) {
+        };
+        launcher = new EarlyCliLauncher(
+                new PrintWriter(out, true),
+                new PrintWriter(err, true),
+                new ApplicationBuildInfoReader(emptyClassLoader)::read);
+
+        OptionalInt result = launcher.executeIfHandled("--version");
+
+        assertThat(result).hasValue(1);
+        assertThat(out.toString()).isEmpty();
+        assertThat(err.toString())
+                .isEqualTo("ioc: Embedded build identity is unavailable: "
+                        + ApplicationBuildInfoReader.BUILD_INFO_RESOURCE
+                        + System.lineSeparator())
+                .doesNotContain("IllegalStateException", "\tat ");
+    }
+
+    @Test
     void handlesNestedHelpAfterBoundOptionsWithoutCreatingCommand() {
         OptionalInt result = launcher.executeIfHandled(
                 "sync", "fetch", "--source", "incoming", "--help");

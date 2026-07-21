@@ -23,6 +23,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class LogbackConfigurationTest {
 
+    private static final String EXPECTED_PROJECT_VERSION_PROPERTY = "test.project.version";
+
     @Test
     void logback_configuration_declares_daemon_ecs_file_appender() throws IOException {
         var config = Files.readString(Path.of("src/main/resources/logback-spring.xml"));
@@ -44,7 +46,9 @@ class LogbackConfigurationTest {
                 .getProperty("logging.structured.ecs.service.version");
         assertThat(configuredVersion).isInstanceOf(String.class);
         var buildVersion = (String) configuredVersion;
-        assertThat(buildVersion).isNotBlank();
+        assertThat(buildVersion)
+                .isEqualTo(System.getProperty(EXPECTED_PROJECT_VERSION_PROPERTY))
+                .doesNotContain("@project.version@");
         var logFile = Path.of("target/test-logs/daemon-programmatic/ioc-extractor.ecs.json");
         Files.createDirectories(logFile.getParent());
         Files.deleteIfExists(logFile);

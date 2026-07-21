@@ -121,4 +121,21 @@ grep -Fq 'tools/ci/dependency-security.sh scan' \
   "${REPO_ROOT}/.github/workflows/dependency-security.yml" \
   || fail "Dependency Security workflow does not call the canonical leaf script"
 
+for workflow in "${REPO_ROOT}"/.github/workflows/*.yml; do
+  workflow_header="$(sed -n '1,/^jobs:/p' "${workflow}")"
+  grep -Fq 'permissions:' <<<"${workflow_header}" \
+    || fail "workflow does not declare top-level permissions: ${workflow}"
+  grep -Fq '  contents: read' <<<"${workflow_header}" \
+    || fail "workflow does not default to contents: read: ${workflow}"
+done
+
+UNPINNED_ACTIONS="$(
+  grep -REh '^[[:space:]]*(-[[:space:]]+)?uses:' "${REPO_ROOT}/.github/workflows" \
+    | sed 's/[[:space:]]*#.*$//' \
+    | grep -Ev 'uses:[[:space:]]+(\./[^[:space:]]+|[^[:space:]@]+@[0-9a-f]{40})$' \
+    || true
+)"
+[[ -z "${UNPINNED_ACTIONS}" ]] \
+  || fail "GitHub Actions must use a local path or full commit SHA: ${UNPINNED_ACTIONS}"
+
 printf '[tools-contract] PASS\n'

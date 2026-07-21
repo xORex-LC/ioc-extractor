@@ -11,6 +11,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * Handles CLI-only paths before the Spring application context is created.
@@ -26,10 +27,19 @@ public final class EarlyCliLauncher {
 
     private final PrintWriter out;
     private final PrintWriter err;
+    private final Supplier<ApplicationBuildInfo> buildInfo;
 
     public EarlyCliLauncher(PrintWriter out, PrintWriter err) {
+        this(out, err, new ApplicationBuildInfoReader()::read);
+    }
+
+    EarlyCliLauncher(
+            PrintWriter out,
+            PrintWriter err,
+            Supplier<ApplicationBuildInfo> buildInfo) {
         this.out = out;
         this.err = err;
+        this.buildInfo = buildInfo;
     }
 
     /**
@@ -70,6 +80,10 @@ public final class EarlyCliLauncher {
         CommandLine commandLine = new CommandLine(IocRootCommand.class, commandFactory());
         detachBindings(commandLine.getCommandSpec());
         configureWriters(commandLine);
+        commandLine.setExecutionExceptionHandler((failure, failedCommand, ignored) -> {
+            failedCommand.getErr().println("ioc: " + failure.getMessage());
+            return failedCommand.getCommandSpec().exitCodeOnExecutionException();
+        });
         return commandLine;
     }
 
@@ -95,6 +109,9 @@ public final class EarlyCliLauncher {
         return new CommandLine.IFactory() {
             @Override
             public <K> K create(Class<K> type) throws Exception {
+                if (type == BuildInfoVersionProvider.class) {
+                    return type.cast(new BuildInfoVersionProvider(buildInfo));
+                }
                 if (type == HealthCommand.class) {
                     return type.cast(new HealthCommand(
                             runtimeSetting("server.address", "SERVER_ADDRESS", DEFAULT_HEALTH_HOST),

@@ -56,6 +56,9 @@ Validation constructors не должны бросать на operator mistakes:
 `ioc.runtime.mode` выбирает `oneshot` или `daemon`; observability mode выбирает
 профиль вывода, но не заменяет runtime mode. Lightweight root/subcommand help,
 `--version`, health query и syntax errors обслуживаются до Spring startup.
+`--version` требует embedded build identity; при её отсутствии CLI возвращает
+однострочную metadata error и exit code `1`, не придумывая fallback и не
+показывая stack trace.
 
 Оставшийся oneshot graph использует lazy initialization: validation-only path
 не должен открывать service DB или transport. Daemon включает web/actuator и

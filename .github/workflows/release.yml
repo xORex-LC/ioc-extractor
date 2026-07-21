@@ -35,13 +35,13 @@ jobs:
       asset_sha256: ${{ steps.prepare.outputs.asset_sha256 }}
     steps:
       - name: Check out exact source revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
         with:
           distribution: temurin
           java-version: '21'
@@ -80,9 +80,11 @@ jobs:
             }
           fi
 
-          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
-          echo "project_version=${project_version}" >> "${GITHUB_OUTPUT}"
-          echo "source_commit=${source_commit}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "release_tag=${release_tag}"
+            echo "project_version=${project_version}"
+            echo "source_commit=${source_commit}"
+          } >> "${GITHUB_OUTPUT}"
 
       # This is the only Maven build in the workflow. The release job consumes
       # the resulting workflow artifact and never rebuilds the application.
@@ -110,7 +112,7 @@ jobs:
             --output-dir release-dist >> "${GITHUB_OUTPUT}"
 
       - name: Upload immutable workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-${{ steps.prepare.outputs.release_tag }}
           path: |
@@ -123,7 +125,7 @@ jobs:
   doc-links:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
@@ -135,12 +137,12 @@ jobs:
   packaging-contracts:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
         with:
           distribution: temurin
           java-version: '21'
@@ -161,12 +163,12 @@ jobs:
       contents: write
     steps:
       - name: Check out exact source revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
       - name: Download the build job's exact bytes
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: release-${{ needs.build.outputs.release_tag }}
           path: release-dist

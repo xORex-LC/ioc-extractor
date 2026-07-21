@@ -150,7 +150,7 @@ supported contract не входят. Их появление является �
 | `SEC-SCA-4` | Узкие Dependency-Check suppressions без stale rules | Enforced | tracked [dependency-check-suppressions.xml](../dependency-check-suppressions.xml), `failBuildOnUnusedSuppressionRule=true` |
 | `SEC-CI-1` | Tests, golden E2E, boundaries и docs links на push/PR | Enforced | Maven gate: `./mvnw verify`; отдельный `doc-links` job: [ci.yml](../.github/workflows/ci.yml) |
 | `SEC-CI-2` | NVD secret isolation и read-only security job | Configured | Environment `SECURITY CHECKS`, step-local `NVD_API_KEY`, `contents: read`, `deployment: false`; enforcement действует при запуске security workflow |
-| `SEC-CI-3` | Immutable full-SHA pinning сторонних Actions | Planned | текущие trusted Actions используют major tags; trigger — отдельный workflow-hardening change с Dependabot update contract |
+| `SEC-CI-3` | Явные минимальные workflow permissions и immutable full-SHA pinning Actions | Enforced | все workflows default к `contents: read`, write выдаётся только release job; remote Actions закреплены полным SHA с version comment, а tools contract отклоняет tag refs; Dependabot сохраняет update path |
 | `SEC-CI-4` | Dependency Review на PR dependency changes | Planned | trigger — добавление blocking PR control после baseline/dry run |
 | `SEC-CI-5` | Secret scanning и push protection | Planned | trigger — подтверждённая доступность функции для repository и согласованный response workflow |
 | `SEC-VER-1` | Java/GitHub Actions SAST | Planned | сначала non-blocking baseline и noise triage; blocking policy вводится отдельно |
@@ -322,10 +322,11 @@ condition. Suppression может технически скрыть повтор
    secret отзывается/ротируется, а logs и workflow history проверяются.
 6. Privileged triggers (`pull_request_target`, chained `workflow_run`) не
    выполняют недоверенный checkout/code без отдельного threat review.
-7. Third-party Actions рассматриваются как исполняемые dependencies. Текущий
-   переход с trusted major tags на full commit SHA зарегистрирован как
-   `SEC-CI-3`; GitHub называет full-length SHA единственным immutable способом
-   закрепить Action в [Secure use reference](https://docs.github.com/en/actions/reference/security/secure-use).
+7. Remote Actions рассматриваются как исполняемые dependencies и закрепляются
+   полным commit SHA; version comment сохраняет читаемую release identity, а
+   Dependabot обновляет обе части. `SEC-CI-3` автоматически отклоняет tag refs:
+   GitHub называет full-length SHA единственным immutable способом закрепить
+   Action в [Secure use reference](https://docs.github.com/en/actions/reference/security/secure-use).
 8. Если внешняя платформа поддерживает OIDC, short-lived credentials
    предпочтительнее долгоживущего cloud secret. Этот механизм активируется
    только вместе с реальной cloud integration.
@@ -404,9 +405,6 @@ Roadmap определяет порядок и triggers, но не выдаёт 
 ### Уровень 1 — защитить изменения dependencies и workflows
 
 - добавить Dependency Review для PR, сначала в observation/dry-run режиме;
-- закрепить сторонние Actions по full commit SHA и сохранить Dependabot update
-  path;
-- задать явные minimal `permissions` каждому workflow;
 - добавить ownership/review для `.github/workflows`, release и suppression
   boundaries;
 - включить secret scanning/push protection вместе с понятным response process,
