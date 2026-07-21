@@ -75,6 +75,55 @@ OBS-4 в `KNOWN-ISSUES.md`. Best-effort logging не выдаётся за durab
 - Logging/diagnostic sink failure observational: non-throwing decorator не
   должен ломать business operation.
 
+## ECS wire representation
+
+`LogField` и ECS vocabulary используют логические dotted paths, но daemon-файл
+материализует их как nested JSON objects. Например, логический набор
+`ecs.version`, `event.action`, `event.outcome` выглядит так:
+
+```json
+{
+  "ecs": {"version": "8.11"},
+  "event": {
+    "action": "app_start",
+    "outcome": "success",
+    "dataset": "ioc-extractor"
+  }
+}
+```
+
+До Spring Boot 3.5 те же поля сериализовались как flat dotted keys:
+
+```json
+{
+  "ecs.version": "8.11",
+  "event.action": "app_start",
+  "event.outcome": "success"
+}
+```
+
+Поэтому физический путь в consumer queries изменился, хотя логическое имя поля
+сохранилось:
+
+| Логическое поле | Старый flat query | Текущий nested query |
+|---|---|---|
+| `ecs.version` | `jq '.["ecs.version"]'` | `jq '.ecs.version'` |
+| `service.name` | `jq '.["service.name"]'` | `jq '.service.name'` |
+| `event.action` | `jq '.["event.action"]'` | `jq '.event.action'` |
+| `event.outcome` | `jq '.["event.outcome"]'` | `jq '.event.outcome'` |
+| `ioc.run.id` | `jq '.["ioc.run.id"]'` | `jq '.ioc.run.id'` |
+
+`event.outcome` существовал до миграции и не является новым полем; изменился
+его physical path. Аналогично typed scalar migration меняет JSON type отдельных
+значений, но не их логическое имя. Ingest pipelines, jq-скрипты и dashboards
+должны учитывать обе оси совместимости: shape и scalar type.
+
+`IocEcsStructuredLogEncoder` не владеет JSON schema: он добавляет статический
+`event.dataset` в общий key/value stream, после чего делегирует nested rendering
+стандартному Spring Boot formatter-у. Это предотвращает duplicate top-level
+`event`. Представительный regression contract находится в
+`LogbackConfigurationTest`.
+
 ## Sensitive data
 
 1. INFO не перечисляет raw IOC.
@@ -131,4 +180,7 @@ typed logging schema, correlation ownership, redaction или daemon wire format
 - [event-coordination.md](event-coordination.md) — operational event signals.
 - [SECURITY-ENGINEERING.md](../SECURITY-ENGINEERING.md) — logging security control.
 - [ADR-0017](../ADR/0017-diagnostics-first-class-outcome.md) и
-  [ADR-0018](../ADR/0018-typed-ecs-structured-logging.md).
+  [ADR-0018](../ADR/0018-typed-ecs-structured-logging.md) — diagnostic и typed
+  logging semantics;
+- [ADR-0019](../ADR/0019-spring-boot-4-nested-ecs.md) — Spring Boot baseline и
+  physical nested ECS representation.

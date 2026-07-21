@@ -234,6 +234,12 @@ Each breaking or operationally observable change states:
 4. what the operator must do;
 5. whether rollback remains supported after migration.
 
+For a machine-readable contract, the notes also include a minimal before/after
+payload and a before/after parser or query example. The description distinguishes
+four independent compatibility axes: logical field/path, physical wire shape,
+JSON scalar type, and presence/value semantics. Keeping the same logical field
+name does not make a flat-to-nested or string-to-number change compatible.
+
 `KNOWN-ISSUES.md` remains the complete engineering debt registry. Release notes
 contain only issues relevant to users of that release. ADRs remain the immutable
 decision history and are linked only when their rationale helps an operator or

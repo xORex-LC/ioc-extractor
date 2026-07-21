@@ -7,6 +7,12 @@
 должны сохранять JSON-типы до ECS-файла, а не превращаться в строки на границе
 SLF4J MDC.
 
+> **Частично superseded 2026-07-21:** [ADR-0019](0019-spring-boot-4-nested-ecs.md)
+> заменяет только точную Spring Boot baseline, способ добавления статического
+> `event.dataset` и physical ECS JSON representation (flat dotted keys → nested
+> objects). Typed field taxonomy, MDC/event-local split, scalar types, actions,
+> outcomes, redaction и остальные решения этого ADR сохраняются.
+
 ADR уточняет и частично supersedes [0007](0007-logging-observability.md):
 
 - Решение 4 сохраняется для **ambient correlation context**, но больше не
