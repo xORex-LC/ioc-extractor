@@ -20,7 +20,6 @@ jobs:
     timeout-minutes: 60
     environment:
       name: "SECURITY CHECKS"
-      deployment: false
     env:
       DEPENDENCY_CHECK_DATA: ${{ github.workspace }}/.dependency-check-data
     steps:
@@ -42,7 +41,7 @@ jobs:
           restore-keys: |
             dependency-check-${{ runner.os }}-
 
-      - name: Scan Maven reactor
+      - name: Update Dependency-Check data
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
@@ -51,6 +50,12 @@ jobs:
             exit 1
           fi
 
+          tools/ci/dependency-security.sh update
+
+      # The scan is deliberately offline: only the preceding explicit step may
+      # contact NVD, so update failures and analysis failures remain distinct.
+      - name: Scan Maven reactor using cached data
+        run: |
           tools/ci/dependency-security.sh scan
 
       - name: Save Dependency-Check data

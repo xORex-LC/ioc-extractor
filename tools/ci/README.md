@@ -13,10 +13,15 @@ step (`make bootstrap` локально, `tools/dev/bootstrap.sh lychee` в CI).
 | `build.sh` | Полный Maven reactor `verify` |
 | `packaging.sh` | ShellCheck + packaging contract tests |
 | `docs.sh` | Offline link check через `lychee` |
-| `dependency-security.sh update|scan|report` | OWASP Dependency-Check с единым набором параметров |
+| `dependency-security.sh update|scan|report` | Явное обновление NVD data, offline scan или поиск готового отчёта |
 
-Security gate требует `NVD_API_KEY`; значение не печатается. Cache по умолчанию
-живёт в `/.dependency-check-data/` и не отслеживается Git.
+Только `update` требует `NVD_API_KEY`; значение не печатается. `scan` намеренно
+не обращается к NVD и работает только по существующей локальной базе. Локально
+без override используется стандартный Maven Dependency-Check data directory;
+`DEPENDENCY_CHECK_DATA` задаёт изолированный путь и при отсутствии базы даёт
+подсказку сначала выполнить `make security-update`. Weekly/manual workflow
+задаёт repo-local `./.dependency-check-data/` для cache и явно выполняет
+`update`, затем отдельный offline `scan`.
 
 | Make target | Локальное использование того же leaf script |
 |---|---|
@@ -24,4 +29,5 @@ Security gate требует `NVD_API_KEY`; значение не печатае
 | `make ci-packaging` | Локальная копия GitHub packaging job |
 | `make ci-docs` | Локальная копия GitHub docs job |
 | `make ci` / `make pre-push` | Все регулярные gates последовательно |
-| `make security-scan` | Scheduled/manual Dependency Security workflow |
+| `make security-update` | Обновить локальную NVD data (network + API key) |
+| `make security-scan` | Быстро проверить reactor по имеющейся локальной data |

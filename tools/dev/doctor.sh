@@ -67,7 +67,7 @@ if [[ "${MODE}" == security || "${MODE}" == all ]]; then
   if [[ -n "${NVD_API_KEY:-}" ]]; then
     printf '[ok]       %-12s %s\n' "NVD_API_KEY" "available (value hidden)"
   else
-    printf '[missing]  %-12s %s\n' "NVD_API_KEY" "required for Dependency-Check" >&2
+    printf '[missing]  %-12s %s\n' "NVD_API_KEY" "required for Dependency-Check updates" >&2
     [[ "${MODE}" != security ]] || FAILED="true"
   fi
 fi

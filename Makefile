@@ -183,7 +183,7 @@ docs: ## Check local documentation links offline
 security-update: ## Update the local NVD cache (requires NVD_API_KEY)
 	@tools/ci/dependency-security.sh update
 
-security-scan: ## Scan the Maven reactor and fail at CVSS 7+
+security-scan: ## Scan offline using existing NVD data; fail at CVSS 7+
 	@tools/ci/dependency-security.sh scan
 
 security-report: ## Print existing Dependency-Check report paths

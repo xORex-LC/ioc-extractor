@@ -109,6 +109,17 @@ done
 "${REPO_ROOT}/tools/dev/submit.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/database.sh" --help >/dev/null
 "${REPO_ROOT}/tools/ci/dependency-security.sh" --help >/dev/null
+if env -u NVD_API_KEY DEPENDENCY_CHECK_DATA="${WORKSPACE}/missing-odc-data" \
+    "${REPO_ROOT}/tools/ci/dependency-security.sh" scan \
+    >"${WORKSPACE}/missing-odc.out" 2>&1; then
+  fail "offline security scan accepted a missing local database"
+fi
+grep -Fq "run 'make security-update' first" "${WORKSPACE}/missing-odc.out" \
+  || fail "offline security scan did not explain how to create the local database"
+if env -u NVD_API_KEY DEPENDENCY_CHECK_DATA="${WORKSPACE}/odc-update" \
+    "${REPO_ROOT}/tools/ci/dependency-security.sh" update >/dev/null 2>&1; then
+  fail "security update accepted a missing NVD_API_KEY"
+fi
 make --no-print-directory -s -C "${REPO_ROOT}" help \
   | grep -q 'test-one' || fail "Make help lost the targeted-test command"
 if grep -REq '^[[:space:]]*(run:[[:space:]]*)?make([[:space:]]|$)' \
@@ -117,9 +128,19 @@ if grep -REq '^[[:space:]]*(run:[[:space:]]*)?make([[:space:]]|$)' \
 fi
 grep -Fq 'run: tools/ci/build.sh' "${REPO_ROOT}/.github/workflows/ci.yml" \
   || fail "GitHub CI build does not call the canonical leaf script"
+grep -Fq 'tools/ci/dependency-security.sh update' \
+  "${REPO_ROOT}/.github/workflows/dependency-security.yml" \
+  || fail "Dependency Security workflow does not update the NVD database explicitly"
 grep -Fq 'tools/ci/dependency-security.sh scan' \
   "${REPO_ROOT}/.github/workflows/dependency-security.yml" \
   || fail "Dependency Security workflow does not call the canonical leaf script"
+grep -Fq -- '-DautoUpdate=false' \
+  "${REPO_ROOT}/tools/ci/dependency-security.sh" \
+  || fail "Dependency Security scan is not pinned to the existing local database"
+if grep -Fq 'deployment: false' \
+    "${REPO_ROOT}/.github/workflows/dependency-security.yml"; then
+  fail "Dependency Security workflow uses unsupported environment.deployment"
+fi
 
 for workflow in "${REPO_ROOT}"/.github/workflows/*.yml; do
   workflow_header="$(sed -n '1,/^jobs:/p' "${workflow}")"

@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." >/dev/null 2>&1 && pwd)"
-DATA_DIR="${DEPENDENCY_CHECK_DATA:-${REPO_ROOT}/.dependency-check-data}"
+DATA_DIR="${DEPENDENCY_CHECK_DATA:-}"
 COMMAND="${1:-}"
 
 usage() {
@@ -25,25 +25,35 @@ if [[ "${COMMAND}" == report ]]; then
   exit 0
 fi
 
-[[ -n "${NVD_API_KEY:-}" ]] || {
-  echo "NVD_API_KEY is required (the value is never printed)" >&2
-  exit 1
-}
-mkdir -p -- "${DATA_DIR}"
 cd "${REPO_ROOT}"
 
 COMMON_ARGS=(
-  -DdataDirectory="${DATA_DIR}"
-  -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
   -DassemblyAnalyzerEnabled=false
   -DossindexAnalyzerEnabled=false
 )
-
-if [[ "${COMMAND}" == update ]]; then
-  exec ./mvnw -B -ntp dependency-check:update-only "${COMMON_ARGS[@]}"
+if [[ -n "${DATA_DIR}" ]]; then
+  COMMON_ARGS+=( -DdataDirectory="${DATA_DIR}" )
 fi
 
+if [[ "${COMMAND}" == update ]]; then
+  [[ -n "${NVD_API_KEY:-}" ]] || {
+    echo "NVD_API_KEY is required for update (the value is never printed)" >&2
+    exit 1
+  }
+  [[ -z "${DATA_DIR}" ]] || mkdir -p -- "${DATA_DIR}"
+  exec ./mvnw -B -ntp dependency-check:update-only \
+    "${COMMON_ARGS[@]}" \
+    -DnvdApiKeyEnvironmentVariable=NVD_API_KEY
+fi
+
+# Deliberate contract: scan is offline and never contacts NVD. Updating the
+# database is an explicit, separately observable `update` operation.
+if [[ -n "${DATA_DIR}" && ! -f "${DATA_DIR}/odc.mv.db" ]]; then
+  echo "Dependency-Check database is missing in ${DATA_DIR}; run 'make security-update' first" >&2
+  exit 1
+fi
 exec ./mvnw -B -ntp dependency-check:aggregate \
   "${COMMON_ARGS[@]}" \
+  -DautoUpdate=false \
   -Dformats=HTML,JSON \
   -DfailBuildOnCVSS=7.0

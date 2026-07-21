@@ -42,8 +42,10 @@ make pre-push
 Maven, shell-contract и offline-documentation gates, что обычный GitHub CI.
 Workflows вызывают scripts напрямую, не зависят от Makefile и остаются
 прозрачными.
-Scheduled Dependency-Check остаётся отдельной сетевой проверкой
-(`make security-scan`), потому что требует NVD API.
+Dependency-Check остаётся отдельным security gate: `make security-update`
+явно обновляет NVD data по сети, а `make security-scan` быстро и детерминированно
+анализирует reactor только по имеющейся локальной базе. Scheduled workflow
+выполняет эти операции последовательно отдельными шагами.
 
 Все runtime-файлы developer environment создаются только под `/.dev/` и
 игнорируются Git. Скрипты не должны писать business data напрямую в SQLite:

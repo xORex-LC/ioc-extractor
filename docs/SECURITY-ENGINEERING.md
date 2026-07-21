@@ -161,7 +161,7 @@ supported contract не входят. Их появление является �
 | `SEC-SCA-4` | Узкие Dependency-Check suppressions без stale rules | Enforced | tracked [dependency-check-suppressions.xml](../dependency-check-suppressions.xml), `failBuildOnUnusedSuppressionRule=true` |
 | `SEC-SCA-5` | Independently trusted artifact verification для Maven dependencies/plugins | Planned | desired outcome — проверять resolved bytes по project-owned trusted digest/provenance, а не только repository-provided checksum ([Maven Resolver distinction](https://maven.apache.org/resolver/expected-checksums.html)); механизм и безопасный update workflow выбираются отдельным design spike. Trigger — trusted CI release builder, публикация reactor-модулей или внешний supply-chain requirement |
 | `SEC-CI-1` | Tests, golden E2E, boundaries и docs links на push/PR | Enforced | Maven gate: `./mvnw verify`; отдельный `doc-links` job: [ci.yml](../.github/workflows/ci.yml) |
-| `SEC-CI-2` | NVD secret isolation и read-only security job | Configured | job явно привязан к Environment `SECURITY CHECKS`, `NVD_API_KEY` доступен только scan step, token permissions ограничены `contents: read`; enforcement действует при запуске security workflow |
+| `SEC-CI-2` | NVD secret isolation и read-only security job | Configured | job явно привязан к Environment `SECURITY CHECKS`, `NVD_API_KEY` доступен только explicit update step; следующий offline scan не получает secret, token permissions ограничены `contents: read`; enforcement действует при запуске security workflow |
 | `SEC-CI-3` | Явные минимальные workflow permissions и immutable full-SHA pinning Actions | Enforced | все workflows default к `contents: read`, write выдаётся только release job; remote Actions закреплены полным SHA с version comment, а tools contract отклоняет tag refs; Dependabot сохраняет update path |
 | `SEC-CI-4` | Dependency Review на PR dependency changes | Planned | trigger — добавление blocking PR control после baseline/dry run |
 | `SEC-CI-5` | Secret scanning и push protection | Planned | trigger — подтверждённая доступность функции для repository и согласованный response workflow |
@@ -327,8 +327,9 @@ condition. Suppression может технически скрыть повтор
 1. Secret хранится в GitHub Environment/repository secret либо в host-owned
    runtime config, но не в POM, YAML defaults, shell history example или Git.
 2. Workflow явно передаёт secret только тому step/input, которому он нужен.
-3. `NVD_API_KEY` доступен scan step через Environment `SECURITY CHECKS`; другие
-   steps job не получают его как environment variable.
+3. `NVD_API_KEY` доступен только explicit Dependency-Check update step через
+   Environment `SECURITY CHECKS`; offline scan и другие steps job не получают
+   его как environment variable.
 4. `GITHUB_TOKEN` получает явные минимальные `permissions`. Расширение прав
    задаётся на минимальном job, а не на весь workflow.
 5. Значение secret не выводится для диагностики. При подозрении на раскрытие
