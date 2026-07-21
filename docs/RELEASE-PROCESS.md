@@ -35,6 +35,30 @@ one value:
 The product version is not a substitute for a Git commit or binary digest.
 Likewise, a deployment ID is not a product version.
 
+The identifiers form one chain from source to a running host. Each link is
+established once and never rewritten downstream:
+
+```text
+  Maven ${revision}      annotated tag        checked-out commit
+  (product version) ──▶  vX.Y.Z         ──▶   <full-git-sha>
+                                                   │
+                                                   ▼
+                                         one `clean verify` build
+                                                   │
+                        embedded build-info  ◀──────┘
+                        (version, commit, time)
+                                   │
+                                   ▼
+                            SHA-256 of the jar
+                                   │
+                                   ▼
+                    deployment ID (commit + timestamp)
+                       one activation on one host
+```
+
+Verification always flows backwards along this chain: a deployed host proves its
+commit and digest, the digest proves the built bytes, the tag proves the source.
+
 ## Product version authority
 
 ioc-extractor is one product released from a lockstep multi-module Maven
@@ -49,7 +73,7 @@ CI-friendly `${revision}` placeholder:
 <version>${revision}</version>
 
 <properties>
-    <revision>0.2.0-SNAPSHOT</revision>
+    <revision>X.Y.Z-SNAPSHOT</revision>
 </properties>
 ```
 
@@ -113,6 +137,28 @@ The supported external contract includes more than Java APIs:
 
 Internal refactoring does not determine the version by size. The observable
 contract and migration impact do.
+
+### Deprecation and removal
+
+A supported contract is not removed in the same release that stops recommending
+it. Removal follows a deprecation window so operators and integrators can react:
+
+1. **Announce.** A release marks the contract deprecated in its notes, states the
+   replacement, and — where a runtime surface allows — emits a stable, actionable
+   warning.
+2. **Coexist.** The deprecated and replacement contracts normally work together
+   for at least one published release, or for another migration window stated
+   explicitly when deprecation is announced. A security or correctness defect
+   may force earlier removal, which is itself a documented breaking change.
+3. **Remove.** A later release removes the contract and its removal is a breaking
+   or observable change under the versioning policy above. A removed key becomes
+   a hard preflight rejection with a migration hint, not a silent no-op. The
+   `read-timeout` → `request-timeout` transition and
+   `CONFIG.LEGACY_SYNC_TIMEOUT` are the current removal-phase precedent.
+
+An emergency removal that skips the window is permitted only for a security or
+data-integrity reason, is called out in release notes with the reason, and states
+the operator action explicitly.
 
 Subsystem versions such as SQLite migrations, export manifests, diagnostic
 catalogs, control events, and artifact identity epochs remain independently
@@ -421,8 +467,10 @@ A version is released only when all applicable statements are true:
 The following are deliberate follow-up improvements, not hidden release
 claims:
 
-- generated SBOM and provenance attestations;
-- artifact signing and signature verification in deployment;
+- artifact signing/provenance with a maintained trust root and a real verifier
+  in download/deployment paths;
+- generated SBOM with a defined consumer and retention contract;
+- coordinated activation of authenticity and composition-transparency controls;
 - automated changelog aggregation from a stricter commit convention;
 - independently versioned/published Maven modules and flattened POMs;
 - multiple maintained release lines with automated backport tracking;

@@ -28,6 +28,9 @@ Operations, а не как заявленный compliance level.
   архитектурные границы и их автоматическое enforcement;
 - [RELEASE-PROCESS.md](RELEASE-PROCESS.md) потребляет security-gates при выборе,
   сборке, публикации и deployment release candidate;
+- [THREAT-MODEL.md](THREAT-MODEL.md) трассирует активы × границы доверия ×
+  угрозы × контроли и делает явным остаточный риск (risk-based STRIDE per
+  boundary);
 - [KNOWN-ISSUES.md](KNOWN-ISSUES.md) регистрирует конкретные обнаруженные gaps и
   осознанные seams, но не каждую возможную идею из roadmap;
 - [ADR/](ADR/) фиксирует значимые и труднообратимые security-решения;
@@ -74,6 +77,10 @@ Operations, а не как заявленный compliance level.
 5. **Операторская конфигурация.** Она привилегирована, но может содержать
    ошибки. Неизвестное или несогласованное `ioc.*` значение должно приводить к
    понятному startup failure до полезной работы.
+6. **Release delivery, локальный host и output consumers.** Published bytes
+   переходят из CI к оператору, runtime state живёт в host filesystem, а
+   CSV/export покидает приложение. Checksum, host permissions и безопасность
+   downstream consumer являются разными контролями и проверяются отдельно.
 
 Actuator по умолчанию слушает loopback. Публичный HTTP API, web UI,
 authentication/authorization boundary и multi-tenant execution в текущий
@@ -109,8 +116,9 @@ supported contract не входят. Их появление является �
 
 ## 3. Модель состояния контролей
 
-Наличие конфигурации ещё не означает действующий контроль. В реестре
-используются следующие состояния:
+Наличие конфигурации ещё не означает действующий контроль. Реестр (§4) — самая
+изменяемая часть этого документа; принципы (§2), lifecycle (§6) и правила (§13)
+стабильны. В реестре используются следующие состояния:
 
 | Состояние | Значение |
 |---|---|
@@ -133,10 +141,13 @@ supported contract не входят. Их появление является �
 | ID | Контроль | Состояние | Enforcement / evidence |
 |---|---|---|---|
 | `SEC-GOV-1` | Project-wide security policy и control registry | Manual | этот tracked документ, карта в [README.md](README.md), обязательный review вместе с изменением security boundary |
+| `SEC-GOV-2` | Baseline threat model (risk-based STRIDE per boundary), asset×threat×control трассировка | Manual | [THREAT-MODEL.md](THREAT-MODEL.md); living baseline пересматривается при новой границе доверия или изменении supported deployment/output consumer |
 | `SEC-ARC-1` | Inward dependency rule и изоляция внешних libraries в adapters | Enforced | module graph, ArchUnit и Maven reactor; [BOUNDARIES.md](BOUNDARIES.md) |
 | `SEC-CFG-1` | Strict `ioc.*` startup boundary | Enforced | unknown-key preflight, typed binding, semantic validation и `CONFIG.*` failure analysis; [ADR-0016](ADR/0016-config-preflight-strict-binding.md) |
 | `SEC-INP-1` | RE2-safe regex contract | Enforced | RE2/J по умолчанию, JDK fallback и RE2-compatible patterns; [processing.md](dev/processing.md) |
 | `SEC-INP-2` | Bounded resource policy для document parsing | Planned | gap зарегистрирован как `SRC-2` в [KNOWN-ISSUES.md](KNOWN-ISSUES.md); activation — отдельный hardening slice |
+| `SEC-INP-3` | Параметризованный durable-write contract | Manual + Enforced parts | недоверенные/business values bind'ятся через `JdbcClient.param(...)` или `PreparedStatement`; dynamic SQL содержит только allow-list validated + quoted identifiers, закрытые internal literals/version values и tracked static migrations; новые dynamic entry points требуют review |
+| `SEC-OUT-1` | CSV spreadsheet formula-injection applicability contract | Manual + Enforced defaults | для shipped default profile path `not_applicable`: marker matches начинаются с `БИБ`/`Письмо`, остальные колонки ограничены indicator/value/const contract; универсальной output-neutralization нет, configuration-dependent seam отслеживается как `OUT-2`; будущий фикс обязан учитывать machine-consumer semantics |
 | `SEC-LOG-1` | Redaction чувствительных IOC/URL components и transport credentials | Enforced | `SensitiveLogValueSanitizer`, diagnostic formatter и regression tests; [observability.md](dev/observability.md) |
 | `SEC-DATA-1` | Atomic durable protocols и checksummed immutable export slices | Enforced | ledgers, manifests, `_SUCCESS`, checksum verification и recovery contracts; [sync.md](dev/sync.md) |
 
@@ -148,13 +159,15 @@ supported contract не входят. Их появление является �
 | `SEC-SCA-2` | Dependabot dependency/malware alerts, security updates и weekly version updates для Maven/Actions | Configured | GitHub settings + [dependabot.yml](../.github/dependabot.yml); activation подтверждается после обработки default branch и первого cycle |
 | `SEC-SCA-3` | OWASP Dependency-Check aggregate по effective reactor graph | Configured | local scan проверен; [weekly/manual workflow](../.github/workflows/dependency-security.yml) и candidate gate требуют operational proof в default branch |
 | `SEC-SCA-4` | Узкие Dependency-Check suppressions без stale rules | Enforced | tracked [dependency-check-suppressions.xml](../dependency-check-suppressions.xml), `failBuildOnUnusedSuppressionRule=true` |
+| `SEC-SCA-5` | Independently trusted artifact verification для Maven dependencies/plugins | Planned | desired outcome — проверять resolved bytes по project-owned trusted digest/provenance, а не только repository-provided checksum ([Maven Resolver distinction](https://maven.apache.org/resolver/expected-checksums.html)); механизм и безопасный update workflow выбираются отдельным design spike. Trigger — trusted CI release builder, публикация reactor-модулей или внешний supply-chain requirement |
 | `SEC-CI-1` | Tests, golden E2E, boundaries и docs links на push/PR | Enforced | Maven gate: `./mvnw verify`; отдельный `doc-links` job: [ci.yml](../.github/workflows/ci.yml) |
-| `SEC-CI-2` | NVD secret isolation и read-only security job | Configured | Environment `SECURITY CHECKS`, step-local `NVD_API_KEY`, `contents: read`, `deployment: false`; enforcement действует при запуске security workflow |
+| `SEC-CI-2` | NVD secret isolation и read-only security job | Configured | job явно привязан к Environment `SECURITY CHECKS`, `NVD_API_KEY` доступен только scan step, token permissions ограничены `contents: read`; enforcement действует при запуске security workflow |
 | `SEC-CI-3` | Явные минимальные workflow permissions и immutable full-SHA pinning Actions | Enforced | все workflows default к `contents: read`, write выдаётся только release job; remote Actions закреплены полным SHA с version comment, а tools contract отклоняет tag refs; Dependabot сохраняет update path |
 | `SEC-CI-4` | Dependency Review на PR dependency changes | Planned | trigger — добавление blocking PR control после baseline/dry run |
 | `SEC-CI-5` | Secret scanning и push protection | Planned | trigger — подтверждённая доступность функции для repository и согласованный response workflow |
 | `SEC-VER-1` | Java/GitHub Actions SAST | Planned | сначала non-blocking baseline и noise triage; blocking policy вводится отдельно |
 | `SEC-VER-2` | Generic web DAST | Not applicable | нет публичного HTTP/auth surface; пересмотреть при появлении внешнего network API/UI |
+| `SEC-VER-3` | Негативный/fuzz/property корпус вокруг document parsing, paths, manifests и resource budgets | Planned | минимальные malformed fixtures хранятся в test resources, крупные/ресурсоёмкие случаи генерируются test builders/scripts; resource assertions и hostile-path cases связывают evidence с `SEC-INP-2`/`SRC-2` и §10 |
 
 ### 4.3. Release и runtime
 
@@ -399,6 +412,11 @@ Roadmap определяет порядок и triggers, но не выдаёт 
 - активировать Dependabot/workflow в default branch;
 - выполнить первый manual Dependency Security run;
 - проверить report/cache artifacts и weekly cadence;
+- учесть хрупкость: для public repository GitHub автоматически отключает
+  scheduled workflows после 60 дней без repository activity
+  ([GitHub Docs](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/disable-and-enable-workflows));
+  weekly-скан может перестать идти без project-owned сигнала, поэтому candidate
+  scan остаётся обязательным release gate;
 - продолжать exact-candidate scan перед release;
 - поддерживать suppression contract и актуальность этой политики.
 
@@ -412,7 +430,13 @@ Roadmap определяет порядок и triggers, но не выдаёт 
 
 ### Уровень 2 — release supply chain
 
-- публиковать SBOM рядом с jar/checksum после выбора формата и consumer;
+- развивать два независимых outcome: проверяемую authenticity
+  (signature/provenance + реальный verifier и trust-root у consumer) и composition
+  transparency (SBOM/CycloneDX + выбранный consumer/VEX path); наличие одного не
+  заменяет второе, а порядок активации определяется реальным consumer contract;
+- публиковать SBOM рядом с jar/checksum после выбора формата, consumer и retention;
+- добавлять artifact signing только вместе с key/identity lifecycle и проверкой
+  подписи при получении/deployment, чтобы подпись не была декоративным asset;
 - завершить build-once identity chain из [RELEASE-PROCESS.md](RELEASE-PROCESS.md);
 - оценить provenance/attestation по SLSA после появления trusted CI release
   builder и стороны, которая действительно проверяет attestations.
@@ -422,10 +446,10 @@ Roadmap определяет порядок и triggers, но не выдаёт 
 - запустить Java/GitHub Actions SAST в non-blocking режиме;
 - получить baseline и разобрать noise до введения blocking policy;
 - блокировать только согласованные severity/confidence classes;
-- добавлять threat model при новом parser, transport, network API, auth boundary
-  или durable/wire format;
-- развивать negative/fuzz/property tests прежде всего вокруг document parsing,
-  paths, manifests и resource budgets.
+- поддерживать [THREAT-MODEL.md](THREAT-MODEL.md) baseline и расширять его при
+  новом parser, transport, network API, auth boundary или durable/wire format;
+- реализовать `SEC-VER-3`: negative/fuzz/property корпус прежде всего вокруг
+  document parsing, paths, manifests и resource budgets.
 
 ### Уровень 4 — DAST и operational response
 

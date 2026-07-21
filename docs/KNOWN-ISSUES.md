@@ -31,6 +31,7 @@
 | ID | Долг | Статус | Эфф. | Источник |
 |---|---|---|---|---|
 | OUT-1 | **Meta-колонки всегда `NULL`** (`score`, `time_last_seen`, `time_first_seen`, `threat_type`, `description`) — провайдеры обогащения не реализованы. Самый заметный пробел по ценности данных. | открыт | M | dev/0002 |
+| OUT-2 | **CSV formula injection — латентный configuration-dependent риск.** `source.label` формируется из нормализованного marker-match недоверенного документа и попадает в CSV; `QuoteMode.ALL_NON_NULL` защищает структуру CSV, но не гарантирует безопасность при открытии в spreadsheet. Для shipped default profile disposition — `not_applicable`: matches начинаются с `БИБ`/`Письмо`, остальные output values ограничены indicator/value/const contract. Универсальной neutralization в коде нет. **Триггер:** marker-regex или новая free-text колонка, допускающие spreadsheet-dangerous prefix после нормализации. Будущий фикс должен выбрать validation/rejection либо отдельную spreadsheet-oriented encoding policy и не менять молча семантику machine-consumed reputation lists. | seam | S | security review; `SEC-OUT-1`; [THREAT-MODEL](THREAT-MODEL.md) |
 
 ## 3. Экстракция / корпус (`EXT`)
 

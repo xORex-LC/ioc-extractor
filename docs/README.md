@@ -21,6 +21,7 @@
 | [BOUNDARIES.md](BOUNDARIES.md) | Защита архитектурных границ: ArchUnit, Maven Enforcer, JPMS (дорожная карта) |
 | [CONVENTIONS.md](CONVENTIONS.md) | Стандарт Javadoc, конвенция «README в каждом каталоге» (+ шаблон), правила кода |
 | [SECURITY-ENGINEERING.md](SECURITY-ENGINEERING.md) | Secure SDLC policy: активы и trust boundaries, security-контроли, vulnerability lifecycle, gates, evidence и roadmap |
+| [THREAT-MODEL.md](THREAT-MODEL.md) | Базовая threat model: risk-based STRIDE по границам доверия, DFD, трассировка актив×угроза×контроль и остаточный риск |
 | [RELEASE-PROCESS.md](RELEASE-PROCESS.md) | Сквозной контракт версионирования, сборки, публикации, deployment и сопровождения релизов |
 | [DIAGNOSTICS-CATALOG.md](DIAGNOSTICS-CATALOG.md) | Генерируемая карта диагностических кодов из `DiagnosticCatalogs` |
 | [LOGGING-CATALOG.md](LOGGING-CATALOG.md) | Генерируемая карта log actions и полей из `EventAction` / `LogField` |
