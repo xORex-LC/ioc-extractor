@@ -24,8 +24,8 @@ one value:
 
 | Identifier | Example | Meaning | Authority |
 |---|---|---|---|
-| Product version | `0.1.1` | User-visible software release and compatibility statement | Maven `${revision}` |
-| Source tag | `v0.1.1` | Immutable source commit selected for the release | Git |
+| Product version | `0.2.0` | User-visible software release and compatibility statement | Maven `${revision}` |
+| Source tag | `v0.2.0` | Immutable source commit selected for the release | Git |
 | Source revision | `0f60b0ad990d...` | Exact source tree used by a build | Git commit |
 | Binary digest | SHA-256 | Exact released bytes | Release workflow |
 | Build metadata | version, commit, build time | Runtime support and traceability data embedded in the application | Maven/Spring Boot build |
@@ -196,7 +196,7 @@ a `.git` directory being present.
 The intended operator-facing shape is:
 
 ```text
-ioc-extractor 0.1.1
+ioc-extractor 0.2.0
 commit: 0f60b0ad990d
 built: 2026-07-17T15:00:00Z
 ```

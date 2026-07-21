@@ -59,7 +59,7 @@ diagnostics. Валидные строки при этом записывают�
 проверять и для source, попавшего в `done`.
 
 После bounded retries terminal failure перемещается в `var/failed`, а ledger
-фиксирует terminal state. В 0.1.1 нет поддерживаемой команды очистки или requeue
+фиксирует terminal state. В 0.2.0 нет поддерживаемой команды очистки или requeue
 этой identity. Не редактируйте ledger files или SQLite tables вручную. Сохраните
 source/logs, исправьте причину и используйте reviewed recovery procedure;
 идентичный content может остаться terminally deduplicated.
@@ -135,7 +135,7 @@ recovery повторяет незавершённый claimed work, а посл
 - pending export/publish и pinned slices в health;
 - повторяющиеся retry/reconcile diagnostics.
 
-Не увеличивайте `ioc.ingestion.concurrency` для сброса backlog: в 0.1.1 это
+Не увеличивайте `ioc.ingestion.concurrency` для сброса backlog: в 0.2.0 это
 reserved seam, ingestion channel остаётся синхронным. Будущий concurrency также
 потребует load testing claim/order/recovery и SQLite single-writer behavior.
 Сначала проверьте slow copies, parser-heavy documents, remote outage и quiet period.

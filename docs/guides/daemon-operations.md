@@ -62,7 +62,7 @@ run with diagnostics. Valid rows may still be committed, and logs/health must be
 reviewed even when the source reaches `done`.
 
 After bounded retries, a terminal source failure is moved to `var/failed` and a
-durable terminal ledger state is recorded. Version 0.1.1 has no supported command
+durable terminal ledger state is recorded. Version 0.2.0 has no supported command
 that clears or requeues that terminal identity. Do not edit ledger files or SQLite
 tables manually. Preserve the failed source and logs, correct the cause, and use a
 reviewed recovery procedure; identical content may remain terminally deduplicated.
@@ -149,7 +149,7 @@ Monitor:
 - pending export/publish work and pinned slices in health;
 - repeated retry or reconcile diagnostics.
 
-Do not increase `ioc.ingestion.concurrency` to drain a backlog: in 0.1.1 it is a
+Do not increase `ioc.ingestion.concurrency` to drain a backlog: in 0.2.0 it is a
 reserved seam and the ingestion channel remains synchronous. Future concurrency
 would also require load testing of claim, ordering, recovery and SQLite's
 single-writer behavior. First investigate slow copies, parser-heavy documents,

@@ -38,7 +38,7 @@ class EarlyCliLauncherTest {
 
         assertThat(result).hasValue(0);
         assertThat(out.toString())
-                .contains("ioc-extractor 0.1.1-test")
+                .contains("ioc-extractor 9.8.7-test")
                 .contains("built: 2026-07-19T10:30:00Z")
                 .doesNotContain("unknown");
         assertThat(err.toString()).isEmpty();
@@ -49,7 +49,7 @@ class EarlyCliLauncherTest {
         OptionalInt result = launcher.executeIfHandled("-V");
 
         assertThat(result).hasValue(0);
-        assertThat(out.toString()).contains("ioc-extractor 0.1.1-test");
+        assertThat(out.toString()).contains("ioc-extractor 9.8.7-test");
         assertThat(err.toString()).isEmpty();
     }
 

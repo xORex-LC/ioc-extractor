@@ -133,7 +133,7 @@ sudo packaging/install.sh \
   --prefix /opt/ioc-extractor \
   --jar /tmp/ioc-extractor-new.jar \
   --checksum /tmp/ioc-extractor-new.jar.sha256 \
-  --release-id v0.1.1
+  --release-id v0.2.0
 ```
 
 If the host uses a non-default actuator port, also pass `--server-port PORT`.

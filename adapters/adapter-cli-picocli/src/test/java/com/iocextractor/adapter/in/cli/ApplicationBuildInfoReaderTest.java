@@ -18,7 +18,7 @@ class ApplicationBuildInfoReaderTest {
 
         ApplicationBuildInfo result = ApplicationBuildInfoReader.from(properties);
 
-        assertThat(result.version()).isEqualTo("0.1.1");
+        assertThat(result.version()).isEqualTo("9.8.7");
         assertThat(result.commit()).contains("0123456789abcdef0123456789abcdef01234567");
         assertThat(result.builtAt()).contains(Instant.parse("2026-07-19T10:30:00Z"));
     }
@@ -27,7 +27,7 @@ class ApplicationBuildInfoReaderTest {
     void accepts_missing_optional_metadata_without_inventing_fallbacks() {
         ApplicationBuildInfo result = ApplicationBuildInfoReader.from(propertiesWithVersion());
 
-        assertThat(result.version()).isEqualTo("0.1.1");
+        assertThat(result.version()).isEqualTo("9.8.7");
         assertThat(result.commit()).isEmpty();
         assertThat(result.builtAt()).isEmpty();
     }
@@ -66,7 +66,7 @@ class ApplicationBuildInfoReaderTest {
 
     private Properties propertiesWithVersion() {
         var properties = new Properties();
-        properties.setProperty("build.version", " 0.1.1 ");
+        properties.setProperty("build.version", " 9.8.7 ");
         return properties;
     }
 }

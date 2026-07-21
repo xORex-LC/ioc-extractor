@@ -177,3 +177,17 @@ pre-release physical shape. Явная миграция consumers дешевле
 - [Spring Boot 3.5 Release Notes](https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-3.5-Release-Notes);
 - [Spring Boot 4.0 Migration Guide](https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-4.0-Migration-Guide);
 - [Spring Boot structured logging reference](https://docs.spring.io/spring-boot/reference/features/logging.html#features.logging.structured).
+
+## Дополнение 2026-07-21: retarget релиза на 0.2.0
+
+До создания финального candidate и tag релиз retargeted с `0.1.1` на `0.2.0`.
+Причина — совокупный scope после `v0.1.0`: новые storage, export/sync и
+event-coordination capabilities, strict configuration contract, diagnostics
+outcome contract и публичное изменение ECS wire format являются minor-релизом
+по принятой project SemVer policy, а не совместимым patch-набором.
+
+Это дополнение заменяет только version disposition раздела 5: финальный
+candidate, release notes и evidence этого ADR относятся к `0.2.0`. Выбор одной
+supported Spring Boot line `4.0.x`, nested ECS representation, plan B и все
+остальные решения ADR остаются без изменений. Упоминания `0.1.1` выше
+сохраняются как исторический контекст решения до retarget.

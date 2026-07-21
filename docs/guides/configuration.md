@@ -238,7 +238,7 @@ baseline for SQLite and deterministic file handling.
 | `ioc.ingestion.retry.backoff` | positive duration | `5s` | Delay between local ingestion retries. |
 | `ioc.ingestion.ledger.type` | `file`, `jdbc` | `file` | Use `jdbc` when durable run-ledger integration is required; follow the deployment baseline. |
 | `ioc.ingestion.ledger.path` | path | `./var/ledger` | Filesystem ledger location when type is `file`. |
-| `ioc.ingestion.concurrency` | integer (reserved seam) | `1` | Keep `1`. In 0.1.1 the channel is synchronous and this property does not enable parallel ingestion. |
+| `ioc.ingestion.concurrency` | integer (reserved seam) | `1` | Keep `1`. In 0.2.0 the channel is synchronous and this property does not enable parallel ingestion. |
 
 ## Maintenance retention
 
