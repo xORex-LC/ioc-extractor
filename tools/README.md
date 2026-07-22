@@ -13,7 +13,7 @@ deployment automation — она остаётся в [`packaging/`](../packaging
 
 | Каталог | Ответственность |
 |---|---|
-| [`dev/`](dev/README.md) | Doctor, IOC fixtures, изолированный daemon runtime, smoke и ECS log queries |
+| [`dev/`](dev/README.md) | Doctor, IOC fixtures, изолированный runtime, smoke, ECS logs и release context |
 | [`ci/`](ci/README.md) | Неинтерактивные leaf-gates для build, docs, packaging и Dependency-Check |
 | [`tests/`](tests/README.md) | Contract-тесты самого tools-layer |
 
@@ -37,6 +37,7 @@ make help
 make context
 make doctor
 make bootstrap  # repo-local lychee, если его нет в PATH
+make release-notes-context PREVIOUS_TAG=v0.1.0
 make pre-push
 ```
 

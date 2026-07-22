@@ -256,10 +256,13 @@ Release notes are curated for users and operators. They are not a dump of Git
 subjects, ADRs, or `KNOWN-ISSUES.md`. Automated notes may be used as a draft,
 but a maintainer reviews the public impact.
 
-Use this structure when a section is applicable:
+Copy [`.github/release-notes/TEMPLATE.md`](../.github/release-notes/TEMPLATE.md)
+to the intended tag name. Every release source keeps this structure; a section
+without applicable content carries an explicit `Not applicable` disposition
+instead of disappearing:
 
 ```markdown
-# ioc-extractor X.Y.Z
+# IOC Extractor X.Y.Z
 
 ## Highlights
 ## Added
@@ -271,6 +274,19 @@ Use this structure when a section is applicable:
 ## Verification
 ## Artifacts and checksums
 ```
+
+An optional `Technical references` section may follow. References are selected
+for explanation rather than volume, in this order:
+
+1. a pull request or issue for reviewed scope and discussion;
+2. an ADR for architectural rationale;
+3. one compare range for the complete implementation history;
+4. a raw commit only when no better durable reference exists and the precise
+   implementation transition materially helps investigation.
+
+Release identity does not depend on per-bullet commit links: the annotated tag,
+embedded commit and artifact digest already provide that chain. Avoid turning
+operator notes into a Git subject list.
 
 Each breaking or operationally observable change states:
 
@@ -290,6 +306,18 @@ name does not make a flat-to-nested or string-to-number change compatible.
 contain only issues relevant to users of that release. ADRs remain the immutable
 decision history and are linked only when their rationale helps an operator or
 maintainer.
+
+`make release-notes-context PREVIOUS_TAG=vX.Y.Z TARGET_REF=HEAD` produces a
+read-only inventory of commits, changed areas/modules, PR or issue references
+and dependency/security candidates. `GITHUB=1` additionally queries merged PRs
+whose merge commit belongs to the selected range. This output and GitHub's
+generated notes are curation inputs, never the published source. They can miss
+direct commits and cannot determine compatibility, migration or operator impact.
+
+From `v0.2.0` onward, the committed `.github/release-notes/<tag>.md` file is the
+source consumed by the tag workflow. `v0.1.0.md` is a marked historical import:
+the release predates this rule, the file was not retroactively inserted into its
+immutable tag, and the already-published GitHub Release remains read-only.
 
 ## Release lifecycle
 

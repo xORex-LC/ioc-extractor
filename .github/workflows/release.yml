@@ -139,6 +139,8 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          # The tools contract exercises release-range inventory against v0.1.0.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up JDK 21

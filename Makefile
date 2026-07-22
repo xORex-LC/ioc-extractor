@@ -32,6 +32,9 @@ LOG_COMMAND ?= pretty
 LOG_VALUE ?=
 LOG_FILE ?=
 FOLLOW ?= 0
+PREVIOUS_TAG ?=
+TARGET_REF ?= HEAD
+GITHUB ?= 0
 
 .PHONY: help \
 	doctor doctor-core doctor-dev doctor-ci doctor-security bootstrap \
@@ -39,7 +42,7 @@ FOLLOW ?= 0
 	context \
 	run stop runtime-up runtime-down runtime-status runtime-reset submit \
 	fixture fixture-1k fixture-5k fixture-100k smoke smoke-cli smoke-oneshot smoke-daemon \
-	db logs logs-errors \
+	db logs logs-errors release-notes-context \
 	lint-shell docs security-update security-scan security-report \
 	ci-build ci-packaging ci-docs ci pre-push
 
@@ -176,6 +179,13 @@ logs: ## Query ECS logs; LOG_COMMAND=pretty|errors|event|run|diagnostic|raw
 
 logs-errors: LOG_COMMAND=errors
 logs-errors: logs ## Print ERROR/FATAL ECS events
+
+##@ Release preparation
+release-notes-context: ## Collect release-note inputs; PREVIOUS_TAG=vX.Y.Z TARGET_REF=HEAD GITHUB=0|1
+	@[[ -n "$(PREVIOUS_TAG)" ]] || { echo "PREVIOUS_TAG is required" >&2; exit 2; }
+	@args=(--previous-tag "$(PREVIOUS_TAG)" --target "$(TARGET_REF)"); \
+		[[ "$(GITHUB)" != 1 ]] || args+=(--github); \
+		tools/dev/release-notes-context.sh "$${args[@]}"
 
 ##@ Quality and security
 lint-shell: ## Run ShellCheck and packaging/tools contract tests

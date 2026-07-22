@@ -20,6 +20,7 @@
 | `database.sh … shell|schema|tables` | Read-only inspection service/dataframe SQLite |
 | `smoke.sh [cli|oneshot|daemon|all]` | Проверить public CLI, canonical storage/export и daemon ingest/health |
 | `logs.sh …` | Читать и фильтровать ECS JSON по level/event/run/diagnostic |
+| `release-notes-context.sh …` | Собрать read-only Git/PR inventory для ручной подготовки release notes |
 
 Перед runtime/smoke должен существовать bootable jar:
 
@@ -38,6 +39,7 @@ tools/dev/database.sh --db dataframe schema
 tools/dev/logs.sh --workspace .dev/runtime errors
 tools/dev/runtime.sh down
 tools/dev/smoke.sh all
+tools/dev/release-notes-context.sh --previous-tag v0.1.0 --target HEAD
 ```
 
 Основной интерфейс для повседневной работы — корневой `Makefile`: `make help`
@@ -49,6 +51,12 @@ tools/dev/smoke.sh all
 соответствует текущему commit и содержимому working tree. Отсутствующий daemon,
 отсутствующий evidence или изменённое после проверки дерево выводятся как
 состояния, а не скрываются.
+
+`make release-notes-context PREVIOUS_TAG=v0.1.0` собирает Markdown-инвентарь
+из локальной Git-истории: changed areas/modules, commits, references и
+dependency/security candidates. `GITHUB=1` дополнительно запрашивает merged PR
+через аутентифицированный `gh`. Команда ничего не публикует и не изменяет:
+результат служит входом для ручной курации, а не готовыми release notes.
 
 `lychee` отсутствует в обычных Ubuntu APT repositories. `make bootstrap`
 загружает закреплённый pre-built release для Linux x86_64/aarch64, проверяет
