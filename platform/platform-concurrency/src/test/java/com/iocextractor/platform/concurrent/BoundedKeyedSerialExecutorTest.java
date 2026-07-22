@@ -86,11 +86,12 @@ class BoundedKeyedSerialExecutorTest {
         CountDownLatch firstStarted = new CountDownLatch(1);
         CountDownLatch releaseFirst = new CountDownLatch(1);
         CountDownLatch acceptedOtherKey = new CountDownLatch(1);
+        CountDownLatch sameKeyFinished = new CountDownLatch(2);
 
         assertThat(executor.submit(WorkKey.of("endpoint-a"), () -> blockingSignal(
-                firstStarted, releaseFirst, new CountDownLatch(0))).accepted()).isTrue();
+                firstStarted, releaseFirst, sameKeyFinished)).accepted()).isTrue();
         assertThat(firstStarted.await(1, TimeUnit.SECONDS)).isTrue();
-        assertThat(executor.submit(WorkKey.of("endpoint-a"), () -> { }).accepted()).isTrue();
+        assertThat(executor.submit(WorkKey.of("endpoint-a"), sameKeyFinished::countDown).accepted()).isTrue();
 
         WorkAdmission rejected = executor.submit(WorkKey.of("endpoint-a"), () -> { });
         WorkAdmission otherKey = executor.submit(WorkKey.of("endpoint-b"), acceptedOtherKey::countDown);
@@ -101,6 +102,7 @@ class BoundedKeyedSerialExecutorTest {
         assertThat(otherKey.accepted()).isTrue();
         assertThat(acceptedOtherKey.await(1, TimeUnit.SECONDS)).isTrue();
         releaseFirst.countDown();
+        assertThat(sameKeyFinished.await(1, TimeUnit.SECONDS)).isTrue();
     }
 
     @Test
@@ -162,10 +164,11 @@ class BoundedKeyedSerialExecutorTest {
         WorkKey key = WorkKey.of("endpoint-a");
         CountDownLatch firstStarted = new CountDownLatch(1);
         CountDownLatch releaseFirst = new CountDownLatch(1);
+        CountDownLatch finished = new CountDownLatch(2);
 
-        executor.submit(key, () -> blockingSignal(firstStarted, releaseFirst, new CountDownLatch(0)));
+        executor.submit(key, () -> blockingSignal(firstStarted, releaseFirst, finished));
         assertThat(firstStarted.await(1, TimeUnit.SECONDS)).isTrue();
-        executor.submit(key, () -> { });
+        executor.submit(key, finished::countDown);
 
         KeyedSerialExecutorSnapshot snapshot = executor.snapshot();
 
@@ -176,6 +179,7 @@ class BoundedKeyedSerialExecutorTest {
             assertThat(lane.oldestAge()).isGreaterThanOrEqualTo(Duration.ZERO);
         });
         releaseFirst.countDown();
+        assertThat(finished.await(1, TimeUnit.SECONDS)).isTrue();
     }
 
     @Test
@@ -186,9 +190,10 @@ class BoundedKeyedSerialExecutorTest {
             WorkKey key = WorkKey.of("endpoint-a");
             CountDownLatch firstStarted = new CountDownLatch(1);
             CountDownLatch releaseFirst = new CountDownLatch(1);
+            CountDownLatch firstFinished = new CountDownLatch(1);
 
             assertThat(executor.submit(key, () -> blockingSignal(
-                    firstStarted, releaseFirst, new CountDownLatch(0))).accepted()).isTrue();
+                    firstStarted, releaseFirst, firstFinished)).accepted()).isTrue();
             assertThat(firstStarted.await(1, TimeUnit.SECONDS)).isTrue();
             assertThat(executor.submit(key, () -> { }).accepted()).isTrue();
             assertThat(executor.submit(key, () -> { }).accepted()).isTrue();
@@ -196,6 +201,7 @@ class BoundedKeyedSerialExecutorTest {
             releaseFirst.countDown();
 
             assertThat(observer.dispatchRejectedObserved.await(1, TimeUnit.SECONDS)).isTrue();
+            assertThat(firstFinished.await(1, TimeUnit.SECONDS)).isTrue();
             assertThat(observer.dispatchRejections).singleElement()
                     .satisfies(rejection -> {
                         assertThat(rejection.key()).isEqualTo(key);
