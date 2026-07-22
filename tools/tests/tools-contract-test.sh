@@ -18,6 +18,13 @@ cleanup() {
 trap cleanup EXIT
 dev_prepare_workspace "${WORKSPACE}"
 
+COLORLESS_LOG="$(dev_log "captured output")"
+[[ "${COLORLESS_LOG}" != *$'\033'* ]] \
+  || fail "captured developer log contains ANSI escapes"
+COLORLESS_WARNING="$(NO_COLOR=1 dev_warn "no color" 2>&1)"
+[[ "${COLORLESS_WARNING}" != *$'\033'* ]] \
+  || fail "NO_COLOR developer warning contains ANSI escapes"
+
 if (dev_validate_workspace "/tmp/ioc-tools-contract" >/dev/null 2>&1); then
   fail "workspace validator accepted an external path"
 fi
@@ -52,17 +59,46 @@ if java "${REPO_ROOT}/tools/dev/GenerateIocFixture.java" \
   fail "generator overwrote an existing fixture without --force"
 fi
 
-LOG_FILE="${WORKSPACE}/events.ecs.json"
+LOG_WORKSPACE="${WORKSPACE}/logs-runtime"
+LOG_FILE="${LOG_WORKSPACE}/var/logs/ioc-extractor.ecs.json"
+mkdir -p -- "$(dirname -- "${LOG_FILE}")"
 printf '%s\n' \
   '{"log":{"level":"INFO"},"event":{"action":"app_start"},"ioc":{"run":{"id":"run-1"}}}' \
   '{"log":{"level":"ERROR"},"event":{"action":"diagnostic_emit"},"ioc":{"run":{"id":"run-2"},"diagnostic":{"code":"PIPELINE.STAGE_FAILED"}}}' \
   > "${LOG_FILE}"
 if command -v jq >/dev/null 2>&1; then
-  [[ "$("${REPO_ROOT}/tools/dev/logs.sh" --file "${LOG_FILE}" errors | wc -l)" -eq 1 ]] \
+  [[ "$("${REPO_ROOT}/tools/dev/logs.sh" --workspace "${LOG_WORKSPACE}" errors | wc -l)" -eq 1 ]] \
     || fail "ECS error query returned the wrong number of events"
-  "${REPO_ROOT}/tools/dev/logs.sh" --file "${LOG_FILE}" run run-1 \
+  "${REPO_ROOT}/tools/dev/logs.sh" --workspace "${LOG_WORKSPACE}" event app_start \
+    | grep -q 'run-1' || fail "ECS event query missed the matching event"
+  "${REPO_ROOT}/tools/dev/logs.sh" --workspace "${LOG_WORKSPACE}" run run-1 \
     | grep -q 'app_start' || fail "ECS run query missed the matching event"
+  "${REPO_ROOT}/tools/dev/logs.sh" --workspace "${LOG_WORKSPACE}" \
+    diagnostic PIPELINE.STAGE_FAILED \
+    | grep -q 'run-2' || fail "ECS diagnostic query missed the matching event"
 fi
+
+CONTEXT_STATE="${WORKSPACE}/context-state"
+mkdir -p -- "${CONTEXT_STATE}"
+CURRENT_FINGERPRINT="$(dev_git_worktree_fingerprint)"
+printf '%s\n' \
+  'result=passed' \
+  "commit=$(git -C "${REPO_ROOT}" rev-parse --verify HEAD)" \
+  "fingerprint=${CURRENT_FINGERPRINT}" \
+  'finished_at=2026-01-01T00:00:00Z' \
+  > "${CONTEXT_STATE}/last-verify.env"
+CONTEXT_OUTPUT="$(NO_COLOR=1 DEV_STATE_ROOT="${CONTEXT_STATE}" \
+  "${REPO_ROOT}/tools/dev/context.sh" --workspace "${LOG_WORKSPACE}")"
+grep -Eq '^project\.version=[^[:space:]]+$' <<< "${CONTEXT_OUTPUT}" \
+  || fail "developer context did not expose the Maven project version"
+grep -Fqx "runtime.workspace=${LOG_WORKSPACE}" <<< "${CONTEXT_OUTPUT}" \
+  || fail "developer context did not expose the selected runtime workspace"
+grep -Fqx 'verify.result=passed' <<< "${CONTEXT_OUTPUT}" \
+  || fail "developer context did not read verify evidence"
+grep -Fqx 'verify.fresh=true' <<< "${CONTEXT_OUTPUT}" \
+  || fail "developer context did not recognize current verify evidence"
+[[ "${CONTEXT_OUTPUT}" != *$'\033'* ]] \
+  || fail "developer context contains ANSI escapes"
 
 SUBMIT_WORKSPACE="${WORKSPACE}/submit-runtime"
 mkdir -p "${SUBMIT_WORKSPACE}/var/inbox"
@@ -85,6 +121,7 @@ fi
 
 for script in \
     tools/dev/common.sh \
+    tools/dev/context.sh \
     tools/dev/app.sh \
     tools/dev/bootstrap.sh \
     tools/dev/doctor.sh \
@@ -122,6 +159,8 @@ if env -u NVD_API_KEY DEPENDENCY_CHECK_DATA="${WORKSPACE}/odc-update" \
 fi
 make --no-print-directory -s -C "${REPO_ROOT}" help \
   | grep -q 'test-one' || fail "Make help lost the targeted-test command"
+make --no-print-directory -s -C "${REPO_ROOT}" help \
+  | grep -q 'context' || fail "Make help lost the cold-start context command"
 if grep -REq '^[[:space:]]*(run:[[:space:]]*)?make([[:space:]]|$)' \
     "${REPO_ROOT}/.github/workflows"; then
   fail "GitHub workflow depends on the developer-facing Make facade"

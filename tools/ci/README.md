@@ -10,7 +10,7 @@ step (`make bootstrap` локально, `tools/dev/bootstrap.sh lychee` в CI).
 
 | Команда | Gate |
 |---|---|
-| `build.sh` | Полный Maven reactor `verify` |
+| `build.sh` | Полный Maven reactor `verify` + atomic evidence под `.dev/state/` |
 | `packaging.sh` | ShellCheck + packaging contract tests |
 | `docs.sh` | Offline link check через `lychee` |
 | `dependency-security.sh update|scan|report` | Явное обновление NVD data, offline scan или поиск готового отчёта |
@@ -31,3 +31,9 @@ step (`make bootstrap` локально, `tools/dev/bootstrap.sh lychee` в CI).
 | `make ci` / `make pre-push` | Все регулярные gates последовательно |
 | `make security-update` | Обновить локальную NVD data (network + API key) |
 | `make security-scan` | Быстро проверить reactor по имеющейся локальной data |
+
+`build.sh` сохраняет `last-verify.env` после завершения Maven с commit,
+fingerprint рабочего дерева, временем и результатом. Если дерево изменилось во
+время проверки, результат получает состояние `invalidated`. Evidence является
+локальным developer context для `make context`, игнорируется Git и не заменяет
+CI check/run как release-доказательство.

@@ -36,6 +36,7 @@ FOLLOW ?= 0
 .PHONY: help \
 	doctor doctor-core doctor-dev doctor-ci doctor-security bootstrap \
 	clean package test test-module test-one verify version extract export \
+	context \
 	run stop runtime-up runtime-down runtime-status runtime-reset submit \
 	fixture fixture-1k fixture-5k fixture-100k smoke smoke-cli smoke-oneshot smoke-daemon \
 	db logs logs-errors \
@@ -48,6 +49,9 @@ help: ## Show this command reference
 		/^[a-zA-Z0-9_.-]+:.*## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 ##@ Environment
+context: ## Print stable key=value project, Git, runtime and verify context
+	@tools/dev/context.sh --workspace "$(WORKSPACE)"
+
 doctor: ## Check the complete local developer environment
 	@tools/dev/doctor.sh all
 
@@ -163,7 +167,7 @@ db: ## Inspect SQLite read-only; DB=service|dataframe DB_COMMAND=shell|schema|ta
 	@tools/dev/database.sh --workspace "$(WORKSPACE)" --db "$(DB)" "$(DB_COMMAND)"
 
 logs: ## Query ECS logs; LOG_COMMAND=pretty|errors|event|run|diagnostic|raw
-	@args=(); \
+	@args=(--workspace "$(WORKSPACE)"); \
 		[[ -z "$(LOG_FILE)" ]] || args+=(--file "$(LOG_FILE)"); \
 		[[ "$(FOLLOW)" != 1 ]] || args+=(--follow); \
 		args+=("$(LOG_COMMAND)"); \

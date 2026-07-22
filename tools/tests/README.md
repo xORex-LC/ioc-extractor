@@ -3,7 +3,9 @@
 ## Назначение
 
 Быстрые проверки safety boundary и воспроизводимости developer tools без
-запуска systemd или внешних интеграций.
+запуска systemd или внешних интеграций. Включают color/output contract,
+детерминированные fixtures, workspace-aware ECS queries и машинный cold-start
+context.
 
 ```bash
 tools/tests/tools-contract-test.sh

@@ -9,17 +9,34 @@ DEV_TOOLS_COMMON_LOADED="true"
 DEV_TOOLS_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 DEV_REPO_ROOT="$(cd -- "${DEV_TOOLS_DIR}/../.." >/dev/null 2>&1 && pwd)"
 DEV_ROOT="${DEV_REPO_ROOT}/.dev"
+DEV_STATE_ROOT="${DEV_STATE_ROOT:-${DEV_ROOT}/state}"
+
+dev_color_enabled() { # output file descriptor
+  [[ -z "${NO_COLOR+x}" && "${TERM:-}" != "dumb" && -t "$1" ]]
+}
 
 dev_log() {
-  printf '\033[1;34m[dev]\033[0m %s\n' "$*"
+  if dev_color_enabled 1; then
+    printf '\033[1;34m[dev]\033[0m %s\n' "$*"
+  else
+    printf '[dev] %s\n' "$*"
+  fi
 }
 
 dev_warn() {
-  printf '\033[1;33m[warn]\033[0m %s\n' "$*" >&2
+  if dev_color_enabled 2; then
+    printf '\033[1;33m[warn]\033[0m %s\n' "$*" >&2
+  else
+    printf '[warn] %s\n' "$*" >&2
+  fi
 }
 
 dev_die() {
-  printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2
+  if dev_color_enabled 2; then
+    printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2
+  else
+    printf '[error] %s\n' "$*" >&2
+  fi
   exit 1
 }
 
@@ -36,6 +53,25 @@ dev_require_java21() {
   local major
   major="$(dev_java_major "$(command -v java)")"
   [[ "${major:-0}" -ge 21 ]] || dev_die "JDK 21+ is required; detected ${major:-unknown}"
+}
+
+dev_git_worktree_fingerprint() {
+  dev_require_command git
+  dev_require_command sha256sum
+  (
+    cd "${DEV_REPO_ROOT}" || exit 1
+    {
+      printf 'head\0'
+      git rev-parse --verify HEAD
+      printf 'tracked-diff\0'
+      git diff --binary --no-ext-diff HEAD --
+      printf 'untracked\0'
+      while IFS= read -r -d '' path; do
+        printf 'path\0%s\0' "${path}"
+        sha256sum -- "${path}"
+      done < <(git ls-files --others --exclude-standard -z | LC_ALL=C sort -z)
+    } | sha256sum | awk '{print $1}'
+  )
 }
 
 dev_validate_port() {

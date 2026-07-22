@@ -11,6 +11,7 @@
 | Команда | Назначение |
 |---|---|
 | `bootstrap.sh lychee` | Установить закреплённый lychee в `.dev/tools/bin` с SHA-256 verification |
+| `context.sh …` | Вывести стабильный `key=value` cold-start context: version, Git, runtime и свежесть последнего `verify` |
 | `app.sh …` | Запустить public CLI через единственный найденный bootable jar; optional isolated workspace |
 | `doctor.sh [core|dev|ci|security|all]` | Проверить обязательные и optional prerequisites без установки пакетов |
 | `fixture.sh …` | Сгенерировать детерминированный HTML/text IOC fixture и JSON manifest |
@@ -34,7 +35,7 @@ tools/dev/runtime.sh --port 18081 up
 tools/dev/submit.sh .dev/fixtures/ioc-5000-seed-42.html
 tools/dev/runtime.sh status
 tools/dev/database.sh --db dataframe schema
-tools/dev/logs.sh errors
+tools/dev/logs.sh --workspace .dev/runtime errors
 tools/dev/runtime.sh down
 tools/dev/smoke.sh all
 ```
@@ -42,6 +43,12 @@ tools/dev/smoke.sh all
 Основной интерфейс для повседневной работы — корневой `Makefile`: `make help`
 показывает цели и принимаемые `NAME=value` параметры. Прямой вызов scripts
 остаётся доступен для редких расширенных комбинаций.
+
+`make context` намеренно печатает только бесцветные `key=value` строки. Последний
+`verify` считается свежим лишь когда evidence из `.dev/state/last-verify.env`
+соответствует текущему commit и содержимому working tree. Отсутствующий daemon,
+отсутствующий evidence или изменённое после проверки дерево выводятся как
+состояния, а не скрываются.
 
 `lychee` отсутствует в обычных Ubuntu APT repositories. `make bootstrap`
 загружает закреплённый pre-built release для Linux x86_64/aarch64, проверяет

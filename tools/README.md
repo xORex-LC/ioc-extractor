@@ -3,10 +3,11 @@
 ## Назначение
 
 Воспроизводимые developer/CI-инструменты поверх Maven wrapper и bootable jar.
-Корневой [`Makefile`](../Makefile) — стабильный интерфейс для людей и CI, а этот
-каталог содержит вызываемую им реализацию. Скрипты можно вызывать напрямую для
-расширенных параметров. Tools-layer не заменяет Maven lifecycle и не содержит
-production deployment automation — она остаётся в [`packaging/`](../packaging/README.md).
+Корневой [`Makefile`](../Makefile) — стабильный локальный интерфейс для людей и
+агентов, а этот каталог содержит вызываемую им реализацию. GitHub workflows
+вызывают CI leaf scripts напрямую, чтобы pipeline оставался прозрачен без чтения
+Makefile. Tools-layer не заменяет Maven lifecycle и не содержит production
+deployment automation — она остаётся в [`packaging/`](../packaging/README.md).
 
 ## Состав
 
@@ -33,6 +34,7 @@ null-доступы не отключаются. VS Code Java подключае
 
 ```bash
 make help
+make context
 make doctor
 make bootstrap  # repo-local lychee, если его нет в PATH
 make pre-push
@@ -50,3 +52,16 @@ Dependency-Check остаётся отдельным security gate: `make securi
 Все runtime-файлы developer environment создаются только под `/.dev/` и
 игнорируются Git. Скрипты не должны писать business data напрямую в SQLite:
 fixtures проходят через публичные `extract`/daemon ingest пути.
+
+## Поддерживаемое окружение
+
+Tools-layer поддерживает **GNU/Linux**; проверяемая среда — Debian/Ubuntu с
+Bash, GNU coreutils/findutils и Linux `/proc`. Это осознанно совпадает с
+production deployment target. Некоторые команды дополнительно требуют `jq`,
+`sqlite3`, `curl` или `shellcheck`; точный набор проверяет `make doctor`.
+
+Native macOS и Windows не являются поддерживаемыми средами для этих scripts из-за
+различий `realpath`, `find`, `tail` и process inspection. На таких хостах следует
+использовать WSL, Linux VM или container, не заменяя GNU-команды несовместимыми
+алиасами. Цвет developer-сообщений включается только для соответствующего TTY;
+переменная `NO_COLOR` отключает его явно.
