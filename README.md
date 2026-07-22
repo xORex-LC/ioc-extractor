@@ -160,9 +160,10 @@ configuration reconciliation, rollback and uninstall procedures.
 
 ## Repository layout
 
-The project is a multi-module Maven reactor. Dependencies point inward; every
-adapter owns one external library or integration family behind an application
-port.
+The project is a multi-module Maven reactor. Dependencies point inward. Adapter
+modules isolate a coherent technology or integration boundary behind domain or
+application ports; one boundary may use several cooperating libraries when they
+belong to the same integration family.
 
 ```text
 platform/   framework-free cross-cutting contracts and implementations
