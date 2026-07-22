@@ -26,7 +26,7 @@
         <log4j2.version>2.25.5</log4j2.version>
         <picocli.version>4.7.6</picocli.version>
         <re2j.version>1.7</re2j.version>
-        <tika.version>3.3.1</tika.version>
+        <tika.version>3.3.2</tika.version>
         <bouncycastle.version>1.84</bouncycastle.version>
         <pdfbox.version>3.0.8</pdfbox.version>
         <dependency-check.version>12.2.2</dependency-check.version>
