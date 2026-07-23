@@ -53,10 +53,12 @@ MARKER="$(ioc_marker_path "${PREFIX}")"
 if [[ -e "${MARKER}" ]]; then
   ioc_is_valid_marker "${PREFIX}" "${SERVICE}" "${RUN_USER}" \
     || die "invalid or mismatched installation marker: ${MARKER}"
-elif ioc_is_legacy_installation "${PREFIX}"; then
+elif ioc_is_v010_single_dir_installation "${PREFIX}"; then
+  die "v0.1.0 installation must be removed with its matching uninstaller or preserved as a rollback point"
+elif ioc_is_pre_marker_release_layout "${PREFIX}"; then
   [[ "${PURGE}" != "true" ]] \
-    || die "legacy installation has no safety marker; run install.sh once to adopt it before purge"
-  warn "removing service for a validated legacy installation without purging data"
+    || die "pre-marker release layout has no safety marker; run install.sh once to adopt it before purge"
+  warn "removing service for a validated pre-marker release layout without purging data"
 else
   die "prefix is not a validated ioc-extractor installation: ${PREFIX}"
 fi
