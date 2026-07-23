@@ -201,6 +201,53 @@ if grep -Fq 'deployment: false' \
   fail "Dependency Security workflow uses unsupported environment.deployment"
 fi
 
+RELEASE_WORKFLOW="${REPO_ROOT}/.github/workflows/release.yml"
+# shellcheck disable=SC2016 # GitHub expression must remain literal.
+RECOVERY_SOURCE_REF='${{ github.event_name == '\''workflow_dispatch'\'' && inputs.create_draft && inputs.release_tag || github.ref }}'
+[[ "$(grep -Fc "ref: ${RECOVERY_SOURCE_REF}" "${RELEASE_WORKFLOW}")" -eq 3 ]] \
+  || fail "release recovery does not select the immutable tag in every source-validation job"
+# shellcheck disable=SC2016 # GitHub expression must remain literal.
+grep -Fq 'ref: ${{ needs.build.outputs.release_tag }}' "${RELEASE_WORKFLOW}" \
+  || fail "draft release notes are not checked out from the validated release tag"
+# shellcheck disable=SC2016 # Workflow shell variables must remain literal.
+grep -Fq '"refs/tags/${release_tag}:${verified_tag_ref}"' "${RELEASE_WORKFLOW}" \
+  || fail "release identity does not refetch the remote annotated tag object"
+# shellcheck disable=SC2016 # Workflow command substitution must remain literal.
+grep -Fq 'tag_type=$(git cat-file -t "${verified_tag_ref}")' "${RELEASE_WORKFLOW}" \
+  || fail "release identity validates the checkout-mutated local tag ref"
+
+TAG_REMOTE="${WORKSPACE}/release-remote.git"
+TAG_SOURCE="${WORKSPACE}/release-source"
+TAG_CHECKOUT="${WORKSPACE}/release-checkout"
+git init --quiet --bare "${TAG_REMOTE}"
+git init --quiet "${TAG_SOURCE}"
+git -C "${TAG_SOURCE}" config user.name 'Tools Contract'
+git -C "${TAG_SOURCE}" config user.email 'tools-contract@example.invalid'
+printf 'release candidate\n' > "${TAG_SOURCE}/candidate.txt"
+git -C "${TAG_SOURCE}" add candidate.txt
+git -C "${TAG_SOURCE}" commit --quiet -m 'release candidate'
+git -C "${TAG_SOURCE}" tag -a v9.8.7 -m 'v9.8.7'
+git -C "${TAG_SOURCE}" remote add origin "${TAG_REMOTE}"
+git -C "${TAG_SOURCE}" push --quiet origin HEAD:main refs/tags/v9.8.7
+
+git init --quiet "${TAG_CHECKOUT}"
+git -C "${TAG_CHECKOUT}" remote add origin "${TAG_REMOTE}"
+TAG_COMMIT="$(git -C "${TAG_SOURCE}" rev-parse HEAD)"
+git -C "${TAG_CHECKOUT}" fetch --quiet --no-tags origin "${TAG_COMMIT}"
+git -C "${TAG_CHECKOUT}" checkout --quiet --detach FETCH_HEAD
+# Reproduce actions/checkout's peeled local tag ref: it is a commit, even
+# though the remote v9.8.7 ref still points to an annotated tag object.
+git -C "${TAG_CHECKOUT}" update-ref refs/tags/v9.8.7 "${TAG_COMMIT}"
+[[ "$(git -C "${TAG_CHECKOUT}" cat-file -t refs/tags/v9.8.7)" == 'commit' ]] \
+  || fail "annotated-tag checkout fixture did not reproduce a peeled local ref"
+VERIFIED_TAG_REF='refs/ioc-release-tags/v9.8.7'
+git -C "${TAG_CHECKOUT}" fetch --quiet --force --no-tags origin \
+  "refs/tags/v9.8.7:${VERIFIED_TAG_REF}"
+[[ "$(git -C "${TAG_CHECKOUT}" cat-file -t "${VERIFIED_TAG_REF}")" == 'tag' ]] \
+  || fail "private release ref did not preserve the remote annotated tag object"
+[[ "$(git -C "${TAG_CHECKOUT}" rev-parse "${VERIFIED_TAG_REF}^{commit}")" == "${TAG_COMMIT}" ]] \
+  || fail "private release ref does not peel to the checked-out source commit"
+
 for workflow in "${REPO_ROOT}"/.github/workflows/*.yml; do
   workflow_header="$(sed -n '1,/^jobs:/p' "${workflow}")"
   grep -Fq 'permissions:' <<<"${workflow_header}" \
