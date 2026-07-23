@@ -316,7 +316,7 @@ ioc:
       include: [ "*.htm", "*.html", "*.docx" ]
       exclude: [ "*.tmp", "*.part", ".*" ]
     detect:
-      use-watch-service: true
+      use-watch-service: false
       reconcile-interval: 30s
       max-messages-per-poll: 50
     stability:
