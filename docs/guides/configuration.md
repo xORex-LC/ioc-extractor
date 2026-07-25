@@ -230,8 +230,8 @@ baseline for SQLite and deterministic file handling.
 | `ioc.ingestion.dirs.failed` | path | `./var/failed` | Claimed inputs that failed terminally, retained for investigation and reviewed recovery. |
 | `ioc.ingestion.patterns.include` | non-empty glob list | HTML, HTM, DOCX | Add PDF or other supported formats explicitly. |
 | `ioc.ingestion.patterns.exclude` | glob list | temp/partial/hidden files | Exclusions win over inclusions. |
-| `ioc.ingestion.detect.use-watch-service` | boolean | `true` | Low-latency local hint. Disable on unreliable network filesystems; reconcile remains authoritative. |
-| `ioc.ingestion.detect.reconcile-interval` | positive duration | `30s` | Directory polling backstop. Lower values reduce latency but increase scanning. |
+| `ioc.ingestion.detect.use-watch-service` | boolean | `false` | Keep polling for the production correctness baseline. `true` is an optional local-filesystem optimization: matching files rejected during `quiet-period` are retried, but OS event delivery is not a full directory-rescan guarantee. Do not enable it on network or unreliable filesystems. |
+| `ioc.ingestion.detect.reconcile-interval` | positive duration | `30s` | Full directory scan cadence with the default polling mode; with WatchService it is the event/retry-queue poll cadence. Lower values reduce latency but increase scanning or wakeups. |
 | `ioc.ingestion.detect.max-messages-per-poll` | positive integer | `50` | Bounds work claimed per detection cycle. |
 | `ioc.ingestion.stability.quiet-period` | positive duration | `10s` | Increase for slow copies; too small risks reading an incomplete file. |
 | `ioc.ingestion.retry.max-attempts` | positive integer | `3` | Attempts before moving a file to failed. |
