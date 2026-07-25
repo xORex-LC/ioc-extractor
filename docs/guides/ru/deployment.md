@@ -8,8 +8,8 @@ installer baselines — Debian 11 и 12. Другие systemd-дистрибут
 
 | Способ | Назначение | Гарантии |
 |---|---|---|
-| `packaging/install.sh` | Новый хост или контролируемое обновление готовым jar | Host provisioning, verified JDK, safe marked layout, immutable activation, сохранение config и local storage health gate |
-| `packaging/deploy-local.sh` | Повторные deploy из локального checkout на Debian/WSL test host | Clean `verify`, build identity, DB backup, atomic activation, health gate и automatic rollback |
+| `packaging/install.sh` | Новый host/prefix или контролируемое обновление внутри marked layout 0.2.x | Host provisioning, verified JDK, safe marked layout, immutable activation, сохранение config и local storage health gate |
+| `packaging/deploy-local.sh` | Повторные deploy 0.2.x из локального checkout на Debian/WSL test host | Clean `verify`, build identity, DB backup, atomic activation, health gate и automatic rollback |
 
 Если поздний шаг установки завершится ошибкой, `install.sh` возвращает предыдущие
 release/unit и перезапускает ранее активный service, но не создаёт и не
@@ -113,7 +113,71 @@ Health endpoint по умолчанию доступен только на loopb
 не означает, что optional SMB endpoints уже прошли authentication: sync
 components могут оставаться `UNKNOWN` до первой операции.
 
-## Upgrade через `install.sh`
+## Переход с 0.1.0 на 0.2.0
+
+Версия 0.2.0 **не поддерживает in-place upgrade** установки 0.1.0. Старый релиз
+использовал single-directory layout с `lib/ioc-app-0.1.0.jar`, CSV-centric state
+и configuration contract, несовместимый с текущим immutable release/SQLite
+layout. `--force` не обходит эту границу, а generated CSV artifacts 0.1.0 не
+являются поддерживаемым форматом импорта в canonical database 0.2.0.
+
+Используйте filesystem-side-by-side переход. Оба prefix остаются на диске, но
+одновременно работает только один экземпляр общего `ioc-extractor.service`:
+
+1. Остановите подачу новых input и optional synchronization.
+2. Остановите 0.1.0 и сделайте проверенный внешний backup полного prefix,
+   configuration и systemd unit.
+3. Оставьте старый prefix неизменным как rollback point.
+4. Установите 0.2.0 в новый пустой prefix с `--no-start`.
+5. Настройте 0.2.0 на основе поставляемого template. Переносите только
+   проверенные site-specific значения; не копируйте старые YAML/environment
+   files целиком.
+6. Запустите 0.2.0, затем скопируйте проверенные исходные документы в новый
+   inbox, чтобы построить SQLite truth. Не меняйте старые source evidence.
+7. До приёма новых input проверьте version, health, logs, canonical row counts и
+   generated artifacts.
+8. Храните старый prefix и backup unit в течение всего rollback window.
+
+Пример cutover с исторического default prefix:
+
+```bash
+OLD_PREFIX=/opt/ioc-extractor
+NEW_PREFIX=/opt/ioc-extractor-0.2
+OLD_UNIT_BACKUP=/root/ioc-extractor-v0.1.0.service
+
+sudo systemctl stop ioc-extractor
+sudo install -o root -g root -m 0600 \
+  /etc/systemd/system/ioc-extractor.service "${OLD_UNIT_BACKUP}"
+sudo tar -C "$(dirname "${OLD_PREFIX}")" -cpf /root/ioc-extractor-v0.1.0-prefix.tar \
+  "$(basename "${OLD_PREFIX}")"
+
+sudo packaging/install.sh \
+  --prefix "${NEW_PREFIX}" \
+  --jar /tmp/ioc-extractor-0.2.0.jar \
+  --checksum /tmp/ioc-extractor-0.2.0.jar.sha256 \
+  --release-id v0.2.0 \
+  --no-start
+```
+
+Перед запуском service проверьте `${NEW_PREFIX}/etc/application.yml` и
+environment file. Повторно подайте доверенные исходные документы; не
+инициализируйте новую database из generated CSV projections 0.1.0.
+
+Rollback через границу 0.1.0/0.2.0 восстанавливает неизменный prefix 0.1.0 и
+сохранённый unit. Он никогда не направляет 0.1.0 на SQLite databases 0.2.0:
+
+```bash
+sudo systemctl stop ioc-extractor
+sudo install -o root -g root -m 0644 "${OLD_UNIT_BACKUP}" \
+  /etc/systemd/system/ioc-extractor.service
+sudo systemctl daemon-reload
+sudo systemctl start ioc-extractor
+```
+
+Input, принятые только после cutover на 0.2.0, отсутствуют в старом prefix.
+Сохраните их и явно согласуйте/повторно подайте при rollback.
+
+## Upgrade внутри 0.2.x через `install.sh`
 
 1. Проверьте новый jar/checksum на trusted build host.
 2. Остановите подачу inputs или откройте maintenance window.
@@ -167,7 +231,8 @@ commit/build time, копирует обе SQLite DB, атомарно пере�
 запускает сервис и выполняет local health gate. При ошибке восстанавливает
 прежний symlink и DB backup. `--port PORT` становится high-precedence значением
 `--server.port` daemon. Это путь для test stand, а не замена reviewed production
-release process.
+release process. Он bootstrap'ит чистый prefix и обновляет только текущий marked
+release layout; это не команда миграции с 0.1.0.
 
 Rollback намеренно ограничен application symlink и двумя SQLite DB. Он не может
 отменить input files, уже перемещённые успевшим запуститься новым daemon,
@@ -222,8 +287,10 @@ sudo packaging/uninstall.sh --prefix /opt/ioc-extractor
 
 `--purge` необратимо удаляет prefix, config, databases, artifacts, JDK и service
 account. Он требует valid installation marker и отклоняет UID 0. Pre-marker
-установка должна быть сначала принята одним запуском текущего installer. Перед
-purge создайте внешний backup и проверьте точный prefix.
+**0.2 release layout** должен быть сначала принят одним запуском текущего
+installer. Single-directory установка 0.1.0 намеренно не принимается: сохраните
+её для rollback или используйте matching uninstaller. Перед purge создайте
+внешний backup и проверьте точный prefix.
 
 ## Post-deployment checklist
 

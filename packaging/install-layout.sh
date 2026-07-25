@@ -114,7 +114,7 @@ ioc_write_marker() { # prefix service run-user
   mv -f -- "${temporary}" "${marker}"
 }
 
-ioc_is_legacy_installation() { # prefix
+ioc_is_pre_marker_release_layout() { # prefix
   local prefix="$1" target
   [[ -d "${prefix}/releases"
       && -d "${prefix}/etc"
@@ -125,6 +125,16 @@ ioc_is_legacy_installation() { # prefix
   target="$(readlink "${prefix}/current")"
   ioc_is_release_target "${target}" \
     && [[ -f "${prefix}/${target}/ioc-app.jar" ]]
+}
+
+ioc_is_v010_single_dir_installation() { # prefix
+  local prefix="$1"
+  [[ -d "${prefix}/lib"
+      && -d "${prefix}/etc"
+      && -d "${prefix}/var"
+      && -d "${prefix}/dataframe"
+      && -f "${prefix}/lib/ioc-app-0.1.0.jar"
+      && -f "${prefix}/etc/application.yml" ]]
 }
 
 ioc_directory_is_empty() { # path
