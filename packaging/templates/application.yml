@@ -218,7 +218,9 @@ ioc:
       include: [ "*.htm", "*.html", "*.docx" ]  # add "*.pdf" when required
       exclude: [ "*.tmp", "*.part", ".*" ]
     detect:
-      use-watch-service: true
+      # Polling is the correctness baseline. WatchService remains an opt-in
+      # latency optimization for local filesystems with reliable events.
+      use-watch-service: false
       reconcile-interval: 30s
       max-messages-per-poll: 50
     stability:

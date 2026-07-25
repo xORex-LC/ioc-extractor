@@ -67,17 +67,28 @@ if ioc_is_valid_marker "${SAFE_PREFIX}" "ioc-extractor" "ioc-test"; then
 fi
 ioc_write_marker "${SAFE_PREFIX}" "ioc-extractor" "ioc-test"
 
-LEGACY_PREFIX="${TEMP_ROOT}/legacy-ioc"
-mkdir -p "${LEGACY_PREFIX}/releases/r1" "${LEGACY_PREFIX}/etc" \
-  "${LEGACY_PREFIX}/var" "${LEGACY_PREFIX}/dataframe"
-touch "${LEGACY_PREFIX}/releases/r1/ioc-app.jar" "${LEGACY_PREFIX}/etc/application.yml"
-ln -s releases/r1 "${LEGACY_PREFIX}/current"
-ioc_is_legacy_installation "${LEGACY_PREFIX}" \
-  || fail "strict legacy-layout recognizer rejected the supported migration shape"
-rm "${LEGACY_PREFIX}/current"
-ln -s 'releases/../../unrelated' "${LEGACY_PREFIX}/current"
-if ioc_is_legacy_installation "${LEGACY_PREFIX}"; then
-  fail "legacy-layout recognizer accepted a traversal current target"
+PRE_MARKER_PREFIX="${TEMP_ROOT}/pre-marker-ioc"
+mkdir -p "${PRE_MARKER_PREFIX}/releases/r1" "${PRE_MARKER_PREFIX}/etc" \
+  "${PRE_MARKER_PREFIX}/var" "${PRE_MARKER_PREFIX}/dataframe"
+touch "${PRE_MARKER_PREFIX}/releases/r1/ioc-app.jar" \
+  "${PRE_MARKER_PREFIX}/etc/application.yml"
+ln -s releases/r1 "${PRE_MARKER_PREFIX}/current"
+ioc_is_pre_marker_release_layout "${PRE_MARKER_PREFIX}" \
+  || fail "strict pre-marker recognizer rejected the supported adoption shape"
+rm "${PRE_MARKER_PREFIX}/current"
+ln -s 'releases/../../unrelated' "${PRE_MARKER_PREFIX}/current"
+if ioc_is_pre_marker_release_layout "${PRE_MARKER_PREFIX}"; then
+  fail "pre-marker recognizer accepted a traversal current target"
+fi
+
+V010_PREFIX="${TEMP_ROOT}/v0.1.0-ioc"
+mkdir -p "${V010_PREFIX}/lib" "${V010_PREFIX}/etc" \
+  "${V010_PREFIX}/var" "${V010_PREFIX}/dataframe"
+touch "${V010_PREFIX}/lib/ioc-app-0.1.0.jar" "${V010_PREFIX}/etc/application.yml"
+ioc_is_v010_single_dir_installation "${V010_PREFIX}" \
+  || fail "v0.1.0 single-directory layout was not recognized"
+if ioc_is_pre_marker_release_layout "${V010_PREFIX}"; then
+  fail "v0.1.0 layout was incorrectly accepted as an in-place adoption shape"
 fi
 
 SOURCE_TREE="${TEMP_ROOT}/source-tree"

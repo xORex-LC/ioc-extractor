@@ -101,6 +101,18 @@ class ReleaseNotesContractTest {
             assertThat(section(content, "## Artifacts and checksums"))
                     .contains(".sha256");
         }
+
+        if (fileName.equals("v0.2.0.md")) {
+            String normalizedUpgradeNotes =
+                    section(content, "## Upgrade notes").replaceAll("\\s+", " ");
+            assertThat(normalizedUpgradeNotes)
+                    .as("0.2.0 must retain its explicit cross-layout transition contract")
+                    .contains(
+                            "An in-place upgrade of a 0.1.0 prefix is not supported",
+                            "fresh, side-by-side installation",
+                            "Re-ingest",
+                            "Do not run 0.1.0 against the 0.2.0 SQLite databases");
+        }
     }
 
     private static void assertSectionsAppearInOrder(String content) {

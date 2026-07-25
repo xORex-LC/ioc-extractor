@@ -8,8 +8,8 @@ systemd distributions are best effort and require operator validation.
 
 | Path | Use it for | Guarantees |
 |---|---|---|
-| `packaging/install.sh` | A new host or a simple controlled upgrade from a prepared jar | Host provisioning, verified JDK, safe marked layout, immutable activation, config preservation and local storage health gate |
-| `packaging/deploy-local.sh` | Repeated deployments from a local checkout to a Debian/WSL test host | Clean `verify`, build identity, DB backup, atomic activation, health gate and automatic rollback |
+| `packaging/install.sh` | A fresh host/prefix or a controlled upgrade within the 0.2.x marked layout | Host provisioning, verified JDK, safe marked layout, immutable activation, config preservation and local storage health gate |
+| `packaging/deploy-local.sh` | Repeated 0.2.x deployments from a local checkout to a Debian/WSL test host | Clean `verify`, build identity, DB backup, atomic activation, health gate and automatic rollback |
 
 `install.sh` restores the previous release/unit and restarts a previously active
 service when a later install step fails, but it does not create or restore a DB
@@ -114,7 +114,71 @@ The health endpoint is loopback-only by default. A healthy local service does
 not imply that optional remote SMB endpoints have already authenticated: sync
 components may remain `UNKNOWN` until their first operation.
 
-## Upgrade with `install.sh`
+## Transition from 0.1.0 to 0.2.0
+
+Version 0.2.0 does **not** support an in-place upgrade of a 0.1.0 installation.
+The old release used a single `lib/ioc-app-0.1.0.jar` layout, CSV-centric state
+and a configuration contract that is not accepted as the current immutable
+release/SQLite layout. `--force` does not bypass this boundary, and generated
+0.1.0 CSV artifacts are not a supported import format for the 0.2.0 canonical
+database.
+
+Use a filesystem-side-by-side transition. Both prefixes remain on disk, but
+only one instance of the shared `ioc-extractor.service` runs at a time:
+
+1. Stop new input and optional synchronization.
+2. Stop 0.1.0 and take a verified external backup of its complete prefix,
+   configuration and systemd unit.
+3. Leave the old prefix unchanged as the rollback point.
+4. Install 0.2.0 into a new, empty prefix with `--no-start`.
+5. Configure 0.2.0 from its supplied template. Translate only reviewed
+   site-specific values; do not copy the old YAML or environment file wholesale.
+6. Start 0.2.0, then copy the reviewed original source documents into its inbox
+   to build the new SQLite truth. Keep the old source evidence untouched.
+7. Validate version, health, logs, canonical row counts and generated artifacts
+   before accepting new input.
+8. Retain the old prefix and unit backup for the entire rollback window.
+
+Example cutover from the historical default prefix:
+
+```bash
+OLD_PREFIX=/opt/ioc-extractor
+NEW_PREFIX=/opt/ioc-extractor-0.2
+OLD_UNIT_BACKUP=/root/ioc-extractor-v0.1.0.service
+
+sudo systemctl stop ioc-extractor
+sudo install -o root -g root -m 0600 \
+  /etc/systemd/system/ioc-extractor.service "${OLD_UNIT_BACKUP}"
+sudo tar -C "$(dirname "${OLD_PREFIX}")" -cpf /root/ioc-extractor-v0.1.0-prefix.tar \
+  "$(basename "${OLD_PREFIX}")"
+
+sudo packaging/install.sh \
+  --prefix "${NEW_PREFIX}" \
+  --jar /tmp/ioc-extractor-0.2.0.jar \
+  --checksum /tmp/ioc-extractor-0.2.0.jar.sha256 \
+  --release-id v0.2.0 \
+  --no-start
+```
+
+Review `${NEW_PREFIX}/etc/application.yml` and its environment file before
+starting the service. Re-ingest trusted original documents; do not seed the new
+database from generated 0.1.0 CSV projections.
+
+Rollback across the 0.1.0/0.2.0 boundary restores the untouched 0.1.0 prefix and
+saved unit. It never points 0.1.0 at the 0.2.0 SQLite databases:
+
+```bash
+sudo systemctl stop ioc-extractor
+sudo install -o root -g root -m 0644 "${OLD_UNIT_BACKUP}" \
+  /etc/systemd/system/ioc-extractor.service
+sudo systemctl daemon-reload
+sudo systemctl start ioc-extractor
+```
+
+Inputs accepted only after the 0.2.0 cutover are not present in the old prefix.
+Preserve them and explicitly reconcile/resubmit them if rollback is required.
+
+## Upgrade within 0.2.x with `install.sh`
 
 1. Verify the new jar and checksum on a trusted build host.
 2. Stop input submission or otherwise establish an ingestion maintenance window.
@@ -171,7 +235,8 @@ On failure it restores the previous symlink and DB backup. `--port PORT` becomes
 the daemon's high-precedence `--server.port` value, not merely the probe address.
 
 Use this path for a test stand, not as a substitute for a reviewed production
-release process.
+release process. It bootstraps a clean prefix and upgrades only the current
+marked release layout; it is not a 0.1.0 migration command.
 
 Rollback is deliberately bounded to the application symlink and two SQLite
 databases. It cannot reverse input files already moved by a briefly running new
@@ -226,8 +291,10 @@ sudo packaging/uninstall.sh --prefix /opt/ioc-extractor
 
 `--purge` irreversibly removes the prefix, configuration, databases, artifacts,
 JDK and service account. It requires a valid installation marker and refuses UID
-0. A pre-marker installation must first be adopted by running the current
-installer once. Take an external backup and verify the exact prefix before purge.
+0. A pre-marker **0.2 release layout** must first be adopted by running the
+current installer once. A 0.1.0 single-directory installation is intentionally
+not adopted; preserve it for rollback or use its matching uninstaller. Take an
+external backup and verify the exact prefix before purge.
 
 ## Post-deployment checklist
 

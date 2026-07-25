@@ -240,8 +240,10 @@ MARKER="$(ioc_marker_path "${PREFIX}")"
 if [[ -e "${MARKER}" ]]; then
   ioc_is_valid_marker "${PREFIX}" "${SERVICE}" "${RUN_USER}" \
     || die "invalid or mismatched installation marker: ${MARKER}"
-elif ioc_is_legacy_installation "${PREFIX}"; then
-  warn "adopting validated pre-marker installation at ${PREFIX}"
+elif ioc_is_v010_single_dir_installation "${PREFIX}"; then
+  die "v0.1.0 in-place upgrade is unsupported; preserve this prefix and install v0.2.0 into a clean prefix (see docs/guides/deployment.md)"
+elif ioc_is_pre_marker_release_layout "${PREFIX}"; then
+  warn "adopting validated pre-marker release layout at ${PREFIX}"
 elif ! ioc_directory_is_empty "${PREFIX}"; then
   die "refusing non-empty unmarked prefix: ${PREFIX}"
 fi

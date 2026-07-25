@@ -35,13 +35,16 @@ jobs:
       asset_sha256: ${{ steps.prepare.outputs.asset_sha256 }}
     steps:
       - name: Check out exact source revision
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # A recovery draft runs the fixed workflow from main, but every
+          # release input must still come from the immutable requested tag.
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.create_draft && inputs.release_tag || github.ref }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Set up JDK 21
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
         with:
           distribution: temurin
           java-version: '21'
@@ -68,12 +71,18 @@ jobs:
 
           source_commit=$(git rev-parse HEAD)
           if [[ "${GITHUB_EVENT_NAME}" == 'push' || "${CREATE_DRAFT}" == 'true' ]]; then
-            tag_type=$(git cat-file -t "refs/tags/${release_tag}")
+            # actions/checkout may replace the local annotated-tag ref with its
+            # peeled commit. Fetch the remote tag object into a private ref so
+            # annotation validation does not depend on checkout internals.
+            verified_tag_ref="refs/ioc-release-tags/${release_tag}"
+            git fetch --force --no-tags origin \
+              "refs/tags/${release_tag}:${verified_tag_ref}"
+            tag_type=$(git cat-file -t "${verified_tag_ref}")
             [[ "${tag_type}" == 'tag' ]] || {
               echo "Release tag ${release_tag} must be annotated" >&2
               exit 1
             }
-            tag_commit=$(git rev-parse "refs/tags/${release_tag}^{commit}")
+            tag_commit=$(git rev-parse "${verified_tag_ref}^{commit}")
             [[ "${tag_commit}" == "${source_commit}" ]] || {
               echo "Tag ${release_tag} does not select checked-out commit ${source_commit}" >&2
               exit 1
@@ -112,7 +121,7 @@ jobs:
             --output-dir release-dist >> "${GITHUB_OUTPUT}"
 
       - name: Upload immutable workflow artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-${{ steps.prepare.outputs.release_tag }}
           path: |
@@ -125,8 +134,9 @@ jobs:
   doc-links:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.create_draft && inputs.release_tag || github.ref }}
           persist-credentials: false
 
       - name: Check documentation links
@@ -137,14 +147,15 @@ jobs:
   packaging-contracts:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The tools contract exercises release-range inventory against v0.1.0.
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.create_draft && inputs.release_tag || github.ref }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Set up JDK 21
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
         with:
           distribution: temurin
           java-version: '21'
@@ -165,12 +176,13 @@ jobs:
       contents: write
     steps:
       - name: Check out exact source revision
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.build.outputs.release_tag }}
           persist-credentials: false
 
       - name: Download the build job's exact bytes
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-${{ needs.build.outputs.release_tag }}
           path: release-dist
