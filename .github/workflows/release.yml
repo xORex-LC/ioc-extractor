@@ -37,6 +37,9 @@ jobs:
       - name: Check out exact source revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # A recovery draft runs the fixed workflow from main, but every
+          # release input must still come from the immutable requested tag.
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.create_draft && inputs.release_tag || github.ref }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -68,12 +71,18 @@ jobs:
 
           source_commit=$(git rev-parse HEAD)
           if [[ "${GITHUB_EVENT_NAME}" == 'push' || "${CREATE_DRAFT}" == 'true' ]]; then
-            tag_type=$(git cat-file -t "refs/tags/${release_tag}")
+            # actions/checkout may replace the local annotated-tag ref with its
+            # peeled commit. Fetch the remote tag object into a private ref so
+            # annotation validation does not depend on checkout internals.
+            verified_tag_ref="refs/ioc-release-tags/${release_tag}"
+            git fetch --force --no-tags origin \
+              "refs/tags/${release_tag}:${verified_tag_ref}"
+            tag_type=$(git cat-file -t "${verified_tag_ref}")
             [[ "${tag_type}" == 'tag' ]] || {
               echo "Release tag ${release_tag} must be annotated" >&2
               exit 1
             }
-            tag_commit=$(git rev-parse "refs/tags/${release_tag}^{commit}")
+            tag_commit=$(git rev-parse "${verified_tag_ref}^{commit}")
             [[ "${tag_commit}" == "${source_commit}" ]] || {
               echo "Tag ${release_tag} does not select checked-out commit ${source_commit}" >&2
               exit 1
@@ -127,6 +136,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.create_draft && inputs.release_tag || github.ref }}
           persist-credentials: false
 
       - name: Check documentation links
@@ -140,6 +150,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The tools contract exercises release-range inventory against v0.1.0.
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.create_draft && inputs.release_tag || github.ref }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -167,6 +178,7 @@ jobs:
       - name: Check out exact source revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.build.outputs.release_tag }}
           persist-credentials: false
 
       - name: Download the build job's exact bytes

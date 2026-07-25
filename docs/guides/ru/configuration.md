@@ -230,8 +230,8 @@ filesystem, чтобы claims использовали atomic move. Concurrency 
 | `ioc.ingestion.dirs.failed` | путь | `./var/failed` | Claimed inputs с terminal failure, сохраняемые для анализа и reviewed recovery. |
 | `ioc.ingestion.patterns.include` | непустой glob list | HTML, HTM, DOCX | PDF и другие supported formats добавляются явно. |
 | `ioc.ingestion.patterns.exclude` | glob list | temp/partial/hidden | Exclusions имеют приоритет. |
-| `ioc.ingestion.detect.use-watch-service` | boolean | `true` | Low-latency local hint. На ненадёжной network filesystem отключите; reconcile остаётся authoritative. |
-| `ioc.ingestion.detect.reconcile-interval` | positive duration | `30s` | Directory polling backstop. Меньше — ниже latency, больше scanning. |
+| `ioc.ingestion.detect.use-watch-service` | boolean | `false` | Для production correctness baseline оставляйте polling. `true` — optional optimization для локальной filesystem: matching-файлы, отклонённые во время `quiet-period`, будут проверены повторно, но доставка событий ОС не гарантирует полный rescan. Не включайте на network/unreliable filesystem. |
+| `ioc.ingestion.detect.reconcile-interval` | positive duration | `30s` | Период полного directory scan в default polling-режиме; с WatchService — период опроса event/retry queue. Меньше — ниже latency, больше scanning или wakeups. |
 | `ioc.ingestion.detect.max-messages-per-poll` | positive integer | `50` | Ограничивает claims одного detection cycle. |
 | `ioc.ingestion.stability.quiet-period` | positive duration | `10s` | Увеличьте для медленного копирования; слишком мало — риск incomplete file. |
 | `ioc.ingestion.retry.max-attempts` | positive integer | `3` | Попытки до перемещения в failed. |

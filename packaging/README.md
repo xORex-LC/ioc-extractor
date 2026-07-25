@@ -67,6 +67,11 @@ Release files are root-owned and immutable. The service account owns writable
 runtime state. `etc/`, `var/` and `dataframe/` stay outside release directories
 so activation never replaces operator data.
 
+This is the 0.2.x layout. The 0.1.0 single-directory layout
+(`lib/ioc-app-0.1.0.jar`) is intentionally not adopted in place: 0.2.0 uses a
+fresh side-by-side prefix and rebuilds SQLite truth by re-ingesting reviewed
+original sources. The old prefix remains the cross-version rollback point.
+
 ## `install.sh`
 
 ```text
@@ -85,6 +90,8 @@ Key contracts:
 - refuses source checkouts and non-empty unrelated directories without a bypass;
 - writes a root-owned installation marker binding prefix, service and non-root
   service account; destructive lifecycle operations require that marker;
+- detects a 0.1.0 single-directory installation and rejects in-place adoption
+  with a pointer to the side-by-side transition procedure;
 - accepts exactly one regular application jar and verifies an optional checksum;
 - requires Java 21 or installs the architecture-specific pinned Temurin 21
   archive after SHA-256 verification and staging extraction;
@@ -95,11 +102,17 @@ Key contracts:
 - re-running with the same release ID is allowed only when bytes are identical.
 
 `--force` permits overwriting operator configuration only. It never bypasses
-prefix, source-tree, marker, user or checksum safety. Reconcile `*.new` files as
-described in the deployment guide.
+prefix, source-tree, marker, user, checksum or the 0.1.0 fresh-install boundary.
+Reconcile `*.new` files as described in the deployment guide.
 
 The installer does not provide the database backup and automatic rollback
 transaction of `deploy-local.sh`.
+
+Upgrades within a marked 0.2.x layout may reuse the prefix. Transition from
+0.1.0 to 0.2.0 is filesystem-side-by-side: preserve the old prefix and unit,
+install into a clean prefix, configure from the 0.2.0 template and re-ingest
+trusted source documents. Generated 0.1.0 CSV projections are not a supported
+SQLite import path.
 
 ## `deploy-local.sh`
 
@@ -116,6 +129,9 @@ tree is compared again after the build so generated/concurrent changes cannot be
 published under the wrong commit identity. `--port` is rendered into the daemon
 unit as the high-precedence `--server.port` override and is also used by the
 health gate.
+
+The script bootstraps a clean prefix or upgrades an existing marked 0.2.x
+layout. It is not a migration command for the 0.1.0 single-directory layout.
 
 The privileged phase:
 
@@ -142,8 +158,10 @@ sudo ./packaging/uninstall.sh [--prefix DIR] [--user NAME] [--purge]
 
 Without `--purge`, the script stops/disables the service and removes its unit but
 keeps the prefix, account, config and all data. `--purge` permanently deletes the
-marker-validated prefix and non-root service account. A legacy pre-marker install
-must first be adopted by one safe `install.sh` run before purge is available.
+marker-validated prefix and non-root service account. A pre-marker 0.2 release
+layout must first be adopted by one safe `install.sh` run before purge is
+available. A 0.1.0 installation must use its matching uninstaller or remain
+preserved as a rollback point.
 
 ## Automated packaging gate
 

@@ -9,7 +9,8 @@ SQLite и CSV-проекции. Точная конфигурация наход
 
 ```text
 inbox
-  -> poll / optional WatchService hint
+  -> periodic directory scan (supported)
+     / optional WatchService event path
   -> include/exclude glob filter
   -> quiet-period stability check
   -> content hash
@@ -53,8 +54,13 @@ Daemon использует синхронный Spring Integration channel. О�
 
 1. **SQLite — источник истины.** CSV после commit является восстанавливаемой
    проекцией, а не отдельной системой записи.
-2. **Событие файловой системы — только ускоритель.** Polling остаётся backstop;
-   `WatchService` можно отключить без изменения корректности.
+2. **Polling — production correctness-path и default.** При
+   `use-watch-service=false` каждый detection cycle полностью сканирует inbox.
+   WatchService остаётся opt-in latency optimization для локальной filesystem:
+   matching-файл, отклонённый только из-за quiet period, возвращается в
+   retry-set через `DiscardAwareFileListFilter` и проверяется следующим poll.
+   Это закрывает `ING-14`, но не превращает delivery событий ОС в полный
+   directory rescan; на network/unreliable filesystem используйте polling.
 3. **Файл должен стабилизироваться до claim.** Quiet period защищает от чтения
    во время записи; producer-side `*.part` + atomic rename остаётся лучшим
    входным контрактом.

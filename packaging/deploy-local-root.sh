@@ -142,7 +142,7 @@ MARKER="$(ioc_marker_path "${PREFIX}")"
 if [[ -e "${MARKER}" ]]; then
   ioc_is_valid_marker "${PREFIX}" "${SERVICE}" "${RUN_USER}" \
     || die "invalid or mismatched installation marker: ${MARKER}"
-elif ioc_is_legacy_installation "${PREFIX}"; then
+elif ioc_is_pre_marker_release_layout "${PREFIX}"; then
   log "adopting validated pre-marker installation at ${PREFIX}"
   ioc_write_marker "${PREFIX}" "${SERVICE}" "${RUN_USER}"
   chown root:"${RUN_GROUP}" "${MARKER}"
