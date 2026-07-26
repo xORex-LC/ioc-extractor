@@ -65,7 +65,7 @@ APP_VERSION="$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdou
 APP_JAR="bootstrap/ioc-app/target/ioc-app-${APP_VERSION}.jar"
 
 java -jar "${APP_JAR}" --version
-java -jar "${APP_JAR}" extract --source source/ioc-source.htm
+java -jar "${APP_JAR}" extract --source source/ioc-source.docx
 java -jar "${APP_JAR}" export --profile reputation-lists
 ```
 
