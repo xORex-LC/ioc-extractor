@@ -15,7 +15,7 @@ language: "ru"
 
 | Goal | State | Evidence | Next gate |
 |---|---|---|---|
-| `R030-BASE` | `in-progress` | [baseline](evidence/baseline.md) | `BASE-TESTS-04` test lifecycle and duration inventory |
+| `R030-BASE` | `in-progress` | [baseline](evidence/baseline.md) | `BASE-COVERAGE-05` measurement-only JaCoCo and coverage capture |
 | `R030-BUILD` | `planned` | [build-quality ledger](evidence/build-quality-ledger.md) | SpotBugs report baseline + CPD calibration |
 | `R030-TEST` global controls | `planned` | [test-quality ledger](evidence/test-quality-ledger.md) | JaCoCo report-only baseline |
 | `R030-SEC` | `planned` | — | Security gap analysis |
@@ -54,7 +54,7 @@ language: "ru"
 
 | Work item | Goal | Scope | Stage | Owner | State | Evidence |
 |---|---|---|---|---|---|---|
-| `BASE-TESTS-04` | `R030-BASE` | Reactor test lifecycle and effectiveness inventory | All six analysis gates captured; consolidation/current-HEAD verify next | AI agent | `analyzing` | [baseline](evidence/baseline.md), [test-quality ledger](evidence/test-quality-ledger.md#coarse-effectiveness-baseline) |
+| `BASE-COVERAGE-05` | `R030-BASE` | Measurement-only JaCoCo bootstrap and reactor coverage capture | Ready for analysis and report-only implementation | AI agent | `planned` | [baseline](evidence/baseline.md), [test-quality ledger](evidence/test-quality-ledger.md#coverage-baseline-и-ratchet) |
 
 ## 4. Deferred и blocked
 

@@ -20,7 +20,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `BASE-ENV-01` | `verified` | Revision and execution environment captured |
 | `BASE-REACTOR-02` | `verified` | Module graph and dependency inventory captured |
 | `BASE-VERIFY-03` | `verified` | Fresh clean reactor verification captured |
-| `BASE-TESTS-04` | `analyzing` | Gates 1–6/6 captured; evidence consolidation and current-HEAD verification pending |
+| `BASE-TESTS-04` | `verified` | Six analysis gates captured; findings handed to `R030-TEST`; proceed to `BASE-COVERAGE-05` |
 | `BASE-COVERAGE-05` | `planned` | Measurement-only JaCoCo and coverage capture |
 | `BASE-QUALITY-06` | `planned` | Warning, dependency and existing-control inventory |
 | `BASE-RUNTIME-07` | `planned` | Representative performance/resource measurements |
@@ -55,6 +55,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `make clean` | 0 | Maven reactor summary | Removed Maven build outputs; wall-clock `0.494 s` |
 | `make verify` | 0 | `.dev/state/last-verify.env`; `*/target/surefire-reports/TEST-*.xml` | Official `./mvnw -B -ntp -T 1C verify`; wall-clock `39.210 s` |
 | `/usr/bin/time make verify` | 0 | `.dev/state/last-verify.env`; current-reactor Surefire XML | Warm-output full test run on `f4cdd06`; Maven wall `34.758 s`, process real `35.74 s` |
+| `make verify` | 0 | `.dev/state/last-verify.env`; current-reactor Surefire XML | `BASE-TESTS-04` consolidation verification on `5a746bb`; Maven wall `33.305 s` |
 
 ### Fresh verification summary
 
@@ -93,6 +94,28 @@ reactor, not build output left behind by a module that no longer participates in
 it. Test evidence is therefore scoped to modules declared by the root POM; raw
 `target/` discovery across arbitrary repository paths is not an accepted
 measurement method.
+
+### `BASE-TESTS-04` closure
+
+All six planned analysis gates are captured:
+
+1. tracked-source and Surefire discovery reconciliation;
+2. observed unit/component, integration, contract, architecture, publication
+   and E2E lifecycle classification;
+3. tag, condition, skip, retry and CI-selection inventory;
+4. full-reactor and per-suite duration baseline;
+5. bounded-wait, isolation and selected-suite repeat analysis;
+6. coarse behavioral-effectiveness and consumer-gap review.
+
+The consolidation verification on evidence commit `5a746bb` passed all 21
+reactor projects. A declared-reactor recount confirmed 171 suites and 781 cases,
+with 0 failures, 0 errors and the same 2 unavailable external SMB cases.
+
+The gate records dispositions rather than remediating findings. In particular,
+the JDK regex-engine contract gap, unbounded failure-path waits, lifecycle/tag
+separation, scheduled stability pilot and external SMB evidence remain
+`R030-TEST` work. Coverage is intentionally not inferred from suite or assertion
+counts and is the next independent baseline gate, `BASE-COVERAGE-05`.
 
 ## Module/dependency inventory
 

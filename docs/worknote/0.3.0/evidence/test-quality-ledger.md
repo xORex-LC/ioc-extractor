@@ -15,6 +15,10 @@ Contract: [R030-TEST](../goals/R030-TEST-test-quality.md).
 Этот ledger хранит изменяемые измерения и dispositions. Нормативные thresholds,
 taxonomy и scope находятся только в goal contract.
 
+`BASE-TESTS-04` inventory status: **verified** on evidence commit `5a746bb`.
+Coverage measurement and all remediation remain open under their own work
+items.
+
 ## Baseline discovery inventory
 
 Captured for `BASE-TESTS-04` from tracked `src/test/**/*.java` files and
@@ -509,17 +513,17 @@ universe.
 
 ## Completion
 
-- [ ] Test inventory and lifecycle classification complete
+- [x] Test inventory and lifecycle classification complete
 - [ ] Per-module and aggregate baseline captured
 - [ ] Coverage universe and exclusions accepted
 - [ ] Fixed floors and per-module ratchets enforced
 - [ ] Codecov signal operational либо имеет external-unavailability disposition
 - [ ] Codecov status подтверждён как non-required
-- [ ] Risk-based gaps have disposition
-- [ ] Flake/wait/duration findings have disposition
+- [x] Risk-based gaps have disposition
+- [x] Flake/wait/duration findings have disposition
 - [ ] PIT command/profile и reports воспроизводимы
 - [ ] PIT survived mutants классифицированы
 - [ ] PIT runtime cost измерена
 - [ ] Diagnostic pilots have adoption decisions
 - [ ] Published testing documentation matches live build
-- [ ] Status matrix updated
+- [x] Status matrix updated
