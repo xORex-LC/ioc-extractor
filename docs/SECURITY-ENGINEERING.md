@@ -165,7 +165,8 @@ supported contract не входят. Их появление является �
 | `SEC-CI-3` | Явные минимальные workflow permissions и immutable full-SHA pinning Actions | Enforced | все workflows default к `contents: read`, write выдаётся только release job; remote Actions закреплены полным SHA с version comment, а tools contract отклоняет tag refs; Dependabot сохраняет update path |
 | `SEC-CI-4` | Dependency Review на PR dependency changes | Planned | trigger — добавление blocking PR control после baseline/dry run |
 | `SEC-CI-5` | Secret scanning и push protection | Planned | trigger — подтверждённая доступность функции для repository и согласованный response workflow |
-| `SEC-VER-1` | Java/GitHub Actions SAST | Planned | сначала non-blocking baseline и noise triage; blocking policy вводится отдельно |
+| `SEC-CI-6` | Внешний Codecov coverage reporting | Designed | signal-only upload/history/PR annotations поверх project-owned JaCoCo XML; status не является required и outage не блокирует PR/release; remote Action подчиняется `SEC-CI-3`, token/permissions/data-sharing фиксируются до activation |
+| `SEC-VER-1` | Java/GitHub Actions SAST | Planned | сначала non-blocking baseline и noise triage; blocking policy вводится отдельно; generic SpotBugs из build-quality контура не закрывает этот security control без отдельно принятого security ruleset |
 | `SEC-VER-2` | Generic web DAST | Not applicable | нет публичного HTTP/auth surface; пересмотреть при появлении внешнего network API/UI |
 | `SEC-VER-3` | Негативный/fuzz/property корпус вокруг document parsing, paths, manifests и resource budgets | Planned | минимальные malformed fixtures хранятся в test resources, крупные/ресурсоёмкие случаи генерируются test builders/scripts; resource assertions и hostile-path cases связывают evidence с `SEC-INP-2`/`SRC-2` и §10 |
 
@@ -344,6 +345,10 @@ condition. Suppression может технически скрыть повтор
 8. Если внешняя платформа поддерживает OIDC, short-lived credentials
    предпочтительнее долгоживущего cloud secret. Этот механизм активируется
    только вместе с реальной cloud integration.
+9. Неавторитетный внешний reporting service не становится единственным
+   носителем blocking gate. Его outage не блокирует PR/release, если
+   project-owned локально воспроизводимый check прошёл; иная enforcement policy
+   требует отдельной registry decision и documented outage behavior.
 
 ## 10. Недоверенные документы, runtime и DAST applicability
 
