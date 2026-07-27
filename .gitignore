@@ -61,4 +61,9 @@ AGENTS.md
 .codex
 
 # Local design/work notes are scratch context, not published project documentation.
-/docs/worknote/
+/docs/worknote/*
+
+# The 0.3.0 release execution bundle is version-controlled as non-published
+# planning and evidence. Other worknotes remain local by default.
+!/docs/worknote/0.3.0/
+!/docs/worknote/0.3.0/**
