@@ -165,6 +165,83 @@ integration suites, contract/TCK, architecture, E2E or external cohorts.
 Introducing the controlled tags, composed annotations and convention check is
 an `R030-TEST` implementation item; this gate only records the current state.
 
+## Duration baseline
+
+A complete warm-output `make verify` on commit `f4cdd06` passed at
+`2026-07-27T14:56:21Z`. Maven reported `34.758 s` wall-clock and
+`/usr/bin/time` reported `35.74 s` real, `132.85 s` user and `8.00 s` system.
+This is a full test execution with already compiled outputs, not a replacement
+for the clean-build `39.210 s` baseline.
+
+Surefire suite durations are summed only within the declared reactor. Their
+`39.815` suite-seconds are useful for locating test cost, but are not build
+wall-clock: Maven runs modules concurrently with `-T 1C`.
+
+| Module | Suites | Suite-seconds |
+|---|---:|---:|
+| `platform/platform-errors` | 0 | 0.000 |
+| `platform/platform-diagnostics` | 10 | 0.278 |
+| `platform/platform-etl` | 2 | 0.184 |
+| `platform/platform-events` | 3 | 0.257 |
+| `platform/platform-concurrency` | 2 | 0.281 |
+| `platform/platform-observability` | 6 | 0.339 |
+| `platform/platform-diagnostics-logging` | 4 | 0.340 |
+| `core/ioc-domain` | 5 | 1.076 |
+| `core/ioc-application` | 36 | 1.005 |
+| `core/ioc-application-tck` | 0 | 0.000 |
+| `adapters/adapter-regex-re2j` | 0 | 0.000 |
+| `adapters/adapter-psl` | 1 | 0.383 |
+| `adapters/adapter-source-tika` | 3 | 2.940 |
+| `adapters/adapter-sink-csv` | 10 | 2.494 |
+| `adapters/adapter-manifest-json-jackson` | 1 | 1.216 |
+| `adapters/adapter-store-jdbc` | 15 | 8.233 |
+| `adapters/adapter-transport-smb` | 8 | 1.767 |
+| `adapters/adapter-ingest` | 6 | 1.145 |
+| `adapters/adapter-cli-picocli` | 7 | 1.423 |
+| `bootstrap/ioc-app` | 52 | 16.454 |
+| **Reactor suite sum** | **171** | **39.815** |
+
+`bootstrap/ioc-app` accounts for 41.3% and `adapter-store-jdbc` for 20.7% of
+suite-seconds; together they account for 62.0%.
+
+### Slowest suites
+
+| Suite | Module | Seconds |
+|---|---|---:|
+| `JdbcLedgerDaemonRuntimeModeTest` | `bootstrap/ioc-app` | 4.429 |
+| `ArchitectureTest` | `bootstrap/ioc-app` | 2.180 |
+| `IocPropertiesBindingTest` | `bootstrap/ioc-app` | 2.115 |
+| `JdbcPublishLedgerTest` | `adapters/adapter-store-jdbc` | 1.906 |
+| `CsvArtifactSliceWriterTest` | `adapters/adapter-sink-csv` | 1.562 |
+| `TikaSourceReaderDiagnosticTest` | `adapters/adapter-source-tika` | 1.475 |
+| `DataframeSchemaReconcilerTest` | `adapters/adapter-store-jdbc` | 1.219 |
+| `JacksonSliceManifestCodecTest` | `adapters/adapter-manifest-json-jackson` | 1.216 |
+| `TikaSourceReaderFormatContractTest` | `adapters/adapter-source-tika` | 1.192 |
+| `DaemonManagementEndpointTest` | `bootstrap/ioc-app` | 1.159 |
+
+### Slowest cases
+
+| Test case | Module | Seconds |
+|---|---|---:|
+| `ArchitectureTest#layers_point_inward` | `bootstrap/ioc-app` | 1.930 |
+| `TikaSourceReaderDiagnosticTest#preserves_io_failure_as_typed_read_failure` | `adapters/adapter-source-tika` | 1.244 |
+| `JdbcPublishLedgerTest#countsStatusesWithSelectionFilters` | `adapters/adapter-store-jdbc` | 0.944 |
+| `DomainBoundaryTest#capabilities_are_acyclic` | `core/ioc-domain` | 0.917 |
+| `ConnectTimeoutSocketFactoryTest#appliesConfiguredTimeoutToTcpConnect` | `adapters/adapter-transport-smb` | 0.899 |
+| `CatalogReferenceRatchetTest#every_catalog_constant_is_referenced_or_explicitly_allowlisted` | `bootstrap/ioc-app` | 0.711 |
+| `JdbcLedgerDaemonRuntimeModeTest#daemon_context_can_select_jdbc_ingestion_ledger` | `bootstrap/ioc-app` | 0.555 |
+| `TikaSourceReaderFormatContractTest#reads_text_from_docx` | `adapters/adapter-source-tika` | 0.541 |
+| `TikaSourceReaderFormatContractTest#reads_text_from_pdf` | `adapters/adapter-source-tika` | 0.525 |
+| `ExportCommandTest#delegatesCompleteRecoveryAndExportUseCase` | `adapters/adapter-cli-picocli` | 0.430 |
+
+Suite time includes class/framework lifecycle that is not necessarily attributed
+to an individual case. For example, `JdbcLedgerDaemonRuntimeModeTest` reports
+`4.429 s`, while its single case reports `0.555 s`; the remaining `3.874 s` is
+context lifecycle overhead. `JacksonSliceManifestCodecTest` and
+`DaemonManagementEndpointTest` similarly show about `0.9 s` of non-case
+overhead. These are lifecycle-separation and trend signals, not standalone
+performance defects.
+
 ## Instrumentation
 
 | Control | Version/config | Local command | CI evidence | State |

@@ -54,7 +54,7 @@ language: "ru"
 
 | Work item | Goal | Scope | Stage | Owner | State | Evidence |
 |---|---|---|---|---|---|---|
-| `BASE-TESTS-04` | `R030-BASE` | Reactor test lifecycle and effectiveness inventory | Discovery/lifecycle/selection captured; duration analysis next | AI agent | `analyzing` | [baseline](evidence/baseline.md), [test-quality ledger](evidence/test-quality-ledger.md#tags-conditions-and-skips) |
+| `BASE-TESTS-04` | `R030-BASE` | Reactor test lifecycle and effectiveness inventory | Discovery through duration captured; wait/isolation/flake analysis next | AI agent | `analyzing` | [baseline](evidence/baseline.md), [test-quality ledger](evidence/test-quality-ledger.md#duration-baseline) |
 
 ## 4. Deferred и blocked
 

@@ -20,7 +20,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `BASE-ENV-01` | `verified` | Revision and execution environment captured |
 | `BASE-REACTOR-02` | `verified` | Module graph and dependency inventory captured |
 | `BASE-VERIFY-03` | `verified` | Fresh clean reactor verification captured |
-| `BASE-TESTS-04` | `analyzing` | Gates 1–3/6: discovery, lifecycle and selection/skip state captured |
+| `BASE-TESTS-04` | `analyzing` | Gates 1–4/6: discovery, lifecycle, selection and duration captured |
 | `BASE-COVERAGE-05` | `planned` | Measurement-only JaCoCo and coverage capture |
 | `BASE-QUALITY-06` | `planned` | Warning, dependency and existing-control inventory |
 | `BASE-RUNTIME-07` | `planned` | Representative performance/resource measurements |
@@ -53,7 +53,8 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `./mvnw -B -ntp dependency:tree -Dincludes=com.iocextractor -DoutputType=text` | 0 | Module table below | Reactor resolved successfully; no Maven dependency cycle |
 | `git ls-files <module>/src/main <module>/src/test` | 0 | File counts below | Counts tracked files only; `target/` and untracked local files are excluded |
 | `make clean` | 0 | Maven reactor summary | Removed Maven build outputs; wall-clock `0.494 s` |
-| `make verify` | 0 | `.dev/runtime/last-verify.env`; `*/target/surefire-reports/TEST-*.xml` | Official `./mvnw -B -ntp -T 1C verify`; wall-clock `39.210 s` |
+| `make verify` | 0 | `.dev/state/last-verify.env`; `*/target/surefire-reports/TEST-*.xml` | Official `./mvnw -B -ntp -T 1C verify`; wall-clock `39.210 s` |
+| `/usr/bin/time make verify` | 0 | `.dev/state/last-verify.env`; current-reactor Surefire XML | Warm-output full test run on `f4cdd06`; Maven wall `34.758 s`, process real `35.74 s` |
 
 ### Fresh verification summary
 
@@ -141,7 +142,7 @@ Totals across child modules:
 
 | Module/scope | Test classes | Unit/component | Integration | Contract/architecture/publication/E2E | Line | Branch | Missed branches | Duration | Flake status |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| Reactor aggregate | 173 Java files / 171 suites / 781 cases | 114 | 38 | 6 / 4 / 7 / 2 | TBD | TBD | TBD | TBD | TBD |
+| Reactor aggregate | 173 Java files / 171 suites / 781 cases | 114 | 38 | 6 / 4 / 7 / 2 | TBD | TBD | TBD | `35.74 s` verify real / `39.815` suite-seconds | TBD |
 | Per-module rows | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 
 Detailed per-module ratchets и dispositions ведутся в
@@ -156,7 +157,7 @@ Detailed per-module ratchets и dispositions ведутся в
 | JUnit tags | No `@Tag` or composed test annotation; no tag filters | Source/POM/CI inventory; [test-quality ledger](test-quality-ledger.md#tags-conditions-and-skips) | Missing controlled selection; implement accepted vocabulary under `R030-TEST` |
 | Fixed sleeps/bounded waits | TBD | TBD | TBD |
 | Disabled/quarantined tests | No `@Disabled`, assumptions, quarantine or retry; 2 opt-in external cases skipped by one class-level condition | Surefire XML and source inventory; [test-quality ledger](test-quality-ledger.md#tags-conditions-and-skips) | Live SMB evidence remains unavailable; no hidden offline quarantine found |
-| Slowest tests/suites | TBD | TBD | TBD |
+| Slowest tests/suites | Slowest suite `4.429 s`; slowest case `1.930 s`; bootstrap + JDBC are 62.0% of suite-seconds | Timed full verify and Surefire XML; [test-quality ledger](test-quality-ledger.md#duration-baseline) | Duration baseline captured; lifecycle split and ongoing trend control belong to `R030-TEST` |
 
 ## Quality reports
 
