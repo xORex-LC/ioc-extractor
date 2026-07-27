@@ -20,7 +20,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `BASE-ENV-01` | `verified` | Revision and execution environment captured |
 | `BASE-REACTOR-02` | `verified` | Module graph and dependency inventory captured |
 | `BASE-VERIFY-03` | `verified` | Fresh clean reactor verification captured |
-| `BASE-TESTS-04` | `analyzing` | Gates 1–5/6: discovery through wait/isolation/flake signals captured |
+| `BASE-TESTS-04` | `analyzing` | Gates 1–6/6 captured; evidence consolidation and current-HEAD verification pending |
 | `BASE-COVERAGE-05` | `planned` | Measurement-only JaCoCo and coverage capture |
 | `BASE-QUALITY-06` | `planned` | Warning, dependency and existing-control inventory |
 | `BASE-RUNTIME-07` | `planned` | Representative performance/resource measurements |
@@ -148,6 +148,14 @@ Totals across child modules:
 Detailed per-module ratchets и dispositions ведутся в
 [test-quality ledger](test-quality-ledger.md).
 
+Coarse effectiveness review found meaningful positive, negative, contract,
+recovery and concurrency coverage signals without treating assertion counts as
+a quality score. The principal concrete supported-path gap is the configurable
+JDK regex engine: RE2/J is exercised downstream, but the JDK implementation and
+`ioc.engine=jdk` composition do not have a shared behavioral contract. Detailed
+findings and dispositions are in the
+[test-quality ledger](test-quality-ledger.md#coarse-effectiveness-baseline).
+
 ## Test lifecycle baseline
 
 | Signal | Current state | Command/evidence | Target/disposition |
@@ -219,7 +227,7 @@ Detailed per-module ratchets и dispositions ведутся в
 - [x] Clean verification captured
 - [x] Module/dependency inventory complete
 - [ ] Tests/coverage captured
-- [ ] Test lifecycle/tags/waits captured
+- [x] Test lifecycle/tags/waits captured
 - [ ] Quality reports captured
 - [ ] Runtime/performance captured
 - [ ] Compatibility obligations captured

@@ -54,7 +54,7 @@ language: "ru"
 
 | Work item | Goal | Scope | Stage | Owner | State | Evidence |
 |---|---|---|---|---|---|---|
-| `BASE-TESTS-04` | `R030-BASE` | Reactor test lifecycle and effectiveness inventory | Discovery through flake signals captured; coarse effectiveness review next | AI agent | `analyzing` | [baseline](evidence/baseline.md), [test-quality ledger](evidence/test-quality-ledger.md#wait-isolation-and-flake-baseline) |
+| `BASE-TESTS-04` | `R030-BASE` | Reactor test lifecycle and effectiveness inventory | All six analysis gates captured; consolidation/current-HEAD verify next | AI agent | `analyzing` | [baseline](evidence/baseline.md), [test-quality ledger](evidence/test-quality-ledger.md#coarse-effectiveness-baseline) |
 
 ## 4. Deferred и blocked
 

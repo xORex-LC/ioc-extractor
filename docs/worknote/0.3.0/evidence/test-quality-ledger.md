@@ -323,6 +323,82 @@ fixture was used. This is a limited non-reproduction signal only; it does not
 close the static bounded-wait findings and is not the scheduled random-order
 pilot required by `R030-TEST`.
 
+## Coarse effectiveness baseline
+
+This gate is a navigation/risk review, not coverage or mutation measurement.
+Static assertion counts cannot prove that an oracle is correct, and broad
+suite counts cannot prove that critical behavior is complete.
+
+Positive signals:
+
+- every one of the 171 suite source files contains an explicit AssertJ/JUnit
+  assertion or delegates to an assertion-bearing helper; no assertion-free
+  suite source was found;
+- 61 suite sources use exception assertion APIs, including 140
+  `assertThatThrownBy` calls and specialized exception assertions;
+- tests use real value objects, explicit fakes and embedded/filesystem
+  integrations; no direct Mockito API usage was found;
+- the two reusable TCK classes are executed by three consumers:
+  `JdbcExportRunLedgerContractTest`, `JdbcIngestionLedgerTest` and
+  `FileIngestionLedgerTest`;
+- recovery, retry, partial-failure, concurrency, idempotency, migration,
+  architecture, publication and two E2E/golden workflows all have identifiable
+  suites;
+- existing conventional JUnit tests provide seeds for invariant-oriented work
+  around refang, normalization, classification, deduplication and artifact
+  identity.
+
+One individual method,
+`CollectingDiagnosticSinkTest#noop_sink_discards_diagnostics`, uses successful
+return as an implicit no-throw oracle rather than an explicit assertion. Its
+contract is narrow and adjacent null rejection is asserted; making the
+no-throw intent explicit is a readability improvement, not a release blocker.
+
+### Module/test-consumer interpretation
+
+Three production modules have no local `src/test` suite:
+
+- `core/ioc-application-tck` is intentionally test-support; its contracts are
+  executed by the three adapter consumers above;
+- `platform/platform-errors` contains only the root exception type. Dedicated
+  constructor tests would add little behavioral evidence; coverage and
+  downstream use should determine whether any real gap exists;
+- `adapters/adapter-regex-re2j` contains the RE2/J and JDK pattern-engine
+  implementations. RE2/J is exercised downstream by
+  `RegexIndicatorExtractorTest` and `MarkerSourceAttributorTest`, but the JDK
+  engine is not referenced by any behavioral test.
+
+Downstream execution means a zero local-suite count is not automatically zero
+coverage. `BASE-COVERAGE-05` must measure cross-module execution before any
+coverage disposition.
+
+### Effectiveness gaps
+
+The supported `ioc.engine` selector exposes both `re2j` and `jdk`, and
+`AppConfig.patternEngine` selects between the two. Current binding tests accept
+the selector, but no test:
+
+- executes a common `PatternEngine` contract against both implementations;
+- proves compatible patterns produce equivalent matches/spans on the accepted
+  corpus;
+- proves `ioc.engine=jdk` wires `JdkRegexPatternEngine` in the composition root.
+
+This is a real contract/compatibility gap because JDK is a documented runtime
+option. `R030-TEST` should add an adapter-level shared contract for both engines
+and a focused bootstrap selection test. It should not introduce
+JDK-only patterns: the project contract remains RE2-compatible patterns for
+either engine.
+
+The repository also has internal publication/convention tests but no
+standalone published-artifact consumer outside reactor resolution. That is
+expected before the library extraction goal, but `R030-LIB`/`R030-TEST` must
+provide the standalone consumer described by the release contract once public
+library coordinates are finalized.
+
+The accepted invariant-oriented and mutation pilots have not yet been run.
+Existing example tests are useful seeds, not pilot evidence; `BASE-TESTS-04`
+does not infer mutation effectiveness from assertion volume.
+
 ## Instrumentation
 
 | Control | Version/config | Local command | CI evidence | State |
@@ -385,7 +461,11 @@ instructions/branches.
 
 | Finding | Scope/behavior | Gap type | Risk | Required evidence | Disposition | Work item |
 |---|---|---|---|---|---|---|
-| TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| JDK pattern engine lacks behavioral consumer | `JdkRegexPatternEngine` and `ioc.engine=jdk` selection | `contract`, `compatibility` | Supported alternate engine may drift or wire incorrectly without detection | Shared two-engine contract + bootstrap bean-selection test | Close in 0.3.0 | `R030-TEST` adapter/bootstrap hardening |
+| Live SMB `CHANGE_NOTIFY` not executed | External transport signal and idle-survival behavior | `contract`, `external` | Offline suite cannot prove live server semantics | Provisioned execution or explicit release disposition | Open external evidence | `R030-TEST` / `R030-REL` |
+| No standalone published-library consumer yet | Future extracted library coordinates and public API | `contract`, `publication` | Reactor-relative resolution can hide publication/POM defects | Out-of-reactor compile + runtime contract using published coordinates | Required when library API is finalized | `R030-LIB` / `R030-TEST` |
+| Invariant/PIT pilots not executed | Refang, normalization, classification, deduplication, identity | `assertion-quality` | Example assertions may miss semantically important mutations/invariants | Reproducible pilots with triaged results | Planned, no baseline inference | `R030-TEST` |
+| No-op sink test has implicit oracle | `NoopDiagnosticSink` valid emission | `assertion-quality` | Very low; intent is less explicit | Explicit no-throw assertion if touched | Opportunistic | `R030-TEST` module review |
 
 Gap type examples: `negative`, `boundary`, `error`, `recovery`,
 `concurrency`, `migration`, `contract`, `assertion-quality`.
