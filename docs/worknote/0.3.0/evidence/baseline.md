@@ -20,7 +20,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `BASE-ENV-01` | `verified` | Revision and execution environment captured |
 | `BASE-REACTOR-02` | `verified` | Module graph and dependency inventory captured |
 | `BASE-VERIFY-03` | `verified` | Fresh clean reactor verification captured |
-| `BASE-TESTS-04` | `analyzing` | Gates 1–2/6: discovery and observed lifecycle classification captured |
+| `BASE-TESTS-04` | `analyzing` | Gates 1–3/6: discovery, lifecycle and selection/skip state captured |
 | `BASE-COVERAGE-05` | `planned` | Measurement-only JaCoCo and coverage capture |
 | `BASE-QUALITY-06` | `planned` | Warning, dependency and existing-control inventory |
 | `BASE-RUNTIME-07` | `planned` | Representative performance/resource measurements |
@@ -153,9 +153,9 @@ Detailed per-module ratchets и dispositions ведутся в
 |---|---|---|---|
 | Surefire-discovered tests | 171 suites / 781 cases; 0 failures, 0 errors, 2 skipped | Declared-reactor report reconciliation; [test-quality ledger](test-quality-ledger.md#baseline-discovery-inventory) | Source/discovery reconciliation complete |
 | Failsafe-discovered tests | 0; plugin is managed but has no project execution and no `*IT` source names | POM/effective-POM/source/report inventory; [test-quality ledger](test-quality-ledger.md#observed-lifecycle-classification) | Missing lifecycle separation; implement under `R030-TEST` |
-| JUnit tags | TBD | TBD | TBD |
+| JUnit tags | No `@Tag` or composed test annotation; no tag filters | Source/POM/CI inventory; [test-quality ledger](test-quality-ledger.md#tags-conditions-and-skips) | Missing controlled selection; implement accepted vocabulary under `R030-TEST` |
 | Fixed sleeps/bounded waits | TBD | TBD | TBD |
-| Disabled/quarantined tests | TBD | TBD | TBD |
+| Disabled/quarantined tests | No `@Disabled`, assumptions, quarantine or retry; 2 opt-in external cases skipped by one class-level condition | Surefire XML and source inventory; [test-quality ledger](test-quality-ledger.md#tags-conditions-and-skips) | Live SMB evidence remains unavailable; no hidden offline quarantine found |
 | Slowest tests/suites | TBD | TBD | TBD |
 
 ## Quality reports

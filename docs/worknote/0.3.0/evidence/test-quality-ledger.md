@@ -138,6 +138,33 @@ cannot yet be selected reliably by Maven lifecycle. Naming/tag migration and
 Failsafe binding belong to `R030-TEST`; this baseline does not rename or move
 tests.
 
+## Tags, conditions and skips
+
+| Signal | Baseline | Evidence/disposition |
+|---|---|---|
+| `@Tag` / `@Tags` | 0 sources | Accepted vocabulary exists only in the goal contract; selection is not implemented |
+| Composed test annotations | 0 sources | No `@IntegrationTest`, `@ContractTest` or equivalent |
+| Maven/JUnit tag filters | None | No groups, excluded groups or include/exclude tag configuration in POM, Makefile or CI |
+| `@Disabled` | 0 sources | No disabled suite or case |
+| JUnit assumptions | 0 sources | No assumption-driven hidden skip |
+| Conditional execution | 1 suite / 2 cases | `SmbChangeNotifyContractTest` uses class-level `@EnabledIfSystemProperty` |
+| Baseline result | 779 passed / 2 skipped | Both skips report missing `ioc.smb.contract`; no other skip |
+| Automatic test retry | None | No Surefire rerun count or retry wrapper found |
+| Regular CI | Full offline `./mvnw -B -ntp -T 1C verify` | No test skip/filter flag; external SMB properties are not provisioned |
+
+The live SMB suite requires `ioc.smb.contract=true` plus host, share,
+credentials and remote path system properties. Its module README provides a
+manual command, but there is no project-owned SMB test environment or dedicated
+CI job. The suite creates and deletes a uniquely named remote file, exercises
+`CHANGE_NOTIFY`, and includes an idle-period scenario. Its two baseline skips
+are therefore intentional external unavailability, not quarantine and not
+passing evidence.
+
+The absence of tags means the accepted taxonomy cannot yet select the 38
+integration suites, contract/TCK, architecture, E2E or external cohorts.
+Introducing the controlled tags, composed annotations and convention check is
+an `R030-TEST` implementation item; this gate only records the current state.
+
 ## Instrumentation
 
 | Control | Version/config | Local command | CI evidence | State |
@@ -147,7 +174,7 @@ tests.
 | JaCoCo aggregate check | TBD | TBD | TBD | `planned` |
 | Surefire unit lifecycle | `3.5.6`; default includes; bootstrap injects project version | `make test` / `make verify` | 171 mixed-level suites in fresh verify | `existing-mixed` |
 | Failsafe integration lifecycle | `3.5.6` managed only; no project execution | N/A | No `*IT` source or reports | `missing` |
-| JUnit tag convention | TBD | TBD | TBD | `planned` |
+| JUnit tag convention | No tags, composed annotations or filters | N/A | No selectable cohorts in current CI | `missing` |
 | Codecov best-effort upload | TBD | N/A | TBD | `planned` |
 | Codecov project/patch signals | TBD | N/A | TBD | `planned` |
 | Coverage/test artifacts | TBD | TBD | TBD | `planned` |
