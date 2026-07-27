@@ -20,7 +20,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `BASE-ENV-01` | `verified` | Revision and execution environment captured |
 | `BASE-REACTOR-02` | `verified` | Module graph and dependency inventory captured |
 | `BASE-VERIFY-03` | `verified` | Fresh clean reactor verification captured |
-| `BASE-TESTS-04` | `analyzing` | Gate 1/6: Surefire discovery reconciled; lifecycle classification follows |
+| `BASE-TESTS-04` | `analyzing` | Gates 1–2/6: discovery and observed lifecycle classification captured |
 | `BASE-COVERAGE-05` | `planned` | Measurement-only JaCoCo and coverage capture |
 | `BASE-QUALITY-06` | `planned` | Warning, dependency and existing-control inventory |
 | `BASE-RUNTIME-07` | `planned` | Representative performance/resource measurements |
@@ -139,9 +139,9 @@ Totals across child modules:
 
 ## Tests и coverage
 
-| Module/scope | Test classes | Unit | Integration | Contract/architecture/E2E | Line | Branch | Missed branches | Duration | Flake status |
+| Module/scope | Test classes | Unit/component | Integration | Contract/architecture/publication/E2E | Line | Branch | Missed branches | Duration | Flake status |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| Reactor aggregate | 173 Java files / 171 suites / 781 cases | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| Reactor aggregate | 173 Java files / 171 suites / 781 cases | 114 | 38 | 6 / 4 / 7 / 2 | TBD | TBD | TBD | TBD | TBD |
 | Per-module rows | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 
 Detailed per-module ratchets и dispositions ведутся в
@@ -152,7 +152,7 @@ Detailed per-module ratchets и dispositions ведутся в
 | Signal | Current state | Command/evidence | Target/disposition |
 |---|---|---|---|
 | Surefire-discovered tests | 171 suites / 781 cases; 0 failures, 0 errors, 2 skipped | Declared-reactor report reconciliation; [test-quality ledger](test-quality-ledger.md#baseline-discovery-inventory) | Source/discovery reconciliation complete |
-| Failsafe-discovered tests | TBD | TBD | TBD |
+| Failsafe-discovered tests | 0; plugin is managed but has no project execution and no `*IT` source names | POM/effective-POM/source/report inventory; [test-quality ledger](test-quality-ledger.md#observed-lifecycle-classification) | Missing lifecycle separation; implement under `R030-TEST` |
 | JUnit tags | TBD | TBD | TBD |
 | Fixed sleeps/bounded waits | TBD | TBD | TBD |
 | Disabled/quarantined tests | TBD | TBD | TBD |

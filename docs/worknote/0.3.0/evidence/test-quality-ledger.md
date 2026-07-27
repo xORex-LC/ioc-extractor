@@ -61,6 +61,83 @@ One ignored report under the removed, non-reactor
 repository-wide overcount of one suite and one case. It is excluded rather than
 treated as baseline evidence.
 
+## Observed lifecycle classification
+
+This is a primary, disjoint classification of the 171 discovered suites by the
+behavior they exercise, not by their current file names. The baseline uses the
+following tests:
+
+- `unit/component`: no real database, parser/content fixture, framework
+  application context, network fixture or production file persistence; fakes
+  and in-memory collaborators remain in this cohort;
+- `integration`: real embedded SQLite/Hikari, filesystem persistence, Tika
+  parsing, Jackson serialization, Spring context/HTTP management surface or
+  Logback configuration;
+- `contract/TCK`: a reusable port contract or an explicit format/transport/stage
+  contract is the suite's primary purpose;
+- `architecture`: ArchUnit, bytecode/reference ratchet or structural
+  architecture invariant;
+- `publication/consumer`: generated build metadata, published catalog/docs,
+  release-note or Maven/documentation convention contract;
+- `E2E/golden`: a complete supported workflow crossing composition, storage and
+  projection boundaries.
+
+| Module | Unit/component | Integration | Contract/TCK | Architecture | Publication/consumer | E2E/golden | Total |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `platform/platform-errors` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `platform/platform-diagnostics` | 9 | 0 | 0 | 0 | 1 | 0 | 10 |
+| `platform/platform-etl` | 2 | 0 | 0 | 0 | 0 | 0 | 2 |
+| `platform/platform-events` | 3 | 0 | 0 | 0 | 0 | 0 | 3 |
+| `platform/platform-concurrency` | 2 | 0 | 0 | 0 | 0 | 0 | 2 |
+| `platform/platform-observability` | 5 | 0 | 0 | 0 | 1 | 0 | 6 |
+| `platform/platform-diagnostics-logging` | 4 | 0 | 0 | 0 | 0 | 0 | 4 |
+| `core/ioc-domain` | 4 | 0 | 0 | 1 | 0 | 0 | 5 |
+| `core/ioc-application` | 34 | 0 | 1 | 1 | 0 | 0 | 36 |
+| `core/ioc-application-tck` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `adapters/adapter-regex-re2j` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `adapters/adapter-psl` | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
+| `adapters/adapter-source-tika` | 0 | 2 | 1 | 0 | 0 | 0 | 3 |
+| `adapters/adapter-sink-csv` | 5 | 5 | 0 | 0 | 0 | 0 | 10 |
+| `adapters/adapter-manifest-json-jackson` | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
+| `adapters/adapter-store-jdbc` | 1 | 12 | 2 | 0 | 0 | 0 | 15 |
+| `adapters/adapter-transport-smb` | 6 | 1 | 1 | 0 | 0 | 0 | 8 |
+| `adapters/adapter-ingest` | 0 | 5 | 1 | 0 | 0 | 0 | 6 |
+| `adapters/adapter-cli-picocli` | 7 | 0 | 0 | 0 | 0 | 0 | 7 |
+| `bootstrap/ioc-app` | 31 | 12 | 0 | 2 | 5 | 2 | 52 |
+| **Reactor total** | **114** | **38** | **6** | **4** | **7** | **2** | **171** |
+
+The integration cohort is deliberately behavior-based:
+
+- five file-ingest adapter suites, five filesystem CSV adapter suites, two Tika
+  suites, one Jackson suite, twelve SQLite/JDBC suites and one
+  `SmbFileTransportTest`;
+- twelve bootstrap suites exercising Spring contexts, management HTTP,
+  SQLite/recovery or Logback configuration.
+
+The six contract/TCK suites are `FileIngestionLedgerTest`,
+`TikaSourceReaderFormatContractTest`, `JdbcExportRunLedgerContractTest`,
+`JdbcIngestionLedgerTest`, `SmbChangeNotifyContractTest` and
+`StageContractTest`. Architecture, publication and E2E cohorts are kept
+separate because their runtime cost and failure meaning differ from ordinary
+unit and integration failures.
+
+### Current Maven execution
+
+| Signal | Baseline |
+|---|---|
+| Test stack | JUnit Jupiter `6.0.3`; AssertJ `3.27.7` |
+| Surefire | `3.5.6`; default discovery; all 171 suites run in Maven `test` |
+| Module override | `bootstrap/ioc-app` only supplies `test.project.version` to Surefire |
+| Failsafe | Version `3.5.6` is managed by the Spring Boot parent, but the project declares no execution |
+| Integration naming | No tracked `IT*`, `*IT` or `*ITCase` Java source |
+| Failsafe reports | None |
+
+Consequently, the current `test` phase is a mixed full offline suite rather than
+a fast unit lifecycle. The 38 integration suites and the E2E/contract cohorts
+cannot yet be selected reliably by Maven lifecycle. Naming/tag migration and
+Failsafe binding belong to `R030-TEST`; this baseline does not rename or move
+tests.
+
 ## Instrumentation
 
 | Control | Version/config | Local command | CI evidence | State |
@@ -68,8 +145,8 @@ treated as baseline evidence.
 | JaCoCo agent/report | TBD | TBD | TBD | `planned` |
 | JaCoCo per-module check | TBD | TBD | TBD | `planned` |
 | JaCoCo aggregate check | TBD | TBD | TBD | `planned` |
-| Surefire unit lifecycle | TBD | TBD | TBD | `existing-unclassified` |
-| Failsafe integration lifecycle | TBD | TBD | TBD | `planned` |
+| Surefire unit lifecycle | `3.5.6`; default includes; bootstrap injects project version | `make test` / `make verify` | 171 mixed-level suites in fresh verify | `existing-mixed` |
+| Failsafe integration lifecycle | `3.5.6` managed only; no project execution | N/A | No `*IT` source or reports | `missing` |
 | JUnit tag convention | TBD | TBD | TBD | `planned` |
 | Codecov best-effort upload | TBD | N/A | TBD | `planned` |
 | Codecov project/patch signals | TBD | N/A | TBD | `planned` |
