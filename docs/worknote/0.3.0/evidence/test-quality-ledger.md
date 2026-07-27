@@ -242,6 +242,87 @@ context lifecycle overhead. `JacksonSliceManifestCodecTest` and
 overhead. These are lifecycle-separation and trend signals, not standalone
 performance defects.
 
+## Wait, isolation and flake baseline
+
+### Static wait inventory
+
+| Signal | Count/scope | Assessment |
+|---|---|---|
+| `Thread.sleep` | 6 calls in 5 files | All are inside a bounded polling/semantic scenario; no unbounded fixed sleep |
+| Timed latch awaits | 34 calls | Positive bounded coordination |
+| Timed `Future.get` | 2 calls | Positive bounded result wait |
+| Unbounded latch/barrier awaits | 10 calls in 9 files | Failure-path hang/poor-diagnostics risk |
+| Timed thread joins | 9 calls in 5 files | Only the interruption-specific case explicitly asserts termination |
+| JUnit `@Timeout` / timeout assertions | 0 | No test-level safety net |
+| Surefire fork timeout | Not configured | No project-owned process-level safety net |
+
+The fixed sleeps have bounded context:
+
+- `SmbChangeNotifyWatcherTest`, `RemoteFetchDetectionCoordinatorTest` and
+  `RemoteChangeWatchLifecycleTest` poll an observable condition every `10 ms`
+  with a `2 s` deadline;
+- `IngestFileListFilterTest` polls WatchService delivery at `10 ms`, at most
+  100 attempts;
+- the external `SmbChangeNotifyContractTest` uses a semantic `3 s` idle interval
+  to exceed a `2 s` SMB request timeout, then condition polling at `50 ms` with
+  a `10 s` deadline.
+
+The local bounds make these sleeps reviewable; they do not provide a whole-test
+upper bound. The external three-second wait is part of the behavior under test.
+The four offline polling loops remain candidates for deterministic
+coordination where a directly observable latch/future can replace polling.
+
+Ten bare `await()` calls occur in:
+
+- `PipelineDiagnosticMdcTest`;
+- `JdbcExportRunLedgerTest` and `JdbcSnapshotSliceReaderTest`;
+- `DaemonExportSchedulerTest`, `DaemonFetchSchedulerTest`,
+  `DaemonPublishSchedulerTest`, `DaemonSliceRetentionSchedulerTest`,
+  `PeriodicDaemonCycleTest` and `RemoteFetchDetectionCoordinatorTest`.
+
+Most are worker-side gates controlled by the test thread, but
+`JdbcExportRunLedgerTest` also waits indefinitely for both workers to become
+ready. Several scheduler tests release a worker only after an assertion and
+then call `join(1000)` without asserting that the thread terminated. If an
+early assertion fails, cleanup may leave a non-daemon worker blocked; if a
+worker never reaches the gate, the controller may hang. The remediation must
+combine bounded coordination, `finally` release/cancellation, explicit
+termination assertions and a test-level timeout safety net. A retry is not an
+acceptable fix.
+
+### Isolation inventory
+
+- 36 suites use JUnit `@TempDir`; the management endpoint uses a random port.
+- Fixed `target/` directories used by golden/daemon/logback suites are cleaned
+  before use; `OnDemandExportIntegrationTest` uses a UUID-qualified root.
+- `ExtractCommandTest` and `HealthCommandTest` temporarily replace
+  `System.out` and restore it in `finally`. JUnit parallel execution is
+  currently disabled, so no current collision was reproduced. Before enabling
+  in-fork parallel execution, these tests need a resource lock or removal of
+  global stream mutation.
+- No JUnit `@ResourceLock`/`@Isolated`, static system-property mutation or
+  fixed application port was found.
+
+### Bounded repeat
+
+The following 15 suites were run in five independent fixed-order Maven
+invocations across seven selected modules:
+
+`PipelineDiagnosticMdcTest`, `BoundedKeyedSerialExecutorTest`,
+`IngestFileListFilterTest`, `NioExportOperationGuardTest`,
+`JdbcExportRunLedgerTest`, `JdbcSnapshotSliceReaderTest`,
+`SmbChangeNotifyWatcherTest`, `OnDemandExportIntegrationTest`,
+`DaemonExportSchedulerTest`, `DaemonFetchSchedulerTest`,
+`DaemonPublishSchedulerTest`, `DaemonSliceRetentionSchedulerTest`,
+`PeriodicDaemonCycleTest`, `RemoteFetchDetectionCoordinatorTest` and
+`RemoteChangeWatchLifecycleTest`.
+
+Each invocation executed 85 cases. Result: **5/5 invocations passed**, 425 case
+executions, 0 failures, 0 errors and 0 skips. No retry, random order or external
+fixture was used. This is a limited non-reproduction signal only; it does not
+close the static bounded-wait findings and is not the scheduled random-order
+pilot required by `R030-TEST`.
+
 ## Instrumentation
 
 | Control | Version/config | Local command | CI evidence | State |
@@ -313,7 +394,11 @@ Gap type examples: `negative`, `boundary`, `error`, `recovery`,
 
 | Test/suite | Signal | Reproduction/seed | Duration | Owner | Disposition | Exit condition |
 |---|---|---|---:|---|---|---|
-| TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| 9 wait-bearing files listed above | 10 unbounded `await()` calls; no test/fork timeout | Static analysis | N/A | `R030-TEST` | Remediate | Every async path has bounded, diagnosable completion and failure-safe cleanup |
+| 5 files with fixed sleeps | 6 calls, all locally bounded or semantic | Static analysis | up to 1–10 s by helper/scenario | `R030-TEST` | Review; do not blanket-replace | Each retained sleep has written rationale; observable conditions use deterministic coordination where practical |
+| Scheduler thread tests | 9 timed joins; termination usually not asserted | Static analysis | join bound `1 s` | `R030-TEST` | Remediate with termination assertion/finally cleanup | No test can silently leave a live worker |
+| Two CLI suites | Temporary `System.out` replacement | Current sequential JUnit execution | N/A | `R030-TEST` | Safe in current mode; guard before parallelism | Resource lock or no global mutation before parallel execution |
+| Selected 15-suite repeat | No failure reproduced in 5 fixed-order runs | 5 independent runs; no seed/retry | about 13 s/run | `R030-TEST` | Weak green signal | Scheduled seeded random-order/repeat pilot still required |
 
 ## Codecov
 
