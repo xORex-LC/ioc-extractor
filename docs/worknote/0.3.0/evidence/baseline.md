@@ -18,7 +18,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 |---|---|---|
 | `BASE-SNAPSHOT-00` | `verified` | Clean starting revision selected |
 | `BASE-ENV-01` | `verified` | Revision and execution environment captured |
-| `BASE-REACTOR-02` | `planned` | Module graph and dependency inventory |
+| `BASE-REACTOR-02` | `verified` | Module graph and dependency inventory captured |
 | `BASE-VERIFY-03` | `planned` | Fresh clean reactor verification |
 | `BASE-TESTS-04` | `planned` | Test lifecycle and duration inventory |
 | `BASE-COVERAGE-05` | `planned` | Measurement-only JaCoCo and coverage capture |
@@ -50,13 +50,53 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `make doctor-core` | 0 | Inline `BASE-ENV-01` capture | Bash, Java, Git, Make and Maven Wrapper checks passed |
 | `./mvnw --version` | 0 | Inline `BASE-ENV-01` capture | Maven `3.9.9`; Eclipse Adoptium Java `21.0.11`; UTF-8 |
 | `git rev-parse v0.2.0` | 0 | Inline `BASE-ENV-01` capture | Resolves released comparison tag to `ad255040e73f589cb0b1fcab3581d836699e1888` |
+| `./mvnw -B -ntp dependency:tree -Dincludes=com.iocextractor -DoutputType=text` | 0 | Module table below | Reactor resolved successfully; no Maven dependency cycle |
+| `git ls-files <module>/src/main <module>/src/test` | 0 | File counts below | Counts tracked files only; `target/` and untracked local files are excluded |
 | `./mvnw clean verify` | TBD | TBD | |
 
 ## Module/dependency inventory
 
+Captured at `2026-07-27T21:21:22+08:00`. The common group is
+`com.iocextractor`; every child inherits version `0.3.0-SNAPSHOT`. The reactor
+contains one parent/aggregator and 20 child modules, all with `jar` packaging.
+Only `bootstrap/ioc-app` is runnable and Spring Boot-repackaged.
+
+The dependency command was run on evidence commit `9fefa5a`. Its diff from the
+subject revision `fc4bcdd` contains only `.gitignore`, `docs/README.md` and the
+tracked release worknotes; no POM, production source, test source or runtime
+configuration changed. The graph and counts therefore describe the selected
+baseline subject.
+
 | Artifact/module | Packaging | Direct project dependencies | Production files | Test files | Notes |
 |---|---|---|---:|---:|---|
-| TBD | TBD | TBD | TBD | TBD | |
+| `ioc-extractor-parent` (root) | `pom` | — | 0 | 0 | Aggregator, dependency/plugin management and build policy |
+| `ioc-platform-errors` (`platform/platform-errors`) | `jar` | — | 2 (1 Java) | 0 | Root unchecked error abstraction |
+| `ioc-platform-diagnostics` (`platform/platform-diagnostics`) | `jar` | `ioc-platform-errors` | 46 (40 Java) | 10 (10 Java) | Diagnostic contracts and catalogs |
+| `ioc-platform-etl` (`platform/platform-etl`) | `jar` | `ioc-platform-diagnostics`, `ioc-platform-errors` | 12 (11 Java) | 2 (2 Java) | Framework-free ETL kernel |
+| `ioc-platform-events` (`platform/platform-events`) | `jar` | — | 8 (8 Java) | 3 (3 Java) | Thin local control-event contracts |
+| `ioc-platform-concurrency` (`platform/platform-concurrency`) | `jar` | — | 10 (10 Java) | 2 (2 Java) | Keyed concurrency primitives |
+| `ioc-platform-observability` (`platform/platform-observability`) | `jar` | `ioc-platform-etl` | 15 (13 Java) | 6 (6 Java) | Logging and pipeline observation |
+| `ioc-platform-diagnostics-logging` (`platform/platform-diagnostics-logging`) | `jar` | `ioc-platform-diagnostics`, `ioc-platform-observability` | 5 (4 Java) | 4 (4 Java) | Diagnostics-to-logging bridge |
+| `ioc-domain` (`core/ioc-domain`) | `jar` | — | 44 (37 Java) | 5 (5 Java) | Pure IOC domain |
+| `ioc-application` (`core/ioc-application`) | `jar` | `ioc-domain`, `ioc-platform-etl`, `ioc-platform-diagnostics`, `ioc-platform-errors`, `ioc-platform-events` | 210 (192 Java) | 38 (38 Java) | Use cases, inward ports and pipeline stages |
+| `ioc-application-tck` (`core/ioc-application-tck`) | `jar` | `ioc-application` | 4 (2 Java) | 0 | Reusable adapter contract-test kit |
+| `ioc-adapter-regex-re2j` (`adapters/adapter-regex-re2j`) | `jar` | `ioc-domain` | 3 (2 Java) | 0 | Regex-engine adapter |
+| `ioc-adapter-psl` (`adapters/adapter-psl`) | `jar` | `ioc-domain` | 2 (1 Java) | 1 (1 Java) | Public Suffix List adapter |
+| `ioc-adapter-source-tika` (`adapters/adapter-source-tika`) | `jar` | `ioc-application`, `ioc-platform-diagnostics`, `ioc-platform-observability` | 2 (1 Java) | 3 (3 Java) | Source-reader adapter |
+| `ioc-adapter-sink-csv` (`adapters/adapter-sink-csv`) | `jar` | `ioc-application`, `ioc-domain`, `ioc-platform-errors`, `ioc-platform-diagnostics`, `ioc-platform-observability` | 39 (38 Java) | 10 (10 Java) | CSV preparation/projection adapter |
+| `ioc-adapter-manifest-json-jackson` (`adapters/adapter-manifest-json-jackson`) | `jar` | `ioc-application`, `ioc-platform-errors` | 3 (2 Java) | 1 (1 Java) | JSON manifest adapter |
+| `ioc-adapter-store-jdbc` (`adapters/adapter-store-jdbc`) | `jar` | `ioc-application`, `ioc-platform-errors`, `ioc-platform-diagnostics`, `ioc-platform-observability`; `ioc-application-tck` (test) | 42 (31 Java) | 15 (15 Java) | SQLite/JDBC storage adapter |
+| `ioc-adapter-transport-smb` (`adapters/adapter-transport-smb`) | `jar` | `ioc-application` | 17 (16 Java) | 8 (8 Java) | SMB transport adapter |
+| `ioc-adapter-ingest` (`adapters/adapter-ingest`) | `jar` | `ioc-application`, `ioc-platform-errors`, `ioc-platform-diagnostics`, `ioc-platform-observability`; `ioc-application-tck` (test) | 11 (10 Java) | 6 (6 Java) | File-ingest driving adapter |
+| `ioc-adapter-cli-picocli` (`adapters/adapter-cli-picocli`) | `jar` | `ioc-application`, `ioc-platform-observability` | 15 (14 Java) | 8 (7 Java) | CLI driving adapter |
+| `ioc-app` (`bootstrap/ioc-app`) | `jar` | `ioc-domain`, `ioc-application`; all 9 `ioc-adapter-*`; `ioc-platform-errors`, `ioc-platform-diagnostics`, `ioc-platform-events`, `ioc-platform-concurrency`, `ioc-platform-observability`, `ioc-platform-diagnostics-logging` | 74 (68 Java) | 60 (52 Java) | Composition root and sole runnable artifact |
+
+Totals across child modules:
+
+- 564 tracked files under `src/main`, including 501 Java files;
+- 182 tracked files under `src/test`, including 173 Java files;
+- no additional non-`target` POM exists outside the root and its 20 declared
+  child modules.
 
 ## Tests и coverage
 
@@ -137,7 +177,7 @@ Detailed per-module ratchets и dispositions ведутся в
 
 - [x] Revision/environment fixed
 - [ ] Clean verification captured
-- [ ] Module/dependency inventory complete
+- [x] Module/dependency inventory complete
 - [ ] Tests/coverage captured
 - [ ] Test lifecycle/tags/waits captured
 - [ ] Quality reports captured
