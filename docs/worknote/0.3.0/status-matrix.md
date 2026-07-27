@@ -15,7 +15,7 @@ language: "ru"
 
 | Goal | State | Evidence | Next gate |
 |---|---|---|---|
-| `R030-BASE` | `in-progress` | [baseline](evidence/baseline.md) | `BASE-VERIFY-03` fresh clean reactor verification |
+| `R030-BASE` | `in-progress` | [baseline](evidence/baseline.md) | `BASE-TESTS-04` test lifecycle and duration inventory |
 | `R030-BUILD` | `planned` | [build-quality ledger](evidence/build-quality-ledger.md) | SpotBugs report baseline + CPD calibration |
 | `R030-TEST` global controls | `planned` | [test-quality ledger](evidence/test-quality-ledger.md) | JaCoCo report-only baseline |
 | `R030-SEC` | `planned` | — | Security gap analysis |

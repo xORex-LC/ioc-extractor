@@ -19,7 +19,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `BASE-SNAPSHOT-00` | `verified` | Clean starting revision selected |
 | `BASE-ENV-01` | `verified` | Revision and execution environment captured |
 | `BASE-REACTOR-02` | `verified` | Module graph and dependency inventory captured |
-| `BASE-VERIFY-03` | `planned` | Fresh clean reactor verification |
+| `BASE-VERIFY-03` | `verified` | Fresh clean reactor verification captured |
 | `BASE-TESTS-04` | `planned` | Test lifecycle and duration inventory |
 | `BASE-COVERAGE-05` | `planned` | Measurement-only JaCoCo and coverage capture |
 | `BASE-QUALITY-06` | `planned` | Warning, dependency and existing-control inventory |
@@ -52,7 +52,37 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `git rev-parse v0.2.0` | 0 | Inline `BASE-ENV-01` capture | Resolves released comparison tag to `ad255040e73f589cb0b1fcab3581d836699e1888` |
 | `./mvnw -B -ntp dependency:tree -Dincludes=com.iocextractor -DoutputType=text` | 0 | Module table below | Reactor resolved successfully; no Maven dependency cycle |
 | `git ls-files <module>/src/main <module>/src/test` | 0 | File counts below | Counts tracked files only; `target/` and untracked local files are excluded |
-| `./mvnw clean verify` | TBD | TBD | |
+| `make clean` | 0 | Maven reactor summary | Removed Maven build outputs; wall-clock `0.494 s` |
+| `make verify` | 0 | `.dev/runtime/last-verify.env`; `*/target/surefire-reports/TEST-*.xml` | Official `./mvnw -B -ntp -T 1C verify`; wall-clock `39.210 s` |
+
+### Fresh verification summary
+
+The clean verification ran on commit
+`30b50e260432e966bf2f669dd7c0d1524717cbed` and finished at
+`2026-07-27T14:34:03Z`. `make context` immediately after the run reported
+`verify.result=passed`, the same `verify.commit`, and `verify.fresh=true`.
+
+This evidence commit differs from the baseline subject `fc4bcdd` only through
+the non-runtime release-planning changes already enumerated in the module
+inventory. No POM, Java source, test source or runtime configuration changed.
+
+Results:
+
+- all 21 reactor projects completed with `SUCCESS`;
+- Maven Enforcer, ArchUnit/boundary tests, documentation/catalog consistency
+  tests and the synthetic golden/E2E tests passed;
+- 172 Surefire suites reported 782 tests: 0 failures, 0 errors and 2 skipped;
+- both skipped tests belong to `SmbChangeNotifyContractTest` and require the
+  absent external-fixture property `ioc.smb.contract`; they are recorded as
+  unavailable evidence, not as passed tests;
+- the Spring Boot-repackaged `ioc-app-0.3.0-SNAPSHOT.jar` was produced
+  (`104632574` bytes in this environment).
+
+Non-failing warning signals observed in the console are retained for
+`BASE-QUALITY-06`: an SLF4J no-provider warning on isolated module test
+classpaths, Mockito inline-mock-maker self-attachment, dynamic Byte Buddy agent
+loading and the related JVM class-sharing warning. No warning was suppressed or
+fixed in this work item.
 
 ## Module/dependency inventory
 
@@ -171,12 +201,12 @@ Detailed per-module ratchets и dispositions ведутся в
 
 | Item | Reason | Impact | Owner | Exit condition |
 |---|---|---|---|---|
-| — | — | — | — | — |
+| Live SMB `CHANGE_NOTIFY` contract | `ioc.smb.contract` external-fixture property is absent in the baseline environment | Two `SmbChangeNotifyContractTest` cases are skipped; live-share behavior is not covered by this verification | `R030-TEST` / `R030-REL` | Execute against an approved live SMB fixture or record an explicit environment-dependent release disposition |
 
 ## Completion
 
 - [x] Revision/environment fixed
-- [ ] Clean verification captured
+- [x] Clean verification captured
 - [x] Module/dependency inventory complete
 - [ ] Tests/coverage captured
 - [ ] Test lifecycle/tags/waits captured
