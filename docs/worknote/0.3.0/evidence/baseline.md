@@ -20,7 +20,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `BASE-ENV-01` | `verified` | Revision and execution environment captured |
 | `BASE-REACTOR-02` | `verified` | Module graph and dependency inventory captured |
 | `BASE-VERIFY-03` | `verified` | Fresh clean reactor verification captured |
-| `BASE-TESTS-04` | `planned` | Test lifecycle and duration inventory |
+| `BASE-TESTS-04` | `analyzing` | Gate 1/6: Surefire discovery reconciled; lifecycle classification follows |
 | `BASE-COVERAGE-05` | `planned` | Measurement-only JaCoCo and coverage capture |
 | `BASE-QUALITY-06` | `planned` | Warning, dependency and existing-control inventory |
 | `BASE-RUNTIME-07` | `planned` | Representative performance/resource measurements |
@@ -71,7 +71,8 @@ Results:
 - all 21 reactor projects completed with `SUCCESS`;
 - Maven Enforcer, ArchUnit/boundary tests, documentation/catalog consistency
   tests and the synthetic golden/E2E tests passed;
-- 172 Surefire suites reported 782 tests: 0 failures, 0 errors and 2 skipped;
+- 171 Surefire suites in the declared reactor modules reported 781 tests:
+  0 failures, 0 errors and 2 skipped;
 - both skipped tests belong to `SmbChangeNotifyContractTest` and require the
   absent external-fixture property `ioc.smb.contract`; they are recorded as
   unavailable evidence, not as passed tests;
@@ -83,6 +84,14 @@ Non-failing warning signals observed in the console are retained for
 classpaths, Mockito inline-mock-maker self-attachment, dynamic Byte Buddy agent
 loading and the related JVM class-sharing warning. No warning was suppressed or
 fixed in this work item.
+
+The earlier repository-wide report count (`172` suites / `782` cases) included
+one ignored, stale Surefire XML file under the removed, non-reactor
+`adapters/adapter-lookup-csv/target/` directory. `make clean` cleans the current
+reactor, not build output left behind by a module that no longer participates in
+it. Test evidence is therefore scoped to modules declared by the root POM; raw
+`target/` discovery across arbitrary repository paths is not an accepted
+measurement method.
 
 ## Module/dependency inventory
 
@@ -132,7 +141,7 @@ Totals across child modules:
 
 | Module/scope | Test classes | Unit | Integration | Contract/architecture/E2E | Line | Branch | Missed branches | Duration | Flake status |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| Reactor aggregate | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| Reactor aggregate | 173 Java files / 171 suites / 781 cases | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 | Per-module rows | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 
 Detailed per-module ratchets и dispositions ведутся в
@@ -142,7 +151,7 @@ Detailed per-module ratchets и dispositions ведутся в
 
 | Signal | Current state | Command/evidence | Target/disposition |
 |---|---|---|---|
-| Surefire-discovered tests | TBD | TBD | TBD |
+| Surefire-discovered tests | 171 suites / 781 cases; 0 failures, 0 errors, 2 skipped | Declared-reactor report reconciliation; [test-quality ledger](test-quality-ledger.md#baseline-discovery-inventory) | Source/discovery reconciliation complete |
 | Failsafe-discovered tests | TBD | TBD | TBD |
 | JUnit tags | TBD | TBD | TBD |
 | Fixed sleeps/bounded waits | TBD | TBD | TBD |

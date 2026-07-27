@@ -2,7 +2,7 @@
 title: "0.3.0 test-quality evidence"
 version: "0.3.0"
 goal_id: "R030-TEST"
-status: "Not started"
+status: "In progress"
 document_type: "Evidence ledger"
 source_of_truth: false
 language: "ru"
@@ -14,6 +14,52 @@ Contract: [R030-TEST](../goals/R030-TEST-test-quality.md).
 
 Этот ledger хранит изменяемые измерения и dispositions. Нормативные thresholds,
 taxonomy и scope находятся только в goal contract.
+
+## Baseline discovery inventory
+
+Captured for `BASE-TESTS-04` from tracked `src/test/**/*.java` files and
+Surefire XML reports produced by the fresh `make verify` baseline. Modules are
+enumerated from the root POM; ignored `target/` directories outside that reactor
+are excluded.
+
+`Source Java` counts all tracked Java files under a module's `src/test`.
+`Support Java` counts non-suite helpers. `Suites` and case results come from the
+module's `target/surefire-reports/TEST-*.xml`.
+
+| Module | Source Java | Support Java | Suites | Cases | Failures | Errors | Skipped |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `platform/platform-errors` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `platform/platform-diagnostics` | 10 | 0 | 10 | 33 | 0 | 0 | 0 |
+| `platform/platform-etl` | 2 | 0 | 2 | 15 | 0 | 0 | 0 |
+| `platform/platform-events` | 3 | 0 | 3 | 11 | 0 | 0 | 0 |
+| `platform/platform-concurrency` | 2 | 0 | 2 | 11 | 0 | 0 | 0 |
+| `platform/platform-observability` | 6 | 0 | 6 | 21 | 0 | 0 | 0 |
+| `platform/platform-diagnostics-logging` | 4 | 0 | 4 | 37 | 0 | 0 | 0 |
+| `core/ioc-domain` | 5 | 0 | 5 | 27 | 0 | 0 | 0 |
+| `core/ioc-application` | 38 | 2 | 36 | 157 | 0 | 0 | 0 |
+| `core/ioc-application-tck` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `adapters/adapter-regex-re2j` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `adapters/adapter-psl` | 1 | 0 | 1 | 11 | 0 | 0 | 0 |
+| `adapters/adapter-source-tika` | 3 | 0 | 3 | 7 | 0 | 0 | 0 |
+| `adapters/adapter-sink-csv` | 10 | 0 | 10 | 47 | 0 | 0 | 0 |
+| `adapters/adapter-manifest-json-jackson` | 1 | 0 | 1 | 6 | 0 | 0 | 0 |
+| `adapters/adapter-store-jdbc` | 15 | 0 | 15 | 75 | 0 | 0 | 0 |
+| `adapters/adapter-transport-smb` | 8 | 0 | 8 | 34 | 0 | 0 | 2 |
+| `adapters/adapter-ingest` | 6 | 0 | 6 | 29 | 0 | 0 | 0 |
+| `adapters/adapter-cli-picocli` | 7 | 0 | 7 | 34 | 0 | 0 | 0 |
+| `bootstrap/ioc-app` | 52 | 0 | 52 | 226 | 0 | 0 | 0 |
+| **Reactor total** | **173** | **2** | **171** | **781** | **0** | **0** | **2** |
+
+The two support files are
+`core/ioc-application/.../export/ExportFixtures.java` and
+`core/ioc-application/.../pipeline/stage/StageTestSupport.java`. Every tracked
+top-level `*Test.java` in the declared reactor has a matching Surefire suite,
+and no current-reactor suite lacks a matching source file.
+
+One ignored report under the removed, non-reactor
+`adapters/adapter-lookup-csv/target/` directory explains the previously recorded
+repository-wide overcount of one suite and one case. It is excluded rather than
+treated as baseline evidence.
 
 ## Instrumentation
 
