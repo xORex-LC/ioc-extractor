@@ -22,7 +22,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `BASE-VERIFY-03` | `verified` | Fresh clean reactor verification captured |
 | `BASE-TESTS-04` | `verified` | Six analysis gates captured; findings handed to `R030-TEST`; proceed to `BASE-COVERAGE-05` |
 | `BASE-COVERAGE-05` | `verified` | JaCoCo report-only baseline captured; branch gaps handed to `R030-TEST`; proceed to `BASE-QUALITY-06` |
-| `BASE-QUALITY-06` | `planned` | Warning, dependency and existing-control inventory |
+| `BASE-QUALITY-06` | `verified` | Warning, dependency and existing-control inventory captured; actionable signals handed to `R030-BUILD` and `R030-TEST`; proceed to `BASE-RUNTIME-07` |
 | `BASE-RUNTIME-07` | `planned` | Representative performance/resource measurements |
 | `BASE-CONTRACTS-08` | `planned` | Compatibility and consumer obligations |
 | `BASE-INVENTORIES-09` | `planned` | Initial hardening inventories |
@@ -57,6 +57,10 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `/usr/bin/time make verify` | 0 | `.dev/state/last-verify.env`; current-reactor Surefire XML | Warm-output full test run on `f4cdd06`; Maven wall `34.758 s`, process real `35.74 s` |
 | `make verify` | 0 | `.dev/state/last-verify.env`; current-reactor Surefire XML | `BASE-TESTS-04` consolidation verification on `5a746bb`; Maven wall `33.305 s` |
 | `make clean && /usr/bin/time make verify` | 0 | `build-support/coverage-report/target/site/jacoco-aggregate/`; module-local `target/site/jacoco/` | Clean report-only JaCoCo run on the instrumentation worktree based on `9aa8d1f`; Maven wall `57.585 s`, process real `58.74 s` |
+| `make clean && /usr/bin/time make verify` | 0 | Console capture; `.dev/state/last-verify.env`; reactor reports | Clean quality-signal run on `a0f2235`; Maven wall `57.263 s`, process real `58.39 s`, max RSS `1784708 KiB` |
+| `./mvnw -B -ntp -T 1C verify dependency:analyze-only` | 0 | Console capture; [build-quality ledger](build-quality-ledger.md#baseline-maven-dependency-analysis) | Maven Dependency Plugin `3.9.0`; full lifecycle is required so internal reactor artifacts are available; Maven wall `47.745 s` |
+| `./mvnw -B -ntp -T 1 -DskipTests verify dependency:analyze-only` | 0 | Non-interleaved module mapping in the [build-quality ledger](build-quality-ledger.md#baseline-maven-dependency-analysis) | 68 used-undeclared, 36 declared-unused and 12 non-test-scoped/test-only coordinate occurrences; Maven wall `4.671 s` |
+| `./mvnw -B -ntp -T 1C dependency:tree -Dverbose` | 0 | Console capture; quality report below | One mediated version conflict; dependency convergence is not currently enforced |
 
 ### Fresh verification summary
 
@@ -215,13 +219,49 @@ threshold or exclusion.
 
 | Signal | Tool/version | Result | Artifact | Disposition |
 |---|---|---|---|---|
-| Compiler warnings | TBD | TBD | TBD | TBD |
-| Static analysis | TBD | TBD | TBD | TBD |
-| SpotBugs | TBD | TBD | TBD | TBD |
-| PMD CPD aggregate | TBD | TBD | TBD | TBD |
-| Dependency convergence | TBD | TBD | TBD | TBD |
-| Maven dependency analysis | TBD | TBD | TBD | TBD |
-| Security | TBD | TBD | TBD | TBD |
+| Compiler warnings | Maven Compiler Plugin `3.14.1`, JDK `21.0.11` | No ordinary javac source warning; two annotation-processing advisories in `ioc-app` main/test compilation | Clean verification console; [build-quality ledger](build-quality-ledger.md#baseline-compiler-и-test-runtime-warnings) | Keep visible; explicit processor configuration is an `R030-BUILD` candidate, not a BASE fix |
+| Test-runtime warnings | Surefire `3.5.6`, Mockito/Byte Buddy, SLF4J `2.0.17` | Five no-provider warning groups on isolated module test classpaths; one Mockito self-attachment/dynamic-agent warning group | Clean verification console; [build-quality ledger](build-quality-ledger.md#baseline-compiler-и-test-runtime-warnings) | Test logging signal belongs to `R030-TEST`; future-JDK agent configuration belongs to `R030-BUILD`/`R030-TEST` |
+| Static analysis | Existing Maven lifecycle | Enforcer and ArchUnit pass; no general bytecode analyzer is currently configured | POM/test/workflow inventory | Preserve existing controls; introduce SpotBugs separately |
+| SpotBugs | Not configured | Missing by design at baseline | No report | `Introduce` report-first under `R030-BUILD`, then accepted blocking ratchet |
+| PMD CPD aggregate | Not configured | Missing by design at baseline | No report | `Introduce` as report-only diagnostic control under `R030-BUILD` |
+| Dependency convergence | Maven verbose dependency tree; no convergence rule | Not enforced; one `org.ow2.asm:asm` `9.7.1` path is mediated to `9.10.1` in the `ioc-app` test graph | Dependency-tree console | Do not claim convergence; separate bounded decision is required before adding a rule |
+| Maven dependency analysis | Maven Dependency Plugin `3.9.0` | Reproducible only with lifecycle; 68 / 36 / 12 coordinate occurrences with substantial framework, aggregate-test and SPI noise | [build-quality ledger](build-quality-ledger.md#baseline-maven-dependency-analysis) | `Evaluate` under `R030-BUILD`; no deletion or blocking gate from raw output |
+| Security | OWASP Dependency-Check Maven `12.2.2` + scheduled/manual workflow | Existing separate control; deliberately not run in this code-quality gate | `.github/workflows/dependency-security.yml`, `tools/ci/security-*.sh` | Preserve; vulnerability/SAST analysis remains outside `BASE-QUALITY-06` |
+
+### Закрытие `BASE-QUALITY-06`
+
+Baseline качества разделяет четыре типа evidence вместо объединения всех строк
+консоли в один счётчик предупреждений:
+
+1. чистый reactor не выдаёт обычных javac-предупреждений уровня исходного кода;
+2. остаются предупреждения о будущей совместимости toolchain: неявном поиске
+   annotation processors и динамической загрузке Mockito/Byte Buddy agent;
+3. изолированные test JVM выдают пять групп SLF4J no-provider warnings, которые
+   могут скрывать log assertions или diagnostics, но не доказывают дефект
+   production logging;
+4. bytecode-анализ Maven dependencies выдаёт широкий набор кандидатов, включая
+   как реальные вопросы к direct dependencies, так и известные слепые зоны
+   dynamic/framework анализа.
+
+`dependency:analyze-only` нельзя воспроизводимо вызвать отдельной reactor goal:
+downstream modules не могут разрешить ещё не предоставленные reactor-local
+artifacts. Поэтому evaluation-команда включает `verify`, а последовательный
+запуск с `-DskipTests` использован только для привязки не перемешанных findings
+к модулям. Отчёт является evidence для semantic review, а не разрешением удалять
+dependencies.
+
+Verbose dependency tree содержит один путь с Maven mediation для ASM.
+Существующая конфигурация Enforcer проверяет версии toolchain и дублирующиеся
+объявления, но не выполняет `dependencyConvergence`. Поэтому baseline сохраняет
+сигнал, не объявляет reactor convergence-clean и не расширяет принятый scope
+0.3.0.
+
+Существующие controls прослежены от исполняемой конфигурации, а не только от
+planning prose. Maven Wrapper, Enforcer, ArchUnit, reactor CI, documentation
+checks, dependency-security workflow и release workflow присутствуют и остаются
+обязательными. JaCoCo действует в report-only mode и усиливается в `R030-TEST`;
+SpotBugs и CPD остаются отдельными introductions в `R030-BUILD`. Исправление
+исходного кода, dependencies, POM или workflows в этот baseline gate не входит.
 
 ## Runtime/performance
 
@@ -243,21 +283,22 @@ threshold or exclusion.
 
 | Control | State | Evidence | Owner | Follow-up |
 |---|---|---|---|---|
-| Maven Wrapper | `Existing` | TBD | TBD | |
-| Maven Enforcer | `Existing` | TBD | TBD | |
-| ArchUnit | `Existing` | TBD | TBD | |
-| Reactor CI | `Existing` | TBD | TBD | |
-| Documentation checks | `Existing` | TBD | TBD | |
-| Dependency security workflow | `Existing` | TBD | TBD | |
-| Release workflow | `Existing` | TBD | TBD | |
-| JaCoCo report/check | `Introduce` | JaCoCo `0.8.15` module + aggregate HTML/XML reports | `make verify` | Reports exist; checks/ratchets remain `R030-TEST` |
-| Failsafe lifecycle | `Missing at planning` | TBD | TBD | `R030-TEST` |
-| JUnit tag convention | `Missing at planning` | TBD | TBD | `R030-TEST` |
-| Codecov | `Missing at planning` | TBD | TBD | `R030-TEST` signal |
-| Scheduled stability run | `Missing at planning` | TBD | TBD | `R030-TEST` |
-| SpotBugs | `Missing at planning` | TBD | TBD | `R030-BUILD` evaluation |
-| PMD CPD aggregate | `Missing at planning` | TBD | TBD | `R030-BUILD` evaluation |
-| Maven dependency analysis | `Missing at planning` | TBD | TBD | `R030-BUILD` evaluation |
+| Maven Wrapper | `Existing` | Wrapper `3.3.4`, Maven distribution `3.9.9`; used by Make and CI | Root build | Preserve as the only supported Maven entry point |
+| Maven Enforcer | `Existing` | Plugin `3.6.3`; Java `[21,)`, Maven `[3.9,)`, duplicate-POM-dependency checks plus domain/application boundary bans and release commit validation | `R030-BUILD` | Preserve; any convergence or compiler-policy expansion needs a separate decision |
+| ArchUnit | `Existing` | `ArchitectureTest`, `DomainBoundaryTest`, `PipelineModelArchitectureTest`; version `1.3.0`; all pass in `verify` | Architecture owners | Preserve and extend only with changed boundaries |
+| Reactor CI | `Existing` | Pinned-action workflow delegates to `tools/ci/build.sh` and runs the canonical Maven verify | Build/CI | Preserve transparent leaf-script contract |
+| Documentation checks | `Existing` | `DocumentationConventionTest`; offline Lychee in `tools/ci/docs.sh`; dedicated `doc-links` job | Documentation owners | Preserve and update with documentation topology |
+| Dependency security workflow | `Existing` | Scheduled/manual NVD refresh plus offline Dependency-Check scan and report upload | Security/release | Preserve; not a substitute for code-quality analysis |
+| Release workflow | `Existing` | Exact annotated-tag validation, single clean build, source-tree immutability check, packaging/docs gates and draft release | Release owner | Preserve |
+| JaCoCo report/check | `Strengthen` | JaCoCo `0.8.15` agent, per-module and aggregate HTML/XML reports in `verify`; no checks yet | `R030-TEST` | Add accepted local ratchets/checks; Codecov remains secondary signal |
+| Failsafe lifecycle | `Introduce` | Plugin is only managed; no execution or `*IT` discovery exists | `R030-TEST` | Separate integration lifecycle |
+| JUnit tag convention | `Introduce` | No `@Tag`, composed tag or Maven/CI filter exists | `R030-TEST` | Add accepted vocabulary and convention check |
+| Codecov | `Introduce` | No workflow/upload exists | `R030-TEST` | Best-effort upload and non-required signal only |
+| Scheduled stability run | `Introduce` | No scheduled repeat/stability workflow exists | `R030-TEST` | Add report-only pilot after lifecycle/tag controls |
+| SpotBugs | `Introduce` | No plugin or report exists | `R030-BUILD` | Report-first rollout, triage, then blocking accepted signal |
+| PMD CPD aggregate | `Introduce` | No plugin or report exists | `R030-BUILD` | Calibrated repository-wide report-only diagnostic control |
+| Maven dependency analysis | `Evaluate` | Bounded Plugin `3.9.0` report captured; high framework/dynamic noise | `R030-BUILD` | Decide `Adopt`, `Adopt with exclusions` or `Defer` |
+| Deferred analyzers/formatters/SAST | `Deferred` | No Spotless/Checkstyle, japicmp/Revapi, Error Prone/NullAway, Sonar/Qodana, CodeQL or full PMD ruleset | Outside 0.3.0 | Absence is not missing evidence for this release |
 
 ## Missing evidence
 
@@ -272,8 +313,8 @@ threshold or exclusion.
 - [x] Module/dependency inventory complete
 - [x] Tests/coverage captured
 - [x] Test lifecycle/tags/waits captured
-- [ ] Quality reports captured
+- [x] Quality reports captured
 - [ ] Runtime/performance captured
 - [ ] Compatibility obligations captured
-- [ ] Controls classified
-- [ ] Status matrix initialized
+- [x] Controls classified
+- [x] Status matrix initialized
