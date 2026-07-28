@@ -15,8 +15,8 @@ language: "ru"
 
 | Goal | State | Evidence | Next gate |
 |---|---|---|---|
-| `R030-BASE` | `in-progress` | [baseline](evidence/baseline.md), [compatibility ledger](evidence/compatibility-ledger.md) | `BASE-CLOSE-10` evidence consolidation and goal closure |
-| `R030-BUILD` | `planned` | [build-quality ledger](evidence/build-quality-ledger.md) | SpotBugs report baseline + CPD calibration |
+| `R030-BASE` | `verified` | [baseline](evidence/baseline.md), [compatibility ledger](evidence/compatibility-ledger.md) | Closed; re-baseline only by explicit scope/contract decision |
+| `R030-BUILD` | `ready` | [build-quality ledger](evidence/build-quality-ledger.md) | `BUILD-SPOTBUGS-01` report-only baseline |
 | `R030-TEST` global controls | `planned` | [test-quality ledger](evidence/test-quality-ledger.md) | `TEST-LIFECYCLE-01` taxonomy and lifecycle separation |
 | `R030-SEC` | `planned` | — | Security gap analysis |
 | `R030-LIB` | `planned` | [shared-code inventory](evidence/shared-code-inventory.md) | `LIB-1` concurrency-library admission record |
@@ -54,7 +54,7 @@ language: "ru"
 
 | Work item | Goal | Scope | Stage | Owner | State | Evidence |
 |---|---|---|---|---|---|---|
-| `BASE-CLOSE-10` | `R030-BASE` | Consolidate Wave 0 evidence and close the baseline goal | Ready for closure review | AI agent | `planned` | [baseline](evidence/baseline.md) |
+| `BUILD-SPOTBUGS-01` | `R030-BUILD` | All applicable production Java modules in the 22-project reactor; build-only coverage aggregator excluded from bytecode scope | Report-only tool introduction; no mass finding remediation or blocking gate | AI agent | `ready` | [build-quality ledger](evidence/build-quality-ledger.md#initial-work-item-queue) |
 
 ## 4. Deferred и blocked
 

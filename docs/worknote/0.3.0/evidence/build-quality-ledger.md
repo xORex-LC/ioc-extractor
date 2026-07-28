@@ -35,6 +35,21 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 Допустимые rollout stages: `planned`, `report-only`, `triaged`, `baselined`,
 `blocking` и `tightening`.
 
+## Initial work-item queue
+
+| Work item | Outcome | Mode | Entry dependency | State |
+|---|---|---|---|---|
+| `BUILD-SPOTBUGS-01` | Reproducible reactor-wide production-bytecode report, scope/cost inventory and raw findings | Report only; no mass remediation or merge gate | `R030-BASE` verified | `ready` |
+| `BUILD-CPD-02` | Repository-wide production-source report and evidence-based `minimumTokens` calibration | Diagnostic/report only | `BUILD-SPOTBUGS-01` closed, unless matrix explicitly reorders independent tooling | `planned` |
+| `BUILD-DEPS-03` | Semantic disposition of the captured dependency candidates and `Adopt / Adopt with exclusions / Defer` decision | Evaluation only | `BUILD-CPD-02` closed | `planned` |
+| `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow legacy baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `planned` |
+| `BUILD-SPOTBUGS-05` | Accepted no-new-findings signal wired into canonical Maven `verify` | Blocking ratchet | `BUILD-SPOTBUGS-04` closed | `planned` |
+
+The queue is sequential for operator/agent clarity, not a technical claim that
+the controls depend on each other. A confirmed immediate correctness, resource
+or concurrency risk may move `BUILD-SPOTBUGS-04` forward through an explicit
+status-matrix decision.
+
 ## `BASE-QUALITY-06` — baseline действующих controls
 
 Baseline подтверждает, что проект уже контролирует воспроизводимость,

@@ -2,7 +2,7 @@
 title: "0.3.0 baseline evidence"
 version: "0.3.0"
 goal_id: "R030-BASE"
-status: "In progress"
+status: "Verified"
 document_type: "Evidence ledger"
 source_of_truth: false
 language: "ru"
@@ -26,7 +26,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `BASE-RUNTIME-07` | `verified` | Representative extraction, export, daemon startup and resource baseline captured; proceed to `BASE-CONTRACTS-08` |
 | `BASE-CONTRACTS-08` | `verified` | Compatibility surfaces, consumer status and upgrade/rollback obligations captured; proceed to `BASE-INVENTORIES-09` |
 | `BASE-INVENTORIES-09` | `verified` | Review, retirement, shared-code and test-quality intake queues reconciled; proceed to `BASE-CLOSE-10` |
-| `BASE-CLOSE-10` | `planned` | Evidence consolidation and goal closure |
+| `BASE-CLOSE-10` | `verified` | Wave 0 DoD reconciled; `R030-BASE` closed and `BUILD-SPOTBUGS-01` prepared as the next work item |
 
 ## Revision и environment
 
@@ -61,6 +61,9 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `./mvnw -B -ntp -T 1C verify dependency:analyze-only` | 0 | Console capture; [build-quality ledger](build-quality-ledger.md#baseline-maven-dependency-analysis) | Maven Dependency Plugin `3.9.0`; full lifecycle is required so internal reactor artifacts are available; Maven wall `47.745 s` |
 | `./mvnw -B -ntp -T 1 -DskipTests verify dependency:analyze-only` | 0 | Non-interleaved module mapping in the [build-quality ledger](build-quality-ledger.md#baseline-maven-dependency-analysis) | 68 used-undeclared, 36 declared-unused and 12 non-test-scoped/test-only coordinate occurrences; Maven wall `4.671 s` |
 | `./mvnw -B -ntp -T 1C dependency:tree -Dverbose` | 0 | Console capture; quality report below | One mediated version conflict; dependency convergence is not currently enforced |
+| `make context` (`BASE-CLOSE-10`) | 0 | Inline closure capture | Clean `6cc0e94`; prior `make verify` passed on the same commit and is fresh |
+| Root-POM module census + declared-reactor Surefire/JaCoCo reconciliation | 0 | Closure audit below | 22 reactor projects; 171 suites / 781 cases; aggregate `87.34%` line / `69.38%` branch |
+| `git ls-files` documentation census | 0 | Documentation baseline below | 52 published Markdown files plus 21 versioned release-worknote files |
 
 ### Fresh verification summary
 
@@ -126,14 +129,17 @@ counts and is the next independent baseline gate, `BASE-COVERAGE-05`.
 
 Captured at `2026-07-27T21:21:22+08:00`. The common group is
 `com.iocextractor`; every child inherits version `0.3.0-SNAPSHOT`. The reactor
-contains one parent/aggregator and 20 child modules, all with `jar` packaging.
-Only `bootstrap/ioc-app` is runnable and Spring Boot-repackaged.
+now contains one parent/aggregator and 21 child modules: 20 functional modules
+with `jar` packaging and one build-only aggregate-report module with `pom`
+packaging. Only `bootstrap/ioc-app` is runnable and Spring Boot-repackaged.
 
 The dependency command was run on evidence commit `9fefa5a`. Its diff from the
 subject revision `fc4bcdd` contains only `.gitignore`, `docs/README.md` and the
 tracked release worknotes; no POM, production source, test source or runtime
-configuration changed. The graph and counts therefore describe the selected
-baseline subject.
+configuration changed. That initial graph described the selected baseline
+subject before `BASE-COVERAGE-05`. The later measurement-only JaCoCo bootstrap
+added `build-support/coverage-report`; it aggregates all 19 production modules
+but does not alter their dependency graph or runtime topology.
 
 | Artifact/module | Packaging | Direct project dependencies | Production files | Test files | Notes |
 |---|---|---|---:|---:|---|
@@ -158,13 +164,18 @@ baseline subject.
 | `ioc-adapter-ingest` (`adapters/adapter-ingest`) | `jar` | `ioc-application`, `ioc-platform-errors`, `ioc-platform-diagnostics`, `ioc-platform-observability`; `ioc-application-tck` (test) | 11 (10 Java) | 6 (6 Java) | File-ingest driving adapter |
 | `ioc-adapter-cli-picocli` (`adapters/adapter-cli-picocli`) | `jar` | `ioc-application`, `ioc-platform-observability` | 15 (14 Java) | 8 (7 Java) | CLI driving adapter |
 | `ioc-app` (`bootstrap/ioc-app`) | `jar` | `ioc-domain`, `ioc-application`; all 9 `ioc-adapter-*`; `ioc-platform-errors`, `ioc-platform-diagnostics`, `ioc-platform-events`, `ioc-platform-concurrency`, `ioc-platform-observability`, `ioc-platform-diagnostics-logging` | 74 (68 Java) | 60 (52 Java) | Composition root and sole runnable artifact |
+| `ioc-coverage-report` (`build-support/coverage-report`) | `pom` | All 19 production modules | 0 | 0 | Non-published aggregate JaCoCo report; build-only and excluded from module-hardening scope |
 
-Totals across child modules:
+Totals across the 20 functional child modules:
 
 - 564 tracked files under `src/main`, including 501 Java files;
 - 182 tracked files under `src/test`, including 173 Java files;
-- no additional non-`target` POM exists outside the root and its 20 declared
-  child modules.
+- the root and its 21 declared children account for all 22 tracked POM files.
+
+The module-hardening matrix intentionally lists the 20 functional modules only.
+The aggregate report module has no production capability, public API or runtime
+ownership to harden; changes to its measurement mechanics remain global
+`R030-BUILD`/`R030-TEST` work.
 
 ## Tests и coverage
 
@@ -333,6 +344,38 @@ rollback evidence exists. Current deployment guidance still scopes repeated
 upgrade language to `0.2.x`; this is an explicit `R030-DOC`/`R030-REL` gap, not
 silently corrected by the baseline.
 
+## Published documentation baseline
+
+The published documentation census uses tracked Markdown paths and excludes the
+release worknote bundle:
+
+| Bucket | Tracked Markdown files | Mechanical Cyrillic signal |
+|---|---:|---:|
+| `docs/*.md` | 12 | 9 |
+| `docs/dev/*.md` | 9 | 9 |
+| `docs/dev/ru/*.md` | 0 | 0 |
+| `docs/ADR/*.md` | 21 | 21 |
+| `docs/guides/*.md` | 5 | 2 |
+| `docs/guides/ru/*.md` | 5 | 5 |
+| **Published total** | **52** | — |
+
+The Cyrillic column means only “the file contains at least one Cyrillic
+codepoint”. It is not a language classifier: English documents may retain
+Russian configuration values, examples or historical names. Manual
+English/Russian disposition and translation sequencing belong to `R030-DOC`.
+The census nevertheless records two structural facts for that goal:
+`docs/dev/ru/` is currently absent, while operator guides already use paired
+root/`ru/` locations.
+
+The tracked `docs/worknote/0.3.0/` bundle contains 21 Markdown files. It is
+versioned release planning/evidence, not published project documentation and
+not an authoritative contract outside the 0.3.0 execution process.
+
+The closure documentation gate checked 480 link occurrences (164 unique):
+439 passed, 0 failed and 41 were deliberately excluded by the offline policy.
+`DocumentationConventionTest` also passed inside the canonical reactor
+verification.
+
 ## Initial hardening inventories
 
 `BASE-INVENTORIES-09` reconciles four working ledgers:
@@ -395,6 +438,55 @@ as unchanged publication units.
 | Published-library consumer | Reactor modules are not independently published; `feeds-collector` is planned only | No external Maven API or standalone resolution/compatibility evidence exists | `R030-LIB` / `R030-TEST` / `R030-REL` | Admit coordinates and API, produce consumer-resolvable POM, pass out-of-reactor consumer test |
 | `v0.2.0 → v0.3.0` deployment evidence | Final release candidate and final contract set do not exist yet; current guide still says `0.2.x` | Cannot yet claim supported upgrade/rollback for 0.3.0 | `R030-DOC` / `R030-REL` | Run representative two-DB upgrade/health/rollback stand and publish exact operator guidance |
 
+## `BASE-CLOSE-10` — Closure audit
+
+Closure was audited against the `R030-BASE` Definition of Done on clean commit
+`6cc0e940748800187c38fc2aff451ebdb33d9d6d`. The selected comparison subject
+remains `fc4bcddf44dd6ed3d2d57f3a1167ec1e18db9fef`; the 29-path delta through the
+closure subject contains only versioned planning/documentation, worknote
+allowlisting and the measurement-only JaCoCo aggregate module. It changes no
+production Java, test Java, runtime configuration, packaging or deployment
+code.
+
+| DoD dimension | Closure evidence | Result |
+|---|---|---|
+| Revision and reproducible environment | Exact subject/tag/toolchain, `make context`, `make doctor-core` and commands above | `verified` |
+| Clean verification | Canonical clean/warm runs plus fresh same-commit `make verify` state | `verified` |
+| Module graph and matrix | Final 22-project reactor topology; 20 functional scopes in the hardening matrix | `verified` |
+| Tests, coverage and quality signal | Declared-reactor Surefire reports, aggregate/per-module JaCoCo, warnings and dependency analysis | `verified` |
+| Runtime and performance | Representative extract/export/daemon/resource cases in the runtime ledger | `verified` |
+| Compatibility and consumers | Supported surfaces plus explicit absent-consumer and upgrade/rollback evidence | `verified with dispositions` |
+| Documentation state | Published-bucket census, language signal and executable docs checks | `verified` |
+| Review/retirement/shared/test intake | Four reconciled ledgers with stable work-item IDs and protected uncertainty | `verified` |
+| Controls inventory | Every considered control classified with owner and follow-up | `verified` |
+| Reproducibility and handoff | Commands, revisions, artifacts, owners and exit conditions are recorded | `verified` |
+
+The four rows in **Missing evidence** do not block baseline closure: the
+measurement is explicitly unavailable, its impact is bounded, and a later goal
+owns a concrete exit condition. They do block stronger future claims about live
+SMB behavior, named external consumers, standalone library compatibility and
+the final 0.2.0-to-0.3.0 upgrade/rollback path.
+
+This closure means that measurement and scope are stable enough to start
+hardening. It does **not** mean that downstream build, test, architecture,
+retirement, library, documentation, security or release goals are green.
+Re-baselining requires an explicit scope/contract decision; normal later
+improvements are compared with this evidence instead of rewriting it.
+
+The sequential Wave 1 handoff is:
+
+1. `BUILD-SPOTBUGS-01` — introduce reproducible reactor-wide production
+   bytecode reporting without blocking or mass remediation;
+2. `BUILD-CPD-02` — introduce and calibrate repository-wide report-only CPD;
+3. `BUILD-DEPS-03` — semantically triage the existing dependency report and
+   record its adoption decision;
+4. `TEST-LIFECYCLE-01` — separate test lifecycles and establish the accepted
+   tag vocabulary without losing discovery.
+
+Only the first item becomes active now. Findings may reorder this queue only
+through an explicit status-matrix decision, especially if an immediate
+correctness, resource or concurrency risk is confirmed.
+
 ## Completion
 
 - [x] Revision/environment fixed
@@ -405,6 +497,9 @@ as unchanged publication units.
 - [x] Quality reports captured
 - [x] Runtime/performance captured
 - [x] Compatibility obligations captured
+- [x] Published documentation state captured
 - [x] Initial review/retirement/shared-code/test inventories reconciled
 - [x] Controls classified
 - [x] Status matrix initialized
+- [x] Missing evidence has an owner and exit condition
+- [x] Closure audit passed
