@@ -25,7 +25,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `BASE-QUALITY-06` | `verified` | Warning, dependency and existing-control inventory captured; actionable signals handed to `R030-BUILD` and `R030-TEST`; proceed to `BASE-RUNTIME-07` |
 | `BASE-RUNTIME-07` | `verified` | Representative extraction, export, daemon startup and resource baseline captured; proceed to `BASE-CONTRACTS-08` |
 | `BASE-CONTRACTS-08` | `verified` | Compatibility surfaces, consumer status and upgrade/rollback obligations captured; proceed to `BASE-INVENTORIES-09` |
-| `BASE-INVENTORIES-09` | `planned` | Initial hardening inventories |
+| `BASE-INVENTORIES-09` | `verified` | Review, retirement, shared-code and test-quality intake queues reconciled; proceed to `BASE-CLOSE-10` |
 | `BASE-CLOSE-10` | `planned` | Evidence consolidation and goal closure |
 
 ## Revision и environment
@@ -333,6 +333,38 @@ rollback evidence exists. Current deployment guidance still scopes repeated
 upgrade language to `0.2.x`; this is an explicit `R030-DOC`/`R030-REL` gap, not
 silently corrected by the baseline.
 
+## Initial hardening inventories
+
+`BASE-INVENTORIES-09` reconciles four working ledgers:
+
+- [code-health review](review-ledger.md) enumerates every module/capability,
+  preserves analyzer/coverage signals as navigation rather than proof and
+  records three confirmed cross-goal intake findings;
+- [retirement inventory](retirement-inventory.md) imports support obligations
+  from the compatibility baseline and prevents zero coverage, legacy naming or
+  raw dependency output from authorizing deletion;
+- [shared-code inventory](shared-code-inventory.md) classifies all seven
+  platform modules, identifies `platform-concurrency` as the strongest first
+  admission candidate and rejects publication of broad mixed APIs as-is;
+- [test-quality ledger](test-quality-ledger.md) maps lifecycle, coverage,
+  supported JDK fallback, waits, live SMB, pilots, Codecov and external
+  consumers to stable initial work-item IDs.
+
+One narrow `remove-now` disposition is admitted without implementation:
+orphaned `StableArtifactId` has no Java consumer or dynamic wiring and belongs
+to the already retired stable-id sidecar concept. Current SQL migrations,
+file-ledger import, the removed-key migration hint, JDK regex fallback, SMB
+seams, maintenance scheduler, publish ledger and TCK are instead protected by
+runtime, compatibility or history evidence. The two raw unused-dependency
+candidates remain `defer-uncertain` pending semantic validation.
+
+Architecture-review screening confirms that a Maven module boundary alone is
+not a publication boundary. `platform-concurrency` has the smallest generic
+dependency closure, but `LIB-1` still needs owner/API/versioning/publication and
+standalone-consumer admission evidence. Diagnostics, observability and their
+bridge mix generic mechanics with service-specific vocabulary and are rejected
+as unchanged publication units.
+
 ## Controls inventory
 
 | Control | State | Evidence | Owner | Follow-up |
@@ -373,5 +405,6 @@ silently corrected by the baseline.
 - [x] Quality reports captured
 - [x] Runtime/performance captured
 - [x] Compatibility obligations captured
+- [x] Initial review/retirement/shared-code/test inventories reconciled
 - [x] Controls classified
 - [x] Status matrix initialized

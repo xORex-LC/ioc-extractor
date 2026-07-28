@@ -20,6 +20,24 @@ taxonomy и scope находятся только в goal contract.
 are captured below. Threshold enforcement and all remediation remain open under
 their own `R030-TEST` work items.
 
+`BASE-INVENTORIES-09` intake status: **verified**. The initial work queue below
+maps every baseline test/coverage/consumer gap to an owner without implementing
+it during Wave 0.
+
+## Initial work-item queue
+
+| Work item | Scope/outcome | Evidence | Dependency | State |
+|---|---|---|---|---|
+| `TEST-LIFECYCLE-01` | Introduce accepted tags/composed annotations and Surefire/Failsafe selection without losing any of 171 suites | Lifecycle classification and zero-tag inventory below | Global `R030-TEST` Wave 1 | `planned` |
+| `TEST-COVERAGE-02` | Add aggregate/per-module no-regression ratchets, then close accepted aggregate/domain/application branch floors | Coverage baseline and hotspots below | Stable lifecycle/reporting | `planned` |
+| `TEST-REGEX-03` | Common RE2/J + JDK engine contract and bootstrap `ioc.engine=jdk` selection test | Risk finding below; 0/9 JDK lines | Regex/bootstrap module wave | `planned` |
+| `TEST-WAITS-04` | Bound async waits, release workers in `finally`, assert termination and add diagnosable safety timeout | Wait/flake inventory below | Module test hardening | `planned` |
+| `TEST-EXTERNAL-05` | Execute live SMB `CHANGE_NOTIFY` contract or record explicit external-evidence release disposition | Two skipped external cases | Provisioned fixture / `R030-REL` | `external-evidence-required` |
+| `TEST-PILOTS-06` | Run PIT/domain, invariant and seeded repeat pilots; triage signal/noise/cost | Diagnostic pilot tables below | Wave 1 profiles/artifacts | `planned` |
+| `TEST-CODECOV-07` | Best-effort non-required upload plus project/patch signals | Codecov table below | Stable JaCoCo XML + CI | `planned` |
+| `TEST-PUBLICATION-08` | Out-of-reactor compile/runtime contract for an admitted published library | Compatibility/shared-code ledgers | Blocked until `R030-LIB` admission | `waiting-on-library-contract` |
+| `TEST-CONSUMERS-09` | Add exact golden CSV/manifest/log/CLI consumer payload/query fixtures for accepted external surfaces | Compatibility consumer gaps | Per-surface owner decision | `planned` |
+
 ## Baseline discovery inventory
 
 Captured for `BASE-TESTS-04` from tracked `src/test/**/*.java` files and

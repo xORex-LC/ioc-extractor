@@ -15,11 +15,11 @@ language: "ru"
 
 | Goal | State | Evidence | Next gate |
 |---|---|---|---|
-| `R030-BASE` | `in-progress` | [baseline](evidence/baseline.md), [compatibility ledger](evidence/compatibility-ledger.md) | `BASE-INVENTORIES-09` initial hardening inventories |
+| `R030-BASE` | `in-progress` | [baseline](evidence/baseline.md), [compatibility ledger](evidence/compatibility-ledger.md) | `BASE-CLOSE-10` evidence consolidation and goal closure |
 | `R030-BUILD` | `planned` | [build-quality ledger](evidence/build-quality-ledger.md) | SpotBugs report baseline + CPD calibration |
-| `R030-TEST` global controls | `planned` | [test-quality ledger](evidence/test-quality-ledger.md) | Coverage ratchets and branch-gap remediation after baseline |
+| `R030-TEST` global controls | `planned` | [test-quality ledger](evidence/test-quality-ledger.md) | `TEST-LIFECYCLE-01` taxonomy and lifecycle separation |
 | `R030-SEC` | `planned` | — | Security gap analysis |
-| `R030-LIB` | `planned` | [shared-code inventory](evidence/shared-code-inventory.md) | Candidate classification |
+| `R030-LIB` | `planned` | [shared-code inventory](evidence/shared-code-inventory.md) | `LIB-1` concurrency-library admission record |
 | `R030-DOC` | `planned` | — | Translation inventory |
 | `R030-REL` | `planned` | — | All prerequisite goals |
 
@@ -54,7 +54,7 @@ language: "ru"
 
 | Work item | Goal | Scope | Stage | Owner | State | Evidence |
 |---|---|---|---|---|---|---|
-| `BASE-INVENTORIES-09` | `R030-BASE` | Initial review, retirement, shared-code and test-quality inventory readiness | Ready for inventory reconciliation | AI agent | `planned` | [baseline](evidence/baseline.md) |
+| `BASE-CLOSE-10` | `R030-BASE` | Consolidate Wave 0 evidence and close the baseline goal | Ready for closure review | AI agent | `planned` | [baseline](evidence/baseline.md) |
 
 ## 4. Deferred и blocked
 
