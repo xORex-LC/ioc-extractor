@@ -477,32 +477,83 @@ measurements may separate agent/report cost from ordinary run variance.
 
 ## Coverage baseline и ratchet
 
-| Module/scope | Production universe | Line baseline | Branch baseline | Release floor | Current | Ratchet | State |
-|---|---|---:|---:|---|---|---|---|
-| Reactor aggregate | TBD | TBD | TBD | `75% / 80%` | TBD | TBD | `planned` |
-| `platform/platform-errors` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
-| `platform/platform-diagnostics` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
-| `platform/platform-etl` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
-| `platform/platform-events` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
-| `platform/platform-concurrency` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
-| `platform/platform-observability` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
-| `platform/platform-diagnostics-logging` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
-| `core/ioc-domain` | TBD | TBD | TBD | `85% / 90%` | TBD | TBD | `planned` |
-| `core/ioc-application` | TBD | TBD | TBD | `85% / 90%` | TBD | TBD | `planned` |
-| `core/ioc-application-tck` | test-support | TBD | TBD | contract execution | TBD | TBD | `planned` |
-| `adapters/adapter-regex-re2j` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
-| `adapters/adapter-psl` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
-| `adapters/adapter-source-tika` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
-| `adapters/adapter-sink-csv` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
-| `adapters/adapter-manifest-json-jackson` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
-| `adapters/adapter-store-jdbc` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
-| `adapters/adapter-transport-smb` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
-| `adapters/adapter-ingest` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
-| `adapters/adapter-cli-picocli` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
-| `bootstrap/ioc-app` | TBD | TBD | TBD | baseline | TBD | TBD | `planned` |
+Authoritative module measurements below are groups from the reactor aggregate,
+not module-local reports. Therefore they retain execution of upstream code by
+downstream integration and E2E tests.
+
+| Module/scope | Classes | Missed instructions | Lines covered/total | Line | Branches covered/total | Branch | Missed branches | Release floor | State |
+|---|---:|---:|---:|---:|---:|---:|---:|---|---|
+| **Reactor aggregate** | **506** | **6416** | **9574/10962** | **87.34%** | **2774/3998** | **69.38%** | **1224** | `75% / 80%` | `measured; branch gap` |
+| `platform/platform-errors` | 1 | 0 | 4/4 | 100.00% | 0/0 | N/A | 0 | baseline | `measured` |
+| `platform/platform-diagnostics` | 28 | 61 | 427/436 | 97.94% | 54/72 | 75.00% | 18 | baseline | `measured` |
+| `platform/platform-etl` | 10 | 75 | 159/175 | 90.86% | 15/22 | 68.18% | 7 | baseline | `measured` |
+| `platform/platform-events` | 4 | 0 | 41/41 | 100.00% | 12/14 | 85.71% | 2 | baseline | `measured` |
+| `platform/platform-concurrency` | 11 | 59 | 153/172 | 88.95% | 33/46 | 71.74% | 13 | baseline | `measured` |
+| `platform/platform-observability` | 12 | 42 | 274/288 | 95.14% | 67/69 | 97.10% | 2 | baseline | `measured` |
+| `platform/platform-diagnostics-logging` | 3 | 9 | 56/60 | 93.33% | 20/21 | 95.24% | 1 | baseline | `measured` |
+| `core/ioc-domain` | 29 | 82 | 229/243 | 94.24% | 86/110 | 78.18% | 24 | `85% / 90%` | `measured; branch gap` |
+| `core/ioc-application` | 144 | 1407 | 2056/2340 | 87.86% | 643/906 | 70.97% | 263 | `85% / 90%` | `measured; branch gap` |
+| `core/ioc-application-tck` | — | — | — | N/A | — | N/A | — | contract execution | `outside production universe` |
+| `adapters/adapter-regex-re2j` | 2 | 39 | 8/18 | 44.44% | 2/4 | 50.00% | 2 | baseline | `measured; supported-path gap` |
+| `adapters/adapter-psl` | 1 | 3 | 15/17 | 88.24% | 11/12 | 91.67% | 1 | baseline | `measured` |
+| `adapters/adapter-source-tika` | 1 | 6 | 49/50 | 98.00% | 5/8 | 62.50% | 3 | baseline | `measured` |
+| `adapters/adapter-sink-csv` | 37 | 610 | 792/929 | 85.25% | 266/398 | 66.83% | 132 | baseline | `measured` |
+| `adapters/adapter-manifest-json-jackson` | 5 | 9 | 82/84 | 97.62% | 5/6 | 83.33% | 1 | baseline | `measured` |
+| `adapters/adapter-store-jdbc` | 36 | 754 | 1479/1636 | 90.40% | 343/510 | 67.25% | 167 | baseline | `measured` |
+| `adapters/adapter-transport-smb` | 14 | 922 | 367/571 | 64.27% | 157/274 | 57.30% | 117 | baseline | `measured; external-path concentration` |
+| `adapters/adapter-ingest` | 17 | 266 | 335/388 | 86.34% | 89/114 | 78.07% | 25 | baseline | `measured` |
+| `adapters/adapter-cli-picocli` | 16 | 553 | 394/490 | 80.41% | 108/195 | 55.38% | 87 | baseline | `measured` |
+| `bootstrap/ioc-app` | 135 | 1519 | 2654/3020 | 87.88% | 858/1217 | 70.50% | 359 | baseline | `measured` |
 
 Для small-denominator modules в evidence добавляются absolute missed
 instructions/branches.
+
+No JaCoCo threshold is active in this baseline. Line coverage already exceeds
+the future fixed floors for the aggregate, domain and application scopes.
+Branch coverage is below those floors by `10.62`, `11.82` and `19.03`
+percentage points respectively. The accepted targets are not lowered:
+`R030-TEST` must triage meaningful branches, establish no-regression ratchets
+and close the release gaps before enabling the fixed checks.
+
+### Downstream execution effect
+
+The aggregate is materially different from module-local reports:
+
+| Module | Local line | Aggregate line | Delta | Local branch | Aggregate branch | Delta |
+|---|---:|---:|---:|---:|---:|---:|
+| `core/ioc-domain` | 41.98% | 94.24% | +52.26 pp | 40.00% | 78.18% | +38.18 pp |
+| `platform/platform-observability` | 79.51% | 95.14% | +15.62 pp | 82.61% | 97.10% | +14.49 pp |
+| `adapters/adapter-ingest` | 75.77% | 86.34% | +10.57 pp | 75.44% | 78.07% | +2.63 pp |
+| `adapters/adapter-regex-re2j` | no local report | 44.44% | downstream only | no local report | 50.00% | downstream only |
+
+This confirms that module-local ratios cannot be used as release ratchets for
+this reactor. The aggregate group values are the accepted baseline source.
+
+### Initial coverage hotspots
+
+The largest missed-branch concentrations are navigation signals, not automatic
+test requirements:
+
+| Class | Module | Missed branches | Missed instructions | Initial disposition |
+|---|---|---:|---:|---|
+| `SyncHealthIndicator` | `bootstrap/ioc-app` | 53 | 96 | Risk review: health degradation/status combinations |
+| `AppConfig` | `bootstrap/ioc-app` | 45 | 192 | Composition/config selection review |
+| `SmbFileTransport` | `adapter-transport-smb` | 40 | 240 | Offline vs external transport-path review |
+| `IocConfigPreflight` | `bootstrap/ioc-app` | 40 | 206 | Strict-config negative/boundary review |
+| `JdbcExportRunLedger` | `adapter-store-jdbc` | 39 | 114 | Recovery/CAS/terminal-state review |
+| `CsvSliceMaterialization` | `adapter-sink-csv` | 34 | 97 | Failure/cleanup/integrity review |
+| `JdbcPublishLedger` | `adapter-store-jdbc` | 31 | 105 | Selection/retry/idempotency review |
+| `HealthCommand` | `adapter-cli-picocli` | 28 | 176 | HTTP/status/error mapping review |
+| `SmbjShareClient` | `adapter-transport-smb` | 26 | 331 | Zero-line external client seam |
+| `ArtifactPublishService` | `core/ioc-application` | 24 | 162 | Partial failure/retry/recovery review |
+
+Twelve classes have zero covered lines. The largest are `SmbjShareClient`
+(`88` missed lines), `DaemonMaintenanceScheduler` (`47`),
+`PublishLedger` (`22`), the SMB change-notify session implementation (`9`) and
+`JdkRegexPatternEngine` (`9`). The remaining seven contain 1–7 lines each.
+Zero coverage is not classified as dead code by this measurement; each item
+requires supported-path, external-fixture, interface/default-method or
+retirement evidence in its owning goal.
 
 ## Coverage exclusions
 
@@ -523,7 +574,7 @@ instructions/branches.
 
 | Finding | Scope/behavior | Gap type | Risk | Required evidence | Disposition | Work item |
 |---|---|---|---|---|---|---|
-| JDK pattern engine lacks behavioral consumer | `JdkRegexPatternEngine` and `ioc.engine=jdk` selection | `contract`, `compatibility` | Supported alternate engine may drift or wire incorrectly without detection | Shared two-engine contract + bootstrap bean-selection test | Close in 0.3.0 | `R030-TEST` adapter/bootstrap hardening |
+| JDK pattern engine lacks behavioral consumer | `JdkRegexPatternEngine` and `ioc.engine=jdk` selection; aggregate confirms 0/9 lines and 0/2 branches for JDK versus 8/9 and 2/2 for RE2/J | `contract`, `compatibility` | Supported alternate engine may drift or wire incorrectly without detection | Shared two-engine contract + bootstrap bean-selection test | Close in 0.3.0 | `R030-TEST` adapter/bootstrap hardening |
 | Live SMB `CHANGE_NOTIFY` not executed | External transport signal and idle-survival behavior | `contract`, `external` | Offline suite cannot prove live server semantics | Provisioned execution or explicit release disposition | Open external evidence | `R030-TEST` / `R030-REL` |
 | No standalone published-library consumer yet | Future extracted library coordinates and public API | `contract`, `publication` | Reactor-relative resolution can hide publication/POM defects | Out-of-reactor compile + runtime contract using published coordinates | Required when library API is finalized | `R030-LIB` / `R030-TEST` |
 | Invariant/PIT pilots not executed | Refang, normalization, classification, deduplication, identity | `assertion-quality` | Example assertions may miss semantically important mutations/invariants | Reproducible pilots with triaged results | Planned, no baseline inference | `R030-TEST` |

@@ -54,7 +54,7 @@ language: "ru"
 
 | Work item | Goal | Scope | Stage | Owner | State | Evidence |
 |---|---|---|---|---|---|---|
-| `BASE-COVERAGE-05` | `R030-BASE` | Measurement-only JaCoCo bootstrap and reactor coverage capture | Gates 1–3/6 complete: clean reports verified; metric extraction and disposition next | AI agent | `analyzing` | [baseline](evidence/baseline.md), [test-quality ledger](evidence/test-quality-ledger.md#instrumentation-verification) |
+| `BASE-COVERAGE-05` | `R030-BASE` | Measurement-only JaCoCo bootstrap and reactor coverage capture | Gates 1–5/6 complete: metrics and initial dispositions captured; closure/current-HEAD verify next | AI agent | `analyzing` | [baseline](evidence/baseline.md), [test-quality ledger](evidence/test-quality-ledger.md#coverage-baseline-и-ratchet) |
 
 ## 4. Deferred и blocked
 

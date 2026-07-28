@@ -21,7 +21,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `BASE-REACTOR-02` | `verified` | Module graph and dependency inventory captured |
 | `BASE-VERIFY-03` | `verified` | Fresh clean reactor verification captured |
 | `BASE-TESTS-04` | `verified` | Six analysis gates captured; findings handed to `R030-TEST`; proceed to `BASE-COVERAGE-05` |
-| `BASE-COVERAGE-05` | `analyzing` | Gates 1–3/6: tooling selected, report-only instrumentation added and clean reports verified |
+| `BASE-COVERAGE-05` | `analyzing` | Gates 1–5/6: reports verified, metrics extracted and initial gaps dispositioned |
 | `BASE-QUALITY-06` | `planned` | Warning, dependency and existing-control inventory |
 | `BASE-RUNTIME-07` | `planned` | Representative performance/resource measurements |
 | `BASE-CONTRACTS-08` | `planned` | Compatibility and consumer obligations |
@@ -166,8 +166,8 @@ Totals across child modules:
 
 | Module/scope | Test classes | Unit/component | Integration | Contract/architecture/publication/E2E | Line | Branch | Missed branches | Duration | Flake status |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| Reactor aggregate | 173 Java files / 171 suites / 781 cases | 114 | 38 | 6 / 4 / 7 / 2 | TBD | TBD | TBD | `35.74 s` verify real / `39.815` suite-seconds | No reproduced failure; bounded-execution gaps open |
-| Per-module rows | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| Reactor aggregate | 173 Java files / 171 suites / 781 cases | 114 | 38 | 6 / 4 / 7 / 2 | `87.34%` | `69.38%` | `1224` | `58.74 s` clean coverage verify real | No reproduced failure; coverage gaps handed to `R030-TEST` |
+| 19 production module groups | See detailed ledger | See detailed ledger | See detailed ledger | See detailed ledger | `44.44–100%` | `50.00–97.10%` or `N/A` | See detailed ledger | Included above | Aggregate retains downstream execution |
 
 Detailed per-module ratchets и dispositions ведутся в
 [test-quality ledger](test-quality-ledger.md).
@@ -230,7 +230,7 @@ findings and dispositions are in the
 | Documentation checks | `Existing` | TBD | TBD | |
 | Dependency security workflow | `Existing` | TBD | TBD | |
 | Release workflow | `Existing` | TBD | TBD | |
-| JaCoCo report/check | `Missing at planning` | TBD | TBD | `R030-TEST` |
+| JaCoCo report/check | `Introduce` | JaCoCo `0.8.15` module + aggregate HTML/XML reports | `make verify` | Reports exist; checks/ratchets remain `R030-TEST` |
 | Failsafe lifecycle | `Missing at planning` | TBD | TBD | `R030-TEST` |
 | JUnit tag convention | `Missing at planning` | TBD | TBD | `R030-TEST` |
 | Codecov | `Missing at planning` | TBD | TBD | `R030-TEST` signal |
