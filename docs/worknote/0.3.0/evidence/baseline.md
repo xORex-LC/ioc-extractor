@@ -24,7 +24,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `BASE-COVERAGE-05` | `verified` | JaCoCo report-only baseline captured; branch gaps handed to `R030-TEST`; proceed to `BASE-QUALITY-06` |
 | `BASE-QUALITY-06` | `verified` | Warning, dependency and existing-control inventory captured; actionable signals handed to `R030-BUILD` and `R030-TEST`; proceed to `BASE-RUNTIME-07` |
 | `BASE-RUNTIME-07` | `verified` | Representative extraction, export, daemon startup and resource baseline captured; proceed to `BASE-CONTRACTS-08` |
-| `BASE-CONTRACTS-08` | `planned` | Compatibility and consumer obligations |
+| `BASE-CONTRACTS-08` | `verified` | Compatibility surfaces, consumer status and upgrade/rollback obligations captured; proceed to `BASE-INVENTORIES-09` |
 | `BASE-INVENTORIES-09` | `planned` | Initial hardening inventories |
 | `BASE-CLOSE-10` | `planned` | Evidence consolidation and goal closure |
 
@@ -298,13 +298,40 @@ long-running soak или production capacity.
 
 ## Compatibility baseline
 
-| Surface | Supported source/version | Known consumer | Upgrade/rollback path | Owner |
+| Surface | Supported source/version | Consumer status | Upgrade/rollback path | Owner |
 |---|---|---|---|---|
-| CLI/config | TBD | TBD | TBD | TBD |
-| SQLite/durable state | TBD | TBD | TBD | TBD |
-| CSV/export/manifest | TBD | TBD | TBD | TBD |
-| Maven API | TBD | TBD | TBD | TBD |
-| Packaging/deployment | TBD | TBD | TBD | TBD |
+| CLI/config | Released comparison `v0.2.0`; current typed/command implementation paths unchanged at capture | Operators confirmed; automation role known, named consumers absent | Explicit CLI/config migration; matching binary/config rollback | `R030-QUAL`, `R030-DOC`, `R030-REL` |
+| Diagnostics/logging/health | Nested ECS + generated catalogs; loopback health contract | Operators/deploy probes confirmed; named log backend absent | Exact wire/query migration; matching probe/query rollback | `R030-TEST`, `R030-DOC`, `R030-REL` |
+| SQLite/durable state | Dataframe `user_version=3`; service `user_version=7` | Operator durable state; not a third-party SQL API | Two-DB snapshot before migration; restore matching snapshot on rollback | `R030-QUAL`, `R030-TEST`, `R030-REL` |
+| CSV/export/manifest | Four configured mutable artifacts; strict complete manifest v1 | Downstream role known; named reader/publish target absent | Schema/version migration; preserve completed slices and restore/reproject from matching truth | `R030-TEST`, `R030-DOC`, `R030-REL` |
+| Maven API/control events | No independently published reactor module; local events have no wire contract | Reactor consumers only; `feeds-collector` planned, not current | Defined only after publication admission/ADR | `R030-ARCH`, `R030-LIB`, `R030-TEST` |
+| Packaging/deployment | Debian 11/12 marked-prefix installer and local deploy interfaces | Operators confirmed | Immutable activation + DB backup; previous release and matching DB/config rollback | `R030-DOC`, `R030-REL` |
+
+Full commands, exact CLI/storage/manifest details, consumer register and missing
+release evidence are recorded in the
+[compatibility ledger](compatibility-ledger.md).
+
+### `BASE-CONTRACTS-08` closure
+
+The baseline distinguishes supported external surfaces, reactor-internal APIs,
+planned external libraries and contract roles whose named consumer is not yet
+registered. A Java type is not treated as external merely because it is
+`public`: no individual reactor module is currently published. The future
+`feeds-collector` is a planned consumer, so library compatibility starts only
+after `R030-LIB` admission, coordinates, consumer-resolvable POM and a standalone
+test.
+
+Non-Java compatibility is already substantial. CLI/options/output/exit codes,
+strict configuration, SQLite migration and identity semantics, CSV/export
+schemas, manifest v1, diagnostics/ECS fields, health and deployment interfaces
+must remain in module-wave non-regression review.
+
+Selected CLI/config/migration/manifest/packaging implementation paths are
+unchanged from `v0.2.0` at the capture revision. Final `v0.2.0 → v0.3.0`
+compatibility is nevertheless deferred until release-candidate upgrade and
+rollback evidence exists. Current deployment guidance still scopes repeated
+upgrade language to `0.2.x`; this is an explicit `R030-DOC`/`R030-REL` gap, not
+silently corrected by the baseline.
 
 ## Controls inventory
 
@@ -332,6 +359,9 @@ long-running soak или production capacity.
 | Item | Reason | Impact | Owner | Exit condition |
 |---|---|---|---|---|
 | Live SMB `CHANGE_NOTIFY` contract | `ioc.smb.contract` external-fixture property is absent in the baseline environment | Two `SmbChangeNotifyContractTest` cases are skipped; live-share behavior is not covered by this verification | `R030-TEST` / `R030-REL` | Execute against an approved live SMB fixture or record an explicit environment-dependent release disposition |
+| Named automation/artifact/log consumers | Repository records contract roles but not concrete external systems, owners or acceptance fixtures | Producer-side tests cannot prove real consumer compatibility | `R030-DOC` / `R030-TEST` / `R030-REL` | Register consumer and representative fixture/query, or explicitly declare the surface unsupported |
+| Published-library consumer | Reactor modules are not independently published; `feeds-collector` is planned only | No external Maven API or standalone resolution/compatibility evidence exists | `R030-LIB` / `R030-TEST` / `R030-REL` | Admit coordinates and API, produce consumer-resolvable POM, pass out-of-reactor consumer test |
+| `v0.2.0 → v0.3.0` deployment evidence | Final release candidate and final contract set do not exist yet; current guide still says `0.2.x` | Cannot yet claim supported upgrade/rollback for 0.3.0 | `R030-DOC` / `R030-REL` | Run representative two-DB upgrade/health/rollback stand and publish exact operator guidance |
 
 ## Completion
 
@@ -342,6 +372,6 @@ long-running soak или production capacity.
 - [x] Test lifecycle/tags/waits captured
 - [x] Quality reports captured
 - [x] Runtime/performance captured
-- [ ] Compatibility obligations captured
+- [x] Compatibility obligations captured
 - [x] Controls classified
 - [x] Status matrix initialized
