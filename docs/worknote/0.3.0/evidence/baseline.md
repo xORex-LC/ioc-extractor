@@ -21,7 +21,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `BASE-REACTOR-02` | `verified` | Module graph and dependency inventory captured |
 | `BASE-VERIFY-03` | `verified` | Fresh clean reactor verification captured |
 | `BASE-TESTS-04` | `verified` | Six analysis gates captured; findings handed to `R030-TEST`; proceed to `BASE-COVERAGE-05` |
-| `BASE-COVERAGE-05` | `analyzing` | Gates 1–5/6: reports verified, metrics extracted and initial gaps dispositioned |
+| `BASE-COVERAGE-05` | `verified` | JaCoCo report-only baseline captured; branch gaps handed to `R030-TEST`; proceed to `BASE-QUALITY-06` |
 | `BASE-QUALITY-06` | `planned` | Warning, dependency and existing-control inventory |
 | `BASE-RUNTIME-07` | `planned` | Representative performance/resource measurements |
 | `BASE-CONTRACTS-08` | `planned` | Compatibility and consumer obligations |
@@ -180,6 +180,26 @@ JDK regex engine: RE2/J is exercised downstream, but the JDK implementation and
 findings and dispositions are in the
 [test-quality ledger](test-quality-ledger.md#coarse-effectiveness-baseline).
 
+### `BASE-COVERAGE-05` closure
+
+All six coverage-baseline gates are complete:
+
+1. latest stable JaCoCo `0.8.15` and the 19-module production universe selected;
+2. inherited agent/module reports and a dependency-ordered aggregate module
+   added without checks or thresholds;
+3. clean 22-project reactor verification and report-integrity reconciliation
+   completed without losing tests;
+4. aggregate and per-module line/branch/absolute-miss counters captured;
+5. downstream-execution effects, zero-line classes and initial hotspots
+   dispositioned without inferring test quality or dead code from coverage;
+6. coverage universe accepted with no class/package exclusions, and remaining
+   enforcement/remediation work handed to `R030-TEST`.
+
+The accepted report-only baseline is `87.34%` line and `69.38%` branch coverage.
+The aggregate, domain and application line floors are already met; their future
+branch floors are not. The gap remains visible and is not hidden by a lower
+threshold or exclusion.
+
 ## Test lifecycle baseline
 
 | Signal | Current state | Command/evidence | Target/disposition |
@@ -250,7 +270,7 @@ findings and dispositions are in the
 - [x] Revision/environment fixed
 - [x] Clean verification captured
 - [x] Module/dependency inventory complete
-- [ ] Tests/coverage captured
+- [x] Tests/coverage captured
 - [x] Test lifecycle/tags/waits captured
 - [ ] Quality reports captured
 - [ ] Runtime/performance captured

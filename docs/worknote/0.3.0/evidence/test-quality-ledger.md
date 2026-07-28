@@ -16,8 +16,9 @@ Contract: [R030-TEST](../goals/R030-TEST-test-quality.md).
 taxonomy и scope находятся только в goal contract.
 
 `BASE-TESTS-04` inventory status: **verified** on evidence commit `5a746bb`.
-Coverage measurement and all remediation remain open under their own work
-items.
+`BASE-COVERAGE-05` report-only baseline status: **verified**; detailed metrics
+are captured below. Threshold enforcement and all remediation remain open under
+their own `R030-TEST` work items.
 
 ## Baseline discovery inventory
 
@@ -623,8 +624,8 @@ universe.
 ## Completion
 
 - [x] Test inventory and lifecycle classification complete
-- [ ] Per-module and aggregate baseline captured
-- [ ] Coverage universe and exclusions accepted
+- [x] Per-module and aggregate baseline captured
+- [x] Coverage universe and exclusions accepted
 - [ ] Fixed floors and per-module ratchets enforced
 - [ ] Codecov signal operational либо имеет external-unavailability disposition
 - [ ] Codecov status подтверждён как non-required

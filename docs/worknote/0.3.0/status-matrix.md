@@ -15,9 +15,9 @@ language: "ru"
 
 | Goal | State | Evidence | Next gate |
 |---|---|---|---|
-| `R030-BASE` | `in-progress` | [baseline](evidence/baseline.md) | `BASE-COVERAGE-05` measurement-only JaCoCo and coverage capture |
+| `R030-BASE` | `in-progress` | [baseline](evidence/baseline.md) | `BASE-QUALITY-06` warning, dependency and existing-control inventory |
 | `R030-BUILD` | `planned` | [build-quality ledger](evidence/build-quality-ledger.md) | SpotBugs report baseline + CPD calibration |
-| `R030-TEST` global controls | `planned` | [test-quality ledger](evidence/test-quality-ledger.md) | JaCoCo report-only baseline |
+| `R030-TEST` global controls | `planned` | [test-quality ledger](evidence/test-quality-ledger.md) | Coverage ratchets and branch-gap remediation after baseline |
 | `R030-SEC` | `planned` | — | Security gap analysis |
 | `R030-LIB` | `planned` | [shared-code inventory](evidence/shared-code-inventory.md) | Candidate classification |
 | `R030-DOC` | `planned` | — | Translation inventory |
@@ -54,7 +54,7 @@ language: "ru"
 
 | Work item | Goal | Scope | Stage | Owner | State | Evidence |
 |---|---|---|---|---|---|---|
-| `BASE-COVERAGE-05` | `R030-BASE` | Measurement-only JaCoCo bootstrap and reactor coverage capture | Gates 1–5/6 complete: metrics and initial dispositions captured; closure/current-HEAD verify next | AI agent | `analyzing` | [baseline](evidence/baseline.md), [test-quality ledger](evidence/test-quality-ledger.md#coverage-baseline-и-ratchet) |
+| `BASE-QUALITY-06` | `R030-BASE` | Warning, dependency and existing-control inventory | Ready for analysis and report capture | AI agent | `planned` | [baseline](evidence/baseline.md), [build-quality ledger](evidence/build-quality-ledger.md) |
 
 ## 4. Deferred и blocked
 
