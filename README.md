@@ -170,6 +170,7 @@ platform/   framework-free cross-cutting contracts and implementations
 core/       pure IOC domain plus application use cases and ports
 adapters/   Tika, RE2/J, CSV, JDBC/SQLite, SMB, ingest and CLI boundaries
 bootstrap/  Spring Boot composition root and the only runnable module
+build-support/ build-only aggregate reports; never a runtime dependency
 packaging/  host installer, deployment scripts and systemd templates
 tools/      reproducible developer, smoke, security and CI leaf commands
 docs/       project maps, capability guides, ADRs and operator guides

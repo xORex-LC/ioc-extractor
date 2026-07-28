@@ -21,7 +21,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `BASE-REACTOR-02` | `verified` | Module graph and dependency inventory captured |
 | `BASE-VERIFY-03` | `verified` | Fresh clean reactor verification captured |
 | `BASE-TESTS-04` | `verified` | Six analysis gates captured; findings handed to `R030-TEST`; proceed to `BASE-COVERAGE-05` |
-| `BASE-COVERAGE-05` | `analyzing` | Gate 1/6: JaCoCo version, coverage universe and aggregate topology selected |
+| `BASE-COVERAGE-05` | `analyzing` | Gates 1–3/6: tooling selected, report-only instrumentation added and clean reports verified |
 | `BASE-QUALITY-06` | `planned` | Warning, dependency and existing-control inventory |
 | `BASE-RUNTIME-07` | `planned` | Representative performance/resource measurements |
 | `BASE-CONTRACTS-08` | `planned` | Compatibility and consumer obligations |
@@ -56,6 +56,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `make verify` | 0 | `.dev/state/last-verify.env`; `*/target/surefire-reports/TEST-*.xml` | Official `./mvnw -B -ntp -T 1C verify`; wall-clock `39.210 s` |
 | `/usr/bin/time make verify` | 0 | `.dev/state/last-verify.env`; current-reactor Surefire XML | Warm-output full test run on `f4cdd06`; Maven wall `34.758 s`, process real `35.74 s` |
 | `make verify` | 0 | `.dev/state/last-verify.env`; current-reactor Surefire XML | `BASE-TESTS-04` consolidation verification on `5a746bb`; Maven wall `33.305 s` |
+| `make clean && /usr/bin/time make verify` | 0 | `build-support/coverage-report/target/site/jacoco-aggregate/`; module-local `target/site/jacoco/` | Clean report-only JaCoCo run on the instrumentation worktree based on `9aa8d1f`; Maven wall `57.585 s`, process real `58.74 s` |
 
 ### Fresh verification summary
 

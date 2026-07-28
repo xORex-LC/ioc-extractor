@@ -407,15 +407,15 @@ does not infer mutation effectiveness from assertion volume.
 
 | Control | Version/config | Local command | CI evidence | State |
 |---|---|---|---|---|
-| JaCoCo agent/report | `0.8.15`; report-only design selected | `make verify` (implementation pending) | TBD | `analyzing` |
-| JaCoCo per-module check | TBD | TBD | TBD | `planned` |
-| JaCoCo aggregate check | TBD | TBD | TBD | `planned` |
+| JaCoCo agent/report | `0.8.15`; inherited `prepare-agent` + module `report` | `make verify` | Clean local reactor evidence below | `report-only` |
+| JaCoCo per-module check | Not configured | N/A | N/A | `deferred-until-baseline` |
+| JaCoCo aggregate check | Not configured | N/A | N/A | `deferred-until-baseline` |
 | Surefire unit lifecycle | `3.5.6`; default includes; bootstrap injects project version | `make test` / `make verify` | 171 mixed-level suites in fresh verify | `existing-mixed` |
 | Failsafe integration lifecycle | `3.5.6` managed only; no project execution | N/A | No `*IT` source or reports | `missing` |
 | JUnit tag convention | No tags, composed annotations or filters | N/A | No selectable cohorts in current CI | `missing` |
 | Codecov best-effort upload | TBD | N/A | TBD | `planned` |
 | Codecov project/patch signals | TBD | N/A | TBD | `planned` |
-| Coverage/test artifacts | TBD | TBD | TBD | `planned` |
+| Coverage/test artifacts | Module HTML/XML + reactor aggregate HTML/XML | `make verify` | CI artifact retention not implemented in baseline | `local-existing` |
 
 ### `BASE-COVERAGE-05` tooling and universe decision
 
@@ -447,6 +447,33 @@ Captured at `2026-07-28` on baseline head `1a453ed`.
 This work item adds reports only. JaCoCo `check`, thresholds, ratchets, Codecov,
 test additions and coverage-gap remediation remain outside
 `BASE-COVERAGE-05`.
+
+### Instrumentation verification
+
+A clean full-reactor run on the instrumentation worktree based on `9aa8d1f`
+completed successfully:
+
+| Signal | Result |
+|---|---|
+| Command | `make clean && /usr/bin/time make verify` |
+| Reactor | 22/22 projects `SUCCESS` (21 previous projects + build-only `ioc-coverage-report`) |
+| Tests | 171 suites / 781 cases; 0 failures, 0 errors, 2 external SMB skips |
+| Maven wall-clock | `57.585 s` |
+| Process timing | `58.74 s` real, `282.35 s` user, `16.60 s` system |
+| Local execution/report files | 17 `target/jacoco.exec` and 17 module-local HTML/XML reports |
+| Aggregate | 19 production groups, 506 analyzed classes |
+| Aggregate artifacts | HTML `index.html` (`15962` bytes), XML `jacoco.xml` (`1671017` bytes) |
+
+The 17 local reports are expected: `platform-errors` and
+`adapter-regex-re2j` have no local test JVM, while `ioc-application-tck` is
+test support. The aggregate nevertheless contains both production modules and
+credits execution from downstream test JVMs. It contains no
+`com/iocextractor/application/tck/*` class and no `*Test` class.
+
+Compared with the earlier clean no-instrumentation Maven wall-clock of
+`39.210 s`, this run adds `18.375 s` (`46.9%`). This is one environment-local
+observation rather than an accepted performance budget; subsequent warm and CI
+measurements may separate agent/report cost from ordinary run variance.
 
 ## Coverage baseline и ratchet
 

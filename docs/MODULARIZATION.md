@@ -46,8 +46,10 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 │   ├── adapter-psl                (HostClassifier → Guava PSL)
 │   ├── adapter-ingest             (daemon file ingest → Spring Integration)
 │   └── adapter-cli-picocli        (входной адаптер CLI)
-└── bootstrap/
-    └── ioc-app                    (Spring Boot, composition root, исполняемый jar)
+├── bootstrap/
+│   └── ioc-app                    (Spring Boot, composition root, исполняемый jar)
+└── build-support/
+    └── coverage-report            (build-only JaCoCo aggregate; не runtime/library)
 ```
 
 > ArtifactId имеют префикс `ioc-*`, например `ioc-platform-etl`,
@@ -79,6 +81,9 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 - `ioc-application-tck` содержит test-scope contract tests; реализации портов
   подключают его только в тестовом scope.
 - `ioc-app` (bootstrap) зависит на всё и собирает исполняемый артефакт.
+- `coverage-report` зависит на все production-модули только для формирования
+  полного JaCoCo aggregate после их сборки. Он не входит в runtime-архитектуру,
+  не публикуется как библиотека и не может быть зависимостью production-кода.
 
 ## Принципы нарезки на модули
 
@@ -117,6 +122,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `adapter-ingest` | Watch ingest: `IngestSourceUseCase`(in), `SourceLifecycle`, file `IngestionLedger`; SourceFeed adapter-local (Spring Integration); `FileSystemRetentionStore` (reaper IO) |
 | `adapter-cli-picocli` | входной CLI: `extract`, lazy `export`, `sync fetch|publish|all`, remote daemon `health` |
 | `ioc-app` (bootstrap) | composition root, lazy export/sync graphs, transport registry; fetch/export/publish/retention schedulers, conditional web и health |
+| `coverage-report` (build-support) | Непубликуемый Maven report-модуль: полный JaCoCo HTML/XML aggregate для production bytecode reactor |
 
 ## Гранулярность
 
