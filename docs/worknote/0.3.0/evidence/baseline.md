@@ -23,7 +23,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `BASE-TESTS-04` | `verified` | Six analysis gates captured; findings handed to `R030-TEST`; proceed to `BASE-COVERAGE-05` |
 | `BASE-COVERAGE-05` | `verified` | JaCoCo report-only baseline captured; branch gaps handed to `R030-TEST`; proceed to `BASE-QUALITY-06` |
 | `BASE-QUALITY-06` | `verified` | Warning, dependency and existing-control inventory captured; actionable signals handed to `R030-BUILD` and `R030-TEST`; proceed to `BASE-RUNTIME-07` |
-| `BASE-RUNTIME-07` | `planned` | Representative performance/resource measurements |
+| `BASE-RUNTIME-07` | `verified` | Representative extraction, export, daemon startup and resource baseline captured; proceed to `BASE-CONTRACTS-08` |
 | `BASE-CONTRACTS-08` | `planned` | Compatibility and consumer obligations |
 | `BASE-INVENTORIES-09` | `planned` | Initial hardening inventories |
 | `BASE-CLOSE-10` | `planned` | Evidence consolidation and goal closure |
@@ -267,7 +267,34 @@ SpotBugs и CPD остаются отдельными introductions в `R030-BUI
 
 | Scenario | Input/profile | Metric | Baseline | Environment | Command |
 |---|---|---|---:|---|---|
-| TBD | TBD | TBD | TBD | TBD | TBD |
+| Oneshot extraction | Deterministic HTML, seed 42, 5000 rows / 4513 unique | Three-run median real time / peak RSS | `4.92 s` / `358.1 MiB` | Temurin `21.0.11+10`, fresh workspace per run | `env PATH="${JAVA_HOME}/bin:${PATH}" tools/dev/app.sh … extract` under `/usr/bin/time` |
+| Oneshot extraction scale case | Deterministic HTML, seed 42, 100000 rows / 89885 unique | Three-run median real time / peak RSS | `14.83 s` / `745.7 MiB` | Same | Same |
+| Immutable export | `reputation-lists` from the 100k canonical store | Real time / peak RSS / slice size | `4.27 s` / `347.6 MiB` / `8904191` bytes | Same | `tools/dev/app.sh … export --profile reputation-lists` under `/usr/bin/time` |
+| Daemon startup | Fresh workspace, polling detection, remote sync disabled | Three-run median until healthy | `6.29 s` | Same; one-second health-poll cadence | `tools/dev/runtime.sh … up` under `/usr/bin/time` |
+| Daemon idle resources | Immediately after healthy | Median RSS / threads / FDs / committed-used heap | `375.8 MiB` / `45` / `21` / `128–40.7 MiB` | Same | `/proc/<pid>/status`, `/proc/<pid>/fd`, `jcmd GC.heap_info` |
+| Storage/output | 100k extraction + export | Dataframe DB / service DB / mutable projections / immutable slice | `49721344` / `110592` / `10676261` / `8904191` bytes | Same | `sqlite3`, `stat`, `find`, `du` |
+
+Подробные samples, fixture hashes, команды, correctness reconciliation и правило
+сравнения с release candidate сохранены в
+[runtime/performance ledger](runtime-performance-ledger.md).
+
+### Закрытие `BASE-RUNTIME-07`
+
+Все принятые measurements используют тот же Eclipse Adoptium Temurin JDK, что и
+Maven build. Ambient `PATH` host указывает на другую Java 21 distribution,
+поэтому команды явно закрепляют `${JAVA_HOME}/bin`; более ранние calibration
+runs без этого закрепления исключены.
+
+Baseline покрывает system boundaries, требуемые release readiness: end-to-end
+extraction, immutable export, daemon healthy startup, process/heap resources и
+DB/output footprint. Каждый extraction sample завершился с кодом `0`, canonical
+unique counts совпали с детерминированными fixture manifests, а per-artifact CSV
+hashes идентичны во всех повторных runs.
+
+Performance threshold или optimization не вводятся. WSL2 scheduling, warm OS
+caches и секундная daemon health cadence остаются частью записанного
+environment. Из этого local evidence явно не выводятся live SMB performance,
+long-running soak или production capacity.
 
 ## Compatibility baseline
 
@@ -314,7 +341,7 @@ SpotBugs и CPD остаются отдельными introductions в `R030-BUI
 - [x] Tests/coverage captured
 - [x] Test lifecycle/tags/waits captured
 - [x] Quality reports captured
-- [ ] Runtime/performance captured
+- [x] Runtime/performance captured
 - [ ] Compatibility obligations captured
 - [x] Controls classified
 - [x] Status matrix initialized

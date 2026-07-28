@@ -15,7 +15,7 @@ language: "ru"
 
 | Goal | State | Evidence | Next gate |
 |---|---|---|---|
-| `R030-BASE` | `in-progress` | [baseline](evidence/baseline.md) | `BASE-RUNTIME-07` representative performance/resource measurements |
+| `R030-BASE` | `in-progress` | [baseline](evidence/baseline.md) | `BASE-CONTRACTS-08` compatibility and consumer obligations |
 | `R030-BUILD` | `planned` | [build-quality ledger](evidence/build-quality-ledger.md) | SpotBugs report baseline + CPD calibration |
 | `R030-TEST` global controls | `planned` | [test-quality ledger](evidence/test-quality-ledger.md) | Coverage ratchets and branch-gap remediation after baseline |
 | `R030-SEC` | `planned` | — | Security gap analysis |
@@ -54,7 +54,7 @@ language: "ru"
 
 | Work item | Goal | Scope | Stage | Owner | State | Evidence |
 |---|---|---|---|---|---|---|
-| `BASE-RUNTIME-07` | `R030-BASE` | Representative performance/resource measurements | Ready for workload selection and measurement | AI agent | `planned` | [baseline](evidence/baseline.md) |
+| `BASE-CONTRACTS-08` | `R030-BASE` | Compatibility surfaces and known consumer obligations | Ready for contract and consumer inventory | AI agent | `planned` | [baseline](evidence/baseline.md) |
 
 ## 4. Deferred и blocked
 
