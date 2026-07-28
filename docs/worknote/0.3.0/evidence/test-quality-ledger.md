@@ -407,7 +407,7 @@ does not infer mutation effectiveness from assertion volume.
 
 | Control | Version/config | Local command | CI evidence | State |
 |---|---|---|---|---|
-| JaCoCo agent/report | TBD | TBD | TBD | `planned` |
+| JaCoCo agent/report | `0.8.15`; report-only design selected | `make verify` (implementation pending) | TBD | `analyzing` |
 | JaCoCo per-module check | TBD | TBD | TBD | `planned` |
 | JaCoCo aggregate check | TBD | TBD | TBD | `planned` |
 | Surefire unit lifecycle | `3.5.6`; default includes; bootstrap injects project version | `make test` / `make verify` | 171 mixed-level suites in fresh verify | `existing-mixed` |
@@ -416,6 +416,37 @@ does not infer mutation effectiveness from assertion volume.
 | Codecov best-effort upload | TBD | N/A | TBD | `planned` |
 | Codecov project/patch signals | TBD | N/A | TBD | `planned` |
 | Coverage/test artifacts | TBD | TBD | TBD | `planned` |
+
+### `BASE-COVERAGE-05` tooling and universe decision
+
+Captured at `2026-07-28` on baseline head `1a453ed`.
+
+- The [official JaCoCo release index](https://www.jacoco.org/jacoco/) lists
+  `0.8.15` (released `2026-06-04`) as the latest stable release. The newer
+  `0.8.16-SNAPSHOT` development build is not a release and is not selected.
+- The production universe contains 19 modules: all seven `platform/*` modules,
+  `core/ioc-domain`, `core/ioc-application`, all nine `adapters/*` modules and
+  `bootstrap/ioc-app`.
+- `core/ioc-application-tck` is outside the production denominator because it
+  is a test-support publication artifact whose contracts execute in adapter
+  consumers.
+- No class/package exclusion is accepted at bootstrap. Any generated or
+  technical-bytecode candidate must be observed in the first report and receive
+  a selector, rationale, owner, denominator impact and review condition before
+  exclusion.
+- A dedicated non-production report module will depend explicitly on every
+  production module and execute last in the dependency-ordered reactor. This is
+  required because the root Maven aggregator does not make its listed modules
+  dependencies and therefore cannot produce a complete `report-aggregate` by
+  aggregation alone.
+- Module-local reports will describe execution by that module's own test JVMs.
+  Per-module release measurements will be read from groups in the reactor
+  aggregate so that downstream integration/E2E execution of upstream code is
+  retained.
+
+This work item adds reports only. JaCoCo `check`, thresholds, ratchets, Codecov,
+test additions and coverage-gap remediation remain outside
+`BASE-COVERAGE-05`.
 
 ## Coverage baseline и ratchet
 

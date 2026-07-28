@@ -21,7 +21,7 @@ Contract: [R030-BASE](../goals/R030-BASE-baseline.md).
 | `BASE-REACTOR-02` | `verified` | Module graph and dependency inventory captured |
 | `BASE-VERIFY-03` | `verified` | Fresh clean reactor verification captured |
 | `BASE-TESTS-04` | `verified` | Six analysis gates captured; findings handed to `R030-TEST`; proceed to `BASE-COVERAGE-05` |
-| `BASE-COVERAGE-05` | `planned` | Measurement-only JaCoCo and coverage capture |
+| `BASE-COVERAGE-05` | `analyzing` | Gate 1/6: JaCoCo version, coverage universe and aggregate topology selected |
 | `BASE-QUALITY-06` | `planned` | Warning, dependency and existing-control inventory |
 | `BASE-RUNTIME-07` | `planned` | Representative performance/resource measurements |
 | `BASE-CONTRACTS-08` | `planned` | Compatibility and consumer obligations |
