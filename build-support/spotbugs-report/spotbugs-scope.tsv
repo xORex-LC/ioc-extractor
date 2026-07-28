@@ -1,0 +1,24 @@
+# module-path	artifact-id	disposition	rationale
+.	ioc-extractor-parent	excluded	Root parent POM has no production bytecode
+platform/platform-errors	ioc-platform-errors	analyzed	Production runtime JAR
+platform/platform-diagnostics	ioc-platform-diagnostics	analyzed	Production runtime JAR
+platform/platform-etl	ioc-platform-etl	analyzed	Production runtime JAR
+platform/platform-events	ioc-platform-events	analyzed	Production runtime JAR
+platform/platform-concurrency	ioc-platform-concurrency	analyzed	Production runtime JAR
+platform/platform-observability	ioc-platform-observability	analyzed	Production runtime JAR
+platform/platform-diagnostics-logging	ioc-platform-diagnostics-logging	analyzed	Production runtime JAR
+core/ioc-domain	ioc-domain	analyzed	Production runtime JAR
+core/ioc-application	ioc-application	analyzed	Production runtime JAR
+core/ioc-application-tck	ioc-application-tck	excluded	Reusable test-contract JAR, not runtime production code
+adapters/adapter-regex-re2j	ioc-adapter-regex-re2j	analyzed	Production runtime JAR
+adapters/adapter-psl	ioc-adapter-psl	analyzed	Production runtime JAR
+adapters/adapter-source-tika	ioc-adapter-source-tika	analyzed	Production runtime JAR
+adapters/adapter-sink-csv	ioc-adapter-sink-csv	analyzed	Production runtime JAR
+adapters/adapter-manifest-json-jackson	ioc-adapter-manifest-json-jackson	analyzed	Production runtime JAR
+adapters/adapter-store-jdbc	ioc-adapter-store-jdbc	analyzed	Production runtime JAR
+adapters/adapter-transport-smb	ioc-adapter-transport-smb	analyzed	Production runtime JAR
+adapters/adapter-ingest	ioc-adapter-ingest	analyzed	Production runtime JAR
+adapters/adapter-cli-picocli	ioc-adapter-cli-picocli	analyzed	Production runtime JAR
+bootstrap/ioc-app	ioc-app	analyzed	Production runtime JAR
+build-support/coverage-report	ioc-coverage-report	excluded	Build-only JaCoCo aggregate POM
+build-support/spotbugs-report	ioc-spotbugs-report	aggregate	Build-only SpotBugs aggregate and integrity owner

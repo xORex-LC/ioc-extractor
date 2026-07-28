@@ -16,7 +16,7 @@ language: "ru"
 | Goal | State | Evidence | Next gate |
 |---|---|---|---|
 | `R030-BASE` | `verified` | [baseline](evidence/baseline.md), [compatibility ledger](evidence/compatibility-ledger.md) | Closed; re-baseline only by explicit scope/contract decision |
-| `R030-BUILD` | `ready` | [build-quality ledger](evidence/build-quality-ledger.md) | `BUILD-SPOTBUGS-01` report-only baseline |
+| `R030-BUILD` | `in-progress` | [build-quality ledger](evidence/build-quality-ledger.md) | `BUILD-CPD-02` report-only evaluation |
 | `R030-TEST` global controls | `planned` | [test-quality ledger](evidence/test-quality-ledger.md) | `TEST-LIFECYCLE-01` taxonomy and lifecycle separation |
 | `R030-SEC` | `planned` | — | Security gap analysis |
 | `R030-LIB` | `planned` | [shared-code inventory](evidence/shared-code-inventory.md) | `LIB-1` concurrency-library admission record |
@@ -50,11 +50,11 @@ language: "ru"
 | `adapters/adapter-cli-picocli` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `bootstrap/ioc-app` | `planned` | `planned` | `planned` | `planned` | `planned` |
 
-## 3. Active work items
+## 3. Work items
 
 | Work item | Goal | Scope | Stage | Owner | State | Evidence |
 |---|---|---|---|---|---|---|
-| `BUILD-SPOTBUGS-01` | `R030-BUILD` | All applicable production Java modules in the 22-project reactor; build-only coverage aggregator excluded from bytecode scope | Report-only tool introduction; no mass finding remediation or blocking gate | AI agent | `ready` | [build-quality ledger](evidence/build-quality-ledger.md#initial-work-item-queue) |
+| `BUILD-SPOTBUGS-01` | `R030-BUILD` | 19 production runtime JAR modules; fail-closed 23-project disposition registry keeps root/build-support POMs and reusable test-contract `ioc-application-tck` explicitly outside bytecode scope | Report-only tool introduction, per-module reports, reactor aggregate and 118-finding baseline; scope/report integrity blocks omissions, findings remain non-blocking | AI agent | `verified` | [SpotBugs rollout](evidence/build-quality-ledger.md#spotbugs-rollout) |
 
 ## 4. Deferred и blocked
 

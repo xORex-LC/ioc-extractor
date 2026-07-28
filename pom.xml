@@ -31,6 +31,9 @@
         <pdfbox.version>3.0.8</pdfbox.version>
         <dependency-check.version>12.2.2</dependency-check.version>
         <jacoco.version>0.8.15</jacoco.version>
+        <spotbugs-maven-plugin.version>4.10.3.0</spotbugs-maven-plugin.version>
+        <spotbugs.version>4.10.3</spotbugs.version>
+        <maven-antrun-plugin.version>3.2.0</maven-antrun-plugin.version>
         <commons-csv.version>1.12.0</commons-csv.version>
         <commons-io.version>2.22.0</commons-io.version>
         <guava.version>33.3.1-jre</guava.version>
@@ -61,6 +64,7 @@
         <module>adapters/adapter-cli-picocli</module>
         <module>bootstrap/ioc-app</module>
         <module>build-support/coverage-report</module>
+        <module>build-support/spotbugs-report</module>
     </modules>
 
     <!-- Test stack shared by every module. -->
@@ -79,30 +83,6 @@
 
     <build>
         <plugins>
-            <!-- Build hygiene applied to every module. -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-enforcer-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>enforce-build-hygiene</id>
-                        <goals>
-                            <goal>enforce</goal>
-                        </goals>
-                        <configuration>
-                            <rules>
-                                <requireJavaVersion>
-                                    <version>[21,)</version>
-                                </requireJavaVersion>
-                                <requireMavenVersion>
-                                    <version>[3.9,)</version>
-                                </requireMavenVersion>
-                                <banDuplicatePomDependencyVersions/>
-                            </rules>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
             <!-- Report-only coverage bootstrap. Thresholds are introduced only after baseline acceptance. -->
             <plugin>
                 <groupId>org.jacoco</groupId>
@@ -126,6 +106,124 @@
                                 <format>HTML</format>
                                 <format>XML</format>
                             </formats>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!--
+                Verify-phase order is deliberate: SpotBugs analysis must precede
+                AntRun HTML/report-integrity work, and report plugins must precede
+                final Enforcer integrity rules.
+            -->
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>${spotbugs-maven-plugin.version}</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.github.spotbugs</groupId>
+                        <artifactId>spotbugs</artifactId>
+                        <version>${spotbugs.version}</version>
+                    </dependency>
+                </dependencies>
+                <executions>
+                    <execution>
+                        <id>analyze-production-bytecode</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>spotbugs</goal>
+                        </goals>
+                        <configuration>
+                            <effort>Max</effort>
+                            <threshold>Low</threshold>
+                            <includeTests>false</includeTests>
+                            <failOnError>true</failOnError>
+                            <skipEmptyReport>false</skipEmptyReport>
+                            <htmlOutput>false</htmlOutput>
+                            <xmlOutput>false</xmlOutput>
+                            <outputDirectory>${project.build.directory}/spotbugs</outputDirectory>
+                            <spotbugsXmlOutputDirectory>${project.build.directory}/spotbugs</spotbugsXmlOutputDirectory>
+                            <spotbugsXmlOutputFilename>spotbugs.xml</spotbugsXmlOutputFilename>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Keep after SpotBugs: clean stale output early, then render/validate current reports. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>${maven-antrun-plugin.version}</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.github.spotbugs</groupId>
+                        <artifactId>spotbugs</artifactId>
+                        <version>${spotbugs.version}</version>
+                    </dependency>
+                </dependencies>
+                <executions>
+                    <execution>
+                        <id>clean-stale-spotbugs-output</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <delete file="${project.build.directory}/spotbugs/spotbugs.xml"
+                                        quiet="true"/>
+                                <delete file="${project.build.directory}/spotbugs/spotbugs.html"
+                                        quiet="true"/>
+                                <delete file="${project.reporting.outputDirectory}/spotbugs.html"
+                                        quiet="true"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>render-spotbugs-html</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <xslt destdir="${project.build.directory}"
+                                      extension=".html"
+                                      failOnNoResources="false"
+                                      useImplicitFileset="false"
+                                      force="true">
+                                    <fileset dir="${project.build.directory}"
+                                             includes="spotbugs/spotbugs.xml"
+                                             erroronmissingdir="false"/>
+                                    <style>
+                                        <javaresource name="default.xsl"
+                                                      classpathref="maven.plugin.classpath"/>
+                                    </style>
+                                </xslt>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Keep last among quality plugins so child integrity executions see completed reports. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>enforce-build-hygiene</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>[21,)</version>
+                                </requireJavaVersion>
+                                <requireMavenVersion>
+                                    <version>[3.9,)</version>
+                                </requireMavenVersion>
+                                <banDuplicatePomDependencyVersions/>
+                            </rules>
                         </configuration>
                     </execution>
                 </executions>

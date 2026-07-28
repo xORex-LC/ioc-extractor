@@ -14,6 +14,7 @@ build-support.
 | Directory | Purpose |
 |---|---|
 | `coverage-report/` | Reactor-wide JaCoCo HTML/XML report aggregation |
+| `spotbugs-report/` | Reactor-wide SpotBugs XML/HTML aggregation and report-integrity validation |
 
 ## Dependencies
 

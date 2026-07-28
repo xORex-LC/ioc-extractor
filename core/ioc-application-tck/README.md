@@ -16,6 +16,9 @@ TCK живёт в `src/main` обычного jar'а (а не в `test-jar` мо
 
 JUnit/AssertJ здесь — **compile-scope** (parent объявляет их глобально как `test`,
 поэтому в этом модуле scope переопределён), т.к. контракт лежит в `src/main`.
+По той же причине модуль явно исключён из production-bytecode scope SpotBugs:
+его main-bytecode является переиспользуемым тестовым инструментарием, а не
+runtime-кодом приложения.
 
 ## Слой
 

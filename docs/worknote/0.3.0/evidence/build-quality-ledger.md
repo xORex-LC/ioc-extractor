@@ -28,7 +28,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 
 | Control | Version/config | Local command | CI/report artifact | Runtime | Signal/noise | Owner | Stage |
 |---|---|---|---|---:|---|---|---|
-| SpotBugs | TBD | TBD | XML + HTML: TBD | TBD | TBD | TBD | `planned` |
+| SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only | `make clean && make verify` | Per applicable module: `target/spotbugs/spotbugs.xml` + `spotbugs.html`; aggregate: `build-support/spotbugs-report/target/spotbugs/`; CI artifact `spotbugs-reports-<run>` | `93.00 s` clean reactor wall time; `+34.61 s` / `+59.3%` к BASE | 118 raw findings / 19 patterns; заметны framework, nullable-API и controlled-SQL classes of noise | `R030-BUILD` | `report-only` |
 | PMD CPD aggregate | TBD | TBD | TBD | TBD | TBD | TBD | `planned` |
 | Maven dependency analysis | Maven Dependency Plugin `3.9.0`; default bytecode analysis | `./mvnw -B -ntp -T 1C verify dependency:analyze-only` | Local console/report ledger; CI adoption undecided | Maven `47.745 s` including `verify`; sequential `-DskipTests` attribution `4.671 s` | Broad candidate signal; substantial parent-test, starter, transitive API, SPI and processor noise | `R030-BUILD` | `report-only` |
 
@@ -39,7 +39,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 
 | Work item | Outcome | Mode | Entry dependency | State |
 |---|---|---|---|---|
-| `BUILD-SPOTBUGS-01` | Reproducible reactor-wide production-bytecode report, scope/cost inventory and raw findings | Report only; no mass remediation or merge gate | `R030-BASE` verified | `ready` |
+| `BUILD-SPOTBUGS-01` | Reproducible reactor-wide production-bytecode report, scope/cost inventory and raw findings | Report only; no mass remediation or merge gate | `R030-BASE` verified | `verified` |
 | `BUILD-CPD-02` | Repository-wide production-source report and evidence-based `minimumTokens` calibration | Diagnostic/report only | `BUILD-SPOTBUGS-01` closed, unless matrix explicitly reorders independent tooling | `planned` |
 | `BUILD-DEPS-03` | Semantic disposition of the captured dependency candidates and `Adopt / Adopt with exclusions / Defer` decision | Evaluation only | `BUILD-CPD-02` closed | `planned` |
 | `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow legacy baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `planned` |
@@ -151,9 +151,83 @@ rule.
 
 ## SpotBugs rollout
 
+Выбраны актуальные стабильные
+[SpotBugs Maven Plugin `4.10.3.0`](https://spotbugs.github.io/spotbugs-maven-plugin/summary.html)
+и engine `4.10.3`; обе версии зафиксированы явно в root parent. Требования плагина
+([JDK 11+, Maven 3.6.3+](https://spotbugs.github.io/spotbugs-maven-plugin/plugin-info.html))
+совместимы с project baseline JDK 21 / Maven 3.9.9. FindSecBugs не подключался.
+
+Execution `analyze-production-bytecode` наследуется Java-модулями от root
+parent и запускает goal `spotbugs` в phase `verify`. Это намеренно не
+`spotbugs:check`: findings не блокируют build, но analyzer/process error
+блокирует его через `failOnError=true`. SpotBugs выполняет один XML-only анализ;
+полный native XML содержит package/class statistics, а Maven AntRun `3.2.0`
+применяет поставляемый engine stylesheet `default.xsl` и создаёт module-local
+HTML без повторного анализа bytecode. Root AntRun удаляет прежние module-local
+SpotBugs XML/HTML в phase `initialize`, поэтому incremental `verify` не может
+удовлетворить integrity gate артефактом предыдущего запуска. Обновление
+`spotbugs.version` MUST подтвердить, что engine по-прежнему предоставляет
+`default.xsl` и обе report-формы создаются.
+
+Отдельный финальный build-only модуль `build-support/spotbugs-report` выполняет
+goal `spotbugs-aggregate` в phase `verify`, создаёт общий XML/HTML и после этого
+запускает JDK-only integrity verifier. Registry `spotbugs-scope.tsv` содержит
+disposition всех 23 reactor projects: 19 `analyzed`, root/TCK/`coverage-report`
+как 3 `excluded` и сам `spotbugs-report` как один `aggregate`.
+Verifier требует точного равенства registry и root `<modules>`, сверяет
+artifactId/packaging и явный `skip=true` для каждого исключённого child project,
+а также требует равенства 19 `analyzed` artifacts и dependencies report-модуля.
+Ожидаемые XML/HTML пути затем выводятся из этого же registry. Поэтому новый
+reactor-модуль fail-closed до явного disposition, а обычный `verify` не может
+успешно завершиться при пропущенном, пустом или неожиданном report.
+
 | Scope/module | Analyzed | Findings | Immediate fixes | Baseline filters | Clean rerun | Blocking evidence |
 |---|---|---:|---|---|---|---|
-| TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| `platform-errors` | yes | 0 | 0 | 0 | yes | N/A: report only |
+| `platform-diagnostics` | yes | 2 | 0 | 0 | yes | N/A: report only |
+| `platform-etl` | yes | 5 | 0 | 0 | yes | N/A: report only |
+| `platform-events` | yes | 0 | 0 | 0 | yes | N/A: report only |
+| `platform-concurrency` | yes | 0 | 0 | 0 | yes | N/A: report only |
+| `platform-observability` | yes | 2 | 0 | 0 | yes | N/A: report only |
+| `platform-diagnostics-logging` | yes | 0 | 0 | 0 | yes | N/A: report only |
+| `ioc-domain` | yes | 0 | 0 | 0 | yes | N/A: report only |
+| `ioc-application` | yes | 9 | 0 | 0 | yes | N/A: report only |
+| `adapter-regex-re2j` | yes | 0 | 0 | 0 | yes | N/A: report only |
+| `adapter-psl` | yes | 0 | 0 | 0 | yes | N/A: report only |
+| `adapter-source-tika` | yes | 2 | 0 | 0 | yes | N/A: report only |
+| `adapter-sink-csv` | yes | 16 | 0 | 0 | yes | N/A: report only |
+| `adapter-manifest-json-jackson` | yes | 0 | 0 | 0 | yes | N/A: report only |
+| `adapter-store-jdbc` | yes | 17 | 0 | 0 | yes | N/A: report only |
+| `adapter-transport-smb` | yes | 8 | 0 | 0 | yes | N/A: report only |
+| `adapter-ingest` | yes | 8 | 0 | 0 | yes | N/A: report only |
+| `adapter-cli-picocli` | yes | 4 | 0 | 0 | yes | N/A: report only |
+| `ioc-app` | yes | 45 | 0 | 0 | yes | N/A: report only |
+| **Итого production runtime** | **19 modules** | **118** | **0** | **0** | **yes** | **N/A: report only** |
+| root parent | no | N/A | N/A | N/A | yes | Packaging `pom`; bytecode отсутствует |
+| `coverage-report` | no | N/A | N/A | N/A | yes | Build-only `pom`; только JaCoCo aggregate |
+| `spotbugs-report` | no | N/A | N/A | N/A | yes | Build-only `pom`; SpotBugs aggregate + integrity gate |
+| `ioc-application-tck` | no | N/A | N/A | N/A | yes | Reusable JUnit/AssertJ test-contract library, не runtime production code |
+
+Чистый 23-project reactor run сформировал 19 non-empty module XML/HTML пар и
+aggregate XML/HTML. Aggregate содержит те же 118 findings и статистику 628
+production classes; во всех module XML и aggregate `errors=0`,
+`missingClasses=0`. Root parent, TCK и `coverage-report` SpotBugs reports не
+создают; `spotbugs-report` создаёт только aggregate. Замер выполнен тем же
+`make verify`, который использует canonical build leaf: wall time `93.00 s`,
+user CPU `644.09 s`, system CPU `29.86 s`, peak RSS `1,270,644 KiB`. По
+отношению к BASE clean quality run (`58.39 s`, `1,784,708 KiB`) wall-time cost
+составляет `+34.61 s` / `+59.3%`; измеренный peak RSS не вырос. Parallel reactor,
+отдельные SpotBugs JVM и два serializing aggregate mojos делают это end-to-end
+CI-cost measurement, а не сумму module-local analyzer durations.
+
+Повторный `make verify` без `clean` сохранил aggregate на 118 findings / 628
+classes: stale module и aggregate outputs были удалены в `initialize` и не
+удвоили baseline. Негативные проверки подтвердили оба слоя fail-closed
+контракта: registry без существующего reactor-модуля и report POM без
+соответствующей ordering dependency были отклонены как set mismatch, а временно
+отсутствующий
+`platform-errors/target/spotbugs/spotbugs.html` был отклонён с точным путём,
+после чего файл восстановлен.
 
 ### SpotBugs suppression register
 
@@ -169,7 +243,22 @@ positive.
 
 | Pattern/category | Scope | Count | Highest risk | False-positive class | Disposition/evidence |
 |---|---|---:|---|---|---|
-| TBD | TBD | TBD | TBD | TBD | TBD |
+| `EI_EXPOSE_REP` + `EI_EXPOSE_REP2` | Spring-bound configuration records и adapter objects | 49 | P2 | Framework binding / intentional mutable representation | Semantic triage в `BUILD-SPOTBUGS-04`; broad suppression запрещён |
+| `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | В основном `Path.getParent()` / `getFileName()` под repository path invariants | 23 | P2 | Nullable JDK API без знания validated-root invariants | Проверить каждый edge case в `BUILD-SPOTBUGS-04` |
+| `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | Public/application boundaries с documented unchecked failures | 16 | P3 | Deliberate exception contract | Review API/Javadoc; сейчас не блокировать |
+| `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` + `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | JDBC schema, migration и PRAGMA SQL | 12 | P1/R10 | Analyzer не различает controlled adapter metadata и untrusted input | P1 проверен: PRAGMA строится из `SqlitePragmaPolicy` constants; injection не подтверждён. Остальные — semantic triage |
+| `RV_RETURN_VALUE_IGNORED` + `SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR` | SLF4J fluent builder; `ArtifactFilter.NONE` flyweight | 3 | P2 | Mutating fluent return / named shared instance, не singleton contract | Initial false-positive candidates; подтвердить при triage |
+| `IS2_INCONSISTENT_SYNC` | `CsvArtifactSliceWriter.active` | 1 | P2/R17 | SpotBugs не знает synchronous callback contract `SnapshotRowConsumer` | Immediate race не подтверждён; contract и README требуют synchronous callbacks |
+| Остальные 9 patterns (`DM`, `VA`, `REC`, `BC`, `UPM`, `SE`, `DLS`, `DB`, `CT`) | Несколько production modules | 14 | P2 | Mixed style, legacy serialization/finalizer model и локальные quality candidates | Поэкземплярный triage в `BUILD-SPOTBUGS-04` |
+
+Сводка priority: P1 — 1, P2 — 81, P3 — 36. Сводка category:
+`MALICIOUS_CODE` — 49, `STYLE` — 29, `BAD_PRACTICE` — 20, `SECURITY` — 12,
+`I18N` — 3, `CORRECTNESS` — 3, `PERFORMANCE` — 1, `MT_CORRECTNESS` — 1.
+
+В первичном review не подтверждён критичный correctness/resource/concurrency
+risk, поэтому очередь status matrix не меняется. Findings не исправлялись,
+filter/suppression baseline не создавался; полная semantic disposition относится
+к `BUILD-SPOTBUGS-04`.
 
 При adoption отдельно фиксируются accepted rules/severities, baseline format,
 new-code ratchet, узкие suppressions и их review conditions.
@@ -238,9 +327,9 @@ configuration и условия возможного будущего no-new-dup
 
 ## Completion
 
-- [ ] SpotBugs report воспроизводим
-- [ ] SpotBugs signal/noise/cost оценены
-- [ ] SpotBugs production-module scope подтверждён
+- [x] SpotBugs report воспроизводим
+- [x] SpotBugs signal/noise/cost оценены
+- [x] SpotBugs production-module scope подтверждён
 - [ ] Immediate-risk SpotBugs findings исправлены
 - [ ] SpotBugs baseline filters узкие и обоснованы
 - [ ] SpotBugs `check` стабильно входит в Maven `verify`

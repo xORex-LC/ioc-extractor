@@ -11,10 +11,10 @@
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
-    <artifactId>ioc-coverage-report</artifactId>
+    <artifactId>ioc-spotbugs-report</artifactId>
     <packaging>pom</packaging>
-    <name>ioc-coverage-report</name>
-    <description>Build-only aggregate JaCoCo report for the complete production reactor</description>
+    <name>ioc-spotbugs-report</name>
+    <description>Build-only aggregate SpotBugs report for the complete production reactor</description>
 
     <properties>
         <maven.deploy.skip>true</maven.deploy.skip>
@@ -109,30 +109,75 @@
 
     <build>
         <plugins>
-            <!-- Build-only POM: it validates reports but has no bytecode to analyze. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>validate-spotbugs-reactor-scope</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <exec executable="${java.home}/bin/java" failonerror="true">
+                                    <arg value="${project.basedir}/SpotBugsScopeVerifier.java"/>
+                                    <arg value="validate"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}"/>
+                                    <arg value="${project.basedir}/spotbugs-scope.tsv"/>
+                                    <arg value="${project.basedir}/pom.xml"/>
+                                </exec>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <!-- Preserve the aggregate goal's Doxia HTML instead of applying the module XSLT. -->
+                    <execution>
+                        <id>render-spotbugs-html</id>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>verify-spotbugs-report-integrity</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <exec executable="${java.home}/bin/java" failonerror="true">
+                                    <arg value="${project.basedir}/SpotBugsScopeVerifier.java"/>
+                                    <arg value="verify-reports"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}"/>
+                                    <arg value="${project.basedir}/spotbugs-scope.tsv"/>
+                                    <arg value="${project.basedir}/pom.xml"/>
+                                </exec>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>com.github.spotbugs</groupId>
                 <artifactId>spotbugs-maven-plugin</artifactId>
                 <configuration>
                     <skip>true</skip>
                 </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.jacoco</groupId>
-                <artifactId>jacoco-maven-plugin</artifactId>
                 <executions>
                     <execution>
-                        <id>create-reactor-coverage-report</id>
+                        <id>create-reactor-spotbugs-report</id>
                         <phase>verify</phase>
                         <goals>
-                            <goal>report-aggregate</goal>
+                            <goal>spotbugs-aggregate</goal>
                         </goals>
                         <configuration>
-                            <formats>
-                                <format>HTML</format>
-                                <format>XML</format>
-                            </formats>
-                            <title>ioc-extractor reactor coverage</title>
+                            <skip>false</skip>
+                            <effort>Max</effort>
+                            <threshold>Low</threshold>
+                            <skipEmptyReport>false</skipEmptyReport>
+                            <outputDirectory>${project.build.directory}/spotbugs</outputDirectory>
+                            <spotbugsXmlOutputFilename>spotbugs/spotbugs.xml</spotbugsXmlOutputFilename>
                         </configuration>
                     </execution>
                 </executions>

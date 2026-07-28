@@ -27,5 +27,5 @@ library.
 ## Notes
 
 `core/ioc-application-tck` is intentionally outside the production denominator.
-The module defines no JaCoCo threshold or exclusion; report-only baseline
-measurement precedes ratchet and release-gate configuration.
+The module defines no JaCoCo threshold or exclusion. SpotBugs aggregation and
+report-integrity validation belong to the sibling `spotbugs-report` module.

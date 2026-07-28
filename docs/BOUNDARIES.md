@@ -81,6 +81,13 @@ Parent reactor применяет ко всем модулям:
 - `requireMavenVersion` (`[3.9,)`);
 - `banDuplicatePomDependencyVersions`.
 
+Финальный build-only модуль `build-support/spotbugs-report` формирует reactor-wide
+SpotBugs XML/HTML aggregate и применяет `requireFilesExist` к обеим report-формам
+всех 19 production-модулей и самого aggregate. Это report-integrity gate:
+findings на report-only этапе не блокируют сборку, но analyzer error,
+пропущенный применимый модуль или отсутствующий aggregate не превращаются в
+зелёный `verify`.
+
 `ioc-domain` дополнительно запрещает Spring, Tika, Commons CSV/IO, Guava,
 RE2/J, picocli, HikariCP и sqlite-jdbc. `ioc-application` запрещает JDBC,
 Spring transactions, HikariCP и sqlite-jdbc. Точные coordinates принадлежат
