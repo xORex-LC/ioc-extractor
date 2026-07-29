@@ -113,24 +113,6 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-antrun-plugin</artifactId>
                 <executions>
-                    <execution>
-                        <id>validate-spotbugs-reactor-scope</id>
-                        <phase>validate</phase>
-                        <goals>
-                            <goal>run</goal>
-                        </goals>
-                        <configuration>
-                            <target>
-                                <exec executable="${java.home}/bin/java" failonerror="true">
-                                    <arg value="${project.basedir}/SpotBugsScopeVerifier.java"/>
-                                    <arg value="validate"/>
-                                    <arg value="${maven.multiModuleProjectDirectory}"/>
-                                    <arg value="${project.basedir}/spotbugs-scope.tsv"/>
-                                    <arg value="${project.basedir}/pom.xml"/>
-                                </exec>
-                            </target>
-                        </configuration>
-                    </execution>
                     <!-- Preserve the aggregate goal's Doxia HTML instead of applying the module XSLT. -->
                     <execution>
                         <id>render-spotbugs-html</id>
@@ -147,7 +129,8 @@
                         <configuration>
                             <target>
                                 <exec executable="${java.home}/bin/java" failonerror="true">
-                                    <arg value="${project.basedir}/SpotBugsScopeVerifier.java"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/build-quality/BuildQualityVerifier.java"/>
+                                    <arg value="spotbugs"/>
                                     <arg value="verify-reports"/>
                                     <arg value="${maven.multiModuleProjectDirectory}"/>
                                     <arg value="${project.basedir}/spotbugs-scope.tsv"/>

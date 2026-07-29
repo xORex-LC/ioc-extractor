@@ -81,19 +81,27 @@ Parent reactor применяет ко всем модулям:
 - `requireMavenVersion` (`[3.9,)`);
 - `banDuplicatePomDependencyVersions`.
 
-Финальный build-only модуль `build-support/spotbugs-report` формирует reactor-wide
-SpotBugs XML/HTML aggregate и применяет `requireFilesExist` к обеим report-формам
-всех 19 production-модулей и самого aggregate. Это report-integrity gate:
-findings на report-only этапе не блокируют сборку, но analyzer error,
-пропущенный применимый модуль или отсутствующий aggregate не превращаются в
-зелёный `verify`.
+Root-only AntRun execution в фазе `validate` компилирует общий JDK-only
+`build-support/build-quality/BuildQualityVerifier`, прогоняет synthetic-reactor
+contract matrix и до начала дочерних проектов сверяет SpotBugs manifest с root
+reactor. Поэтому новый модуль требует явного disposition сразу, а не после
+полного анализа. Финальный build-only модуль `build-support/spotbugs-report`
+формирует reactor-wide SpotBugs XML/HTML aggregate; поздний report-integrity
+режим выводит ожидаемые пути из того же registry, требует non-empty,
+структурно корректные XML/HTML всех 19 production-модулей и aggregate и
+запрещает reports у excluded scopes. Findings на report-only этапе не блокируют
+сборку, но analyzer error, пропущенный применимый модуль или отсутствующий
+aggregate не превращаются в зелёный `verify`.
 
 Финальный build-only модуль `build-support/cpd-report` выполняет один
 repository-wide PMD CPD analysis над положительным allowlist всех 19
-production `src/main/java` roots. Он исключает TCK, test sources, Maven
-generated outputs и vendor trees и применяет `requireFilesExist` к итоговым
-XML/HTML. CPD findings остаются report-only; analyzer error или отсутствующий
-report блокирует `verify`.
+production `src/main/java` roots. Fail-closed registry даёт disposition каждому
+reactor project и сверяет analyzed set с ordering dependencies и configured
+source roots. Перед analysis удаляются stale outputs; после него JDK-only
+verifier требует non-empty, structurally valid XML/HTML и точное соответствие
+уникальных XML file paths текущим production Java sources. TCK, test sources,
+Maven generated outputs и vendor trees исключены. CPD findings остаются
+report-only; analyzer, scope или report-integrity error блокирует `verify`.
 
 `ioc-domain` дополнительно запрещает Spring, Tika, Commons CSV/IO, Guava,
 RE2/J, picocli, HikariCP и sqlite-jdbc. `ioc-application` запрещает JDBC,

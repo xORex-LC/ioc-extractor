@@ -14,9 +14,9 @@ published library.
 
 | File/output | Purpose |
 |---|---|
-| `pom.xml` | Production dependency ordering, `spotbugs-aggregate` and lifecycle integration of scope/report validation |
+| `pom.xml` | Production dependency ordering, `spotbugs-aggregate` and late report-integrity wiring |
 | `spotbugs-scope.tsv` | Single disposition registry for every root and child reactor project |
-| `SpotBugsScopeVerifier.java` | JDK-only fail-closed comparison of reactor, registry, ordering dependencies and report outputs |
+| `../build-quality/BuildQualityVerifier.java` | Shared JDK-only scope and report-integrity verifier |
 | `target/spotbugs/spotbugs.xml` | Generated machine-readable reactor aggregate |
 | `target/spotbugs/spotbugs.html` | Generated human-readable reactor aggregate |
 
@@ -35,13 +35,16 @@ has the separate `aggregate` disposition. The root lifecycle removes stale
 module-local SpotBugs outputs during `initialize`, so an incremental build cannot
 satisfy the integrity gate with a report from a prior invocation.
 
-The verifier requires the registry to cover exactly the root Maven reactor,
+The root-only `validate` gate runs the shared verifier before child projects are
+built. It requires the registry to cover exactly the root Maven reactor,
 checks each path against its POM coordinates and packaging, requires explicit
 `skip=true` for every excluded child project, and requires the report module's
 dependencies to equal the `analyzed` artifact set. Adding any reactor project
 therefore fails closed until it receives an explicit disposition and, when
-analyzed, an ordering dependency. The final `verify` step derives all expected
-XML/HTML paths from the same registry and rejects reports from excluded scopes.
+analyzed, an ordering dependency. A synthetic-reactor contract harness in
+`../build-quality` protects these rules against accidental weakening. The final
+`verify` step derives all expected XML/HTML paths from the same registry,
+validates their structure and rejects reports from excluded scopes.
 
 Findings remain report-only. Analyzer errors, missing module reports or missing
 aggregate outputs fail the reactor build.

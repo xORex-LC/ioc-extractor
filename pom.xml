@@ -164,6 +164,50 @@
                 </dependencies>
                 <executions>
                     <execution>
+                        <id>validate-build-quality-contracts</id>
+                        <phase>validate</phase>
+                        <inherited>false</inherited>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <!--
+                                  Root-only fail-fast gate: compile the JDK-only verifier and its
+                                  synthetic-reactor contract tests once, then reconcile active
+                                  analyzer manifests before any child project is built.
+                                -->
+                                <delete dir="${project.build.directory}/build-quality-verifier"
+                                        quiet="true"/>
+                                <mkdir dir="${project.build.directory}/build-quality-verifier"/>
+                                <javac srcdir="${maven.multiModuleProjectDirectory}/build-support/build-quality"
+                                       destdir="${project.build.directory}/build-quality-verifier"
+                                       release="${java.version}"
+                                       encoding="UTF-8"
+                                       includeantruntime="false"/>
+                                <java classname="BuildQualityVerifierTest"
+                                      fork="true"
+                                      failonerror="true">
+                                    <classpath>
+                                        <pathelement location="${project.build.directory}/build-quality-verifier"/>
+                                    </classpath>
+                                </java>
+                                <java classname="BuildQualityVerifier"
+                                      fork="true"
+                                      failonerror="true">
+                                    <classpath>
+                                        <pathelement location="${project.build.directory}/build-quality-verifier"/>
+                                    </classpath>
+                                    <arg value="spotbugs"/>
+                                    <arg value="validate"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/spotbugs-report/spotbugs-scope.tsv"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/spotbugs-report/pom.xml"/>
+                                </java>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
                         <id>clean-stale-spotbugs-output</id>
                         <phase>initialize</phase>
                         <goals>
