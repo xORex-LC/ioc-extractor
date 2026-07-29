@@ -83,8 +83,8 @@ Parent reactor применяет ко всем модулям:
 
 Root-only AntRun execution в фазе `validate` компилирует общий JDK-only
 `build-support/build-quality/BuildQualityVerifier`, прогоняет synthetic-reactor
-contract matrix и до начала дочерних проектов сверяет SpotBugs manifest с root
-reactor. Поэтому новый модуль требует явного disposition сразу, а не после
+contract matrix и до начала дочерних проектов сверяет SpotBugs/CPD manifests с
+root reactor. Поэтому новый модуль требует явного disposition сразу, а не после
 полного анализа. Финальный build-only модуль `build-support/spotbugs-report`
 формирует reactor-wide SpotBugs XML/HTML aggregate; поздний report-integrity
 режим выводит ожидаемые пути из того же registry, требует non-empty,
@@ -95,10 +95,11 @@ aggregate не превращаются в зелёный `verify`.
 
 Финальный build-only модуль `build-support/cpd-report` выполняет один
 repository-wide PMD CPD analysis над положительным allowlist всех 19
-production `src/main/java` roots. Fail-closed registry даёт disposition каждому
-reactor project и сверяет analyzed set с ordering dependencies и configured
-source roots. Перед analysis удаляются stale outputs; после него JDK-only
-verifier требует non-empty, structurally valid XML/HTML и точное соответствие
+production `src/main/java` roots. Общий fail-closed verifier даёт disposition
+каждому reactor project и сверяет analyzed set с ordering dependencies и
+configured source roots. Перед analysis удаляются stale outputs; после него
+поздний режим verifier требует non-empty, structurally valid XML/HTML и точное
+соответствие
 уникальных XML file paths текущим production Java sources. TCK, test sources,
 Maven generated outputs и vendor trees исключены. CPD findings остаются
 report-only; analyzer, scope или report-integrity error блокирует `verify`.

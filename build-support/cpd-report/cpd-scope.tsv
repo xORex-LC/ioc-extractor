@@ -1,0 +1,25 @@
+# module-path	artifact-id	disposition	rationale
+.	ioc-extractor-parent	excluded	Root parent POM has no production Java sources
+platform/platform-errors	ioc-platform-errors	analyzed	Production runtime Java sources
+platform/platform-diagnostics	ioc-platform-diagnostics	analyzed	Production runtime Java sources
+platform/platform-etl	ioc-platform-etl	analyzed	Production runtime Java sources
+platform/platform-events	ioc-platform-events	analyzed	Production runtime Java sources
+platform/platform-concurrency	ioc-platform-concurrency	analyzed	Production runtime Java sources
+platform/platform-observability	ioc-platform-observability	analyzed	Production runtime Java sources
+platform/platform-diagnostics-logging	ioc-platform-diagnostics-logging	analyzed	Production runtime Java sources
+core/ioc-domain	ioc-domain	analyzed	Production runtime Java sources
+core/ioc-application	ioc-application	analyzed	Production runtime Java sources
+core/ioc-application-tck	ioc-application-tck	excluded	Reusable test-contract Java sources, not runtime production code
+adapters/adapter-regex-re2j	ioc-adapter-regex-re2j	analyzed	Production runtime Java sources
+adapters/adapter-psl	ioc-adapter-psl	analyzed	Production runtime Java sources
+adapters/adapter-source-tika	ioc-adapter-source-tika	analyzed	Production runtime Java sources
+adapters/adapter-sink-csv	ioc-adapter-sink-csv	analyzed	Production runtime Java sources
+adapters/adapter-manifest-json-jackson	ioc-adapter-manifest-json-jackson	analyzed	Production runtime Java sources
+adapters/adapter-store-jdbc	ioc-adapter-store-jdbc	analyzed	Production runtime Java sources
+adapters/adapter-transport-smb	ioc-adapter-transport-smb	analyzed	Production runtime Java sources
+adapters/adapter-ingest	ioc-adapter-ingest	analyzed	Production runtime Java sources
+adapters/adapter-cli-picocli	ioc-adapter-cli-picocli	analyzed	Production runtime Java sources
+bootstrap/ioc-app	ioc-app	analyzed	Production runtime Java sources
+build-support/coverage-report	ioc-coverage-report	excluded	Build-only JaCoCo aggregate POM
+build-support/spotbugs-report	ioc-spotbugs-report	excluded	Build-only SpotBugs aggregate and integrity POM
+build-support/cpd-report	ioc-cpd-report	aggregate	Build-only repository-wide CPD report and integrity owner

@@ -171,26 +171,41 @@
                     </execution>
                 </executions>
             </plugin>
-            <!-- This plugin follows PMD in the parent plugin order, so both report files must exist first. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-enforcer-plugin</artifactId>
+                <artifactId>maven-antrun-plugin</artifactId>
                 <executions>
+                    <execution>
+                        <id>clean-stale-cpd-output</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <delete dir="${project.build.directory}/cpd"
+                                        quiet="true"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <!-- Parent plugin order keeps AntRun after PMD in verify. -->
                     <execution>
                         <id>verify-cpd-report-integrity</id>
                         <phase>verify</phase>
                         <goals>
-                            <goal>enforce</goal>
+                            <goal>run</goal>
                         </goals>
                         <configuration>
-                            <rules>
-                                <requireFilesExist>
-                                    <files>
-                                        <file>${project.build.directory}/cpd/cpd.xml</file>
-                                        <file>${project.build.directory}/cpd/cpd.html</file>
-                                    </files>
-                                </requireFilesExist>
-                            </rules>
+                            <target>
+                                <exec executable="${java.home}/bin/java" failonerror="true">
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/build-quality/BuildQualityVerifier.java"/>
+                                    <arg value="cpd"/>
+                                    <arg value="verify-reports"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}"/>
+                                    <arg value="${project.basedir}/cpd-scope.tsv"/>
+                                    <arg value="${project.basedir}/pom.xml"/>
+                                </exec>
+                            </target>
                         </configuration>
                     </execution>
                 </executions>

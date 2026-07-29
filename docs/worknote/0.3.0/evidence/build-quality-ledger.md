@@ -171,15 +171,20 @@ SpotBugs XML/HTML в phase `initialize`, поэтому incremental `verify` н�
 
 Отдельный финальный build-only модуль `build-support/spotbugs-report` выполняет
 goal `spotbugs-aggregate` в phase `verify`, создаёт общий XML/HTML и после этого
-запускает JDK-only integrity verifier. Registry `spotbugs-scope.tsv` содержит
+запускает поздний report-integrity режим общего JDK-only
+`build-support/build-quality/BuildQualityVerifier`. Registry
+`spotbugs-scope.tsv` содержит
 disposition всех 24 reactor projects: 19 `analyzed`, root/TCK/two соседних
 build-only POM как 4 `excluded` и сам `spotbugs-report` как один `aggregate`.
-Verifier требует точного равенства registry и root `<modules>`, сверяет
-artifactId/packaging и явный `skip=true` для каждого исключённого child project,
-а также требует равенства 19 `analyzed` artifacts и dependencies report-модуля.
-Ожидаемые XML/HTML пути затем выводятся из этого же registry. Поэтому новый
-reactor-модуль fail-closed до явного disposition, а обычный `verify` не может
-успешно завершиться при пропущенном, пустом или неожиданном report.
+Root-only execution того же verifier в phase `validate` требует точного
+равенства registry и root `<modules>`, сверяет artifactId/packaging и явный
+`skip=true` для каждого исключённого child project, а также требует равенства
+19 `analyzed` artifacts и dependencies report-модуля. Он выполняется до
+дочерних проектов, поэтому новый reactor-модуль fail-closed до явного
+disposition примерно в начале build, а не после analyzer run. Ожидаемые
+XML/HTML пути затем выводятся из этого же registry, их XML/HTML structure
+проверяется, и обычный `verify` не может успешно завершиться при пропущенном,
+пустом, malformed или неожиданном report.
 
 | Scope/module | Analyzed | Findings | Immediate fixes | Baseline filters | Clean rerun | Blocking evidence |
 |---|---|---:|---|---|---|---|
@@ -209,7 +214,7 @@ reactor-модуль fail-closed до явного disposition, а обычны�
 | `cpd-report` | no | N/A | N/A | N/A | yes | Build-only `pom`; только repository-wide source CPD report |
 | `ioc-application-tck` | no | N/A | N/A | N/A | yes | Reusable JUnit/AssertJ test-contract library, не runtime production code |
 
-Чистый 23-project reactor run сформировал 19 non-empty module XML/HTML пар и
+Чистый 24-project reactor run сформировал 19 non-empty module XML/HTML пар и
 aggregate XML/HTML. Aggregate содержит те же 118 findings и статистику 628
 production classes; во всех module XML и aggregate `errors=0`,
 `missingClasses=0`. Root parent, TCK и `coverage-report` SpotBugs reports не
@@ -223,12 +228,14 @@ CI-cost measurement, а не сумму module-local analyzer durations.
 
 Повторный `make verify` без `clean` сохранил aggregate на 118 findings / 628
 classes: stale module и aggregate outputs были удалены в `initialize` и не
-удвоили baseline. Негативные проверки подтвердили оба слоя fail-closed
-контракта: registry без существующего reactor-модуля и report POM без
-соответствующей ordering dependency были отклонены как set mismatch, а временно
-отсутствующий
-`platform-errors/target/spotbugs/spotbugs.html` был отклонён с точным путём,
-после чего файл восстановлен.
+удвоили baseline. Общий verifier защищён synthetic-reactor harness: четыре
+happy paths и 15 негативных сценариев покрывают новый/stale reactor scope,
+manifest/POM drift, packaging/disposition/skip contracts, ordering
+dependencies, CPD source/config scope и missing/unexpected/malformed reports.
+Каждый негативный сценарий требует exit `1` и точный diagnostic fragment; тест
+выполняется root-only в `validate` и не мутирует checkout. Ручные проверки
+пропущенного registry entry, ordering dependency и module HTML сохранены как
+первичное evidence дефекта, но больше не являются единственной защитой.
 
 ### SpotBugs suppression register
 
@@ -271,18 +278,25 @@ new-code ratchet, узкие suppressions и их review conditions.
 с bundled PMD `7.17.0`. Финальный `build-support/cpd-report` выполняет
 официальный goal
 [`aggregate-cpd`](https://maven.apache.org/plugins/maven-pmd-plugin/aggregate-cpd-mojo.html)
-в phase `verify` после 19 production dependencies. Положительный список из 19
-`src/main/java` roots анализирует 499 checked-in Java files одним invocation,
-поэтому межмодульные совпадения видны, а `ioc-application-tck`, tests,
-Maven-generated roots, build outputs и build-support POMs не попадают в scope.
-Checked-in vendor/generated trees в repository отсутствуют; явные
+в phase `verify` после 19 production dependencies. Fail-closed
+`cpd-scope.tsv` даёт disposition всем 24 reactor projects; JDK-only verifier
+в root `validate` сверяет registry с root reactor и POM metadata, а analyzed
+set — одновременно с 19 ordering dependencies и 19 configured
+`src/main/java` roots. Положительный
+список анализирует 499 уникальных production Java source paths одним
+invocation, поэтому межмодульные совпадения видны, а `ioc-application-tck`,
+tests, Maven-generated roots, build outputs и build-support POMs не попадают в
+scope. Checked-in vendor/generated trees в repository отсутствуют; явные
 `**/vendor/**` и `**/generated/**` selectors являются дополнительным guard.
 
 Native machine-readable XML и Doxia HTML формируются в
 `build-support/cpd-report/target/cpd/`. Findings не вызывают failure: goals
 `cpd-check`/`aggregate-cpd-check` не подключены. Ошибка analyzer/report renderer
-останавливает Maven, а следующий `requireFilesExist` не позволяет завершить
-`verify` без XML или HTML.
+останавливает Maven. `initialize` заранее удаляет предыдущий `target/cpd`, а
+после analysis verifier требует non-empty XML/HTML, проверяет CPD XML
+namespace/root и HTML document marker, затем сверяет 499 unique XML paths с
+текущими Java files всех analyzed roots. Поэтому stale, empty, malformed,
+incomplete или scope-drifted report не может завершить `verify`.
 
 | Finding | Occurrences | Shared knowledge/behavior | Semantic differences | Disposition | Rationale | R030-QUAL finding |
 |---|---|---|---|---|---|---|
@@ -327,10 +341,9 @@ end-to-end прирост `+2.52 s` / `+2.7%`. Peak RSS и parallel scheduling �
 отдельными runs не считаются изолированной CPD attribution; steady-state
 standalone execution занимал `1.13–2.65 s`.
 
-Негативная report-integrity проверка временно убрала
-`build-support/cpd-report/target/cpd/cpd.html`: execution
-`verify-cpd-report-integrity` завершился с exit `1` и точным missing path, после
-чего report был восстановлен. Финальный clean run подтвердил 499 file entries,
+Общая автоматическая matrix, описанная в SpotBugs rollout, отдельно покрывает
+CPD production-source/config drift, accidental `includeTests=true` и malformed
+XML. Финальный clean run подтвердил 499 unique production source paths,
 11 duplications, отсутствие TCK/generated/vendor references и наличие обоих
 report formats.
 

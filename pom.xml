@@ -150,7 +150,16 @@
                     </execution>
                 </executions>
             </plugin>
-            <!-- Keep after SpotBugs: clean stale output early, then render/validate current reports. -->
+            <!-- Keep before AntRun: the final CPD verifier consumes this plugin's report outputs. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-pmd-plugin</artifactId>
+                <version>${maven-pmd-plugin.version}</version>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+            <!-- Keep after SpotBugs and PMD so verify executions consume current analyzer outputs. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-antrun-plugin</artifactId>
@@ -174,7 +183,7 @@
                             <target>
                                 <!--
                                   Root-only fail-fast gate: compile the JDK-only verifier and its
-                                  synthetic-reactor contract tests once, then reconcile active
+                                  synthetic-reactor contract tests once, then reconcile both
                                   analyzer manifests before any child project is built.
                                 -->
                                 <delete dir="${project.build.directory}/build-quality-verifier"
@@ -203,6 +212,18 @@
                                     <arg value="${maven.multiModuleProjectDirectory}"/>
                                     <arg value="${maven.multiModuleProjectDirectory}/build-support/spotbugs-report/spotbugs-scope.tsv"/>
                                     <arg value="${maven.multiModuleProjectDirectory}/build-support/spotbugs-report/pom.xml"/>
+                                </java>
+                                <java classname="BuildQualityVerifier"
+                                      fork="true"
+                                      failonerror="true">
+                                    <classpath>
+                                        <pathelement location="${project.build.directory}/build-quality-verifier"/>
+                                    </classpath>
+                                    <arg value="cpd"/>
+                                    <arg value="validate"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/cpd-report/cpd-scope.tsv"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/cpd-report/pom.xml"/>
                                 </java>
                             </target>
                         </configuration>
@@ -249,15 +270,6 @@
                         </configuration>
                     </execution>
                 </executions>
-            </plugin>
-            <!-- Keep before Enforcer: the final CPD module validates these report outputs. -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-pmd-plugin</artifactId>
-                <version>${maven-pmd-plugin.version}</version>
-                <configuration>
-                    <skip>true</skip>
-                </configuration>
             </plugin>
             <!-- Keep last among quality plugins so child integrity executions see completed reports. -->
             <plugin>

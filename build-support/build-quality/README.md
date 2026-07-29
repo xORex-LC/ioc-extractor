@@ -14,9 +14,9 @@ PMD CPD; it contains no production code and is not a Maven reactor project.
 | `BuildQualityVerifierTest.java` | Synthetic-reactor contract harness for happy paths and negative mutations |
 
 The root POM compiles both files with AntRun and runs the contract harness once
-in `validate` with `inherited=false`. It then validates active analyzer
-manifests before Maven starts child projects. Report modules can run the same
-verifier later in `verify`, after their reports exist.
+in `validate` with `inherited=false`. It then validates the real SpotBugs and
+CPD manifests before Maven starts child projects. Analyzer report modules run
+the same verifier later in `verify`, after their reports exist.
 
 ## Contract tests
 
