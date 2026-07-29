@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.iocextractor</groupId>
+        <artifactId>ioc-extractor-parent</artifactId>
+        <version>${revision}</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>ioc-cpd-report</artifactId>
+    <packaging>pom</packaging>
+    <name>ioc-cpd-report</name>
+    <description>Build-only repository-wide PMD CPD report for production Java sources</description>
+
+    <properties>
+        <maven.deploy.skip>true</maven.deploy.skip>
+        <maven.install.skip>true</maven.install.skip>
+    </properties>
+
+    <dependencies>
+        <!-- Platform production universe. -->
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-errors</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-diagnostics</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-etl</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-events</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-concurrency</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-observability</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-diagnostics-logging</artifactId>
+        </dependency>
+
+        <!-- Core production universe; application TCK is test support and excluded. -->
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-domain</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-application</artifactId>
+        </dependency>
+
+        <!-- Adapter production universe. -->
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-adapter-regex-re2j</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-adapter-psl</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-adapter-source-tika</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-adapter-sink-csv</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-adapter-manifest-json-jackson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-adapter-store-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-adapter-transport-smb</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-adapter-ingest</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-adapter-cli-picocli</artifactId>
+        </dependency>
+
+        <!-- Runnable composition root. -->
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-app</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Build-only POM: it has source paths to aggregate, but no bytecode to analyze. -->
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-pmd-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>create-repository-cpd-report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>aggregate-cpd</goal>
+                        </goals>
+                        <configuration>
+                            <skip>false</skip>
+                            <language>java</language>
+                            <includeTests>false</includeTests>
+                            <minimumTokens>75</minimumTokens>
+                            <ignoreAnnotations>false</ignoreAnnotations>
+                            <ignoreIdentifiers>false</ignoreIdentifiers>
+                            <ignoreLiterals>false</ignoreLiterals>
+                            <linkXRef>false</linkXRef>
+                            <skipEmptyReport>false</skipEmptyReport>
+                            <format>xml</format>
+                            <targetDirectory>${project.build.directory}/cpd</targetDirectory>
+                            <outputDirectory>${project.build.directory}/cpd</outputDirectory>
+
+                            <!-- Positive scope: checked-in production Java only. -->
+                            <compileSourceRoots>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-errors/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-diagnostics/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-etl/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-events/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-concurrency/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-observability/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-diagnostics-logging/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/core/ioc-domain/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/core/ioc-application/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-regex-re2j/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-psl/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-source-tika/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-sink-csv/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-manifest-json-jackson/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-store-jdbc/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-transport-smb/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-ingest/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-cli-picocli/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/bootstrap/ioc-app/src/main/java</compileSourceRoot>
+                            </compileSourceRoots>
+                            <excludes>
+                                <exclude>**/generated/**</exclude>
+                                <exclude>**/vendor/**</exclude>
+                            </excludes>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- This plugin follows PMD in the parent plugin order, so both report files must exist first. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>verify-cpd-report-integrity</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireFilesExist>
+                                    <files>
+                                        <file>${project.build.directory}/cpd/cpd.xml</file>
+                                        <file>${project.build.directory}/cpd/cpd.html</file>
+                                    </files>
+                                </requireFilesExist>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

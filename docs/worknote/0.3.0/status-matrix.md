@@ -16,7 +16,7 @@ language: "ru"
 | Goal | State | Evidence | Next gate |
 |---|---|---|---|
 | `R030-BASE` | `verified` | [baseline](evidence/baseline.md), [compatibility ledger](evidence/compatibility-ledger.md) | Closed; re-baseline only by explicit scope/contract decision |
-| `R030-BUILD` | `in-progress` | [build-quality ledger](evidence/build-quality-ledger.md) | `BUILD-CPD-02` report-only evaluation |
+| `R030-BUILD` | `in-progress` | [build-quality ledger](evidence/build-quality-ledger.md) | `BUILD-DEPS-03` dependency-analysis disposition |
 | `R030-TEST` global controls | `planned` | [test-quality ledger](evidence/test-quality-ledger.md) | `TEST-LIFECYCLE-01` taxonomy and lifecycle separation |
 | `R030-SEC` | `planned` | — | Security gap analysis |
 | `R030-LIB` | `planned` | [shared-code inventory](evidence/shared-code-inventory.md) | `LIB-1` concurrency-library admission record |
@@ -54,13 +54,14 @@ language: "ru"
 
 | Work item | Goal | Scope | Stage | Owner | State | Evidence |
 |---|---|---|---|---|---|---|
-| `BUILD-SPOTBUGS-01` | `R030-BUILD` | 19 production runtime JAR modules; fail-closed 23-project disposition registry keeps root/build-support POMs and reusable test-contract `ioc-application-tck` explicitly outside bytecode scope | Report-only tool introduction, per-module reports, reactor aggregate and 118-finding baseline; scope/report integrity blocks omissions, findings remain non-blocking | AI agent | `verified` | [SpotBugs rollout](evidence/build-quality-ledger.md#spotbugs-rollout) |
+| `BUILD-SPOTBUGS-01` | `R030-BUILD` | 19 production runtime JAR modules; fail-closed 24-project disposition registry keeps root/build-support POMs and reusable test-contract `ioc-application-tck` explicitly outside bytecode scope | Report-only tool introduction, per-module reports, reactor aggregate and 118-finding baseline; scope/report integrity blocks omissions, findings remain non-blocking | AI agent | `verified` | [SpotBugs rollout](evidence/build-quality-ledger.md#spotbugs-rollout) |
+| `BUILD-CPD-02` | `R030-BUILD` | One repository-wide report over 499 checked-in Java files in 19 production modules; TCK, tests, generated/vendor sources and build-support explicitly excluded | PMD CPD `minimumTokens=75`; 11 raw matches mapped to 10 semantic R030-QUAL findings; report-only findings with blocking analyzer/report-integrity failures | AI agent | `verified` | [CPD findings and calibration](evidence/build-quality-ledger.md#pmd-cpd-findings) |
 
 ## 4. Deferred и blocked
 
 | Work item/scope | Goal | State | Reason | Missing evidence/exit condition |
 |---|---|---|---|---|
-| — | — | — | — | — |
+| Full PMD ruleset beyond CPD | `R030-BUILD` | `deferred` | Unused-code, complexity, performance/object-creation and error-prone rules need their own signal/noise decision; they are not implied by CPD | Revisit after `BUILD-SPOTBUGS-04`, or earlier only after concrete risk/gap evidence and explicit matrix reorder |
 
 ## 5. Update rule
 

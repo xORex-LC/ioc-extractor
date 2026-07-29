@@ -50,7 +50,8 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 │   └── ioc-app                    (Spring Boot, composition root, исполняемый jar)
 └── build-support/
     ├── coverage-report            (build-only JaCoCo aggregate; не runtime/library)
-    └── spotbugs-report            (build-only SpotBugs aggregate + report integrity; не runtime/library)
+    ├── spotbugs-report            (build-only SpotBugs aggregate + report integrity; не runtime/library)
+    └── cpd-report                 (build-only repository-wide PMD CPD report + integrity; не runtime/library)
 ```
 
 > ArtifactId имеют префикс `ioc-*`, например `ioc-platform-etl`,
@@ -86,8 +87,11 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
   полного JaCoCo aggregate.
 - `spotbugs-report` зависит на те же 19 production-модулей для reactor ordering,
   формирует общий SpotBugs XML/HTML и проверяет наличие всех module/aggregate
-  reports. Оба build-support модуля не входят в runtime-архитектуру, не
-  публикуются как библиотеки и не могут быть зависимостями production-кода.
+  reports.
+- `cpd-report` зависит на 19 production-модулей только для reactor ordering и
+  анализирует единым PMD CPD execution явный allowlist их `src/main/java`.
+  Все три build-support модуля не входят в runtime-архитектуру, не публикуются
+  как библиотеки и не могут быть зависимостями production-кода.
 
 ## Принципы нарезки на модули
 
@@ -128,6 +132,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `ioc-app` (bootstrap) | composition root, lazy export/sync graphs, transport registry; fetch/export/publish/retention schedulers, conditional web и health |
 | `coverage-report` (build-support) | Непубликуемый Maven report-модуль: полный JaCoCo HTML/XML aggregate |
 | `spotbugs-report` (build-support) | Непубликуемый Maven report-модуль: полный SpotBugs XML/HTML aggregate и report-integrity gate для production bytecode reactor |
+| `cpd-report` (build-support) | Непубликуемый Maven report-модуль: repository-wide PMD CPD XML/HTML и report-integrity gate для production Java sources |
 
 ## Гранулярность
 

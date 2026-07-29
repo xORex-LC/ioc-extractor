@@ -15,6 +15,7 @@ build-support.
 |---|---|
 | `coverage-report/` | Reactor-wide JaCoCo HTML/XML report aggregation |
 | `spotbugs-report/` | Reactor-wide SpotBugs XML/HTML aggregation and report-integrity validation |
+| `cpd-report/` | Repository-wide production-source PMD CPD XML/HTML report and integrity validation |
 
 ## Dependencies
 

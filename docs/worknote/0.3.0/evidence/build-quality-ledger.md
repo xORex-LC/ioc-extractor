@@ -29,7 +29,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 | Control | Version/config | Local command | CI/report artifact | Runtime | Signal/noise | Owner | Stage |
 |---|---|---|---|---:|---|---|---|
 | SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only | `make clean && make verify` | Per applicable module: `target/spotbugs/spotbugs.xml` + `spotbugs.html`; aggregate: `build-support/spotbugs-report/target/spotbugs/`; CI artifact `spotbugs-reports-<run>` | `93.00 s` clean reactor wall time; `+34.61 s` / `+59.3%` к BASE | 118 raw findings / 19 patterns; заметны framework, nullable-API и controlled-SQL classes of noise | `R030-BUILD` | `report-only` |
-| PMD CPD aggregate | TBD | TBD | TBD | TBD | TBD | TBD | `planned` |
+| PMD CPD aggregate | Maven Plugin `3.28.0`, bundled PMD `7.17.0`; Java production sources, `minimumTokens=75`, identifiers/literals/annotations significant | `make clean && make verify` | `build-support/cpd-report/target/cpd/`; CI artifact `cpd-report-<run>` | `95.52 s` clean reactor wall; CPD module `2.703 s` | 11 raw matches / 10 semantic findings; 7 debt candidates, 3 retained clusters | `R030-BUILD` + `R030-QUAL` | `report-only` |
 | Maven dependency analysis | Maven Dependency Plugin `3.9.0`; default bytecode analysis | `./mvnw -B -ntp -T 1C verify dependency:analyze-only` | Local console/report ledger; CI adoption undecided | Maven `47.745 s` including `verify`; sequential `-DskipTests` attribution `4.671 s` | Broad candidate signal; substantial parent-test, starter, transitive API, SPI and processor noise | `R030-BUILD` | `report-only` |
 
 Допустимые rollout stages: `planned`, `report-only`, `triaged`, `baselined`,
@@ -40,7 +40,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 | Work item | Outcome | Mode | Entry dependency | State |
 |---|---|---|---|---|
 | `BUILD-SPOTBUGS-01` | Reproducible reactor-wide production-bytecode report, scope/cost inventory and raw findings | Report only; no mass remediation or merge gate | `R030-BASE` verified | `verified` |
-| `BUILD-CPD-02` | Repository-wide production-source report and evidence-based `minimumTokens` calibration | Diagnostic/report only | `BUILD-SPOTBUGS-01` closed, unless matrix explicitly reorders independent tooling | `planned` |
+| `BUILD-CPD-02` | Repository-wide production-source report and evidence-based `minimumTokens` calibration | Diagnostic/report only | `BUILD-SPOTBUGS-01` closed, unless matrix explicitly reorders independent tooling | `verified` |
 | `BUILD-DEPS-03` | Semantic disposition of the captured dependency candidates and `Adopt / Adopt with exclusions / Defer` decision | Evaluation only | `BUILD-CPD-02` closed | `planned` |
 | `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow legacy baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `planned` |
 | `BUILD-SPOTBUGS-05` | Accepted no-new-findings signal wired into canonical Maven `verify` | Blocking ratchet | `BUILD-SPOTBUGS-04` closed | `planned` |
@@ -172,8 +172,8 @@ SpotBugs XML/HTML в phase `initialize`, поэтому incremental `verify` н�
 Отдельный финальный build-only модуль `build-support/spotbugs-report` выполняет
 goal `spotbugs-aggregate` в phase `verify`, создаёт общий XML/HTML и после этого
 запускает JDK-only integrity verifier. Registry `spotbugs-scope.tsv` содержит
-disposition всех 23 reactor projects: 19 `analyzed`, root/TCK/`coverage-report`
-как 3 `excluded` и сам `spotbugs-report` как один `aggregate`.
+disposition всех 24 reactor projects: 19 `analyzed`, root/TCK/two соседних
+build-only POM как 4 `excluded` и сам `spotbugs-report` как один `aggregate`.
 Verifier требует точного равенства registry и root `<modules>`, сверяет
 artifactId/packaging и явный `skip=true` для каждого исключённого child project,
 а также требует равенства 19 `analyzed` artifacts и dependencies report-модуля.
@@ -206,6 +206,7 @@ reactor-модуль fail-closed до явного disposition, а обычны�
 | root parent | no | N/A | N/A | N/A | yes | Packaging `pom`; bytecode отсутствует |
 | `coverage-report` | no | N/A | N/A | N/A | yes | Build-only `pom`; только JaCoCo aggregate |
 | `spotbugs-report` | no | N/A | N/A | N/A | yes | Build-only `pom`; SpotBugs aggregate + integrity gate |
+| `cpd-report` | no | N/A | N/A | N/A | yes | Build-only `pom`; только repository-wide source CPD report |
 | `ioc-application-tck` | no | N/A | N/A | N/A | yes | Reusable JUnit/AssertJ test-contract library, не runtime production code |
 
 Чистый 23-project reactor run сформировал 19 non-empty module XML/HTML пар и
@@ -265,9 +266,36 @@ new-code ratchet, узкие suppressions и их review conditions.
 
 ## PMD CPD findings
 
+`BUILD-CPD-02` использует
+[Maven PMD Plugin `3.28.0`](https://maven.apache.org/plugins/maven-pmd-plugin/)
+с bundled PMD `7.17.0`. Финальный `build-support/cpd-report` выполняет
+официальный goal
+[`aggregate-cpd`](https://maven.apache.org/plugins/maven-pmd-plugin/aggregate-cpd-mojo.html)
+в phase `verify` после 19 production dependencies. Положительный список из 19
+`src/main/java` roots анализирует 499 checked-in Java files одним invocation,
+поэтому межмодульные совпадения видны, а `ioc-application-tck`, tests,
+Maven-generated roots, build outputs и build-support POMs не попадают в scope.
+Checked-in vendor/generated trees в repository отсутствуют; явные
+`**/vendor/**` и `**/generated/**` selectors являются дополнительным guard.
+
+Native machine-readable XML и Doxia HTML формируются в
+`build-support/cpd-report/target/cpd/`. Findings не вызывают failure: goals
+`cpd-check`/`aggregate-cpd-check` не подключены. Ошибка analyzer/report renderer
+останавливает Maven, а следующий `requireFilesExist` не позволяет завершить
+`verify` без XML или HTML.
+
 | Finding | Occurrences | Shared knowledge/behavior | Semantic differences | Disposition | Rationale | R030-QUAL finding |
 |---|---|---|---|---|---|---|
-| TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| Config-path tokenization/reflection, 317 tokens | `IocEnvironmentPropertyMatcher`; `IocUnknownConfigurationPreflight` | Одна форма config path, index и reflected element type | Matcher классифицирует env names; preflight проверяет admissible property shape | `deduplicate` | Highest divergence risk: strict binding должен иметь один authoritative path model; реализация требует characterization tests | `QUAL-CPD-01` |
+| Extraction diagnostic fields, 157 tokens | `ExtractCommand`; `FileSourceMessageHandler` | Одинаковая проекция `ExtractionResult` summary в `LogEvent` | CLI и daemon принадлежат разным driving adapters и имеют разные lifecycle/owners | `defer` | Общий inward helper создал бы нежелательную observability dependency; сначала выбрать legal boundary | `QUAL-CPD-02` |
+| Control-event MDC, 107 + 80 tokens | Три bootstrap listeners | Общие event metadata/correlation fields | Handler-specific source, slice, target и endpoint tails | `defer` | Возможен package-private bootstrap helper, но сначала проверить typed ECS contract и читаемость handlers | `QUAL-CPD-03` |
+| SHA-256 length framing, 105 tokens | `ArtifactSchemaFingerprint`; `ExportPlan` | Один length-prefixed digest encoding invariant | Fingerprints покрывают разные export inputs | `deduplicate` | Encoding knowledge должно иметь один application/export owner | `QUAL-CPD-04` |
+| Diagnostic-code enum implementation, 102 tokens | `SchemaDiagnosticCodes`; `StorageDiagnosticCodes` | Общий interface boilerplate | Category, impact, IDs и message semantics различны | `retain` | Java enum boilerplate не является shared policy; abstraction ухудшит локальную явность | `QUAL-CPD-05` |
+| Completed-slice directory traversal, 99 tokens | Два метода `FileSystemCompletedSliceCatalog` | Одинаковая safe profile-directory traversal | Один путь возвращает verified manifests, другой только eligible names | `deduplicate` | Допустима только private adapter-local traversal seam, сохраняющая разные validators/results | `QUAL-CPD-06` |
+| SMB connect/authentication setup, 82 tokens | `SmbjChangeNotifySessionFactory`; `SmbjShareClientFactory` | Одинаковые connect/auth/share и password-wipe mechanics | Factories создают разные higher-level session owners | `deduplicate` | Security/resource-sensitive setup должен расходиться как можно меньше и оставаться внутри SMB adapter | `QUAL-CPD-07` |
+| Graceful executor shutdown, 79 tokens | `DaemonExportScheduler`; `PeriodicDaemonCycle` | Один timeout/shutdown/interrupt protocol | Разные scheduling state и recovery responsibilities | `defer` | Выносить только после lifecycle/concurrency review; generic helper не должен скрыть ownership | `QUAL-CPD-08` |
+| Legacy ledger property parsing, 78 tokens | `FileIngestionLedger`; `LegacyLedgerImporter` | Общая legacy serialized shape | Runtime file ledger и one-way JDBC migration имеют разные owners и retirement path | `retain` | Межмодульное извлечение продлит legacy contract; пересмотреть при retirement file ledger | `QUAL-CPD-09` |
+| Maintenance scheduler lifecycle, 75 tokens | `DaemonMaintenanceScheduler`; `DaemonSliceRetentionScheduler` | Малый start/stop scheduling pattern | Разные cadence, operation и failure policy | `retain` | Независимый lifecycle boilerplate; abstraction не уменьшает policy duplication | `QUAL-CPD-10` |
 
 CPD report не является списком автоматических refactorings. Каждая существенная
 находка проходит duplication triage из
@@ -275,12 +303,36 @@ CPD report не является списком автоматических ref
 
 ## CPD configuration calibration
 
-| Candidate `minimumTokens` | Finding count | Noise classes | Missed known duplicate | Runtime | Decision |
+| Candidate `minimumTokens` | Finding count | Noise classes | Missed known duplicate | Warm standalone runtime | Decision |
 |---:|---:|---|---|---:|---|
-| TBD | TBD | TBD | TBD | TBD | TBD |
+| 50 | 37 | Короткие getters/records, small JDBC/path branches, repeated intra-method fragments | none in reviewed range | `2.65 s` | Reject: слишком много micro-pattern noise для initial semantic queue |
+| 75 | 11 | Остались lifecycle/framework fragments, но каждый cluster обозрим | none among accepted substantial seams | `2.65 s` | **Adopt**: сохраняет 75–99-token operational seams и крупные knowledge duplicates |
+| 100 | 5 | В основном крупные knowledge/behavior blocks | Listener MDC, SMB setup, scheduler/legacy seams | First-run cost included dependency/skin resolution; not comparable | Reject: теряет несколько review-worthy operational clusters |
+| 125 | 2 | Только два крупнейших блока | Diagnostic mapping, fingerprint framing и все 75–107-token seams | `1.13 s` | Reject: слишком низкая чувствительность |
+| 150 | 2 | То же, что 125 | То же, что 125 | `2.58 s` | Reject: дополнительной ценности нет |
 
 Принятый threshold обосновывается repository evidence. Generated/vendor
 exclusions перечисляются точными paths/selectors.
+
+Runtime различия warm calibration находятся внутри шума короткого standalone
+invocation; threshold выбран по semantic signal, не по скорости. Первый запуск
+с загрузкой PMD/Doxia dependencies намеренно не используется как steady-state
+cost.
+
+Canonical clean 24-project reactor завершился за `95.52 s` process wall
+(`646.69 s` user, `31.32 s` system, peak RSS `1,686,464 KiB`); Maven показал
+`01:34 min`, а финальный `ioc-cpd-report` занял `2.703 s`. Сравнение с
+предыдущим clean SpotBugs-only reactor (`93.00 s`) даёт ориентировочный
+end-to-end прирост `+2.52 s` / `+2.7%`. Peak RSS и parallel scheduling между
+отдельными runs не считаются изолированной CPD attribution; steady-state
+standalone execution занимал `1.13–2.65 s`.
+
+Негативная report-integrity проверка временно убрала
+`build-support/cpd-report/target/cpd/cpd.html`: execution
+`verify-cpd-report-integrity` завершился с exit `1` и точным missing path, после
+чего report был восстановлен. Финальный clean run подтвердил 499 file entries,
+11 duplications, отсутствие TCK/generated/vendor references и наличие обоих
+report formats.
 
 ## Maven dependency-analysis findings
 
@@ -325,6 +377,12 @@ configuration и условия возможного будущего no-new-dup
 
 Их отсутствие не является missing evidence текущего `R030-BUILD`.
 
+Полный PMD ruleset не принят вместе с CPD: unused-code, complexity,
+object-creation/performance и error-prone categories требуют отдельного
+signal/noise evaluation. Revisit по умолчанию следует после
+`BUILD-SPOTBUGS-04`; раньше — только по concrete risk/gap evidence и явному
+изменению status matrix.
+
 ## Completion
 
 - [x] SpotBugs report воспроизводим
@@ -334,11 +392,11 @@ configuration и условия возможного будущего no-new-dup
 - [ ] SpotBugs baseline filters узкие и обоснованы
 - [ ] SpotBugs `check` стабильно входит в Maven `verify`
 - [ ] SpotBugs запрещает новые findings принятого signal
-- [ ] PMD CPD aggregate report воспроизводим
-- [ ] CPD threshold откалиброван на repository evidence
-- [ ] Существенные CPD findings переданы в R030-QUAL
-- [ ] Существенные CPD findings имеют semantic disposition
-- [ ] PMD CPD diagnostic configuration и ownership приняты
+- [x] PMD CPD aggregate report воспроизводим
+- [x] CPD threshold откалиброван на repository evidence
+- [x] Существенные CPD findings переданы в R030-QUAL
+- [x] Существенные CPD findings имеют semantic disposition
+- [x] PMD CPD diagnostic configuration и ownership приняты
 - [ ] Maven dependency-analysis report воспроизводим
 - [ ] Dynamic/framework false positives проверены
 - [ ] Maven dependency-analysis adoption decision принят

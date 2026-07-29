@@ -88,6 +88,13 @@ findings на report-only этапе не блокируют сборку, но 
 пропущенный применимый модуль или отсутствующий aggregate не превращаются в
 зелёный `verify`.
 
+Финальный build-only модуль `build-support/cpd-report` выполняет один
+repository-wide PMD CPD analysis над положительным allowlist всех 19
+production `src/main/java` roots. Он исключает TCK, test sources, Maven
+generated outputs и vendor trees и применяет `requireFilesExist` к итоговым
+XML/HTML. CPD findings остаются report-only; analyzer error или отсутствующий
+report блокирует `verify`.
+
 `ioc-domain` дополнительно запрещает Spring, Tika, Commons CSV/IO, Guava,
 RE2/J, picocli, HikariCP и sqlite-jdbc. `ioc-application` запрещает JDBC,
 Spring transactions, HikariCP и sqlite-jdbc. Точные coordinates принадлежат

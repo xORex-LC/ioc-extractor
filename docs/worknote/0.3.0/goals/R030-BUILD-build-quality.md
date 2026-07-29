@@ -102,6 +102,14 @@ blanket-ignore запрещены, если возможно описать ис
 PMD в 0.3.0 используется именно как CPD. Полный PMD ruleset не принимается
 неявно вместе с duplicate analysis.
 
+`BUILD-CPD-02` не запускает goals `pmd`, `check` или `aggregate-pmd` и не
+принимает правила unused code, complexity, object creation/performance или
+error-prone categories. По умолчанию отдельное обсуждение и evidence-based
+evaluation полного PMD ruleset возвращается в очередь после
+`BUILD-SPOTBUGS-04`, когда SpotBugs findings уже семантически разобраны и можно
+оценить дополнительный, а не дублирующий signal. Раньше этот scope открывается
+только по конкретному risk/gap evidence и явному изменению status matrix.
+
 CPD MUST:
 
 - анализировать production Java sources всех применимых Maven-модулей единым
@@ -151,7 +159,8 @@ Spring, reflection, ServiceLoader, resources и plugin loading проверяю�
 - Error Prone и NullAway;
 - SonarQube и Qodana;
 - GitHub CodeQL и более широкий SAST/SecOps-контур;
-- полный PMD ruleset помимо принятого CPD evaluation.
+- полный PMD ruleset помимо принятого CPD evaluation; revisit по умолчанию
+  после `BUILD-SPOTBUGS-04`, либо раньше только по concrete risk evidence.
 
 Dependency convergence, compiler warning policy и generated-document
 consistency остаются неразрешёнными candidates. Они входят в 0.3.0 только после
