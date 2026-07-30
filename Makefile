@@ -39,6 +39,7 @@ GITHUB ?= 0
 .PHONY: help \
 	doctor doctor-core doctor-dev doctor-ci doctor-security bootstrap \
 	clean package test test-module test-one verify version extract export \
+	dependency-analysis \
 	context \
 	run stop runtime-up runtime-down runtime-status runtime-reset submit \
 	fixture fixture-1k fixture-5k fixture-100k smoke smoke-cli smoke-oneshot smoke-daemon \
@@ -188,6 +189,9 @@ release-notes-context: ## Collect release-note inputs; PREVIOUS_TAG=vX.Y.Z TARGE
 		tools/dev/release-notes-context.sh "$${args[@]}"
 
 ##@ Quality and security
+dependency-analysis: ## Run the opt-in report-only Maven dependency analysis
+	@$(MAVEN) -Pdependency-analysis verify
+
 lint-shell: ## Run ShellCheck and packaging/tools contract tests
 	@tools/ci/packaging.sh
 

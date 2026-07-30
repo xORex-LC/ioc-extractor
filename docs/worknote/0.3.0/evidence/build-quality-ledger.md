@@ -30,7 +30,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 |---|---|---|---|---:|---|---|---|
 | SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only | `make clean && make verify` | Per applicable module: `target/spotbugs/spotbugs.xml` + `spotbugs.html`; aggregate: `build-support/spotbugs-report/target/spotbugs/`; CI artifact `spotbugs-reports-<run>` | `93.00 s` clean reactor wall time; `+34.61 s` / `+59.3%` к BASE | 118 raw findings / 19 patterns; заметны framework, nullable-API и controlled-SQL classes of noise | `R030-BUILD` | `report-only` |
 | PMD CPD aggregate | Maven Plugin `3.28.0`, bundled PMD `7.17.0`; Java production sources, `minimumTokens=75`, identifiers/literals/annotations significant | `make clean && make verify` | `build-support/cpd-report/target/cpd/`; CI artifact `cpd-report-<run>` | `95.52 s` clean reactor wall; CPD module `2.703 s` | 11 raw matches / 10 semantic findings; 7 debt candidates, 3 retained clusters | `R030-BUILD` + `R030-QUAL` | `report-only` |
-| Maven dependency analysis | Maven Dependency Plugin `3.9.0`; default bytecode analysis | `./mvnw -B -ntp -T 1C verify dependency:analyze-only` | Local console/report ledger; CI adoption undecided | Maven `47.745 s` including `verify`; sequential `-DskipTests` attribution `4.671 s` | Broad candidate signal; substantial parent-test, starter, transitive API, SPI and processor noise | `R030-BUILD` | `report-only` |
+| Maven dependency analysis | Maven Dependency Plugin `3.11.0`; opt-in `dependency-analysis` profile; default bytecode analyzer | `make dependency-analysis` | Local console/report ledger; deliberately absent from regular CI | Clean reactor timing recorded below; warm sequential package + analysis `5.313 s` Maven / `6.75 s` process | 14 direct POM mismatches corrected; residual `56 / 34 / 12` candidate occurrences are test-aggregate, starter, SPI and transitive-runtime noise | `R030-BUILD` | `report-only`, blocking adoption deferred |
 
 Допустимые rollout stages: `planned`, `report-only`, `triaged`, `baselined`,
 `blocking` и `tightening`.
@@ -41,7 +41,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 |---|---|---|---|---|
 | `BUILD-SPOTBUGS-01` | Reproducible reactor-wide production-bytecode report, scope/cost inventory and raw findings | Report only; no mass remediation or merge gate | `R030-BASE` verified | `verified` |
 | `BUILD-CPD-02` | Repository-wide production-source report and evidence-based `minimumTokens` calibration | Diagnostic/report only | `BUILD-SPOTBUGS-01` closed, unless matrix explicitly reorders independent tooling | `verified` |
-| `BUILD-DEPS-03` | Semantic disposition of the captured dependency candidates and `Adopt / Adopt with exclusions / Defer` decision | Evaluation only | `BUILD-CPD-02` closed | `planned` |
+| `BUILD-DEPS-03` | Semantic disposition of the captured dependency candidates and `Adopt / Adopt with exclusions / Defer` decision | Evaluation only | `BUILD-CPD-02` closed | `verified` |
 | `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow legacy baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `planned` |
 | `BUILD-SPOTBUGS-05` | Accepted no-new-findings signal wired into canonical Maven `verify` | Blocking ratchet | `BUILD-SPOTBUGS-04` closed | `planned` |
 
@@ -349,33 +349,87 @@ report formats.
 
 ## Maven dependency-analysis findings
 
-| Module | Finding type | Dependency | Dynamic/framework evidence | Disposition | Work item |
-|---|---|---|---|---|---|
-| Parent/test stack | `used-undeclared / declared-unused` | `junit-jupiter*`, AssertJ | Parent aggregate dependency creates repeated module-local analyzer asymmetry | Calibrate before adoption; no module-by-module churn from raw output | `R030-BUILD` |
-| `ioc-application` | `declared-unused` candidate | `ioc-platform-errors` | No direct source import found; boundary/transitive intent still requires review | Semantic validation required | `R030-BUILD` |
-| `adapter-sink-csv` | `declared-unused` candidate | `commons-io` | No direct source import found; resource/runtime use still requires review | Semantic validation required | `R030-BUILD` |
-| Spring adapter/bootstrap modules | all three types | Spring starters and transitive APIs | Framework wiring, autoconfiguration, reflection and managed integration families | Classify per coordinate; broad group exclusion is not accepted | `R030-BUILD` |
-| `adapter-source-tika` | `declared-unused` candidate | Tika parser package | Parser implementations are discovered through SPI | Expected dynamic-use candidate; verify with adapter contract corpus | `R030-BUILD` |
+`BUILD-DEPS-03` зафиксировал официальный Maven Dependency Plugin
+[`3.11.0`](https://maven.apache.org/plugins/maven-dependency-plugin/plugin-info.html).
+Goal
+[`analyze-only`](https://maven.apache.org/plugins/maven-dependency-plugin/analyze-only-mojo.html)
+thread-safe, по умолчанию привязан к `verify` и анализирует уже собранные main +
+test classes. Root `dependency-analysis` profile наследуется всеми reactor
+projects: 20 functional JAR-модулей анализируются, включая reusable
+`ioc-application-tck`, а root и три reporting POM явно выводят
+`Skipping pom project`.
 
-Исключение содержит точные coordinates, rationale, owner и review condition.
-Broad group exclusion не принимается, если возможна более узкая запись.
+Clean `make dependency-analysis` завершил 24-project reactor за `02:17 min`
+Maven wall / `138.80 s` process (`899.98 s` user, `65.13 s` system). Тёплый
+последовательный attribution run
+`./mvnw -B -ntp -T 1 -DskipTests package dependency:analyze-only` занял
+`5.313 s` Maven / `6.75 s` process; он не является изолированным plugin
+benchmark, поскольку включает package lifecycle.
+
+Исходный report Plugin `3.11.0` точно воспроизвёл baseline Plugin `3.9.0`:
+`68 used-undeclared / 36 declared-unused / 12 non-test-scoped-test-only`.
+Source, tests, resources, effective POM и dependency trees подтвердили 14
+прямых POM mismatches:
+
+| Correction | Modules | Closed raw findings | Evidence |
+|---|---|---:|---|
+| Удалены действительно неиспользуемые direct dependencies | `ioc-application`: `ioc-platform-errors`; `adapter-sink-csv`: `commons-io` | 2 unused | Нет main/test imports, resource, SPI или reflection use; reactor compile/tests сохраняют consumer graph |
+| Объявлены напрямую используемые inward coordinates | `adapter-cli-picocli`, `ioc-application-tck`: `ioc-platform-diagnostics` | 2 used-undeclared | Production/TCK main sources импортируют diagnostic API |
+| Jackson adapter объявляет все импортируемые Jackson API artifacts | `adapter-manifest-json-jackson`: `jackson-core`, `jackson-annotations` | 2 used-undeclared | Codec main source импортирует обе API families напрямую |
+| SLF4J API объявлен в модулях с production logging imports | `adapter-cli-picocli`, `adapter-ingest`, `ioc-app` | 3 used-undeclared | Main sources импортируют `Logger`, `LoggerFactory` или SLF4J event API |
+| Logback core объявлен для прямых test imports | `platform-observability`, `platform-diagnostics-logging` | 2 used-undeclared | Tests используют `ListAppender` напрямую |
+| Composition root объявляет напрямую используемые runtime APIs | `ioc-app`: `logback-classic`, `HikariCP`, `jakarta.validation-api` | 3 used-undeclared | Main sources реализуют Logback encoder, создают Hikari datasource и объявляют validation constraints |
+
+После corrections report стабильно содержит `56 / 34 / 12`. Новых findings
+не появилось. Остаток семантически классифицирован:
+
+| Raw category | Occurrences | Classification | Disposition |
+|---|---:|---|---|
+| `used-undeclared` | 27 | JUnit Jupiter и ArchUnit aggregate artifacts против их API/core transitives | Retain parent/test aggregate model; bytecode analyzer не понимает dependency aggregation |
+| `used-undeclared` | 21 | Spring Boot, Spring Integration и Picocli starter APIs | Retain focused starters/integration families; не дублировать каждый managed component как direct dependency |
+| `used-undeclared` | 5 | Logback/Jackson runtime transitives, на которые ссылаются только consumer-module tests | Retain runtime graph; test-scope override мог бы перехватить compile transitive |
+| `used-undeclared` | 3 | `ioc-platform-etl`, доступный тестам через production inward dependencies | Retain inward graph; не добавлять test edge только ради analyzer |
+| `declared-unused` | 24 | Parent JUnit/AssertJ stack и ArchUnit aggregate | Retain shared test stack; module-by-module duplication не улучшает runtime graph |
+| `declared-unused` | 8 | Spring Boot/Integration/Picocli starters | Retain: starters владеют runtime/autoconfiguration family, а не одним bytecode reference |
+| `declared-unused` | 1 | Spring configuration processor | Retain optional build-time discovery dependency |
+| `declared-unused` | 1 | Tika standard parser package | Retain SPI/ServiceLoader parser implementations; adapter contract and golden runs exercise them |
+| `non-test-scoped-test-only` | 10 | Runtime transitive Logback/Jackson/Picocli/Spring components referenced непосредственно в tests | Retain compile/runtime transitives required by adapters; warning не относится к direct declaration текущего модуля |
+| `non-test-scoped-test-only` | 2 | Transitive `ioc-platform-etl` references in tests | Retain production inward dependency path |
+
+Если blocking adoption будет пересмотрен, каждое исключение должно содержать
+точные coordinates, rationale, owner и review condition. Broad group exclusion
+не принимается, если возможна более узкая запись.
 
 ## Adoption decisions
 
-### Control — decision
+### Maven dependency analysis — `Defer` blocking adoption
 
-- **Decision:** `Adopt | Adopt with exclusions | Defer | Reject`
-- **Evidence:**
-- **Accepted signal/rules:**
-- **Baseline/ratchet:**
-- **Suppression policy:**
-- **Runtime/CI impact:**
-- **Owner:**
-- **Revisit condition:**
+- **Decision:** `Defer` permanent regular-lifecycle/CI adoption; retain the
+  pinned opt-in `dependency-analysis` report profile.
+- **Evidence:** 14 direct POM mismatches were actionable, but the remaining 102
+  occurrences are explained by deliberate test aggregates, starters,
+  SPI/build-time discovery or necessary runtime transitives.
+- **Accepted signal/rules:** `make dependency-analysis` remains a bounded
+  release/dependency-change review command. Analyzer/process failure fails that
+  invocation; findings remain visible and advisory.
+- **Baseline/ratchet:** no warning baseline and no `failOnWarning`; ordinary
+  `make verify` does not activate the profile.
+- **Suppression policy:** no ignores were added. Inherited coordinate ignores
+  would also hide a genuinely accidental transitive dependency in a new module;
+  duplicated per-module plugin configuration would create a second dependency
+  registry with poor cost/signal value.
+- **Runtime/CI impact:** zero regular build/CI cost. The explicit diagnostic run
+  has the clean/warm costs recorded above and produces console + ledger
+  evidence, not a CI artifact.
+- **Owner:** `R030-BUILD`.
+- **Revisit condition:** a plugin/analyzer gains module-aware baseline/ratchet
+  semantics, the parent test-stack ownership is redesigned, or repeated real
+  dependency regressions demonstrate that a maintained exclusion registry has
+  better signal than review.
 
-SpotBugs имеет принятое решение `Adopt` в 0.3.0; этот шаблон фиксирует точный
-signal и допустимые exclusions. Для CPD decision описывает diagnostic
-configuration и условия возможного будущего no-new-duplication ratchet.
+SpotBugs имеет отдельное решение `Adopt` в 0.3.0. CPD остаётся diagnostic
+control с условиями возможного будущего no-new-duplication ratchet; dependency
+analysis по итогам текущего evidence не получает такой ratchet.
 
 ## Deferred tool boundaries
 
@@ -410,8 +464,8 @@ signal/noise evaluation. Revisit по умолчанию следует посл
 - [x] Существенные CPD findings переданы в R030-QUAL
 - [x] Существенные CPD findings имеют semantic disposition
 - [x] PMD CPD diagnostic configuration и ownership приняты
-- [ ] Maven dependency-analysis report воспроизводим
-- [ ] Dynamic/framework false positives проверены
-- [ ] Maven dependency-analysis adoption decision принят
-- [ ] Adopted ratchets и suppressions документированы
-- [ ] Status matrix обновлена
+- [x] Maven dependency-analysis report воспроизводим
+- [x] Dynamic/framework false positives проверены
+- [x] Maven dependency-analysis adoption decision принят
+- [x] Adopted ratchets и suppressions документированы (`Defer`: ratchet/suppressions отсутствуют)
+- [x] Status matrix обновлена

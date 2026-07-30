@@ -34,6 +34,7 @@
         <spotbugs-maven-plugin.version>4.10.3.0</spotbugs-maven-plugin.version>
         <spotbugs.version>4.10.3</spotbugs.version>
         <maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
+        <maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
         <maven-antrun-plugin.version>3.2.0</maven-antrun-plugin.version>
         <commons-csv.version>1.12.0</commons-csv.version>
         <commons-io.version>2.22.0</commons-io.version>
@@ -84,6 +85,16 @@
     </dependencies>
 
     <build>
+        <pluginManagement>
+            <plugins>
+                <!-- Pinned for the opt-in dependency-analysis profile and direct CLI goals. -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-dependency-plugin</artifactId>
+                    <version>${maven-dependency-plugin.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
         <plugins>
             <!-- Report-only coverage bootstrap. Thresholds are introduced only after baseline acceptance. -->
             <plugin>
@@ -519,4 +530,38 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <profiles>
+        <!--
+            Bounded dependency-hygiene evaluation. Bytecode-only findings remain
+            report-only until framework, SPI, starter and test-aggregate noise
+            can be represented without weakening the signal for new modules.
+        -->
+        <profile>
+            <id>dependency-analysis</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>analyze-dependency-hygiene</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>analyze-only</goal>
+                                </goals>
+                                <configuration>
+                                    <failOnWarning>false</failOnWarning>
+                                    <ignoreAllNonTestScoped>false</ignoreAllNonTestScoped>
+                                    <ignoreNonCompile>false</ignoreNonCompile>
+                                    <ignoreUnusedRuntime>false</ignoreUnusedRuntime>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

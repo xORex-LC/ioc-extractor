@@ -37,9 +37,14 @@ make help
 make context
 make doctor
 make bootstrap  # repo-local lychee, если его нет в PATH
+make dependency-analysis
 make release-notes-context PREVIOUS_TAG=v0.1.0
 make pre-push
 ```
+
+`make dependency-analysis` включает opt-in Maven profile и выполняет
+bytecode-only dependency-hygiene report для всех функциональных JAR-модулей.
+Findings остаются advisory: обычный `make verify` и CI не включают профиль.
 
 `make pre-push` последовательно выполняет те же leaf scripts, а значит те же
 Maven, shell-contract и offline-documentation gates, что обычный GitHub CI.

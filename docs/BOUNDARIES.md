@@ -108,7 +108,15 @@ report-only; analyzer, scope или report-integrity error блокирует `v
 RE2/J, picocli, HikariCP и sqlite-jdbc. `ioc-application` запрещает JDBC,
 Spring transactions, HikariCP и sqlite-jdbc. Точные coordinates принадлежат
 соответствующим POM, чтобы документация не стала второй исполняемой allow/deny
-копией. `dependencyConvergence` оставлен как явный долг.
+копией.
+
+Opt-in profile `dependency-analysis` запускает Maven Dependency Plugin
+`analyze-only` над всеми 20 functional JAR-модулями, включая reusable TCK;
+root и три build-only reporting POM пропускаются самим plugin как
+`packaging=pom`. Анализ остаётся advisory и не входит в обычный `verify`: после
+semantic triage сохранились доказанные starter/SPI/test-aggregate false
+positives, а глобальные ignores ослабили бы signal для новых модулей.
+`dependencyConvergence` остаётся отдельным явным долгом.
 
 ## Порядок внедрения
 
