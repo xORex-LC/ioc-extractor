@@ -30,10 +30,6 @@
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
-            <artifactId>ioc-platform-errors</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.iocextractor</groupId>
             <artifactId>ioc-platform-events</artifactId>
         </dependency>
 

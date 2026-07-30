@@ -24,6 +24,10 @@
             <groupId>com.iocextractor</groupId>
             <artifactId>ioc-platform-observability</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-diagnostics</artifactId>
+        </dependency>
 
         <!-- Spring-managed @Command components -->
         <dependency>
@@ -43,6 +47,10 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
         </dependency>
     </dependencies>
 </project>

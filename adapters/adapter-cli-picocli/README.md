@@ -16,8 +16,8 @@ does not implement business rules.
 
 ## Зависимости
 
-**Зависит от:** `ioc-application`, `ioc-platform-observability`, Spring Boot,
-picocli.
+**Зависит от:** `ioc-application`, `ioc-platform-diagnostics`,
+`ioc-platform-observability`, Spring Boot, picocli и SLF4J API.
 
 **Не импортируется:** bootstrap and outbound adapters.
 

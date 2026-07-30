@@ -22,8 +22,10 @@ runtime-кодом приложения.
 
 ## Слой
 
-`core` / test-support. Зависит внутрь только на `ioc-application` (порты + доменные VO).
-Никаких фреймворков/JDBC — реализации портов и их инфраструктура живут в адаптерах.
+`core` / test-support. Зависит внутрь только на `ioc-application` (порты +
+доменные VO) и `ioc-platform-diagnostics`, чей `DiagnosticException` входит в
+проверяемый export-ledger contract. Никаких фреймворков/JDBC — реализации портов
+и их инфраструктура живут в адаптерах.
 
 ## Содержимое
 

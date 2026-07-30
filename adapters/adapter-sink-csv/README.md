@@ -19,7 +19,7 @@ mechanics. Export saga/ledger orchestration remains in application/storage ports
 ## Зависимости
 
 **Зависит от:** `ioc-application`, `ioc-domain`, platform
-errors/diagnostics/observability, Commons CSV/IO, SLF4J API.
+errors/diagnostics/observability, Commons CSV, SLF4J API.
 
 **Не импортируется:** bootstrap and sibling adapters.
 

@@ -20,6 +20,10 @@
             <groupId>com.iocextractor</groupId>
             <artifactId>ioc-application</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-platform-diagnostics</artifactId>
+        </dependency>
 
         <!-- The TCK lives in src/main, so its test toolkit is compile-scoped here
              (the parent declares these test-scoped globally; override for this module). -->
