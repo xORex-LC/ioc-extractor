@@ -115,7 +115,9 @@ Opt-in profile `dependency-analysis` запускает Maven Dependency Plugin
 root и три build-only reporting POM пропускаются самим plugin как
 `packaging=pom`. Анализ остаётся advisory и не входит в обычный `verify`: после
 semantic triage сохранились доказанные starter/SPI/test-aggregate false
-positives, а глобальные ignores ослабили бы signal для новых модулей.
+positives, а глобальные ignores ослабили бы signal для новых модулей. В отличие
+от SpotBugs и CPD scope/report controls, dependency hygiene осознанно
+fail-open для новых модулей.
 `dependencyConvergence` остаётся отдельным явным долгом.
 
 ## Порядок внедрения

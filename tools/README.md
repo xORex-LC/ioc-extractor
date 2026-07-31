@@ -42,9 +42,13 @@ make release-notes-context PREVIOUS_TAG=v0.1.0
 make pre-push
 ```
 
-`make dependency-analysis` включает opt-in Maven profile и выполняет
-bytecode-only dependency-hygiene report для всех функциональных JAR-модулей.
-Findings остаются advisory: обычный `make verify` и CI не включают профиль.
+`make dependency-analysis` последовательно собирает main/test bytecode с
+`-DskipTests` и выполняет быстрый dependency-hygiene report для всех
+функциональных JAR-модулей. Полный reactor path с тестами, SpotBugs и
+CPD доступен через `./mvnw -B -ntp -T 1C -Pdependency-analysis verify`.
+Findings остаются advisory: обычный `make verify` и CI не включают
+профиль. Не заменяйте `-DskipTests` на `-Dmaven.test.skip=true`: второе
+отключает компиляцию test bytecode и обедняет анализ scope.
 
 `make pre-push` последовательно выполняет те же leaf scripts, а значит те же
 Maven, shell-contract и offline-documentation gates, что обычный GitHub CI.

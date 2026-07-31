@@ -8,6 +8,7 @@ SHELL := /bin/bash
 MAKEFLAGS += --no-builtin-rules
 
 MAVEN := ./mvnw -B -ntp -T 1C
+MAVEN_SEQUENTIAL := ./mvnw -B -ntp -T 1
 WORKSPACE ?= .dev/runtime
 ONESHOT_WORKSPACE ?= .dev/oneshot
 PORT ?= 18081
@@ -189,8 +190,8 @@ release-notes-context: ## Collect release-note inputs; PREVIOUS_TAG=vX.Y.Z TARGE
 		tools/dev/release-notes-context.sh "$${args[@]}"
 
 ##@ Quality and security
-dependency-analysis: ## Run the opt-in report-only Maven dependency analysis
-	@$(MAVEN) -Pdependency-analysis verify
+dependency-analysis: ## Run the fast report-only Maven dependency analysis
+	@$(MAVEN_SEQUENTIAL) -DskipTests package dependency:analyze-only
 
 lint-shell: ## Run ShellCheck and packaging/tools contract tests
 	@tools/ci/packaging.sh

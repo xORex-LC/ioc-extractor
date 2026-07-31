@@ -75,8 +75,9 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 - `platform-etl` зависит только на diagnostics/errors и не знает про IOC domain.
 - `ioc-domain` не зависит на application/adapters/bootstrap/platform-etl и
   остаётся framework-free.
-- `ioc-application` зависит на `ioc-domain`, `platform-etl`, `platform-events`,
-  diagnostics и errors contracts.
+- `ioc-application` напрямую зависит на `ioc-domain`, `platform-etl`,
+  `platform-events` и diagnostics contracts; errors contract доступен
+  транзитивно через platform DAG.
 - Driving и infrastructure adapters зависят на нужный внутренний контракт:
   большинство — на `ioc-application`, а domain SPI adapters (`adapter-regex-re2j`,
   `adapter-psl`) — непосредственно на `ioc-domain`. Каждый адаптер подключает

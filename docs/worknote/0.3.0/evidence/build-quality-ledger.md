@@ -30,7 +30,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 |---|---|---|---|---:|---|---|---|
 | SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only | `make clean && make verify` | Per applicable module: `target/spotbugs/spotbugs.xml` + `spotbugs.html`; aggregate: `build-support/spotbugs-report/target/spotbugs/`; CI artifact `spotbugs-reports-<run>` | `93.00 s` clean reactor wall time; `+34.61 s` / `+59.3%` к BASE | 118 raw findings / 19 patterns; заметны framework, nullable-API и controlled-SQL classes of noise | `R030-BUILD` | `report-only` |
 | PMD CPD aggregate | Maven Plugin `3.28.0`, bundled PMD `7.17.0`; Java production sources, `minimumTokens=75`, identifiers/literals/annotations significant | `make clean && make verify` | `build-support/cpd-report/target/cpd/`; CI artifact `cpd-report-<run>` | `95.52 s` clean reactor wall; CPD module `2.703 s` | 11 raw matches / 10 semantic findings; 7 debt candidates, 3 retained clusters | `R030-BUILD` + `R030-QUAL` | `report-only` |
-| Maven dependency analysis | Maven Dependency Plugin `3.11.0`; opt-in `dependency-analysis` profile; default bytecode analyzer | `make dependency-analysis` | Local console/report ledger; deliberately absent from regular CI | Clean reactor timing recorded below; warm sequential package + analysis `5.313 s` Maven / `6.75 s` process | 14 direct POM mismatches corrected; residual `56 / 34 / 12` candidate occurrences are test-aggregate, starter, SPI and transitive-runtime noise | `R030-BUILD` | `report-only`, blocking adoption deferred |
+| Maven dependency analysis | Maven Dependency Plugin `3.11.0`; fast direct goal + opt-in full `dependency-analysis` profile; default bytecode analyzer | `make dependency-analysis` | Local console/report ledger; deliberately absent from regular CI | Fast sequential package + analysis observed at `5.313–7.677 s` Maven / `6.75–8.72 s` process; full profile timing below | 14 direct POM mismatches corrected; residual `56 / 34 / 12` candidate occurrences are test-aggregate, starter, SPI and transitive-runtime noise | `R030-BUILD` | `report-only`, blocking adoption deferred |
 
 Допустимые rollout stages: `planned`, `report-only`, `triaged`, `baselined`,
 `blocking` и `tightening`.
@@ -359,12 +359,18 @@ projects: 20 functional JAR-модулей анализируются, вклю�
 `ioc-application-tck`, а root и три reporting POM явно выводят
 `Skipping pom project`.
 
-Clean `make dependency-analysis` завершил 24-project reactor за `02:17 min`
-Maven wall / `138.80 s` process (`899.98 s` user, `65.13 s` system). Тёплый
-последовательный attribution run
-`./mvnw -B -ntp -T 1 -DskipTests package dependency:analyze-only` занял
-`5.313 s` Maven / `6.75 s` process; он не является изолированным plugin
-benchmark, поскольку включает package lifecycle.
+Полный profile run после `clean`,
+`./mvnw -B -ntp -T 1C -Pdependency-analysis verify`, завершил
+24-project reactor за `02:17 min` Maven wall / `138.80 s`
+process (`899.98 s` user, `65.13 s` system). Основной developer facade
+`make dependency-analysis` выполняет последовательную быструю форму
+`./mvnw -B -ntp -T 1 -DskipTests package dependency:analyze-only`, которая
+заняла `5.313 s` Maven / `6.75 s` process; follow-up facade run —
+`7.677 s` Maven / `8.72 s` process. Оба запуска воспроизвели `56 / 34 / 12`.
+Это не изолированный plugin
+benchmark: command включает package/test-compile lifecycle, а `-DskipTests`
+пропускает только execution тестов. `-Dmaven.test.skip=true` здесь недопустим,
+поскольку убрал бы test bytecode из scope.
 
 Исходный report Plugin `3.11.0` точно воспроизвёл baseline Plugin `3.9.0`:
 `68 used-undeclared / 36 declared-unused / 12 non-test-scoped-test-only`.
@@ -378,7 +384,7 @@ Source, tests, resources, effective POM и dependency trees подтвердил
 | Jackson adapter объявляет все импортируемые Jackson API artifacts | `adapter-manifest-json-jackson`: `jackson-core`, `jackson-annotations` | 2 used-undeclared | Codec main source импортирует обе API families напрямую |
 | SLF4J API объявлен в модулях с production logging imports | `adapter-cli-picocli`, `adapter-ingest`, `ioc-app` | 3 used-undeclared | Main sources импортируют `Logger`, `LoggerFactory` или SLF4J event API |
 | Logback core объявлен для прямых test imports | `platform-observability`, `platform-diagnostics-logging` | 2 used-undeclared | Tests используют `ListAppender` напрямую |
-| Composition root объявляет напрямую используемые runtime APIs | `ioc-app`: `logback-classic`, `HikariCP`, `jakarta.validation-api` | 3 used-undeclared | Main sources реализуют Logback encoder, создают Hikari datasource и объявляют validation constraints |
+| Composition root объявляет напрямую используемые runtime APIs | `ioc-app`: `logback-classic`, `HikariCP`, `jakarta.validation-api` | 3 used-undeclared | Main sources реализуют Logback encoder, владеют Hikari datasource lifecycle через JDBC-adapter factory и объявляют validation constraints |
 
 После corrections report стабильно содержит `56 / 34 / 12`. Новых findings
 не появилось. Остаток семантически классифицирован:
@@ -396,6 +402,39 @@ Source, tests, resources, effective POM и dependency trees подтвердил
 | `non-test-scoped-test-only` | 10 | Runtime transitive Logback/Jackson/Picocli/Spring components referenced непосредственно в tests | Retain compile/runtime transitives required by adapters; warning не относится к direct declaration текущего модуля |
 | `non-test-scoped-test-only` | 2 | Transitive `ioc-platform-etl` references in tests | Retain production inward dependency path |
 
+Asymmetric enforcement для только `used-undeclared` отклонён: 48 из 56
+таких occurrences приходятся на test aggregates и starter APIs. Даже
+односторонний gate потребовал бы широкой inherited suppression policy и
+остался бы шумным для новых модулей.
+
+Глобальная замена parent `junit-jupiter` aggregate на `junit-jupiter-api`,
+`junit-jupiter-params` и runtime engine также оценена и отклонена. API
+используется в 18 из 20 functional modules, params — только в 5, а engine
+загружается динамически. Общие parent declarations в основном
+перенесли бы signal из `used-undeclared` в `declared-unused`, а не убрали
+его. Помодульное объявление остаётся возможной будущей
+пересборкой test-stack ownership, но не частью текущей adoption.
+
+Reusable `ioc-application-tck` не имеет `non-test-scoped-test-only` finding:
+его main TCK classes используют `junit-jupiter-api` и AssertJ, а analyzer
+видит compile-scope aggregate/API asymmetry. Любая future publication admission
+всё равно требует повторной dependency-scope проверки: transitive compile graph
+становится external consumer contract.
+
+Соседний goal
+[`analyze-dep-mgt`](https://maven.apache.org/plugins/maven-dependency-plugin/analyze-dep-mgt-mojo.html)
+оценён командой `./mvnw -B -ntp -T 1 -DskipTests package dependency:analyze-dep-mgt -Dmdep.analyze.ignore.direct=false`.
+Прогон
+завершился `BUILD SUCCESS`; все 24 reactor projects вывели `None` для
+resolved dependency/dependencyManagement mismatches. Это дешёвый сигнал
+неэффективного version management, но не доказательство graph convergence;
+`dependencyConvergence` остаётся отдельным долгом.
+
+Hikari disposition также явная: JDBC adapter владеет factory, pool
+configuration и SQLite PRAGMA mechanics; outer bootstrap владеет lazy lifecycle и
+Spring wiring concrete datasource. Hikari разрешён в adapters/bootstrap, поэтому
+текущая direct bootstrap dependency не создаёт нового architecture finding.
+
 Если blocking adoption будет пересмотрен, каждое исключение должно содержать
 точные coordinates, rationale, owner и review condition. Broad group exclusion
 не принимается, если возможна более узкая запись.
@@ -408,7 +447,9 @@ Source, tests, resources, effective POM и dependency trees подтвердил
   pinned opt-in `dependency-analysis` report profile.
 - **Evidence:** 14 direct POM mismatches were actionable, but the remaining 102
   occurrences are explained by deliberate test aggregates, starters,
-  SPI/build-time discovery or necessary runtime transitives.
+  SPI/build-time discovery or necessary runtime transitives. Enforcing only
+  `used-undeclared` was rejected too: 48 of its 56 occurrences are aggregate or
+  starter noise.
 - **Accepted signal/rules:** `make dependency-analysis` remains a bounded
   release/dependency-change review command. Analyzer/process failure fails that
   invocation; findings remain visible and advisory.
@@ -418,14 +459,14 @@ Source, tests, resources, effective POM и dependency trees подтвердил
   would also hide a genuinely accidental transitive dependency in a new module;
   duplicated per-module plugin configuration would create a second dependency
   registry with poor cost/signal value.
-- **Runtime/CI impact:** zero regular build/CI cost. The explicit diagnostic run
-  has the clean/warm costs recorded above and produces console + ledger
+- **Runtime/CI impact:** zero regular build/CI cost. The primary fast command and
+  optional full-profile costs are recorded above; both produce console + ledger
   evidence, not a CI artifact.
 - **Owner:** `R030-BUILD`.
 - **Revisit condition:** a plugin/analyzer gains module-aware baseline/ratchet
-  semantics, the parent test-stack ownership is redesigned, or repeated real
-  dependency regressions demonstrate that a maintained exclusion registry has
-  better signal than review.
+  semantics, the parent test-stack ownership is redesigned, any module enters
+  publication admission, or repeated real dependency regressions demonstrate
+  that a maintained exclusion registry has better signal than review.
 
 SpotBugs имеет отдельное решение `Adopt` в 0.3.0. CPD остаётся diagnostic
 control с условиями возможного будущего no-new-duplication ratchet; dependency
