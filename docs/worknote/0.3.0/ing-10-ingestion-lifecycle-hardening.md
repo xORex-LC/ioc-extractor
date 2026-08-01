@@ -58,8 +58,8 @@ ownership would require a lease/fencing design and is not implied by this work.
 | Checkpoint | Scope | Exit evidence | State |
 |---|---|---|---|
 | `I0` | Failure model and executable characterization | A deterministic latch-based test proves that the current runner and poller paths overlap; no timing sleeps | `completed` |
-| `I1` | Startup lifecycle barrier | Explicit coordinator recovers both ledgers before starting the non-auto-start flow; failure leaves it stopped | `in-progress` |
-| `I2` | Per-key synchronous execution | Same keys serialize, different keys can progress, and recovery re-reads state after admission | `not-started` |
+| `I1` | Startup lifecycle barrier | Explicit coordinator recovers both ledgers before starting the non-auto-start flow; failure leaves it stopped | `completed` |
+| `I2` | Per-key synchronous execution | Same keys serialize, different keys can progress, and recovery re-reads state after admission | `in-progress` |
 | `I3` | Source-ledger state machine | File and JDBC adapters implement expected-state/CAS transitions and share concurrent TCK coverage | `not-started` |
 | `I4` | Operational closure | Health, configuration guard, restart/E2E evidence, durable docs and full reactor verification | `not-started` |
 
@@ -78,7 +78,22 @@ This is deliberately a characterization of unsafe behavior, not the final
 contract. `I1` must replace it with coordinator tests that assert intake remains
 closed during recovery.
 
-## 5. Scope boundaries
+## 5. I1 evidence
+
+The Spring Integration source endpoint now has `autoStartup=false`.
+`IngestionStartupCoordinator` is the sole startup owner and executes, in order:
+
+1. `IngestRunRecoveryService.recover()`;
+2. `RecoverIngestionUseCase.recoverIncomplete()`;
+3. `Lifecycle.start()` on the complete `iocIngestionFlow`.
+
+The former eager run-recovery bean and independent source-recovery runner no
+longer exist. Coordinator tests hold recovery open with a latch and prove that
+intake remains stopped; separate failure tests prove that either recovery error
+prevents `start()`. Runtime-mode context tests prove that the manually controlled
+flow is running after successful application startup.
+
+## 6. Scope boundaries
 
 - `ING-11` retry versus run-ledger resume remains separate.
 - `ING-13` full pre-claim file-fate handling remains separate.

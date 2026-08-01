@@ -75,7 +75,7 @@ class DataframeStorageDaemonRuntimeModeTest {
                 .containsOnlyKeys("dataframeStorageDataSource", "serviceStorageDataSource");
         assertThat(context.getBeansOfType(JdbcStorageHealthIndicator.class))
                 .containsOnlyKeys("jdbcStorageHealthIndicator", "dataframeStorageHealthIndicator");
-        assertThat(context.containsBean("ingestRunRecovery")).isTrue();
+        assertThat(context.containsBean("ingestRunRecoveryService")).isTrue();
 
         assertThat(userVersion()).isEqualTo(3);
         assertThat(tableExists("masks")).isTrue();

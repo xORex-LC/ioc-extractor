@@ -3,13 +3,15 @@ package com.iocextractor.adapter.in.ingest;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
 import com.iocextractor.application.port.in.ingest.RecoverIngestionUseCase;
+import com.iocextractor.application.artifact.IngestRunRecoveryService;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
-import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.Lifecycle;
 import org.springframework.integration.config.EnableIntegration;
 import org.springframework.integration.dsl.IntegrationFlow;
 import org.springframework.integration.dsl.Pollers;
@@ -68,8 +70,14 @@ public class IngestFlowConfiguration {
     }
 
     @Bean
-    public ApplicationRunner ingestionRecoveryRunner(RecoverIngestionUseCase useCase) {
-        return new IngestionRecoveryRunner(useCase);
+    public IngestionStartupCoordinator ingestionStartupCoordinator(
+            IngestRunRecoveryService runRecovery,
+            RecoverIngestionUseCase sourceRecovery,
+            @Qualifier("iocIngestionFlow") IntegrationFlow intakeFlow) {
+        if (!(intakeFlow instanceof Lifecycle lifecycle)) {
+            throw new IllegalStateException("iocIngestionFlow does not expose lifecycle control");
+        }
+        return new IngestionStartupCoordinator(runRecovery::recover, sourceRecovery, lifecycle);
     }
 
     @Bean
@@ -87,9 +95,11 @@ public class IngestFlowConfiguration {
 
         Duration interval = properties.detect().reconcileInterval();
         FileSourceMessageHandler messageHandler = Objects.requireNonNull(handler, "handler");
-        return IntegrationFlow.from(source, spec -> spec.poller(Pollers
-                        .fixedDelay(interval.toMillis())
-                        .maxMessagesPerPoll(properties.detect().maxMessagesPerPoll())))
+        return IntegrationFlow.from(source, spec -> spec
+                        .autoStartup(false)
+                        .poller(Pollers
+                                .fixedDelay(interval.toMillis())
+                                .maxMessagesPerPoll(properties.detect().maxMessagesPerPoll())))
                 .handle(messageHandler, "handle")
                 .get();
     }

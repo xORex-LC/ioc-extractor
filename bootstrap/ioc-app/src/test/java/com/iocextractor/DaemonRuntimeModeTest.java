@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.Lifecycle;
 import org.springframework.integration.dsl.IntegrationFlow;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -58,6 +59,7 @@ class DaemonRuntimeModeTest {
         assertThat(context.getBeansOfType(CliRunner.class)).isEmpty();
         assertThat(context.getBeansOfType(IntegrationFlow.class))
                 .containsKey("iocIngestionFlow");
+        assertThat(context.getBean("iocIngestionFlow", Lifecycle.class).isRunning()).isTrue();
         assertThat(context.getBean(IngestionLedger.class)).isInstanceOf(FileIngestionLedger.class);
         assertThat(context.getBeansOfType(HikariDataSource.class))
                 .containsOnlyKeys("dataframeStorageDataSource", "serviceStorageDataSource");

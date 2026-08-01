@@ -63,7 +63,7 @@ language: "ru"
 
 | Work item/scope | Goal | State | Reason | Missing evidence/exit condition |
 |---|---|---|---|---|
-| `ING-10 / SB04-116` ingest lifecycle + JDBC ledger transitions | `R030-QUAL` | `in-progress (I0 complete)` | `C2` нашёл dead transaction helper и недействительное single-writer предположение на уже документированном startup overlap; `I0` закрепил failure model детерминированным executable characterization без timing sleeps | Queue reorder утверждён 2026-08-01: [единый `ING-10/IR-03` hardening](ing-10-ingestion-lifecycle-hardening.md) выполняется перед `BUILD-SPOTBUGS-04/C3`; exit требует lifecycle barrier, per-key serialization, CAS/expected-state semantics и concurrent regressions |
+| `ING-10 / SB04-116` ingest lifecycle + JDBC ledger transitions | `R030-QUAL` | `in-progress (I0..I1 complete)` | `I0` закрепил failure model; `I1` заменил независимые startup branches явным coordinator: run-ledger recovery → source-ledger recovery → manual start не-auto-start ingestion flow, с fail-closed regression tests | [Единый `ING-10/IR-03` hardening](ing-10-ingestion-lifecycle-hardening.md) выполняется перед `BUILD-SPOTBUGS-04/C3`; остаются per-key serialization, fresh-state recovery, CAS/expected-state semantics и concurrent adapter regressions |
 | Full PMD ruleset beyond CPD | `R030-BUILD` | `deferred` | Unused-code, complexity, performance/object-creation and error-prone rules need their own signal/noise decision; they are not implied by CPD | Revisit after `BUILD-SPOTBUGS-04`, or earlier only after concrete risk/gap evidence and explicit matrix reorder |
 
 ## 5. Update rule
