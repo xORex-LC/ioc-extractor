@@ -116,6 +116,8 @@ import com.iocextractor.observability.diagnostics.LoggingDiagnosticSink;
 import com.iocextractor.observability.diagnostics.RedactingDiagnosticContextFormatter;
 import com.iocextractor.observability.diagnostics.ResilientDiagnosticSink;
 import com.iocextractor.observability.logging.LoggingPipelineObserver;
+import com.iocextractor.platform.concurrent.KeyedExecutionGuard;
+import com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import com.iocextractor.platform.events.ControlEventObserver;
 import com.zaxxer.hikari.HikariDataSource;
@@ -736,6 +738,12 @@ public class AppConfig {
 
     @Bean
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
+    public KeyedExecutionGuard ingestionExecutionGuard() {
+        return new SynchronousKeyedExecutionGuard();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public IngestionService ingestionService(IngestionLedger ledger,
                                              SourceLifecycle sourceLifecycle,
                                              SourcePreparerFactory sourcePreparerFactory,
@@ -744,6 +752,7 @@ public class AppConfig {
                                              ObjectProvider<ArtifactProjection> projection,
                                              ControlEventPublisher controlEventPublisher,
                                              DiagnosticSink diagnosticSink,
+                                             KeyedExecutionGuard ingestionExecutionGuard,
                                              Clock clock) {
         return new IngestionService(
                 ledger,
@@ -754,7 +763,8 @@ public class AppConfig {
                 projection.getIfAvailable(() -> NoopArtifactProjection.INSTANCE),
                 controlEventPublisher,
                 clock,
-                diagnosticSink);
+                diagnosticSink,
+                ingestionExecutionGuard);
     }
 
     @Bean

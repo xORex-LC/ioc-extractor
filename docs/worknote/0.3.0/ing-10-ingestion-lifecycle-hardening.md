@@ -59,8 +59,8 @@ ownership would require a lease/fencing design and is not implied by this work.
 |---|---|---|---|
 | `I0` | Failure model and executable characterization | A deterministic latch-based test proves that the current runner and poller paths overlap; no timing sleeps | `completed` |
 | `I1` | Startup lifecycle barrier | Explicit coordinator recovers both ledgers before starting the non-auto-start flow; failure leaves it stopped | `completed` |
-| `I2` | Per-key synchronous execution | Same keys serialize, different keys can progress, and recovery re-reads state after admission | `in-progress` |
-| `I3` | Source-ledger state machine | File and JDBC adapters implement expected-state/CAS transitions and share concurrent TCK coverage | `not-started` |
+| `I2` | Per-key synchronous execution | Same keys serialize, different keys can progress, and recovery re-reads state after admission | `completed` |
+| `I3` | Source-ledger state machine | File and JDBC adapters implement expected-state/CAS transitions and share concurrent TCK coverage | `in-progress` |
 | `I4` | Operational closure | Health, configuration guard, restart/E2E evidence, durable docs and full reactor verification | `not-started` |
 
 Only one checkpoint is implementation-active at a time. Each checkpoint is
@@ -93,7 +93,25 @@ intake remains stopped; separate failure tests prove that either recovery error
 prevents `start()`. Runtime-mode context tests prove that the manually controlled
 flow is running after successful application startup.
 
-## 6. Scope boundaries
+## 6. I2 evidence
+
+`SynchronousKeyedExecutionGuard` was added to the framework-free concurrency
+platform rather than adapting the asynchronous executor. It preserves the
+ingestion method's synchronous result and exception contract, removes idle key
+state, allows different keys to execute concurrently and exposes only aggregate
+contention counts.
+
+All three source entry points (`ingest`, recovery and rejection) now enter the
+same guard with the source content hash as key. Recovery treats
+`findIncomplete()` as discovery only: once admitted for that key it re-reads the
+ledger and acts on the current status. Processing-orphan reconciliation uses the
+same boundary.
+
+Deterministic tests cover same-key waiting, concurrent different-key execution,
+failure cleanup, two concurrent ingestion calls producing only one extraction,
+and a stale `CLAIMED` scan whose current state is already terminal.
+
+## 7. Scope boundaries
 
 - `ING-11` retry versus run-ledger resume remains separate.
 - `ING-13` full pre-claim file-fate handling remains separate.

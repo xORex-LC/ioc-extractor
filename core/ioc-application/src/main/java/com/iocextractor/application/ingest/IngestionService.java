@@ -17,6 +17,9 @@ import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.port.out.ingest.SourcePreparerFactory;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
+import com.iocextractor.platform.concurrent.KeyedExecutionGuard;
+import com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard;
+import com.iocextractor.platform.concurrent.WorkKey;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import com.iocextractor.platform.events.NoopControlEventPublisher;
 import com.iocextractor.diagnostics.Diagnostic;
@@ -49,6 +52,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     private final Clock clock;
     private final DiagnosticSink diagnosticSink;
     private final DiagnosticFactory diagnostics;
+    private final KeyedExecutionGuard executionGuard;
 
     public IngestionService(IngestionLedger ledger,
                             SourceLifecycle sourceLifecycle,
@@ -65,7 +69,8 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                             RunLedger runLedger,
                             ArtifactProjection projection) {
         this(ledger, sourceLifecycle, sourcePreparerFactory, extractionFactory, runLedger, projection,
-                NoopControlEventPublisher.INSTANCE, Clock.systemUTC(), NoopDiagnosticSink.INSTANCE);
+                NoopControlEventPublisher.INSTANCE, Clock.systemUTC(), NoopDiagnosticSink.INSTANCE,
+                new SynchronousKeyedExecutionGuard());
     }
 
     public IngestionService(IngestionLedger ledger,
@@ -77,7 +82,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                             ControlEventPublisher eventPublisher,
                             Clock clock) {
         this(ledger, sourceLifecycle, sourcePreparerFactory, extractionFactory, runLedger, projection,
-                eventPublisher, clock, NoopDiagnosticSink.INSTANCE);
+                eventPublisher, clock, NoopDiagnosticSink.INSTANCE, new SynchronousKeyedExecutionGuard());
     }
 
     public IngestionService(IngestionLedger ledger,
@@ -89,6 +94,20 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                             ControlEventPublisher eventPublisher,
                             Clock clock,
                             DiagnosticSink diagnosticSink) {
+        this(ledger, sourceLifecycle, sourcePreparerFactory, extractionFactory, runLedger, projection,
+                eventPublisher, clock, diagnosticSink, new SynchronousKeyedExecutionGuard());
+    }
+
+    public IngestionService(IngestionLedger ledger,
+                            SourceLifecycle sourceLifecycle,
+                            SourcePreparerFactory sourcePreparerFactory,
+                            IocExtractionServiceFactory extractionFactory,
+                            RunLedger runLedger,
+                            ArtifactProjection projection,
+                            ControlEventPublisher eventPublisher,
+                            Clock clock,
+                            DiagnosticSink diagnosticSink,
+                            KeyedExecutionGuard executionGuard) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.sourceLifecycle = Objects.requireNonNull(sourceLifecycle, "sourceLifecycle");
         this.sourcePreparerFactory = Objects.requireNonNull(sourcePreparerFactory, "sourcePreparerFactory");
@@ -99,11 +118,16 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         this.clock = Objects.requireNonNull(clock, "clock");
         this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
         this.diagnostics = new DiagnosticFactory(clock);
+        this.executionGuard = Objects.requireNonNull(executionGuard, "executionGuard");
     }
 
     @Override
     public IngestSourceResult ingest(IngestSourceCommand command) {
         Objects.requireNonNull(command, "command");
+        return executionGuard.execute(workKey(command.key()), () -> ingestGuarded(command));
+    }
+
+    private IngestSourceResult ingestGuarded(IngestSourceCommand command) {
         var existing = ledger.find(command.key());
         if (existing.isPresent()) {
             return handleExisting(command, existing.get());
@@ -135,7 +159,11 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
             List<IngestSourceResult> results = new ArrayList<>();
             for (IngestionRecord record : ledger.findIncomplete()) {
                 try {
-                    results.add(recover(record));
+                    IngestSourceResult result = executionGuard.execute(workKey(record.key()), () ->
+                            ledger.find(record.key()).map(this::recover).orElse(null));
+                    if (result != null) {
+                        results.add(result);
+                    }
                 } catch (RuntimeException failure) {
                     if (isRecoveryFailure(failure)) {
                         throw failure;
@@ -144,7 +172,10 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                 }
             }
             for (ArchivedSourceUnit orphan : sourceLifecycle.findProcessingSources()) {
-                recoverOrphan(orphan, results);
+                executionGuard.execute(workKey(orphan.key()), () -> {
+                    recoverOrphan(orphan, results);
+                    return null;
+                });
             }
             return results;
         } catch (RuntimeException failure) {
@@ -158,6 +189,10 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     @Override
     public IngestionRejectionResult reject(SourceKey key, String reason) {
         Objects.requireNonNull(key, "key");
+        return executionGuard.execute(workKey(key), () -> rejectGuarded(key, reason));
+    }
+
+    private IngestionRejectionResult rejectGuarded(SourceKey key, String reason) {
         var record = ledger.find(key);
         if (record.isPresent()) {
             if (record.orElseThrow().status() == IngestionStatus.FAILED) {
@@ -179,6 +214,10 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
             throw ledgerFailure(key, "mark-failed", failure);
         }
         return IngestionRejectionResult.REJECTED;
+    }
+
+    private WorkKey workKey(SourceKey key) {
+        return WorkKey.of(key.value());
     }
 
     private IngestSourceResult handleExisting(IngestSourceCommand command, IngestionRecord record) {

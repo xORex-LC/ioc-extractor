@@ -45,6 +45,7 @@ import com.iocextractor.domain.model.MaskMatch;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.platform.etl.NoopPipelineObserver;
+import com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard;
 import com.iocextractor.platform.events.RecordingControlEventPublisher;
 import org.junit.jupiter.api.Test;
 
@@ -55,6 +56,10 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -446,6 +451,97 @@ class IngestionServiceTest {
         assertThat(lifecycle.events).containsExactly("failRecovered");
     }
 
+    @Test
+    void recoveryReReadsLedgerStateAfterScanningIncompleteRecords() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        var claimedSnapshot = new IngestionRecord(key, IngestionStatus.CLAIMED,
+                Path.of("inbox/source.html"), Path.of("processing/source.html"), null,
+                Instant.EPOCH, Instant.EPOCH, null);
+        ledger.incompleteRecords = List.of(claimedSnapshot);
+        ledger.record = new IngestionRecord(key, IngestionStatus.SOURCE_ARCHIVED,
+                claimedSnapshot.originalPath(), claimedSnapshot.processingPath(), Path.of("done/source.html"),
+                claimedSnapshot.detectedAt(), claimedSnapshot.detectedAt(), null);
+        var lifecycle = new MemoryLifecycle();
+        var service = new IngestionService(ledger, lifecycle, source -> {
+            throw new AssertionError("a stale CLAIMED snapshot must not restart extraction");
+        }, extractionFactory());
+
+        var results = service.recoverIncomplete();
+
+        assertThat(results).singleElement()
+                .extracting(IngestSourceResult::status)
+                .isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
+        assertThat(lifecycle.events).isEmpty();
+    }
+
+    @Test
+    void serializesConcurrentEntryPointsForTheSameSourceKey() throws Exception {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        var guard = new SynchronousKeyedExecutionGuard();
+        var factoryEntered = new CountDownLatch(1);
+        var releaseFactory = new CountDownLatch(1);
+        var factoryCalls = new AtomicInteger();
+        var service = new IngestionService(
+                ledger,
+                lifecycle,
+                source -> {
+                    factoryCalls.incrementAndGet();
+                    factoryEntered.countDown();
+                    await(releaseFactory);
+                    return new SourcePreparers(List.of(new CountingPreparer()));
+                },
+                extractionFactory(),
+                new MemoryRunLedger(),
+                new CollectingProjection(),
+                new RecordingControlEventPublisher(),
+                clock,
+                NoopDiagnosticSink.INSTANCE,
+                guard);
+
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var first = executor.submit(() -> service.ingest(new IngestSourceCommand(
+                    Path.of("inbox/source.html"), key, Instant.EPOCH)));
+            assertThat(factoryEntered.await(5, TimeUnit.SECONDS)).isTrue();
+
+            var second = executor.submit(() -> service.ingest(new IngestSourceCommand(
+                    Path.of("inbox/source-copy.html"), key, Instant.EPOCH)));
+            awaitWaitingCaller(guard);
+
+            assertThat(factoryCalls).hasValue(1);
+            releaseFactory.countDown();
+
+            assertThat(first.get(5, TimeUnit.SECONDS).duplicate()).isFalse();
+            assertThat(second.get(5, TimeUnit.SECONDS).duplicate()).isTrue();
+        } finally {
+            releaseFactory.countDown();
+        }
+
+        assertThat(factoryCalls).hasValue(1);
+        assertThat(lifecycle.events).containsExactly("claim", "archive", "archiveDuplicate");
+    }
+
+    private static void awaitWaitingCaller(SynchronousKeyedExecutionGuard guard) {
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(5).toNanos();
+        while (guard.snapshot().waiting() == 0 && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        assertThat(guard.snapshot().waiting()).isOne();
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("timed out waiting for test coordination");
+            }
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("test coordination interrupted", failure);
+        }
+    }
+
     private IocExtractionServiceFactory extractionFactory() {
         return new IocExtractionServiceFactory(
                 source -> "example.com",
@@ -660,6 +756,7 @@ class IngestionServiceTest {
 
     private static final class MemoryLedger implements IngestionLedger {
         private IngestionRecord record;
+        private List<IngestionRecord> incompleteRecords;
         private RuntimeException claimFailure;
 
         @Override
@@ -694,6 +791,9 @@ class IngestionServiceTest {
 
         @Override
         public List<IngestionRecord> findIncomplete() {
+            if (incompleteRecords != null) {
+                return incompleteRecords;
+            }
             return record == null ? List.of() : List.of(record);
         }
     }

@@ -16,12 +16,17 @@ transport adapters или durable delivery. Это общий concurrency toolki
 (`rejected`, `failed`, `dispatchRejected`). High/low-water hysteresis остаётся
 расширением поверх этого seam, когда появится реальная нагрузочная политика.
 
+`SynchronousKeyedExecutionGuard` решает другой случай: вызов остаётся в потоке
+caller, сохраняет обычный return/throw contract и ждёт только ранее допущенную
+работу с тем же ключом. Разные ключи не разделяют глобальную блокировку. Его
+aggregate snapshot не раскрывает значения ключей и пригоден для health/telemetry.
+
 ## Структура
 
 | Подпапка / файл | Назначение |
 |---|---|
 | `pom.xml` | Maven module descriptor |
-| `src/main/java/com/iocextractor/platform/concurrent/` | `KeyedSerialExecutor`, bounded implementation, observer hook and admission value objects |
+| `src/main/java/com/iocextractor/platform/concurrent/` | Async `KeyedSerialExecutor`, synchronous keyed guard, snapshots, observer hook and admission value objects |
 | `src/test/java/com/iocextractor/platform/concurrent/` | Concurrency tests |
 
 ## Зависимости
