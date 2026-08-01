@@ -44,6 +44,11 @@ public class IngestFlowConfiguration {
     }
 
     @Bean
+    public IngestionLifecycleState ingestionLifecycleState() {
+        return new IngestionLifecycleState();
+    }
+
+    @Bean
     public SourceLifecycle sourceLifecycle(IngestAdapterProperties properties) {
         return new FileSystemSourceLifecycle(
                 Path.of(properties.dirs().processing()),
@@ -73,11 +78,14 @@ public class IngestFlowConfiguration {
     public IngestionStartupCoordinator ingestionStartupCoordinator(
             IngestRunRecoveryService runRecovery,
             RecoverIngestionUseCase sourceRecovery,
+            IngestionLifecycleState lifecycleState,
+            Clock ingestClock,
             @Qualifier("iocIngestionFlow") IntegrationFlow intakeFlow) {
         if (!(intakeFlow instanceof Lifecycle lifecycle)) {
             throw new IllegalStateException("iocIngestionFlow does not expose lifecycle control");
         }
-        return new IngestionStartupCoordinator(runRecovery::recover, sourceRecovery, lifecycle);
+        return new IngestionStartupCoordinator(
+                runRecovery::recover, sourceRecovery, lifecycle, lifecycleState, ingestClock);
     }
 
     @Bean

@@ -154,10 +154,11 @@ recovery повторяет незавершённый claimed work, а посл
 - pending export/publish и pinned slices в health;
 - повторяющиеся retry/reconcile diagnostics.
 
-Не увеличивайте `ioc.ingestion.concurrency` для сброса backlog: в 0.2.0 это
-reserved seam, ingestion channel остаётся синхронным. Будущий concurrency также
-потребует load testing claim/order/recovery и SQLite single-writer behavior.
-Сначала проверьте slow copies, parser-heavy documents, remote outage и quiet period.
+Не увеличивайте `ioc.ingestion.concurrency` для сброса backlog: 0.3.0 принимает
+только `1`, любое другое значение роняет startup. Будущий concurrency потребует
+отдельной модели ordering/admission и load testing claim/recovery/SQLite
+contention. Сначала проверьте slow copies, parser-heavy documents, remote outage
+и quiet period.
 
 ## Retention
 

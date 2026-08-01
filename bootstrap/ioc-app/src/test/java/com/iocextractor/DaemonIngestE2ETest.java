@@ -1,5 +1,6 @@
 package com.iocextractor;
 
+import com.iocextractor.adapter.in.ingest.FileSourceHasher;
 import com.iocextractor.adapter.out.store.jdbc.JdbcRemoteFetchLedger;
 import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.SourceKey;
@@ -30,7 +31,9 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -40,6 +43,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 /**
  * End-to-end daemon ingest over the post-collapse direct-to-canonical path: a
@@ -55,6 +59,8 @@ import static org.assertj.core.api.Assertions.assertThat;
         "ioc.ingestion.dirs.done=target/daemon-e2e/done",
         "ioc.ingestion.dirs.failed=target/daemon-e2e/failed",
         "ioc.ingestion.ledger.path=target/daemon-e2e/ledger",
+        "ioc.ingestion.detect.reconcile-interval=100ms",
+        "ioc.ingestion.stability.quiet-period=0ms",
         "ioc.storage.service.url=jdbc:sqlite:target/daemon-e2e/ioc-service.db",
         "spring.main.banner-mode=off"
 })
@@ -94,6 +100,9 @@ class DaemonIngestE2ETest {
     @Autowired
     ApplicationContext context;
 
+    @Autowired
+    FileSourceHasher fileSourceHasher;
+
     @Test
     void ingests_source_directly_into_canonical_storage_and_projection() throws Exception {
         // a source staged outside the watched inbox, so the poller cannot race the manual ingest
@@ -123,38 +132,63 @@ class DaemonIngestE2ETest {
 
     @Test
     void remote_fetch_lands_in_inbox_then_runs_the_normal_ingest_use_case() throws Exception {
-        context.getBeansOfType(SourcePollingChannelAdapter.class).values()
-                .forEach(adapter -> adapter.stop());
-        byte[] sourceBytes;
-        try (InputStream in = getClass().getClassLoader().getResourceAsStream("golden/source.html")) {
-            sourceBytes = in.readAllBytes();
+        var pollingAdapters = context.getBeansOfType(SourcePollingChannelAdapter.class).values();
+        pollingAdapters.forEach(SourcePollingChannelAdapter::stop);
+        try {
+            byte[] sourceBytes;
+            try (InputStream in = getClass().getClassLoader().getResourceAsStream("golden/source.html")) {
+                sourceBytes = in.readAllBytes();
+            }
+            Instant modifiedAt = Instant.parse("2026-06-28T00:00:00Z");
+            FileTransport remote = readOnlyRemote("/incoming/remote-source.html", sourceBytes, modifiedAt);
+            Path inbox = Path.of("target/daemon-e2e/inbox");
+            RemoteFetchService fetcher = new RemoteFetchService(
+                    remote,
+                    new JdbcRemoteFetchLedger(serviceStorageDataSource),
+                    List.of(new RemoteFetchSource(
+                            "e2e-remote", "remote", "/incoming", List.of("*.html"), List.of())),
+                    inbox,
+                    new Retrier(new RetryPolicy(
+                            1, Duration.ofMillis(1), 1.0d, Duration.ofMillis(1), false), ignored -> { }),
+                    Clock.systemUTC(),
+                    new com.iocextractor.application.sync.SyncDiagnosticReporter(
+                            new com.iocextractor.diagnostics.sink.CollectingDiagnosticSink(), Clock.systemUTC()));
+
+            var fetched = fetcher.fetch(new com.iocextractor.application.port.in.sync.RemoteFetchCommand(false));
+            Path landed = inbox.resolve("remote-source.html");
+            IngestSourceResult ingested = ingestSourceUseCase.ingest(
+                    new IngestSourceCommand(landed, new SourceKey("remote-e2e"), modifiedAt));
+            var duplicate = fetcher.fetch(new com.iocextractor.application.port.in.sync.RemoteFetchCommand(false));
+
+            assertThat(fetched.fetched()).isOne();
+            assertThat(ingested.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
+            assertThat(countForSourceKey("remote-e2e")).isPositive();
+            assertThat(duplicate.skipped()).isOne();
+        } finally {
+            pollingAdapters.forEach(SourcePollingChannelAdapter::start);
         }
-        Instant modifiedAt = Instant.parse("2026-06-28T00:00:00Z");
-        FileTransport remote = readOnlyRemote("/incoming/remote-source.html", sourceBytes, modifiedAt);
-        Path inbox = Path.of("target/daemon-e2e/inbox");
-        RemoteFetchService fetcher = new RemoteFetchService(
-                remote,
-                new JdbcRemoteFetchLedger(serviceStorageDataSource),
-                List.of(new RemoteFetchSource(
-                        "e2e-remote", "remote", "/incoming", List.of("*.html"), List.of())),
-                inbox,
-                new Retrier(new RetryPolicy(
-                        1, Duration.ofMillis(1), 1.0d, Duration.ofMillis(1), false), ignored -> { }),
-                Clock.systemUTC(),
-                new com.iocextractor.application.sync.SyncDiagnosticReporter(
-                        new com.iocextractor.diagnostics.sink.CollectingDiagnosticSink(), Clock.systemUTC()));
+    }
 
-        var fetched = fetcher.fetch(new com.iocextractor.application.port.in.sync.RemoteFetchCommand(false));
-        Path landed = inbox.resolve("remote-source.html");
-        IngestSourceResult ingested = ingestSourceUseCase.ingest(
-                new IngestSourceCommand(landed, new SourceKey("remote-e2e"), modifiedAt));
-        var duplicate = fetcher.fetch(new com.iocextractor.application.port.in.sync.RemoteFetchCommand(false));
+    @Test
+    void watchedInboxProcessesAnAtomicallyPublishedSourceAfterStartup() throws Exception {
+        Path inbox = Files.createDirectories(Path.of("target/daemon-e2e/inbox"));
+        Path partial = inbox.resolve("watched-source.part");
+        try (InputStream in = getClass().getClassLoader().getResourceAsStream("golden/source.html")) {
+            Files.write(partial, in.readAllBytes());
+        }
+        Files.writeString(partial, "\n<p>unique-watched-e2e.example</p>\n",
+                java.nio.file.StandardOpenOption.APPEND);
+        SourceKey key = fileSourceHasher.sha256(partial);
+        Path published = inbox.resolve("watched-source.html");
 
-        assertThat(fetched.fetched()).isOne();
-        assertThat(ingested.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
-        assertThat(count("SELECT COUNT(*) FROM masks_sources WHERE source_key = 'remote-e2e'"))
-                .isPositive();
-        assertThat(duplicate.skipped()).isOne();
+        Files.move(partial, published, StandardCopyOption.ATOMIC_MOVE);
+
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            assertThat(published).doesNotExist();
+            assertThat(Path.of("target/daemon-e2e/done", key.value() + "-watched-source.html"))
+                    .exists();
+            assertThat(countForSourceKey(key.value())).isPositive();
+        });
     }
 
     private FileTransport readOnlyRemote(String path, byte[] content, Instant modifiedAt) {
@@ -197,6 +231,18 @@ class DaemonIngestE2ETest {
              var resultSet = statement.executeQuery(sql)) {
             assertThat(resultSet.next()).isTrue();
             return resultSet.getLong(1);
+        }
+    }
+
+    private long countForSourceKey(String sourceKey) throws Exception {
+        try (Connection connection = dataframeStorageDataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT COUNT(*) FROM masks_sources WHERE source_key = ?")) {
+            statement.setString(1, sourceKey);
+            try (var resultSet = statement.executeQuery()) {
+                assertThat(resultSet.next()).isTrue();
+                return resultSet.getLong(1);
+            }
         }
     }
 }

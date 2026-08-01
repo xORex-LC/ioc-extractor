@@ -38,6 +38,7 @@ import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceFactory;
 import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceSettings;
 import com.iocextractor.adapter.out.store.jdbc.SqlitePragmaPolicy;
 import com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator;
+import com.iocextractor.adapter.in.ingest.IngestionLifecycleState;
 import com.iocextractor.application.artifact.IngestRunRecoveryService;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.ArtifactIdSequence;
@@ -132,6 +133,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Primary;
+import org.springframework.context.Lifecycle;
+import org.springframework.integration.dsl.IntegrationFlow;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -740,6 +743,18 @@ public class AppConfig {
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public KeyedExecutionGuard ingestionExecutionGuard() {
         return new SynchronousKeyedExecutionGuard();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
+    public IngestionLifecycleHealthIndicator ingestionLifecycleHealthIndicator(
+            IngestionLifecycleState lifecycleState,
+            KeyedExecutionGuard ingestionExecutionGuard,
+            @Qualifier("iocIngestionFlow") IntegrationFlow intakeFlow) {
+        if (!(intakeFlow instanceof Lifecycle lifecycle)) {
+            throw new IllegalStateException("iocIngestionFlow does not expose lifecycle state");
+        }
+        return new IngestionLifecycleHealthIndicator(lifecycleState, lifecycle, ingestionExecutionGuard);
     }
 
     @Bean

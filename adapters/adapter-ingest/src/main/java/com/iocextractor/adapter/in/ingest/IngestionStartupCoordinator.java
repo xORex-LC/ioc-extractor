@@ -5,7 +5,9 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.Lifecycle;
 
+import java.time.Clock;
 import java.util.Objects;
+import java.util.function.IntSupplier;
 
 /**
  * Owns the daemon startup barrier between durable recovery and file intake.
@@ -14,25 +16,46 @@ import java.util.Objects;
  */
 public final class IngestionStartupCoordinator implements ApplicationRunner {
 
-    private final Runnable recoverIngestRuns;
+    private final IntSupplier recoverIngestRuns;
     private final RecoverIngestionUseCase recoverSources;
     private final Lifecycle intakeFlow;
+    private final IngestionLifecycleState lifecycleState;
+    private final Clock clock;
 
-    public IngestionStartupCoordinator(Runnable recoverIngestRuns,
+    public IngestionStartupCoordinator(IntSupplier recoverIngestRuns,
                                        RecoverIngestionUseCase recoverSources,
-                                       Lifecycle intakeFlow) {
+                                       Lifecycle intakeFlow,
+                                       IngestionLifecycleState lifecycleState,
+                                       Clock clock) {
         this.recoverIngestRuns = Objects.requireNonNull(recoverIngestRuns, "recoverIngestRuns");
         this.recoverSources = Objects.requireNonNull(recoverSources, "recoverSources");
         this.intakeFlow = Objects.requireNonNull(intakeFlow, "intakeFlow");
+        this.lifecycleState = Objects.requireNonNull(lifecycleState, "lifecycleState");
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        if (intakeFlow.isRunning()) {
-            throw new IllegalStateException("Ingestion intake must remain stopped until startup recovery");
+        lifecycleState.recoveryStarted(clock.instant());
+        try {
+            if (intakeFlow.isRunning()) {
+                throw new IllegalStateException("Ingestion intake must remain stopped until startup recovery");
+            }
+            int recoveredRuns = recoverIngestRuns.getAsInt();
+            int recoveredSources = recoverSources.recoverIncomplete().size();
+            intakeFlow.start();
+            if (!intakeFlow.isRunning()) {
+                throw new IllegalStateException("Ingestion intake did not start after successful recovery");
+            }
+            lifecycleState.running(clock.instant(), recoveredRuns, recoveredSources);
+        } catch (RuntimeException failure) {
+            try {
+                intakeFlow.stop();
+            } catch (RuntimeException stopFailure) {
+                failure.addSuppressed(stopFailure);
+            }
+            lifecycleState.failed(clock.instant(), failure);
+            throw failure;
         }
-        recoverIngestRuns.run();
-        recoverSources.recoverIncomplete();
-        intakeFlow.start();
     }
 }

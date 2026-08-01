@@ -19,12 +19,21 @@ artifacts directly.
 
 ## Зависимости
 
-**Зависит от:** `ioc-application`, platform errors/diagnostics/observability,
-Spring Integration file support.
+**Зависит от:** `ioc-application`, platform errors/diagnostics/observability/
+concurrency, Spring Integration file support.
 
 **Не импортируется:** domain internals, concrete CSV sink internals, bootstrap.
 
 ## Инварианты
+
+- `iocIngestionFlow` не стартует автоматически. `IngestionStartupCoordinator`
+  сначала восстанавливает run ledger, затем source ledger и только после этого
+  открывает intake; любая ошибка оставляет flow остановленным.
+- Все application entry points для одного content `SourceKey` используют общий
+  synchronous keyed guard. File ledger отдельно сериализует read/decide/replace
+  внутри одного adapter instance; cross-process coordination не заявлена.
+- Source-ledger terminal transitions монотонны: same-target retry идемпотентен,
+  opposite-target transition конфликтует и не переписывает победителя.
 
 - `FileSourceMessageHandler` владеет final retry boundary: после исчерпания
   попыток он выполняет reject/dead-letter transition, если use case ещё

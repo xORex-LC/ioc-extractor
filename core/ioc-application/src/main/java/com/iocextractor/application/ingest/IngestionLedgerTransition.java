@@ -1,4 +1,4 @@
-package com.iocextractor.application.port.out.ingest;
+package com.iocextractor.application.ingest;
 
 /** Outcome of an expected-state ingestion-ledger transition. */
 public enum IngestionLedgerTransition {

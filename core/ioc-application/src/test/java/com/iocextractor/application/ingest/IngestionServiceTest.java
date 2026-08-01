@@ -23,7 +23,6 @@ import com.iocextractor.diagnostics.result.Result;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
-import com.iocextractor.application.port.out.ingest.IngestionLedgerTransition;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.diagnostics.DiagnosticException;
@@ -477,6 +476,30 @@ class IngestionServiceTest {
     }
 
     @Test
+    void restartRecoveryDoesNotCreateAnotherRunForTerminalSource() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        var runLedger = new MemoryRunLedger();
+        var firstProcess = new IngestionService(
+                ledger, lifecycle, source -> new SourcePreparers(List.of(new CountingPreparer())),
+                extractionFactory(), runLedger, new CollectingProjection(),
+                new RecordingControlEventPublisher(), clock);
+
+        IngestSourceResult first = firstProcess.ingest(new IngestSourceCommand(
+                Path.of("inbox/source.html"), key, Instant.EPOCH));
+        var restartedProcess = new IngestionService(
+                ledger, lifecycle, source -> {
+                    throw new AssertionError("terminal source must not be extracted after restart");
+                }, extractionFactory(), runLedger, new CollectingProjection(),
+                new RecordingControlEventPublisher(), clock);
+
+        assertThat(first.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
+        assertThat(restartedProcess.recoverIncomplete()).isEmpty();
+        assertThat(runLedger.starts).isOne();
+    }
+
+    @Test
     void serializesConcurrentEntryPointsForTheSameSourceKey() throws Exception {
         var key = new SourceKey("ABC123");
         var ledger = new MemoryLedger();
@@ -664,11 +687,13 @@ class IngestionServiceTest {
 
     private static final class MemoryRunLedger implements RunLedger {
         private IngestRunStatus status;
+        private int starts;
 
         @Override
         public IngestRun startIngest(String sourceKey, List<String> artifacts) {
+            starts++;
             status = IngestRunStatus.STARTED;
-            return new IngestRun("run-1", sourceKey, status, artifacts, Instant.EPOCH, Instant.EPOCH, null);
+            return new IngestRun("run-" + starts, sourceKey, status, artifacts, Instant.EPOCH, Instant.EPOCH, null);
         }
 
         @Override
@@ -820,7 +845,9 @@ class IngestionServiceTest {
             if (incompleteRecords != null) {
                 return incompleteRecords;
             }
-            return record == null ? List.of() : List.of(record);
+            return record != null && record.status() == IngestionStatus.CLAIMED
+                    ? List.of(record)
+                    : List.of();
         }
     }
 }

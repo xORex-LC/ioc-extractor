@@ -1,6 +1,7 @@
 package com.iocextractor.application.port.out.ingest;
 
 import com.iocextractor.application.ingest.IngestionRecord;
+import com.iocextractor.application.ingest.IngestionLedgerTransition;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.SourceUnit;
 

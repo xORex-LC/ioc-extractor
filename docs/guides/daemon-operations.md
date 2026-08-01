@@ -169,10 +169,10 @@ Monitor:
 - pending export/publish work and pinned slices in health;
 - repeated retry or reconcile diagnostics.
 
-Do not increase `ioc.ingestion.concurrency` to drain a backlog: in 0.2.0 it is a
-reserved seam and the ingestion channel remains synchronous. Future concurrency
-would also require load testing of claim, ordering, recovery and SQLite's
-single-writer behavior. First investigate slow copies, parser-heavy documents,
+Do not increase `ioc.ingestion.concurrency` to drain a backlog: 0.3.0 accepts
+exactly `1` and startup fails for any other value. Future concurrency requires
+an explicit ordering/admission design plus load testing of claim, recovery and
+SQLite contention. First investigate slow copies, parser-heavy documents,
 remote outages or an excessively long quiet period.
 
 ## Retention

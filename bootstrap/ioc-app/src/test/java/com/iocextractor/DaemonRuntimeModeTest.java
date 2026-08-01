@@ -9,6 +9,7 @@ import com.iocextractor.application.port.out.export.SliceRetentionGuard;
 import com.iocextractor.bootstrap.DaemonFetchScheduler;
 import com.iocextractor.bootstrap.DaemonPublishScheduler;
 import com.iocextractor.bootstrap.IngestionLedgerHealthIndicator;
+import com.iocextractor.bootstrap.IngestionLifecycleHealthIndicator;
 import com.iocextractor.bootstrap.JdbcStorageHealthIndicator;
 import com.iocextractor.bootstrap.DaemonExportScheduler;
 import com.iocextractor.bootstrap.DaemonSliceRetentionScheduler;
@@ -21,6 +22,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.Lifecycle;
 import org.springframework.integration.dsl.IntegrationFlow;
+import org.springframework.boot.health.contributor.Status;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -65,6 +67,10 @@ class DaemonRuntimeModeTest {
                 .containsOnlyKeys("dataframeStorageDataSource", "serviceStorageDataSource");
         assertThat(context.getBeansOfType(IngestionLedgerHealthIndicator.class))
                 .containsOnlyKeys("ingestionLedgerHealthIndicator");
+        assertThat(context.getBeansOfType(IngestionLifecycleHealthIndicator.class))
+                .containsOnlyKeys("ingestionLifecycleHealthIndicator");
+        assertThat(context.getBean(IngestionLifecycleHealthIndicator.class).health().getStatus())
+                .isEqualTo(Status.UP);
         assertThat(context.getBeansOfType(JdbcStorageHealthIndicator.class))
                 .containsOnlyKeys("jdbcStorageHealthIndicator", "dataframeStorageHealthIndicator");
         assertThat(context.getBeansOfType(DaemonExportScheduler.class))

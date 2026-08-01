@@ -119,6 +119,17 @@ class IocPropertiesBindingTest {
     }
 
     @Test
+    void rejectsUnsupportedIngestionConcurrency() {
+        contextRunner("ioc.ingestion.concurrency=2")
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .filteredOn(error -> "ingestion.concurrency".equals(error.getField()))
+                        .singleElement()
+                        .satisfies(error -> assertThat(error.getDefaultMessage())
+                                .contains("keep it at 1")
+                                .contains("parallel ingestion is not supported")));
+    }
+
+    @Test
     void rejectsUnknownIocKeyFromDefaultStyleOverrides() {
         contextRunner("ioc.pipeline.deduplicat=false")
                 .run(context -> assertThat(unboundKeys(context.getStartupFailure()))

@@ -238,7 +238,7 @@ filesystem, чтобы claims использовали atomic move. Concurrency 
 | `ioc.ingestion.retry.backoff` | positive duration | `5s` | Задержка local ingestion retry. |
 | `ioc.ingestion.ledger.type` | `file`, `jdbc` | `file` | `jdbc` для durable run-ledger integration; следуйте deployment baseline. |
 | `ioc.ingestion.ledger.path` | путь | `./var/ledger` | Filesystem ledger при type `file`. |
-| `ioc.ingestion.concurrency` | integer (reserved seam) | `1` | Оставляйте `1`: в 0.2.0 channel синхронный и параметр не включает parallel ingestion. |
+| `ioc.ingestion.concurrency` | integer, только `1` | `1` | Parallel ingestion в 0.3.0 не поддерживается. Startup отклоняет любое другое значение, а не молча игнорирует его. |
 
 ## Maintenance retention
 

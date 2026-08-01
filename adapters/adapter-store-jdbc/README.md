@@ -56,6 +56,10 @@ runtime JDBC drivers.
   Startup recovery treats `DB_COMMITTED` as recoverable by replaying the derived
   CSV projection from dataframe truth; failures before that checkpoint are marked
   `FAILED`.
+- `JdbcIngestionLedger` uses conditional expected-state transitions. Claim is
+  insert-if-absent; archive updates only `CLAIMED`; failure is one conditional
+  SQLite upsert. Same-target retries are idempotent and an opposite terminal
+  transition cannot overwrite the first winner.
 - `JdbcExportRunLedger` stores immutable-slice formation checkpoints in
   `export_run`. A partial unique index enforces one global active run; all state
   changes use expected-status CAS. `COMPLETED`/`SKIPPED` and `export_progress`

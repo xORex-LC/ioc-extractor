@@ -231,7 +231,7 @@ ioc:
     ledger:
       type: file
       path: "./var/ledger"
-    concurrency: 1             # reserved in 0.2.0; ingestion remains synchronous
+    concurrency: 1             # required in 0.3.0; parallel ingestion is not supported
 
   # ---- Leaf-file retention --------------------------------------------------
   maintenance:

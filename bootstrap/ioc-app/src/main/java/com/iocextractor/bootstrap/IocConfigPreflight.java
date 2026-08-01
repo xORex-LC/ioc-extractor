@@ -27,8 +27,17 @@ final class IocConfigPreflight implements Validator {
         if (!(target instanceof IocProperties props)) {
             return;
         }
+        validateIngestion(props.ingestion(), errors);
         validateArtifactIdentityReferences(props, errors);
         validateSync(props, errors);
+    }
+
+    private void validateIngestion(IocProperties.Ingestion ingestion, Errors errors) {
+        if (ingestion != null && ingestion.concurrency() != 1) {
+            reject(errors, "ingestion.concurrency", ingestion.concurrency(),
+                    "ioc.ingestion.concurrency=%d is invalid; keep it at 1 because parallel ingestion is not supported"
+                            .formatted(ingestion.concurrency()));
+        }
     }
 
     private void validateSync(IocProperties props, Errors errors) {

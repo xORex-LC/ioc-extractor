@@ -46,6 +46,7 @@ Composition root и конфигурация. Единственное мест�
 | `DaemonPublishScheduler.java` | Startup reconcile, endpoint-keyed periodic publish и lifecycle phase 150 |
 | `SyncHealthState.java` | Thread-safe latest scheduler outcomes per source/target |
 | `SyncHealthIndicator.java` | Actuator view: last runs, durable publish backlog, endpoint summary и pinned slices |
+| `IngestionLifecycleHealthIndicator.java` | Recovery-before-intake phase, flow state, safe failure class и aggregate per-key contention без source identities |
 | `DaemonSliceRetentionScheduler.java` | Отдельный late-phase lifecycle для profile-scoped slice retention |
 | `*HealthIndicator.java` | Actuator contributors, включая export freshness/failure/revision lag |
 

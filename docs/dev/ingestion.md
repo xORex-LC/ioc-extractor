@@ -33,9 +33,9 @@ Application-слой принимает уже обнаруженную един
 poller-а.
 
 Daemon использует синхронный Spring Integration channel. Обработка следующего
-сообщения не начинается параллельно в скрытом executor-е. Свойство
-`ioc.ingestion.concurrency` сейчас связывается конфигурацией, но является
-зарезервированным seam и не задаёт фактический параллелизм.
+сообщения не начинается параллельно в скрытом executor-е. Значение
+`ioc.ingestion.concurrency` закреплено на `1`: semantic preflight отклоняет
+любое другое значение, поскольку параллельный intake пока не реализован.
 
 ## Границы ответственности
 
@@ -74,14 +74,24 @@ Daemon использует синхронный Spring Integration channel. О�
    должны частично попасть в canonical storage из-за решения политики.
 8. **Событие изменения canonical данных публикуется только после завершения
    durable run.** Оно ускоряет export, но periodic scheduler остаётся backstop.
+9. **Recovery предшествует intake.** Spring Integration flow имеет
+   `autoStartup=false`; один startup coordinator последовательно восстанавливает
+   run ledger, затем source ledger и только после этого запускает flow.
+10. **Одинаковый `SourceKey` выполняется последовательно.** Ingest, recovery и
+    reject используют один синхронный keyed guard; после admission recovery
+    перечитывает текущее ledger-state вместо доверия snapshot-у scan-а.
+11. **Terminal source state монотонен.** Адаптеры применяют expected-state/CAS
+    переходы: повтор того же terminal результата идемпотентен, а конкурирующий
+    `SOURCE_ARCHIVED`/`FAILED` возвращает conflict и не перезаписывает победителя.
 
 ## Durable состояния и recovery
 
 Ingestion ledger хранит terminal lifecycle источника:
 
 ```text
-CLAIMED -> SOURCE_ARCHIVED
-      \-> FAILED
+ABSENT -> CLAIMED -> SOURCE_ARCHIVED
+   |          \----> FAILED
+   \---------------> FAILED (pre-claim ING-13 seam)
 ```
 
 Run ledger отдельно фиксирует write→project saga:
@@ -103,6 +113,10 @@ STARTED -> DB_COMMITTED -> PROJECTION_COMPLETED -> COMPLETED
 Это at-least-once orchestration с идемпотентными durable шагами, а не обещание
 распределённого exactly-once.
 
+Гарантии keyed guard и file-ledger critical section относятся к одному daemon
+process. Поддерживаемый deployment 0.3.0 именно такой; несколько процессов над
+одним inbox/ledger потребовали бы lease/fencing protocol.
+
 ## Ошибки, retry и lifecycle
 
 Retry чтения, hashing и обработки реализован явно в file message handler с
@@ -114,13 +128,19 @@ terminal состояние, а причина сохраняется без у�
 
 Retention ограничивает рост рабочих каталогов по времени/количеству. Она не
 должна удалять источник, который всё ещё нужен recovery. Health отражает
-готовность poller-а, состояние recovery и durable backlog; точные компоненты и
-поля следует проверять по bootstrap health wiring.
+готовность poller-а, состояние recovery и durable backlog. Компонент
+`ingestionLifecycle` имеет `DOWN` в `PENDING`, `RECOVERING` и `FAILED`, и `UP`
+только в `RUNNING` при действительно запущенном intake. Он публикует timestamps,
+число восстановленных source/run записей и только aggregate contention counts
+(`activeSourceKeys`, `executing`, `waiting`), не сами ключи; при сбое health
+показывает только класс исключения, без потенциально чувствительного message.
+Spring Boot не
+переводит application readiness в `ACCEPTING_TRAFFIC`, пока startup coordinator
+как `ApplicationRunner` не завершил barrier; recovery failure роняет startup и
+оставляет intake остановленным.
 
-Сейчас известны три lifecycle seam-а, которые нельзя скрывать документацией:
+Открыты два соседних lifecycle seam-а, которые нельзя скрывать документацией:
 
-- **ING-10:** startup recovery и poller ещё не разделены строгим lifecycle
-  barrier;
 - **ING-11:** retry после частичного run не имеет полноценного resume protocol;
 - **ING-13:** fate файла при сбое до durable claim закрыта временным
   durable-once механизмом, но не окончательным протоколом.
@@ -145,7 +165,7 @@ Retention ограничивает рост рабочих каталогов п
 ## Источники истины
 
 - Runtime flow и filters:
-  `adapters/adapter-ingest/src/main/java/com/iocextractor/adapter/ingest/`.
+  `adapters/adapter-ingest/src/main/java/com/iocextractor/adapter/in/ingest/`.
 - Orchestration/recovery contract:
   `core/ioc-application/src/main/java/com/iocextractor/application/ingest/README.md`.
 - Composition/lifecycle:

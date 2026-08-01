@@ -6,6 +6,7 @@ import com.iocextractor.adapter.out.store.jdbc.ServiceSchemaMigrations;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.bootstrap.IngestionLedgerHealthIndicator;
+import com.iocextractor.bootstrap.IngestionLifecycleHealthIndicator;
 import com.iocextractor.bootstrap.JdbcStorageHealthIndicator;
 import com.iocextractor.bootstrap.DaemonExportScheduler;
 import com.iocextractor.bootstrap.DaemonSliceRetentionScheduler;
@@ -64,6 +65,10 @@ class JdbcLedgerDaemonRuntimeModeTest {
         assertThat(context.getBeansOfType(HikariDataSource.class))
                 .containsOnlyKeys("serviceStorageDataSource", "dataframeStorageDataSource");
         assertThat(context.getBeansOfType(IngestionLedgerHealthIndicator.class)).isEmpty();
+        assertThat(context.getBeansOfType(IngestionLifecycleHealthIndicator.class))
+                .containsOnlyKeys("ingestionLifecycleHealthIndicator");
+        assertThat(context.getBean(IngestionLifecycleHealthIndicator.class).health().getStatus())
+                .isEqualTo(Status.UP);
         assertThat(context.getBeansOfType(JdbcStorageHealthIndicator.class))
                 .containsOnlyKeys("jdbcStorageHealthIndicator", "dataframeStorageHealthIndicator");
         assertThat(context.getBean("jdbcStorageHealthIndicator", JdbcStorageHealthIndicator.class)

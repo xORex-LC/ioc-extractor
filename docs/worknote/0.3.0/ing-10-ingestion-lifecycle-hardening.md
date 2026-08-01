@@ -1,7 +1,7 @@
 ---
 title: "ING-10 ingestion lifecycle hardening"
 version: "0.3.0"
-status: "Active"
+status: "Verified"
 document_type: "Execution worknote"
 source_of_truth: false
 language: "en"
@@ -61,7 +61,7 @@ ownership would require a lease/fencing design and is not implied by this work.
 | `I1` | Startup lifecycle barrier | Explicit coordinator recovers both ledgers before starting the non-auto-start flow; failure leaves it stopped | `completed` |
 | `I2` | Per-key synchronous execution | Same keys serialize, different keys can progress, and recovery re-reads state after admission | `completed` |
 | `I3` | Source-ledger state machine | File and JDBC adapters implement expected-state/CAS transitions and share concurrent TCK coverage | `completed` |
-| `I4` | Operational closure | Health, configuration guard, restart/E2E evidence, durable docs and full reactor verification | `in-progress` |
+| `I4` | Operational closure | Health, configuration guard, restart/E2E evidence, durable docs and full reactor verification | `completed` |
 
 Only one checkpoint is implementation-active at a time. Each checkpoint is
 committed independently.
@@ -145,3 +145,45 @@ cases. Legacy import accepts only a completed target transition.
 - Control events may report facts or accelerate work, but are not the startup
   correctness mechanism; direct lifecycle ownership establishes the ordering.
 - No production behavior changes are introduced in `I0`.
+
+## 9. I4 implementation evidence
+
+`IngestionLifecycleState` records `PENDING`, `RECOVERING`, `RUNNING` or
+`FAILED`. The bootstrap health contributor reports `UP` only when state is
+`RUNNING` and the actual integration flow is running. It includes recovery
+timestamps/counts and aggregate keyed-guard counts, never source keys. A startup
+failure stops the flow fail-closed and is rethrown. Normal Spring Boot readiness
+cannot become `ACCEPTING_TRAFFIC` before the coordinator's `ApplicationRunner`
+returns.
+
+Semantic configuration preflight now requires
+`ioc.ingestion.concurrency=1`; a value that cannot change runtime behavior is no
+longer silently accepted. Parallel intake remains future work rather than a
+misleading knob.
+
+Operational regression evidence combines three levels:
+
+- coordinator latch tests hold recovery open and prove intake ordering/failure;
+- a restart test reuses durable terminal source state and proves no second run
+  starts;
+- daemon E2E atomically renames a completed `*.part` source into the watched
+  inbox and waits for poller-driven archive plus canonical provenance.
+
+The focused 21-project Maven run passed 50 selected tests across application,
+ingest adapter and bootstrap, including both file/JDBC daemon contexts.
+`make docs` passed with 448 checks and no errors. The first full-reactor run
+correctly rejected an enum accidentally placed in the port package; moving the
+transition result into the application package restored the interfaces-only
+port boundary. The final `make verify` then passed all 24 reactor projects in
+`01:30`, including both build-quality integrity gates and the two expected
+external SMB skips.
+
+The refreshed SpotBugs aggregate no longer contains `SB04-116`. Four findings
+were introduced by the hardening code: two `VO_VOLATILE_INCREMENT` reports are
+false positives because every counter mutation is serialized by same-key
+`ConcurrentHashMap.compute`; `UL_UNRELEASED_LOCK_EXCEPTION_PATH` is contradicted
+by the lock `finally` and the failure-cleanup regression; and the startup
+coordinator's `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` is a deliberate fail-closed
+rethrow after stopping intake and recording failed lifecycle state. They remain
+visible without suppression for `BUILD-SPOTBUGS-04/C3`. The resulting raw count
+is 121, a net change of three after removal of `SB04-116`.

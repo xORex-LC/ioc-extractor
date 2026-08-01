@@ -24,8 +24,8 @@ public final class SynchronousKeyedExecutionGuard implements KeyedExecutionGuard
         });
 
         state.lock.lock();
-        state.executing = true;
         try {
+            state.executing = true;
             return work.get();
         } finally {
             state.executing = false;

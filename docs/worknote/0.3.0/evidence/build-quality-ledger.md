@@ -42,7 +42,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 | `BUILD-SPOTBUGS-01` | Reproducible reactor-wide production-bytecode report, scope/cost inventory and raw findings | Report only; no mass remediation or merge gate | `R030-BASE` verified | `verified` |
 | `BUILD-CPD-02` | Repository-wide production-source report and evidence-based `minimumTokens` calibration | Diagnostic/report only | `BUILD-SPOTBUGS-01` closed, unless matrix explicitly reorders independent tooling | `verified` |
 | `BUILD-DEPS-03` | Semantic disposition of the captured dependency candidates and `Adopt / Adopt with exclusions / Defer` decision | Evaluation only | `BUILD-CPD-02` closed | `verified` |
-| `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow legacy baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `in-progress` (`C0..C2` completed; approved `ING-10`/`IR-03` predecessor scheduled before `C3`) |
+| `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow legacy baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `in-progress` (`C0..C2` and verified `ING-10`/`IR-03` predecessor completed; `C3` next) |
 | `BUILD-SPOTBUGS-05` | Accepted no-new-findings signal wired into canonical Maven `verify` | Blocking ratchet | `BUILD-SPOTBUGS-04` closed | `planned` |
 
 The queue is sequential for operator/agent clarity, not a technical claim that
@@ -287,16 +287,26 @@ copies, сохраняющих ADR-0016 collect-all validation. Все 16 except
 findings сохраняют исходный runtime failure после обязательного cleanup или
 accounting.
 
-`SB04-116` (`IR-03`) потребовал отдельного queue decision до `C3`: dead
-`TransactionTemplate` helper не является достаточным fix. Он подсветил, что
-`JdbcIngestionLedger` выполняет blind find→update terminal transitions при уже
-документированном в `ING-10` overlap startup recovery и poller. Рекомендовано
-поднять единый `ING-10/IR-03` hardening перед `C3`: lifecycle barrier,
-per-source-key serialization и expected-state/CAS ledger transitions с
-concurrent regression tests. Нового evidence потери canonical data нет, но
-возможны stale/overwritten file-ledger states и уже известные операционные
-симптомы. Перестановка утверждена 2026-08-01; production code и suppression
-baseline в `C2` не менялись.
+`SB04-116` (`IR-03`) получил утверждённый отдельный hardening до `C3`. Dead
+`TransactionTemplate` helper удалён, а не подключён как ложное лечение.
+`ING-10` теперь закрывает исходную систему причин: recovery-before-intake,
+единый per-source-key guard, fresh-state re-read и expected-state/CAS terminal
+transitions в file/JDBC adapters. Общий concurrent TCK допускает ровно одного
+победителя `archive`/`fail`; coordinator, restart и watched-inbox regressions
+закрепляют lifecycle. Suppression baseline при этом не менялся.
+
+`ING-10/I4` verification прошёл полный 24-project reactor и оба report-integrity
+gate. `SB04-116` исчез из отчёта. Четыре новых instance появились в изменённом
+коде: `UL_UNRELEASED_LOCK_EXCEPTION_PATH` и два
+`VO_VOLATILE_INCREMENT` в synchronous keyed guard, а также
+`THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` в startup coordinator. Focused
+concurrency regressions и ручная проверка exception paths классифицировали их
+как false positives: lock освобождается в `finally`, mutations сериализуются
+same-key `ConcurrentHashMap.compute`, а coordinator обязан повторно бросить
+startup failure после fail-closed cleanup. Они остаются видимыми без suppression
+до current-report reconciliation в `C3`. Aggregate изменился с 118 до 121 raw
+findings (минус resolved `SB04-116`, плюс четыре проверенных instances),
+`errors=0`, `missingClasses=0`.
 
 При adoption отдельно фиксируются accepted rules/severities, baseline format,
 new-code ratchet, узкие suppressions и их review conditions.
