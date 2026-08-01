@@ -42,7 +42,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 | `BUILD-SPOTBUGS-01` | Reproducible reactor-wide production-bytecode report, scope/cost inventory and raw findings | Report only; no mass remediation or merge gate | `R030-BASE` verified | `verified` |
 | `BUILD-CPD-02` | Repository-wide production-source report and evidence-based `minimumTokens` calibration | Diagnostic/report only | `BUILD-SPOTBUGS-01` closed, unless matrix explicitly reorders independent tooling | `verified` |
 | `BUILD-DEPS-03` | Semantic disposition of the captured dependency candidates and `Adopt / Adopt with exclusions / Defer` decision | Evaluation only | `BUILD-CPD-02` closed | `verified` |
-| `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow legacy baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `in-progress` (`C0..C1` completed; C1 SQL trust boundaries hardened; `C2` next) |
+| `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow legacy baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `in-progress` (`C0..C2` completed; approved `ING-10`/`IR-03` predecessor scheduled before `C3`) |
 | `BUILD-SPOTBUGS-05` | Accepted no-new-findings signal wired into canonical Maven `verify` | Blocking ratchet | `BUILD-SPOTBUGS-04` closed | `planned` |
 
 The queue is sequential for operator/agent clarity, not a technical claim that
@@ -251,13 +251,13 @@ positive.
 
 | Pattern/category | Scope | Count | Highest risk | False-positive class | Disposition/evidence |
 |---|---|---:|---|---|---|
-| `EI_EXPOSE_REP` + `EI_EXPOSE_REP2` | Spring-bound configuration records и adapter objects | 49 | P2 | Framework binding / intentional mutable representation | Semantic triage в `BUILD-SPOTBUGS-04`; broad suppression запрещён |
+| `EI_EXPOSE_REP` + `EI_EXPOSE_REP2` | Spring-bound configuration records и adapter objects | 49 | P2 | Framework binding / intentional mutable representation | `C2`: 44 real mutable aliases приняты как legacy debt; 5 immutable/lifecycle-owned exposures — false positives; broad suppression запрещён |
 | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | В основном `Path.getParent()` / `getFileName()` под repository path invariants | 23 | P2 | Nullable JDK API без знания validated-root invariants | `C1`: 20 false positives; root projection path подтверждает один fail-safe NPE, а узкая defensive/config-validation правка разрешит его и 2 companion findings (`IR-02`) |
-| `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | Public/application boundaries с documented unchecked failures | 16 | P3 | Deliberate exception contract | Review API/Javadoc; сейчас не блокировать |
+| `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | Public/application boundaries с documented unchecked failures | 16 | P3 | Deliberate exception contract | `C2`: все 16 — false positives; catch paths выполняют cleanup/accounting/observer work и сохраняют runtime type, cause и stack |
 | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` + `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | JDBC schema, migration и PRAGMA SQL | 12 | P1/R10 | Analyzer не различает controlled adapter metadata и untrusted input | `C1`: все 12 false positive — identifiers validated/quoted, values bound, PRAGMA/migrations code-owned; P1 injection не подтверждён |
 | `RV_RETURN_VALUE_IGNORED` + `SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR` | SLF4J fluent builder; `ArtifactFilter.NONE` flyweight | 3 | P2 | Mutating fluent return / named shared instance, не singleton contract | `C1`: два SLF4J calls нарушают `@CheckReturnValue` contract и образуют `IR-01`; singleton finding — false positive |
 | `IS2_INCONSISTENT_SYNC` | `CsvArtifactSliceWriter.active` | 1 | P2/R17 | SpotBugs не знает synchronous callback contract `SnapshotRowConsumer` | `C1`: false positive; `stage` удерживает monitor, production reader вызывает callbacks inline, asynchronous callback запрещён port contract |
-| Остальные 9 patterns (`DM`, `VA`, `REC`, `BC`, `UPM`, `SE`, `DLS`, `DB`, `CT`) | Несколько production modules | 14 | P2 | Mixed style, legacy serialization/finalizer model и локальные quality candidates | Поэкземплярный triage в `BUILD-SPOTBUGS-04` |
+| Остальные 9 patterns (`DM`, `VA`, `REC`, `BC`, `UPM`, `SE`, `DLS`, `DB`, `CT`) | Несколько production modules | 14 | P2 | Mixed style, legacy serialization/finalizer model и локальные quality candidates | `C2`: 11 accepted legacy, 2 false positives, 1 fix-now (`IR-03`); неиспользуемый JDBC helper вскрыл invalid single-writer assumption, связанную с `ING-10` |
 
 Сводка priority: P1 — 1, P2 — 81, P3 — 36. Сводка category:
 `MALICIOUS_CODE` — 49, `STYLE` — 29, `BAD_PRACTICE` — 20, `SECURITY` — 12,
@@ -277,6 +277,26 @@ artifact/column/type/PRAGMA inputs fail closed, неотмеченный dynamic
 `JdbcArtifactIdBaseline` path валидирует имя, а SQL-shaped runtime values
 сохраняются как данные. Review обязателен при external migrations, расширении
 SQL allowlists или появлении нового non-literal PRAGMA/query-shape call site.
+
+`BUILD-SPOTBUGS-04/C2` завершил семантический triage оставшихся 79 findings:
+55 `accepted-legacy`, 23 `false-positive` и 1 `fix-now`. Общий disposition
+всех 118 findings после `C1+C2`: 57 false positives, 55 accepted legacy, 3
+fix-now и 3 companions `resolved-by-related-fix`. Representation debt пока не
+имеет известных mutation call sites; его исправление требует null-preserving
+copies, сохраняющих ADR-0016 collect-all validation. Все 16 exception-flow
+findings сохраняют исходный runtime failure после обязательного cleanup или
+accounting.
+
+`SB04-116` (`IR-03`) потребовал отдельного queue decision до `C3`: dead
+`TransactionTemplate` helper не является достаточным fix. Он подсветил, что
+`JdbcIngestionLedger` выполняет blind find→update terminal transitions при уже
+документированном в `ING-10` overlap startup recovery и poller. Рекомендовано
+поднять единый `ING-10/IR-03` hardening перед `C3`: lifecycle barrier,
+per-source-key serialization и expected-state/CAS ledger transitions с
+concurrent regression tests. Нового evidence потери canonical data нет, но
+возможны stale/overwritten file-ledger states и уже известные операционные
+симптомы. Перестановка утверждена 2026-08-01; production code и suppression
+baseline в `C2` не менялись.
 
 При adoption отдельно фиксируются accepted rules/severities, baseline format,
 new-code ratchet, узкие suppressions и их review conditions.

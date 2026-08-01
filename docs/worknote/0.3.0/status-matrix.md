@@ -16,7 +16,7 @@ language: "ru"
 | Goal | State | Evidence | Next gate |
 |---|---|---|---|
 | `R030-BASE` | `verified` | [baseline](evidence/baseline.md), [compatibility ledger](evidence/compatibility-ledger.md) | Closed; re-baseline only by explicit scope/contract decision |
-| `R030-BUILD` | `in-progress` | [build-quality ledger](evidence/build-quality-ledger.md) | `BUILD-SPOTBUGS-04` finding triage and baseline |
+| `R030-BUILD` | `in-progress` | [build-quality ledger](evidence/build-quality-ledger.md) | Complete approved `ING-10`/`IR-03` hardening, then resume `BUILD-SPOTBUGS-04/C3` |
 | `R030-TEST` global controls | `planned` | [test-quality ledger](evidence/test-quality-ledger.md) | `TEST-LIFECYCLE-01` taxonomy and lifecycle separation |
 | `R030-SEC` | `planned` | — | Security gap analysis |
 | `R030-LIB` | `planned` | [shared-code inventory](evidence/shared-code-inventory.md) | `LIB-1` concurrency-library admission record |
@@ -57,12 +57,13 @@ language: "ru"
 | `BUILD-SPOTBUGS-01` | `R030-BUILD` | 19 production runtime JAR modules; fail-closed 24-project disposition registry keeps root/build-support POMs and reusable test-contract `ioc-application-tck` explicitly outside bytecode scope | Report-only tool introduction, per-module reports, reactor aggregate and 118-finding baseline; root `validate` checks scope before child builds, late report integrity checks outputs, and a synthetic-reactor matrix protects both contracts | AI agent | `verified` | [SpotBugs rollout](evidence/build-quality-ledger.md#spotbugs-rollout) |
 | `BUILD-CPD-02` | `R030-BUILD` | Fail-closed 24-project disposition registry; one repository-wide report over 499 unique Java source paths in 19 production modules; TCK, tests, generated/vendor sources and build-support explicitly excluded | PMD CPD `minimumTokens=75`; 11 raw matches mapped to 10 semantic R030-QUAL findings; shared root scope gate, automated negative matrix and late source/report reconciliation block omissions while findings remain report-only | AI agent | `verified` | [CPD findings and calibration](evidence/build-quality-ledger.md#pmd-cpd-findings) |
 | `BUILD-DEPS-03` | `R030-BUILD` | Maven bytecode dependency analysis over all 20 functional JAR modules, including reusable TCK; root and three build-only POMs explicitly observed as plugin-skipped | Plugin `3.11.0` pinned; 14 direct source/POM mismatches corrected; residual `56 / 34 / 12` findings semantically classified; blocking lifecycle adoption deferred and an opt-in report profile retained without suppressions | AI agent | `verified` | [Dependency-analysis disposition](evidence/build-quality-ledger.md#maven-dependency-analysis-findings) |
-| `BUILD-SPOTBUGS-04` | `R030-BUILD` | 118 raw findings in the established 19-module production-bytecode scope | `C0..C1` completed: clean reports reconciled and `SB04-001..039` triaged as 34 false positives, 2 fix-now groups plus 3 companion findings; no reachable SQL-injection path under current production wiring, race or resource-handle leak confirmed; six SQL trust-boundary regression cases protect the conclusion; `C2` is next | AI agent | `in-progress` | [execution worknote](build-spotbugs-04-worknote.md) |
+| `BUILD-SPOTBUGS-04` | `R030-BUILD` | 118 raw findings in the established 19-module production-bytecode scope | `C0..C2` completed; all findings triaged as 57 false positives, 55 accepted legacy, 3 fix-now and 3 companions resolved by related fixes. `IR-03` links a dead JDBC transaction helper to the documented `ING-10` recovery/poller race and blind ledger transitions; approved `ING-10/IR-03` hardening runs before production/filter work in `C3` | AI agent | `in-progress` | [execution worknote](build-spotbugs-04-worknote.md) |
 
-## 4. Deferred и blocked
+## 4. Deferred, blocked и queue decisions
 
 | Work item/scope | Goal | State | Reason | Missing evidence/exit condition |
 |---|---|---|---|---|
+| `ING-10 / SB04-116` ingest lifecycle + JDBC ledger transitions | `R030-QUAL` | `scheduled` | `C2` нашёл dead transaction helper и недействительное single-writer предположение на уже документированном startup overlap; simple transaction wrapper не закрывает межветочную гонку и blind terminal-state overwrite | Queue reorder утверждён 2026-08-01: единый `ING-10/IR-03` hardening выполняется перед `BUILD-SPOTBUGS-04/C3`; exit требует lifecycle barrier, per-key serialization, CAS/expected-state semantics и concurrent regressions |
 | Full PMD ruleset beyond CPD | `R030-BUILD` | `deferred` | Unused-code, complexity, performance/object-creation and error-prone rules need their own signal/noise decision; they are not implied by CPD | Revisit after `BUILD-SPOTBUGS-04`, or earlier only after concrete risk/gap evidence and explicit matrix reorder |
 
 ## 5. Update rule
