@@ -42,7 +42,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 | `BUILD-SPOTBUGS-01` | Reproducible reactor-wide production-bytecode report, scope/cost inventory and raw findings | Report only; no mass remediation or merge gate | `R030-BASE` verified | `verified` |
 | `BUILD-CPD-02` | Repository-wide production-source report and evidence-based `minimumTokens` calibration | Diagnostic/report only | `BUILD-SPOTBUGS-01` closed, unless matrix explicitly reorders independent tooling | `verified` |
 | `BUILD-DEPS-03` | Semantic disposition of the captured dependency candidates and `Adopt / Adopt with exclusions / Defer` decision | Evaluation only | `BUILD-CPD-02` closed | `verified` |
-| `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow legacy baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `planned` |
+| `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow legacy baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `in-progress` (`C0..C1` completed; C1 SQL trust boundaries hardened; `C2` next) |
 | `BUILD-SPOTBUGS-05` | Accepted no-new-findings signal wired into canonical Maven `verify` | Blocking ratchet | `BUILD-SPOTBUGS-04` closed | `planned` |
 
 The queue is sequential for operator/agent clarity, not a technical claim that
@@ -252,21 +252,31 @@ positive.
 | Pattern/category | Scope | Count | Highest risk | False-positive class | Disposition/evidence |
 |---|---|---:|---|---|---|
 | `EI_EXPOSE_REP` + `EI_EXPOSE_REP2` | Spring-bound configuration records и adapter objects | 49 | P2 | Framework binding / intentional mutable representation | Semantic triage в `BUILD-SPOTBUGS-04`; broad suppression запрещён |
-| `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | В основном `Path.getParent()` / `getFileName()` под repository path invariants | 23 | P2 | Nullable JDK API без знания validated-root invariants | Проверить каждый edge case в `BUILD-SPOTBUGS-04` |
+| `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | В основном `Path.getParent()` / `getFileName()` под repository path invariants | 23 | P2 | Nullable JDK API без знания validated-root invariants | `C1`: 20 false positives; root projection path подтверждает один fail-safe NPE, а узкая defensive/config-validation правка разрешит его и 2 companion findings (`IR-02`) |
 | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | Public/application boundaries с documented unchecked failures | 16 | P3 | Deliberate exception contract | Review API/Javadoc; сейчас не блокировать |
-| `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` + `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | JDBC schema, migration и PRAGMA SQL | 12 | P1/R10 | Analyzer не различает controlled adapter metadata и untrusted input | P1 проверен: PRAGMA строится из `SqlitePragmaPolicy` constants; injection не подтверждён. Остальные — semantic triage |
-| `RV_RETURN_VALUE_IGNORED` + `SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR` | SLF4J fluent builder; `ArtifactFilter.NONE` flyweight | 3 | P2 | Mutating fluent return / named shared instance, не singleton contract | Initial false-positive candidates; подтвердить при triage |
-| `IS2_INCONSISTENT_SYNC` | `CsvArtifactSliceWriter.active` | 1 | P2/R17 | SpotBugs не знает synchronous callback contract `SnapshotRowConsumer` | Immediate race не подтверждён; contract и README требуют synchronous callbacks |
+| `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` + `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | JDBC schema, migration и PRAGMA SQL | 12 | P1/R10 | Analyzer не различает controlled adapter metadata и untrusted input | `C1`: все 12 false positive — identifiers validated/quoted, values bound, PRAGMA/migrations code-owned; P1 injection не подтверждён |
+| `RV_RETURN_VALUE_IGNORED` + `SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR` | SLF4J fluent builder; `ArtifactFilter.NONE` flyweight | 3 | P2 | Mutating fluent return / named shared instance, не singleton contract | `C1`: два SLF4J calls нарушают `@CheckReturnValue` contract и образуют `IR-01`; singleton finding — false positive |
+| `IS2_INCONSISTENT_SYNC` | `CsvArtifactSliceWriter.active` | 1 | P2/R17 | SpotBugs не знает synchronous callback contract `SnapshotRowConsumer` | `C1`: false positive; `stage` удерживает monitor, production reader вызывает callbacks inline, asynchronous callback запрещён port contract |
 | Остальные 9 patterns (`DM`, `VA`, `REC`, `BC`, `UPM`, `SE`, `DLS`, `DB`, `CT`) | Несколько production modules | 14 | P2 | Mixed style, legacy serialization/finalizer model и локальные quality candidates | Поэкземплярный triage в `BUILD-SPOTBUGS-04` |
 
 Сводка priority: P1 — 1, P2 — 81, P3 — 36. Сводка category:
 `MALICIOUS_CODE` — 49, `STYLE` — 29, `BAD_PRACTICE` — 20, `SECURITY` — 12,
 `I18N` — 3, `CORRECTNESS` — 3, `PERFORMANCE` — 1, `MT_CORRECTNESS` — 1.
 
-В первичном review не подтверждён критичный correctness/resource/concurrency
-risk, поэтому очередь status matrix не меняется. Findings не исправлялись,
-filter/suppression baseline не создавался; полная semantic disposition относится
-к `BUILD-SPOTBUGS-04`.
+`BUILD-SPOTBUGS-04/C1` присвоил disposition первым 39 findings: 34
+`false-positive`, 2 `fix-now` и 3 `resolved-by-related-fix`. Два узких change
+groups отложены до предусмотренного `C3`: `IR-01` должен потреблять returned
+SLF4J builder; `IR-02` должен отклонять projection path без leaf name и убрать
+повторные nullable calls. Текущий Logback provider маскирует `IR-01`, а `IR-02`
+fail-safe до записи и не затрагивает canonical DB; критичный security/resource/
+concurrency risk не подтверждён, поэтому очередь не меняется. Production code и
+filter/suppression baseline в `C1` не изменялись; подробное evidence находится
+во временном execution worknote. Последующий C1 hardening сузил security-вывод
+до current production wiring и закрепил его шестью regression cases: SQL-shaped
+artifact/column/type/PRAGMA inputs fail closed, неотмеченный dynamic
+`JdbcArtifactIdBaseline` path валидирует имя, а SQL-shaped runtime values
+сохраняются как данные. Review обязателен при external migrations, расширении
+SQL allowlists или появлении нового non-literal PRAGMA/query-shape call site.
 
 При adoption отдельно фиксируются accepted rules/severities, baseline format,
 new-code ratchet, узкие suppressions и их review conditions.

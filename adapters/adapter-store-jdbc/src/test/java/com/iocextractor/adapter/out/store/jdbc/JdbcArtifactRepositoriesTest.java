@@ -166,6 +166,42 @@ class JdbcArtifactRepositoriesTest {
         assertThat(baseline.maxId("address_blacklist")).isZero();
     }
 
+    @Test
+    void artifact_id_baseline_rejects_sql_shaped_artifact_name_before_query_generation() {
+        var schemas = List.of(schema("masks", "id", "mask"));
+        dataSource = dataSource("baseline-trust-boundary.db");
+        var baseline = new JdbcArtifactIdBaseline(dataSource, schemas);
+
+        assertThatThrownBy(() -> baseline.maxId("masks\"; DROP TABLE artifact_revision;--"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Invalid dataframe artifact name");
+    }
+
+    @Test
+    void repository_binds_sql_shaped_runtime_values_as_data() {
+        var schema = schema("masks", "id", "mask", "source");
+        var repository = canonicalRepository(List.of(schema), List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1)));
+        String mask = "example.com'); DROP TABLE artifact_revision;--";
+        String source = "source'); DROP TABLE masks;--";
+
+        var result = repository.write("masks", new CanonicalArtifact(
+                "masks",
+                List.of("id", "mask", "source"),
+                List.of(row("id", "1", "mask", mask, "source", source))));
+
+        assertThat(result).extracting("inserted", "revision").containsExactly(1, 1L);
+        assertThat(repository.load("masks").rows())
+                .singleElement()
+                .satisfies(row -> {
+                    assertThat(row.value("mask")).isEqualTo(mask);
+                    assertThat(row.value("source")).isEqualTo(source);
+                });
+        assertThat(new JdbcArtifactRevisionReader(dataSource).read(List.of("masks")))
+                .containsExactly(new ArtifactRevision("masks", 1, CLOCK.instant()));
+        assertThat(sourceRows("masks")).containsExactly("1:" + source + ":1");
+    }
+
     private JdbcCanonicalArtifactRepository canonicalRepository(List<DataframeArtifactSchema> schemas,
                                                                 List<ArtifactIdentityDefinition> identities) {
         dataSource = dataSource("artifacts-" + System.nanoTime() + ".db");

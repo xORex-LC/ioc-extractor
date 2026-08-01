@@ -45,4 +45,13 @@ class SqlitePragmaPolicyTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("unsafe-fast");
     }
+
+    @Test
+    void rejects_sql_shaped_preset_before_pragma_generation() {
+        String preset = "low-memory; PRAGMA writable_schema=ON";
+
+        assertThatThrownBy(() -> policy.effective(preset))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(preset);
+    }
 }

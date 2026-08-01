@@ -1,0 +1,448 @@
+---
+title: "BUILD-SPOTBUGS-04 — SpotBugs finding triage worknote"
+version: "0.3.0"
+goal_id: "R030-BUILD"
+work_item: "BUILD-SPOTBUGS-04"
+status: "Active"
+document_type: "Temporary execution worknote"
+source_of_truth: false
+language: "ru"
+---
+
+# BUILD-SPOTBUGS-04 — рабочий журнал triage и baseline
+
+## 1. Назначение и lifecycle
+
+Этот временный worknote сопровождает поэкземплярный triage SpotBugs findings,
+исправление подтверждённых immediate risks, формирование узкого legacy baseline
+и доказательство детерминированного повторного запуска.
+
+Документ не заменяет goal contract, status matrix или итоговый build-quality
+ledger:
+
+- обязательный контракт: [R030-BUILD](goals/R030-BUILD-build-quality.md);
+- текущее состояние: [status matrix](status-matrix.md);
+- принятые результаты и release evidence:
+  [build-quality ledger](evidence/build-quality-ledger.md).
+
+Пока work item выполняется, здесь фиксируются незавершённые проверки, рабочие
+гипотезы, чекпоинты и локальные решения. При закрытии `BUILD-SPOTBUGS-04`
+стабильные dispositions и evidence переносятся в ledger/status matrix, а этот
+файл получает статус `Closed` и остаётся журналом исполнения 0.3.0.
+
+## 2. Зафиксированная стартовая точка
+
+| Поле | Значение |
+|---|---|
+| Release / goal / work item | `0.3.0` / `R030-BUILD` / `BUILD-SPOTBUGS-04` |
+| Branch | `release-0.3.0` |
+| Start commit | `5dd0fd49fa375c00b94593e95a0954ee2d75dc7d` |
+| Maven revision | `0.3.0-SNAPSHOT` |
+| Repository state | clean, upstream synchronized |
+| Verification evidence | `make verify` passed; `verify.fresh=true` |
+| Reactor | 24 projects: root, 20 functional JARs, 3 build-only report POMs |
+| SpotBugs production scope | 19 runtime JAR modules; `ioc-application-tck` explicitly excluded |
+| Raw baseline | 118 findings across 628 production classes |
+| Report health | 19 module XML/HTML pairs plus aggregate; `errors=0`, `missingClasses=0` |
+| Suppression baseline | empty |
+
+Перед первым triage pass стартовые факты MUST быть повторно проверены через
+`make context` и clean SpotBugs reactor run. Значения выше являются snapshot, а
+не разрешением игнорировать drift.
+
+## 3. Scope и границы
+
+В scope:
+
+- нормализованный inventory всех 118 исходных findings;
+- поэкземплярная semantic disposition;
+- исправление подтверждённых immediate correctness/resource/concurrency risks;
+- узкий versioned baseline для оставшегося legacy signal;
+- единый baseline для module и aggregate reports;
+- deterministic clean rerun и итоговое evidence.
+
+Не в scope:
+
+- blocking `spotbugs:check` — это `BUILD-SPOTBUGS-05`;
+- test-bytecode analysis;
+- Find Security Bugs;
+- массовая rewrite ради нулевого raw count;
+- package/category-wide suppressions;
+- полный PMD ruleset;
+- изменение production behavior без подтверждённого finding и regression test.
+
+Analyzer error, missing class, пропущенный модуль или отсутствующий report не
+являются false positive и никогда не заносятся в suppression baseline.
+
+## 4. Правила работы
+
+1. Сначала evidence и disposition, затем code/filter change.
+2. Каждый raw finding получает стабильный рабочий ID `SB04-NNN`.
+3. Допустимые dispositions:
+   - `fix-now` — подтверждённый immediate risk;
+   - `false-positive` — analyzer limitation при доказанном runtime contract;
+   - `accepted-legacy` — реальный, но не immediate-risk долг с owner и exit;
+   - `resolved-by-related-fix` — finding устранён тем же узким исправлением.
+4. Для `false-positive` и `accepted-legacy` обязательны точный selector,
+   rationale, owner и review/exit condition.
+5. Критичный correctness/resource/concurrency finding не исправляется молча:
+   сначала фиксируются сценарий, последствия и предлагаемое изменение очереди.
+6. Raw `target/` reports и локальные extraction artifacts не коммитятся.
+7. Один широкий work item не означает один широкий commit. Независимые fixes,
+   baseline wiring и closure evidence не объединяются без явного решения.
+8. Parent Maven configuration и reactor aggregate используют один baseline;
+   per-module copies не создаются без доказанной необходимости.
+
+## 5. Чекпоинты исполнения
+
+| ID | Проход | Exit evidence | State |
+|---|---|---|---|
+| `C0` | Reproduce and inventory | Clean report совпадает по scope/count; 118 findings получили `SB04-NNN` | `completed` |
+| `C1` | Immediate-risk triage | SQL/security, correctness, concurrency, resource и nullable-path cases имеют disposition; SQL trust boundaries закреплены regression tests | `completed; hardened` |
+| `C2` | Remaining semantic triage | `EI_EXPOSE_REP*`, exception contracts и остальные patterns полностью разобраны | `not-started` |
+| `C3` | Fix and baseline | Immediate risks исправлены; оставшиеся findings покрыты узкими reviewed selectors | `not-started` |
+| `C4` | Deterministic rerun | Clean и повторный reactor runs дают одинаковый accepted signal и полный комплект reports | `not-started` |
+| `C5` | Closure | Ledger/status matrix обновлены; `BUILD-SPOTBUGS-04=verified`; `BUILD-SPOTBUGS-05` готов | `not-started` |
+
+Одновременно `in-progress` находится только один чекпоинт. Переход обновляется в
+этом файле вместе с краткой записью в журнале решений.
+
+## 6. Очерёдность triage
+
+| Порядок | Finding family | Raw count | Причина приоритета | State |
+|---:|---|---:|---|---|
+| 1 | SQL patterns | 12 | P1/security surface; подтвердить trusted metadata boundary | `completed` |
+| 2 | Correctness patterns | 3 | Потенциальное неправильное runtime behavior | `completed` |
+| 3 | `IS2_INCONSISTENT_SYNC` | 1 | Проверить concurrency contract | `completed` |
+| 4 | Resource/lifecycle candidates из mixed patterns | 0 | Immediate-risk contract имеет приоритет над category | `completed` |
+| 5 | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | 23 | Проверить каждый nullable `Path` edge case | `completed` |
+| 6 | `EI_EXPOSE_REP` + `EI_EXPOSE_REP2` | 49 | Отличить mutable leak от binding/ownership contract | `not-started` |
+| 7 | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | 16 | Проверить публичные exception contracts и Javadoc | `not-started` |
+| 8 | Остальные patterns | 14 | Mixed legacy/style/performance/serialization signal | `not-started` |
+
+Количество resource/lifecycle candidates уточняется в `C0`; findings не
+дублируются в итоговом total при переклассификации по риску.
+
+## 7. Triage register
+
+Регистр заполняется после нормализации aggregate XML. Одна строка соответствует
+одному исходному `BugInstance`; одинаковое итоговое решение MAY ссылаться на
+общую baseline entry только если selector остаётся узким.
+
+`C0` присвоил IDs детерминированной сортировкой: risk-oriented family order
+(SQL, correctness, concurrency, nullable path, representation exposure,
+exception contract, остальные), затем pattern, module, class/member, source
+location и fingerprint. Fingerprint хранится дословно как
+`instanceHash/instanceOccurrenceNum`: SpotBugs не дополняет ведущие нули, поэтому
+в текущем XML 106 hashes имеют длину 32, 11 — длину 31 и один — длину 30.
+
+Контрольная обратная сверка подтвердила 118 последовательных уникальных IDs и
+полное равенство множества 118 сохранённых fingerprints aggregate XML. Все
+dispositions намеренно остаются `pending`: `C0` не выполняет semantic triage.
+
+| ID | Module | Pattern | Class/member | Priority/category | Scenario/evidence | Disposition | Fix/baseline ref | State |
+|---|---|---|---|---|---|---|---|---|
+| `SB04-001` | `ioc-adapter-store-jdbc` | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` | `com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler#apply` | P3 / `SECURITY` | План недоступен извне `apply`; SQL создаётся только reconciler из regex-validated identifiers и allowlisted type. `ea7a806f5e37f11838a6bea1bf7172/0` | `false-positive` | `C1-SQL-A` | `triaged` |
+| `SB04-002` | `ioc-adapter-store-jdbc` | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` | `com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler#columns` | P3 / `SECURITY` | Имя таблицы проходит `requireSqlIdentifier` и заключается в double quotes перед `PRAGMA table_info`. `9f2432cdb91df89209e35871fee4337a/0` | `false-positive` | `C1-SQL-A` | `triaged` |
+| `SB04-003` | `ioc-adapter-store-jdbc` | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` | `com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository#load` | P3 / `SECURITY` | Artifact обязан присутствовать в validated schema map; table/column identifiers повторно валидируются и quote-ятся. `860e2d254168fa78d62286f2c40d2eba/0` | `false-positive` | `C1-SQL-B` | `triaged` |
+| `SB04-004` | `ioc-adapter-store-jdbc` | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` | `com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealthProbe#intPragma` | P3 / `SECURITY` | Private helper вызывается только с code literals `user_version` и `foreign_keys`. `7373b103801aad0c559799d4263633f7/0` | `false-positive` | `C1-SQL-C` | `triaged` |
+| `SB04-005` | `ioc-adapter-store-jdbc` | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` | `com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealthProbe#textPragma` | P3 / `SECURITY` | Private helper вызывается только с code literals `journal_mode` и `quick_check`. `1c1d2010e1ef56636e50813cb0d9088/0` | `false-positive` | `C1-SQL-C` | `triaged` |
+| `SB04-006` | `ioc-adapter-store-jdbc` | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` | `com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceFactory#initializePersistentPragmas` | P1 / `SECURITY` | Все concatenated values (`UTF-8`, `INCREMENTAL`, `WAL`) задаёт `SqlitePragmaPolicy`; operator выбирает лишь preset, не SQL token. `6a02f61300ba077316237782576f3771/0` | `false-positive` | `C1-SQL-D` | `triaged` |
+| `SB04-007` | `ioc-adapter-store-jdbc` | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` | `com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator#apply` | P3 / `SECURITY` | Один instance объединяет trusted migration body на строке 145 и `PRAGMA user_version=` с positive `int` на строке 147; production wiring загружает migrations только из packaged resources. `9946f8de9403808af3cd5b1070963635/0` | `false-positive` | `C1-SQL-E` | `triaged` |
+| `SB04-008` | `ioc-adapter-store-jdbc` | `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | `com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository#insertRow` | P2 / `SECURITY` | SQL shape строится из validated schema identifiers; все row values передаются через `?` bindings. `c1634a6606e4b8ffcd844dc5cadd39a/0` | `false-positive` | `C1-SQL-B` | `triaged` |
+| `SB04-009` | `ioc-adapter-store-jdbc` | `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | `com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository#rowId` | P3 / `SECURITY` | Artifact берётся из schema map и quote-ится после identifier validation; `rowKey` bind-ится. `a8ebdedecdc1b07861e6b1a9e6d51a39/0` | `false-positive` | `C1-SQL-B` | `triaged` |
+| `SB04-010` | `ioc-adapter-store-jdbc` | `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | `com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository#upsertSource` | P3 / `SECURITY` | Derived `_sources` table и все columns проходят identifier validation; provenance values bind-ятся. `850222ae253a20a5b62a7df56fb2cf03/0` | `false-positive` | `C1-SQL-B` | `triaged` |
+| `SB04-011` | `ioc-adapter-store-jdbc` | `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | `com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader#readCoverage` | P3 / `SECURITY` | `validatePlan` требует известный schema artifact; quoted table — единственная подстановка, artifact value bind-ится. `77d1f87f81c0fa25955364263c9f2245/0` | `false-positive` | `C1-SQL-F` | `triaged` |
+| `SB04-012` | `ioc-adapter-store-jdbc` | `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | `com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader#streamRows` | P2 / `SECURITY` | `validatePlan` сверяет artifact/columns с schema allowlist; identifiers quote-ятся, runtime row data в SQL не входит. `1f92ddc320c2bdead783e609b79d14e8/0` | `false-positive` | `C1-SQL-F` | `triaged` |
+| `SB04-013` | `ioc-platform-observability` | `RV_RETURN_VALUE_IGNORED` | `com.iocextractor.observability.logging.LogEvent#lambda$write$0` | P2 / `CORRECTNESS` | SLF4J помечает `addKeyValue` `@CheckReturnValue`; текущий код продолжает работу на исходном builder и может потерять field при compliant copy-returning implementation. `3b87e2f343693d5a58827f3c9a000a2a/0` | `fix-now` | `IR-01` | `triaged` |
+| `SB04-014` | `ioc-platform-observability` | `RV_RETURN_VALUE_IGNORED` | `com.iocextractor.observability.logging.LogEvent#write` | P2 / `CORRECTNESS` | Тот же общий SLF4J contract нарушен для `setCause`; следующий `log` вызывается на прежнем builder. `931c392de8cca10b285b4a6bcf27427d/0` | `resolved-by-related-fix` | `IR-01` | `triaged` |
+| `SB04-015` | `ioc-adapter-sink-csv` | `SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR` | `com.iocextractor.adapter.out.sink.csv.ArtifactFilter#<init>` | P2 / `CORRECTNESS` | `NONE` — immutable shared empty value, а не singleton lifecycle; public constructor обязателен для configured include/exclude filters. `22d5f5b6275533de4047b929a884dff6/0` | `false-positive` | `C1-COR-A` | `triaged` |
+| `SB04-016` | `ioc-adapter-sink-csv` | `IS2_INCONSISTENT_SYNC` | `com.iocextractor.adapter.out.sink.csv.CsvArtifactSliceWriter#active` | P2 / `MT_CORRECTNESS` | `stage` держит monitor на всём `reader.stream`; port требует synchronous same-call callback protocol, а production JDBC reader выполняет его inline. `ce3515cbe758ab88c71718a20476d8fc/0` | `false-positive` | `C1-CON-A` | `triaged` |
+| `SB04-017` | `ioc-adapter-ingest` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.in.ingest.FileIngestionLedger#lambda$findRecords$1` | P2 / `STYLE` | `path` — непосредственный child из `Files.list(ledgerDir)`, поэтому имеет leaf name; stream закрыт. `a17dc20f5b9aee6b634f9a229a5fcd5b/0` | `false-positive` | `C1-NP-A` | `triaged` |
+| `SB04-018` | `ioc-adapter-ingest` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle#fileName` | P2 / `STYLE` | Ternary уже обрабатывает `null`; повторный `getFileName()` на immutable `Path` детерминирован. `ed71e9161cf3ad0bebb1c31c07c0036f/0` | `false-positive` | `C1-NP-B` | `triaged` |
+| `SB04-019` | `ioc-adapter-ingest` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle#move` | P2 / `STYLE` | Target всегда `@NotBlank` configured lifecycle dir `resolve` safe leaf; parent существует в production wiring. `cc923aad27b2cc302d2874fa859096d3/0` | `false-positive` | `C1-NP-B` | `triaged` |
+| `SB04-020` | `ioc-adapter-ingest` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle#toArchivedSource` | P2 / `STYLE` | Метод получает только regular-file child из `Files.list(processingDir)`; leaf name существует. `7b3851a67750fc70dec5cf79ccc60545/0` | `false-positive` | `C1-NP-A` | `triaged` |
+| `SB04-021` | `ioc-adapter-sink-csv` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.sink.csv.CsvArtifactProjection#tempPath` | P2 / `STYLE` | Null parent заменяется на `Path.of(".")`, но одна defensive rewrite вместе с leaf validation устранит ambiguous repeated-call flow. `657c1fb03dfbbf8aa968077dccf71d96/0` | `resolved-by-related-fix` | `IR-02` | `triaged` |
+| `SB04-022` | `ioc-adapter-sink-csv` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.sink.csv.CsvArtifactProjection#tempPath` | P2 / `STYLE` | `@NotBlank` path всё ещё допускает filesystem root; у root нет file name, поэтому до temp creation возникает NPE. Запись не начинается и canonical DB не затрагивается. `7559636818a8b8e46aafecacd67f71da/0` | `fix-now` | `IR-02` | `triaged` |
+| `SB04-023` | `ioc-adapter-sink-csv` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.sink.csv.CsvArtifactProjection#write` | P2 / `STYLE` | Parent проверяется на null; сохранение результата в local устранит предупреждение в том же узком path-hardening change. `784f87e9a9a5fd39541145ab3a07b5ee/0` | `resolved-by-related-fix` | `IR-02` | `triaged` |
+| `SB04-024` | `ioc-adapter-sink-csv` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog#listCompleted` | P2 / `STYLE` | Invalid path — child из `Files.list(profileDir)`; leaf name существует. `451e8f82803afe99904b550ed37331cc/0` | `false-positive` | `C1-NP-A` | `triaged` |
+| `SB04-025` | `ioc-adapter-sink-csv` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog#listCompletedSliceNames` | P2 / `STYLE` | Все candidates — immediate children verified profile directory. `b51ce9279deb56aa6c1cb2e9037a8da0/0` | `false-positive` | `C1-NP-A` | `triaged` |
+| `SB04-026` | `ioc-adapter-sink-csv` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog#verify` | P2 / `STYLE` | Private verifier вызывается только для child path или `profileDir.resolve(safeSegment)`; leaf exists. `373835ddfb1193e6005b2007fdf4ff6/0` | `false-positive` | `C1-NP-A` | `triaged` |
+| `SB04-027` | `ioc-adapter-sink-csv` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.sink.csv.FileSystemSliceRetentionStore#listCompleted` | P2 / `STYLE` | Slice path — child из `Files.list(profileDir)` после physical-directory check. `2d668aa02540c8507a933a99a77fa7f6/0` | `false-positive` | `C1-NP-A` | `triaged` |
+| `SB04-028` | `ioc-adapter-sink-csv` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.sink.csv.SliceTreeVerifier#lambda$verifyExactMembers$0` | P2 / `STYLE` | Directory members поступают непосредственно из `Files.list(directory)`; stream закрыт. `1c0765bc84d2240b96685d4e7dd36ec8/0` | `false-positive` | `C1-NP-A` | `triaged` |
+| `SB04-029` | `ioc-adapter-source-tika` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.source.TikaSourceReader#extension` | P2 / `STYLE` | Unsupported-format branch достижим только после successful open и metadata name dereference; root/non-file path раньше попадает в `READ_FAILED`. `c96f6f461815248a9d4527a86c92dd12/0` | `false-positive` | `C1-NP-E` | `triaged` |
+| `SB04-030` | `ioc-adapter-source-tika` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.source.TikaSourceReader#readText` | P2 / `STYLE` | `Files.newInputStream` выполняется до metadata; Path без file name не является readable source и выходит через diagnostic catch. `4208ea1522d9ba84c0c34e92596df3b4/0` | `false-positive` | `C1-NP-E` | `triaged` |
+| `SB04-031` | `ioc-adapter-store-jdbc` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.store.jdbc.LegacyLedgerImporter#importAll` | P2 / `STYLE` | Import list содержит только children, материализованные из `Files.list(legacyDir)`. `8eb4f410da82c4a4b0cfcc4193ead8d1/0` | `false-positive` | `C1-NP-A` | `triaged` |
+| `SB04-032` | `ioc-adapter-store-jdbc` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.store.jdbc.LegacyLedgerImporter#lambda$legacyFiles$0` | P2 / `STYLE` | То же child-path invariant; list stream закрыт. `ffc8241a66a4a68d89a82e384dd0761a/0` | `false-positive` | `C1-NP-A` | `triaged` |
+| `SB04-033` | `ioc-adapter-transport-smb` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.transport.smb.SmbFileTransport#lambda$localFiles$10` | P2 / `STYLE` | Comparator получает regular-file children из `Files.list(localDirectory)`; leaf names существуют. `5e5bfca26b4d0a401aaf36091430e7c0/0` | `false-positive` | `C1-NP-A` | `triaged` |
+| `SB04-034` | `ioc-adapter-transport-smb` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.transport.smb.SmbFileTransport#lambda$localFiles$11` | P2 / `STYLE` | Та же child-path гарантия перед `safeLeaf`; stream закрыт. `9456a9c7e501bc30df6de8d94d6bc29c/0` | `false-positive` | `C1-NP-A` | `triaged` |
+| `SB04-035` | `ioc-adapter-transport-smb` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.transport.smb.SmbFileTransport#publish` | P2 / `STYLE` | Publish iterates the already materialized `localFiles` child list. `ab4dd7d9826bddec6a3960784b7ae9a1/0` | `false-positive` | `C1-NP-A` | `triaged` |
+| `SB04-036` | `ioc-adapter-transport-smb` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.transport.smb.SmbFileTransport#publish` | P2 / `STYLE` | Second dereference has the same verified child-path provenance. `ab4dd7d9826bddec6a3960784b7ae9a1/1` | `false-positive` | `C1-NP-A` | `triaged` |
+| `SB04-037` | `ioc-adapter-transport-smb` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.adapter.out.transport.smb.SmbFileTransport#verifyUploadedSizes` | P2 / `STYLE` | Size verification receives only entries returned by `localFiles`. `588e7a610a503a476d76ef12f69e2911/0` | `false-positive` | `C1-NP-A` | `triaged` |
+| `SB04-038` | `ioc-application` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.application.sync.RemoteFetchService#finalPathFor` | P2 / `STYLE` | Constructor makes inbox absolute; `leafName` enforces one nonblank safe segment, so resolved candidate is a direct child with parent=inbox. `b4a1a3c4744e27774c3872fe8e1ac3f7/0` | `false-positive` | `C1-NP-F` | `triaged` |
+| `SB04-039` | `ioc-application` | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `com.iocextractor.application.sync.RemoteFetchService#finalPathFor` | P2 / `STYLE` | Stable suffix preserves a safe leaf; the suffixed candidate is likewise a direct inbox child. `b4a1a3c4744e27774c3872fe8e1ac3f7/1` | `false-positive` | `C1-NP-F` | `triaged` |
+| `SB04-040` | `ioc-adapter-ingest` | `EI_EXPOSE_REP` | `com.iocextractor.adapter.in.ingest.IngestAdapterProperties$Patterns#exclude` | P2 / `MALICIOUS_CODE` | IngestAdapterProperties.java:25; `d7b323f87c0fe0cd9d2cbcd2804b919f/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-041` | `ioc-adapter-ingest` | `EI_EXPOSE_REP` | `com.iocextractor.adapter.in.ingest.IngestAdapterProperties$Patterns#include` | P2 / `MALICIOUS_CODE` | IngestAdapterProperties.java:25; `f3cce6cb4dfc6da92a161cdb3916c94a/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-042` | `ioc-adapter-sink-csv` | `EI_EXPOSE_REP` | `com.iocextractor.adapter.out.sink.csv.ColumnSpec#transform` | P2 / `MALICIOUS_CODE` | ColumnSpec.java:17; `2d16b6f136eda7e47a5e5c980b8f81b1/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-043` | `ioc-adapter-sink-csv` | `EI_EXPOSE_REP` | `com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper#header` | P2 / `MALICIOUS_CODE` | ConfigurableRowMapper.java:50; `7517b4775548db7bcd7d6dd8b38e66fe/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-044` | `ioc-adapter-sink-csv` | `EI_EXPOSE_REP` | `com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition#accepts` | P2 / `MALICIOUS_CODE` | CsvArtifactDefinition.java:19; `4a3413116ff21ad06360898deb8cc6ee/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-045` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.ExportPlanCatalog#plans` | P2 / `MALICIOUS_CODE` | ExportPlanCatalog.java:60; `d84b636c441d973b1edeaf94d00e4fb7/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-046` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties#patterns` | P2 / `MALICIOUS_CODE` | IocProperties.java:24; `e514ebe6ae8e6497319b778ed8a32c59/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-047` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$ArtifactIdentity#artifacts` | P2 / `MALICIOUS_CODE` | IocProperties.java:132; `321d59427789ab8d26d2e8c7d5cc9535/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-048` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$ArtifactIdentity$Artifact#keyColumns` | P2 / `MALICIOUS_CODE` | IocProperties.java:134; `21898152d6e6d95f5c7f99eaf4ce3c0d/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-049` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$Classify#rules` | P2 / `MALICIOUS_CODE` | IocProperties.java:86; `9b30fa71c0d8a8dddad035e4e509f075/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-050` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$Classify$Rule#when` | P2 / `MALICIOUS_CODE` | IocProperties.java:87; `4a52f37d7e1f686b57bba129534e0e63/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-051` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$Export#profiles` | P2 / `MALICIOUS_CODE` | IocProperties.java:143; `4803fec7397c4f66e5f6c11029ce35e/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-052` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$Export$Profile#artifacts` | P2 / `MALICIOUS_CODE` | IocProperties.java:157; `e54252e74bad4dd5fc6d8efdf60cf08b/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-053` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$Ingestion$Patterns#exclude` | P2 / `MALICIOUS_CODE` | IocProperties.java:293; `32750f92d56af54271412579aeaa13b/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-054` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$Ingestion$Patterns#include` | P2 / `MALICIOUS_CODE` | IocProperties.java:293; `c979f70e1e210a5e83ec74c753cd77aa/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-055` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$Maintenance$Retention#targets` | P2 / `MALICIOUS_CODE` | IocProperties.java:260; `4383028711e091ec3fa3830bcd139efc/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-056` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$Refang#rules` | P2 / `MALICIOUS_CODE` | IocProperties.java:81; `11a462629da63283350d0221a37f6592/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-057` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$Sink#artifacts` | P2 / `MALICIOUS_CODE` | IocProperties.java:97; `27f968e5458e541f71621c1e4ea4e628/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-058` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$Sink$Artifact#accepts` | P2 / `MALICIOUS_CODE` | IocProperties.java:103; `d427c73f23b7f225acef3a345a6e5c0a/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-059` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$Sink$Artifact#columns` | P2 / `MALICIOUS_CODE` | IocProperties.java:103; `17d6c50b951ca7086aa4740028b55003/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-060` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$Sink$Artifact#exclude` | P2 / `MALICIOUS_CODE` | IocProperties.java:103; `5d1273b759b27055d9e869e41a9b17b4/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-061` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$Sink$Artifact#include` | P2 / `MALICIOUS_CODE` | IocProperties.java:103; `b9bf50e4732ccab46011395c7b6bf22d/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-062` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$Sink$Artifact$Column#transform` | P2 / `MALICIOUS_CODE` | IocProperties.java:121; `4c232ba4bc3cebc68710c0ed9d38965d/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-063` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.IocProperties$Source#sectionMarkers` | P2 / `MALICIOUS_CODE` | IocProperties.java:78; `adc0bb370c48470cb26ddf361beac388/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-064` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.LazyServiceStorage#dataSource` | P2 / `MALICIOUS_CODE` | LazyServiceStorage.java:49; `78abcf5932d070b501ab72ebb6fa4894/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-065` | `ioc-app` | `EI_EXPOSE_REP` | `com.iocextractor.bootstrap.TransportRegistry$Binding#transport` | P2 / `MALICIOUS_CODE` | TransportRegistry.java:128; `e4130582c3b17b49103e206b650c2a70/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-066` | `ioc-application` | `EI_EXPOSE_REP` | `com.iocextractor.application.ingest.CanonicalArtifactsChanged#artifactNames` | P2 / `MALICIOUS_CODE` | CanonicalArtifactsChanged.java:12; `f047e7441979dcd1c0ac9cb9cf8402dc/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-067` | `ioc-adapter-ingest` | `EI_EXPOSE_REP2` | `com.iocextractor.adapter.in.ingest.IngestAdapterProperties$Patterns#<init>` | P2 / `MALICIOUS_CODE` | IngestAdapterProperties.java:25; `17412f59916541b9d5ca32f457b6a8cd/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-068` | `ioc-adapter-ingest` | `EI_EXPOSE_REP2` | `com.iocextractor.adapter.in.ingest.IngestAdapterProperties$Patterns#<init>` | P2 / `MALICIOUS_CODE` | IngestAdapterProperties.java:25; `88e2ccc27ed7e7f2f82d9ac814ffea3/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-069` | `ioc-adapter-sink-csv` | `EI_EXPOSE_REP2` | `com.iocextractor.adapter.out.sink.csv.ColumnSpec#<init>` | P2 / `MALICIOUS_CODE` | ColumnSpec.java:17; `2bf452c6c68175ca31a4d07c6999de09/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-070` | `ioc-adapter-sink-csv` | `EI_EXPOSE_REP2` | `com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition#<init>` | P2 / `MALICIOUS_CODE` | CsvArtifactDefinition.java:26; `2bd885fc321365e00b5fabc59e140fb0/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-071` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:43; `b6ea00cf7c6b9d964b88d6142d511e6/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-072` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$ArtifactIdentity#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:132; `279b2871263c8502cf91d7b8e2ec5132/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-073` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$ArtifactIdentity$Artifact#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:134; `c13f2d23621b7d3dd2b18988d1358150/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-074` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$Classify#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:86; `a5c71d9670bee8cbca61f047c3da5bc4/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-075` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$Classify$Rule#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:87; `c95ad42837f4e593501b3b1276bf021e/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-076` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$Export#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:143; `476e975b78f8152b0da50dfd6774f72f/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-077` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$Export$Profile#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:157; `bda497677a1a86320cf68cf82534ba9d/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-078` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$Ingestion$Patterns#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:293; `36f9394efd2d07bc84c0e9ea533003ea/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-079` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$Ingestion$Patterns#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:293; `ed34a5d726816821b78119a175de0913/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-080` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$Maintenance$Retention#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:260; `3de8b959c89295faac211c39b948445c/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-081` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$Refang#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:81; `3177dc591e440a55446721d5926e57fc/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-082` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$Sink#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:97; `b720c3dff4492ac9d359726495118b75/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-083` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$Sink$Artifact#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:103; `4d9396086518b83baab8fa6b39604287/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-084` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$Sink$Artifact#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:103; `d6ddc20d9e59bf25fa986b6ab8a9fd73/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-085` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$Sink$Artifact#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:103; `dc6e5c5a30c2034dc1fcfbe52f80033b/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-086` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$Sink$Artifact#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:103; `f7e956c34c1a1c2bbfeb41850e1d486/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-087` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$Sink$Artifact$Column#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:121; `4678fb3055ceebe0db3781e8b468f6b1/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-088` | `ioc-app` | `EI_EXPOSE_REP2` | `com.iocextractor.bootstrap.IocProperties$Source#<init>` | P2 / `MALICIOUS_CODE` | IocProperties.java:78; `9f860ec6e5c40a8722baca122d16f073/0`; rank 18 | `pending` | — | `inventoried` |
+| `SB04-089` | `ioc-adapter-cli-picocli` | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `com.iocextractor.adapter.in.cli.ExportCommand#call` | P3 / `BAD_PRACTICE` | ExportCommand.java:89; `3715419b138a600afca4c34bc44a6f39/0`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-090` | `ioc-adapter-cli-picocli` | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `com.iocextractor.adapter.in.cli.ExtractCommand#call` | P3 / `BAD_PRACTICE` | ExtractCommand.java:103; `81595ad9b11bb20d5c3e2e4d618ce772/0`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-091` | `ioc-adapter-transport-smb` | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `com.iocextractor.adapter.out.transport.smb.SmbFileTransport#publish` | P3 / `BAD_PRACTICE` | SmbFileTransport.java:168; `94ece55bd8105af5894ae60a0ce84620/0`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-092` | `ioc-app` | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `com.iocextractor.bootstrap.LazyServiceStorage#initialize` | P3 / `BAD_PRACTICE` | LazyServiceStorage.java:74; `11e546190d2ff6319722be2f26d54f11/0`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-093` | `ioc-app` | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `com.iocextractor.bootstrap.RemoteChangeFetchListener#fetch` | P3 / `BAD_PRACTICE` | RemoteChangeFetchListener.java:82; `140f08d5e49e74e14a6a25c2a81899a/0`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-094` | `ioc-app` | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `com.iocextractor.bootstrap.RemoteChangeWatchLifecycle#start` | P3 / `BAD_PRACTICE` | RemoteChangeWatchLifecycle.java:53; `469a442a692cb759cd32c619ab888ca0/0`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-095` | `ioc-app` | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `com.iocextractor.bootstrap.SliceCompletedPublishListener#publish` | P3 / `BAD_PRACTICE` | SliceCompletedPublishListener.java:77; `e42c3c0853dd29c53834f3c4cb10de8c/0`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-096` | `ioc-application` | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `com.iocextractor.application.ingest.IngestionService#processClaimed` | P3 / `BAD_PRACTICE` | IngestionService.java:281; `7a89ba4685786a19ea93a39df38a53f1/0`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-097` | `ioc-application` | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `com.iocextractor.application.ingest.IngestionService#recoverIncomplete` | P3 / `BAD_PRACTICE` | IngestionService.java:141; `1073f127fb3e9ae67c97ccba01a43fa/0`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-098` | `ioc-application` | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `com.iocextractor.application.ingest.IngestionService#recoverIncomplete` | P3 / `BAD_PRACTICE` | IngestionService.java:154; `1073f127fb3e9ae67c97ccba01a43fa/1`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-099` | `ioc-application` | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `com.iocextractor.application.sync.RemoteFetchService#fetchOne` | P3 / `BAD_PRACTICE` | RemoteFetchService.java:122; `5b4c8c3522a8c9b5fc449feff65e94e9/0`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-100` | `ioc-platform-etl` | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `com.iocextractor.platform.etl.PipelineRunner#emitSuppressionSummary` | P3 / `BAD_PRACTICE` | PipelineRunner.java:212; `55f447907b635a14f17b160bb4ee9e20/0`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-101` | `ioc-platform-etl` | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `com.iocextractor.platform.etl.PipelineRunner#executeInRunScope` | P3 / `BAD_PRACTICE` | PipelineRunner.java:148; `bffd062e9915fa3e76d30e8510c74f45/0`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-102` | `ioc-platform-etl` | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `com.iocextractor.platform.etl.PipelineRunner#executeInRunScope` | P3 / `BAD_PRACTICE` | PipelineRunner.java:153; `bffd062e9915fa3e76d30e8510c74f45/1`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-103` | `ioc-platform-etl` | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `com.iocextractor.platform.etl.PipelineRunner#executeInRunScope` | P3 / `BAD_PRACTICE` | PipelineRunner.java:162; `bffd062e9915fa3e76d30e8510c74f45/2`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-104` | `ioc-platform-etl` | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `com.iocextractor.platform.etl.PipelineRunner#runWithOutcome` | P3 / `BAD_PRACTICE` | PipelineRunner.java:118; `304748d9178334ff7558bfff33701d2d/0`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-105` | `ioc-adapter-transport-smb` | `BC_UNCONFIRMED_CAST_OF_RETURN_VALUE` | `com.iocextractor.adapter.out.transport.smb.SmbjChangeNotifySessionFactory#open` | P3 / `STYLE` | SmbjChangeNotifySessionFactory.java:59; `bf73ded51595f0753a7623e7e67a0d9d/0`; rank 20 | `pending` | — | `inventoried` |
+| `SB04-106` | `ioc-adapter-transport-smb` | `BC_UNCONFIRMED_CAST_OF_RETURN_VALUE` | `com.iocextractor.adapter.out.transport.smb.SmbjShareClientFactory#open` | P3 / `STYLE` | SmbjShareClientFactory.java:28; `5ecd53a230db10168007d19f7ab511b1/0`; rank 20 | `pending` | — | `inventoried` |
+| `SB04-107` | `ioc-platform-diagnostics` | `CT_CONSTRUCTOR_THROW` | `com.iocextractor.diagnostics.DiagnosticException#<init>` | P2 / `BAD_PRACTICE` | DiagnosticException.java:22; `c5d8d97ed68c1e802a05a8641c122513/0`; rank 16 | `pending` | — | `inventoried` |
+| `SB04-108` | `ioc-adapter-store-jdbc` | `DB_DUPLICATE_SWITCH_CLAUSES` | `com.iocextractor.adapter.out.store.jdbc.JdbcPublishLedger#requireTransition` | P3 / `STYLE` | JdbcPublishLedger.java:275; `fc72f0cd33f6875eefdc46492ca2ebdb/0`; rank 20 | `pending` | — | `inventoried` |
+| `SB04-109` | `ioc-adapter-sink-csv` | `DLS_DEAD_LOCAL_STORE_OF_NULL` | `com.iocextractor.adapter.out.sink.csv.CsvSliceMaterialization#beginArtifact` | P3 / `STYLE` | CsvSliceMaterialization.java:115; `9bb6d5a90d0adb82eee2487e06e36986/0`; rank 20 | `pending` | — | `inventoried` |
+| `SB04-110` | `ioc-app` | `DM_CONVERT_CASE` | `com.iocextractor.bootstrap.LoggingPipelineDecisionTracer#identity` | P3 / `I18N` | LoggingPipelineDecisionTracer.java:91; `efd060cca1593aff8e79b4d9d322cad5/0`; rank 20 | `pending` | — | `inventoried` |
+| `SB04-111` | `ioc-application` | `DM_CONVERT_CASE` | `com.iocextractor.application.ingest.SourceKey#<init>` | P3 / `I18N` | SourceKey.java:20; `5f8022e53204730ff75bf5cbf2483fcc/0`; rank 20 | `pending` | — | `inventoried` |
+| `SB04-112` | `ioc-application` | `DM_CONVERT_CASE` | `com.iocextractor.application.pipeline.stage.ExtractIndicatorsStage#lambda$trace$0` | P3 / `I18N` | ExtractIndicatorsStage.java:68; `13693251420f8991d7cb5b687d971fee/0`; rank 20 | `pending` | — | `inventoried` |
+| `SB04-113` | `ioc-adapter-cli-picocli` | `REC_CATCH_EXCEPTION` | `com.iocextractor.adapter.in.cli.HealthCommand#parse` | P3 / `STYLE` | HealthCommand.java:124; `1ad4dc55569667eed6a663165263ecc7/0`; rank 20 | `pending` | — | `inventoried` |
+| `SB04-114` | `ioc-adapter-cli-picocli` | `REC_CATCH_EXCEPTION` | `com.iocextractor.adapter.in.cli.HealthCommand#prettyOrRaw` | P3 / `STYLE` | HealthCommand.java:133; `ab571868a64e58fa53c90804901eefd8/0`; rank 20 | `pending` | — | `inventoried` |
+| `SB04-115` | `ioc-platform-diagnostics` | `SE_BAD_FIELD` | `com.iocextractor.diagnostics.DiagnosticException#diagnostic` | P3 / `BAD_PRACTICE` | DiagnosticException.java (synthetic); `83f71337c877cf0b7fea59b1b8525a89/0`; rank 19 | `pending` | — | `inventoried` |
+| `SB04-116` | `ioc-adapter-store-jdbc` | `UPM_UNCALLED_PRIVATE_METHOD` | `com.iocextractor.adapter.out.store.jdbc.JdbcIngestionLedger#inTransaction` | P3 / `PERFORMANCE` | JdbcIngestionLedger.java:172; `9a17a9287388b204002e5eaaca17d43c/0`; rank 20 | `pending` | — | `inventoried` |
+| `SB04-117` | `ioc-adapter-store-jdbc` | `VA_FORMAT_STRING_USES_NEWLINE` | `com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader#readCoverage` | P2 / `BAD_PRACTICE` | JdbcSnapshotSliceReader.java:163; `e5faaaaecb31abb88cbaaffef4e60c2a/0`; rank 20 | `pending` | — | `inventoried` |
+| `SB04-118` | `ioc-app` | `VA_FORMAT_STRING_USES_NEWLINE` | `com.iocextractor.bootstrap.IocConfigurationFailureAnalyzer#description` | P2 / `BAD_PRACTICE` | IocConfigurationFailureAnalyzer.java:47; `4546273d871867e68096f7b01f563efb/0`; rank 20 | `pending` | — | `inventoried` |
+
+### C1 SQL/security evidence
+
+SQL injection risk assessed separately for dynamic identifiers, SQL grammar
+tokens and runtime values. JDBC parameters cannot bind identifiers, so a
+nonconstant query is not itself safe or unsafe: the deciding evidence is the
+origin and validation of each interpolated fragment. Вывод ограничен текущим
+production wiring: для `SB04-001..012` не найден достижимый путь от внешнего
+или operator-controlled значения к SQL grammar без fail-closed validation.
+
+| Evidence ref | Finding IDs | Dynamic fragment provenance | Trust boundary / conclusion |
+|---|---|---|---|
+| `C1-SQL-A` | `SB04-001..002` | `DataframeArtifactSchema` and `DataframeColumn` created from typed sink config; names match `[A-Za-z][A-Za-z0-9_]*`, SQL type belongs to `TEXT/INTEGER/REAL/BLOB/NUMERIC`; reconciler generates the plan internally | Arbitrary SQL cannot reach private `apply`; introspection identifier is revalidated and quoted. Analyzer cannot model the generated-DDL contract; false positive |
+| `C1-SQL-B` | `SB04-003`, `SB04-008..010` | Repository first resolves caller artifact through immutable schema map; table/column names are validated again by `quote`; row key, ID, source and timestamps use bind parameters | Operator-controlled schema metadata may choose an allowed identifier, but cannot introduce SQL grammar. Runtime artifact values never become SQL text; false positive |
+| `C1-SQL-C` | `SB04-004..005` | Both PRAGMA helpers are private; four call sites pass only `user_version`, `foreign_keys`, `journal_mode`, `quick_check` literals | No external dataflow into PRAGMA name; false positive. A future parameterized/public call site requires renewed review |
+| `C1-SQL-D` | `SB04-006` | `initializePersistentPragmas` receives settings returned by adapter-owned `SqlitePragmaPolicy`: `encoding=UTF-8`, `autoVacuum=INCREMENTAL`, `journalMode=WAL` | The operator-provided tuning preset selects a closed enum/preset and cannot supply any concatenated token. The only P1 SQL finding is not exploitable under current wiring; false positive |
+| `C1-SQL-E` | `SB04-007` | SpotBugs groups two execute sites: a code-owned migration body loaded by `ServiceSchemaMigrations`/`DataframeFormatMigrations` from packaged resources, and `PRAGMA user_version=` plus a positive Java `int`; versions must be contiguous from 1 | Neither site accepts runtime/operator SQL text under production wiring. Migration SQL is a trusted deployment artifact, while the PRAGMA suffix has no string injection surface; false positive |
+| `C1-SQL-F` | `SB04-011..012` | Export plan artifact must exist in immutable schema map; requested columns must be a subset of declared schema columns and pass identifier validation | Only validated, quoted identifiers determine query shape; artifact value in the coverage predicate is bound. Export data cannot alter SQL grammar; false positive |
+
+#### C1 SQL/security regression contract
+
+Six focused cases pin the trust-boundary argument without changing production
+behavior:
+
+- `SqlTrustBoundaryTest` rejects SQL-shaped artifact name, column name and SQL
+  type before schema/query generation;
+- `SqlitePragmaPolicyTest` rejects a SQL-shaped tuning preset before PRAGMA
+  generation;
+- `JdbcArtifactRepositoriesTest` proves that `JdbcArtifactIdBaseline` rejects
+  an SQL-shaped artifact name and that SQL-shaped IOC/source values are bound,
+  stored verbatim and leave both artifact and revision tables operational.
+
+This disposition must be reviewed again if migration bodies become external,
+the identifier/type allowlists are widened, a PRAGMA helper gains a non-literal
+call site, or another query-shape builder bypasses the immutable schema map.
+
+Resource ownership was also checked on this surface: every flagged `Connection`,
+`Statement`/`PreparedStatement` and `ResultSet` is covered by
+try-with-resources. SQL triage found no resource/lifecycle candidate and no
+immediate security risk. The exact suppressions are deliberately deferred to
+`C3`; each selector must remain instance/class-method scoped and retain the
+evidence reference above.
+
+### C1 correctness evidence
+
+| Evidence ref | Finding IDs | Contract evidence | Conclusion |
+|---|---|---|---|
+| `IR-01` | `SB04-013..014` | Project resolves `slf4j-api:2.0.18`. Official [`LoggingEventBuilder` Javadoc](https://www.slf4j.org/apidocs/org/slf4j/spi/LoggingEventBuilder.html) marks both calls `@CheckReturnValue` and says the return is a builder, "usually this". `LogEvent` accepts the provider-neutral `Logger` interface but ignores this result before continuing on the original builder | Confirmed abstraction-contract defect. Current Logback behavior mutates the same builder and `LogEventTest` proves event fields are emitted, so no current data-loss reproduction exists; nevertheless a compliant copy-returning provider can lose structured fields and cause. One narrow chaining/assignment fix should resolve both findings before baseline |
+| `C1-COR-A` | `SB04-015` | `ArtifactFilter.none()` caches one immutable empty filter, while normal bootstrap construction uses the public two-list constructor for configured predicates | No singleton identity/lifecycle contract exists. Making the constructor private would break the intended API; false positive |
+
+`IR-01` needs a provider-contract regression test, not only the existing Logback
+integration test: a test builder that returns a successor instance must prove
+that all key-values and the cause reach the exact instance on which `log` is
+called. No production edit is made during `C1`.
+
+### C1 concurrency evidence
+
+| Evidence ref | Finding IDs | Ownership and happens-before evidence | Conclusion |
+|---|---|---|---|
+| `C1-CON-A` | `SB04-016` | The singleton writer serializes every `stage` call with its monitor and holds that monitor from `active` assignment through `SnapshotSliceReader.stream` and cleanup. Both `SnapshotRowConsumer` and `SnapshotSliceReader` explicitly require synchronous callbacks; `JdbcSnapshotSliceReader` invokes `begin/row/end` inline on the caller thread. Public callback methods access `active` only inside this locked stage protocol | No in-contract cross-thread access or visibility gap. An asynchronous/custom caller would already violate the port contract. Suppress only this field/method instance; review again if the callback contract or reader implementation becomes asynchronous |
+
+Other writer operations that can overlap with staging are synchronized on the
+same monitor. The `Files.walk` stream used by discard is closed explicitly. No
+resource leak or immediate concurrency risk was confirmed on this surface.
+
+### C1 nullable-path and resource evidence
+
+| Evidence ref | Finding IDs | Path provenance / edge case | Conclusion |
+|---|---|---|---|
+| `C1-NP-A` | `SB04-017`, `SB04-020`, `SB04-024..028`, `SB04-031..037` | Every dereferenced path is an immediate entry returned by `Files.list(verifiedDirectory)`; later methods receive the same materialized child list | A directory entry has a leaf name. SpotBugs does not carry this NIO stream invariant through lambdas/callers; false positives |
+| `C1-NP-B` | `SB04-018..019` | `fileName` already handles the nullable result and repeats the call on immutable `Path`. Move target is a safe leaf resolved under a nonblank configured processing/done/failed directory | Production target has a parent; no reachable null under validated daemon configuration. Revisit if lifecycle directories cease to be configured roots |
+| `IR-02` | `SB04-021..023` | Parent-null output such as `masks.csv` is supported by the `.` fallback. A filesystem-root output also satisfies current `@NotBlank` config validation, but `root.getFileName()` is null | Root is not a valid projection file. Current outcome is fail-safe but is an unhelpful runtime NPE. Add collect-all semantic validation plus local defensive extraction of parent/file name; one narrow change resolves all three findings without changing valid outputs |
+| `C1-NP-E` | `SB04-029..030` | Tika opens the source stream before dereferencing the resource name. A root/non-file path fails open and is mapped to `SOURCE.READ_FAILED`; `extension` is reached only after that dereference already succeeded and the parser reports unsupported format | The alleged null path cannot reach either dereference under the source-reader protocol; false positives |
+| `C1-NP-F` | `SB04-038..039` | Inbox is normalized to an absolute path; remote `leafName` rejects blank, dot and separator-bearing names. Normal and suffixed candidates are therefore direct inbox children | Both candidates necessarily have `parent == inbox`; false positives |
+
+Resource-handle review covered the flagged dataflows on all `C1` surfaces:
+JDBC connections/statements/result sets, `Files.list`/`Files.walk` streams, Tika
+input streams, CSV printers and fetch `FileChannel`s use try-with-resources.
+There are no raw resource-pattern findings and no `SB04-001..039` instance
+needs reclassification as a resource leak; the C1 raw-candidate count is
+therefore zero. This conclusion is not a repo-wide manual resource audit.
+
+## 8. Immediate-risk register
+
+| Finding IDs | Risk | Reproduction/contract evidence | Proposed change | Tests | Decision/state |
+|---|---|---|---|---|---|
+| `SB04-013..014` (`IR-01`) | Provider-neutral structured logging can drop key-values or cause when a compliant `LoggingEventBuilder` returns a successor instead of mutating itself | Official SLF4J API requires consuming the return; current Logback-backed tests prove only the same-instance implementation | Thread returned builder through `addKeyValue` and `setCause`, then call `log` on the final builder; no logging taxonomy or field values change | Existing Logback test plus copy-returning fake-builder regression for fields and cause | Proposed `fix-now`; documented before production change; implementation deferred to `C3` and requires explicit review |
+| `SB04-021..023` (`IR-02`) | A syntactically valid but semantically invalid projection root path fails later with NPE; repeated nullable calls also keep two false-positive companions in the report | `IocProperties.Sink.Artifact.path` is only `@NotBlank`; `CsvArtifactProjection.tempPath` dereferences `target.getFileName()` without a guard | Reject non-leaf projection paths through collect-all config validation; locally extract/validate file name and parent once before temp creation | Configuration validation/binding test for root path plus adapter tests for leaf-without-parent and nested output | Proposed `fix-now`; fail-safe availability/configuration defect, no canonical-data corruption; implementation deferred to `C3` and requires explicit review |
+
+Если immediate risk не подтверждён, register остаётся пустым, но `C1` содержит
+явное evidence, почему проверенные candidates безопасны в действующем contract.
+
+## 9. Baseline register
+
+| Baseline ID | Finding IDs | Exact selector | Kind | Rationale | Owner | Review/exit condition | State |
+|---|---|---|---|---|---|---|---|
+| — | — | — | — | — | — | — | — |
+
+`Kind` принимает `false-positive` или `accepted-legacy`. Broad package,
+category или pattern-only selector требует отдельного scope decision и по
+умолчанию запрещён.
+
+## 10. Run evidence
+
+| Run | Commit/tree | Command | Modules/reports | Raw/accepted findings | Errors/missing classes | Duration | Result |
+|---|---|---|---|---|---|---|---|
+| Start snapshot | `5dd0fd4`, clean | prior canonical `make verify` | 19 module pairs + aggregate | 118 / 118 | 0 / 0 | see ledger | passed |
+| `C0` clean baseline | `5dd0fd4`; только documentation worknote/ledger/matrix изменены | `make clean`, затем `make verify` | 24/24 reactor; 19 module pairs + aggregate | 118 / 118 | 0 / 0 | `02:01` Maven wall clock | passed |
+| `C1` current-provider contract check | `5dd0fd4`; documentation-only tree | `make test-one MODULE=platform/platform-observability TEST=LogEventTest` | 5-project focused reactor; 4 tests | N/A | N/A | `00:04` wall clock | passed |
+| `C1` canonical verification | `5dd0fd4`; documentation-only tree | `make verify` | 24/24 reactor; 19 module pairs + aggregate | 118 / 118 | 0 / 0 | `01:22` Maven wall clock | passed |
+| `C1` SQL trust-boundary hardening | `5dd0fd4`; test/docs-only C1 tree | `make test-module MODULE=adapters/adapter-store-jdbc` | 10-project focused reactor; adapter module 81 tests | N/A | N/A | `00:18` wall clock | passed |
+| `C1` hardening canonical verification | `5dd0fd4`; test/docs-only C1 tree | `make verify` | 24/24 reactor; 19 module pairs + aggregate | 118 / 118 | 0 / 0 | `01:30` Maven wall clock | passed |
+
+Финальный evidence включает минимум один clean reactor run и один немедленный
+повторный run после применения fixes/baseline.
+
+### C0 structural reconciliation
+
+- Aggregate XML: 118 `BugInstance`, 118 уникальных пар
+  `instanceHash + instanceOccurrenceNum`; duplicates отсутствуют.
+- Module XML: 19 ожидаемых reports, сумма 118 `BugInstance`.
+- Каждый aggregate instance найден ровно в одном module report; missing и
+  multi-mapped instances отсутствуют.
+- Outputs: 20 XML/HTML пар — 19 module-local и одна aggregate.
+- Aggregate summary: 628 production classes, `errors=0`, `missingClasses=0`.
+- Priority: P1 — 1, P2 — 81, P3 — 36.
+- Category: `BAD_PRACTICE` — 20, `CORRECTNESS` — 3, `I18N` — 3,
+  `MALICIOUS_CODE` — 49, `MT_CORRECTNESS` — 1, `PERFORMANCE` — 1,
+  `SECURITY` — 12, `STYLE` — 29.
+
+Module counts:
+
+| Module | Findings |
+|---|---:|
+| `platform-errors` | 0 |
+| `platform-diagnostics` | 2 |
+| `platform-etl` | 5 |
+| `platform-events` | 0 |
+| `platform-concurrency` | 0 |
+| `platform-observability` | 2 |
+| `platform-diagnostics-logging` | 0 |
+| `ioc-domain` | 0 |
+| `ioc-application` | 9 |
+| `adapter-regex-re2j` | 0 |
+| `adapter-psl` | 0 |
+| `adapter-source-tika` | 2 |
+| `adapter-sink-csv` | 16 |
+| `adapter-manifest-json-jackson` | 0 |
+| `adapter-store-jdbc` | 17 |
+| `adapter-transport-smb` | 8 |
+| `adapter-ingest` | 8 |
+| `adapter-cli-picocli` | 4 |
+| `ioc-app` | 45 |
+| **Total** | **118** |
+
+## 11. Журнал решений
+
+| Date | ID | Checkpoint | Decision/evidence | Follow-up |
+|---|---|---|---|---|
+| 2026-08-01 | `D-001` | preparation | Создан отдельный execution worknote; итоговая authority остаётся у goal contract, ledger и status matrix | Начать `C0` с live context и clean report |
+| 2026-08-01 | `D-002` | `C0` | Live context подтвердил branch `release-0.3.0`, HEAD `5dd0fd4` и синхронизацию с upstream. `git.dirty=true` вызван только новым worknote; поэтому прежнее `make verify` на том же HEAD имеет `verify.fresh=false` и будет обновлено canonical clean run | Воспроизвести raw reports после очистки всех reactor `target/` |
+| 2026-08-01 | `D-003` | `C0` | Canonical build после `make clean` прошёл 24/24 за `02:01`; SpotBugs integrity gate подтвердил полный report set. Aggregate и module XML согласованы 118:118 без duplicate, missing или multi-mapped instances | Назначить `SB04-NNN` детерминированной сортировкой и зафиксировать fingerprint/source location |
+| 2026-08-01 | `D-004` | `C0` | Созданы 118 строк `SB04-001..118`; обратная сверка подтвердила contiguous IDs и точное равенство inventory fingerprints aggregate XML. Семантические dispositions не присваивались | `C0=completed`; следующий отдельный проход — `C1` immediate-risk triage |
+| 2026-08-01 | `D-005` | `C1` | Live context перед triage: branch `release-0.3.0`, HEAD `5dd0fd4`, upstream synchronized, `verify.fresh=true`; dirty tree содержит только незакоммиченные документы текущего work item | Проследить происхождение всех динамических SQL-фрагментов и зафиксировать поэкземплярное evidence до disposition |
+| 2026-08-01 | `D-006` | `C1` | `SB04-001..039` полностью triaged: 34 false positives, 2 `fix-now`, 3 companions `resolved-by-related-fix`. `IR-01` — ignored returned SLF4J builder; `IR-02` — projection root path runtime NPE. SQL injection, in-contract race и raw resource leak не подтверждены; production code/filter не менялись | `C1=completed`; сохранить оба fix groups до `C3`, следующий semantic pass — `C2` |
+| 2026-08-01 | `D-007` | `C1` | Документационный gate: 445 OK, 0 errors; focused `LogEventTest`: 4/4; финальный `make verify`: 24/24 reactor за `01:22`, verifier contracts и report-integrity gates прошли, aggregate содержит 118 findings без analyzer errors и missing classes | C1 evidence complete; ждать явного старта `C2` |
+| 2026-08-01 | `D-008` | `C1 hardening` | Широкий вывод сужен до current production wiring; `SB04-007` reconciled с обеими XML locations. Добавлены шесть regression cases для identifier/type/PRAGMA allowlists, unreported dynamic ID-baseline path и bound runtime values; focused 10-project run прошёл, adapter module 81/81 | Выполнить docs gate и canonical `make verify`, затем переходить к `C2` |
+| 2026-08-01 | `D-009` | `C1 hardening` | `make docs`: 445 OK, 0 errors; canonical `make verify`: 24/24 reactor за `01:30`, build-quality verifier и SpotBugs/CPD report-integrity gates прошли; aggregate/module findings согласованы 118:118 без analyzer errors или missing classes | Hardening evidence complete; повторить canonical gate после финальной записи evidence и оставить `C2` следующим checkpoint |
+
+## 12. Рабочий change journal
+
+| Change set | Scope | Files/tests | Commit | State |
+|---|---|---|---|---|
+| `C0-C1 evidence` | Reproducible inventory, immediate-risk triage и SQL trust-boundary hardening | worknote, build-quality ledger, status matrix; six JDBC security regression cases, focused module runs and canonical verification | — | uncommitted |
+
+## 13. Completion checklist
+
+- [ ] Все 118 исходных findings имеют стабильный ID и disposition.
+- [ ] Immediate correctness/resource/concurrency risks исправлены или явно не подтверждены evidence.
+- [ ] Каждый оставленный finding имеет точный selector, rationale, owner и exit condition.
+- [ ] Module executions и aggregate используют один reviewed baseline.
+- [ ] Analyzer/report-integrity failures остаются fail-closed.
+- [ ] Clean и повторный reactor runs детерминированы.
+- [ ] Build-quality ledger содержит итоговую сводку и suppression register.
+- [ ] Status matrix переводит `BUILD-SPOTBUGS-04` в `verified`.
+- [ ] Следующий work item `BUILD-SPOTBUGS-05` имеет достаточный entry evidence.
