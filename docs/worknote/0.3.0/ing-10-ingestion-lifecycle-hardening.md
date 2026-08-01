@@ -60,8 +60,8 @@ ownership would require a lease/fencing design and is not implied by this work.
 | `I0` | Failure model and executable characterization | A deterministic latch-based test proves that the current runner and poller paths overlap; no timing sleeps | `completed` |
 | `I1` | Startup lifecycle barrier | Explicit coordinator recovers both ledgers before starting the non-auto-start flow; failure leaves it stopped | `completed` |
 | `I2` | Per-key synchronous execution | Same keys serialize, different keys can progress, and recovery re-reads state after admission | `completed` |
-| `I3` | Source-ledger state machine | File and JDBC adapters implement expected-state/CAS transitions and share concurrent TCK coverage | `in-progress` |
-| `I4` | Operational closure | Health, configuration guard, restart/E2E evidence, durable docs and full reactor verification | `not-started` |
+| `I3` | Source-ledger state machine | File and JDBC adapters implement expected-state/CAS transitions and share concurrent TCK coverage | `completed` |
+| `I4` | Operational closure | Health, configuration guard, restart/E2E evidence, durable docs and full reactor verification | `in-progress` |
 
 Only one checkpoint is implementation-active at a time. Each checkpoint is
 committed independently.
@@ -111,7 +111,33 @@ Deterministic tests cover same-key waiting, concurrent different-key execution,
 failure cleanup, two concurrent ingestion calls producing only one extraction,
 and a stale `CLAIMED` scan whose current state is already terminal.
 
-## 7. Scope boundaries
+## 7. I3 evidence
+
+The `IngestionLedger` port now reports `APPLIED`, `ALREADY_APPLIED`, `CONFLICT`
+or `MISSING` for every state change. Its state machine is explicit:
+
+```text
+ABSENT ──claim──> CLAIMED ──archive──> SOURCE_ARCHIVED
+   │                  └────fail──────> FAILED
+   └────────────────pre-claim fail───> FAILED
+```
+
+Terminal states are monotonic. Repeating the same target is idempotent and does
+not rewrite its context; requesting the opposite target reports a conflict.
+
+`JdbcIngestionLedger` implements claim with `INSERT ... DO NOTHING`, archive
+with `UPDATE ... WHERE status=CLAIMED`, and failure with one conditional SQLite
+upsert. The unused transaction helper and its invalid single-writer rationale
+were removed. `FileIngestionLedger` performs read/decide/atomic-replace inside a
+per-key synchronous critical section; this guarantee is instance-local, matching
+the supported single-daemon deployment.
+
+The reusable adapter TCK now runs a latch-released archive-versus-fail race and
+requires exactly one `APPLIED` result and one `CONFLICT`. The same contract runs
+against file and JDBC adapters, alongside missing, idempotent and opposite-state
+cases. Legacy import accepts only a completed target transition.
+
+## 8. Scope boundaries
 
 - `ING-11` retry versus run-ledger resume remains separate.
 - `ING-13` full pre-claim file-fate handling remains separate.

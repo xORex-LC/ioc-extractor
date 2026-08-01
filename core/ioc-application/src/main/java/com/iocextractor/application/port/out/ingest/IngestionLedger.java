@@ -15,11 +15,14 @@ public interface IngestionLedger {
 
     Optional<IngestionRecord> find(SourceKey key);
 
-    void markClaimed(SourceUnit unit);
+    /** Creates the initial claim without overwriting an existing state. */
+    IngestionLedgerTransition markClaimed(SourceUnit unit);
 
-    void markSourceArchived(SourceKey key, Path archivedPath);
+    /** Transitions {@code CLAIMED -> SOURCE_ARCHIVED}. */
+    IngestionLedgerTransition markSourceArchived(SourceKey key, Path archivedPath);
 
-    void markFailed(SourceKey key, String reason);
+    /** Transitions {@code CLAIMED -> FAILED}, or records a pre-claim failure. */
+    IngestionLedgerTransition markFailed(SourceKey key, String reason);
 
     List<IngestionRecord> findIncomplete();
 }

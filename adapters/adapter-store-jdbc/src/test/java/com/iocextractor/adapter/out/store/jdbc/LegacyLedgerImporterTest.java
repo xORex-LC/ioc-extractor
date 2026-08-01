@@ -87,11 +87,10 @@ class LegacyLedgerImporterTest {
     }
 
     @Test
-    void skips_completed_import_with_same_checksum() throws Exception {
+    void skips_completed_import_with_same_checksum_without_replaying_state() throws Exception {
         writeLegacy("source-c.properties", "source-c", IngestionStatus.SOURCE_ARCHIVED,
                 List.of("partitions/source-c.csv"), "done/source-c.html", null);
         importer().importAll();
-        ledger.markFailed(new SourceKey("source-c"), "manual mutation after import");
 
         var summary = importer().importAll();
 
@@ -99,7 +98,7 @@ class LegacyLedgerImporterTest {
         assertThat(summary.imported()).isZero();
         assertThat(summary.skipped()).isEqualTo(1);
         assertThat(ledger.find(new SourceKey("source-c")).orElseThrow().status())
-                .isEqualTo(IngestionStatus.FAILED);
+                .isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
         assertThat(diagnostics.diagnostics())
                 .extracting(diagnostic -> diagnostic.code().id())
                 .contains(StorageDiagnosticCodes.IMPORT_IDEMPOTENT_REPLAY.id());

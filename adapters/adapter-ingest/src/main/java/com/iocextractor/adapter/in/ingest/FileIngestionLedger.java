@@ -5,7 +5,10 @@ import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.SourceUnit;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
+import com.iocextractor.application.port.out.ingest.IngestionLedgerTransition;
 import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard;
+import com.iocextractor.platform.concurrent.WorkKey;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -22,13 +25,15 @@ import java.util.Properties;
 
 /**
  * File-backed ingestion ledger. Each source key is represented by one
- * properties file, which keeps updates simple and atomic enough for the
- * single-worker invariant of stage 10.
+ * properties file. Expected-state transitions are serialized per key within
+ * this adapter instance and each resulting file replacement is atomic.
+ * Cross-process ownership is outside the supported deployment contract.
  */
 public final class FileIngestionLedger implements IngestionLedger {
 
     private final Path ledgerDir;
     private final Clock clock;
+    private final SynchronousKeyedExecutionGuard transitions = new SynchronousKeyedExecutionGuard();
 
     public FileIngestionLedger(Path ledgerDir, Clock clock) {
         this.ledgerDir = ledgerDir;
@@ -45,28 +50,61 @@ public final class FileIngestionLedger implements IngestionLedger {
     }
 
     @Override
-    public void markClaimed(SourceUnit unit) {
-        write(new IngestionRecord(unit.key(), IngestionStatus.CLAIMED,
-                unit.originalPath(), unit.processingPath(), null,
-                unit.detectedAt(), Instant.now(clock), null));
+    public IngestionLedgerTransition markClaimed(SourceUnit unit) {
+        return transitions.execute(workKey(unit.key()), () -> {
+            Optional<IngestionRecord> current = find(unit.key());
+            if (current.isPresent()) {
+                return current.orElseThrow().status() == IngestionStatus.CLAIMED
+                        ? IngestionLedgerTransition.ALREADY_APPLIED
+                        : IngestionLedgerTransition.CONFLICT;
+            }
+            write(new IngestionRecord(unit.key(), IngestionStatus.CLAIMED,
+                    unit.originalPath(), unit.processingPath(), null,
+                    unit.detectedAt(), Instant.now(clock), null));
+            return IngestionLedgerTransition.APPLIED;
+        });
     }
 
     @Override
-    public void markSourceArchived(SourceKey key, Path archivedPath) {
-        IngestionRecord record = require(key);
-        write(new IngestionRecord(key, IngestionStatus.SOURCE_ARCHIVED,
-                record.originalPath(), record.processingPath(), archivedPath,
-                record.detectedAt(), Instant.now(clock), record.reason()));
+    public IngestionLedgerTransition markSourceArchived(SourceKey key, Path archivedPath) {
+        return transitions.execute(workKey(key), () -> {
+            Optional<IngestionRecord> current = find(key);
+            if (current.isEmpty()) {
+                return IngestionLedgerTransition.MISSING;
+            }
+            IngestionRecord record = current.orElseThrow();
+            if (record.status() == IngestionStatus.SOURCE_ARCHIVED) {
+                return IngestionLedgerTransition.ALREADY_APPLIED;
+            }
+            if (record.status() != IngestionStatus.CLAIMED) {
+                return IngestionLedgerTransition.CONFLICT;
+            }
+            write(new IngestionRecord(key, IngestionStatus.SOURCE_ARCHIVED,
+                    record.originalPath(), record.processingPath(), archivedPath,
+                    record.detectedAt(), Instant.now(clock), record.reason()));
+            return IngestionLedgerTransition.APPLIED;
+        });
     }
 
     @Override
-    public void markFailed(SourceKey key, String reason) {
-        IngestionRecord record = find(key).orElse(new IngestionRecord(key, IngestionStatus.FAILED,
-                Path.of("unknown"), Path.of("unknown"), null,
-                Instant.now(clock), Instant.now(clock), reason));
-        write(new IngestionRecord(key, IngestionStatus.FAILED,
-                record.originalPath(), record.processingPath(), record.archivedPath(),
-                record.detectedAt(), Instant.now(clock), reason));
+    public IngestionLedgerTransition markFailed(SourceKey key, String reason) {
+        return transitions.execute(workKey(key), () -> {
+            Optional<IngestionRecord> current = find(key);
+            if (current.isPresent() && current.orElseThrow().status() == IngestionStatus.FAILED) {
+                return IngestionLedgerTransition.ALREADY_APPLIED;
+            }
+            if (current.isPresent()
+                    && current.orElseThrow().status() == IngestionStatus.SOURCE_ARCHIVED) {
+                return IngestionLedgerTransition.CONFLICT;
+            }
+            Instant now = Instant.now(clock);
+            IngestionRecord record = current.orElse(new IngestionRecord(key, IngestionStatus.FAILED,
+                    Path.of("unknown"), Path.of("unknown"), null, now, now, reason));
+            write(new IngestionRecord(key, IngestionStatus.FAILED,
+                    record.originalPath(), record.processingPath(), record.archivedPath(),
+                    record.detectedAt(), now, reason));
+            return IngestionLedgerTransition.APPLIED;
+        });
     }
 
     @Override
@@ -88,10 +126,6 @@ public final class FileIngestionLedger implements IngestionLedger {
         } catch (IOException e) {
             throw new IocExtractorException("Failed to read ingestion ledger: " + ledgerDir, e);
         }
-    }
-
-    private IngestionRecord require(SourceKey key) {
-        return find(key).orElseThrow(() -> new IocExtractorException("Missing ingestion ledger record: " + key.value()));
     }
 
     private IngestionRecord read(Path path) {
@@ -143,6 +177,10 @@ public final class FileIngestionLedger implements IngestionLedger {
 
     private Path pathFor(SourceKey key) {
         return ledgerDir.resolve(key.value() + ".properties");
+    }
+
+    private WorkKey workKey(SourceKey key) {
+        return WorkKey.of(key.value());
     }
 
     private Path optionalPath(String value) {

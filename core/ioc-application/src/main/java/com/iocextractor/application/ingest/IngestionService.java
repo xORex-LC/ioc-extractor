@@ -14,6 +14,7 @@ import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
 import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
+import com.iocextractor.application.port.out.ingest.IngestionLedgerTransition;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.port.out.ingest.SourcePreparerFactory;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
@@ -135,7 +136,10 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
 
         SourceUnit unit = claim(command);
         try {
-            ledger.markClaimed(unit);
+            IngestionLedgerTransition transition = ledger.markClaimed(unit);
+            if (transition != IngestionLedgerTransition.APPLIED) {
+                throw transitionFailure(command.key(), "mark-claimed", transition);
+            }
         } catch (RuntimeException e) {
             var failure = ledgerFailure(command.key(), "mark-claimed", e);
             try {
@@ -144,7 +148,8 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                 failure.addSuppressed(cleanupFailure);
             }
             try {
-                ledger.markFailed(command.key(), e.getMessage());
+                requireCompleted(command.key(), "mark-failed-after-claim-error",
+                        ledger.markFailed(command.key(), e.getMessage()));
             } catch (RuntimeException cleanupFailure) {
                 failure.addSuppressed(cleanupFailure);
             }
@@ -209,7 +214,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
             }
         }
         try {
-            ledger.markFailed(key, reason);
+            requireCompleted(key, "mark-failed", ledger.markFailed(key, reason));
         } catch (RuntimeException failure) {
             throw ledgerFailure(key, "mark-failed", failure);
         }
@@ -250,7 +255,8 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         try {
             String reason = "orphan processing source without ledger record";
             sourceLifecycle.fail(orphan, reason);
-            ledger.markFailed(orphan.key(), reason);
+            requireCompleted(orphan.key(), "mark-orphan-failed",
+                    ledger.markFailed(orphan.key(), reason));
             results.add(new IngestSourceResult(orphan.key(), IngestionStatus.FAILED, false, null));
         } catch (RuntimeException failure) {
             throw recoveryFailure(orphan.key(), failure);
@@ -264,6 +270,21 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                 .with("reason", reason(failure))
                 .cause(failure)
                 .build());
+    }
+
+    private void requireCompleted(SourceKey key,
+                                  String operation,
+                                  IngestionLedgerTransition transition) {
+        if (!transition.completed()) {
+            throw transitionFailure(key, operation, transition);
+        }
+    }
+
+    private IllegalStateException transitionFailure(SourceKey key,
+                                                    String operation,
+                                                    IngestionLedgerTransition transition) {
+        return new IllegalStateException("Ingestion ledger transition " + operation
+                + " for " + key.value() + " returned " + transition);
     }
 
     private DiagnosticException recoveryFailure(SourceKey key, RuntimeException failure) {
@@ -320,7 +341,8 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
             throw e;
         }
         Path archived = sourceLifecycle.archive(unit);
-        ledger.markSourceArchived(unit.key(), archived);
+        requireCompleted(unit.key(), "mark-source-archived",
+                ledger.markSourceArchived(unit.key(), archived));
         runLedger.markCompleted(run.runId());
         publishArtifactsChanged(run.runId(), run.artifacts());
         return new IngestSourceResult(unit.key(), IngestionStatus.SOURCE_ARCHIVED, false, extraction);

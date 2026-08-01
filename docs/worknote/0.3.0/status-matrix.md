@@ -63,7 +63,7 @@ language: "ru"
 
 | Work item/scope | Goal | State | Reason | Missing evidence/exit condition |
 |---|---|---|---|---|
-| `ING-10 / SB04-116` ingest lifecycle + JDBC ledger transitions | `R030-QUAL` | `in-progress (I0..I2 complete)` | Startup barrier закрывает recovery⊥poller overlap; общий synchronous per-`SourceKey` guard сериализует ingest/recovery/reject без async semantic drift, а recovery повторно читает current ledger state после admission | [Единый `ING-10/IR-03` hardening](ing-10-ingestion-lifecycle-hardening.md) выполняется перед `BUILD-SPOTBUGS-04/C3`; остаются CAS/expected-state semantics, concurrent adapter regressions и operational closure |
+| `ING-10 / SB04-116` ingest lifecycle + JDBC ledger transitions | `R030-QUAL` | `in-progress (I0..I3 complete)` | Startup barrier и per-key application guard закрывают execution overlap; file/JDBC ledgers теперь имеют monotonic expected-state transitions, а общий TCK доказывает ровно одного победителя archive⊥fail race | [Единый `ING-10/IR-03` hardening](ing-10-ingestion-lifecycle-hardening.md) выполняется перед `BUILD-SPOTBUGS-04/C3`; остаются health/readiness, configuration guard, restart/E2E evidence, durable docs и full verification |
 | Full PMD ruleset beyond CPD | `R030-BUILD` | `deferred` | Unused-code, complexity, performance/object-creation and error-prone rules need their own signal/noise decision; they are not implied by CPD | Revisit after `BUILD-SPOTBUGS-04`, or earlier only after concrete risk/gap evidence and explicit matrix reorder |
 
 ## 5. Update rule

@@ -23,6 +23,7 @@ import com.iocextractor.diagnostics.result.Result;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
+import com.iocextractor.application.port.out.ingest.IngestionLedgerTransition;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
 import com.iocextractor.diagnostics.DiagnosticException;
@@ -766,27 +767,52 @@ class IngestionServiceTest {
         }
 
         @Override
-        public void markClaimed(SourceUnit unit) {
+        public IngestionLedgerTransition markClaimed(SourceUnit unit) {
             if (claimFailure != null) {
                 throw claimFailure;
+            }
+            if (record != null) {
+                return record.status() == IngestionStatus.CLAIMED
+                        ? IngestionLedgerTransition.ALREADY_APPLIED
+                        : IngestionLedgerTransition.CONFLICT;
             }
             record = new IngestionRecord(unit.key(), IngestionStatus.CLAIMED,
                     unit.originalPath(), unit.processingPath(), null,
                     unit.detectedAt(), unit.detectedAt(), null);
+            return IngestionLedgerTransition.APPLIED;
         }
 
         @Override
-        public void markSourceArchived(SourceKey key, Path archivedPath) {
+        public IngestionLedgerTransition markSourceArchived(SourceKey key, Path archivedPath) {
+            if (record == null) {
+                return IngestionLedgerTransition.MISSING;
+            }
+            if (record.status() == IngestionStatus.SOURCE_ARCHIVED) {
+                return IngestionLedgerTransition.ALREADY_APPLIED;
+            }
+            if (record.status() != IngestionStatus.CLAIMED) {
+                return IngestionLedgerTransition.CONFLICT;
+            }
             record = new IngestionRecord(key, IngestionStatus.SOURCE_ARCHIVED,
                     record.originalPath(), record.processingPath(), archivedPath,
                     record.detectedAt(), record.detectedAt(), null);
+            return IngestionLedgerTransition.APPLIED;
         }
 
         @Override
-        public void markFailed(SourceKey key, String reason) {
+        public IngestionLedgerTransition markFailed(SourceKey key, String reason) {
+            if (record != null && record.status() == IngestionStatus.FAILED) {
+                return IngestionLedgerTransition.ALREADY_APPLIED;
+            }
+            if (record != null && record.status() == IngestionStatus.SOURCE_ARCHIVED) {
+                return IngestionLedgerTransition.CONFLICT;
+            }
+            Path originalPath = record == null ? Path.of("unknown") : record.originalPath();
+            Path processingPath = record == null ? Path.of("unknown") : record.processingPath();
             record = new IngestionRecord(key, IngestionStatus.FAILED,
-                    Path.of("unknown"), Path.of("unknown"), null,
+                    originalPath, processingPath, null,
                     Instant.EPOCH, Instant.EPOCH, reason);
+            return IngestionLedgerTransition.APPLIED;
         }
 
         @Override

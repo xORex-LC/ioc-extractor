@@ -5,10 +5,8 @@ import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.SourceUnit;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
-import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.application.port.out.ingest.IngestionLedgerTransition;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
 import java.nio.file.Path;
@@ -26,19 +24,16 @@ import java.util.Optional;
 public final class JdbcIngestionLedger implements IngestionLedger {
 
     private final JdbcClient jdbc;
-    private final TransactionTemplate transactions;
     private final Clock clock;
 
     public JdbcIngestionLedger(DataSource dataSource, Clock clock) {
         Objects.requireNonNull(dataSource, "dataSource");
         this.jdbc = JdbcClient.create(dataSource);
-        this.transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
-    JdbcIngestionLedger(JdbcClient jdbc, TransactionTemplate transactions, Clock clock) {
+    JdbcIngestionLedger(JdbcClient jdbc, Clock clock) {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc");
-        this.transactions = Objects.requireNonNull(transactions, "transactions");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -57,9 +52,9 @@ public final class JdbcIngestionLedger implements IngestionLedger {
     }
 
     @Override
-    public void markClaimed(SourceUnit unit) {
+    public IngestionLedgerTransition markClaimed(SourceUnit unit) {
         Instant now = Instant.now(clock);
-        jdbc.sql("""
+        int changed = jdbc.sql("""
                         INSERT INTO ingestion_ledger (
                             source_key, status, original_path, processing_path,
                             archived_path, detected_at, updated_at, reason
@@ -67,14 +62,7 @@ public final class JdbcIngestionLedger implements IngestionLedger {
                             :source_key, :status, :original_path, :processing_path,
                             NULL, :detected_at, :updated_at, NULL
                         )
-                        ON CONFLICT(source_key) DO UPDATE SET
-                            status = excluded.status,
-                            original_path = excluded.original_path,
-                            processing_path = excluded.processing_path,
-                            archived_path = NULL,
-                            detected_at = excluded.detected_at,
-                            updated_at = excluded.updated_at,
-                            reason = NULL
+                        ON CONFLICT(source_key) DO NOTHING
                         """)
                 .param("source_key", unit.key().value())
                 .param("status", IngestionStatus.CLAIMED.name())
@@ -83,25 +71,61 @@ public final class JdbcIngestionLedger implements IngestionLedger {
                 .param("detected_at", unit.detectedAt().toString())
                 .param("updated_at", now.toString())
                 .update();
+        return changed == 1
+                ? IngestionLedgerTransition.APPLIED
+                : resolve(unit.key(), IngestionStatus.CLAIMED);
     }
 
     @Override
-    public void markSourceArchived(SourceKey key, Path archivedPath) {
-        IngestionRecord record = require(key);
-        update(record, IngestionStatus.SOURCE_ARCHIVED, archivedPath, record.reason());
+    public IngestionLedgerTransition markSourceArchived(SourceKey key, Path archivedPath) {
+        int changed = jdbc.sql("""
+                        UPDATE ingestion_ledger
+                        SET status = :status,
+                            archived_path = :archived_path,
+                            updated_at = :updated_at
+                        WHERE source_key = :source_key
+                          AND status = :expected_status
+                        """)
+                .param("status", IngestionStatus.SOURCE_ARCHIVED.name())
+                .param("archived_path", archivedPath.toString())
+                .param("updated_at", Instant.now(clock).toString())
+                .param("source_key", key.value())
+                .param("expected_status", IngestionStatus.CLAIMED.name())
+                .update();
+        return changed == 1
+                ? IngestionLedgerTransition.APPLIED
+                : resolve(key, IngestionStatus.SOURCE_ARCHIVED);
     }
 
     @Override
-    public void markFailed(SourceKey key, String reason) {
-        Optional<IngestionRecord> existing = find(key);
-        IngestionRecord record = existing.orElse(new IngestionRecord(key, IngestionStatus.FAILED,
-                Path.of("unknown"), Path.of("unknown"), null,
-                Instant.now(clock), Instant.now(clock), reason));
-        if (existing.isEmpty()) {
-            insertFailed(record, reason);
-            return;
-        }
-        update(record, IngestionStatus.FAILED, record.archivedPath(), reason);
+    public IngestionLedgerTransition markFailed(SourceKey key, String reason) {
+        Instant now = Instant.now(clock);
+        int changed = jdbc.sql("""
+                        INSERT INTO ingestion_ledger (
+                            source_key, status, original_path, processing_path,
+                            archived_path, detected_at, updated_at, reason
+                        ) VALUES (
+                            :source_key, :status, :original_path, :processing_path,
+                            NULL, :detected_at, :updated_at, :reason
+                        )
+                        ON CONFLICT(source_key) DO UPDATE SET
+                            status = excluded.status,
+                            updated_at = excluded.updated_at,
+                            reason = excluded.reason
+                        WHERE ingestion_ledger.status = :expected_status
+                        """)
+                .param("source_key", key.value())
+                .param("status", IngestionStatus.FAILED.name())
+                .param("original_path", "unknown")
+                .param("processing_path", "unknown")
+                .param("detected_at", now.toString())
+                .param("updated_at", now.toString())
+                .param("reason", reason)
+                .param("expected_status", IngestionStatus.CLAIMED.name())
+                .update();
+        return changed == 1
+                ? IngestionLedgerTransition.APPLIED
+                : resolve(key, IngestionStatus.FAILED);
     }
 
     @Override
@@ -120,56 +144,14 @@ public final class JdbcIngestionLedger implements IngestionLedger {
                 .toList();
     }
 
-    private IngestionRecord require(SourceKey key) {
-        return find(key).orElseThrow(() -> new IocExtractorException("Missing ingestion ledger record: " + key.value()));
-    }
-
-    private void update(IngestionRecord record,
-                        IngestionStatus status,
-                        Path archivedPath,
-                        String reason) {
-        jdbc.sql("""
-                        UPDATE ingestion_ledger
-                        SET status = :status,
-                            archived_path = :archived_path,
-                            updated_at = :updated_at,
-                            reason = :reason
-                        WHERE source_key = :source_key
-                        """)
-                .param("status", status.name())
-                .param("archived_path", archivedPath == null ? null : archivedPath.toString())
-                .param("updated_at", Instant.now(clock).toString())
-                .param("reason", reason)
-                .param("source_key", record.key().value())
-                .update();
-    }
-
-    private void insertFailed(IngestionRecord record, String reason) {
-        jdbc.sql("""
-                        INSERT INTO ingestion_ledger (
-                            source_key, status, original_path, processing_path,
-                            archived_path, detected_at, updated_at, reason
-                        ) VALUES (
-                            :source_key, :status, :original_path, :processing_path,
-                            NULL, :detected_at, :updated_at, :reason
-                        )
-                        """)
-                .param("source_key", record.key().value())
-                .param("status", IngestionStatus.FAILED.name())
-                .param("original_path", record.originalPath().toString())
-                .param("processing_path", record.processingPath().toString())
-                .param("detected_at", record.detectedAt().toString())
-                .param("updated_at", Instant.now(clock).toString())
-                .param("reason", reason)
-                .update();
-    }
-
-    // Find-then-write marks (markFailed and status marks via require()) are safe
-    // ONLY because of the single-writer model (no concurrent writer can interleave
-    // between the read and the write). Revisit this if concurrent writers appear.
-    @SuppressWarnings("unused")
-    private void inTransaction(Runnable action) {
-        transactions.executeWithoutResult(status -> action.run());
+    private IngestionLedgerTransition resolve(SourceKey key, IngestionStatus target) {
+        Optional<IngestionRecord> current = find(key);
+        if (current.isEmpty()) {
+            return IngestionLedgerTransition.MISSING;
+        }
+        return current.orElseThrow().status() == target
+                ? IngestionLedgerTransition.ALREADY_APPLIED
+                : IngestionLedgerTransition.CONFLICT;
     }
 
     private LedgerRow row(ResultSet rs) throws SQLException {

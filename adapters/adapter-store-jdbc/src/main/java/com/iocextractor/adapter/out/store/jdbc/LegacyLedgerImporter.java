@@ -5,6 +5,7 @@ import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.SourceUnit;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
+import com.iocextractor.application.port.out.ingest.IngestionLedgerTransition;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.StorageDiagnosticCodes;
@@ -187,13 +188,20 @@ public final class LegacyLedgerImporter {
     }
 
     private void replay(IngestionRecord record) {
-        ledger.markClaimed(new SourceUnit(record.key(), record.originalPath(), record.processingPath(),
-                detectedAt(record)));
+        IngestionLedgerTransition claim = ledger.markClaimed(new SourceUnit(
+                record.key(), record.originalPath(), record.processingPath(), detectedAt(record)));
         switch (record.status()) {
-            case CLAIMED -> {
-            }
-            case SOURCE_ARCHIVED -> ledger.markSourceArchived(record.key(), requireArchivedPath(record));
-            case FAILED -> ledger.markFailed(record.key(), record.reason());
+            case CLAIMED -> requireCompleted(record, claim);
+            case SOURCE_ARCHIVED -> requireCompleted(record,
+                    ledger.markSourceArchived(record.key(), requireArchivedPath(record)));
+            case FAILED -> requireCompleted(record, ledger.markFailed(record.key(), record.reason()));
+        }
+    }
+
+    private void requireCompleted(IngestionRecord record, IngestionLedgerTransition transition) {
+        if (!transition.completed()) {
+            throw new IocExtractorException("Legacy ledger transition conflict for "
+                    + record.key().value() + " at " + record.status() + ": " + transition);
         }
     }
 

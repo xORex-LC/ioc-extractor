@@ -4,15 +4,19 @@ import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.SourceUnit;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
+import com.iocextractor.application.port.out.ingest.IngestionLedgerTransition;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Reusable behavior contract for {@link IngestionLedger} adapters. Lives in this
@@ -40,10 +44,11 @@ public abstract class IngestionLedgerContractTest {
         IngestionLedger ledger = createLedger(FIXED_CLOCK);
         SourceUnit unit = unit("alpha");
 
-        ledger.markClaimed(unit);
+        assertThat(ledger.markClaimed(unit)).isEqualTo(IngestionLedgerTransition.APPLIED);
         assertRecord(ledger, unit.key(), IngestionStatus.CLAIMED, null, null);
 
-        ledger.markSourceArchived(unit.key(), path("done/alpha.html"));
+        assertThat(ledger.markSourceArchived(unit.key(), path("done/alpha.html")))
+                .isEqualTo(IngestionLedgerTransition.APPLIED);
         assertRecord(ledger, unit.key(), IngestionStatus.SOURCE_ARCHIVED, path("done/alpha.html"), null);
     }
 
@@ -68,12 +73,13 @@ public abstract class IngestionLedgerContractTest {
     }
 
     @Test
-    void archive_requires_existing_record() {
+    void archive_reports_missing_record_without_creating_one() {
         IngestionLedger ledger = createLedger(FIXED_CLOCK);
         SourceKey missing = key("missing-transition");
 
-        assertThatThrownBy(() -> ledger.markSourceArchived(missing, path("done/missing.html")))
-                .isInstanceOf(RuntimeException.class);
+        assertThat(ledger.markSourceArchived(missing, path("done/missing.html")))
+                .isEqualTo(IngestionLedgerTransition.MISSING);
+        assertThat(ledger.find(missing)).isEmpty();
     }
 
     @Test
@@ -102,6 +108,86 @@ public abstract class IngestionLedgerContractTest {
                     assertThat(record.processingPath()).isEqualTo(existing.processingPath());
                     assertThat(record.reason()).isEqualTo("write failed");
                 });
+    }
+
+    @Test
+    void repeatedAndOppositeTerminalTransitionsAreMonotonic() {
+        IngestionLedger ledger = createLedger(FIXED_CLOCK);
+        SourceUnit archived = unit("terminal-archived");
+        SourceKey failed = key("terminal-failed");
+
+        assertThat(ledger.markClaimed(archived)).isEqualTo(IngestionLedgerTransition.APPLIED);
+        assertThat(ledger.markClaimed(archived)).isEqualTo(IngestionLedgerTransition.ALREADY_APPLIED);
+        assertThat(ledger.markSourceArchived(archived.key(), path("done/terminal-archived.html")))
+                .isEqualTo(IngestionLedgerTransition.APPLIED);
+        assertThat(ledger.markSourceArchived(archived.key(), path("done/other.html")))
+                .isEqualTo(IngestionLedgerTransition.ALREADY_APPLIED);
+        assertThat(ledger.markFailed(archived.key(), "must not overwrite"))
+                .isEqualTo(IngestionLedgerTransition.CONFLICT);
+
+        assertThat(ledger.markFailed(failed, "pre-claim failure"))
+                .isEqualTo(IngestionLedgerTransition.APPLIED);
+        assertThat(ledger.markFailed(failed, "must preserve first failure"))
+                .isEqualTo(IngestionLedgerTransition.ALREADY_APPLIED);
+        assertThat(ledger.markClaimed(unit("terminal-failed")))
+                .isEqualTo(IngestionLedgerTransition.CONFLICT);
+
+        assertThat(ledger.find(archived.key())).get()
+                .extracting(record -> record.status())
+                .isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
+        assertThat(ledger.find(failed)).get().satisfies(record -> {
+            assertThat(record.status()).isEqualTo(IngestionStatus.FAILED);
+            assertThat(record.reason()).isEqualTo("pre-claim failure");
+        });
+    }
+
+    @Test
+    void competingTerminalTransitionsHaveExactlyOneWinner() throws Exception {
+        IngestionLedger ledger = createLedger(FIXED_CLOCK);
+        SourceUnit unit = unit("terminal-race");
+        assertThat(ledger.markClaimed(unit)).isEqualTo(IngestionLedgerTransition.APPLIED);
+        var ready = new CountDownLatch(2);
+        var start = new CountDownLatch(1);
+
+        List<IngestionLedgerTransition> transitions;
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var archive = executor.submit(() -> {
+                ready.countDown();
+                await(start);
+                return ledger.markSourceArchived(unit.key(), path("done/terminal-race.html"));
+            });
+            var fail = executor.submit(() -> {
+                ready.countDown();
+                await(start);
+                return ledger.markFailed(unit.key(), "terminal race");
+            });
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            transitions = List.of(
+                    archive.get(5, TimeUnit.SECONDS),
+                    fail.get(5, TimeUnit.SECONDS));
+        } finally {
+            start.countDown();
+        }
+
+        assertThat(transitions)
+                .containsExactlyInAnyOrder(
+                        IngestionLedgerTransition.APPLIED,
+                        IngestionLedgerTransition.CONFLICT);
+        assertThat(ledger.find(unit.key())).get()
+                .extracting(record -> record.status())
+                .isIn(IngestionStatus.SOURCE_ARCHIVED, IngestionStatus.FAILED);
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("timed out waiting for test coordination");
+            }
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("test coordination interrupted", failure);
+        }
     }
 
     protected SourceUnit unit(String name) {
