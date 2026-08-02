@@ -100,9 +100,11 @@ public final class LogEvent {
     }
 
     private void write(LoggingEventBuilder builder, Throwable throwable) {
-        fields.forEach((field, value) -> builder.addKeyValue(field.key(), value));
+        for (var entry : fields.entrySet()) {
+            builder = builder.addKeyValue(entry.getKey().key(), entry.getValue());
+        }
         if (throwable != null) {
-            builder.setCause(throwable);
+            builder = builder.setCause(throwable);
         }
         builder.log(message != null ? message : "");
     }

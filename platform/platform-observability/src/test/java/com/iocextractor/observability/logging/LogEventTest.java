@@ -12,7 +12,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.slf4j.spi.LoggingEventBuilder;
 
+import java.lang.reflect.Proxy;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -120,6 +122,24 @@ class LogEventTest {
         async.stop();
     }
 
+    @Test
+    void threads_fields_and_cause_through_copy_returning_builder() {
+        var probe = new CopyReturningBuilderProbe();
+        var cause = new IllegalStateException("boom");
+
+        LogEvents.info(probe.logger())
+                .action(EventAction.STAGE_COMPLETE)
+                .field(LogField.IOC_ROWS, 7)
+                .message("copy-returning provider")
+                .log(cause);
+
+        assertThat(probe.loggedFields).containsExactlyInAnyOrderEntriesOf(Map.of(
+                LogField.EVENT_ACTION.key(), EventAction.STAGE_COMPLETE.value(),
+                LogField.IOC_ROWS.key(), 7L));
+        assertThat(probe.loggedCause).isSameAs(cause);
+        assertThat(probe.loggedMessage).isEqualTo("copy-returning provider");
+    }
+
     private ListAppender<ILoggingEvent> appender() {
         logger.detachAndStopAllAppenders();
         logger.setAdditive(false);
@@ -154,6 +174,45 @@ class LogEventTest {
         protected void append(ILoggingEvent eventObject) {
             eventObject.prepareForDeferredProcessing();
             super.append(eventObject);
+        }
+    }
+
+    private static final class CopyReturningBuilderProbe {
+        private Map<String, Object> loggedFields;
+        private Throwable loggedCause;
+        private String loggedMessage;
+
+        private org.slf4j.Logger logger() {
+            return (org.slf4j.Logger) Proxy.newProxyInstance(
+                    org.slf4j.Logger.class.getClassLoader(),
+                    new Class<?>[] { org.slf4j.Logger.class },
+                    (proxy, method, arguments) -> switch (method.getName()) {
+                        case "getName" -> "test.copy-returning-builder";
+                        case "isInfoEnabled" -> true;
+                        case "atInfo" -> builder(Map.of(), null);
+                        default -> throw new AssertionError("Unexpected Logger call: " + method);
+                    });
+        }
+
+        private LoggingEventBuilder builder(Map<String, Object> fields, Throwable cause) {
+            return (LoggingEventBuilder) Proxy.newProxyInstance(
+                    LoggingEventBuilder.class.getClassLoader(),
+                    new Class<?>[] { LoggingEventBuilder.class },
+                    (proxy, method, arguments) -> switch (method.getName()) {
+                        case "addKeyValue" -> {
+                            var successorFields = new LinkedHashMap<>(fields);
+                            successorFields.put((String) arguments[0], arguments[1]);
+                            yield builder(Map.copyOf(successorFields), cause);
+                        }
+                        case "setCause" -> builder(fields, (Throwable) arguments[0]);
+                        case "log" -> {
+                            loggedFields = fields;
+                            loggedCause = cause;
+                            loggedMessage = (String) arguments[0];
+                            yield null;
+                        }
+                        default -> throw new AssertionError("Unexpected LoggingEventBuilder call: " + method);
+                    });
         }
     }
 }
