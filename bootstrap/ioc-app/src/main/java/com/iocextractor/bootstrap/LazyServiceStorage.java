@@ -12,6 +12,7 @@ import com.zaxxer.hikari.HikariDataSource;
 
 import java.time.Clock;
 import java.util.Objects;
+import java.util.function.Function;
 
 /**
  * Lazy owner of the service datasource and its mandatory schema migration.
@@ -24,6 +25,7 @@ public final class LazyServiceStorage implements AutoCloseable {
     private final IocProperties.Storage.Service settings;
     private final DiagnosticSink diagnosticSink;
     private final Clock clock;
+    private final Function<SqliteDataSourceSettings, HikariDataSource> dataSourceFactory;
 
     private HikariDataSource dataSource;
     private SchemaMigrationResult migration;
@@ -38,9 +40,19 @@ public final class LazyServiceStorage implements AutoCloseable {
     public LazyServiceStorage(IocProperties.Storage.Service settings,
                               DiagnosticSink diagnosticSink,
                               Clock clock) {
+        this(settings, diagnosticSink, clock,
+                dataSourceSettings -> new SqliteDataSourceFactory(new SqlitePragmaPolicy())
+                        .create(dataSourceSettings));
+    }
+
+    LazyServiceStorage(IocProperties.Storage.Service settings,
+                       DiagnosticSink diagnosticSink,
+                       Clock clock,
+                       Function<SqliteDataSourceSettings, HikariDataSource> dataSourceFactory) {
         this.settings = Objects.requireNonNull(settings, "settings");
         this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.dataSourceFactory = Objects.requireNonNull(dataSourceFactory, "dataSourceFactory");
     }
 
     /** Opens, migrates and returns the shared service datasource exactly once. */
@@ -59,10 +71,9 @@ public final class LazyServiceStorage implements AutoCloseable {
         if (dataSource != null) {
             return;
         }
-        HikariDataSource created = new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(
-                new SqliteDataSourceSettings(
-                        "service", settings.url(), settings.sqlite().tuning(),
-                        settings.pool().writeMax(), settings.pool().readMax()));
+        HikariDataSource created = dataSourceFactory.apply(new SqliteDataSourceSettings(
+                "service", settings.url(), settings.sqlite().tuning(),
+                settings.pool().writeMax(), settings.pool().readMax()));
         try {
             SchemaMigrationResult migrated = new SqliteUserVersionSchemaMigrator(
                     created, ServiceSchemaMigrations.sqlite(), diagnosticSink,
@@ -70,7 +81,13 @@ public final class LazyServiceStorage implements AutoCloseable {
             dataSource = created;
             migration = migrated;
         } catch (RuntimeException failure) {
-            created.close();
+            try {
+                created.close();
+            } catch (RuntimeException closeFailure) {
+                if (closeFailure != failure) {
+                    failure.addSuppressed(closeFailure);
+                }
+            }
             throw failure;
         }
     }

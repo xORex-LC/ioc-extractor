@@ -244,6 +244,21 @@ class PipelineRunnerTest {
                 .isSameAs(sinkFailure);
     }
 
+    @Test
+    void preserves_stage_failure_when_failure_observer_also_fails() {
+        var stageFailure = new DiagnosticException(diagnostic(DiagnosticSeverity.FATAL));
+        var observationFailure = new IllegalStateException("stage observer failed");
+        var pipeline = Pipeline.<String>start().then(new ThrowingStage(stageFailure));
+        var runner = new PipelineRunner(
+                FailurePolicy.collectAndContinue(),
+                new FailureThrowingObserver(observationFailure));
+
+        assertThatThrownBy(() -> runner.run(Envelope.of("start", meta()), pipeline))
+                .isSameAs(stageFailure)
+                .satisfies(failure -> assertThat(failure.getSuppressed())
+                        .containsExactly(observationFailure));
+    }
+
     private PipelineRunner runner(FailurePolicy policy, CollectingDiagnosticSink diagnostics) {
         return new PipelineRunner(policy, new NoopPipelineObserver(), diagnostics, new DiagnosticFactory(CLOCK));
     }
@@ -337,6 +352,28 @@ class PipelineRunnerTest {
         @Override
         public void stageFailed(EnvelopeMeta meta, long durationNanos, RuntimeException failure) {
             events.add("failed:" + meta.stage().value());
+        }
+    }
+
+    private record FailureThrowingObserver(RuntimeException failure) implements PipelineObserver {
+
+        @Override
+        public AutoCloseable openStage(EnvelopeMeta meta) {
+            return () -> {
+            };
+        }
+
+        @Override
+        public void stageStarted(EnvelopeMeta meta) {
+        }
+
+        @Override
+        public void stageCompleted(EnvelopeMeta meta, long durationNanos) {
+        }
+
+        @Override
+        public void stageFailed(EnvelopeMeta meta, long durationNanos, RuntimeException stageFailure) {
+            throw failure;
         }
     }
 }

@@ -73,7 +73,7 @@ public final class SliceCompletedPublishListener {
                     event.metadata().correlationId(),
                     event.metadata().eventId()));
         } catch (RuntimeException failure) {
-            observer.dispatchFailed(event, HANDLER, failure);
+            ControlEventObservations.dispatchFailed(observer, event, HANDLER, failure);
             throw failure;
         }
     }

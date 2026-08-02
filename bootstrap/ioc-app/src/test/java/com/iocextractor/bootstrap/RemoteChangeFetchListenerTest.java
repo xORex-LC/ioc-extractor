@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RemoteChangeFetchListenerTest {
 
@@ -109,6 +110,28 @@ class RemoteChangeFetchListenerTest {
                 assertThat(inFlight.contains(object.identity())).isFalse());
     }
 
+    @Test
+    void preserves_fetch_failure_when_failure_observer_also_fails() {
+        var fetchFailure = new IllegalStateException("fetch failed");
+        var observationFailure = new IllegalStateException("observer failed");
+        var fetcher = new RecordingFetcher();
+        fetcher.failure = fetchFailure;
+        var executor = new DeferringKeyedExecutor();
+        var listener = new RemoteChangeFetchListener(
+                fetcher,
+                executor,
+                new FailureThrowingObserver(observationFailure),
+                new SyncHealthState(java.time.Clock.systemUTC()),
+                new RemoteFetchInFlightRegistry());
+
+        listener.onRemoteChangeBatchDetected(event());
+
+        assertThatThrownBy(executor::runPending)
+                .isSameAs(fetchFailure)
+                .satisfies(failure -> assertThat(failure.getSuppressed())
+                        .containsExactly(observationFailure));
+    }
+
     private RemoteChangeBatchDetected event() {
         return new RemoteChangeBatchDetected(
                 ControlEventMetadata.withoutCausation(
@@ -128,6 +151,7 @@ class RemoteChangeFetchListenerTest {
     private static final class RecordingFetcher implements RemoteFetchUseCase {
         private final List<FetchRemoteObjectsCommand> commands = new ArrayList<>();
         private final List<Map<String, String>> mdcSnapshots = new ArrayList<>();
+        private RuntimeException failure;
 
         @Override
         public RemoteFetchResult fetch(RemoteFetchCommand command) {
@@ -136,9 +160,37 @@ class RemoteChangeFetchListenerTest {
 
         @Override
         public RemoteFetchResult fetch(FetchRemoteObjectsCommand command) {
+            if (failure != null) {
+                throw failure;
+            }
             commands.add(command);
             mdcSnapshots.add(new LinkedHashMap<>(MDC.getCopyOfContextMap()));
             return new RemoteFetchResult(command.objects().size(), 0, 0);
+        }
+    }
+
+    private static final class FailureThrowingObserver implements ControlEventObserver {
+        private final RuntimeException failure;
+
+        private FailureThrowingObserver(RuntimeException failure) {
+            this.failure = failure;
+        }
+
+        @Override
+        public void published(ControlEvent event) {
+        }
+
+        @Override
+        public void publishFailed(ControlEvent event, RuntimeException publishFailure) {
+        }
+
+        @Override
+        public void dispatching(ControlEvent event, String handlerName) {
+        }
+
+        @Override
+        public void dispatchFailed(ControlEvent event, String handlerName, RuntimeException handlerFailure) {
+            throw failure;
         }
     }
 

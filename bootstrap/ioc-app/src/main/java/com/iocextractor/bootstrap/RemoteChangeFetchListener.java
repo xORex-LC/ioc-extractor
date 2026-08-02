@@ -78,7 +78,7 @@ public final class RemoteChangeFetchListener {
             healthState.recordFetch(event.sourceId(), event.endpoint(), result);
         } catch (RuntimeException failure) {
             healthState.recordFetchFailure(event.sourceId(), event.endpoint(), failure);
-            observer.dispatchFailed(event, HANDLER, failure);
+            ControlEventObservations.dispatchFailed(observer, event, HANDLER, failure);
             throw failure;
         }
     }

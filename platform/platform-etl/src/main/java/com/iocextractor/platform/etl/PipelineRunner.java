@@ -141,10 +141,10 @@ public final class PipelineRunner {
                         rejectIfRequired(current.diagnostics());
                         observer.stageCompleted(stageInput.meta(), System.nanoTime() - startedAt);
                     } catch (StageProcessingFailure failure) {
-                        observer.stageFailed(stageInput.meta(), System.nanoTime() - startedAt, failure.propagated());
+                        observeStageFailure(stageInput.meta(), startedAt, failure.propagated());
                         throw failure.propagated();
                     } catch (RuntimeException ex) {
-                        observer.stageFailed(stageInput.meta(), System.nanoTime() - startedAt, ex);
+                        observeStageFailure(stageInput.meta(), startedAt, ex);
                         throw ex;
                     }
                 } catch (RuntimeException ex) {
@@ -212,6 +212,16 @@ public final class PipelineRunner {
                 throw deliveryFailure;
             }
             runFailure.addSuppressed(deliveryFailure);
+        }
+    }
+
+    private void observeStageFailure(EnvelopeMeta meta, long startedAt, RuntimeException stageFailure) {
+        try {
+            observer.stageFailed(meta, System.nanoTime() - startedAt, stageFailure);
+        } catch (RuntimeException observationFailure) {
+            if (observationFailure != stageFailure) {
+                stageFailure.addSuppressed(observationFailure);
+            }
         }
     }
 

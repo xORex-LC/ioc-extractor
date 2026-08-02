@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SliceCompletedPublishListenerTest {
 
@@ -84,6 +85,24 @@ class SliceCompletedPublishListenerTest {
                 .satisfies(failure -> assertThat(failure).hasMessageContaining("endpoint-a"));
     }
 
+    @Test
+    void preserves_publish_failure_when_failure_observer_also_fails() {
+        var publishFailure = new IllegalStateException("publish failed");
+        var observationFailure = new IllegalStateException("observer failed");
+        var publisher = new RecordingPublisher();
+        publisher.failure = publishFailure;
+        var listener = new SliceCompletedPublishListener(
+                publisher,
+                new DirectKeyedExecutor(),
+                new FailureThrowingObserver(observationFailure),
+                List.of(new PublishTarget("target-a", "endpoint-a", "/a", "reputation")));
+
+        assertThatThrownBy(() -> listener.onSliceCompleted(event()))
+                .isSameAs(publishFailure)
+                .satisfies(failure -> assertThat(failure.getSuppressed())
+                        .containsExactly(observationFailure));
+    }
+
     private SliceCompleted event() {
         return new SliceCompleted(
                 ControlEventMetadata.withoutCausation(
@@ -98,6 +117,7 @@ class SliceCompletedPublishListenerTest {
     private static final class RecordingPublisher implements ArtifactPublishUseCase {
         private final List<PublishCompletedSliceCommand> commands = new ArrayList<>();
         private final List<Map<String, String>> mdcSnapshots = new ArrayList<>();
+        private RuntimeException failure;
 
         @Override
         public ArtifactPublishResult reconcile(ArtifactPublishCommand command) {
@@ -111,9 +131,37 @@ class SliceCompletedPublishListenerTest {
 
         @Override
         public ArtifactPublishExecutionResult publishCompletedSlice(PublishCompletedSliceCommand command) {
+            if (failure != null) {
+                throw failure;
+            }
             commands.add(command);
             mdcSnapshots.add(new LinkedHashMap<>(MDC.getCopyOfContextMap()));
             return new ArtifactPublishExecutionResult(1, 1, 0, 0);
+        }
+    }
+
+    private static final class FailureThrowingObserver implements ControlEventObserver {
+        private final RuntimeException failure;
+
+        private FailureThrowingObserver(RuntimeException failure) {
+            this.failure = failure;
+        }
+
+        @Override
+        public void published(ControlEvent event) {
+        }
+
+        @Override
+        public void publishFailed(ControlEvent event, RuntimeException publishFailure) {
+        }
+
+        @Override
+        public void dispatching(ControlEvent event, String handlerName) {
+        }
+
+        @Override
+        public void dispatchFailed(ControlEvent event, String handlerName, RuntimeException handlerFailure) {
+            throw failure;
         }
     }
 
