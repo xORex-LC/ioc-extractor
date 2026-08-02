@@ -5,6 +5,9 @@ import com.hierynomus.smbj.SmbConfig;
 import com.hierynomus.smbj.auth.AuthenticationContext;
 import com.hierynomus.smbj.connection.Connection;
 import com.hierynomus.smbj.share.DiskShare;
+import com.hierynomus.smbj.share.Share;
+import com.iocextractor.application.sync.RemoteErrorKind;
+import com.iocextractor.application.sync.RemoteTransportException;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -25,7 +28,8 @@ final class SmbjShareClientFactory implements SmbShareClientFactory {
             } finally {
                 Arrays.fill(password, '\0');
             }
-            DiskShare share = (DiskShare) connection.authenticate(authentication).connectShare(settings.share());
+            Share connectedShare = connection.authenticate(authentication).connectShare(settings.share());
+            DiskShare share = requireDiskShare(connectedShare, settings);
             return new SmbjShareClient(client, share);
         } catch (IOException | RuntimeException failure) {
             client.close();
@@ -40,5 +44,16 @@ final class SmbjShareClientFactory implements SmbShareClientFactory {
                 .withSoTimeout(0)
                 .withTimeout(settings.requestTimeout().toMillis(), TimeUnit.MILLISECONDS)
                 .build();
+    }
+
+    static DiskShare requireDiskShare(Share share, SmbEndpointSettings settings) {
+        if (share instanceof DiskShare diskShare) {
+            return diskShare;
+        }
+        String actualType = share == null ? "null" : share.getClass().getSimpleName();
+        throw new RemoteTransportException(
+                RemoteErrorKind.NOT_FOUND,
+                "SMB share '" + settings.share() + "' for endpoint '" + settings.name()
+                        + "' is not a disk share (actual type: " + actualType + ")");
     }
 }

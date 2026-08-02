@@ -1,5 +1,6 @@
 package com.iocextractor.adapter.in.cli;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -118,19 +119,19 @@ public final class HealthCommand implements Callable<Integer> {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> parse(String body) {
+    Map<String, Object> parse(String body) {
         try {
             return mapper.readValue(body, Map.class);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             return null;
         }
     }
 
-    private String prettyOrRaw(String body) {
+    String prettyOrRaw(String body) {
         try {
             Object tree = mapper.readValue(body, Object.class);
             return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(tree);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             return body;
         }
     }

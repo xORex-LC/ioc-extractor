@@ -1,55 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <FindBugsFilter>
-    <!-- C3 accepted baseline: 114 reviewed findings, 109 narrow selectors. -->
-    <!-- Taxonomy: 55 accepted legacy, 41 analyzer false positives, 18 policy noise. -->
-    <!-- SB04-105 -->
-    <Match>
-        <Bug pattern="BC_UNCONFIRMED_CAST_OF_RETURN_VALUE"/>
-        <Class name="com.iocextractor.adapter.out.transport.smb.SmbjChangeNotifySessionFactory"/>
-        <Method name="open"/>
-    </Match>
-    <!-- SB04-106 -->
-    <Match>
-        <Bug pattern="BC_UNCONFIRMED_CAST_OF_RETURN_VALUE"/>
-        <Class name="com.iocextractor.adapter.out.transport.smb.SmbjShareClientFactory"/>
-        <Method name="open"/>
-    </Match>
-    <!-- SB04-107 -->
-    <Match>
-        <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-        <Class name="com.iocextractor.diagnostics.DiagnosticException"/>
-        <Method name="&lt;init&gt;"/>
-    </Match>
-    <!-- SB04-108 -->
-    <Match>
-        <Bug pattern="DB_DUPLICATE_SWITCH_CLAUSES"/>
-        <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublishLedger"/>
-        <Method name="requireTransition"/>
-    </Match>
-    <!-- SB04-109 -->
-    <Match>
-        <Bug pattern="DLS_DEAD_LOCAL_STORE_OF_NULL"/>
-        <Class name="com.iocextractor.adapter.out.sink.csv.CsvSliceMaterialization"/>
-        <Method name="beginArtifact"/>
-    </Match>
-    <!-- SB04-111 -->
-    <Match>
-        <Bug pattern="DM_CONVERT_CASE"/>
-        <Class name="com.iocextractor.application.ingest.SourceKey"/>
-        <Method name="&lt;init&gt;"/>
-    </Match>
-    <!-- SB04-112 -->
-    <Match>
-        <Bug pattern="DM_CONVERT_CASE"/>
-        <Class name="com.iocextractor.application.pipeline.stage.ExtractIndicatorsStage"/>
-        <Method name="lambda$trace$0"/>
-    </Match>
-    <!-- SB04-110 -->
-    <Match>
-        <Bug pattern="DM_CONVERT_CASE"/>
-        <Class name="com.iocextractor.bootstrap.LoggingPipelineDecisionTracer"/>
-        <Method name="identity"/>
-    </Match>
+    <!-- Remediation baseline: 103 reviewed findings, 98 narrow selectors. -->
+    <!-- Taxonomy: 44 accepted legacy, 41 analyzer false positives, 18 policy noise. -->
     <!-- SB04-040 -->
     <Match>
         <Bug pattern="EI_EXPOSE_REP"/>
@@ -507,18 +459,6 @@
         <Class name="com.iocextractor.application.sync.RemoteFetchService"/>
         <Method name="finalPathFor"/>
     </Match>
-    <!-- SB04-113 -->
-    <Match>
-        <Bug pattern="REC_CATCH_EXCEPTION"/>
-        <Class name="com.iocextractor.adapter.in.cli.HealthCommand"/>
-        <Method name="parse"/>
-    </Match>
-    <!-- SB04-114 -->
-    <Match>
-        <Bug pattern="REC_CATCH_EXCEPTION"/>
-        <Class name="com.iocextractor.adapter.in.cli.HealthCommand"/>
-        <Method name="prettyOrRaw"/>
-    </Match>
     <!-- SB04-115 -->
     <Match>
         <Bug pattern="SE_BAD_FIELD"/>
@@ -687,12 +627,6 @@
         <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
         <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader"/>
         <Method name="readCoverage"/>
-    </Match>
-    <!-- SB04-118 -->
-    <Match>
-        <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
-        <Class name="com.iocextractor.bootstrap.IocConfigurationFailureAnalyzer"/>
-        <Method name="description"/>
     </Match>
     <!-- I4-SB-02 -->
     <Match>

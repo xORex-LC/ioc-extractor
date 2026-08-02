@@ -8,7 +8,7 @@ import java.util.Objects;
  * Unchecked exception carrying a diagnostic that stopped processing across an
  * orchestration boundary.
  */
-public class DiagnosticException extends IocExtractorException {
+public final class DiagnosticException extends IocExtractorException {
 
     private final Diagnostic diagnostic;
 

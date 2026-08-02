@@ -19,6 +19,7 @@ import com.iocextractor.domain.extract.IndicatorExtractor;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -65,7 +66,7 @@ public final class ExtractIndicatorsStage implements Stage<RefangedText, Extract
             return;
         }
         decisions.forEach(decision -> tracer.trace(PipelineItemDecision
-                .builder(PipelineDecisionKind.EXTRACTION, decision.status().name().toLowerCase())
+                .builder(PipelineDecisionKind.EXTRACTION, decision.status().name().toLowerCase(Locale.ROOT))
                 .item(decision.type().name(), decision.span().value())
                 .pattern(decision.pattern())
                 .span(decision.span().start(), decision.span().end())

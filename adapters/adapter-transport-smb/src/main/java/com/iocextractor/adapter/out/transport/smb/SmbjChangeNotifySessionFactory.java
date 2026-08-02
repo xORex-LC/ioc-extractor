@@ -14,6 +14,7 @@ import com.hierynomus.smbj.auth.AuthenticationContext;
 import com.hierynomus.smbj.connection.Connection;
 import com.hierynomus.smbj.share.Directory;
 import com.hierynomus.smbj.share.DiskShare;
+import com.hierynomus.smbj.share.Share;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -56,7 +57,8 @@ final class SmbjChangeNotifySessionFactory implements SmbChangeNotifySessionFact
             } finally {
                 Arrays.fill(password, '\0');
             }
-            DiskShare share = (DiskShare) connection.authenticate(authentication).connectShare(settings.share());
+            Share connectedShare = connection.authenticate(authentication).connectShare(settings.share());
+            DiskShare share = SmbjShareClientFactory.requireDiskShare(connectedShare, settings);
             Directory directory = share.openDirectory(
                     toSmbPath(normalizedPath),
                     DIRECTORY_ACCESS,

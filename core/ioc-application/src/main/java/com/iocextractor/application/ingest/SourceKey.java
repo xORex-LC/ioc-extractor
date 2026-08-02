@@ -1,5 +1,6 @@
 package com.iocextractor.application.ingest;
 
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -17,6 +18,6 @@ public record SourceKey(String value) {
         if (value.isBlank()) {
             throw new IllegalArgumentException("source key must not be blank");
         }
-        value = value.toLowerCase();
+        value = value.toLowerCase(Locale.ROOT);
     }
 }

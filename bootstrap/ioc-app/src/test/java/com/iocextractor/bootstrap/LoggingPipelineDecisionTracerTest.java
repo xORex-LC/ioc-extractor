@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -88,6 +89,26 @@ class LoggingPipelineDecisionTracerTest {
 
         org.assertj.core.api.Assertions.assertThatCode(() -> tracer.trace(decision("example.com")))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void derivesMachineIdentityIndependentlyOfDefaultLocale() {
+        var appender = appender();
+        var tracer = new LoggingPipelineDecisionTracer(logger, true);
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+
+            tracer.trace(PipelineItemDecision.builder(PipelineDecisionKind.EXTRACTION, "accepted")
+                    .item("IPV4", "192.0.2.1")
+                    .build());
+        } finally {
+            Locale.setDefault(previous);
+        }
+
+        assertThat(appender.list).singleElement().satisfies(event ->
+                assertThat((String) eventFields(event).get(LogField.IOC_ITEM_IDENTITY.key()))
+                        .startsWith("ipv4:"));
     }
 
     private PipelineItemDecision decision(String value) {

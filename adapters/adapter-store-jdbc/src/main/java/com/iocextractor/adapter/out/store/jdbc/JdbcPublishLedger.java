@@ -272,24 +272,15 @@ public final class JdbcPublishLedger implements PublishLedger {
         Objects.requireNonNull(expected, "expected");
         Objects.requireNonNull(next, "next");
         boolean allowed = switch (expected) {
-            case PENDING -> next == PublishStatus.IN_PROGRESS
+            case PENDING, FAILED -> next == PublishStatus.IN_PROGRESS
                     || next == PublishStatus.ABANDONED;
             case IN_PROGRESS -> next == PublishStatus.SUCCEEDED
                     || next == PublishStatus.FAILED
-                    || next == PublishStatus.ABANDONED;
-            case FAILED -> next == PublishStatus.IN_PROGRESS
                     || next == PublishStatus.ABANDONED;
             case SUCCEEDED, ABANDONED -> false;
         };
         if (!allowed) {
             throw new IllegalArgumentException("Illegal publish ledger transition: " + expected + " -> " + next);
-        }
-        if (next == PublishStatus.FAILED && (expected == PublishStatus.IN_PROGRESS)) {
-            return;
-        }
-        if (next == PublishStatus.ABANDONED || next == PublishStatus.SUCCEEDED
-                || next == PublishStatus.IN_PROGRESS) {
-            return;
         }
     }
 

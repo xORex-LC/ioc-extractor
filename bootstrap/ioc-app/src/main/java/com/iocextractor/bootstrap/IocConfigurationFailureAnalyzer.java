@@ -41,10 +41,8 @@ public final class IocConfigurationFailureAnalyzer
     }
 
     private String description(Set<UnknownKey> keys) {
-        return """
-                CONFIG.UNKNOWN_PROPERTY
-                Unknown or removed IOC configuration keys were found:
-                %s""".formatted(bullets(keys));
+        return ("CONFIG.UNKNOWN_PROPERTY%n"
+                + "Unknown or removed IOC configuration keys were found:%n%s").formatted(bullets(keys));
     }
 
     private String action(Set<UnknownKey> keys) {

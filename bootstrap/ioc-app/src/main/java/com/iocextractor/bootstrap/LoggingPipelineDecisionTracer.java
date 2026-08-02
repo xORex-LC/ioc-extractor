@@ -88,7 +88,7 @@ public final class LoggingPipelineDecisionTracer implements PipelineDecisionTrac
             return decision.identity();
         }
         String value = Objects.requireNonNullElse(decision.value(), "");
-        String type = Objects.requireNonNullElse(decision.indicatorType(), "item").toLowerCase();
+        String type = Objects.requireNonNullElse(decision.indicatorType(), "item").toLowerCase(Locale.ROOT);
         String span = decision.spanStart() == null
                 ? ""
                 : "@" + decision.spanStart() + ":" + decision.spanEnd();

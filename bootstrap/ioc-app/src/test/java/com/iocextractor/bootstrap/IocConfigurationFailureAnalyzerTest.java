@@ -62,6 +62,17 @@ class IocConfigurationFailureAnalyzerTest {
         assertThat(analysis.getAction()).contains("CONFIG.LEGACY_SYNC_TIMEOUT");
     }
 
+    @Test
+    void formatsOperatorDescriptionWithPlatformLineSeparators() {
+        FailureAnalysis analysis = analyze("ioc.unknown.first", "ioc.unknown.second");
+
+        assertThat(analysis.getDescription()).isEqualTo(String.join(System.lineSeparator(),
+                "CONFIG.UNKNOWN_PROPERTY",
+                "Unknown or removed IOC configuration keys were found:",
+                "- ioc.unknown.first",
+                "- ioc.unknown.second"));
+    }
+
     private FailureAnalysis analyze(String... names) {
         Set<ConfigurationProperty> properties = java.util.Arrays.stream(names)
                 .map(IocConfigurationFailureAnalyzerTest::property)

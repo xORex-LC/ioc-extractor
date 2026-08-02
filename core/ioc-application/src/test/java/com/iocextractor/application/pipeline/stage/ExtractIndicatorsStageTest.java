@@ -1,6 +1,8 @@
 package com.iocextractor.application.pipeline.stage;
 
+import com.iocextractor.application.observability.PipelineItemDecision;
 import com.iocextractor.application.pipeline.payload.RefangedText;
+import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.diagnostics.codes.ExtractionDiagnosticCodes;
 import com.iocextractor.domain.extract.ExtractionDecision;
 import com.iocextractor.domain.extract.ExtractionDecisionStatus;
@@ -12,6 +14,7 @@ import com.iocextractor.domain.model.IndicatorType;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -75,5 +78,43 @@ class ExtractIndicatorsStageTest {
                     .containsEntry("type", IndicatorType.DOMAIN)
                     .containsEntry("reason", "also matched higher-priority type URL");
         });
+    }
+
+    @Test
+    void emitsMachineStatusIndependentlyOfDefaultLocale() {
+        var decision = new ExtractionDecision(
+                IndicatorType.DOMAIN, "domain-pattern", new Span(0, 11, "example.com"),
+                ExtractionDecisionStatus.DROPPED_OVERLAP);
+        var tracer = new RecordingTracer();
+        var stage = new ExtractIndicatorsStage(
+                text -> new ExtractionOutcome(List.of(), List.of(decision)),
+                StageTestSupport.DIAGNOSTICS, tracer);
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+
+            stage.process(StageTestSupport.envelope(
+                    new RefangedText(new RefangOutcome("example.com", List.of())), false));
+        } finally {
+            Locale.setDefault(previous);
+        }
+
+        assertThat(tracer.decisions).singleElement()
+                .extracting(PipelineItemDecision::outcome)
+                .isEqualTo("dropped_overlap");
+    }
+
+    private static final class RecordingTracer implements PipelineDecisionTracer {
+        private final List<PipelineItemDecision> decisions = new java.util.ArrayList<>();
+
+        @Override
+        public boolean isEnabled() {
+            return true;
+        }
+
+        @Override
+        public void trace(PipelineItemDecision decision) {
+            decisions.add(decision);
+        }
     }
 }

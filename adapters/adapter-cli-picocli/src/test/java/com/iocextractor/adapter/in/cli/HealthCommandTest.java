@@ -138,4 +138,12 @@ class HealthCommandTest {
 
         assertThat(code).isEqualTo(2);
     }
+
+    @Test
+    void malformedJsonUsesNarrowFailSoftFallbacks() {
+        var command = new HealthCommand("127.0.0.1", "8081");
+
+        assertThat(command.parse("{not-json")).isNull();
+        assertThat(command.prettyOrRaw("{not-json")).isEqualTo("{not-json");
+    }
 }

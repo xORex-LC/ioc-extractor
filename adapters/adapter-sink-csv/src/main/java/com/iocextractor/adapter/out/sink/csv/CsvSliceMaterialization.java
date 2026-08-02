@@ -109,10 +109,8 @@ final class CsvSliceMaterialization implements SnapshotRowConsumer, AutoCloseabl
             var digestStream = new DigestOutputStream(stream, digest);
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(digestStream, encoder));
             openedPrinter = new CSVPrinter(writer, format);
-            stream = null; // ownership moved to the printer/writer chain
             openedPrinter.printRecord(expected.columns());
             printer = openedPrinter;
-            openedPrinter = null;
             currentDigest = digest;
             currentMetadata = artifact;
             currentRows = 0;
