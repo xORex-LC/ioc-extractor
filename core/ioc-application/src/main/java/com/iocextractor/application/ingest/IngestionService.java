@@ -40,6 +40,9 @@ import java.util.Objects;
  * Application orchestration for whole-file ingest. It coordinates source
  * ownership, durable status updates and the existing IOC extraction pipeline;
  * adapters remain responsible for file discovery, hashing and physical storage.
+ * Instances that share a source namespace and ingestion ledger must also share
+ * one {@link KeyedExecutionGuard}. Convenience constructors create a private
+ * guard and therefore provide exclusion only among calls to that service instance.
  */
 public final class IngestionService implements IngestSourceUseCase, RecoverIngestionUseCase, RejectIngestionUseCase {
 
@@ -99,6 +102,10 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                 eventPublisher, clock, diagnosticSink, new SynchronousKeyedExecutionGuard());
     }
 
+    /**
+     * Creates a fully wired service. Callers composing multiple service instances
+     * over the same source namespace and ledger must supply the same execution guard.
+     */
     public IngestionService(IngestionLedger ledger,
                             SourceLifecycle sourceLifecycle,
                             SourcePreparerFactory sourcePreparerFactory,

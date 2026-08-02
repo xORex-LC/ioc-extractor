@@ -34,7 +34,9 @@ JDBC, CSV/JSON, path API, Spring или SLF4J.
 
 ## Зависимости
 
-**Зависит от:** `ioc-domain`, `ioc-platform-etl`,
-`ioc-platform-diagnostics`.
+**Зависит внутрь от:** domain и framework-free platform contracts для ETL,
+diagnostics, control events и keyed concurrency. Точный прямой Maven-граф
+задаёт [pom.xml](pom.xml); README описывает роли, но не дублирует dependency
+inventory.
 
 **Не импортируется:** adapters, bootstrap, Spring, Tika, CSV, picocli, Logback.

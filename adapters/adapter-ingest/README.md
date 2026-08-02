@@ -28,10 +28,13 @@ concurrency, Spring Integration file support.
 
 - `iocIngestionFlow` не стартует автоматически. `IngestionStartupCoordinator`
   сначала восстанавливает run ledger, затем source ledger и только после этого
-  открывает intake; любая ошибка оставляет flow остановленным.
+  открывает intake; любая ошибка оставляет flow остановленным. Coordinator имеет
+  `ApplicationRunner` order `HIGHEST_PRECEDENCE`.
 - Все application entry points для одного content `SourceKey` используют общий
   synchronous keyed guard. File ledger отдельно сериализует read/decide/replace
-  внутри одного adapter instance; cross-process coordination не заявлена.
+  внутри одного adapter instance; сервисы над общими namespace/ledger обязаны
+  разделять guard, cross-process coordination не заявлена. Release-инвариант не
+  маскирует primary work failure: secondary failure становится suppressed.
 - Source-ledger terminal transitions монотонны: same-target retry идемпотентен,
   opposite-target transition конфликтует и не переписывает победителя.
 

@@ -3,7 +3,11 @@ package com.iocextractor.adapter.in.ingest;
 import java.time.Instant;
 import java.util.Objects;
 
-/** Thread-safe operational state of daemon ingestion startup and intake. */
+/**
+ * Single-writer/multi-reader operational state of daemon ingestion startup and
+ * intake. The startup coordinator owns all transitions; readers receive safely
+ * published immutable snapshots.
+ */
 public final class IngestionLifecycleState {
 
     private volatile Snapshot snapshot = Snapshot.pending();

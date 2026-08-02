@@ -22,9 +22,10 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
   primitives and diagnostics-logging bridge.
 - `domain` не зависит от application/adapters/bootstrap/platform и не тянет
   фреймворки или IO-библиотеки.
-- `application` напрямую зависит от `domain`, `platform-etl`,
-  `platform-events` и diagnostics contracts; errors contract приходит
-  транзитивно через platform DAG.
+- `application` зависит внутрь от `domain` и framework-free platform contracts
+  для ETL, diagnostics, control events и keyed concurrency. Точный прямой
+  Maven-граф принадлежит [POM модуля](../core/ioc-application/pom.xml), а не
+  дублируется здесь; errors contract приходит транзитивно через platform DAG.
 - Технологии parsing/storage/transport/CLI и Spring wiring живут в adapters и
   bootstrap (Tika, RE2/J, commons-csv, picocli, JDBC, SMBJ). Platform-модуль
   observability осознанно владеет общей SLF4J API boundary, не бизнес-логикой.

@@ -20,6 +20,11 @@ transport adapters или durable delivery. Это общий concurrency toolki
 caller, сохраняет обычный return/throw contract и ждёт только ранее допущенную
 работу с тем же ключом. Разные ключи не разделяют глобальную блокировку. Его
 aggregate snapshot не раскрывает значения ключей и пригоден для health/telemetry.
+Счётчик пользователей ключа меняется только внутри `ConcurrentHashMap.compute`
+для этого ключа; `volatile` обеспечивает видимость snapshot, а не атомарность
+compound mutation. Если внутренний release-инвариант нарушается после ошибки
+пользовательской работы, release failure добавляется как suppressed и не
+заменяет primary failure.
 
 ## Структура
 

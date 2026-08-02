@@ -24,11 +24,21 @@ public final class SynchronousKeyedExecutionGuard implements KeyedExecutionGuard
         });
 
         state.lock.lock();
+        Throwable primaryFailure = null;
         try {
             state.executing = true;
             return work.get();
+        } catch (RuntimeException | Error failure) {
+            primaryFailure = failure;
+            throw failure;
         } finally {
             state.executing = false;
+            release(key, state, primaryFailure);
+        }
+    }
+
+    private void release(WorkKey key, KeyState state, Throwable primaryFailure) {
+        try {
             state.lock.unlock();
             states.compute(key, (ignored, current) -> {
                 if (current != state) {
@@ -37,6 +47,11 @@ public final class SynchronousKeyedExecutionGuard implements KeyedExecutionGuard
                 state.users--;
                 return state.users == 0 ? null : state;
             });
+        } catch (RuntimeException | Error cleanupFailure) {
+            if (primaryFailure == null) {
+                throw cleanupFailure;
+            }
+            primaryFailure.addSuppressed(cleanupFailure);
         }
     }
 
@@ -56,6 +71,7 @@ public final class SynchronousKeyedExecutionGuard implements KeyedExecutionGuard
 
     private static final class KeyState {
         private final ReentrantLock lock = new ReentrantLock();
+        // Mutated only inside same-key states.compute; volatile serves snapshot visibility.
         private volatile int users;
         private volatile boolean executing;
     }

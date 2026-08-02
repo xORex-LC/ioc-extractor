@@ -341,6 +341,17 @@ reports, `errors=0`, `missingClasses=0`; suppression baseline не менялс�
 regression-тестами и typed/literal PRAGMA boundary, а discovery нового
 non-constant JDBC site остаётся report-only до `BUILD-SPOTBUGS-05`.
 
+C2 audit follow-up устранил diagnostic seam в synchronous guard: release
+failure больше не может заменить primary work failure и проверяется
+corrupted-state regressions. `I4-SB-01` исчез из текущего SpotBugs report;
+same-key `compute` mutation invariant, single-writer lifecycle, highest-priority
+startup runner и shared-guard composition contract зафиксированы рядом с кодом.
+Точный direct dependency inventory application-модуля оставлен единственному
+authority — его POM; архитектурные карты описывают роли и ссылаются на него.
+Focused 10/10 и полный 24-project reactor прошли. Текущий snapshot содержит
+119/119 findings в 19 module reports, `errors=0`, `missingClasses=0`; четыре
+post-inventory false positives остаются видимыми без suppression до `C3`.
+
 При adoption отдельно фиксируются accepted rules/severities, baseline format,
 new-code ratchet, узкие suppressions и их review conditions.
 

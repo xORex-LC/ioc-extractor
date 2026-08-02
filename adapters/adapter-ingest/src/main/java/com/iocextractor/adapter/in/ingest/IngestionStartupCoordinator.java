@@ -4,6 +4,7 @@ import com.iocextractor.application.port.in.ingest.RecoverIngestionUseCase;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.Lifecycle;
+import org.springframework.core.Ordered;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -15,7 +16,7 @@ import java.util.function.IntSupplier;
  * The inbound flow is configured not to auto-start and is opened only after
  * both recovery steps complete successfully.
  */
-public final class IngestionStartupCoordinator implements ApplicationRunner {
+public final class IngestionStartupCoordinator implements ApplicationRunner, Ordered {
 
     private final IntSupplier recoverIngestRuns;
     private final RecoverIngestionUseCase recoverSources;
@@ -36,6 +37,12 @@ public final class IngestionStartupCoordinator implements ApplicationRunner {
         this.lifecycleState = Objects.requireNonNull(lifecycleState, "lifecycleState");
         this.observer = Objects.requireNonNull(observer, "observer");
         this.clock = Objects.requireNonNull(clock, "clock");
+    }
+
+    /** Runs the recovery barrier before any other ordered application runner. */
+    @Override
+    public int getOrder() {
+        return Ordered.HIGHEST_PRECEDENCE;
     }
 
     @Override

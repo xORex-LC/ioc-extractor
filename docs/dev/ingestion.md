@@ -76,10 +76,14 @@ Daemon использует синхронный Spring Integration channel. О�
    durable run.** Оно ускоряет export, но periodic scheduler остаётся backstop.
 9. **Recovery предшествует intake.** Spring Integration flow имеет
    `autoStartup=false`; один startup coordinator последовательно восстанавливает
-   run ledger, затем source ledger и только после этого запускает flow.
+   run ledger, затем source ledger и только после этого запускает flow. Его
+   `ApplicationRunner` order равен `HIGHEST_PRECEDENCE`, поэтому будущий runner
+   не сможет случайно опередить barrier.
 10. **Одинаковый `SourceKey` выполняется последовательно.** Ingest, recovery и
     reject используют один синхронный keyed guard; после admission recovery
-    перечитывает текущее ledger-state вместо доверия snapshot-у scan-а.
+    перечитывает текущее ledger-state вместо доверия snapshot-у scan-а. Все
+    сервисы над общими source namespace и ledger обязаны разделять один guard;
+    production composition inject-ит singleton.
 11. **Terminal source state монотонен.** Адаптеры применяют expected-state/CAS
     переходы: повтор того же terminal результата идемпотентен, а конкурирующий
     `SOURCE_ARCHIVED`/`FAILED` возвращает conflict и не перезаписывает победителя.
@@ -138,6 +142,9 @@ Spring Boot не
 переводит application readiness в `ACCEPTING_TRAFFIC`, пока startup coordinator
 как `ApplicationRunner` не завершил barrier; recovery failure роняет startup и
 оставляет intake остановленным.
+`IngestionLifecycleState` имеет single-writer/multi-reader contract: coordinator
+единолично меняет immutable snapshot, а health только читает его через volatile
+publication.
 
 Startup barrier имеет отдельный operational contract. Одна логическая операция
 `ingest_recover` публикует start с `event.outcome=unknown`, затем ровно один

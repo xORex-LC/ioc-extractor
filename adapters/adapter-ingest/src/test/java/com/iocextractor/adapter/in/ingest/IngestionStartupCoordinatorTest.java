@@ -2,6 +2,7 @@ package com.iocextractor.adapter.in.ingest;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.context.Lifecycle;
+import org.springframework.core.Ordered;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -19,6 +20,13 @@ class IngestionStartupCoordinatorTest {
 
     private static final Instant NOW = Instant.parse("2026-08-02T00:00:00Z");
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
+
+    @Test
+    void runsBeforeOtherApplicationRunners() {
+        var coordinator = coordinator(new RecordingLifecycle(new ArrayList<>()));
+
+        assertThat(coordinator.getOrder()).isEqualTo(Ordered.HIGHEST_PRECEDENCE);
+    }
 
     @Test
     void opensIntakeOnlyAfterRunAndSourceRecoveryComplete() throws Exception {
@@ -149,6 +157,16 @@ class IngestionStartupCoordinatorTest {
         assertThat(events).containsExactly(
                 "intake-start", "recovery-started", "intake-stop", "recovery-failed");
         assertThat(state.snapshot().phase()).isEqualTo(IngestionLifecycleState.Phase.FAILED);
+    }
+
+    private static IngestionStartupCoordinator coordinator(Lifecycle intake) {
+        return new IngestionStartupCoordinator(
+                () -> 0,
+                List::of,
+                intake,
+                new IngestionLifecycleState(),
+                new RecordingStartupObserver(new ArrayList<>()),
+                CLOCK);
     }
 
     private static void await(CountDownLatch latch) {

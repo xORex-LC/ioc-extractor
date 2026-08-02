@@ -221,3 +221,38 @@ cleanup and deliberately preserves the original typed exception for the final
 diagnostic boundary. It is classified as the same false-positive exception-flow
 contract already established by `C2-EX-B` and remains visible without
 suppression for C3.
+
+## 11. C2 audit follow-up
+
+The post-I4 concurrency review closed six maintenance and diagnostic seams
+before C3:
+
+- `SynchronousKeyedExecutionGuard` now preserves a user-work failure when an
+  internal release invariant also fails. The release failure is attached as
+  suppressed; when work succeeded, the same invariant failure remains primary.
+  A focused regression deliberately corrupts the tracked state and pins both
+  branches of that diagnostic contract.
+- The code and module README state that the per-key `users` counter is mutated
+  only within same-key `ConcurrentHashMap.compute`; `volatile` exists for
+  aggregate snapshot visibility, not compound-operation atomicity.
+- `IngestionLifecycleState` is documented as the implementation it actually is:
+  single-writer/multi-reader, with the startup coordinator owning transitions
+  and immutable snapshots safely published to health readers.
+- `IngestionStartupCoordinator` implements `Ordered` at
+  `HIGHEST_PRECEDENCE`. This orders it before other application runners while
+  the non-auto-starting flow remains the independent fail-closed intake barrier.
+- `IngestionService` documents that services sharing a source namespace and
+  ledger must share the same guard. Convenience constructors provide only
+  per-instance exclusion; production composition injects one daemon singleton.
+- The application dependency map now includes the keyed-concurrency role.
+  Exact direct-edge inventory is owned by the module POM; root maps and the
+  module README describe roles and link to that authority instead of maintaining
+  three independent Maven lists.
+
+The focused 11-project reactor passed 10 selected guard/coordinator tests.
+`make docs` passed 450 checks. The final full 24-project `make verify` passed in
+`01:41` (`102.41 s` process elapsed), including both report-integrity gates and
+the two expected external SMB skips. SpotBugs aggregate/module reports agree at
+119 findings with `errors=0` and `missingClasses=0`; the former
+`UL_UNRELEASED_LOCK_EXCEPTION_PATH` signal is absent, while the two documented
+volatile-counter signals remain visible without suppression.
