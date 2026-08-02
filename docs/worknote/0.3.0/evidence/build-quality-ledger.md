@@ -246,7 +246,7 @@ dependencies, CPD source/config scope и missing/unexpected/malformed reports.
 | Exact concurrency/singleton patterns + class/member, 2 findings | Synchronous CSV callback and immutable `ArtifactFilter.NONE` flyweight | Callback access is monitor-confined by the synchronous port contract; the named empty instance has no singleton lifecycle contract | `adapter-sink-csv` | Review if callbacks become asynchronous or `ArtifactFilter` gains identity/lifecycle semantics | `C1-CON-A`, `C1-COR-A` |
 | Exact `EI_EXPOSE_REP*` + class/member, 5 findings | Immutable snapshots and lifecycle-owned bootstrap resources | Construction already copies the collection, or the object deliberately exposes the same managed resource | Owning application/bootstrap modules | Remove when analyzer recognizes the copy; review if construction stops copying or lifecycle ownership crosses the bootstrap boundary | `C2-REP-C/E` |
 | Exact `EI_EXPOSE_REP*` + class/member, 44 findings | Spring-bound configuration and adapter value records | Real mutable aliases with no current mutation call site; safe remediation requires null-preserving copies compatible with collect-all binding | `ioc-app/configuration`, `adapter-ingest`, `adapter-sink-csv` | Replace with null-preserving defensive copies plus binding and mutation-isolation regressions | `C2-REP-A/B/D` |
-| Exact `THROWS_*` + class + method, 18 findings | CLI, pipeline, ingestion, recovery and startup failure boundaries | Required cleanup/accounting/diagnostics occur before the original unchecked failure is propagated with type, cause and stack intact | Owning CLI/application/adapter/bootstrap modules | Remove if the method no longer performs boundary work; review any async, retry, translation or swallow contract | `C2-EX-A..E`, `I4-SB-04`, `FUP-SB-01` |
+| Exact `THROWS_*` + class + method, 18 findings | CLI, pipeline, ingestion, recovery and startup failure boundaries | `policy-noise`: SpotBugs correctly sees catch/rethrow, but its generic policy is inapplicable to documented unchecked boundaries; five methods were hardened so close/accounting/observer failures remain suppressed behind the primary | Owning CLI/application/adapter/bootstrap modules | Remove if the method no longer performs boundary work; review any async, retry, translation or swallow contract | `C2-EX-A..E`, `I4-SB-04`, `FUP-SB-01`, `D-022` |
 | Exact mixed patterns + class + method, 11 findings | SMB share casts, diagnostic constructor, local dead/duplicate code, locale-sensitive tokens, CLI parse fallback and line formatting | Reviewed non-critical legacy quality debt with a specific local remediation path | Owning adapter/platform/bootstrap modules | Apply the per-group exit in `C2-MIX-A..E/H`, then delete the selector | `C2-MIX-A..E/H` |
 | Exact `SE_BAD_FIELD` / `VA_FORMAT_STRING_USES_NEWLINE` + class + method, 2 findings | Non-serialized diagnostics and SQL text-block whitespace | The warned boundary does not exist, or the newline is SQL grammar rather than user-visible text | `platform-diagnostics`, `adapter-store-jdbc` | Review if Java serialization is introduced or SQL text becomes user-visible output | `C2-MIX-F/G` |
 | Exact `VO_VOLATILE_INCREMENT` + class + method/field, 2 findings | Same-key admission/release accounting | Both mutations occur under `ConcurrentHashMap.compute` for the same key; `volatile` is only for snapshot visibility | `platform-concurrency` | Remove if accounting changes; review any mutation outside same-key `compute` | `I4-SB-02..03` |
@@ -263,7 +263,7 @@ reports remain integrity failures and are never represented as suppressions.
 |---|---|---:|---|---|---|
 | `EI_EXPOSE_REP` + `EI_EXPOSE_REP2` | Spring-bound configuration records и adapter objects | 49 | P2 | Framework binding / intentional mutable representation | `C2`: 44 real mutable aliases приняты как legacy debt; 5 immutable/lifecycle-owned exposures — false positives; broad suppression запрещён |
 | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `Path.getParent()` / `getFileName()` под repository path invariants | 20 | P2 | Nullable JDK API без знания validated-root invariants | `C1-NP-A/B/E/F`: false positives; три projection-path findings из `IR-02` устранены validation/adapter fix |
-| `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | Public/application boundaries с documented unchecked failures | 18 | P3 | Deliberate exception contract | `C2-EX-A..E` плюс два post-inventory boundary cases: cleanup/accounting/observer work сохраняют runtime type, cause и stack |
+| `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | Public/application boundaries с documented unchecked failures | 18 | P3 | Generic policy noise, не analyzer false positive | `C2-EX-A..E` плюс два post-inventory boundary cases: cleanup/accounting/observer work сохраняют runtime type, cause и stack; семь occurrences получили explicit secondary-failure hardening |
 | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` + `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | JDBC schema, migration и query-shape SQL | 10 | P1/R10 | Analyzer не различает controlled adapter metadata и untrusted input | `C1-SQL-A/B/D/E/F`: configured/internal identifiers валидируются и quote-ятся, values bind'ятся, migrations code-owned; два health PRAGMA findings устранены typed/literal fix |
 | `SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR` | `ArtifactFilter.NONE` flyweight | 1 | P2 | Named shared immutable instance, не singleton contract | `C1-COR-A`: false positive; оба `RV_RETURN_VALUE_IGNORED` устранены `IR-01` fix |
 | `IS2_INCONSISTENT_SYNC` | `CsvArtifactSliceWriter.active` | 1 | P2/R17 | SpotBugs не знает synchronous callback contract `SnapshotRowConsumer` | `C1`: false positive; `stage` удерживает monitor, production reader вызывает callbacks inline, asynchronous callback запрещён port contract |
@@ -294,16 +294,16 @@ literal switches: `SB04-004..005` исчезают из raw report, а не пе
 baseline. Review обязателен при external migrations, расширении SQL allowlists
 или появлении нового query-shape builder.
 
-`BUILD-SPOTBUGS-04/C2` завершил семантический triage оставшихся 79 findings:
-55 `accepted-legacy`, 23 `false-positive` и 1 `fix-now`. Общий disposition
-всех 118 findings после `C1+C2` изначально: 57 false positives, 55 accepted
-legacy, 3 fix-now и 3 companions `resolved-by-related-fix`. После C1 follow-up
-`SB04-004..005` стали `resolved-by-fix`, поэтому актуально: 55 false positives,
-55 accepted legacy, 3 fix-now и 5 resolved findings. Representation debt пока не
-имеет известных mutation call sites; его исправление требует null-preserving
-copies, сохраняющих ADR-0016 collect-all validation. Все 16 exception-flow
-findings сохраняют исходный runtime failure после обязательного cleanup или
-accounting.
+`BUILD-SPOTBUGS-04/C2` завершил семантический triage оставшихся 79 findings.
+Первоначальная taxonomy была 55 `accepted-legacy`, 23 `false-positive` и 1
+`fix-now`; `D-022` переклассифицировал 16 exception-flow cases в
+`policy-noise`. Общий disposition исходных 118 findings после follow-up:
+39 false positives, 16 policy noise, 55 accepted legacy, 3 fix-now и 5 resolved
+findings. Representation debt пока не имеет известных mutation call sites; его
+исправление требует null-preserving copies, сохраняющих ADR-0016 collect-all
+validation. Все 16 exception-flow findings сохраняют исходный runtime failure;
+аудит дополнительно закрепил suppressed accounting/close/observer failures в
+пяти методах.
 
 `SB04-116` (`IR-03`) получил утверждённый отдельный hardening до `C3`. Dead
 `TransactionTemplate` helper удалён, а не подключён как ложное лечение.
@@ -370,7 +370,7 @@ collect-all configuration preflight и на adapter boundary, сохраняя �
 parentless leaf output. Raw report сократился с 119 до 114 ровно на пять
 ожидаемых findings без новых signals.
 
-Оставшиеся 55 accepted-legacy и 59 false-positive findings покрыты одним
+Оставшиеся 55 accepted-legacy, 41 false-positive и 18 policy-noise findings покрыты одним
 versioned filter: 109 точных pattern + class + method/field selectors. Пять
 дополнительных occurrences находятся в уже выбранных точных методах; instance
 hash не является частью SpotBugs filter grammar. Root-inherited module execution

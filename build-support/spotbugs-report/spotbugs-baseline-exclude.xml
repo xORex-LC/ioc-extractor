@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <FindBugsFilter>
     <!-- C3 accepted baseline: 114 reviewed findings, 109 narrow selectors. -->
+    <!-- Taxonomy: 55 accepted legacy, 41 analyzer false positives, 18 policy noise. -->
     <!-- SB04-105 -->
     <Match>
         <Bug pattern="BC_UNCONFIRMED_CAST_OF_RETURN_VALUE"/>
@@ -590,6 +591,7 @@
         <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader"/>
         <Method name="streamRows"/>
     </Match>
+    <!-- THROWS_* policy-noise selectors; HARDEN-01/02 preserve secondary failures. -->
     <!-- SB04-089 -->
     <Match>
         <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
