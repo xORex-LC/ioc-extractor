@@ -29,10 +29,10 @@ public final class JdbcStorageHealthProbe {
 
     public JdbcStorageHealth probe() {
         try (Connection connection = dataSource.getConnection()) {
-            Integer userVersion = intPragma(connection, "user_version");
-            boolean foreignKeys = intPragma(connection, "foreign_keys") == 1;
-            String journalMode = textPragma(connection, "journal_mode");
-            String quickCheck = textPragma(connection, "quick_check");
+            Integer userVersion = intPragma(connection, IntegerPragma.USER_VERSION);
+            boolean foreignKeys = intPragma(connection, IntegerPragma.FOREIGN_KEYS) == 1;
+            String journalMode = textPragma(connection, TextPragma.JOURNAL_MODE);
+            String quickCheck = textPragma(connection, TextPragma.QUICK_CHECK);
             boolean healthy = foreignKeys
                     && EXPECTED_JOURNAL_MODE.equals(normalize(journalMode))
                     && EXPECTED_QUICK_CHECK.equals(normalize(quickCheck));
@@ -42,27 +42,45 @@ public final class JdbcStorageHealthProbe {
         }
     }
 
-    private int intPragma(Connection connection, String name) throws SQLException {
-        try (var statement = connection.createStatement();
-             var resultSet = statement.executeQuery("PRAGMA " + name)) {
-            if (!resultSet.next()) {
-                throw new SQLException("PRAGMA " + name + " returned no rows");
+    private int intPragma(Connection connection, IntegerPragma pragma) throws SQLException {
+        try (var statement = connection.createStatement()) {
+            try (var resultSet = switch (pragma) {
+                case USER_VERSION -> statement.executeQuery("PRAGMA user_version");
+                case FOREIGN_KEYS -> statement.executeQuery("PRAGMA foreign_keys");
+            }) {
+                if (!resultSet.next()) {
+                    throw new SQLException(pragma + " returned no rows");
+                }
+                return resultSet.getInt(1);
             }
-            return resultSet.getInt(1);
         }
     }
 
-    private String textPragma(Connection connection, String name) throws SQLException {
-        try (var statement = connection.createStatement();
-             var resultSet = statement.executeQuery("PRAGMA " + name)) {
-            if (!resultSet.next()) {
-                throw new SQLException("PRAGMA " + name + " returned no rows");
+    private String textPragma(Connection connection, TextPragma pragma) throws SQLException {
+        try (var statement = connection.createStatement()) {
+            try (var resultSet = switch (pragma) {
+                case JOURNAL_MODE -> statement.executeQuery("PRAGMA journal_mode");
+                case QUICK_CHECK -> statement.executeQuery("PRAGMA quick_check");
+            }) {
+                if (!resultSet.next()) {
+                    throw new SQLException(pragma + " returned no rows");
+                }
+                return resultSet.getString(1);
             }
-            return resultSet.getString(1);
         }
     }
 
     private String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private enum IntegerPragma {
+        USER_VERSION,
+        FOREIGN_KEYS
+    }
+
+    private enum TextPragma {
+        JOURNAL_MODE,
+        QUICK_CHECK
     }
 }

@@ -145,8 +145,8 @@ dispositions намеренно остаются `pending`: `C0` не выпол
 | `SB04-001` | `ioc-adapter-store-jdbc` | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` | `com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler#apply` | P3 / `SECURITY` | План недоступен извне `apply`; SQL создаётся только reconciler из regex-validated identifiers и allowlisted type. `ea7a806f5e37f11838a6bea1bf7172/0` | `false-positive` | `C1-SQL-A` | `triaged` |
 | `SB04-002` | `ioc-adapter-store-jdbc` | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` | `com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler#columns` | P3 / `SECURITY` | Имя таблицы проходит `requireSqlIdentifier` и заключается в double quotes перед `PRAGMA table_info`. `9f2432cdb91df89209e35871fee4337a/0` | `false-positive` | `C1-SQL-A` | `triaged` |
 | `SB04-003` | `ioc-adapter-store-jdbc` | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` | `com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository#load` | P3 / `SECURITY` | Artifact обязан присутствовать в validated schema map; table/column identifiers повторно валидируются и quote-ятся. `860e2d254168fa78d62286f2c40d2eba/0` | `false-positive` | `C1-SQL-B` | `triaged` |
-| `SB04-004` | `ioc-adapter-store-jdbc` | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` | `com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealthProbe#intPragma` | P3 / `SECURITY` | Private helper вызывается только с code literals `user_version` и `foreign_keys`. `7373b103801aad0c559799d4263633f7/0` | `false-positive` | `C1-SQL-C` | `triaged` |
-| `SB04-005` | `ioc-adapter-store-jdbc` | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` | `com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealthProbe#textPragma` | P3 / `SECURITY` | Private helper вызывается только с code literals `journal_mode` и `quick_check`. `1c1d2010e1ef56636e50813cb0d9088/0` | `false-positive` | `C1-SQL-C` | `triaged` |
+| `SB04-004` | `ioc-adapter-store-jdbc` | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` | `com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealthProbe#intPragma` | P3 / `SECURITY` | Helper теперь принимает только private `IntegerPragma`; exhaustive switch передаёт `executeQuery` literal `PRAGMA user_version` или `PRAGMA foreign_keys`. `7373b103801aad0c559799d4263633f7/0` | `resolved-by-fix` | `C1-SQL-C` | `resolved; absent from focused report` |
+| `SB04-005` | `ioc-adapter-store-jdbc` | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` | `com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealthProbe#textPragma` | P3 / `SECURITY` | Helper теперь принимает только private `TextPragma`; exhaustive switch передаёт `executeQuery` literal `PRAGMA journal_mode` или `PRAGMA quick_check`. `1c1d2010e1ef56636e50813cb0d9088/0` | `resolved-by-fix` | `C1-SQL-C` | `resolved; absent from focused report` |
 | `SB04-006` | `ioc-adapter-store-jdbc` | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` | `com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceFactory#initializePersistentPragmas` | P1 / `SECURITY` | Все concatenated values (`UTF-8`, `INCREMENTAL`, `WAL`) задаёт `SqlitePragmaPolicy`; operator выбирает лишь preset, не SQL token. `6a02f61300ba077316237782576f3771/0` | `false-positive` | `C1-SQL-D` | `triaged` |
 | `SB04-007` | `ioc-adapter-store-jdbc` | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` | `com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator#apply` | P3 / `SECURITY` | Один instance объединяет trusted migration body на строке 145 и `PRAGMA user_version=` с positive `int` на строке 147; production wiring загружает migrations только из packaged resources. `9946f8de9403808af3cd5b1070963635/0` | `false-positive` | `C1-SQL-E` | `triaged` |
 | `SB04-008` | `ioc-adapter-store-jdbc` | `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | `com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository#insertRow` | P2 / `SECURITY` | SQL shape строится из validated schema identifiers; все row values передаются через `?` bindings. `c1634a6606e4b8ffcd844dc5cadd39a/0` | `false-positive` | `C1-SQL-B` | `triaged` |
@@ -272,9 +272,9 @@ production wiring: для `SB04-001..012` не найден достижимый
 
 | Evidence ref | Finding IDs | Dynamic fragment provenance | Trust boundary / conclusion |
 |---|---|---|---|
-| `C1-SQL-A` | `SB04-001..002` | `DataframeArtifactSchema` and `DataframeColumn` created from typed sink config; names match `[A-Za-z][A-Za-z0-9_]*`, SQL type belongs to `TEXT/INTEGER/REAL/BLOB/NUMERIC`; reconciler generates the plan internally | Arbitrary SQL cannot reach private `apply`; introspection identifier is revalidated and quoted. Analyzer cannot model the generated-DDL contract; false positive |
+| `C1-SQL-A` | `SB04-001..002` | Configured artifact/business-column names match `[A-Za-z][A-Za-z0-9_]*`; derived storage identifiers such as `_created_at` are revalidated with `[A-Za-z_][A-Za-z0-9_]*`; every dynamic identifier is quoted, SQL type belongs to `TEXT/INTEGER/REAL/BLOB/NUMERIC`, and reconciler generates the plan internally | The broader validator exists only for adapter-owned internal identifiers; both patterns exclude SQL grammar. Arbitrary SQL cannot reach private `apply`; analyzer cannot model the generated-DDL contract; false positive |
 | `C1-SQL-B` | `SB04-003`, `SB04-008..010` | Repository first resolves caller artifact through immutable schema map; table/column names are validated again by `quote`; row key, ID, source and timestamps use bind parameters | Operator-controlled schema metadata may choose an allowed identifier, but cannot introduce SQL grammar. Runtime artifact values never become SQL text; false positive |
-| `C1-SQL-C` | `SB04-004..005` | Both PRAGMA helpers are private; four call sites pass only `user_version`, `foreign_keys`, `journal_mode`, `quick_check` literals | No external dataflow into PRAGMA name; false positive. A future parameterized/public call site requires renewed review |
+| `C1-SQL-C` | `SB04-004..005` | String PRAGMA names replaced with result-typed private enums; exhaustive switches invoke four literal statements: `user_version`, `foreign_keys`, `journal_mode`, `quick_check` | Compiler rejects values outside the closed enum sets and SpotBugs sees literal execute-sites; both findings are removed instead of baselined |
 | `C1-SQL-D` | `SB04-006` | `initializePersistentPragmas` receives settings returned by adapter-owned `SqlitePragmaPolicy`: `encoding=UTF-8`, `autoVacuum=INCREMENTAL`, `journalMode=WAL` | The operator-provided tuning preset selects a closed enum/preset and cannot supply any concatenated token. The only P1 SQL finding is not exploitable under current wiring; false positive |
 | `C1-SQL-E` | `SB04-007` | SpotBugs groups two execute sites: a code-owned migration body loaded by `ServiceSchemaMigrations`/`DataframeFormatMigrations` from packaged resources, and `PRAGMA user_version=` plus a positive Java `int`; versions must be contiguous from 1 | Neither site accepts runtime/operator SQL text under production wiring. Migration SQL is a trusted deployment artifact, while the PRAGMA suffix has no string injection surface; false positive |
 | `C1-SQL-F` | `SB04-011..012` | Export plan artifact must exist in immutable schema map; requested columns must be a subset of declared schema columns and pass identifier validation | Only validated, quoted identifiers determine query shape; artifact value in the coverage predicate is bound. Export data cannot alter SQL grammar; false positive |
@@ -293,8 +293,9 @@ behavior:
   stored verbatim and leave both artifact and revision tables operational.
 
 This disposition must be reviewed again if migration bodies become external,
-the identifier/type allowlists are widened, a PRAGMA helper gains a non-literal
-call site, or another query-shape builder bypasses the immutable schema map.
+the configured/internal identifier or type allowlists are widened, or another
+query-shape builder bypasses the immutable schema map. Health PRAGMA expansion
+must extend the typed enum and exhaustive literal switch together.
 
 Resource ownership was also checked on this surface: every flagged `Connection`,
 `Statement`/`PreparedStatement` and `ResultSet` is covered by
@@ -396,8 +397,12 @@ health/observer update, durable accounting либо translation, после че
 
 Итог `C2`: все 79 оставшихся findings имеют disposition — 55
 `accepted-legacy`, 23 `false-positive`, 1 `fix-now` (`IR-03`). Суммарно по
-`C1+C2`: 57 false positives, 55 accepted legacy, 3 fix-now и 3 companions
-`resolved-by-related-fix` = 118. Ни один baseline selector в `C2` не создавался.
+`C1+C2`: initial triage дал 57 false positives, 55 accepted legacy, 3 fix-now
+и 3 companions `resolved-by-related-fix` = 118. C1 follow-up перевёл
+`SB04-004..005` из false-positive disposition в `resolved-by-fix`, поэтому
+актуальная раскладка исходного inventory: 55 false positives, 55 accepted
+legacy, 3 fix-now и 5 resolved findings. Ни один baseline selector в `C2` не
+создавался.
 
 ## 8. Immediate-risk register
 
@@ -448,6 +453,7 @@ category или pattern-only selector требует отдельного scope 
 | `ING-10/I4` verification | I0..I4 final tree | `make docs`, focused tests, then `make verify` | 24/24 reactor; 19 module pairs + aggregate | 121 / 121; no baseline; `SB04-116` absent | 0 / 0 | `01:30` Maven wall clock | passed |
 | `ING-10 observability follow-up` | `17baded`; uncommitted follow-up tree | focused 39 tests, `make docs`, `make clean`, then `make verify` | 24/24 reactor; 19 module pairs + aggregate | 122 / 122; no baseline; `FUP-SB-01` classified | 0 / 0 | `01:37` Maven wall clock (`real 98.44 s`) | passed |
 | `ING-10 observability repeat` | same uncommitted follow-up tree on clean-derived bytecode | `make docs`, then `make verify` | 24/24 reactor; 19 module pairs + aggregate | 122 / 122; identical to clean run | 0 / 0 | `01:31` Maven wall clock (`real 92.20 s`) | passed |
+| `C1 review follow-up` | `6e8c8b8`; C1 fix/docs tree | focused JDBC reactor, `make docs`, then `make verify` | focused adapter 83 tests; full 24/24 reactor; 19 module pairs + aggregate | 120 / 120; `SB04-004..005` absent; no baseline | 0 / 0 | `01:54` Maven wall clock (`real 115.25 s`) | passed |
 
 Финальный evidence включает минимум один clean reactor run и один немедленный
 повторный run после применения fixes/baseline.
@@ -511,6 +517,7 @@ Module counts:
 | 2026-08-02 | `D-014` | `ING-10/I0..I4` | Пять checkpoint changes реализовали и отдельно закоммитили characterization, startup barrier, shared keyed guard, monotonic adapter transitions и operational closure. Focused I4 run: 21 reactor projects, 50 selected tests, failures/errors/skips 0/0/0 | Выполнить docs/full reactor gate, обновить raw SpotBugs evidence и только затем продолжать `C3` |
 | 2026-08-02 | `D-015` | `ING-10/I4 verification` | `make docs` прошёл 448 checks; первый full gate обнаружил misplaced application enum в interfaces-only port package, focused architecture/TCK rerun подтвердил исправление, финальный `make verify` прошёл 24/24 за `01:30`. Aggregate теперь содержит 121 raw finding: `SB04-116` исчез, четыре новых ING-10 signals классифицированы поэкземплярно без suppression | `ING-10/IR-03=verified`; вернуть очередь к `C3`, начиная с reconciliation текущих 121 findings |
 | 2026-08-02 | `D-016` | `ING-10 observability follow-up` | Typed `ingest_recover` start/terminal timeline, duplicate disposition and exact transition-conflict delivery получили executable tests и generated catalog entries. Первый incremental report показал 123 findings из-за stale pre-clean bytecode; canonical clean run прошёл 24/24 за `01:37` и согласовал aggregate/modules на 122 findings, 0 analyzer errors/missing classes. Повторный run на clean-derived bytecode прошёл за `01:31` с теми же 122/122. Единственный follow-up signal `FUP-SB-01` классифицирован как существующий false-positive exception-flow contract без suppression | Follow-up evidence закрыт; оставить `BUILD-SPOTBUGS-04/C3` следующим checkpoint |
+| 2026-08-02 | `D-017` | `C1 review follow-up` | `SEC-INP-3` синхронизирован как `Enforced + Monitored`; configured/internal identifier regex contracts названы раздельно. `JdbcStorageHealthProbe` принимает private result-typed enums и выполняет только literal PRAGMA через exhaustive switches. Focused JDBC report содержит 14 findings и 0 для health probe; canonical 24-project run согласовал 120/120, analyzer errors/missing classes 0/0 | `SB04-004..005=resolved-by-fix`; оставить `C3` следующим checkpoint с уменьшенной baseline surface |
 
 ## 12. Рабочий change journal
 
@@ -518,7 +525,8 @@ Module counts:
 |---|---|---|---|---|
 | `C0-C2 evidence` | Reproducible inventory, full semantic triage и SQL trust-boundary hardening | worknote, build-quality ledger, status matrix, KNOWN-ISSUES; six JDBC security regression cases, focused module runs and canonical verification | `0b99c2b` | committed |
 | `ING-10/I0..I4` | Characterization, lifecycle barrier, keyed execution, monotonic transitions and operational closure | production code, reusable TCK, focused concurrency/restart/E2E regressions and durable docs | `f4f011e`, `c3a03e2`, `a44d10f`, `7ce5f8f`, I4 final checkpoint | checkpointed |
-| `ING-10 observability follow-up` | Typed recovery lifecycle, duplicate disposition and exact transition-conflict diagnostic | production observer/application code, focused logging/diagnostic regressions, generated catalogs and durable docs | not committed | implemented and verified |
+| `ING-10 observability follow-up` | Typed recovery lifecycle, duplicate disposition and exact transition-conflict diagnostic | production observer/application code, focused logging/diagnostic regressions, generated catalogs and durable docs | `6e8c8b8` | committed and verified |
+| `C1 review follow-up` | Security registry sync, compiler-closed health PRAGMA and test hygiene | health probe, JDBC repository tests, security/threat model, build-quality execution evidence | this commit | implemented and verified |
 
 ## 13. Completion checklist
 

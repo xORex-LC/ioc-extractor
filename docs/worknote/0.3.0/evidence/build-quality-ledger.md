@@ -254,7 +254,7 @@ positive.
 | `EI_EXPOSE_REP` + `EI_EXPOSE_REP2` | Spring-bound configuration records и adapter objects | 49 | P2 | Framework binding / intentional mutable representation | `C2`: 44 real mutable aliases приняты как legacy debt; 5 immutable/lifecycle-owned exposures — false positives; broad suppression запрещён |
 | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | В основном `Path.getParent()` / `getFileName()` под repository path invariants | 23 | P2 | Nullable JDK API без знания validated-root invariants | `C1`: 20 false positives; root projection path подтверждает один fail-safe NPE, а узкая defensive/config-validation правка разрешит его и 2 companion findings (`IR-02`) |
 | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | Public/application boundaries с documented unchecked failures | 16 | P3 | Deliberate exception contract | `C2`: все 16 — false positives; catch paths выполняют cleanup/accounting/observer work и сохраняют runtime type, cause и stack |
-| `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` + `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | JDBC schema, migration и PRAGMA SQL | 12 | P1/R10 | Analyzer не различает controlled adapter metadata и untrusted input | `C1`: все 12 false positive — identifiers validated/quoted, values bound, PRAGMA/migrations code-owned; P1 injection не подтверждён |
+| `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` + `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | JDBC schema, migration и PRAGMA SQL | 12 | P1/R10 | Analyzer не различает controlled adapter metadata и untrusted input | `C1`: injection не подтверждён — configured names используют `[A-Za-z][A-Za-z0-9_]*`, adapter-owned internal names допускают leading `_`; оба набора quote-ятся, values bind'ятся, migrations code-owned. Follow-up заменил String-based health PRAGMA typed enums + literal execute-sites и удалил 2 findings |
 | `RV_RETURN_VALUE_IGNORED` + `SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR` | SLF4J fluent builder; `ArtifactFilter.NONE` flyweight | 3 | P2 | Mutating fluent return / named shared instance, не singleton contract | `C1`: два SLF4J calls нарушают `@CheckReturnValue` contract и образуют `IR-01`; singleton finding — false positive |
 | `IS2_INCONSISTENT_SYNC` | `CsvArtifactSliceWriter.active` | 1 | P2/R17 | SpotBugs не знает synchronous callback contract `SnapshotRowConsumer` | `C1`: false positive; `stage` удерживает monitor, production reader вызывает callbacks inline, asynchronous callback запрещён port contract |
 | Остальные 9 patterns (`DM`, `VA`, `REC`, `BC`, `UPM`, `SE`, `DLS`, `DB`, `CT`) | Несколько production modules | 14 | P2 | Mixed style, legacy serialization/finalizer model и локальные quality candidates | `C2`: 11 accepted legacy, 2 false positives, 1 fix-now (`IR-03`); неиспользуемый JDBC helper вскрыл invalid single-writer assumption, связанную с `ING-10` |
@@ -275,13 +275,20 @@ filter/suppression baseline в `C1` не изменялись; подробно�
 до current production wiring и закрепил его шестью regression cases: SQL-shaped
 artifact/column/type/PRAGMA inputs fail closed, неотмеченный dynamic
 `JdbcArtifactIdBaseline` path валидирует имя, а SQL-shaped runtime values
-сохраняются как данные. Review обязателен при external migrations, расширении
-SQL allowlists или появлении нового non-literal PRAGMA/query-shape call site.
+сохраняются как данные. Configured names используют строгий
+`[A-Za-z][A-Za-z0-9_]*`, а повторная проверка adapter-owned internal names —
+`[A-Za-z_][A-Za-z0-9_]*`; оба набора исключают SQL grammar. Follow-up закрыл
+String-based health PRAGMA двумя private result-typed enums и exhaustive
+literal switches: `SB04-004..005` исчезают из raw report, а не переходят в
+baseline. Review обязателен при external migrations, расширении SQL allowlists
+или появлении нового query-shape builder.
 
 `BUILD-SPOTBUGS-04/C2` завершил семантический triage оставшихся 79 findings:
 55 `accepted-legacy`, 23 `false-positive` и 1 `fix-now`. Общий disposition
-всех 118 findings после `C1+C2`: 57 false positives, 55 accepted legacy, 3
-fix-now и 3 companions `resolved-by-related-fix`. Representation debt пока не
+всех 118 findings после `C1+C2` изначально: 57 false positives, 55 accepted
+legacy, 3 fix-now и 3 companions `resolved-by-related-fix`. После C1 follow-up
+`SB04-004..005` стали `resolved-by-fix`, поэтому актуально: 55 false positives,
+55 accepted legacy, 3 fix-now и 5 resolved findings. Representation debt пока не
 имеет известных mutation call sites; его исправление требует null-preserving
 copies, сохраняющих ADR-0016 collect-all validation. Все 16 exception-flow
 findings сохраняют исходный runtime failure после обязательного cleanup или
@@ -323,6 +330,16 @@ typed failure, чтобы final boundary доставил точный diagnosti
 `false-positive` без suppression. Clean reactor snapshot содержит 122/122
 aggregate/module findings в 19 reports, `errors=0`, `missingClasses=0`;
 немедленный incremental repeat воспроизвёл тот же результат.
+
+C1 follow-up заменил String-параметры health PRAGMA закрытыми enum по типу
+результата и exhaustive switches с literal `executeQuery` sites. Canonical
+reactor прошёл 24/24 за `01:54`; `SB04-004..005` отсутствуют и в module, и в
+aggregate report. Текущий snapshot содержит 120/120 findings в 19 module
+reports, `errors=0`, `missingClasses=0`; suppression baseline не менялся.
+Одновременно `SEC-INP-3` переведён из расплывчатого `Manual + Enforced parts`
+в точное `Enforced + Monitored`: известные trust boundaries защищены шестью
+regression-тестами и typed/literal PRAGMA boundary, а discovery нового
+non-constant JDBC site остаётся report-only до `BUILD-SPOTBUGS-05`.
 
 При adoption отдельно фиксируются accepted rules/severities, baseline format,
 new-code ratchet, узкие suppressions и их review conditions.

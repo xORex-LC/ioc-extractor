@@ -4,6 +4,7 @@ import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
+import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.export.ArtifactRevision;
 import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
@@ -75,8 +76,10 @@ class JdbcArtifactRepositoriesTest {
         List<ArtifactRevision> revisions = new JdbcArtifactRevisionReader(dataSource)
                 .read(List.of("hashes", "masks"));
 
-        assertThat(first).extracting("inserted", "revision").containsExactly(1, 1L);
-        assertThat(duplicate).extracting("inserted", "revision").containsExactly(0, 1L);
+        assertThat(first).extracting(CanonicalWriteResult::inserted, CanonicalWriteResult::revision)
+                .containsExactly(1, 1L);
+        assertThat(duplicate).extracting(CanonicalWriteResult::inserted, CanonicalWriteResult::revision)
+                .containsExactly(0, 1L);
         assertThat(revisions).containsExactly(
                 new ArtifactRevision("hashes", 0, null),
                 new ArtifactRevision("masks", 1, CLOCK.instant()));
@@ -93,8 +96,10 @@ class JdbcArtifactRepositoriesTest {
         var duplicate = repository.write("masks", new CanonicalArtifact("masks", List.of("id", "mask", "source"),
                 List.of(row("id", "2", "mask", "example.com", "source", "second"))));
 
-        assertThat(first).extracting("inserted", "revision").containsExactly(1, 1L);
-        assertThat(duplicate).extracting("inserted", "revision").containsExactly(0, 1L);
+        assertThat(first).extracting(CanonicalWriteResult::inserted, CanonicalWriteResult::revision)
+                .containsExactly(1, 1L);
+        assertThat(duplicate).extracting(CanonicalWriteResult::inserted, CanonicalWriteResult::revision)
+                .containsExactly(0, 1L);
         assertThat(repository.load("masks").rows())
                 .extracting(row -> row.value("id") + ":" + row.value("mask") + ":" + row.value("source"))
                 .containsExactly("1:example.com:first");
@@ -115,8 +120,10 @@ class JdbcArtifactRepositoriesTest {
         var duplicate = repository.write("masks", new CanonicalArtifact("masks", List.of("id", "mask", "source"),
                 List.of(row("id", "2", "mask", "example.com", "source", "same-source"))));
 
-        assertThat(first).extracting("inserted", "revision").containsExactly(1, 1L);
-        assertThat(duplicate).extracting("inserted", "revision").containsExactly(0, 1L);
+        assertThat(first).extracting(CanonicalWriteResult::inserted, CanonicalWriteResult::revision)
+                .containsExactly(1, 1L);
+        assertThat(duplicate).extracting(CanonicalWriteResult::inserted, CanonicalWriteResult::revision)
+                .containsExactly(0, 1L);
         assertThat(repository.load("masks").rows())
                 .extracting(row -> row.value("id") + ":" + row.value("mask") + ":" + row.value("source"))
                 .containsExactly("1:example.com:same-source");
@@ -169,7 +176,7 @@ class JdbcArtifactRepositoriesTest {
     @Test
     void artifact_id_baseline_rejects_sql_shaped_artifact_name_before_query_generation() {
         var schemas = List.of(schema("masks", "id", "mask"));
-        dataSource = dataSource("baseline-trust-boundary.db");
+        dataSource = dataSource("baseline-trust-boundary-" + System.nanoTime() + ".db");
         var baseline = new JdbcArtifactIdBaseline(dataSource, schemas);
 
         assertThatThrownBy(() -> baseline.maxId("masks\"; DROP TABLE artifact_revision;--"))
@@ -190,7 +197,8 @@ class JdbcArtifactRepositoriesTest {
                 List.of("id", "mask", "source"),
                 List.of(row("id", "1", "mask", mask, "source", source))));
 
-        assertThat(result).extracting("inserted", "revision").containsExactly(1, 1L);
+        assertThat(result).extracting(CanonicalWriteResult::inserted, CanonicalWriteResult::revision)
+                .containsExactly(1, 1L);
         assertThat(repository.load("masks").rows())
                 .singleElement()
                 .satisfies(row -> {
