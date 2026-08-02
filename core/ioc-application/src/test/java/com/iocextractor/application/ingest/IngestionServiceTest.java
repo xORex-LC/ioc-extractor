@@ -192,6 +192,31 @@ class IngestionServiceTest {
     }
 
     @Test
+    void preserves_processing_failure_when_marking_run_failed_also_fails() {
+        var key = new SourceKey("ABC123");
+        var processingFailure = new IllegalStateException("db commit failed");
+        var accountingFailure = new IllegalStateException("run ledger unavailable");
+        var runLedger = new MemoryRunLedger();
+        runLedger.markDbCommittedFailure = processingFailure;
+        runLedger.markFailedFailure = accountingFailure;
+        var service = new IngestionService(
+                new MemoryLedger(),
+                new MemoryLifecycle(),
+                source -> new SourcePreparers(List.of(new CountingPreparer())),
+                extractionFactory(),
+                runLedger,
+                new CollectingProjection(),
+                new RecordingControlEventPublisher(),
+                clock);
+
+        assertThatThrownBy(() -> service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source.html"), key, Instant.EPOCH)))
+                .isSameAs(processingFailure)
+                .satisfies(failure -> assertThat(failure.getSuppressed())
+                        .containsExactly(accountingFailure));
+    }
+
+    @Test
     void does_not_create_sinks_for_a_duplicate_source() {
         var key = new SourceKey("ABC123");
         var ledger = new MemoryLedger();
@@ -712,6 +737,8 @@ class IngestionServiceTest {
     private static final class MemoryRunLedger implements RunLedger {
         private IngestRunStatus status;
         private int starts;
+        private RuntimeException markDbCommittedFailure;
+        private RuntimeException markFailedFailure;
 
         @Override
         public IngestRun startIngest(String sourceKey, List<String> artifacts) {
@@ -722,6 +749,9 @@ class IngestionServiceTest {
 
         @Override
         public void markDbCommitted(String runId) {
+            if (markDbCommittedFailure != null) {
+                throw markDbCommittedFailure;
+            }
             status = IngestRunStatus.DB_COMMITTED;
         }
 
@@ -737,6 +767,9 @@ class IngestionServiceTest {
 
         @Override
         public void markFailed(String runId, String reason) {
+            if (markFailedFailure != null) {
+                throw markFailedFailure;
+            }
             status = IngestRunStatus.FAILED;
         }
 

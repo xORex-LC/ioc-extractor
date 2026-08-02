@@ -349,7 +349,11 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
             runLedger.markProjectionCompleted(run.runId());
         } catch (RuntimeException e) {
             if (!dbCommitted) {
-                runLedger.markFailed(run.runId(), e.getMessage());
+                try {
+                    runLedger.markFailed(run.runId(), e.getMessage());
+                } catch (RuntimeException accountingFailure) {
+                    e.addSuppressed(accountingFailure);
+                }
             }
             throw e;
         }
