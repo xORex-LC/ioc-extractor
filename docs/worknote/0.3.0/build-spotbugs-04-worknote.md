@@ -419,6 +419,7 @@ baseline; none is suppressed.
 | `I4-SB-02` | `ioc-platform-concurrency` / `VO_VOLATILE_INCREMENT` | `SynchronousKeyedExecutionGuard#lambda$0`; `5845659a1c7ed4aec897e08be5c8be7b/0` | `false-positive`: the increment is inside same-key `ConcurrentHashMap.compute`; `volatile` supports aggregate snapshot visibility, not compound mutation atomicity |
 | `I4-SB-03` | `ioc-platform-concurrency` / `VO_VOLATILE_INCREMENT` | `SynchronousKeyedExecutionGuard#lambda$1`; `48f259f3ad4cd22ec8067afa01f08ca/0` | `false-positive`: the decrement is governed by the same per-key remapping lock and validated against the admitted state |
 | `I4-SB-04` | `ioc-adapter-ingest` / `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `IngestionStartupCoordinator#run`; `d56f19992d2df7d7a5419935e72e36b4/0` | `false-positive`: startup must rethrow the original recovery/start failure after stopping intake and publishing `FAILED`; swallowing or wrapping it would weaken fail-closed startup |
+| `FUP-SB-01` | `ioc-application` / `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | `IngestionService#ingestGuarded`; `26ca8efc8ada84b88a4e9f1f98d7847d/0` | `false-positive`, same contract as `C2-EX-B`: after mandatory physical-failure cleanup the original typed failure must reach the final diagnostic boundary unchanged; wrapping or swallowing it would lose exact root-cause delivery |
 
 Если immediate risk не подтверждён, register остаётся пустым, но `C1` содержит
 явное evidence, почему проверенные candidates безопасны в действующем contract.
@@ -445,6 +446,8 @@ category или pattern-only selector требует отдельного scope 
 | `C1` hardening canonical verification | `5dd0fd4`; test/docs-only C1 tree | `make verify` | 24/24 reactor; 19 module pairs + aggregate | 118 / 118 | 0 / 0 | `01:30` Maven wall clock | passed |
 | `C2` semantic-triage verification | `2632201`; documentation-only C2 tree | `/usr/bin/time make verify` | 24/24 reactor; 19 module pairs + aggregate | 118 / 118; no baseline | 0 / 0 | `01:32.52` process elapsed | passed |
 | `ING-10/I4` verification | I0..I4 final tree | `make docs`, focused tests, then `make verify` | 24/24 reactor; 19 module pairs + aggregate | 121 / 121; no baseline; `SB04-116` absent | 0 / 0 | `01:30` Maven wall clock | passed |
+| `ING-10 observability follow-up` | `17baded`; uncommitted follow-up tree | focused 39 tests, `make docs`, `make clean`, then `make verify` | 24/24 reactor; 19 module pairs + aggregate | 122 / 122; no baseline; `FUP-SB-01` classified | 0 / 0 | `01:37` Maven wall clock (`real 98.44 s`) | passed |
+| `ING-10 observability repeat` | same uncommitted follow-up tree on clean-derived bytecode | `make docs`, then `make verify` | 24/24 reactor; 19 module pairs + aggregate | 122 / 122; identical to clean run | 0 / 0 | `01:31` Maven wall clock (`real 92.20 s`) | passed |
 
 Финальный evidence включает минимум один clean reactor run и один немедленный
 повторный run после применения fixes/baseline.
@@ -507,6 +510,7 @@ Module counts:
 | 2026-08-01 | `D-013` | queue decision | Пользователь утвердил перенос единого `ING-10/IR-03` hardening перед `BUILD-SPOTBUGS-04/C3`; это отдельный correctness/concurrency predecessor, а не часть baseline mechanics | Сначала спроектировать и реализовать lifecycle barrier, per-source-key serialization и atomic ledger transitions с concurrent regressions; после verification вернуться в `C3` |
 | 2026-08-02 | `D-014` | `ING-10/I0..I4` | Пять checkpoint changes реализовали и отдельно закоммитили characterization, startup barrier, shared keyed guard, monotonic adapter transitions и operational closure. Focused I4 run: 21 reactor projects, 50 selected tests, failures/errors/skips 0/0/0 | Выполнить docs/full reactor gate, обновить raw SpotBugs evidence и только затем продолжать `C3` |
 | 2026-08-02 | `D-015` | `ING-10/I4 verification` | `make docs` прошёл 448 checks; первый full gate обнаружил misplaced application enum в interfaces-only port package, focused architecture/TCK rerun подтвердил исправление, финальный `make verify` прошёл 24/24 за `01:30`. Aggregate теперь содержит 121 raw finding: `SB04-116` исчез, четыре новых ING-10 signals классифицированы поэкземплярно без suppression | `ING-10/IR-03=verified`; вернуть очередь к `C3`, начиная с reconciliation текущих 121 findings |
+| 2026-08-02 | `D-016` | `ING-10 observability follow-up` | Typed `ingest_recover` start/terminal timeline, duplicate disposition and exact transition-conflict delivery получили executable tests и generated catalog entries. Первый incremental report показал 123 findings из-за stale pre-clean bytecode; canonical clean run прошёл 24/24 за `01:37` и согласовал aggregate/modules на 122 findings, 0 analyzer errors/missing classes. Повторный run на clean-derived bytecode прошёл за `01:31` с теми же 122/122. Единственный follow-up signal `FUP-SB-01` классифицирован как существующий false-positive exception-flow contract без suppression | Follow-up evidence закрыт; оставить `BUILD-SPOTBUGS-04/C3` следующим checkpoint |
 
 ## 12. Рабочий change journal
 
@@ -514,6 +518,7 @@ Module counts:
 |---|---|---|---|---|
 | `C0-C2 evidence` | Reproducible inventory, full semantic triage и SQL trust-boundary hardening | worknote, build-quality ledger, status matrix, KNOWN-ISSUES; six JDBC security regression cases, focused module runs and canonical verification | `0b99c2b` | committed |
 | `ING-10/I0..I4` | Characterization, lifecycle barrier, keyed execution, monotonic transitions and operational closure | production code, reusable TCK, focused concurrency/restart/E2E regressions and durable docs | `f4f011e`, `c3a03e2`, `a44d10f`, `7ce5f8f`, I4 final checkpoint | checkpointed |
+| `ING-10 observability follow-up` | Typed recovery lifecycle, duplicate disposition and exact transition-conflict diagnostic | production observer/application code, focused logging/diagnostic regressions, generated catalogs and durable docs | not committed | implemented and verified |
 
 ## 13. Completion checklist
 

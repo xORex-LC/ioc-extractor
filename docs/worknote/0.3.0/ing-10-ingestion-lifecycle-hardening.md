@@ -187,3 +187,37 @@ coordinator's `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` is a deliberate fail-close
 rethrow after stopping intake and recording failed lifecycle state. They remain
 visible without suppression for `BUILD-SPOTBUGS-04/C3`. The resulting raw count
 is 121, a net change of three after removal of `SB04-116`.
+
+## 10. Observability follow-up
+
+The initial I4 implementation exposed recovery state through health but did not
+provide a typed operation timeline. The follow-up closes that operational gap
+without introducing control events or changing the startup barrier:
+
+- `ingest_recover` records start (`unknown`) and exactly one terminal outcome;
+  success carries duration and recovered run/source counts, while failure
+  carries duration and only the exception class in `error.type`;
+- a duplicate keeps the existing successful terminal `source_ingest` action and
+  adds `ioc.ingest.disposition=duplicate` instead of inventing a separate event;
+- an unexpected ledger result remains the exact
+  `INGEST.STATE_TRANSITION_CONFLICT` root diagnostic; a generic
+  `INGEST.RECOVERY_FAILED` is created only for an otherwise untyped startup or
+  recovery failure;
+- a recovery diagnostic already delivered by `IngestionService` is not emitted
+  again by the startup observer.
+
+Focused tests pin callback ordering, structured field types, message safety and
+the exactly-once diagnostic boundary. The generated logging and diagnostic
+catalogs are the public machine-readable vocabulary; neither operational record
+participates in startup ordering or durable correctness.
+
+The four focused classes passed 39 tests. A clean 24-project reactor passed in
+`01:37`, and the immediate incremental repeat passed in `01:31`; both produced
+all 19 module XML/HTML pairs plus the same 122-finding aggregate with `errors=0`
+and `missingClasses=0`. The only follow-up finding is a P3
+`THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` on
+`IngestionService#ingestGuarded`: the method performs required source-failure
+cleanup and deliberately preserves the original typed exception for the final
+diagnostic boundary. It is classified as the same false-positive exception-flow
+contract already established by `C2-EX-B` and remains visible without
+suppression for C3.

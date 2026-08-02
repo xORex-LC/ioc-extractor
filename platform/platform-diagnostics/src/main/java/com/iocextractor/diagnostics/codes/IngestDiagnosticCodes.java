@@ -17,6 +17,9 @@ public enum IngestDiagnosticCodes implements DiagnosticCode {
             "Ingestion ledger update failed for source {source}: {reason}"),
     DEAD_LETTER_FAILED(DiagnosticSeverity.ERROR, DiagnosticImpact.OPERATION, "ingest.dead-letter-failed",
             "Source {source} could not be moved to the failed area: {reason}"),
+    STATE_TRANSITION_CONFLICT(DiagnosticSeverity.ERROR, DiagnosticImpact.OPERATION,
+            "ingest.state-transition-conflict",
+            "Ingestion ledger operation {operation} for source {source} returned {transition}; expected {expected}"),
     RECOVERY_FAILED(DiagnosticSeverity.ERROR, DiagnosticImpact.OPERATION, "ingest.recovery-failed",
             "Ingestion recovery failed for source {source}: {reason}");
 

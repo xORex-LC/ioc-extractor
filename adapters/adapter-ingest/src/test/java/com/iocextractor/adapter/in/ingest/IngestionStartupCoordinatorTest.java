@@ -27,6 +27,7 @@ class IngestionStartupCoordinatorTest {
         var releaseSourceRecovery = new CountDownLatch(1);
         var intake = new RecordingLifecycle(events);
         var state = new IngestionLifecycleState();
+        var observer = new RecordingStartupObserver(events);
         var coordinator = new IngestionStartupCoordinator(
                 () -> {
                     events.add("run-recovery");
@@ -40,6 +41,7 @@ class IngestionStartupCoordinatorTest {
                 },
                 intake,
                 state,
+                observer,
                 CLOCK);
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -47,7 +49,7 @@ class IngestionStartupCoordinatorTest {
             assertThat(sourceRecoveryEntered.await(5, TimeUnit.SECONDS)).isTrue();
 
             assertThat(intake.isRunning()).isFalse();
-            assertThat(events).containsExactly("run-recovery", "source-recovery");
+            assertThat(events).containsExactly("recovery-started", "run-recovery", "source-recovery");
             assertThat(state.snapshot().phase()).isEqualTo(IngestionLifecycleState.Phase.RECOVERING);
 
             releaseSourceRecovery.countDown();
@@ -57,7 +59,9 @@ class IngestionStartupCoordinatorTest {
         }
 
         assertThat(intake.isRunning()).isTrue();
-        assertThat(events).containsExactly("run-recovery", "source-recovery", "intake-start");
+        assertThat(events).containsExactly(
+                "recovery-started", "run-recovery", "source-recovery",
+                "intake-start", "recovery-completed");
         assertThat(state.snapshot()).satisfies(snapshot -> {
             assertThat(snapshot.phase()).isEqualTo(IngestionLifecycleState.Phase.RUNNING);
             assertThat(snapshot.recoveredRuns()).isEqualTo(2);
@@ -70,7 +74,8 @@ class IngestionStartupCoordinatorTest {
     @Test
     void leavesIntakeStoppedWhenRunRecoveryFails() {
         var sourceRecoveryCalls = new ArrayList<String>();
-        var intake = new RecordingLifecycle(new ArrayList<>());
+        var events = new ArrayList<String>();
+        var intake = new RecordingLifecycle(events);
         var state = new IngestionLifecycleState();
         var coordinator = new IngestionStartupCoordinator(
                 () -> {
@@ -82,6 +87,7 @@ class IngestionStartupCoordinatorTest {
                 },
                 intake,
                 state,
+                new RecordingStartupObserver(events),
                 CLOCK);
 
         assertThatThrownBy(() -> coordinator.run(null))
@@ -90,13 +96,15 @@ class IngestionStartupCoordinatorTest {
 
         assertThat(sourceRecoveryCalls).isEmpty();
         assertThat(intake.isRunning()).isFalse();
+        assertThat(events).containsExactly("recovery-started", "intake-stop", "recovery-failed");
         assertThat(state.snapshot().phase()).isEqualTo(IngestionLifecycleState.Phase.FAILED);
         assertThat(state.snapshot().failure()).isEqualTo("IllegalStateException");
     }
 
     @Test
     void leavesIntakeStoppedWhenSourceRecoveryFails() {
-        var intake = new RecordingLifecycle(new ArrayList<>());
+        var events = new ArrayList<String>();
+        var intake = new RecordingLifecycle(events);
         var state = new IngestionLifecycleState();
         var coordinator = new IngestionStartupCoordinator(
                 () -> 0,
@@ -105,6 +113,7 @@ class IngestionStartupCoordinatorTest {
                 },
                 intake,
                 state,
+                new RecordingStartupObserver(events),
                 CLOCK);
 
         assertThatThrownBy(() -> coordinator.run(null))
@@ -112,6 +121,7 @@ class IngestionStartupCoordinatorTest {
                 .hasMessage("source recovery failed");
 
         assertThat(intake.isRunning()).isFalse();
+        assertThat(events).containsExactly("recovery-started", "intake-stop", "recovery-failed");
         assertThat(state.snapshot().phase()).isEqualTo(IngestionLifecycleState.Phase.FAILED);
     }
 
@@ -129,13 +139,15 @@ class IngestionStartupCoordinatorTest {
                 () -> List.of(),
                 intake,
                 state,
+                new RecordingStartupObserver(events),
                 CLOCK);
 
         assertThatThrownBy(() -> coordinator.run(null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("must remain stopped");
 
-        assertThat(events).containsExactly("intake-start", "intake-stop");
+        assertThat(events).containsExactly(
+                "intake-start", "recovery-started", "intake-stop", "recovery-failed");
         assertThat(state.snapshot().phase()).isEqualTo(IngestionLifecycleState.Phase.FAILED);
     }
 
@@ -173,6 +185,30 @@ class IngestionStartupCoordinatorTest {
         @Override
         public boolean isRunning() {
             return running;
+        }
+    }
+
+    private static final class RecordingStartupObserver implements IngestionStartupObserver {
+        private final List<String> events;
+
+        private RecordingStartupObserver(List<String> events) {
+            this.events = events;
+        }
+
+        @Override
+        public void recoveryStarted(Instant startedAt) {
+            events.add("recovery-started");
+        }
+
+        @Override
+        public void recoveryCompleted(Instant startedAt, Instant completedAt,
+                                      int recoveredRuns, int recoveredSources) {
+            events.add("recovery-completed");
+        }
+
+        @Override
+        public void recoveryFailed(Instant startedAt, Instant failedAt, RuntimeException failure) {
+            events.add("recovery-failed");
         }
     }
 }

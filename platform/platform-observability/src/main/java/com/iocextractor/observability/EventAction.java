@@ -17,6 +17,7 @@ public enum EventAction {
     PIPELINE_ITEM_DECISION("pipeline_item_decision", "pipeline", "One explicitly enabled per-item pipeline decision was traced."),
     SOURCE_READ("source_read", "source", "Source document text was read."),
     SOURCE_INGEST("source_ingest", "source", "Source ingestion reached a terminal handled outcome."),
+    INGEST_RECOVER("ingest_recover", "source", "Daemon startup ingestion recovery progressed or failed."),
     ARTIFACT_PROJECT("artifact_project", "sink", "CSV projection was regenerated from canonical storage."),
     RETENTION_SWEEP("retention_sweep", "maintenance", "Retention sweep evaluated configured targets."),
     SCHEMA_MIGRATE("schema_migrate", "storage", "Database schema migration progressed or failed."),

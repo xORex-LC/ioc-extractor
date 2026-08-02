@@ -168,6 +168,8 @@ public final class FileSourceMessageHandler {
                     .outcome(EventOutcome.SUCCESS)
                     .field(LogField.FILE_PATH, source)
                     .field(LogField.IOC_SOURCE_CONTENT_HASH, key.value())
+                    .field(LogField.IOC_INGEST_DISPOSITION,
+                            result.duplicate() ? "duplicate" : "handled_without_extraction")
                     .message(result.duplicate() ? "source duplicate skipped" : "source handled without extraction")
                     .log();
             return;

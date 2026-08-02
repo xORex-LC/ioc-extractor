@@ -109,6 +109,7 @@ class FileSourceMessageHandlerTest {
         assertThat(eventFields(event))
                 .containsEntry(LogField.EVENT_ACTION.key(), EventAction.SOURCE_INGEST.value())
                 .containsEntry(LogField.EVENT_OUTCOME.key(), EventOutcome.SUCCESS.value())
+                .containsEntry(LogField.IOC_INGEST_DISPOSITION.key(), "duplicate")
                 .doesNotContainKeys(LogField.IOC_RUN_ID.key(), LogField.IOC_COMPLETION_STATUS.key());
     }
 

@@ -23,6 +23,7 @@ import com.iocextractor.platform.concurrent.WorkKey;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import com.iocextractor.platform.events.NoopControlEventPublisher;
 import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.diagnostics.DiagnosticCategory;
 import com.iocextractor.diagnostics.DiagnosticException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
@@ -137,10 +138,11 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         try {
             IngestionLedgerTransition transition = ledger.markClaimed(unit);
             if (transition != IngestionLedgerTransition.APPLIED) {
-                throw transitionFailure(command.key(), "mark-claimed", transition);
+                throw transitionFailure(command.key(), "mark-claimed", transition, "APPLIED");
             }
         } catch (RuntimeException e) {
-            var failure = ledgerFailure(command.key(), "mark-claimed", e);
+            RuntimeException failure = isIngestDiagnostic(e)
+                    ? e : ledgerFailure(command.key(), "mark-claimed", e);
             try {
                 sourceLifecycle.fail(unit, e.getMessage());
             } catch (RuntimeException cleanupFailure) {
@@ -169,7 +171,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                         results.add(result);
                     }
                 } catch (RuntimeException failure) {
-                    if (isRecoveryFailure(failure)) {
+                    if (isIngestDiagnostic(failure)) {
                         throw failure;
                     }
                     throw recoveryFailure(record.key(), failure);
@@ -183,7 +185,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
             }
             return results;
         } catch (RuntimeException failure) {
-            if (!isRecoveryFailure(failure)) {
+            if (!isIngestDiagnostic(failure)) {
                 throw recoveryFailure(new SourceKey("recovery-scan"), failure);
             }
             throw failure;
@@ -275,15 +277,20 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                                   String operation,
                                   IngestionLedgerTransition transition) {
         if (!transition.completed()) {
-            throw transitionFailure(key, operation, transition);
+            throw transitionFailure(key, operation, transition, "APPLIED or ALREADY_APPLIED");
         }
     }
 
-    private IllegalStateException transitionFailure(SourceKey key,
-                                                    String operation,
-                                                    IngestionLedgerTransition transition) {
-        return new IllegalStateException("Ingestion ledger transition " + operation
-                + " for " + key.value() + " returned " + transition);
+    private DiagnosticException transitionFailure(SourceKey key,
+                                                  String operation,
+                                                  IngestionLedgerTransition transition,
+                                                  String expected) {
+        return new DiagnosticException(diagnostics.create(IngestDiagnosticCodes.STATE_TRANSITION_CONFLICT)
+                .with("source", key.value())
+                .with("operation", operation)
+                .with("transition", transition)
+                .with("expected", expected)
+                .build());
     }
 
     private DiagnosticException recoveryFailure(SourceKey key, RuntimeException failure) {
@@ -296,9 +303,9 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         return new DiagnosticException(diagnostic);
     }
 
-    private boolean isRecoveryFailure(RuntimeException failure) {
+    private boolean isIngestDiagnostic(RuntimeException failure) {
         return failure instanceof DiagnosticException diagnosticFailure
-                && diagnosticFailure.diagnostic().code() == IngestDiagnosticCodes.RECOVERY_FAILED;
+                && diagnosticFailure.diagnostic().category() == DiagnosticCategory.INGEST;
     }
 
     private String reason(RuntimeException failure) {

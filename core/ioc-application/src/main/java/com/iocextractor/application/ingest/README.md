@@ -40,8 +40,12 @@ SQLite/JDBC, CSV projection implementation или logging. Все внешние
   latency hint; correctness остаётся за durable ledgers и downstream poll/backstop.
 - Claim, ledger и dead-letter failures возвращаются как typed `INGEST.*` carriers;
   final retry boundary эмитит occurrence ровно один раз.
-- Startup recovery сама владеет `INGEST.RECOVERY_FAILED`, потому что над ней нет
-  message-handler retry boundary. Diagnostic не подменяет ledger/file transition.
+- Recovery сохраняет точный `INGEST.STATE_TRANSITION_CONFLICT`, когда ledger
+  возвращает неожиданный result, и создаёт `INGEST.RECOVERY_FAILED` только для
+  ещё не типизированного сбоя. Application recovery сразу доставляет созданный
+  recovery diagnostic; adapter startup boundary не эмитит его повторно.
+- Diagnostic не подменяет ledger/file transition и не меняет fail-closed
+  startup contract.
 
 ## Границы ответственности
 

@@ -14,7 +14,7 @@ class LoggingTaxonomyTest {
             "app", "cli", "pipeline", "source", "sink", "maintenance", "storage",
             "export", "sync", "events", "diagnostics");
 
-    private static final Set<String> ECS_FIELD_PREFIXES = Set.of("event.", "file.");
+    private static final Set<String> ECS_FIELD_PREFIXES = Set.of("event.", "error.", "file.");
 
     @Test
     void event_actions_are_stable_and_unique() {

@@ -104,6 +104,30 @@ class IngestionServiceTest {
     }
 
     @Test
+    void carriesExactDiagnosticWhenTerminalLedgerTransitionConflicts() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.archiveTransition = IngestionLedgerTransition.CONFLICT;
+        var service = new IngestionService(
+                ledger,
+                new MemoryLifecycle(),
+                source -> new SourcePreparers(List.of(new CountingPreparer())),
+                extractionFactory());
+
+        assertThatThrownBy(() -> service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source.html"), key, Instant.EPOCH)))
+                .isInstanceOfSatisfying(DiagnosticException.class, failure -> {
+                    assertThat(failure.diagnostic().code())
+                            .isEqualTo(IngestDiagnosticCodes.STATE_TRANSITION_CONFLICT);
+                    assertThat(failure.diagnostic().context())
+                            .containsEntry("source", "abc123")
+                            .containsEntry("operation", "mark-source-archived")
+                            .containsEntry("transition", IngestionLedgerTransition.CONFLICT)
+                            .containsEntry("expected", "APPLIED or ALREADY_APPLIED");
+                });
+    }
+
+    @Test
     void emits_projection_diagnostic_once_and_merges_it_into_daemon_completion() {
         var key = new SourceKey("ABC123");
         var ledger = new MemoryLedger();
@@ -784,6 +808,7 @@ class IngestionServiceTest {
         private IngestionRecord record;
         private List<IngestionRecord> incompleteRecords;
         private RuntimeException claimFailure;
+        private IngestionLedgerTransition archiveTransition;
 
         @Override
         public Optional<IngestionRecord> find(SourceKey key) {
@@ -809,6 +834,9 @@ class IngestionServiceTest {
 
         @Override
         public IngestionLedgerTransition markSourceArchived(SourceKey key, Path archivedPath) {
+            if (archiveTransition != null) {
+                return archiveTransition;
+            }
             if (record == null) {
                 return IngestionLedgerTransition.MISSING;
             }

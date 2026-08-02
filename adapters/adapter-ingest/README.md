@@ -46,5 +46,10 @@ concurrency, Spring Integration file support.
 - После структурно завершённой extraction handler публикует terminal
   `source_ingest` с durable run id, completion и отдельными severity counts.
   `COMPLETED_WITH_ERRORS` имеет `event.outcome=failure`; duplicate skip не
-  получает вымышленный extraction completion.
+  получает вымышленный extraction completion и помечается
+  `ioc.ingest.disposition=duplicate`.
+- `IngestionStartupObserver` публикует одну операцию `ingest_recover`: start и
+  один terminal outcome с duration/counts или safe error type. Он доставляет
+  ещё не выпущенный `INGEST.*` carrier на startup boundary, но не дублирует
+  `INGEST.RECOVERY_FAILED`, уже выпущенный application recovery.
 - Локальный error-log не дублирует canonical diagnostic delivery.

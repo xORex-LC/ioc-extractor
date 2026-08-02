@@ -10,6 +10,10 @@
 - хранит durable file-ledger для компенсации после рестарта.
 - после retry exhaustion выполняет reject и доставляет typed `INGEST.*`
   diagnostic ровно один раз.
+- наблюдает recovery-before-intake barrier через typed `ingest_recover` logs и
+  доставляет недоставленный startup `INGEST.*` diagnostic ровно один раз;
+- помечает duplicate terminal `source_ingest` полем
+  `ioc.ingest.disposition=duplicate`.
 
 ## Границы
 

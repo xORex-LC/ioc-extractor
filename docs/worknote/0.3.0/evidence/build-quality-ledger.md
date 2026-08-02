@@ -295,6 +295,13 @@ transitions в file/JDBC adapters. Общий concurrent TCK допускает 
 победителя `archive`/`fail`; coordinator, restart и watched-inbox regressions
 закрепляют lifecycle. Suppression baseline при этом не менялся.
 
+Отдельный observability follow-up закрепил lifecycle как typed
+`ingest_recover` start/terminal operation, duplicate как disposition существующего
+`source_ingest` и неожиданный ledger result как точный
+`INGEST.STATE_TRANSITION_CONFLICT`. Diagnostic delivery остаётся exactly-once:
+уже выпущенный `INGEST.RECOVERY_FAILED` не эмитится повторно на startup boundary.
+Это не control-event path и не изменение correctness mechanism.
+
 `ING-10/I4` verification прошёл полный 24-project reactor и оба report-integrity
 gate. `SB04-116` исчез из отчёта. Четыре новых instance появились в изменённом
 коде: `UL_UNRELEASED_LOCK_EXCEPTION_PATH` и два
@@ -307,6 +314,15 @@ startup failure после fail-closed cleanup. Они остаются види
 до current-report reconciliation в `C3`. Aggregate изменился с 118 до 121 raw
 findings (минус resolved `SB04-116`, плюс четыре проверенных instances),
 `errors=0`, `missingClasses=0`.
+
+Observability follow-up добавил один P3
+`THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` в `IngestionService#ingestGuarded`:
+метод после обязательного physical-failure cleanup повторно бросает исходный
+typed failure, чтобы final boundary доставил точный diagnostic. Это тот же
+проверенный exception-flow contract, что `C2-EX-B`, и он классифицирован как
+`false-positive` без suppression. Clean reactor snapshot содержит 122/122
+aggregate/module findings в 19 reports, `errors=0`, `missingClasses=0`;
+немедленный incremental repeat воспроизвёл тот же результат.
 
 При adoption отдельно фиксируются accepted rules/severities, baseline format,
 new-code ratchet, узкие suppressions и их review conditions.

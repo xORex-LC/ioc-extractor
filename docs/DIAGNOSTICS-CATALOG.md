@@ -18,6 +18,7 @@ Generated from `DiagnosticCatalogs`.
 | `INGEST.SOURCE_UNREADABLE` | INGEST | ERROR | OPERATION | `ingest.source-unreadable` | Source {source} could not be read for ingestion identity: {reason} |
 | `INGEST.LEDGER_WRITE_FAILED` | INGEST | FATAL | OPERATION | `ingest.ledger-write-failed` | Ingestion ledger update failed for source {source}: {reason} |
 | `INGEST.DEAD_LETTER_FAILED` | INGEST | ERROR | OPERATION | `ingest.dead-letter-failed` | Source {source} could not be moved to the failed area: {reason} |
+| `INGEST.STATE_TRANSITION_CONFLICT` | INGEST | ERROR | OPERATION | `ingest.state-transition-conflict` | Ingestion ledger operation {operation} for source {source} returned {transition}; expected {expected} |
 | `INGEST.RECOVERY_FAILED` | INGEST | ERROR | OPERATION | `ingest.recovery-failed` | Ingestion recovery failed for source {source}: {reason} |
 | `STORAGE.MIGRATION_APPLIED` | STORAGE | INFO | OPERATION | `storage.migration-applied` | Storage {dbRole} applied schema migration {migrationVersion}; schema is now {schemaVersion} |
 | `STORAGE.MIGRATION_ROLLBACK` | STORAGE | FATAL | OPERATION | `storage.migration-rollback` | Storage {dbRole} rolled back schema migration {migrationVersion}: {reason} |

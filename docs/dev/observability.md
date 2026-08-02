@@ -75,6 +75,14 @@ OBS-4 в `KNOWN-ISSUES.md`. Best-effort logging не выдаётся за durab
 - Logging/diagnostic sink failure observational: non-throwing decorator не
   должен ломать business operation.
 
+Один lifecycle может иметь несколько записей с одинаковым `event.action`: start
+использует `event.outcome=unknown`, а terminal record — `success` или `failure`
+и `event.duration`. Например, daemon recovery использует `ingest_recover`; его
+typed log не заменяет `INGEST.RECOVERY_FAILED` или более точный
+`INGEST.STATE_TRANSITION_CONFLICT`. Diagnostic occurrence доставляется ровно
+одной владеющей границей, даже если исключение проходит через lifecycle
+observer.
+
 ## ECS wire representation
 
 `LogField` и ECS vocabulary используют логические dotted paths, но daemon-файл

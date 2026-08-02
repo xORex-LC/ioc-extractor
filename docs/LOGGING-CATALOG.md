@@ -15,6 +15,7 @@ Generated from `EventAction` and `LogField`.
 | `pipeline_item_decision` | pipeline | One explicitly enabled per-item pipeline decision was traced. |
 | `source_read` | source | Source document text was read. |
 | `source_ingest` | source | Source ingestion reached a terminal handled outcome. |
+| `ingest_recover` | source | Daemon startup ingestion recovery progressed or failed. |
 | `artifact_project` | sink | CSV projection was regenerated from canonical storage. |
 | `retention_sweep` | maintenance | Retention sweep evaluated configured targets. |
 | `schema_migrate` | storage | Database schema migration progressed or failed. |
@@ -45,6 +46,7 @@ Generated from `EventAction` and `LogField`.
 | `event.type` | ecs | `string` | ECS event type classification. |
 | `event.outcome` | ecs | `string` | Stable success, failure, or unknown outcome. |
 | `event.duration` | ecs | `long` | Event duration in nanoseconds. |
+| `error.type` | ecs | `string` | Exception class associated with a failed operation. |
 | `file.path` | ecs | `string` | Input or output file path. |
 | `ioc.run.id` | ioc | `string` | Unique pipeline run identifier. |
 | `ioc.source.id` | ioc | `string` | Logical source identifier. |
@@ -62,6 +64,9 @@ Generated from `EventAction` and `LogField`.
 | `ioc.span.end` | ioc | `long` | Exclusive source-text offset of a matched item. |
 | `ioc.source.path` | ioc | `string` | Normalized source document path. |
 | `ioc.source.content_hash` | ioc | `string` | Content hash of the source document. |
+| `ioc.ingest.disposition` | ioc | `string` | Stable terminal disposition of a source ingestion attempt. |
+| `ioc.ingest.recovered_runs` | ioc | `long` | Number of incomplete ingest runs examined during startup recovery. |
+| `ioc.ingest.recovered_sources` | ioc | `long` | Number of incomplete source records handled during startup recovery. |
 | `ioc.artifact.name` | ioc | `string` | Configured artifact name. |
 | `ioc.rows` | ioc | `long` | Number of rows in the operation. |
 | `ioc.db.role` | ioc | `string` | Logical database role. |

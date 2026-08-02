@@ -6,6 +6,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.Lifecycle;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.function.IntSupplier;
 
@@ -20,23 +21,28 @@ public final class IngestionStartupCoordinator implements ApplicationRunner {
     private final RecoverIngestionUseCase recoverSources;
     private final Lifecycle intakeFlow;
     private final IngestionLifecycleState lifecycleState;
+    private final IngestionStartupObserver observer;
     private final Clock clock;
 
     public IngestionStartupCoordinator(IntSupplier recoverIngestRuns,
                                        RecoverIngestionUseCase recoverSources,
                                        Lifecycle intakeFlow,
                                        IngestionLifecycleState lifecycleState,
+                                       IngestionStartupObserver observer,
                                        Clock clock) {
         this.recoverIngestRuns = Objects.requireNonNull(recoverIngestRuns, "recoverIngestRuns");
         this.recoverSources = Objects.requireNonNull(recoverSources, "recoverSources");
         this.intakeFlow = Objects.requireNonNull(intakeFlow, "intakeFlow");
         this.lifecycleState = Objects.requireNonNull(lifecycleState, "lifecycleState");
+        this.observer = Objects.requireNonNull(observer, "observer");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        lifecycleState.recoveryStarted(clock.instant());
+        Instant startedAt = clock.instant();
+        lifecycleState.recoveryStarted(startedAt);
+        observe(() -> observer.recoveryStarted(startedAt));
         try {
             if (intakeFlow.isRunning()) {
                 throw new IllegalStateException("Ingestion intake must remain stopped until startup recovery");
@@ -47,15 +53,36 @@ public final class IngestionStartupCoordinator implements ApplicationRunner {
             if (!intakeFlow.isRunning()) {
                 throw new IllegalStateException("Ingestion intake did not start after successful recovery");
             }
-            lifecycleState.running(clock.instant(), recoveredRuns, recoveredSources);
+            Instant completedAt = clock.instant();
+            lifecycleState.running(completedAt, recoveredRuns, recoveredSources);
+            observe(() -> observer.recoveryCompleted(
+                    startedAt, completedAt, recoveredRuns, recoveredSources));
         } catch (RuntimeException failure) {
             try {
                 intakeFlow.stop();
             } catch (RuntimeException stopFailure) {
                 failure.addSuppressed(stopFailure);
             }
-            lifecycleState.failed(clock.instant(), failure);
+            Instant failedAt = clock.instant();
+            lifecycleState.failed(failedAt, failure);
+            observeFailure(() -> observer.recoveryFailed(startedAt, failedAt, failure), failure);
             throw failure;
+        }
+    }
+
+    private void observe(Runnable callback) {
+        try {
+            callback.run();
+        } catch (RuntimeException ignored) {
+            // Operational observation must not change startup correctness.
+        }
+    }
+
+    private void observeFailure(Runnable callback, RuntimeException primaryFailure) {
+        try {
+            callback.run();
+        } catch (RuntimeException observationFailure) {
+            primaryFailure.addSuppressed(observationFailure);
         }
     }
 }

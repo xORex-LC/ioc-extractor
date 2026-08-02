@@ -6,6 +6,7 @@ import com.iocextractor.application.port.in.ingest.RecoverIngestionUseCase;
 import com.iocextractor.application.artifact.IngestRunRecoveryService;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
+import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -49,6 +50,12 @@ public class IngestFlowConfiguration {
     }
 
     @Bean
+    public IngestionStartupObserver ingestionStartupObserver(DiagnosticSink diagnosticSink,
+                                                             Clock ingestClock) {
+        return new LoggingIngestionStartupObserver(diagnosticSink, ingestClock);
+    }
+
+    @Bean
     public SourceLifecycle sourceLifecycle(IngestAdapterProperties properties) {
         return new FileSystemSourceLifecycle(
                 Path.of(properties.dirs().processing()),
@@ -79,13 +86,14 @@ public class IngestFlowConfiguration {
             IngestRunRecoveryService runRecovery,
             RecoverIngestionUseCase sourceRecovery,
             IngestionLifecycleState lifecycleState,
+            IngestionStartupObserver startupObserver,
             Clock ingestClock,
             @Qualifier("iocIngestionFlow") IntegrationFlow intakeFlow) {
         if (!(intakeFlow instanceof Lifecycle lifecycle)) {
             throw new IllegalStateException("iocIngestionFlow does not expose lifecycle control");
         }
         return new IngestionStartupCoordinator(
-                runRecovery::recover, sourceRecovery, lifecycle, lifecycleState, ingestClock);
+                runRecovery::recover, sourceRecovery, lifecycle, lifecycleState, startupObserver, ingestClock);
     }
 
     @Bean

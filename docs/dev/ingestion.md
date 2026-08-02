@@ -139,6 +139,22 @@ Spring Boot не
 как `ApplicationRunner` не завершил barrier; recovery failure роняет startup и
 оставляет intake остановленным.
 
+Startup barrier имеет отдельный operational contract. Одна логическая операция
+`ingest_recover` публикует start с `event.outcome=unknown`, затем ровно один
+terminal event: `success` с `event.duration`,
+`ioc.ingest.recovered_runs`/`ioc.ingest.recovered_sources` либо `failure` с
+`event.duration` и безопасным `error.type`. Это логи lifecycle, а не
+`ControlEventPublisher`: они ничего не запускают и не участвуют в ordering.
+
+Нарушение expected-state ledger contract переносится как
+`INGEST.STATE_TRANSITION_CONFLICT` с operation, source key, фактическим и
+ожидаемым результатом. Startup boundary доставляет этот diagnostic один раз,
+не подменяя его общим `INGEST.RECOVERY_FAILED`; уже выпущенный recovery
+diagnostic также не дублируется. Duplicate admission остаётся успешным terminal
+`source_ingest`, но явно получает `ioc.ingest.disposition=duplicate`, поэтому
+его можно отличить от обработки без extraction по структурированному полю, а
+не по `message`.
+
 Открыты два соседних lifecycle seam-а, которые нельзя скрывать документацией:
 
 - **ING-11:** retry после частичного run не имеет полноценного resume protocol;
