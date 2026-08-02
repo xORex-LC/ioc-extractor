@@ -3,6 +3,8 @@ package com.iocextractor.bootstrap;
 import org.springframework.validation.Errors;
 import org.springframework.validation.Validator;
 
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -79,6 +81,7 @@ final class IocConfigPreflight implements Validator {
                 continue;
             }
             Set<String> columnNames = validateSinkArtifactColumns(artifact, i, errors);
+            validateSinkArtifactPath(artifact, i, errors);
             validateArtifactIdStart(artifact, i, columnNames, errors);
             if (!hasText(artifact.name())) {
                 continue;
@@ -92,6 +95,25 @@ final class IocConfigPreflight implements Validator {
             }
         }
         return result;
+    }
+
+    private void validateSinkArtifactPath(IocProperties.Sink.Artifact artifact,
+                                          int artifactIndex,
+                                          Errors errors) {
+        if (!hasText(artifact.path())) {
+            return;
+        }
+        try {
+            if (Path.of(artifact.path()).getFileName() == null) {
+                reject(errors, "sink.artifacts[%d].path".formatted(artifactIndex), artifact.path(),
+                        "ioc.sink.artifacts[%d].path='%s' names a filesystem root; configure a CSV file path"
+                                .formatted(artifactIndex, artifact.path()));
+            }
+        } catch (InvalidPathException exception) {
+            reject(errors, "sink.artifacts[%d].path".formatted(artifactIndex), artifact.path(),
+                    "ioc.sink.artifacts[%d].path is not a valid filesystem path: %s"
+                            .formatted(artifactIndex, exception.getReason()));
+        }
     }
 
     private Set<String> validateSinkArtifactColumns(IocProperties.Sink.Artifact artifact,

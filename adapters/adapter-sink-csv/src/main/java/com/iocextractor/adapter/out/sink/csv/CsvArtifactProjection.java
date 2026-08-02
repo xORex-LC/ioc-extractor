@@ -86,8 +86,9 @@ public final class CsvArtifactProjection implements ArtifactProjection {
     private CsvValueEncodingInspector.CsvEncodingLoss write(
             String artifactName, Path path, List<String> header, CanonicalArtifact artifact) {
         try {
-            if (path.getParent() != null) {
-                Files.createDirectories(path.getParent());
+            Path parent = path.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
             }
             Path temp = tempPath(path);
             var inspector = new CsvValueEncodingInspector(charset);
@@ -156,8 +157,12 @@ public final class CsvArtifactProjection implements ArtifactProjection {
     }
 
     private Path tempPath(Path target) throws IOException {
-        Path parent = target.getParent() == null ? Path.of(".") : target.getParent();
-        return Files.createTempFile(parent, target.getFileName().toString(), ".tmp");
+        Path fileName = target.getFileName();
+        if (fileName == null) {
+            throw new IocExtractorException("Artifact projection path must name a CSV file: " + target);
+        }
+        Path parent = target.getParent();
+        return Files.createTempFile(parent == null ? Path.of(".") : parent, fileName.toString(), ".tmp");
     }
 
     private void moveIntoPlace(Path temp, Path target) throws IOException {

@@ -42,7 +42,8 @@ Environment prepared
 - `IocUnknownConfigurationPreflight` проверяет неизвестные keys по reflection
   shape typed model, включая YAML overlay, CLI, system properties и env;
 - `IocConfigPreflight` собирает межсекционные инварианты: artifact identity,
-  schemas, ids, export/sync references, durations и selectors;
+  schemas, ids, export/sync references, durations и selectors; projection
+  `ioc.sink.artifacts[].path` обязан называть файл, а не filesystem root;
 - `ConfigRegistryPreflight` проверяет provider/transform/filter/predicate keys
   по тому же `ConfigRegistryCatalog`, который используется при wiring;
 - `IocConfigurationFailureAnalyzer` переводит startup failures в стабильные

@@ -5,6 +5,7 @@ import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
+import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.DiagnosticImpact;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CsvArtifactProjectionTest {
 
@@ -106,6 +108,34 @@ class CsvArtifactProjectionTest {
                 .containsEntry("affectedValues", 1)
                 .containsEntry("affectedRows", 1)
                 .containsEntry("affectedHeaderValues", 0));
+    }
+
+    @Test
+    void writes_parentless_relative_projection_path() throws Exception {
+        var header = List.of("id", "value");
+        var artifact = new CanonicalArtifact("masks", header, List.of(row(header, "1", "value")));
+        Path path = Path.of("projection-" + System.nanoTime() + ".csv");
+
+        try {
+            var outcome = projection(artifact, path, StandardCharsets.UTF_8)
+                    .project(new ArtifactProjectionCommand("run-parentless", "masks"));
+
+            assertThat(outcome.projectedRows()).isOne();
+            assertThat(path).hasContent("\"id\";\"value\"\n\"1\";\"value\"\n");
+        } finally {
+            Files.deleteIfExists(path);
+        }
+    }
+
+    @Test
+    void rejects_projection_root_with_explicit_adapter_error() {
+        var header = List.of("id", "value");
+        var artifact = new CanonicalArtifact("masks", header, List.of(row(header, "1", "value")));
+
+        assertThatThrownBy(() -> projection(artifact, Path.of("/"), StandardCharsets.UTF_8)
+                .project(new ArtifactProjectionCommand("run-root", "masks")))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessage("Artifact projection path must name a CSV file: /");
     }
 
     private CsvArtifactProjection projection(CanonicalArtifact artifact, Path path, Charset charset) {

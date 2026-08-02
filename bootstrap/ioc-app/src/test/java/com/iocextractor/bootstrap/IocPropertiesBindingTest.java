@@ -56,6 +56,18 @@ class IocPropertiesBindingTest {
     }
 
     @Test
+    void rejectsProjectionRootAndReportsOtherSemanticErrorsTogether() {
+        contextRunner(
+                "ioc.sink.artifacts[0].path=/",
+                "ioc.sync.retry.max-attempts=0")
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .extracting(FieldError::getField)
+                        .contains(
+                                "sink.artifacts[0].path",
+                                "sync.retry.maxAttempts"));
+    }
+
+    @Test
     void bindsClosedSelectorVariants() {
         contextRunner(
                 "ioc.engine=Re2J",

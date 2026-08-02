@@ -26,6 +26,9 @@ errors/diagnostics/observability, Commons CSV, SLF4J API.
 ## Контракты
 
 - legacy/current projection path формирует CSV из canonical repository;
+  parentless relative leaf поддерживается через current directory, filesystem
+  root отклоняется как path без имени файла и в bootstrap preflight, и на
+  adapter boundary;
 - mutable projection проверяет logical header/cell values до записи и при
   charset replacement возвращает одну `SINK.CHARSET_UNMAPPABLE` diagnostic с
   точными counts; diagnostic доставляет application orchestration, не adapter;
