@@ -42,7 +42,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 | `BUILD-SPOTBUGS-01` | Reproducible reactor-wide production-bytecode report, scope/cost inventory and raw findings | Report only; no mass remediation or merge gate | `R030-BASE` verified | `verified` |
 | `BUILD-CPD-02` | Repository-wide production-source report and evidence-based `minimumTokens` calibration | Diagnostic/report only | `BUILD-SPOTBUGS-01` closed, unless matrix explicitly reorders independent tooling | `verified` |
 | `BUILD-DEPS-03` | Semantic disposition of the captured dependency candidates and `Adopt / Adopt with exclusions / Defer` decision | Evaluation only | `BUILD-CPD-02` closed | `verified` |
-| `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow legacy baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `in-progress` (`C0..C3` completed; `C4` deterministic rerun next) |
+| `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow reviewed baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `verified` (`C0..C5` completed) |
 | `BUILD-SPOTBUGS-05` | Accepted no-new-findings signal wired into canonical Maven `verify` | Blocking ratchet | `BUILD-SPOTBUGS-04` closed | `planned` |
 
 The queue is sequential for operator/agent clarity, not a technical claim that
@@ -245,13 +245,13 @@ dependencies, CPD source/config scope и missing/unexpected/malformed reports.
 | Exact `NP_*` + class + method, 20 findings | Child paths from verified NIO listings, configured lifecycle roots, Tika source protocol and remote inbox leaves | The nullable JDK return is constrained by a stronger proven path provenance at each call site | Owning source/ingest/store/transport modules | Remove when control flow becomes analyzer-provable; review if a path ceases to be a direct child or its validated root/source protocol changes | `C1-NP-A/B/E/F` |
 | Exact concurrency/singleton patterns + class/member, 2 findings | Synchronous CSV callback and immutable `ArtifactFilter.NONE` flyweight | Callback access is monitor-confined by the synchronous port contract; the named empty instance has no singleton lifecycle contract | `adapter-sink-csv` | Review if callbacks become asynchronous or `ArtifactFilter` gains identity/lifecycle semantics | `C1-CON-A`, `C1-COR-A` |
 | Exact `EI_EXPOSE_REP*` + class/member, 5 findings | Immutable snapshots and lifecycle-owned bootstrap resources | Construction already copies the collection, or the object deliberately exposes the same managed resource | Owning application/bootstrap modules | Remove when analyzer recognizes the copy; review if construction stops copying or lifecycle ownership crosses the bootstrap boundary | `C2-REP-C/E` |
-| Exact `EI_EXPOSE_REP*` + class/member, 44 findings | Spring-bound configuration and adapter value records | Real mutable aliases with no current mutation call site; safe remediation requires null-preserving copies compatible with collect-all binding | `ioc-app/configuration`, `adapter-ingest`, `adapter-sink-csv` | Replace with null-preserving defensive copies plus binding and mutation-isolation regressions | `C2-REP-A/B/D` |
+| Exact `EI_EXPOSE_REP` + generated accessor/field, 18 findings | Null-preserving Spring-bound configuration snapshots | Defensive copy removes the external mutable owner and the accessor is unmodifiable; SpotBugs does not prove the wrapper/backing-copy relationship | `ioc-app/configuration` | Review if copying/accessor semantics or collect-all validation changes | `REP-FIX-FP` |
 | Exact `THROWS_*` + class + method, 18 findings | CLI, pipeline, ingestion, recovery and startup failure boundaries | `policy-noise`: SpotBugs correctly sees catch/rethrow, but its generic policy is inapplicable to documented unchecked boundaries; five methods were hardened so close/accounting/observer failures remain suppressed behind the primary | Owning CLI/application/adapter/bootstrap modules | Remove if the method no longer performs boundary work; review any async, retry, translation or swallow contract | `C2-EX-A..E`, `I4-SB-04`, `FUP-SB-01`, `D-022` |
 | Exact `SE_BAD_FIELD` / `VA_FORMAT_STRING_USES_NEWLINE` + class + method, 2 findings | Non-serialized diagnostics and SQL text-block whitespace | The warned boundary does not exist, or the newline is SQL grammar rather than user-visible text | `platform-diagnostics`, `adapter-store-jdbc` | Review if Java serialization is introduced or SQL text becomes user-visible output | `C2-MIX-F/G` |
-| Exact `VO_VOLATILE_INCREMENT` + class + method/field, 2 findings | Same-key admission/release accounting | Both mutations occur under `ConcurrentHashMap.compute` for the same key; `volatile` is only for snapshot visibility | `platform-concurrency` | Remove if accounting changes; review any mutation outside same-key `compute` | `I4-SB-02..03` |
+| Exact `VO_VOLATILE_INCREMENT` + class + field, 2 findings | Same-key admission/release accounting | Both mutations occur under `ConcurrentHashMap.compute` for the same key; `volatile` is only for snapshot visibility. Compiler-generated lambda names are deliberately excluded from the selector | `platform-concurrency` | Remove if accounting changes; review any mutation outside same-key `compute` | `I4-SB-02..03`, `D-025` |
 
-The checked-in filter contains 98 exact selectors for the remaining 103 findings. Five
-extra occurrences share the same pattern, class and method with another reviewed
+The checked-in filter contains 71 exact selectors for the remaining 77 findings. Six
+extra occurrences share the same stable pattern/class/member selector with another reviewed
 occurrence; SpotBugs filters cannot address an instance hash. No selector is
 package-, category- or pattern-wide. Analyzer errors, omitted modules and missing
 reports remain integrity failures and are never represented as suppressions.
@@ -260,7 +260,7 @@ reports remain integrity failures and are never represented as suppressions.
 
 | Pattern/category | Scope | Count | Highest risk | False-positive class | Disposition/evidence |
 |---|---|---:|---|---|---|
-| `EI_EXPOSE_REP` + `EI_EXPOSE_REP2` | Spring-bound configuration records и adapter objects | 49 | P2 | Framework binding / intentional mutable representation | `C2`: 44 real mutable aliases приняты как legacy debt; 5 immutable/lifecycle-owned exposures — false positives; broad suppression запрещён |
+| `EI_EXPOSE_REP` + `EI_EXPOSE_REP2` | Immutable snapshots and lifecycle-owned bootstrap resources | 23 | P2 | Analyzer не распознаёт immutable snapshot либо intentional lifecycle ownership | 5 исходных `C2-REP-C/E` + 18 post-fix accessors — false positives; все 44 real aliases устранены `REP-FIX`, 26 obsolete selectors удалены |
 | `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `Path.getParent()` / `getFileName()` под repository path invariants | 20 | P2 | Nullable JDK API без знания validated-root invariants | `C1-NP-A/B/E/F`: false positives; три projection-path findings из `IR-02` устранены validation/adapter fix |
 | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | Public/application boundaries с documented unchecked failures | 18 | P3 | Generic policy noise, не analyzer false positive | `C2-EX-A..E` плюс два post-inventory boundary cases: cleanup/accounting/observer work сохраняют runtime type, cause и stack; семь occurrences получили explicit secondary-failure hardening |
 | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` + `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | JDBC schema, migration и query-shape SQL | 10 | P1/R10 | Analyzer не различает controlled adapter metadata и untrusted input | `C1-SQL-A/B/D/E/F`: configured/internal identifiers валидируются и quote-ятся, values bind'ятся, migrations code-owned; два health PRAGMA findings устранены typed/literal fix |
@@ -268,8 +268,8 @@ reports remain integrity failures and are never represented as suppressions.
 | `IS2_INCONSISTENT_SYNC` | `CsvArtifactSliceWriter.active` | 1 | P2/R17 | SpotBugs не знает synchronous callback contract `SnapshotRowConsumer` | `C1`: false positive; `stage` удерживает monitor, production reader вызывает callbacks inline, asynchronous callback запрещён port contract |
 | Остальные 3 patterns (`VA`, `VO`, `SE`) | Несколько production modules | 4 | P2 | SQL formatting context, serialization-neutral diagnostics и guarded concurrency accounting | 4 false positives; 11 local legacy findings из `C2-MIX-A..E/H` устранены и удалены из baseline |
 
-После local legacy remediation остаются 103 reviewed findings; priority P1 — 1,
-P2 — 76, P3 — 26. Category: `MALICIOUS_CODE` — 49, `STYLE` — 20,
+После representation remediation остаются 77 reviewed findings; priority P1 — 1,
+P2 — 50, P3 — 26. Category: `MALICIOUS_CODE` — 23, `STYLE` — 20,
 `BAD_PRACTICE` — 20, `SECURITY` — 10, `MT_CORRECTNESS` — 3,
 `CORRECTNESS` — 1. Исторический raw C3 snapshot до remediation — 114.
 
@@ -369,8 +369,8 @@ collect-all configuration preflight и на adapter boundary, сохраняя �
 parentless leaf output. Raw report сократился с 119 до 114 ровно на пять
 ожидаемых findings без новых signals.
 
-Оставшиеся 44 accepted-legacy, 41 false-positive и 18 policy-noise findings покрыты одним
-versioned filter: 98 точных pattern + class + method/field selectors. Пять
+Оставшиеся 59 false-positive и 18 policy-noise findings покрыты одним
+versioned filter: 71 точный pattern + class + method/field selector. Шесть
 дополнительных occurrences находятся в уже выбранных точных методах; instance
 hash не является частью SpotBugs filter grammar. Root-inherited module execution
 применяет filter один раз, а aggregate объединяет эти module XML без второй
@@ -386,6 +386,24 @@ machine tokens используют `Locale.ROOT`, Jackson fallback ловит �
 `JsonProcessingException`, operator description использует `%n`. Семь новых
 focused regressions и существующие transition/resource tests зелёные; после
 удаления 11 selectors все 19 module reports содержат 0 visible findings.
+
+Follow-up `REP-FIX` устранил все 44 real mutable aliases `SB04-040..042/044/046..063/067..088`.
+Adapter и Spring-bound records создают null-preserving unmodifiable snapshots,
+не превращая invalid binding data в constructor failure до collect-all
+validation. Real-binding и direct-construction regressions проверяют caller
+isolation, immutable accessors, сохранение null elements/values и полный набор
+validation violations. Все 22 constructor и четыре adapter-accessor findings
+исчезли; 18 generated `IocProperties` accessors остаются exact false positives,
+поскольку analyzer не выводит ownership private backing copies. Baseline уменьшен
+до 77 findings / 71 selector без accepted legacy. Первый clean C4 run также
+обнаружил хрупкие compiler-generated lambda names в двух concurrency selectors;
+они заменены одним stable pattern + exact class + field selector.
+
+Final C4 clean и immediate repeat воспроизвели один результат: 24/24 reactor,
+836 tests, 0 failures/errors, 2 external SMB skips, 19 module XML/HTML pairs плюс
+aggregate, 77 accepted / 0 visible findings, analyzer errors/missing classes 0/0.
+`BUILD-SPOTBUGS-04` закрыт как `verified`; report-only semantics сохраняются до
+отдельного `BUILD-SPOTBUGS-05`, который введёт blocking no-new-findings ratchet.
 
 При adoption отдельно фиксируются accepted rules/severities, baseline format,
 new-code ratchet, узкие suppressions и их review conditions.

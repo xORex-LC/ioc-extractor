@@ -3,6 +3,8 @@ package com.iocextractor.adapter.out.sink.csv;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
 
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 /**
@@ -24,6 +26,7 @@ public record CsvArtifactDefinition(String name,
                                     long idStart) {
 
     public CsvArtifactDefinition {
+        accepts = accepts == null ? null : Collections.unmodifiableSet(new LinkedHashSet<>(accepts));
         filter = filter == null ? ArtifactFilter.none() : filter;
     }
 

@@ -11,6 +11,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -41,7 +44,16 @@ public record IocProperties(
         @NotNull @Valid Observability observability) {
 
     public IocProperties {
+        patterns = snapshotMap(patterns);
         pipeline = pipeline == null ? new Pipeline(true, PipelineFailurePolicy.FAIL_FAST, 10_000) : pipeline;
+    }
+
+    private static <T> List<T> snapshotList(List<T> source) {
+        return source == null ? null : Collections.unmodifiableList(new ArrayList<>(source));
+    }
+
+    private static <K, V> Map<K, V> snapshotMap(Map<K, V> source) {
+        return source == null ? null : Collections.unmodifiableMap(new LinkedHashMap<>(source));
     }
 
     public record Runtime(@NotNull RuntimeMode mode) {
@@ -76,15 +88,33 @@ public record IocProperties(
     }
 
     public record Source(@NotBlank String type, String charset, @NotNull List<String> sectionMarkers) {
+
+        public Source {
+            sectionMarkers = snapshotList(sectionMarkers);
+        }
     }
 
     public record Refang(@NotNull @Valid List<Rule> rules) {
+
+        public Refang {
+            rules = snapshotList(rules);
+        }
+
         public record Rule(@NotNull String from, @NotNull String to) {
         }
     }
 
     public record Classify(@NotEmpty @Valid List<Rule> rules) {
+
+        public Classify {
+            rules = snapshotList(rules);
+        }
+
         public record Rule(@NotNull List<String> when, @NotBlank String urlMatch, String hostMatch) {
+
+            public Rule {
+                when = snapshotList(when);
+            }
         }
     }
 
@@ -95,6 +125,10 @@ public record IocProperties(
     }
 
     public record Sink(@NotNull @Valid Csv csv, @NotEmpty @Valid List<Artifact> artifacts) {
+
+        public Sink {
+            artifacts = snapshotList(artifacts);
+        }
 
         public record Csv(@NotBlank String delimiter, @NotBlank String quote, @NotBlank String nullLiteral,
                           String charset) {
@@ -109,6 +143,13 @@ public record IocProperties(
                 List<String> exclude,
                 Id id,
                 @NotEmpty @Valid List<Column> columns) {
+
+            public Artifact {
+                accepts = snapshotList(accepts);
+                include = snapshotList(include);
+                exclude = snapshotList(exclude);
+                columns = snapshotList(columns);
+            }
 
             public record Id(ArtifactIdStrategy strategy, IdStart start) {
             }
@@ -125,17 +166,29 @@ public record IocProperties(
                     String type,
                     IndicatorType whenType,
                     List<String> transform) {
+
+                public Column {
+                    transform = snapshotList(transform);
+                }
             }
         }
     }
 
     public record ArtifactIdentity(@NotEmpty @Valid List<Artifact> artifacts) {
 
+        public ArtifactIdentity {
+            artifacts = snapshotList(artifacts);
+        }
+
         public record Artifact(
                 @NotBlank String name,
                 @NotEmpty List<String> keyColumns,
                 ArtifactKeyMode keyMode,
                 @Positive Integer epoch) {
+
+            public Artifact {
+                keyColumns = snapshotList(keyColumns);
+            }
         }
     }
 
@@ -146,6 +199,10 @@ public record IocProperties(
             @NotNull @Valid Trigger trigger,
             @NotEmpty @Valid List<Profile> profiles,
             @NotNull @Valid Retention retention) {
+
+        public Export {
+            profiles = snapshotList(profiles);
+        }
 
         public record Trigger(
                 @NotNull ExportTriggerType type,
@@ -158,6 +215,10 @@ public record IocProperties(
                 @NotBlank String name,
                 @NotNull ExportOutputMode outputMode,
                 @NotEmpty List<String> artifacts) {
+
+            public Profile {
+                artifacts = snapshotList(artifacts);
+            }
         }
 
         public record Retention(Duration maxAge, @PositiveOrZero int maxCount) {
@@ -263,6 +324,10 @@ public record IocProperties(
                 Duration initialDelay,
                 @Valid List<Target> targets) {
 
+            public Retention {
+                targets = snapshotList(targets);
+            }
+
             public record Target(
                     @NotBlank String name,
                     @NotBlank String dir,
@@ -291,6 +356,11 @@ public record IocProperties(
         }
 
         public record Patterns(@NotEmpty List<String> include, @NotNull List<String> exclude) {
+
+            public Patterns {
+                include = snapshotList(include);
+                exclude = snapshotList(exclude);
+            }
         }
 
         public record Detect(boolean useWatchService, @NotNull Duration reconcileInterval, int maxMessagesPerPoll) {

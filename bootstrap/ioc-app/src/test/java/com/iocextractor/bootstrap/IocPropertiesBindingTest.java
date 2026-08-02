@@ -24,6 +24,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -39,6 +42,81 @@ class IocPropertiesBindingTest {
             assertThat(context).hasSingleBean(IocProperties.class);
             assertThat(context).hasBean("configurationPropertiesValidator");
         });
+    }
+
+    @Test
+    void boundConfigurationCollectionsAreImmutableSnapshots() {
+        contextRunner().run(context -> {
+            IocProperties properties = context.getBean(IocProperties.class);
+            IocProperties.Sink.Artifact masks = properties.sink().artifacts().stream()
+                    .filter(artifact -> "masks".equals(artifact.name()))
+                    .findFirst()
+                    .orElseThrow();
+            IocProperties.Sink.Artifact ipList = properties.sink().artifacts().stream()
+                    .filter(artifact -> "ip_list".equals(artifact.name()))
+                    .findFirst()
+                    .orElseThrow();
+            IocProperties.Sink.Artifact.Column transformed = masks.columns().stream()
+                    .filter(column -> column.transform() != null && !column.transform().isEmpty())
+                    .findFirst()
+                    .orElseThrow();
+
+            assertUnmodifiable(properties.patterns());
+            assertUnmodifiable(properties.artifactIdentity().artifacts());
+            assertUnmodifiable(properties.artifactIdentity().artifacts().getFirst().keyColumns());
+            assertUnmodifiable(properties.classify().rules());
+            assertUnmodifiable(properties.classify().rules().getFirst().when());
+            assertUnmodifiable(properties.export().profiles());
+            assertUnmodifiable(properties.export().profiles().getFirst().artifacts());
+            assertUnmodifiable(properties.ingestion().patterns().include());
+            assertUnmodifiable(properties.ingestion().patterns().exclude());
+            assertUnmodifiable(properties.maintenance().retention().targets());
+            assertUnmodifiable(properties.refang().rules());
+            assertUnmodifiable(properties.sink().artifacts());
+            assertUnmodifiable(masks.accepts());
+            assertUnmodifiable(ipList.include());
+            assertUnmodifiable(masks.exclude());
+            assertUnmodifiable(masks.columns());
+            assertUnmodifiable(transformed.transform());
+            assertUnmodifiable(properties.source().sectionMarkers());
+        });
+    }
+
+    @Test
+    void rootMapSnapshotPreservesNullValueAndCallerIsolation() {
+        contextRunner().run(context -> {
+            IocProperties source = context.getBean(IocProperties.class);
+            Map<IndicatorType, String> patterns = new LinkedHashMap<>(source.patterns());
+            patterns.put(IndicatorType.MD5, null);
+            IocProperties snapshot = new IocProperties(
+                    source.engine(), source.runtime(), source.storage(), source.source(), source.refang(), patterns,
+                    source.classify(), source.sink(), source.pipeline(), source.ingestion(),
+                    source.artifactIdentity(), source.export(), source.sync(), source.maintenance(),
+                    source.observability());
+
+            patterns.clear();
+
+            assertThat(snapshot.patterns()).containsEntry(IndicatorType.MD5, null).isNotEmpty();
+            assertUnmodifiable(snapshot.patterns());
+        });
+    }
+
+    @Test
+    void listSnapshotsPreserveNullForCollectAllValidation() {
+        var sectionMarkers = new ArrayList<>(Arrays.asList("header", null));
+        var source = new IocProperties.Source("auto", "auto", sectionMarkers);
+        sectionMarkers.clear();
+
+        assertThat(source.sectionMarkers()).containsExactly("header", null);
+        assertUnmodifiable(source.sectionMarkers());
+
+        var invalid = new IocProperties.Sink.Artifact(
+                "artifact", true, "artifact.csv", null, null, null, null, null);
+        try (var validatorFactory = jakarta.validation.Validation.buildDefaultValidatorFactory()) {
+            assertThat(validatorFactory.getValidator().validate(invalid))
+                    .extracting(violation -> violation.getPropertyPath().toString())
+                    .containsExactlyInAnyOrder("accepts", "columns");
+        }
     }
 
     @Test
@@ -533,6 +611,16 @@ class IocPropertiesBindingTest {
                                 "sink.artifacts[1].name",
                                 "artifactIdentity.artifacts[0].name",
                                 "artifactIdentity.artifacts[1].keyColumns[0]"));
+    }
+
+    private static void assertUnmodifiable(Collection<?> values) {
+        assertThat(values).isNotNull();
+        assertThatThrownBy(values::clear).isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    private static void assertUnmodifiable(Map<?, ?> values) {
+        assertThat(values).isNotNull();
+        assertThatThrownBy(values::clear).isInstanceOf(UnsupportedOperationException.class);
     }
 
     private ApplicationContextRunner contextRunner(String... overrides) {

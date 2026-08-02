@@ -3,6 +3,8 @@ package com.iocextractor.adapter.in.ingest;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -23,6 +25,11 @@ public record IngestAdapterProperties(Dirs dirs,
     }
 
     public record Patterns(List<String> include, List<String> exclude) {
+
+        public Patterns {
+            include = include == null ? null : Collections.unmodifiableList(new ArrayList<>(include));
+            exclude = exclude == null ? null : Collections.unmodifiableList(new ArrayList<>(exclude));
+        }
     }
 
     public record Detect(boolean useWatchService, Duration reconcileInterval, int maxMessagesPerPoll) {

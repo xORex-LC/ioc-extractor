@@ -50,11 +50,11 @@ validates their structure and rejects reports from excluded scopes.
 Findings remain report-only. Analyzer errors, missing module reports or missing
 aggregate outputs fail the reactor build.
 
-The current remediation baseline contains 103 reviewed findings represented by 98
+The current remediation baseline contains 77 reviewed findings represented by 71
 narrow selectors. Every selector combines a bug pattern with an exact class and
 method or field; package-, category- and pattern-wide exclusions are forbidden.
-Of the accepted findings, 44 are recorded legacy debt, 41 are analyzer false
-positives and 18 are policy noise where the detector's generic unchecked-
+Of the accepted findings, 59 are analyzer false positives and 18 are policy
+noise where the detector's generic unchecked-
 exception advice is inapplicable to a documented boundary contract. The
 inherited root execution applies this one filter to every module analysis. The
 aggregate mojo then merges those module XML reports, so module and reactor-wide

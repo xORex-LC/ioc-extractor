@@ -2,6 +2,8 @@ package com.iocextractor.adapter.out.sink.csv;
 
 import com.iocextractor.domain.model.IndicatorType;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -20,4 +22,8 @@ public record ColumnSpec(
         String value,
         IndicatorType whenType,
         List<String> transform) {
+
+    public ColumnSpec {
+        transform = transform == null ? null : Collections.unmodifiableList(new ArrayList<>(transform));
+    }
 }
