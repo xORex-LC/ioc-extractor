@@ -42,9 +42,9 @@ ledger:
 | Verification evidence | `make verify` passed; `verify.fresh=true` |
 | Reactor | 24 projects: root, 20 functional JARs, 3 build-only report POMs |
 | SpotBugs production scope | 19 runtime JAR modules; `ioc-application-tck` explicitly excluded |
-| Raw baseline | 118 findings across 628 production classes |
+| Initial raw baseline | 118 findings across 628 production classes |
 | Report health | 19 module XML/HTML pairs plus aggregate; `errors=0`, `missingClasses=0` |
-| Suppression baseline | empty |
+| Current C3 baseline | 114 reviewed findings: 55 accepted legacy + 59 false positives; 109 exact selectors |
 
 Перед первым triage pass стартовые факты MUST быть повторно проверены через
 `make context` и clean SpotBugs reactor run. Значения выше являются snapshot, а
@@ -100,7 +100,7 @@ Analyzer error, missing class, пропущенный модуль или отс
 | `C0` | Reproduce and inventory | Clean report совпадает по scope/count; 118 findings получили `SB04-NNN` | `completed` |
 | `C1` | Immediate-risk triage | SQL/security, correctness, concurrency, resource и nullable-path cases имеют disposition; SQL trust boundaries закреплены regression tests | `completed; hardened` |
 | `C2` | Remaining semantic triage | `EI_EXPOSE_REP*`, exception contracts и остальные patterns полностью разобраны | `completed` |
-| `C3` | Fix and baseline | Immediate risks исправлены; оставшиеся findings покрыты узкими reviewed selectors | `not-started; ING-10/IR-03 predecessor verified` |
+| `C3` | Fix and baseline | Immediate risks исправлены; оставшиеся findings покрыты узкими reviewed selectors | `completed` |
 | `C4` | Deterministic rerun | Clean и повторный reactor runs дают одинаковый accepted signal и полный комплект reports | `not-started` |
 | `C5` | Closure | Ledger/status matrix обновлены; `BUILD-SPOTBUGS-04=verified`; `BUILD-SPOTBUGS-05` готов | `not-started` |
 
@@ -408,8 +408,8 @@ legacy, 3 fix-now и 5 resolved findings. Ни один baseline selector в `C2
 
 | Finding IDs | Risk | Reproduction/contract evidence | Proposed change | Tests | Decision/state |
 |---|---|---|---|---|---|
-| `SB04-013..014` (`IR-01`) | Provider-neutral structured logging can drop key-values or cause when a compliant `LoggingEventBuilder` returns a successor instead of mutating itself | Official SLF4J API requires consuming the return; current Logback-backed tests prove only the same-instance implementation | Thread returned builder through `addKeyValue` and `setCause`, then call `log` on the final builder; no logging taxonomy or field values change | Existing Logback test plus copy-returning fake-builder regression for fields and cause | Proposed `fix-now`; documented before production change; implementation deferred to `C3` and requires explicit review |
-| `SB04-021..023` (`IR-02`) | A syntactically valid but semantically invalid projection root path fails later with NPE; repeated nullable calls also keep two false-positive companions in the report | `IocProperties.Sink.Artifact.path` is only `@NotBlank`; `CsvArtifactProjection.tempPath` dereferences `target.getFileName()` without a guard | Reject non-leaf projection paths through collect-all config validation; locally extract/validate file name and parent once before temp creation | Configuration validation/binding test for root path plus adapter tests for leaf-without-parent and nested output | Proposed `fix-now`; fail-safe availability/configuration defect, no canonical-data corruption; implementation deferred to `C3` and requires explicit review |
+| `SB04-013..014` (`IR-01`) | Provider-neutral structured logging can drop key-values or cause when a compliant `LoggingEventBuilder` returns a successor instead of mutating itself | Official SLF4J API requires consuming the return; current Logback-backed tests prove only the same-instance implementation | Thread returned builder through `addKeyValue` and `setCause`, then call `log` on the final builder; no logging taxonomy or field values change | Existing Logback test plus copy-returning fake-builder regression for fields and cause | Resolved in `C3`; both findings absent from the refreshed raw report |
+| `SB04-021..023` (`IR-02`) | A syntactically valid but semantically invalid projection root path fails later with NPE; repeated nullable calls also keep two false-positive companions in the report | `IocProperties.Sink.Artifact.path` is only `@NotBlank`; `CsvArtifactProjection.tempPath` dereferences `target.getFileName()` without a guard | Reject non-leaf projection paths through collect-all config validation; locally extract/validate file name and parent once before temp creation | Configuration validation/binding test for root path plus adapter tests for leaf-without-parent and nested output | Resolved in `C3`; all three findings absent while parentless leaf output remains supported |
 | `SB04-116` (`IR-03`) | File-ledger terminal state could be overwritten or left stale when startup recovery and poller overlapped; unused transaction helper revealed, but could not solve, the invalid single-writer assumption | Deterministic I0 characterization reproduced branch overlap; adapter TCK reproduced the competing terminal transition boundary | `autoStartup=false` coordinator, shared per-source-key guard, post-admission re-read and conditional file/JDBC transitions; dead helper removed | Coordinator latches, keyed-guard concurrency, 8-case TCK per adapter, restart regression, watched-inbox E2E and full verify | Resolved and verified; finding absent from refreshed reports |
 
 ### Post-C2 ING-10 report delta
@@ -433,7 +433,15 @@ baseline; none is suppressed.
 
 | Baseline ID | Finding IDs | Exact selector | Kind | Rationale | Owner | Review/exit condition | State |
 |---|---|---|---|---|---|---|---|
-| — | — | — | — | — | — | — | — |
+| `BL-SQL` | 10 findings in `C1-SQL-A/B/D/E/F` | Pattern + exact JDBC class/method | `false-positive` | Allow-list validated/quoted identifiers, bound values and code-owned migrations | `adapter-store-jdbc` | External migrations, grammar/allow-list expansion or new query-shape builder | `reviewed` |
+| `BL-NIO` | 20 findings in `C1-NP-A/B/E/F` | `NP_*` + exact class/method | `false-positive` | Proven direct-child, configured-root, source or inbox-leaf provenance | Owning path modules | Path provenance or validated root/protocol changes | `reviewed` |
+| `BL-C1-CONTRACT` | `SB04-015..016` | Pattern + exact class/member | `false-positive` | Immutable flyweight and synchronous monitor-confined callback contracts | `adapter-sink-csv` | Async callback or new identity/lifecycle semantics | `reviewed` |
+| `BL-REP-FP` | 5 findings in `C2-REP-C/E` | `EI_EXPOSE_REP*` + exact class/member | `false-positive` | Immutable snapshots or deliberately shared lifecycle resources | Owning application/bootstrap modules | Construction stops copying or ownership crosses bootstrap | `reviewed` |
+| `BL-REP-LEGACY` | 44 findings in `C2-REP-A/B/D` | `EI_EXPOSE_REP*` + exact class/member | `accepted-legacy` | Real aliases require null-preserving copies compatible with collect-all binding | Configuration and adapter owners | Defensive-copy and mutation-isolation remediation | `reviewed` |
+| `BL-EXCEPTION` | 18 findings in `C2-EX-A..E`, `I4-SB-04`, `FUP-SB-01` | `THROWS_*` + exact class/method | `false-positive` | Boundary work preserves original unchecked type, cause and stack | Owning boundary modules | Async/retry/translation/swallow contract change | `reviewed` |
+| `BL-MIX-LEGACY` | 11 findings in `C2-MIX-A..E/H` | Pattern + exact class/method | `accepted-legacy` | Reviewed local cast, constructor, DRY, locale, catch and formatting debt | Owning modules | Per-group C2 remediation and focused regression | `reviewed` |
+| `BL-MIX-FP` | `SB04-115`, `SB04-117` | Pattern + exact class/method | `false-positive` | No Java serialization boundary; SQL newline is grammar whitespace | Diagnostics/JDBC owners | Serialization added or SQL becomes user-visible | `reviewed` |
+| `BL-GUARD` | `I4-SB-02..03` | `VO_*` + exact class/method/field | `false-positive` | Same-key `compute` serializes accounting; volatile serves visibility | `platform-concurrency` | Any accounting mutation leaves same-key `compute` | `reviewed` |
 
 `Kind` принимает `false-positive` или `accepted-legacy`. Broad package,
 category или pattern-only selector требует отдельного scope decision и по
@@ -455,6 +463,8 @@ category или pattern-only selector требует отдельного scope 
 | `ING-10 observability repeat` | same uncommitted follow-up tree on clean-derived bytecode | `make docs`, then `make verify` | 24/24 reactor; 19 module pairs + aggregate | 122 / 122; identical to clean run | 0 / 0 | `01:31` Maven wall clock (`real 92.20 s`) | passed |
 | `C1 review follow-up` | `6e8c8b8`; C1 fix/docs tree | focused JDBC reactor, `make docs`, then `make verify` | focused adapter 83 tests; full 24/24 reactor; 19 module pairs + aggregate | 120 / 120; `SB04-004..005` absent; no baseline | 0 / 0 | `01:54` Maven wall clock (`real 115.25 s`) | passed |
 | `C2 audit follow-up` | post-`94b1b5d` working tree | focused guard/coordinator reactor, `make docs`, then timed `make verify` | focused 11-project reactor, 10 selected tests; full 24/24 reactor; 19 module pairs + aggregate | 119 / 119; `I4-SB-01` absent; no baseline | 0 / 0 | `01:41` Maven wall clock (`real 102.41 s`) | passed |
+| `C3 pre-baseline fixes` | post-`75ca72a` C3 tree; baseline still empty | three focused test runs, then timed `make verify` | 5 `LogEventTest`, 5 `CsvArtifactProjectionTest`, 44 `IocPropertiesBindingTest`; full 24/24 reactor; 19 module pairs + aggregate | 114 / 114; exactly `SB04-013..014` and `SB04-021..023` absent | 0 / 0 | `02:28` Maven wall clock (`real 150.52 s`) | passed |
+| `C3 reviewed baseline` | same uncommitted C3 tree with one inherited filter | `/usr/bin/time make verify`, then independent XML reconciliation | 24/24 reactor; 19 module pairs + aggregate, all 20 XML/HTML pairs present | 114 raw accepted / 0 visible in modules and aggregate | 0 / 0 | `02:17` Maven wall clock (`real 138.58 s`) | passed |
 
 Финальный evidence включает минимум один clean reactor run и один немедленный
 повторный run после применения fixes/baseline.
@@ -520,6 +530,9 @@ Module counts:
 | 2026-08-02 | `D-016` | `ING-10 observability follow-up` | Typed `ingest_recover` start/terminal timeline, duplicate disposition and exact transition-conflict delivery получили executable tests и generated catalog entries. Первый incremental report показал 123 findings из-за stale pre-clean bytecode; canonical clean run прошёл 24/24 за `01:37` и согласовал aggregate/modules на 122 findings, 0 analyzer errors/missing classes. Повторный run на clean-derived bytecode прошёл за `01:31` с теми же 122/122. Единственный follow-up signal `FUP-SB-01` классифицирован как существующий false-positive exception-flow contract без suppression | Follow-up evidence закрыт; оставить `BUILD-SPOTBUGS-04/C3` следующим checkpoint |
 | 2026-08-02 | `D-017` | `C1 review follow-up` | `SEC-INP-3` синхронизирован как `Enforced + Monitored`; configured/internal identifier regex contracts названы раздельно. `JdbcStorageHealthProbe` принимает private result-typed enums и выполняет только literal PRAGMA через exhaustive switches. Focused JDBC report содержит 14 findings и 0 для health probe; canonical 24-project run согласовал 120/120, analyzer errors/missing classes 0/0 | `SB04-004..005=resolved-by-fix`; оставить `C3` следующим checkpoint с уменьшенной baseline surface |
 | 2026-08-02 | `D-018` | `C2 audit follow-up` | Primary work failure больше не маскируется release-инвариантом; `users` и lifecycle threading contracts записаны рядом с кодом; startup runner получил явный highest precedence; shared-guard composition contract закреплён; dependency docs ссылаются на POM authority вместо трёх независимых inventory. Focused 10/10 и full 24/24 прошли; current SpotBugs reports согласованы на 119/119, `I4-SB-01` исчез | `I4-SB-01=resolved-by-fix`; четыре post-inventory false positives остаются видимыми без suppression; перейти к `C3` |
+| 2026-08-02 | `D-019` | `C3 start` | Live context: clean `75ca72a`, upstream ahead 1, `verify.fresh=true`; aggregate/module reports согласованы на 119 findings, analyzer errors/missing classes 0/0. Из трёх fix-now groups `IR-03` уже resolved; остаются `IR-01` (2 findings) и `IR-02` (3 findings) | Сначала реализовать оба узких fix group с regression tests и подтвердить raw report delta; только затем создавать reviewed baseline для остатка |
+| 2026-08-02 | `D-020` | `C3 fixes` | `IR-01` теперь потребляет каждый returned SLF4J builder; copy-returning provider regression подтверждает fields/cause на финальном `log`. `IR-02` collect-all preflight отклоняет filesystem root, adapter сохраняет parentless leaf и выдаёт явную boundary error для root. Focused tests зелёные; полный reactor дал ровно ожидаемые 114/114 без новых findings, analyzer errors/missing classes 0/0 | `SB04-013..014` и `SB04-021..023=resolved-by-fix`; сформировать baseline только для оставшихся 114 reviewed findings |
+| 2026-08-02 | `D-021` | `C3 baseline` | Один root-inherited filter содержит 109 exact pattern+class+member selectors для 114 reviewed instances; 55 — accepted legacy, 59 — false positives. Aggregate source inspection подтвердил merge module XML без отдельной filter surface. Full reactor и независимая сверка дали 0 visible findings во всех 19 module reports и aggregate, 0 analyzer errors/missing classes, полный XML/HTML set | `C3=completed`; перейти к отдельному `C4` clean + immediate repeat, не переводя report-only control в blocking mode |
 
 ## 12. Рабочий change journal
 
@@ -528,17 +541,18 @@ Module counts:
 | `C0-C2 evidence` | Reproducible inventory, full semantic triage и SQL trust-boundary hardening | worknote, build-quality ledger, status matrix, KNOWN-ISSUES; six JDBC security regression cases, focused module runs and canonical verification | `0b99c2b` | committed |
 | `ING-10/I0..I4` | Characterization, lifecycle barrier, keyed execution, monotonic transitions and operational closure | production code, reusable TCK, focused concurrency/restart/E2E regressions and durable docs | `f4f011e`, `c3a03e2`, `a44d10f`, `7ce5f8f`, I4 final checkpoint | checkpointed |
 | `ING-10 observability follow-up` | Typed recovery lifecycle, duplicate disposition and exact transition-conflict diagnostic | production observer/application code, focused logging/diagnostic regressions, generated catalogs and durable docs | `6e8c8b8` | committed and verified |
-| `C1 review follow-up` | Security registry sync, compiler-closed health PRAGMA and test hygiene | health probe, JDBC repository tests, security/threat model, build-quality execution evidence | this commit | implemented and verified |
-| `C2 audit follow-up` | Exception preservation, explicit threading/startup/guard contracts and dependency-map drift reduction | concurrency and coordinator production/tests, application/platform/root docs, refreshed SpotBugs evidence | uncommitted | implemented and verified |
+| `C1 review follow-up` | Security registry sync, compiler-closed health PRAGMA and test hygiene | health probe, JDBC repository tests, security/threat model, build-quality execution evidence | `94b1b5d` | committed and verified |
+| `C2 audit follow-up` | Exception preservation, explicit threading/startup/guard contracts and dependency-map drift reduction | concurrency and coordinator production/tests, application/platform/root docs, refreshed SpotBugs evidence | `75ca72a` | committed and verified |
+| `C3 fixes and baseline` | Consume copy-returning SLF4J builders, reject projection filesystem roots and accept only reviewed residual findings | production code/tests/docs, one exact inherited SpotBugs filter and module/aggregate baseline evidence | uncommitted | completed, uncommitted |
 
 ## 13. Completion checklist
 
 - [x] Все 118 исходных findings имеют стабильный ID и disposition.
-- [ ] Immediate correctness/resource/concurrency risks исправлены или явно не подтверждены evidence.
-- [ ] Каждый оставленный finding имеет точный selector, rationale, owner и exit condition.
-- [ ] Module executions и aggregate используют один reviewed baseline.
-- [ ] Analyzer/report-integrity failures остаются fail-closed.
+- [x] Immediate correctness/resource/concurrency risks исправлены или явно не подтверждены evidence.
+- [x] Каждый оставленный finding имеет точный selector, rationale, owner и exit condition.
+- [x] Module executions и aggregate используют один reviewed baseline.
+- [x] Analyzer/report-integrity failures остаются fail-closed.
 - [ ] Clean и повторный reactor runs детерминированы.
-- [ ] Build-quality ledger содержит итоговую сводку и suppression register.
+- [x] Build-quality ledger содержит C3 summary и suppression register.
 - [ ] Status matrix переводит `BUILD-SPOTBUGS-04` в `verified`.
 - [ ] Следующий work item `BUILD-SPOTBUGS-05` имеет достаточный entry evidence.

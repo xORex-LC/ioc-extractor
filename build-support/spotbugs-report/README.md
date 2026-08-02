@@ -16,6 +16,7 @@ published library.
 |---|---|
 | `pom.xml` | Production dependency ordering, `spotbugs-aggregate` and late report-integrity wiring |
 | `spotbugs-scope.tsv` | Single disposition registry for every root and child reactor project |
+| `spotbugs-baseline-exclude.xml` | Reviewed C3 baseline shared by every inherited module analysis |
 | `../build-quality/BuildQualityVerifier.java` | Shared JDK-only scope and report-integrity verifier |
 | `target/spotbugs/spotbugs.xml` | Generated machine-readable reactor aggregate |
 | `target/spotbugs/spotbugs.html` | Generated human-readable reactor aggregate |
@@ -48,6 +49,19 @@ validates their structure and rejects reports from excluded scopes.
 
 Findings remain report-only. Analyzer errors, missing module reports or missing
 aggregate outputs fail the reactor build.
+
+The versioned C3 baseline contains 114 reviewed findings represented by 109
+narrow selectors. Every selector combines a bug pattern with an exact class and
+method or field; package-, category- and pattern-wide exclusions are forbidden.
+Of the accepted findings, 55 are recorded legacy debt and 59 are reviewed false
+positives. The inherited root execution applies this one filter to every module
+analysis. The aggregate mojo then merges those module XML reports, so module and
+reactor-wide views cannot acquire separate baseline copies.
+
+Each filter comment links a selector back to its finding ID in the release
+worknote. Removing or changing code must remove the now-unused selector in the
+same change. Any new finding remains visible and is handled by the report-only
+adoption policy until `BUILD-SPOTBUGS-05` introduces the enforcement ratchet.
 
 Module HTML is rendered from native XML using the SpotBugs engine's
 `default.xsl` resource to avoid a second bytecode-analysis pass. Every

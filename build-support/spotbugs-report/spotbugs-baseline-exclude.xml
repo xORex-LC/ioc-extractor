@@ -1,0 +1,709 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- C3 accepted baseline: 114 reviewed findings, 109 narrow selectors. -->
+    <!-- SB04-105 -->
+    <Match>
+        <Bug pattern="BC_UNCONFIRMED_CAST_OF_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.out.transport.smb.SmbjChangeNotifySessionFactory"/>
+        <Method name="open"/>
+    </Match>
+    <!-- SB04-106 -->
+    <Match>
+        <Bug pattern="BC_UNCONFIRMED_CAST_OF_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.out.transport.smb.SmbjShareClientFactory"/>
+        <Method name="open"/>
+    </Match>
+    <!-- SB04-107 -->
+    <Match>
+        <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+        <Class name="com.iocextractor.diagnostics.DiagnosticException"/>
+        <Method name="&lt;init&gt;"/>
+    </Match>
+    <!-- SB04-108 -->
+    <Match>
+        <Bug pattern="DB_DUPLICATE_SWITCH_CLAUSES"/>
+        <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcPublishLedger"/>
+        <Method name="requireTransition"/>
+    </Match>
+    <!-- SB04-109 -->
+    <Match>
+        <Bug pattern="DLS_DEAD_LOCAL_STORE_OF_NULL"/>
+        <Class name="com.iocextractor.adapter.out.sink.csv.CsvSliceMaterialization"/>
+        <Method name="beginArtifact"/>
+    </Match>
+    <!-- SB04-111 -->
+    <Match>
+        <Bug pattern="DM_CONVERT_CASE"/>
+        <Class name="com.iocextractor.application.ingest.SourceKey"/>
+        <Method name="&lt;init&gt;"/>
+    </Match>
+    <!-- SB04-112 -->
+    <Match>
+        <Bug pattern="DM_CONVERT_CASE"/>
+        <Class name="com.iocextractor.application.pipeline.stage.ExtractIndicatorsStage"/>
+        <Method name="lambda$trace$0"/>
+    </Match>
+    <!-- SB04-110 -->
+    <Match>
+        <Bug pattern="DM_CONVERT_CASE"/>
+        <Class name="com.iocextractor.bootstrap.LoggingPipelineDecisionTracer"/>
+        <Method name="identity"/>
+    </Match>
+    <!-- SB04-040 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.adapter.in.ingest.IngestAdapterProperties$Patterns"/>
+        <Method name="exclude"/>
+        <Field name="exclude"/>
+    </Match>
+    <!-- SB04-041 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.adapter.in.ingest.IngestAdapterProperties$Patterns"/>
+        <Method name="include"/>
+        <Field name="include"/>
+    </Match>
+    <!-- SB04-042 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.adapter.out.sink.csv.ColumnSpec"/>
+        <Method name="transform"/>
+        <Field name="transform"/>
+    </Match>
+    <!-- SB04-043 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper"/>
+        <Method name="header"/>
+        <Field name="header"/>
+    </Match>
+    <!-- SB04-044 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition"/>
+        <Method name="accepts"/>
+        <Field name="accepts"/>
+    </Match>
+    <!-- SB04-066 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.application.ingest.CanonicalArtifactsChanged"/>
+        <Method name="artifactNames"/>
+        <Field name="artifactNames"/>
+    </Match>
+    <!-- SB04-045 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.ExportPlanCatalog"/>
+        <Method name="plans"/>
+        <Field name="plans"/>
+    </Match>
+    <!-- SB04-046 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties"/>
+        <Method name="patterns"/>
+        <Field name="patterns"/>
+    </Match>
+    <!-- SB04-047 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$ArtifactIdentity"/>
+        <Method name="artifacts"/>
+        <Field name="artifacts"/>
+    </Match>
+    <!-- SB04-048 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$ArtifactIdentity$Artifact"/>
+        <Method name="keyColumns"/>
+        <Field name="keyColumns"/>
+    </Match>
+    <!-- SB04-049 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Classify"/>
+        <Method name="rules"/>
+        <Field name="rules"/>
+    </Match>
+    <!-- SB04-050 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Classify$Rule"/>
+        <Method name="when"/>
+        <Field name="when"/>
+    </Match>
+    <!-- SB04-051 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Export"/>
+        <Method name="profiles"/>
+        <Field name="profiles"/>
+    </Match>
+    <!-- SB04-052 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Export$Profile"/>
+        <Method name="artifacts"/>
+        <Field name="artifacts"/>
+    </Match>
+    <!-- SB04-053 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Ingestion$Patterns"/>
+        <Method name="exclude"/>
+        <Field name="exclude"/>
+    </Match>
+    <!-- SB04-054 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Ingestion$Patterns"/>
+        <Method name="include"/>
+        <Field name="include"/>
+    </Match>
+    <!-- SB04-055 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Maintenance$Retention"/>
+        <Method name="targets"/>
+        <Field name="targets"/>
+    </Match>
+    <!-- SB04-056 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Refang"/>
+        <Method name="rules"/>
+        <Field name="rules"/>
+    </Match>
+    <!-- SB04-057 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Sink"/>
+        <Method name="artifacts"/>
+        <Field name="artifacts"/>
+    </Match>
+    <!-- SB04-058 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact"/>
+        <Method name="accepts"/>
+        <Field name="accepts"/>
+    </Match>
+    <!-- SB04-059 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact"/>
+        <Method name="columns"/>
+        <Field name="columns"/>
+    </Match>
+    <!-- SB04-060 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact"/>
+        <Method name="exclude"/>
+        <Field name="exclude"/>
+    </Match>
+    <!-- SB04-061 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact"/>
+        <Method name="include"/>
+        <Field name="include"/>
+    </Match>
+    <!-- SB04-062 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact$Column"/>
+        <Method name="transform"/>
+        <Field name="transform"/>
+    </Match>
+    <!-- SB04-063 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Source"/>
+        <Method name="sectionMarkers"/>
+        <Field name="sectionMarkers"/>
+    </Match>
+    <!-- SB04-064 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.LazyServiceStorage"/>
+        <Method name="dataSource"/>
+        <Field name="dataSource"/>
+    </Match>
+    <!-- SB04-065 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="com.iocextractor.bootstrap.TransportRegistry$Binding"/>
+        <Method name="transport"/>
+        <Field name="transport"/>
+    </Match>
+    <!-- SB04-067 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.adapter.in.ingest.IngestAdapterProperties$Patterns"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="exclude"/>
+    </Match>
+    <!-- SB04-068 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.adapter.in.ingest.IngestAdapterProperties$Patterns"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="include"/>
+    </Match>
+    <!-- SB04-069 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.adapter.out.sink.csv.ColumnSpec"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="transform"/>
+    </Match>
+    <!-- SB04-070 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="accepts"/>
+    </Match>
+    <!-- SB04-071 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="patterns"/>
+    </Match>
+    <!-- SB04-072 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$ArtifactIdentity"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="artifacts"/>
+    </Match>
+    <!-- SB04-073 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$ArtifactIdentity$Artifact"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="keyColumns"/>
+    </Match>
+    <!-- SB04-074 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Classify"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="rules"/>
+    </Match>
+    <!-- SB04-075 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Classify$Rule"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="when"/>
+    </Match>
+    <!-- SB04-076 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Export"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="profiles"/>
+    </Match>
+    <!-- SB04-077 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Export$Profile"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="artifacts"/>
+    </Match>
+    <!-- SB04-079 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Ingestion$Patterns"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="exclude"/>
+    </Match>
+    <!-- SB04-078 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Ingestion$Patterns"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="include"/>
+    </Match>
+    <!-- SB04-080 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Maintenance$Retention"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="targets"/>
+    </Match>
+    <!-- SB04-081 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Refang"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="rules"/>
+    </Match>
+    <!-- SB04-082 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Sink"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="artifacts"/>
+    </Match>
+    <!-- SB04-083 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="accepts"/>
+    </Match>
+    <!-- SB04-084 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="columns"/>
+    </Match>
+    <!-- SB04-086 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="exclude"/>
+    </Match>
+    <!-- SB04-085 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="include"/>
+    </Match>
+    <!-- SB04-087 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact$Column"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="transform"/>
+    </Match>
+    <!-- SB04-088 -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="com.iocextractor.bootstrap.IocProperties$Source"/>
+        <Method name="&lt;init&gt;"/>
+        <Field name="sectionMarkers"/>
+    </Match>
+    <!-- SB04-016 -->
+    <Match>
+        <Bug pattern="IS2_INCONSISTENT_SYNC"/>
+        <Class name="com.iocextractor.adapter.out.sink.csv.CsvArtifactSliceWriter"/>
+        <Field name="active"/>
+    </Match>
+    <!-- SB04-017 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.in.ingest.FileIngestionLedger"/>
+        <Method name="lambda$findRecords$4"/>
+    </Match>
+    <!-- SB04-018 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle"/>
+        <Method name="fileName"/>
+    </Match>
+    <!-- SB04-019 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle"/>
+        <Method name="move"/>
+    </Match>
+    <!-- SB04-020 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle"/>
+        <Method name="toArchivedSource"/>
+    </Match>
+    <!-- SB04-024 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog"/>
+        <Method name="listCompleted"/>
+    </Match>
+    <!-- SB04-025 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog"/>
+        <Method name="listCompletedSliceNames"/>
+    </Match>
+    <!-- SB04-026 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog"/>
+        <Method name="verify"/>
+    </Match>
+    <!-- SB04-027 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.out.sink.csv.FileSystemSliceRetentionStore"/>
+        <Method name="listCompleted"/>
+    </Match>
+    <!-- SB04-028 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.out.sink.csv.SliceTreeVerifier"/>
+        <Method name="lambda$verifyExactMembers$0"/>
+    </Match>
+    <!-- SB04-029 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.out.source.TikaSourceReader"/>
+        <Method name="extension"/>
+    </Match>
+    <!-- SB04-030 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.out.source.TikaSourceReader"/>
+        <Method name="readText"/>
+    </Match>
+    <!-- SB04-031 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.out.store.jdbc.LegacyLedgerImporter"/>
+        <Method name="importAll"/>
+    </Match>
+    <!-- SB04-032 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.out.store.jdbc.LegacyLedgerImporter"/>
+        <Method name="lambda$legacyFiles$0"/>
+    </Match>
+    <!-- SB04-033 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport"/>
+        <Method name="lambda$localFiles$10"/>
+    </Match>
+    <!-- SB04-034 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport"/>
+        <Method name="lambda$localFiles$11"/>
+    </Match>
+    <!-- SB04-035, SB04-036 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport"/>
+        <Method name="publish"/>
+    </Match>
+    <!-- SB04-037 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport"/>
+        <Method name="verifyUploadedSizes"/>
+    </Match>
+    <!-- SB04-038, SB04-039 -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.iocextractor.application.sync.RemoteFetchService"/>
+        <Method name="finalPathFor"/>
+    </Match>
+    <!-- SB04-113 -->
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION"/>
+        <Class name="com.iocextractor.adapter.in.cli.HealthCommand"/>
+        <Method name="parse"/>
+    </Match>
+    <!-- SB04-114 -->
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION"/>
+        <Class name="com.iocextractor.adapter.in.cli.HealthCommand"/>
+        <Method name="prettyOrRaw"/>
+    </Match>
+    <!-- SB04-115 -->
+    <Match>
+        <Bug pattern="SE_BAD_FIELD"/>
+        <Class name="com.iocextractor.diagnostics.DiagnosticException"/>
+        <Field name="diagnostic"/>
+    </Match>
+    <!-- SB04-015 -->
+    <Match>
+        <Bug pattern="SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR"/>
+        <Class name="com.iocextractor.adapter.out.sink.csv.ArtifactFilter"/>
+        <Method name="&lt;init&gt;"/>
+    </Match>
+    <!-- SB04-001 -->
+    <Match>
+        <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE"/>
+        <Class name="com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler"/>
+        <Method name="apply"/>
+    </Match>
+    <!-- SB04-002 -->
+    <Match>
+        <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE"/>
+        <Class name="com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler"/>
+        <Method name="columns"/>
+    </Match>
+    <!-- SB04-003 -->
+    <Match>
+        <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE"/>
+        <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository"/>
+        <Method name="load"/>
+    </Match>
+    <!-- SB04-006 -->
+    <Match>
+        <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE"/>
+        <Class name="com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceFactory"/>
+        <Method name="initializePersistentPragmas"/>
+    </Match>
+    <!-- SB04-007 -->
+    <Match>
+        <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE"/>
+        <Class name="com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator"/>
+        <Method name="apply"/>
+    </Match>
+    <!-- SB04-008 -->
+    <Match>
+        <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING"/>
+        <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository"/>
+        <Method name="insertRow"/>
+    </Match>
+    <!-- SB04-009 -->
+    <Match>
+        <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING"/>
+        <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository"/>
+        <Method name="rowId"/>
+    </Match>
+    <!-- SB04-010 -->
+    <Match>
+        <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING"/>
+        <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository"/>
+        <Method name="upsertSource"/>
+    </Match>
+    <!-- SB04-011 -->
+    <Match>
+        <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING"/>
+        <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader"/>
+        <Method name="readCoverage"/>
+    </Match>
+    <!-- SB04-012 -->
+    <Match>
+        <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING"/>
+        <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader"/>
+        <Method name="streamRows"/>
+    </Match>
+    <!-- SB04-089 -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="com.iocextractor.adapter.in.cli.ExportCommand"/>
+        <Method name="call"/>
+    </Match>
+    <!-- SB04-090 -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="com.iocextractor.adapter.in.cli.ExtractCommand"/>
+        <Method name="call"/>
+    </Match>
+    <!-- I4-SB-04 -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="com.iocextractor.adapter.in.ingest.IngestionStartupCoordinator"/>
+        <Method name="run"/>
+    </Match>
+    <!-- SB04-091 -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport"/>
+        <Method name="publish"/>
+    </Match>
+    <!-- FUP-SB-01 -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="com.iocextractor.application.ingest.IngestionService"/>
+        <Method name="ingestGuarded"/>
+    </Match>
+    <!-- SB04-096 -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="com.iocextractor.application.ingest.IngestionService"/>
+        <Method name="processClaimed"/>
+    </Match>
+    <!-- SB04-097, SB04-098 -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="com.iocextractor.application.ingest.IngestionService"/>
+        <Method name="recoverIncomplete"/>
+    </Match>
+    <!-- SB04-099 -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="com.iocextractor.application.sync.RemoteFetchService"/>
+        <Method name="fetchOne"/>
+    </Match>
+    <!-- SB04-092 -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="com.iocextractor.bootstrap.LazyServiceStorage"/>
+        <Method name="initialize"/>
+    </Match>
+    <!-- SB04-093 -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="com.iocextractor.bootstrap.RemoteChangeFetchListener"/>
+        <Method name="fetch"/>
+    </Match>
+    <!-- SB04-094 -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="com.iocextractor.bootstrap.RemoteChangeWatchLifecycle"/>
+        <Method name="start"/>
+    </Match>
+    <!-- SB04-095 -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="com.iocextractor.bootstrap.SliceCompletedPublishListener"/>
+        <Method name="publish"/>
+    </Match>
+    <!-- SB04-100 -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="com.iocextractor.platform.etl.PipelineRunner"/>
+        <Method name="emitSuppressionSummary"/>
+    </Match>
+    <!-- SB04-101, SB04-102, SB04-103 -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="com.iocextractor.platform.etl.PipelineRunner"/>
+        <Method name="executeInRunScope"/>
+    </Match>
+    <!-- SB04-104 -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Class name="com.iocextractor.platform.etl.PipelineRunner"/>
+        <Method name="runWithOutcome"/>
+    </Match>
+    <!-- SB04-117 -->
+    <Match>
+        <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
+        <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader"/>
+        <Method name="readCoverage"/>
+    </Match>
+    <!-- SB04-118 -->
+    <Match>
+        <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
+        <Class name="com.iocextractor.bootstrap.IocConfigurationFailureAnalyzer"/>
+        <Method name="description"/>
+    </Match>
+    <!-- I4-SB-02 -->
+    <Match>
+        <Bug pattern="VO_VOLATILE_INCREMENT"/>
+        <Class name="com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard"/>
+        <Method name="lambda$0"/>
+        <Field name="users"/>
+    </Match>
+    <!-- I4-SB-03 -->
+    <Match>
+        <Bug pattern="VO_VOLATILE_INCREMENT"/>
+        <Class name="com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard"/>
+        <Method name="lambda$1"/>
+        <Field name="users"/>
+    </Match>
+</FindBugsFilter>

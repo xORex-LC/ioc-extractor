@@ -150,6 +150,7 @@
                             <effort>Max</effort>
                             <threshold>Low</threshold>
                             <includeTests>false</includeTests>
+                            <excludeFilterFile>${maven.multiModuleProjectDirectory}/build-support/spotbugs-report/spotbugs-baseline-exclude.xml</excludeFilterFile>
                             <failOnError>true</failOnError>
                             <skipEmptyReport>false</skipEmptyReport>
                             <htmlOutput>false</htmlOutput>

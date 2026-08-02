@@ -42,7 +42,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 | `BUILD-SPOTBUGS-01` | Reproducible reactor-wide production-bytecode report, scope/cost inventory and raw findings | Report only; no mass remediation or merge gate | `R030-BASE` verified | `verified` |
 | `BUILD-CPD-02` | Repository-wide production-source report and evidence-based `minimumTokens` calibration | Diagnostic/report only | `BUILD-SPOTBUGS-01` closed, unless matrix explicitly reorders independent tooling | `verified` |
 | `BUILD-DEPS-03` | Semantic disposition of the captured dependency candidates and `Adopt / Adopt with exclusions / Defer` decision | Evaluation only | `BUILD-CPD-02` closed | `verified` |
-| `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow legacy baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `in-progress` (`C0..C2` and verified `ING-10`/`IR-03` predecessor completed; `C3` next) |
+| `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow legacy baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `in-progress` (`C0..C3` completed; `C4` deterministic rerun next) |
 | `BUILD-SPOTBUGS-05` | Accepted no-new-findings signal wired into canonical Maven `verify` | Blocking ratchet | `BUILD-SPOTBUGS-04` closed | `planned` |
 
 The queue is sequential for operator/agent clarity, not a technical claim that
@@ -241,27 +241,38 @@ dependencies, CPD source/config scope и missing/unexpected/malformed reports.
 
 | Selector/pattern | Scope | Rationale | Owner | Review/exit condition | Evidence |
 |---|---|---|---|---|---|
-| — | — | — | — | — | — |
+| Exact SQL patterns + class + method, 10 findings | JDBC schema/migration and repository query-shape builders | Identifiers are allow-list validated and quoted, values are bound, and migrations are code-owned; no untrusted SQL grammar reaches execute sites | `adapter-store-jdbc` | Remove on literal query replacement; review any external migration source, identifier grammar/allow-list expansion or new query-shape builder | `C1-SQL-A/B/D/E/F`; exact `SB04-*` IDs in `spotbugs-baseline-exclude.xml` |
+| Exact `NP_*` + class + method, 20 findings | Child paths from verified NIO listings, configured lifecycle roots, Tika source protocol and remote inbox leaves | The nullable JDK return is constrained by a stronger proven path provenance at each call site | Owning source/ingest/store/transport modules | Remove when control flow becomes analyzer-provable; review if a path ceases to be a direct child or its validated root/source protocol changes | `C1-NP-A/B/E/F` |
+| Exact concurrency/singleton patterns + class/member, 2 findings | Synchronous CSV callback and immutable `ArtifactFilter.NONE` flyweight | Callback access is monitor-confined by the synchronous port contract; the named empty instance has no singleton lifecycle contract | `adapter-sink-csv` | Review if callbacks become asynchronous or `ArtifactFilter` gains identity/lifecycle semantics | `C1-CON-A`, `C1-COR-A` |
+| Exact `EI_EXPOSE_REP*` + class/member, 5 findings | Immutable snapshots and lifecycle-owned bootstrap resources | Construction already copies the collection, or the object deliberately exposes the same managed resource | Owning application/bootstrap modules | Remove when analyzer recognizes the copy; review if construction stops copying or lifecycle ownership crosses the bootstrap boundary | `C2-REP-C/E` |
+| Exact `EI_EXPOSE_REP*` + class/member, 44 findings | Spring-bound configuration and adapter value records | Real mutable aliases with no current mutation call site; safe remediation requires null-preserving copies compatible with collect-all binding | `ioc-app/configuration`, `adapter-ingest`, `adapter-sink-csv` | Replace with null-preserving defensive copies plus binding and mutation-isolation regressions | `C2-REP-A/B/D` |
+| Exact `THROWS_*` + class + method, 18 findings | CLI, pipeline, ingestion, recovery and startup failure boundaries | Required cleanup/accounting/diagnostics occur before the original unchecked failure is propagated with type, cause and stack intact | Owning CLI/application/adapter/bootstrap modules | Remove if the method no longer performs boundary work; review any async, retry, translation or swallow contract | `C2-EX-A..E`, `I4-SB-04`, `FUP-SB-01` |
+| Exact mixed patterns + class + method, 11 findings | SMB share casts, diagnostic constructor, local dead/duplicate code, locale-sensitive tokens, CLI parse fallback and line formatting | Reviewed non-critical legacy quality debt with a specific local remediation path | Owning adapter/platform/bootstrap modules | Apply the per-group exit in `C2-MIX-A..E/H`, then delete the selector | `C2-MIX-A..E/H` |
+| Exact `SE_BAD_FIELD` / `VA_FORMAT_STRING_USES_NEWLINE` + class + method, 2 findings | Non-serialized diagnostics and SQL text-block whitespace | The warned boundary does not exist, or the newline is SQL grammar rather than user-visible text | `platform-diagnostics`, `adapter-store-jdbc` | Review if Java serialization is introduced or SQL text becomes user-visible output | `C2-MIX-F/G` |
+| Exact `VO_VOLATILE_INCREMENT` + class + method/field, 2 findings | Same-key admission/release accounting | Both mutations occur under `ConcurrentHashMap.compute` for the same key; `volatile` is only for snapshot visibility | `platform-concurrency` | Remove if accounting changes; review any mutation outside same-key `compute` | `I4-SB-02..03` |
 
-Пустой register означает отсутствие принятых suppressions. Analyzer error,
-пропущенный module или отсутствующий report не регистрируются как false
-positive.
+The checked-in filter contains 109 exact selectors for these 114 findings. Five
+extra occurrences share the same pattern, class and method with another reviewed
+occurrence; SpotBugs filters cannot address an instance hash. No selector is
+package-, category- or pattern-wide. Analyzer errors, omitted modules and missing
+reports remain integrity failures and are never represented as suppressions.
 
 ## SpotBugs findings
 
 | Pattern/category | Scope | Count | Highest risk | False-positive class | Disposition/evidence |
 |---|---|---:|---|---|---|
 | `EI_EXPOSE_REP` + `EI_EXPOSE_REP2` | Spring-bound configuration records и adapter objects | 49 | P2 | Framework binding / intentional mutable representation | `C2`: 44 real mutable aliases приняты как legacy debt; 5 immutable/lifecycle-owned exposures — false positives; broad suppression запрещён |
-| `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | В основном `Path.getParent()` / `getFileName()` под repository path invariants | 23 | P2 | Nullable JDK API без знания validated-root invariants | `C1`: 20 false positives; root projection path подтверждает один fail-safe NPE, а узкая defensive/config-validation правка разрешит его и 2 companion findings (`IR-02`) |
-| `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | Public/application boundaries с documented unchecked failures | 16 | P3 | Deliberate exception contract | `C2`: все 16 — false positives; catch paths выполняют cleanup/accounting/observer work и сохраняют runtime type, cause и stack |
-| `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` + `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | JDBC schema, migration и PRAGMA SQL | 12 | P1/R10 | Analyzer не различает controlled adapter metadata и untrusted input | `C1`: injection не подтверждён — configured names используют `[A-Za-z][A-Za-z0-9_]*`, adapter-owned internal names допускают leading `_`; оба набора quote-ятся, values bind'ятся, migrations code-owned. Follow-up заменил String-based health PRAGMA typed enums + literal execute-sites и удалил 2 findings |
-| `RV_RETURN_VALUE_IGNORED` + `SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR` | SLF4J fluent builder; `ArtifactFilter.NONE` flyweight | 3 | P2 | Mutating fluent return / named shared instance, не singleton contract | `C1`: два SLF4J calls нарушают `@CheckReturnValue` contract и образуют `IR-01`; singleton finding — false positive |
+| `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `Path.getParent()` / `getFileName()` под repository path invariants | 20 | P2 | Nullable JDK API без знания validated-root invariants | `C1-NP-A/B/E/F`: false positives; три projection-path findings из `IR-02` устранены validation/adapter fix |
+| `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | Public/application boundaries с documented unchecked failures | 18 | P3 | Deliberate exception contract | `C2-EX-A..E` плюс два post-inventory boundary cases: cleanup/accounting/observer work сохраняют runtime type, cause и stack |
+| `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` + `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | JDBC schema, migration и query-shape SQL | 10 | P1/R10 | Analyzer не различает controlled adapter metadata и untrusted input | `C1-SQL-A/B/D/E/F`: configured/internal identifiers валидируются и quote-ятся, values bind'ятся, migrations code-owned; два health PRAGMA findings устранены typed/literal fix |
+| `SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR` | `ArtifactFilter.NONE` flyweight | 1 | P2 | Named shared immutable instance, не singleton contract | `C1-COR-A`: false positive; оба `RV_RETURN_VALUE_IGNORED` устранены `IR-01` fix |
 | `IS2_INCONSISTENT_SYNC` | `CsvArtifactSliceWriter.active` | 1 | P2/R17 | SpotBugs не знает synchronous callback contract `SnapshotRowConsumer` | `C1`: false positive; `stage` удерживает monitor, production reader вызывает callbacks inline, asynchronous callback запрещён port contract |
-| Остальные 9 patterns (`DM`, `VA`, `REC`, `BC`, `UPM`, `SE`, `DLS`, `DB`, `CT`) | Несколько production modules | 14 | P2 | Mixed style, legacy serialization/finalizer model и локальные quality candidates | `C2`: 11 accepted legacy, 2 false positives, 1 fix-now (`IR-03`); неиспользуемый JDBC helper вскрыл invalid single-writer assumption, связанную с `ING-10` |
+| Остальные 9 patterns (`DM`, `VA`, `REC`, `BC`, `VO`, `SE`, `DLS`, `DB`, `CT`) | Несколько production modules | 15 | P2 | Mixed style, legacy serialization и локальные quality/concurrency candidates | `C2` и post-inventory review: 11 accepted legacy, 4 false positives; `IR-03` устранён до baseline |
 
-Сводка priority: P1 — 1, P2 — 81, P3 — 36. Сводка category:
-`MALICIOUS_CODE` — 49, `STYLE` — 29, `BAD_PRACTICE` — 20, `SECURITY` — 12,
-`I18N` — 3, `CORRECTNESS` — 3, `PERFORMANCE` — 1, `MT_CORRECTNESS` — 1.
+Сырой pre-baseline snapshot C3: 114 findings; priority P1 — 1, P2 — 78,
+P3 — 35. Category: `MALICIOUS_CODE` — 49, `STYLE` — 26,
+`BAD_PRACTICE` — 22, `SECURITY` — 10, `MT_CORRECTNESS` — 3, `I18N` — 3,
+`CORRECTNESS` — 1.
 
 `BUILD-SPOTBUGS-04/C1` присвоил disposition первым 39 findings: 34
 `false-positive`, 2 `fix-now` и 3 `resolved-by-related-fix`. Два узких change
@@ -351,6 +362,23 @@ authority — его POM; архитектурные карты описываю
 Focused 10/10 и полный 24-project reactor прошли. Текущий snapshot содержит
 119/119 findings в 19 module reports, `errors=0`, `missingClasses=0`; четыре
 post-inventory false positives остаются видимыми без suppression до `C3`.
+
+`BUILD-SPOTBUGS-04/C3` устранил оставшиеся immediate-risk groups до baseline:
+`IR-01` потребляет каждый returned SLF4J builder, а provider-contract regression
+проверяет copy-returning implementation; `IR-02` отклоняет filesystem root в
+collect-all configuration preflight и на adapter boundary, сохраняя допустимый
+parentless leaf output. Raw report сократился с 119 до 114 ровно на пять
+ожидаемых findings без новых signals.
+
+Оставшиеся 55 accepted-legacy и 59 false-positive findings покрыты одним
+versioned filter: 109 точных pattern + class + method/field selectors. Пять
+дополнительных occurrences находятся в уже выбранных точных методах; instance
+hash не является частью SpotBugs filter grammar. Root-inherited module execution
+применяет filter один раз, а aggregate объединяет эти module XML без второй
+baseline copy. Canonical `make verify` прошёл 24/24 за `02:17`; независимая
+сверка подтвердила 19 module XML/HTML pairs плюс aggregate, 0 visible findings,
+`errors=0`, `missingClasses=0`. Findings остаются report-only; новый unmatched
+signal будет виден, но станет blocking ratchet только в `BUILD-SPOTBUGS-05`.
 
 При adoption отдельно фиксируются accepted rules/severities, baseline format,
 new-code ratchet, узкие suppressions и их review conditions.
@@ -580,8 +608,8 @@ signal/noise evaluation. Revisit по умолчанию следует посл
 - [x] SpotBugs report воспроизводим
 - [x] SpotBugs signal/noise/cost оценены
 - [x] SpotBugs production-module scope подтверждён
-- [ ] Immediate-risk SpotBugs findings исправлены
-- [ ] SpotBugs baseline filters узкие и обоснованы
+- [x] Immediate-risk SpotBugs findings исправлены
+- [x] SpotBugs baseline filters узкие и обоснованы
 - [ ] SpotBugs `check` стабильно входит в Maven `verify`
 - [ ] SpotBugs запрещает новые findings принятого signal
 - [x] PMD CPD aggregate report воспроизводим
