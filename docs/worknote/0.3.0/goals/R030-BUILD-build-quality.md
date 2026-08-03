@@ -90,7 +90,10 @@ actionable signal и приемлемую стоимость. Отсутстви
 3. исправление immediate correctness/resource/concurrency risks;
 4. фиксация принятого legacy baseline узкими filters;
 5. повторный clean run, подтверждающий deterministic signal;
-6. включение `spotbugs:check` в `verify` и required CI build.
+6. включение blocking SpotBugs gate в `verify` и required CI build. Стандартный
+   `spotbugs:check` MAY быть заменён project-owned exact-baseline gate, если он
+   проверяет unfiltered native XML, блокирует новый и stale signal, не скрывает
+   analyzer errors и не требует второго bytecode-analysis pass.
 
 Массовое устранение всего legacy baseline не является условием подключения
 SpotBugs. Однако каждый оставленный finding MUST иметь точный selector,
@@ -286,8 +289,8 @@ Scheduled stability/PIT jobs не блокируют каждый PR в 0.3.0, �
   decisions;
 - SpotBugs анализирует все применимые production modules, вызывается Maven
   `verify` и блокирует новые findings принятого signal;
-- SpotBugs legacy filters имеют точные selectors, rationale, owner и review
-  condition;
+- SpotBugs accepted-findings baseline имеет точные identities/selectors,
+  rationale, owner и review condition;
 - CPD формирует repository-wide production-source report, а существенные
   findings имеют semantic disposition в `R030-QUAL`;
 - CPD остаётся report-only либо отдельное решение о ratchet содержит

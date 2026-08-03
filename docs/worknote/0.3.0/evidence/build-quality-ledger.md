@@ -28,7 +28,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 
 | Control | Version/config | Local command | CI/report artifact | Runtime | Signal/noise | Owner | Stage |
 |---|---|---|---|---:|---|---|---|
-| SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only | `make clean && make verify` | Per applicable module: `target/spotbugs/spotbugs.xml` + `spotbugs.html`; aggregate: `build-support/spotbugs-report/target/spotbugs/`; CI artifact `spotbugs-reports-<run>` | `93.00 s` clean reactor wall time; `+34.61 s` / `+59.3%` к BASE | 118 raw findings / 19 patterns; заметны framework, nullable-API и controlled-SQL classes of noise | `R030-BUILD` | `report-only` |
+| SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only; exact raw-baseline gate | `make verify` | Per applicable module: raw XML + filtered XML/HTML; raw and filtered aggregates under `build-support/spotbugs-report/target/`; CI artifact `spotbugs-reports-<run>` | `120 s` full reactor wall; `+12 s` / `+11.1%` against the same-session pre-ratchet `108 s` run | 77 reviewed raw findings (59 false positives + 18 policy noise), 71 generated narrow selectors, 0 visible; new/stale/moved/metadata-drifted signal blocks | `R030-BUILD` | `blocking` |
 | PMD CPD aggregate | Maven Plugin `3.28.0`, bundled PMD `7.17.0`; Java production sources, `minimumTokens=75`, identifiers/literals/annotations significant | `make clean && make verify` | `build-support/cpd-report/target/cpd/`; CI artifact `cpd-report-<run>` | `95.52 s` clean reactor wall; CPD module `2.703 s` | 11 raw matches / 10 semantic findings; 7 debt candidates, 3 retained clusters | `R030-BUILD` + `R030-QUAL` | `report-only` |
 | Maven dependency analysis | Maven Dependency Plugin `3.11.0`; fast direct goal + opt-in full `dependency-analysis` profile; default bytecode analyzer | `make dependency-analysis` | Local console/report ledger; deliberately absent from regular CI | Fast sequential package + analysis observed at `5.313–7.677 s` Maven / `6.75–8.72 s` process; full profile timing below | 14 direct POM mismatches corrected; residual `56 / 34 / 12` candidate occurrences are test-aggregate, starter, SPI and transitive-runtime noise | `R030-BUILD` | `report-only`, blocking adoption deferred |
 
@@ -43,7 +43,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 | `BUILD-CPD-02` | Repository-wide production-source report and evidence-based `minimumTokens` calibration | Diagnostic/report only | `BUILD-SPOTBUGS-01` closed, unless matrix explicitly reorders independent tooling | `verified` |
 | `BUILD-DEPS-03` | Semantic disposition of the captured dependency candidates and `Adopt / Adopt with exclusions / Defer` decision | Evaluation only | `BUILD-CPD-02` closed | `verified` |
 | `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow reviewed baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `verified` (`C0..C5` completed) |
-| `BUILD-SPOTBUGS-05` | Accepted no-new-findings signal wired into canonical Maven `verify` | Blocking ratchet | `BUILD-SPOTBUGS-04` closed | `planned` |
+| `BUILD-SPOTBUGS-05` | Accepted no-new-findings signal wired into canonical Maven `verify` | Blocking ratchet | `BUILD-SPOTBUGS-04` closed | `verified` |
 
 The queue is sequential for operator/agent clarity, not a technical claim that
 the controls depend on each other. A confirmed immediate correctness, resource
@@ -402,11 +402,40 @@ validation violations. Все 22 constructor и четыре adapter-accessor fi
 Final C4 clean и immediate repeat воспроизвели один результат: 24/24 reactor,
 836 tests, 0 failures/errors, 2 external SMB skips, 19 module XML/HTML pairs плюс
 aggregate, 77 accepted / 0 visible findings, analyzer errors/missing classes 0/0.
-`BUILD-SPOTBUGS-04` закрыт как `verified`; report-only semantics сохраняются до
-отдельного `BUILD-SPOTBUGS-05`, который введёт blocking no-new-findings ratchet.
+`BUILD-SPOTBUGS-04` закрыт как `verified`; это entry evidence для отдельного
+blocking adoption в `BUILD-SPOTBUGS-05`.
 
-При adoption отдельно фиксируются accepted rules/severities, baseline format,
-new-code ratchet, узкие suppressions и их review conditions.
+### BUILD-SPOTBUGS-05 blocking adoption
+
+Обычный Maven `verify` теперь выполняет один unfiltered SpotBugs analysis на
+каждом из 19 production-модулей и пишет `spotbugs-raw.xml`. Checked-in
+`spotbugs-accepted-findings.xml` хранит 77 отдельных identities: module, type,
+hash/occurrence, priority/rank/category, primary class/member/JVM descriptor,
+source path/bytecode anchor, disposition, owner, evidence, rationale, review
+condition и narrow presentation selector. Source line остаётся advisory.
+
+Root `validate` проверяет baseline schema и генерирует единственный operational
+`FindBugsFilter` с 71 selector в `target/build-quality`; tracked filter удалён.
+SpotBugs workflow `Filter` строит module-local filtered XML без второго анализа,
+после чего `default.xsl` формирует HTML. Enforcement выполняется только по raw
+XML, поэтому новый occurrence с уже принятым hash/методом не скрывается
+presentation filter.
+
+Поздний aggregate gate требует точного равенства baseline и raw instances,
+нулевых analyzer errors/missing classes, пустых filtered reports и multiset
+равенства raw aggregate объединению 19 module reports. New, stale, moved и
+metadata-drifted findings блокируют build. Root harness проходит 4 scope happy / 15
+negative и 3 baseline happy / 17 negative scenarios; отдельная target-local
+mutation, удалившая acceptance `SB04-089`, завершилась exit `1` и показала raw
+finding как новый.
+
+Финальный implementation `make verify` прошёл 24/24 за `02:00`: 182 suites / 836
+tests / 0 failures / 0 errors / 2 external SMB skips, 19 raw XML с 77 findings,
+19 filtered XML/HTML с нулём visible findings, оба aggregate и analyzer
+errors/missing classes `0/0`. Наблюдаемая добавочная стоимость относительно
+same-session pre-ratchet run `01:48` составляет `12 s` (`11.1%`). Полный
+execution evidence и дальнейший operating procedure находятся в
+[BUILD-SPOTBUGS-05 worknote](../build-spotbugs-05-worknote.md).
 
 ## PMD CPD findings
 
@@ -635,8 +664,8 @@ signal/noise evaluation. Revisit по умолчанию следует посл
 - [x] SpotBugs production-module scope подтверждён
 - [x] Immediate-risk SpotBugs findings исправлены
 - [x] SpotBugs baseline filters узкие и обоснованы
-- [ ] SpotBugs `check` стабильно входит в Maven `verify`
-- [ ] SpotBugs запрещает новые findings принятого signal
+- [x] SpotBugs blocking gate стабильно входит в Maven `verify`
+- [x] SpotBugs запрещает новые findings принятого signal
 - [x] PMD CPD aggregate report воспроизводим
 - [x] CPD threshold откалиброван на repository evidence
 - [x] Существенные CPD findings переданы в R030-QUAL
