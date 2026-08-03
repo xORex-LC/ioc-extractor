@@ -46,7 +46,7 @@ boundary. The coupling must be revalidated whenever the engine is upgraded.
 
 | Artifact | Role |
 |---|---|
-| `build-support/spotbugs-report/spotbugs-accepted-findings.xml` | Single tracked source of truth for 76 accepted findings and 70 selectors |
+| `build-support/spotbugs-report/spotbugs-accepted-findings.xml` | Single tracked source of truth for 74 accepted findings and 68 selectors |
 | `target/build-quality/spotbugs-accepted-filter.xml` | Deterministically generated `FindBugsFilter`; never committed or edited |
 | `<module>/target/spotbugs/spotbugs-raw.xml` | Unfiltered module evidence consumed by the blocking gate |
 | `<module>/target/spotbugs/spotbugs.xml` and `.html` | Filtered module views |
@@ -85,7 +85,7 @@ The late aggregate gate requires:
 - raw and filtered XML for every analyzed module;
 - no raw report for excluded modules;
 - engine version `4.10.3` and `errors=0`, `missingClasses=0`;
-- exact equality between 76 accepted identities and the raw findings;
+- exact equality between 74 accepted identities and the raw findings;
 - zero findings in every filtered module report and aggregate;
 - exact multiset equality between the raw aggregate and the 19 module raw
   reports;
@@ -124,4 +124,5 @@ fifteen negative reactor scenarios.
 | Recorded follow-up canonical 24-project `make verify` | 24/24 passed in `01:40`; 182 suites / 837 tests / 0 failures / 0 errors / 2 external SMB skips |
 | Reports and analyzer health | 19 raw XML with 76 findings; 19 filtered XML/HTML with 0 visible; raw/filtered aggregates; errors/missing classes `0/0` |
 | `SB04-016` removal proof | Exact gate first rejected a transient compiler-generated `RCN_*` replacement; after structural cleanup, focused and full runs contain neither `IS2_INCONSISTENT_SYNC` nor `RCN_*` |
+| `SB04-029..030` removal proof | Root regression exposed the previously wrapped nullable dereference; explicit source leaf validation removed both findings. Focused source-adapter test and Maven verify/SpotBugs passed with 0 adapter findings; full reactor intentionally not rerun |
 | Mutation proof | Removing `SB04-089` only from a target-local baseline copy returned exit `1` and reported its raw finding as new |

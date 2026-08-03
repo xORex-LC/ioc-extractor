@@ -155,28 +155,6 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-COR-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-029" module="adapters/adapter-source-tika" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="c96f6f461815248a9d4527a86c92dd12" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-E" review="code-or-analyzer-change">
-        <class name="com.iocextractor.adapter.out.source.TikaSourceReader" />
-        <method name="extension" signature="(Ljava/nio/file/Path;)Ljava/lang/String;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/source/TikaSourceReader.java" startLine="102" bytecode="6" />
-        <suppression>
-            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
-            <Class name="com.iocextractor.adapter.out.source.TikaSourceReader" />
-            <Method name="extension" />
-        </suppression>
-        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-E in the BUILD-SPOTBUGS-04 worknote.</rationale>
-    </finding>
-    <finding id="SB04-030" module="adapters/adapter-source-tika" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="4208ea1522d9ba84c0c34e92596df3b4" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-E" review="code-or-analyzer-change">
-        <class name="com.iocextractor.adapter.out.source.TikaSourceReader" />
-        <method name="readText" signature="(Ljava/nio/file/Path;)Ljava/lang/String;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/source/TikaSourceReader.java" startLine="74" bytecode="37" />
-        <suppression>
-            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
-            <Class name="com.iocextractor.adapter.out.source.TikaSourceReader" />
-            <Method name="readText" />
-        </suppression>
-        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-E in the BUILD-SPOTBUGS-04 worknote.</rationale>
-    </finding>
     <finding id="SB04-031" module="adapters/adapter-store-jdbc" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="8eb4f410da82c4a4b0cfcc4193ead8d1" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="code-or-analyzer-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.LegacyLedgerImporter" />
         <method name="importAll" signature="()Lcom/iocextractor/adapter/out/store/jdbc/LegacyLedgerImporter$LegacyLedgerImportSummary;" />

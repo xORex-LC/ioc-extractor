@@ -28,7 +28,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 
 | Control | Version/config | Local command | CI/report artifact | Runtime | Signal/noise | Owner | Stage |
 |---|---|---|---|---:|---|---|---|
-| SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only; exact raw-baseline gate | `make verify` | Per applicable module: raw XML + filtered XML/HTML; raw and filtered aggregates under `build-support/spotbugs-report/target/`; CI artifact `spotbugs-reports-<run>` | `120 s` adoption full-reactor wall; `+12 s` / `+11.1%` against the same-session pre-ratchet `108 s` run | 76 reviewed raw findings (58 false positives + 18 policy noise), 70 generated narrow selectors, 0 visible; new/stale/moved/metadata-drifted signal blocks | `R030-BUILD` | `blocking` |
+| SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only; exact raw-baseline gate | `make verify` | Per applicable module: raw XML + filtered XML/HTML; raw and filtered aggregates under `build-support/spotbugs-report/target/`; CI artifact `spotbugs-reports-<run>` | `120 s` adoption full-reactor wall; `+12 s` / `+11.1%` against the same-session pre-ratchet `108 s` run | Current baseline: 74 reviewed findings (56 false positives + 18 policy noise), 68 generated narrow selectors; latest full-reactor evidence predates the focused Tika removal and contains 76 raw / 0 visible | `R030-BUILD` | `blocking` |
 | PMD CPD aggregate | Maven Plugin `3.28.0`, bundled PMD `7.17.0`; Java production sources, `minimumTokens=75`, identifiers/literals/annotations significant | `make clean && make verify` | `build-support/cpd-report/target/cpd/`; CI artifact `cpd-report-<run>` | `95.52 s` clean reactor wall; CPD module `2.703 s` | 11 raw matches / 10 semantic findings; 7 debt candidates, 3 retained clusters | `R030-BUILD` + `R030-QUAL` | `report-only` |
 | Maven dependency analysis | Maven Dependency Plugin `3.11.0`; fast direct goal + opt-in full `dependency-analysis` profile; default bytecode analyzer | `make dependency-analysis` | Local console/report ledger; deliberately absent from regular CI | Fast sequential package + analysis observed at `5.313–7.677 s` Maven / `6.75–8.72 s` process; full profile timing below | 14 direct POM mismatches corrected; residual `56 / 34 / 12` candidate occurrences are test-aggregate, starter, SPI and transitive-runtime noise | `R030-BUILD` | `report-only`, blocking adoption deferred |
 
@@ -242,7 +242,7 @@ dependencies, CPD source/config scope и missing/unexpected/malformed reports.
 | Selector/pattern | Scope | Rationale | Owner | Review/exit condition | Evidence |
 |---|---|---|---|---|---|
 | Exact SQL patterns + class + method, 10 findings | JDBC schema/migration and repository query-shape builders | Identifiers are allow-list validated and quoted, values are bound, and migrations are code-owned; no untrusted SQL grammar reaches execute sites | `adapter-store-jdbc` | Remove on literal query replacement; review any external migration source, identifier grammar/allow-list expansion or new query-shape builder | `C1-SQL-A/B/D/E/F`; exact `SB04-*` IDs in `spotbugs-baseline-exclude.xml` |
-| Exact `NP_*` + class + method, 20 findings | Child paths from verified NIO listings, configured lifecycle roots, Tika source protocol and remote inbox leaves | The nullable JDK return is constrained by a stronger proven path provenance at each call site | Owning source/ingest/store/transport modules | Remove when control flow becomes analyzer-provable; review if a path ceases to be a direct child or its validated root/source protocol changes | `C1-NP-A/B/E/F` |
+| Exact `NP_*` + class + method, 18 findings | Child paths from verified NIO listings, configured lifecycle roots and remote inbox leaves | The nullable JDK return is constrained by a stronger proven path provenance at each call site | Owning ingest/store/transport modules | Remove when control flow becomes analyzer-provable; review if a path ceases to be a direct child or its validated root protocol changes | `C1-NP-A/B/F`; two Tika findings from `C1-NP-E` were fixed after executable root evidence overturned their initial disposition |
 | Exact singleton pattern + class/member, 1 finding | Immutable `ArtifactFilter.NONE` flyweight | The named empty instance has no singleton lifecycle contract | `adapter-sink-csv` | Review if `ArtifactFilter` gains identity/lifecycle semantics | `C1-COR-A` |
 | Exact `EI_EXPOSE_REP*` + class/member, 5 findings | Immutable snapshots and lifecycle-owned bootstrap resources | Construction already copies the collection, or the object deliberately exposes the same managed resource | Owning application/bootstrap modules | Remove when analyzer recognizes the copy; review if construction stops copying or lifecycle ownership crosses the bootstrap boundary | `C2-REP-C/E` |
 | Exact `EI_EXPOSE_REP` + generated accessor/field, 18 findings | Null-preserving Spring-bound configuration snapshots | Defensive copy removes the external mutable owner and the accessor is unmodifiable; SpotBugs does not prove the wrapper/backing-copy relationship | `ioc-app/configuration` | Review if copying/accessor semantics or collect-all validation changes | `REP-FIX-FP` |
@@ -250,7 +250,7 @@ dependencies, CPD source/config scope и missing/unexpected/malformed reports.
 | Exact `SE_BAD_FIELD` / `VA_FORMAT_STRING_USES_NEWLINE` + class + method, 2 findings | Non-serialized diagnostics and SQL text-block whitespace | The warned boundary does not exist, or the newline is SQL grammar rather than user-visible text | `platform-diagnostics`, `adapter-store-jdbc` | Review if Java serialization is introduced or SQL text becomes user-visible output | `C2-MIX-F/G` |
 | Exact `VO_VOLATILE_INCREMENT` + class + field, 2 findings | Same-key admission/release accounting | Both mutations occur under `ConcurrentHashMap.compute` for the same key; `volatile` is only for snapshot visibility. Compiler-generated lambda names are deliberately excluded from the selector | `platform-concurrency` | Remove if accounting changes; review any mutation outside same-key `compute` | `I4-SB-02..03`, `D-025` |
 
-The checked-in filter contains 70 exact selectors for the remaining 76 findings. Six
+The checked-in filter contains 68 exact selectors for the remaining 74 findings. Six
 extra occurrences share the same stable pattern/class/member selector with another reviewed
 occurrence; SpotBugs filters cannot address an instance hash. No selector is
 package-, category- or pattern-wide. Analyzer errors, omitted modules and missing
@@ -261,16 +261,16 @@ reports remain integrity failures and are never represented as suppressions.
 | Pattern/category | Scope | Count | Highest risk | False-positive class | Disposition/evidence |
 |---|---|---:|---|---|---|
 | `EI_EXPOSE_REP` + `EI_EXPOSE_REP2` | Immutable snapshots and lifecycle-owned bootstrap resources | 23 | P2 | Analyzer не распознаёт immutable snapshot либо intentional lifecycle ownership | 5 исходных `C2-REP-C/E` + 18 post-fix accessors — false positives; все 44 real aliases устранены `REP-FIX`, 26 obsolete selectors удалены |
-| `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `Path.getParent()` / `getFileName()` под repository path invariants | 20 | P2 | Nullable JDK API без знания validated-root invariants | `C1-NP-A/B/E/F`: false positives; три projection-path findings из `IR-02` устранены validation/adapter fix |
+| `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE` | `Path.getParent()` / `getFileName()` под repository path invariants | 18 | P2 | Nullable JDK API без знания direct-child/configured-root/inbox-leaf provenance | `C1-NP-A/B/F`: false positives; три projection-path findings из `IR-02` и два Tika findings из `C1-NP-E` устранены validation/adapter fixes |
 | `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` | Public/application boundaries с documented unchecked failures | 18 | P3 | Generic policy noise, не analyzer false positive | `C2-EX-A..E` плюс два post-inventory boundary cases: cleanup/accounting/observer work сохраняют runtime type, cause и stack; семь occurrences получили explicit secondary-failure hardening |
 | `SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE` + `SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING` | JDBC schema, migration и query-shape SQL | 10 | P1/R10 | Analyzer не различает controlled adapter metadata и untrusted input | `C1-SQL-A/B/D/E/F`: configured/internal identifiers валидируются и quote-ятся, values bind'ятся, migrations code-owned; два health PRAGMA findings устранены typed/literal fix |
 | `SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR` | `ArtifactFilter.NONE` flyweight | 1 | P2 | Named shared immutable instance, не singleton contract | `C1-COR-A`: false positive; оба `RV_RETURN_VALUE_IGNORED` устранены `IR-01` fix |
 | `IS2_INCONSISTENT_SYNC` | `CsvArtifactSliceWriter.active` | 0 | P2/R17 | Исходный synchronous monitor-confined contract не содержал живого race, но shared callback state создавал temporal coupling | `C1-CON-A`: resolved-by-fix; локальная materialization передаётся reader напрямую, failure-isolation regression закрепляет отсутствие cross-operation contamination |
 | Остальные 3 patterns (`VA`, `VO`, `SE`) | Несколько production modules | 4 | P2 | SQL formatting context, serialization-neutral diagnostics и guarded concurrency accounting | 4 false positives; 11 local legacy findings из `C2-MIX-A..E/H` устранены и удалены из baseline |
 
-После representation remediation и `IS2` follow-up остаются 76 reviewed findings;
-priority P1 — 1, P2 — 49, P3 — 26. Category: `MALICIOUS_CODE` — 23,
-`STYLE` — 20, `BAD_PRACTICE` — 20, `SECURITY` — 10, `MT_CORRECTNESS` — 2,
+После representation remediation, `IS2` и Tika path follow-up остаются 74 reviewed findings;
+priority P1 — 1, P2 — 47, P3 — 26. Category: `MALICIOUS_CODE` — 23,
+`STYLE` — 18, `BAD_PRACTICE` — 20, `SECURITY` — 10, `MT_CORRECTNESS` — 2,
 `CORRECTNESS` — 1. Исторический raw C3 snapshot до remediation — 114.
 
 `BUILD-SPOTBUGS-04/C1` присвоил disposition первым 39 findings: 34
@@ -396,8 +396,9 @@ validation violations. Все 22 constructor и четыре adapter-accessor fi
 исчезли; 18 generated `IocProperties` accessors остаются exact false positives,
 поскольку analyzer не выводит ownership private backing copies. Baseline уменьшен
 до 77 findings / 71 selector без accepted legacy. Последующий `IS2` follow-up
-устранил shared callback state и уменьшил текущий baseline до 76 findings / 70
-selectors. Первый clean C4 run также
+устранил shared callback state и уменьшил baseline до 76 findings / 70
+selectors. Последующий Tika path follow-up устранил два реальных nullable
+dereference и уменьшил текущий baseline до 74 findings / 68 selectors. Первый clean C4 run также
 обнаружил хрупкие compiler-generated lambda names в двух concurrency selectors;
 они заменены одним stable pattern + exact class + field selector.
 
@@ -411,13 +412,13 @@ blocking adoption в `BUILD-SPOTBUGS-05`.
 
 Обычный Maven `verify` теперь выполняет один unfiltered SpotBugs analysis на
 каждом из 19 production-модулей и пишет `spotbugs-raw.xml`. Checked-in
-`spotbugs-accepted-findings.xml` хранит 76 отдельных identities: module, type,
+`spotbugs-accepted-findings.xml` хранит 74 отдельных identities: module, type,
 hash/occurrence, priority/rank/category, primary class/member/JVM descriptor,
 source path/bytecode anchor, disposition, owner, evidence, rationale, review
 condition и narrow presentation selector. Source line остаётся advisory.
 
 Root `validate` проверяет baseline schema и генерирует единственный operational
-`FindBugsFilter` с 70 selectors в `target/build-quality`; tracked filter удалён.
+`FindBugsFilter` с 68 selectors в `target/build-quality`; tracked filter удалён.
 SpotBugs workflow `Filter` строит module-local filtered XML без второго анализа,
 после чего `default.xsl` формирует HTML. Enforcement выполняется только по raw
 XML, поэтому новый occurrence с уже принятым hash/методом не скрывается
@@ -439,6 +440,14 @@ skips, 19 raw XML с 76 findings, 19 filtered XML/HTML с нулём visible fin
 составляет `12 s` (`11.1%`). Полный
 execution evidence и дальнейший operating procedure находятся в
 [BUILD-SPOTBUGS-05 worknote](../build-spotbugs-05-worknote.md).
+
+Post-adoption Tika path hardening removed `SB04-029..030` after a focused root
+regression proved that the provider can open a filesystem root before the null
+file-name dereference. The focused source-adapter test and Maven verify/SpotBugs
+run passed with zero adapter findings; the tracked baseline is now 74 identities
+and 68 selectors. Per explicit task scope, the full reactor was not rerun, so the
+76-finding aggregate above remains the latest full-run evidence rather than a
+claim about the updated baseline.
 
 ## PMD CPD findings
 

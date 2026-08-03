@@ -62,6 +62,23 @@ class TikaSourceReaderDiagnosticTest {
                 });
     }
 
+    @Test
+    void preserves_filesystem_root_as_typed_read_failure() {
+        Path filesystemRoot = tempDir.toAbsolutePath().getRoot();
+        var reader = new TikaSourceReader(null, new DiagnosticFactory(Clock.systemUTC()));
+
+        assertThat(filesystemRoot).isNotNull();
+        assertThatThrownBy(() -> reader.readText(filesystemRoot))
+                .isInstanceOf(DiagnosticException.class)
+                .satisfies(thrown -> {
+                    var typed = (DiagnosticException) thrown;
+                    assertThat(typed.diagnostic().code()).isEqualTo(SourceDiagnosticCodes.READ_FAILED);
+                    assertThat(typed.diagnostic().context()).containsEntry("source", filesystemRoot);
+                    assertThat(typed.getCause()).isInstanceOf(IllegalArgumentException.class);
+                    assertThat(typed.getCause().getMessage()).contains("source path must name a file");
+                });
+    }
+
     private record FailingParser(UnsupportedFormatException failure) implements Parser {
 
         @Override

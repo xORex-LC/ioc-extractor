@@ -68,19 +68,22 @@ public final class TikaSourceReader implements SourceReader {
 
     @Override
     public String readText(Path source) {
-        try (InputStream in = Files.newInputStream(source)) {
-            BodyContentHandler handler = new BodyContentHandler(-1);
-            Metadata metadata = new Metadata();
-            metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, source.getFileName().toString());
-            parser.parse(in, handler, metadata, parseContext());
-            var text = handler.toString();
-            LogEvents.info(log)
-                    .action(EventAction.SOURCE_READ)
-                    .outcome(EventOutcome.SUCCESS)
-                    .field(LogField.IOC_SOURCE_PATH, source)
-                    .message("source read")
-                    .log();
-            return text;
+        try {
+            String resourceName = resourceName(source);
+            try (InputStream in = Files.newInputStream(source)) {
+                BodyContentHandler handler = new BodyContentHandler(-1);
+                Metadata metadata = new Metadata();
+                metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, resourceName);
+                parser.parse(in, handler, metadata, parseContext());
+                var text = handler.toString();
+                LogEvents.info(log)
+                        .action(EventAction.SOURCE_READ)
+                        .outcome(EventOutcome.SUCCESS)
+                        .field(LogField.IOC_SOURCE_PATH, source)
+                        .message("source read")
+                        .log();
+                return text;
+            }
         } catch (UnsupportedFormatException failure) {
             var diagnostic = diagnosticFactory.create(SourceDiagnosticCodes.UNSUPPORTED_FORMAT)
                     .with("source", source)
@@ -99,9 +102,17 @@ public final class TikaSourceReader implements SourceReader {
     }
 
     private static String extension(Path source) {
-        String name = source.getFileName().toString();
+        String name = resourceName(source);
         int separator = name.lastIndexOf('.');
         return separator < 0 ? "unknown" : name.substring(separator + 1);
+    }
+
+    private static String resourceName(Path source) {
+        Path fileName = source.getFileName();
+        if (fileName == null) {
+            throw new IllegalArgumentException("source path must name a file: " + source);
+        }
+        return fileName.toString();
     }
 
     private static String reason(Exception failure) {
