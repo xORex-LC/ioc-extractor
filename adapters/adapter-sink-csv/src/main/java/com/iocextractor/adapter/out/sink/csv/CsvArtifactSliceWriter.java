@@ -1,18 +1,14 @@
 package com.iocextractor.adapter.out.sink.csv;
 
-import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.export.AvailableSlice;
 import com.iocextractor.application.export.ExportRun;
 import com.iocextractor.application.export.ExportRunStatus;
 import com.iocextractor.application.export.SliceInspection;
 import com.iocextractor.application.export.SliceInspectionState;
-import com.iocextractor.application.export.SnapshotArtifactMetadata;
-import com.iocextractor.application.export.SnapshotMetadata;
 import com.iocextractor.application.export.SnapshotRequest;
 import com.iocextractor.application.export.StagedSlice;
 import com.iocextractor.application.port.out.export.ArtifactSliceWriter;
 import com.iocextractor.application.port.out.export.SliceManifestCodec;
-import com.iocextractor.application.port.out.export.SnapshotRowConsumer;
 import com.iocextractor.application.port.out.export.SnapshotSliceReader;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
@@ -39,7 +35,7 @@ import java.util.Objects;
  * <p>The adapter owns only bytes and filesystem state. Export ledger transitions remain in the
  * application saga; this class neither reads nor writes the service database.
  */
-public final class CsvArtifactSliceWriter implements ArtifactSliceWriter, SnapshotRowConsumer {
+public final class CsvArtifactSliceWriter implements ArtifactSliceWriter {
 
     private final SliceDirectoryLayout layout;
     private final SliceManifestCodec codec;
@@ -47,8 +43,6 @@ public final class CsvArtifactSliceWriter implements ArtifactSliceWriter, Snapsh
     private final SliceFileOperations fileOperations;
     private final DiagnosticSink diagnosticSink;
     private final DiagnosticFactory diagnosticFactory;
-
-    private CsvSliceMaterialization active;
 
     /**
      * Creates a production writer using strict NIO durability and no-op diagnostic delivery.
@@ -106,14 +100,15 @@ public final class CsvArtifactSliceWriter implements ArtifactSliceWriter, Snapsh
             createDirectoriesDurably(layout.stagingParent());
             Files.createDirectory(staging);
             fileOperations.forceDirectory(layout.stagingParent());
-            active = new CsvSliceMaterialization(run, request.plan(), staging, codec, fileOperations);
-            try (CsvSliceMaterialization ignored = active) {
-                reader.stream(request, this);
-                if (!active.ended()) {
+            var materialization = new CsvSliceMaterialization(
+                    run, request.plan(), staging, codec, fileOperations);
+            try {
+                reader.stream(request, materialization);
+                if (!materialization.ended()) {
                     throw new IllegalStateException("snapshot reader returned before end callback");
                 }
             } finally {
-                active = null;
+                materialization.close();
             }
             VerifiedSlice verified = verifier.verify(staging, run);
             if (!verified.successPresent()) {
@@ -245,38 +240,6 @@ public final class CsvArtifactSliceWriter implements ArtifactSliceWriter, Snapsh
         } catch (IOException e) {
             throw failure(ExportDiagnosticCodes.SLICE_WRITE_FAILED, run, staging, e);
         }
-    }
-
-    @Override
-    public void begin(SnapshotMetadata metadata) {
-        session().begin(metadata);
-    }
-
-    @Override
-    public void beginArtifact(SnapshotArtifactMetadata artifact) {
-        session().beginArtifact(artifact);
-    }
-
-    @Override
-    public void row(ArtifactRow row) {
-        session().row(row);
-    }
-
-    @Override
-    public void endArtifact() {
-        session().endArtifact();
-    }
-
-    @Override
-    public void end() {
-        session().end();
-    }
-
-    private CsvSliceMaterialization session() {
-        if (active == null) {
-            throw new IllegalStateException("snapshot callback outside an active stage operation");
-        }
-        return active;
     }
 
     private void validateStageRequest(ExportRun run, SnapshotRequest request) {

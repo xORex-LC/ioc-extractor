@@ -223,6 +223,28 @@ class CsvArtifactSliceWriterTest {
                 .contains(tempDir, tempDir.resolve("new-parent"), root, root.resolve(".staging"));
     }
 
+    @Test
+    void callbackFailureDoesNotContaminateTheNextStageOperation() {
+        ExportPlan plan = oneArtifactPlan();
+        CsvArtifactSliceWriter writer = new CsvArtifactSliceWriter(tempDir, new TestManifestCodec());
+        ExportRun failedRun = started(plan, "failed-run", "failed-slice");
+        SnapshotMetadata failedSnapshot = snapshot(plan, 0);
+        SnapshotSliceReader failingReader = (request, consumer) -> {
+            consumer.begin(failedSnapshot);
+            throw new IllegalStateException("snapshot reader failed");
+        };
+
+        assertThatThrownBy(() -> writer.stage(failedRun, new SnapshotRequest(plan), failingReader))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("snapshot reader failed");
+
+        ExportRun successfulRun = started(plan, "successful-run", "successful-slice");
+        StagedSlice staged = writer.stage(successfulRun, new SnapshotRequest(plan), reader(plan, 1));
+
+        assertThat(staged.sliceId()).isEqualTo("successful-run");
+        assertThat(tempDir.resolve(".staging/successful-run/_SUCCESS")).isRegularFile();
+    }
+
     private CsvArtifactSliceWriter writer(Path root,
                                           SliceManifestCodec codec,
                                           SliceFileOperations operations,
@@ -259,7 +281,11 @@ class CsvArtifactSliceWriterTest {
     }
 
     private ExportRun started(ExportPlan plan) {
-        return ExportRun.started("run-1", plan.profile().name(), "slice-1", plan.planHash(), NOW);
+        return started(plan, "run-1", "slice-1");
+    }
+
+    private ExportRun started(ExportPlan plan, String runId, String sliceName) {
+        return ExportRun.started(runId, plan.profile().name(), sliceName, plan.planHash(), NOW);
     }
 
     private ExportRun withStatus(ExportRun run, ExportRunStatus status, String manifestHash) {
@@ -272,15 +298,10 @@ class CsvArtifactSliceWriterTest {
     }
 
     private SnapshotSliceReader streamingReader(ExportPlan plan, int rows, AtomicLong generated) {
-        List<SnapshotArtifactMetadata> metadata = plan.artifacts().stream()
-                .map(spec -> new SnapshotArtifactMetadata(spec.artifactName(), spec.fileName(), spec.columns(),
-                        new ArtifactCoverage(1, NOW, rows), spec.identityEpoch(),
-                        spec.identityHash(), spec.schemaHash()))
-                .toList();
-        SnapshotMetadata snapshot = new SnapshotMetadata(plan.profile().name(), plan.planHash(), NOW, metadata);
+        SnapshotMetadata snapshot = snapshot(plan, rows);
         return (request, consumer) -> {
             consumer.begin(snapshot);
-            for (SnapshotArtifactMetadata artifact : metadata) {
+            for (SnapshotArtifactMetadata artifact : snapshot.artifacts()) {
                 consumer.beginArtifact(artifact);
                 for (int id = 1; id <= rows; id++) {
                     Map<String, String> values = new LinkedHashMap<>();
@@ -294,6 +315,15 @@ class CsvArtifactSliceWriterTest {
             consumer.end();
             return snapshot;
         };
+    }
+
+    private SnapshotMetadata snapshot(ExportPlan plan, int rows) {
+        List<SnapshotArtifactMetadata> metadata = plan.artifacts().stream()
+                .map(spec -> new SnapshotArtifactMetadata(spec.artifactName(), spec.fileName(), spec.columns(),
+                        new ArtifactCoverage(1, NOW, rows), spec.identityEpoch(),
+                        spec.identityHash(), spec.schemaHash()))
+                .toList();
+        return new SnapshotMetadata(plan.profile().name(), plan.planHash(), NOW, metadata);
     }
 
     private static final class TestManifestCodec implements SliceManifestCodec {

@@ -89,17 +89,6 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C2-REP-C in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-016" module="adapters/adapter-sink-csv" type="IS2_INCONSISTENT_SYNC" hash="ce3515cbe758ab88c71718a20476d8fc" occurrence="0" priority="2" rank="17" category="MT_CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="C1-CON-A" review="code-or-analyzer-change">
-        <class name="com.iocextractor.adapter.out.sink.csv.CsvArtifactSliceWriter" />
-        <field name="active" signature="Lcom/iocextractor/adapter/out/sink/csv/CsvSliceMaterialization;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/CsvArtifactSliceWriter.java" startLine="276" bytecode="1" />
-        <suppression>
-            <Bug pattern="IS2_INCONSISTENT_SYNC" />
-            <Class name="com.iocextractor.adapter.out.sink.csv.CsvArtifactSliceWriter" />
-            <Field name="active" />
-        </suppression>
-        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-CON-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
-    </finding>
     <finding id="SB04-024" module="adapters/adapter-sink-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="451e8f82803afe99904b550ed37331cc" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="code-or-analyzer-change">
         <class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog" />
         <method name="listCompleted" signature="(Ljava/lang/String;)Ljava/util/List;" />
