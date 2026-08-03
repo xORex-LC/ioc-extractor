@@ -1,0 +1,873 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<spotbugs-accepted-findings schemaVersion="1" engineVersion="4.10.3">
+    <finding id="SB04-089" module="adapters/adapter-cli-picocli" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="3715419b138a600afca4c34bc44a6f39" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-A" review="boundary-contract-change">
+        <class name="com.iocextractor.adapter.in.cli.ExportCommand" />
+        <method name="call" signature="()Ljava/lang/Integer;" />
+        <anchor sourcePath="com/iocextractor/adapter/in/cli/ExportCommand.java" startLine="89" bytecode="218" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.adapter.in.cli.ExportCommand" />
+            <Method name="call" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-A.</rationale>
+    </finding>
+    <finding id="SB04-090" module="adapters/adapter-cli-picocli" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="81595ad9b11bb20d5c3e2e4d618ce772" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-A" review="boundary-contract-change">
+        <class name="com.iocextractor.adapter.in.cli.ExtractCommand" />
+        <method name="call" signature="()Ljava/lang/Integer;" />
+        <anchor sourcePath="com/iocextractor/adapter/in/cli/ExtractCommand.java" startLine="103" bytecode="288" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.adapter.in.cli.ExtractCommand" />
+            <Method name="call" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-A.</rationale>
+    </finding>
+    <finding id="SB04-017" module="adapters/adapter-ingest" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="df36f03e12693d25cd9f901f550239ae" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A/D-025" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.in.ingest.FileIngestionLedger" />
+        <method name="lambda$findRecords$4" signature="(Ljava/nio/file/Path;)Z" />
+        <anchor sourcePath="com/iocextractor/adapter/in/ingest/FileIngestionLedger.java" startLine="122" bytecode="6" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.in.ingest.FileIngestionLedger" />
+            <Method name="lambda$findRecords$4" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A/D-025 in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-018" module="adapters/adapter-ingest" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="ed71e9161cf3ad0bebb1c31c07c0036f" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-B" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle" />
+        <method name="fileName" signature="(Lcom/iocextractor/application/ingest/SourceKey;Ljava/nio/file/Path;)Ljava/lang/String;" />
+        <anchor sourcePath="com/iocextractor/adapter/in/ingest/FileSystemSourceLifecycle.java" startLine="95" bytecode="20" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle" />
+            <Method name="fileName" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-B in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-019" module="adapters/adapter-ingest" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="cc923aad27b2cc302d2874fa859096d3" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-B" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle" />
+        <method name="move" signature="(Ljava/nio/file/Path;Ljava/nio/file/Path;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/in/ingest/FileSystemSourceLifecycle.java" startLine="102" bytecode="10" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle" />
+            <Method name="move" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-B in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-020" module="adapters/adapter-ingest" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="7b3851a67750fc70dec5cf79ccc60545" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle" />
+        <method name="toArchivedSource" signature="(Ljava/nio/file/Path;)Lcom/iocextractor/application/ingest/ArchivedSourceUnit;" />
+        <anchor sourcePath="com/iocextractor/adapter/in/ingest/FileSystemSourceLifecycle.java" startLine="123" bytecode="6" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle" />
+            <Method name="toArchivedSource" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="I4-SB-04" module="adapters/adapter-ingest" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="d56f19992d2df7d7a5419935e72e36b4" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="I4-SB-04" review="boundary-contract-change">
+        <class name="com.iocextractor.adapter.in.ingest.IngestionStartupCoordinator" />
+        <method name="run" signature="(Lorg/springframework/boot/ApplicationArguments;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/in/ingest/IngestionStartupCoordinator.java" startLine="76" bytecode="202" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.adapter.in.ingest.IngestionStartupCoordinator" />
+            <Method name="run" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under I4-SB-04.</rationale>
+    </finding>
+    <finding id="SB04-043" module="adapters/adapter-sink-csv" type="EI_EXPOSE_REP" hash="7517b4775548db7bcd7d6dd8b38e66fe" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="C2-REP-C" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper" />
+        <method name="header" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/ConfigurableRowMapper.java" startLine="50" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper" />
+            <Method name="header" />
+            <Field name="header" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C2-REP-C in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-016" module="adapters/adapter-sink-csv" type="IS2_INCONSISTENT_SYNC" hash="ce3515cbe758ab88c71718a20476d8fc" occurrence="0" priority="2" rank="17" category="MT_CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="C1-CON-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.sink.csv.CsvArtifactSliceWriter" />
+        <field name="active" signature="Lcom/iocextractor/adapter/out/sink/csv/CsvSliceMaterialization;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/CsvArtifactSliceWriter.java" startLine="276" bytecode="1" />
+        <suppression>
+            <Bug pattern="IS2_INCONSISTENT_SYNC" />
+            <Class name="com.iocextractor.adapter.out.sink.csv.CsvArtifactSliceWriter" />
+            <Field name="active" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-CON-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-024" module="adapters/adapter-sink-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="451e8f82803afe99904b550ed37331cc" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog" />
+        <method name="listCompleted" signature="(Ljava/lang/String;)Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/FileSystemCompletedSliceCatalog.java" startLine="68" bytecode="162" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog" />
+            <Method name="listCompleted" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-025" module="adapters/adapter-sink-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="b51ce9279deb56aa6c1cb2e9037a8da0" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog" />
+        <method name="listCompletedSliceNames" signature="(Ljava/lang/String;)Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/FileSystemCompletedSliceCatalog.java" startLine="95" bytecode="140" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog" />
+            <Method name="listCompletedSliceNames" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-026" module="adapters/adapter-sink-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="373835ddfb1193e6005b2007fdf4ff6" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog" />
+        <method name="verify" signature="(Ljava/lang/String;Ljava/nio/file/Path;)Lcom/iocextractor/application/sync/CompletedSlice;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/FileSystemCompletedSliceCatalog.java" startLine="143" bytecode="56" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog" />
+            <Method name="verify" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-027" module="adapters/adapter-sink-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="2d668aa02540c8507a933a99a77fa7f6" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.sink.csv.FileSystemSliceRetentionStore" />
+        <method name="listCompleted" signature="(Ljava/lang/String;)Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/FileSystemSliceRetentionStore.java" startLine="58" bytecode="191" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.out.sink.csv.FileSystemSliceRetentionStore" />
+            <Method name="listCompleted" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-028" module="adapters/adapter-sink-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="1c0765bc84d2240b96685d4e7dd36ec8" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.sink.csv.SliceTreeVerifier" />
+        <method name="lambda$verifyExactMembers$0" signature="(Ljava/util/Set;Ljava/nio/file/Path;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/SliceTreeVerifier.java" startLine="122" bytecode="7" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.out.sink.csv.SliceTreeVerifier" />
+            <Method name="lambda$verifyExactMembers$0" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-015" module="adapters/adapter-sink-csv" type="SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR" hash="22d5f5b6275533de4047b929a884dff6" occurrence="0" priority="2" rank="7" category="CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="C1-COR-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.sink.csv.ArtifactFilter" />
+        <method name="&lt;init&gt;" signature="(Ljava/util/List;Ljava/util/List;)V" />
+        <anchor />
+        <suppression>
+            <Bug pattern="SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR" />
+            <Class name="com.iocextractor.adapter.out.sink.csv.ArtifactFilter" />
+            <Method name="&lt;init&gt;" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-COR-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-029" module="adapters/adapter-source-tika" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="c96f6f461815248a9d4527a86c92dd12" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-E" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.source.TikaSourceReader" />
+        <method name="extension" signature="(Ljava/nio/file/Path;)Ljava/lang/String;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/source/TikaSourceReader.java" startLine="102" bytecode="6" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.out.source.TikaSourceReader" />
+            <Method name="extension" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-E in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-030" module="adapters/adapter-source-tika" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="4208ea1522d9ba84c0c34e92596df3b4" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-E" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.source.TikaSourceReader" />
+        <method name="readText" signature="(Ljava/nio/file/Path;)Ljava/lang/String;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/source/TikaSourceReader.java" startLine="74" bytecode="37" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.out.source.TikaSourceReader" />
+            <Method name="readText" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-E in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-031" module="adapters/adapter-store-jdbc" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="8eb4f410da82c4a4b0cfcc4193ead8d1" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.LegacyLedgerImporter" />
+        <method name="importAll" signature="()Lcom/iocextractor/adapter/out/store/jdbc/LegacyLedgerImporter$LegacyLedgerImportSummary;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/LegacyLedgerImporter.java" startLine="85" bytecode="75" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.LegacyLedgerImporter" />
+            <Method name="importAll" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-032" module="adapters/adapter-store-jdbc" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="ffc8241a66a4a68d89a82e384dd0761a" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.LegacyLedgerImporter" />
+        <method name="lambda$legacyFiles$0" signature="(Ljava/nio/file/Path;)Z" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/LegacyLedgerImporter.java" startLine="113" bytecode="6" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.LegacyLedgerImporter" />
+            <Method name="lambda$legacyFiles$0" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-001" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="ea7a806f5e37f11838a6bea1bf7172" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler" />
+        <method name="apply" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/DataframeSchemaPlan;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/DataframeSchemaReconciler.java" startLine="217" bytecode="70" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler" />
+            <Method name="apply" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-SQL-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-002" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="9f2432cdb91df89209e35871fee4337a" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler" />
+        <method name="columns" signature="(Ljava/sql/Connection;Ljava/lang/String;)Ljava/util/Map;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/DataframeSchemaReconciler.java" startLine="239" bytecode="28" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler" />
+            <Method name="columns" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-SQL-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-003" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="860e2d254168fa78d62286f2c40d2eba" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-B" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
+        <method name="load" signature="(Ljava/lang/String;)Lcom/iocextractor/application/artifact/CanonicalArtifact;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalArtifactRepository.java" startLine="55" bytecode="59" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
+            <Method name="load" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-SQL-B in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-006" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="6a02f61300ba077316237782576f3771" occurrence="0" priority="1" rank="10" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-D" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceFactory" />
+        <method name="initializePersistentPragmas" signature="(Lcom/zaxxer/hikari/HikariDataSource;Lcom/iocextractor/adapter/out/store/jdbc/SqlitePragmaSettings;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/SqliteDataSourceFactory.java" startLine="68" bytecode="24" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceFactory" />
+            <Method name="initializePersistentPragmas" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-SQL-D in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-007" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="9946f8de9403808af3cd5b1070963635" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-E" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator" />
+        <method name="apply" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/SqliteSchemaMigration;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/SqliteUserVersionSchemaMigrator.java" startLine="147" bytecode="83" />
+        <suppression>
+            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator" />
+            <Method name="apply" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-SQL-E in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-008" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="c1634a6606e4b8ffcd844dc5cadd39a" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-B" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
+        <method name="insertRow" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/DataframeArtifactSchema;Lcom/iocextractor/application/artifact/ArtifactRow;)Z" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalArtifactRepository.java" startLine="130" bytecode="299" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
+            <Method name="insertRow" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-SQL-B in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-009" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="a8ebdedecdc1b07861e6b1a9e6d51a39" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-B" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
+        <method name="rowId" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Long;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalArtifactRepository.java" startLine="192" bytecode="27" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
+            <Method name="rowId" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-SQL-B in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-010" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="850222ae253a20a5b62a7df56fb2cf03" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-B" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
+        <method name="upsertSource" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalArtifactRepository.java" startLine="180" bytecode="103" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
+            <Method name="upsertSource" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-SQL-B in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-011" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="77d1f87f81c0fa25955364263c9f2245" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-F" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader" />
+        <method name="readCoverage" signature="(Ljava/sql/Connection;Ljava/lang/String;)Lcom/iocextractor/application/export/ArtifactCoverage;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcSnapshotSliceReader.java" startLine="164" bytecode="21" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader" />
+            <Method name="readCoverage" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-SQL-F in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-012" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="1f92ddc320c2bdead783e609b79d14e8" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-F" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader" />
+        <method name="streamRows" signature="(Ljava/sql/Connection;Lcom/iocextractor/application/export/SnapshotArtifactMetadata;Lcom/iocextractor/application/port/out/export/SnapshotRowConsumer;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcSnapshotSliceReader.java" startLine="202" bytecode="63" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader" />
+            <Method name="streamRows" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-SQL-F in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-117" module="adapters/adapter-store-jdbc" type="VA_FORMAT_STRING_USES_NEWLINE" hash="e5faaaaecb31abb88cbaaffef4e60c2a" occurrence="0" priority="2" rank="20" category="BAD_PRACTICE" disposition="false-positive" owner="R030-BUILD" evidence="C2-MIX-G" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader" />
+        <method name="readCoverage" signature="(Ljava/sql/Connection;Ljava/lang/String;)Lcom/iocextractor/application/export/ArtifactCoverage;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcSnapshotSliceReader.java" startLine="163" bytecode="15" />
+        <suppression>
+            <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader" />
+            <Method name="readCoverage" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C2-MIX-G in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-033" module="adapters/adapter-transport-smb" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="5e5bfca26b4d0a401aaf36091430e7c0" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
+        <method name="lambda$localFiles$10" signature="(Ljava/nio/file/Path;)Ljava/lang/String;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="247" bytecode="6" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
+            <Method name="lambda$localFiles$10" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-034" module="adapters/adapter-transport-smb" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="9456a9c7e501bc30df6de8d94d6bc29c" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
+        <method name="lambda$localFiles$11" signature="(Ljava/nio/file/Path;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="248" bytecode="6" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
+            <Method name="lambda$localFiles$11" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-035" module="adapters/adapter-transport-smb" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="ab4dd7d9826bddec6a3960784b7ae9a1" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
+        <method name="publish" signature="(Lcom/iocextractor/adapter/out/transport/smb/SmbShareClient;Lcom/iocextractor/application/sync/PublishAtomicallyRequest;)Lcom/iocextractor/application/sync/PublishReceipt;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="146" bytecode="188" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
+            <Method name="publish" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-036" module="adapters/adapter-transport-smb" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="ab4dd7d9826bddec6a3960784b7ae9a1" occurrence="1" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
+        <method name="publish" signature="(Lcom/iocextractor/adapter/out/transport/smb/SmbShareClient;Lcom/iocextractor/application/sync/PublishAtomicallyRequest;)Lcom/iocextractor/application/sync/PublishReceipt;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="147" bytecode="215" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
+            <Method name="publish" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-037" module="adapters/adapter-transport-smb" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="588e7a610a503a476d76ef12f69e2911" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="code-or-analyzer-change">
+        <class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
+        <method name="verifyUploadedSizes" signature="(Lcom/iocextractor/adapter/out/transport/smb/SmbShareClient;Ljava/util/List;Ljava/lang/String;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="257" bytecode="35" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
+            <Method name="verifyUploadedSizes" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-091" module="adapters/adapter-transport-smb" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="94ece55bd8105af5894ae60a0ce84620" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B" review="boundary-contract-change">
+        <class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
+        <method name="publish" signature="(Lcom/iocextractor/adapter/out/transport/smb/SmbShareClient;Lcom/iocextractor/application/sync/PublishAtomicallyRequest;)Lcom/iocextractor/application/sync/PublishReceipt;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="168" bytecode="395" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
+            <Method name="publish" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-B.</rationale>
+    </finding>
+    <finding id="SB04-045" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="d84b636c441d973b1edeaf94d00e4fb7" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="C2-REP-C" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.ExportPlanCatalog" />
+        <method name="plans" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/ExportPlanCatalog.java" startLine="60" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.ExportPlanCatalog" />
+            <Method name="plans" />
+            <Field name="plans" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C2-REP-C in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-046" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="e514ebe6ae8e6497319b778ed8a32c59" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties" />
+        <method name="patterns" signature="()Ljava/util/Map;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="27" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties" />
+            <Method name="patterns" />
+            <Field name="patterns" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-047" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="321d59427789ab8d26d2e8c7d5cc9535" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$ArtifactIdentity" />
+        <method name="artifacts" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="177" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$ArtifactIdentity" />
+            <Method name="artifacts" />
+            <Field name="artifacts" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-048" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="21898152d6e6d95f5c7f99eaf4ce3c0d" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$ArtifactIdentity$Artifact" />
+        <method name="keyColumns" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="183" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$ArtifactIdentity$Artifact" />
+            <Method name="keyColumns" />
+            <Field name="keyColumns" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-049" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="9b30fa71c0d8a8dddad035e4e509f075" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Classify" />
+        <method name="rules" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="107" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Classify" />
+            <Method name="rules" />
+            <Field name="rules" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-050" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="4a52f37d7e1f686b57bba129534e0e63" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Classify$Rule" />
+        <method name="when" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="113" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Classify$Rule" />
+            <Method name="when" />
+            <Field name="when" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-051" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="4803fec7397c4f66e5f6c11029ce35e" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Export" />
+        <method name="profiles" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="196" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Export" />
+            <Method name="profiles" />
+            <Field name="profiles" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-052" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="e54252e74bad4dd5fc6d8efdf60cf08b" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Export$Profile" />
+        <method name="artifacts" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="214" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Export$Profile" />
+            <Method name="artifacts" />
+            <Field name="artifacts" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-053" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="32750f92d56af54271412579aeaa13b" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Ingestion$Patterns" />
+        <method name="exclude" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="358" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Ingestion$Patterns" />
+            <Method name="exclude" />
+            <Field name="exclude" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-054" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="c979f70e1e210a5e83ec74c753cd77aa" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Ingestion$Patterns" />
+        <method name="include" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="358" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Ingestion$Patterns" />
+            <Method name="include" />
+            <Field name="include" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-055" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="4383028711e091ec3fa3830bcd139efc" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Maintenance$Retention" />
+        <method name="targets" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="321" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Maintenance$Retention" />
+            <Method name="targets" />
+            <Field name="targets" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-056" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="11a462629da63283350d0221a37f6592" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Refang" />
+        <method name="rules" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="97" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Refang" />
+            <Method name="rules" />
+            <Field name="rules" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-057" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="27f968e5458e541f71621c1e4ea4e628" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Sink" />
+        <method name="artifacts" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="127" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Sink" />
+            <Method name="artifacts" />
+            <Field name="artifacts" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-058" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="d427c73f23b7f225acef3a345a6e5c0a" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact" />
+        <method name="accepts" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="137" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact" />
+            <Method name="accepts" />
+            <Field name="accepts" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-059" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="17d6c50b951ca7086aa4740028b55003" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact" />
+        <method name="columns" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="137" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact" />
+            <Method name="columns" />
+            <Field name="columns" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-060" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="5d1273b759b27055d9e869e41a9b17b4" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact" />
+        <method name="exclude" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="137" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact" />
+            <Method name="exclude" />
+            <Field name="exclude" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-061" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="b9bf50e4732ccab46011395c7b6bf22d" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact" />
+        <method name="include" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="137" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact" />
+            <Method name="include" />
+            <Field name="include" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-062" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="4c232ba4bc3cebc68710c0ed9d38965d" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact$Column" />
+        <method name="transform" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="162" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Sink$Artifact$Column" />
+            <Method name="transform" />
+            <Field name="transform" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-063" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="adc0bb370c48470cb26ddf361beac388" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Source" />
+        <method name="sectionMarkers" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="90" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Source" />
+            <Method name="sectionMarkers" />
+            <Field name="sectionMarkers" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-064" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="78abcf5932d070b501ab72ebb6fa4894" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="C2-REP-E" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.LazyServiceStorage" />
+        <method name="dataSource" signature="()Lcom/zaxxer/hikari/HikariDataSource;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/LazyServiceStorage.java" startLine="61" bytecode="8" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.LazyServiceStorage" />
+            <Method name="dataSource" />
+            <Field name="dataSource" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C2-REP-E in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-065" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="e4130582c3b17b49103e206b650c2a70" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="C2-REP-E" review="code-or-analyzer-change">
+        <class name="com.iocextractor.bootstrap.TransportRegistry$Binding" />
+        <method name="transport" signature="()Lcom/iocextractor/application/port/out/sync/FileTransport;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/TransportRegistry.java" startLine="128" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.TransportRegistry$Binding" />
+            <Method name="transport" />
+            <Field name="transport" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C2-REP-E in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-092" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="11e546190d2ff6319722be2f26d54f11" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B/HARDEN-02" review="boundary-contract-change">
+        <class name="com.iocextractor.bootstrap.LazyServiceStorage" />
+        <method name="initialize" signature="()V" />
+        <anchor sourcePath="com/iocextractor/bootstrap/LazyServiceStorage.java" startLine="91" bytecode="132" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.bootstrap.LazyServiceStorage" />
+            <Method name="initialize" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-B/HARDEN-02.</rationale>
+    </finding>
+    <finding id="SB04-093" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="140f08d5e49e74e14a6a25c2a81899a" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-C/HARDEN-02" review="boundary-contract-change">
+        <class name="com.iocextractor.bootstrap.RemoteChangeFetchListener" />
+        <method name="fetch" signature="(Lcom/iocextractor/application/sync/RemoteChangeBatchDetected;Ljava/util/List;)V" />
+        <anchor sourcePath="com/iocextractor/bootstrap/RemoteChangeFetchListener.java" startLine="82" bytecode="91" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.bootstrap.RemoteChangeFetchListener" />
+            <Method name="fetch" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-C/HARDEN-02.</rationale>
+    </finding>
+    <finding id="SB04-094" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="469a442a692cb759cd32c619ab888ca0" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B" review="boundary-contract-change">
+        <class name="com.iocextractor.bootstrap.RemoteChangeWatchLifecycle" />
+        <method name="start" signature="()V" />
+        <anchor sourcePath="com/iocextractor/bootstrap/RemoteChangeWatchLifecycle.java" startLine="53" bytecode="103" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.bootstrap.RemoteChangeWatchLifecycle" />
+            <Method name="start" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-B.</rationale>
+    </finding>
+    <finding id="SB04-095" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="e42c3c0853dd29c53834f3c4cb10de8c" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-C/HARDEN-02" review="boundary-contract-change">
+        <class name="com.iocextractor.bootstrap.SliceCompletedPublishListener" />
+        <method name="publish" signature="(Lcom/iocextractor/application/export/SliceCompleted;Lcom/iocextractor/application/sync/PublishTarget;)V" />
+        <anchor sourcePath="com/iocextractor/bootstrap/SliceCompletedPublishListener.java" startLine="77" bytecode="79" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.bootstrap.SliceCompletedPublishListener" />
+            <Method name="publish" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-C/HARDEN-02.</rationale>
+    </finding>
+    <finding id="SB04-066" module="core/ioc-application" type="EI_EXPOSE_REP" hash="f047e7441979dcd1c0ac9cb9cf8402dc" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="C2-REP-C" review="code-or-analyzer-change">
+        <class name="com.iocextractor.application.ingest.CanonicalArtifactsChanged" />
+        <method name="artifactNames" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/application/ingest/CanonicalArtifactsChanged.java" startLine="12" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.application.ingest.CanonicalArtifactsChanged" />
+            <Method name="artifactNames" />
+            <Field name="artifactNames" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C2-REP-C in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-038" module="core/ioc-application" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="b4a1a3c4744e27774c3872fe8e1ac3f7" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-F" review="code-or-analyzer-change">
+        <class name="com.iocextractor.application.sync.RemoteFetchService" />
+        <method name="finalPathFor" signature="(Lcom/iocextractor/application/sync/RemoteObject;)Ljava/nio/file/Path;" />
+        <anchor sourcePath="com/iocextractor/application/sync/RemoteFetchService.java" startLine="148" bytecode="34" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.application.sync.RemoteFetchService" />
+            <Method name="finalPathFor" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-F in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-039" module="core/ioc-application" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="b4a1a3c4744e27774c3872fe8e1ac3f7" occurrence="1" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-F" review="code-or-analyzer-change">
+        <class name="com.iocextractor.application.sync.RemoteFetchService" />
+        <method name="finalPathFor" signature="(Lcom/iocextractor/application/sync/RemoteObject;)Ljava/nio/file/Path;" />
+        <anchor sourcePath="com/iocextractor/application/sync/RemoteFetchService.java" startLine="156" bytecode="112" />
+        <suppression>
+            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
+            <Class name="com.iocextractor.application.sync.RemoteFetchService" />
+            <Method name="finalPathFor" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-F in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="FUP-SB-01" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="26ca8efc8ada84b88a4e9f1f98d7847d" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="FUP-SB-01" review="boundary-contract-change">
+        <class name="com.iocextractor.application.ingest.IngestionService" />
+        <method name="ingestGuarded" signature="(Lcom/iocextractor/application/port/in/ingest/IngestSourceCommand;)Lcom/iocextractor/application/port/in/ingest/IngestSourceResult;" />
+        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="164" bytecode="178" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.application.ingest.IngestionService" />
+            <Method name="ingestGuarded" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under FUP-SB-01.</rationale>
+    </finding>
+    <finding id="SB04-096" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="7a89ba4685786a19ea93a39df38a53f1" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B/HARDEN-01" review="boundary-contract-change">
+        <class name="com.iocextractor.application.ingest.IngestionService" />
+        <method name="processClaimed" signature="(Lcom/iocextractor/application/ingest/SourceUnit;)Lcom/iocextractor/application/port/in/ingest/IngestSourceResult;" />
+        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="358" bytecode="256" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.application.ingest.IngestionService" />
+            <Method name="processClaimed" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-B/HARDEN-01.</rationale>
+    </finding>
+    <finding id="SB04-097" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="1073f127fb3e9ae67c97ccba01a43fa" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-D" review="boundary-contract-change">
+        <class name="com.iocextractor.application.ingest.IngestionService" />
+        <method name="recoverIncomplete" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="182" bytecode="101" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.application.ingest.IngestionService" />
+            <Method name="recoverIncomplete" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-D.</rationale>
+    </finding>
+    <finding id="SB04-098" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="1073f127fb3e9ae67c97ccba01a43fa" occurrence="1" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-D" review="boundary-contract-change">
+        <class name="com.iocextractor.application.ingest.IngestionService" />
+        <method name="recoverIncomplete" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="198" bytecode="207" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.application.ingest.IngestionService" />
+            <Method name="recoverIncomplete" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-D.</rationale>
+    </finding>
+    <finding id="SB04-099" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="5b4c8c3522a8c9b5fc449feff65e94e9" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B" review="boundary-contract-change">
+        <class name="com.iocextractor.application.sync.RemoteFetchService" />
+        <method name="fetchOne" signature="(Lcom/iocextractor/application/sync/RemoteFetchSource;Lcom/iocextractor/application/sync/RemoteObject;ZLcom/iocextractor/application/sync/RemoteFetchService$FetchCounters;)V" />
+        <anchor sourcePath="com/iocextractor/application/sync/RemoteFetchService.java" startLine="122" bytecode="345" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.application.sync.RemoteFetchService" />
+            <Method name="fetchOne" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-B.</rationale>
+    </finding>
+    <finding id="I4-SB-02" module="platform/platform-concurrency" type="VO_VOLATILE_INCREMENT" hash="98bdb7da1779ed395d6afafcc61a1efc" occurrence="0" priority="2" rank="14" category="MT_CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="I4/D-025" review="code-or-analyzer-change">
+        <class name="com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard" />
+        <method name="lambda$execute$0" signature="(Lcom/iocextractor/platform/concurrent/WorkKey;Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;)Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;" />
+        <anchor sourcePath="com/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard.java" startLine="22" bytecode="23" />
+        <suppression>
+            <Bug pattern="VO_VOLATILE_INCREMENT" />
+            <Class name="com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard" />
+            <Field name="users" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under I4/D-025 in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="I4-SB-03" module="platform/platform-concurrency" type="VO_VOLATILE_INCREMENT" hash="5be9bd8ac3053df6cc1937618450c297" occurrence="0" priority="2" rank="14" category="MT_CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="I4/D-025" review="code-or-analyzer-change">
+        <class name="com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard" />
+        <method name="lambda$release$1" signature="(Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;Lcom/iocextractor/platform/concurrent/WorkKey;Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;)Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;" />
+        <anchor sourcePath="com/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard.java" startLine="47" bytecode="22" />
+        <suppression>
+            <Bug pattern="VO_VOLATILE_INCREMENT" />
+            <Class name="com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard" />
+            <Field name="users" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under I4/D-025 in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-115" module="platform/platform-diagnostics" type="SE_BAD_FIELD" hash="83f71337c877cf0b7fea59b1b8525a89" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="false-positive" owner="R030-BUILD" evidence="C2-MIX-F" review="code-or-analyzer-change">
+        <class name="com.iocextractor.diagnostics.DiagnosticException" />
+        <field name="diagnostic" signature="Lcom/iocextractor/diagnostics/Diagnostic;" />
+        <anchor />
+        <suppression>
+            <Bug pattern="SE_BAD_FIELD" />
+            <Class name="com.iocextractor.diagnostics.DiagnosticException" />
+            <Field name="diagnostic" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C2-MIX-F in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-100" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="55f447907b635a14f17b160bb4ee9e20" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E" review="boundary-contract-change">
+        <class name="com.iocextractor.platform.etl.PipelineRunner" />
+        <method name="emitSuppressionSummary" signature="(Ljava/util/List;Ljava/lang/RuntimeException;)V" />
+        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="212" bytecode="47" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.platform.etl.PipelineRunner" />
+            <Method name="emitSuppressionSummary" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E.</rationale>
+    </finding>
+    <finding id="SB04-101" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="bffd062e9915fa3e76d30e8510c74f45" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/HARDEN-02" review="boundary-contract-change">
+        <class name="com.iocextractor.platform.etl.PipelineRunner" />
+        <method name="executeInRunScope" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
+        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="148" bytecode="258" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.platform.etl.PipelineRunner" />
+            <Method name="executeInRunScope" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E/HARDEN-02.</rationale>
+    </finding>
+    <finding id="SB04-102" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="bffd062e9915fa3e76d30e8510c74f45" occurrence="1" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/HARDEN-02" review="boundary-contract-change">
+        <class name="com.iocextractor.platform.etl.PipelineRunner" />
+        <method name="executeInRunScope" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
+        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="153" bytecode="310" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.platform.etl.PipelineRunner" />
+            <Method name="executeInRunScope" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E/HARDEN-02.</rationale>
+    </finding>
+    <finding id="SB04-103" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="bffd062e9915fa3e76d30e8510c74f45" occurrence="2" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/HARDEN-02" review="boundary-contract-change">
+        <class name="com.iocextractor.platform.etl.PipelineRunner" />
+        <method name="executeInRunScope" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
+        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="162" bytecode="382" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.platform.etl.PipelineRunner" />
+            <Method name="executeInRunScope" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E/HARDEN-02.</rationale>
+    </finding>
+    <finding id="SB04-104" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="304748d9178334ff7558bfff33701d2d" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E" review="boundary-contract-change">
+        <class name="com.iocextractor.platform.etl.PipelineRunner" />
+        <method name="runWithOutcome" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
+        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="118" bytecode="78" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.platform.etl.PipelineRunner" />
+            <Method name="runWithOutcome" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E.</rationale>
+    </finding>
+</spotbugs-accepted-findings>

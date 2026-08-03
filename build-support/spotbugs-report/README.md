@@ -14,12 +14,16 @@ published library.
 
 | File/output | Purpose |
 |---|---|
-| `pom.xml` | Production dependency ordering, `spotbugs-aggregate` and late report-integrity wiring |
+| `pom.xml` | Production dependency ordering, raw/filtered `spotbugs-aggregate` executions and the late blocking gate |
 | `spotbugs-scope.tsv` | Single disposition registry for every root and child reactor project |
-| `spotbugs-baseline-exclude.xml` | Reviewed C3 baseline shared by every inherited module analysis |
+| `spotbugs-accepted-findings.xml` | Reviewed exact-finding baseline and the only suppression source of truth |
 | `../build-quality/BuildQualityVerifier.java` | Shared JDK-only scope and report-integrity verifier |
-| `target/spotbugs/spotbugs.xml` | Generated machine-readable reactor aggregate |
-| `target/spotbugs/spotbugs.html` | Generated human-readable reactor aggregate |
+| `../build-quality/SpotBugsBaselineVerifier.java` | Exact raw-baseline, analyzer-health and aggregate-union verifier |
+| `../build-quality/SpotBugsReportFilter.java` | Version-pinned bridge from raw XML to filtered XML without another analysis pass |
+| `target/spotbugs/spotbugs-raw.xml` | Unfiltered machine-readable reactor aggregate; blocking evidence |
+| `target/spotbugs-raw/spotbugs.html` | Unfiltered human-readable reactor aggregate for triage |
+| `target/spotbugs/spotbugs.xml` | Filtered machine-readable reactor aggregate |
+| `target/spotbugs/spotbugs.html` | Filtered human-readable reactor aggregate |
 
 ## Dependencies
 
@@ -36,8 +40,8 @@ has the separate `aggregate` disposition. The root lifecycle removes stale
 module-local SpotBugs outputs during `initialize`, so an incremental build cannot
 satisfy the integrity gate with a report from a prior invocation.
 
-The root-only `validate` gate runs the shared verifier before child projects are
-built. It requires the registry to cover exactly the root Maven reactor,
+The root-only `validate` gate runs the shared verifiers before child projects
+are built. It requires the registry to cover exactly the root Maven reactor,
 checks each path against its POM coordinates and packaging, requires explicit
 `skip=true` for every excluded child project, and requires the report module's
 dependencies to equal the `analyzed` artifact set. Adding any reactor project
@@ -45,28 +49,50 @@ therefore fails closed until it receives an explicit disposition and, when
 analyzed, an ordering dependency. A synthetic-reactor contract harness in
 `../build-quality` protects these rules against accidental weakening. The final
 `verify` step derives all expected XML/HTML paths from the same registry,
-validates their structure and rejects reports from excluded scopes.
+validates their structure, rejects reports from excluded scopes and reconciles
+the raw aggregate with the exact multiset union of module raw findings.
 
-Findings remain report-only. Analyzer errors, missing module reports or missing
-aggregate outputs fail the reactor build.
+SpotBugs runs once per analyzed module without exclusions and writes
+`target/spotbugs/spotbugs-raw.xml`. The raw document is the enforcement input.
+The generated narrow filter is applied afterwards by SpotBugs' workflow filter,
+producing `spotbugs.xml`; `default.xsl` renders its module HTML. This separation
+means a broad-enough presentation selector cannot hide a new finding from the
+blocking comparison.
 
-The current remediation baseline contains 77 reviewed findings represented by 71
-narrow selectors. Every selector combines a bug pattern with an exact class and
-method or field; package-, category- and pattern-wide exclusions are forbidden.
-Of the accepted findings, 59 are analyzer false positives and 18 are policy
-noise where the detector's generic unchecked-
-exception advice is inapplicable to a documented boundary contract. The
-inherited root execution applies this one filter to every module analysis. The
-aggregate mojo then merges those module XML reports, so module and reactor-wide
-views cannot acquire separate baseline copies.
+The accepted baseline contains 77 reviewed findings represented by 71 narrow
+selectors: 59 analyzer false positives and 18 exception-policy signals whose
+generic advice is inapplicable to a documented boundary contract. Each entry
+stores its evidence ID, module, bug metadata, hash and occurrence, primary
+class/member/JVM descriptor, source/bytecode anchor, disposition, owner,
+rationale, review condition and presentation selector. Hashes are lowercase
+hexadecimal values of 1–32 characters because SpotBugs does not preserve leading
+zeroes.
 
-Each filter comment links a selector back to its finding ID in the release
-worknote. Removing or changing code must remove the now-unused selector in the
-same change. Any new finding remains visible and is handled by the report-only
-adoption policy until `BUILD-SPOTBUGS-05` introduces the enforcement ratchet.
+Exact comparison uses module + type + hash + occurrence + priority/rank/category
++ primary class/member/signature + source path + bytecode offset. Source line is
+retained for diagnostics but is advisory, so unrelated line shifts do not churn
+the baseline. Two findings without a bytecode location use the otherwise exact
+class/member identity. A third occurrence with an already accepted hash still
+fails because it has no baseline entry.
 
-Module HTML is rendered from native XML using the SpotBugs engine's
-`default.xsl` resource to avoid a second bytecode-analysis pass. Every
-`spotbugs.version` update must therefore verify that both module XML and HTML
-are still generated; replace this AntRun bridge if a future plugin version can
-produce both complete formats in one native execution.
+The operational `FindBugsFilter` is generated under
+`target/build-quality/spotbugs-accepted-filter.xml`; it is never edited or
+committed. Validation rejects package/category/pattern-wide selectors and every
+accepted entry must supply an exact method and/or field. Removing a finding
+without removing its entry fails as a stale acceptance. Analyzer errors,
+missing classes, metadata drift, new or moved findings, visible filtered output,
+missing reports and aggregate divergence all fail ordinary Maven `verify`.
+
+When a new finding appears, fix it with a focused regression by default. Accept
+it only through a reviewed `spotbugs-accepted-findings.xml` entry with explicit
+evidence and a review condition. Toolchain, compiler or SpotBugs upgrades are
+separate rebaseline events: inspect every identity/rank delta and never refresh
+the file wholesale. A new Maven module first receives an explicit scope
+disposition; an analyzed module must then produce both raw and filtered reports.
+
+Module HTML is rendered from filtered native XML using the SpotBugs engine's
+`default.xsl` resource. The raw aggregate receives a separate Doxia HTML view.
+Every `spotbugs.version` update must verify the workflow filter entry point,
+module XML/HTML, both aggregates and the complete negative fixture matrix;
+replace the pinned bridge if a future plugin provides the same one-pass
+raw/filtered contract directly.

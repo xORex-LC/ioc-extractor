@@ -150,14 +150,13 @@
                             <effort>Max</effort>
                             <threshold>Low</threshold>
                             <includeTests>false</includeTests>
-                            <excludeFilterFile>${maven.multiModuleProjectDirectory}/build-support/spotbugs-report/spotbugs-baseline-exclude.xml</excludeFilterFile>
                             <failOnError>true</failOnError>
                             <skipEmptyReport>false</skipEmptyReport>
                             <htmlOutput>false</htmlOutput>
                             <xmlOutput>false</xmlOutput>
                             <outputDirectory>${project.build.directory}/spotbugs</outputDirectory>
                             <spotbugsXmlOutputDirectory>${project.build.directory}/spotbugs</spotbugsXmlOutputDirectory>
-                            <spotbugsXmlOutputFilename>spotbugs.xml</spotbugsXmlOutputFilename>
+                            <spotbugsXmlOutputFilename>spotbugs-raw.xml</spotbugsXmlOutputFilename>
                         </configuration>
                     </execution>
                 </executions>
@@ -213,6 +212,13 @@
                                         <pathelement location="${project.build.directory}/build-quality-verifier"/>
                                     </classpath>
                                 </java>
+                                <java classname="SpotBugsBaselineVerifierTest"
+                                      fork="true"
+                                      failonerror="true">
+                                    <classpath>
+                                        <pathelement location="${project.build.directory}/build-quality-verifier"/>
+                                    </classpath>
+                                </java>
                                 <java classname="BuildQualityVerifier"
                                       fork="true"
                                       failonerror="true">
@@ -224,6 +230,18 @@
                                     <arg value="${maven.multiModuleProjectDirectory}"/>
                                     <arg value="${maven.multiModuleProjectDirectory}/build-support/spotbugs-report/spotbugs-scope.tsv"/>
                                     <arg value="${maven.multiModuleProjectDirectory}/build-support/spotbugs-report/pom.xml"/>
+                                </java>
+                                <java classname="SpotBugsBaselineVerifier"
+                                      fork="true"
+                                      failonerror="true">
+                                    <classpath>
+                                        <pathelement location="${project.build.directory}/build-quality-verifier"/>
+                                    </classpath>
+                                    <arg value="validate"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/spotbugs-report/spotbugs-scope.tsv"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/spotbugs-report/spotbugs-accepted-findings.xml"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/target/build-quality/spotbugs-accepted-filter.xml"/>
                                 </java>
                                 <java classname="BuildQualityVerifier"
                                       fork="true"
@@ -248,12 +266,42 @@
                         </goals>
                         <configuration>
                             <target>
+                                <delete file="${project.build.directory}/spotbugs/spotbugs-raw.xml"
+                                        quiet="true"/>
                                 <delete file="${project.build.directory}/spotbugs/spotbugs.xml"
                                         quiet="true"/>
                                 <delete file="${project.build.directory}/spotbugs/spotbugs.html"
                                         quiet="true"/>
                                 <delete file="${project.reporting.outputDirectory}/spotbugs.html"
                                         quiet="true"/>
+                                <delete dir="${project.build.directory}/spotbugs-raw"
+                                        quiet="true"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>filter-spotbugs-report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <!--
+                                  Operates on native raw XML and never re-runs bytecode analysis.
+                                  Excluded projects have no raw XML and therefore produce no output.
+                                -->
+                                <java classname="SpotBugsReportFilter"
+                                      fork="true"
+                                      failonerror="true">
+                                    <classpath>
+                                        <pathelement location="${maven.multiModuleProjectDirectory}/target/build-quality-verifier"/>
+                                        <path refid="maven.plugin.classpath"/>
+                                    </classpath>
+                                    <arg value="${project.build.directory}/spotbugs/spotbugs-raw.xml"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/target/build-quality/spotbugs-accepted-filter.xml"/>
+                                    <arg value="${project.build.directory}/spotbugs/spotbugs.xml"/>
+                                </java>
                             </target>
                         </configuration>
                     </execution>

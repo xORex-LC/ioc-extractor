@@ -115,6 +115,12 @@
                 <executions>
                     <!-- Preserve the aggregate goal's Doxia HTML instead of applying the module XSLT. -->
                     <execution>
+                        <id>filter-spotbugs-report</id>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </execution>
+                    <execution>
                         <id>render-spotbugs-html</id>
                         <configuration>
                             <skip>true</skip>
@@ -136,6 +142,18 @@
                                     <arg value="${project.basedir}/spotbugs-scope.tsv"/>
                                     <arg value="${project.basedir}/pom.xml"/>
                                 </exec>
+                                <java classname="SpotBugsBaselineVerifier"
+                                      fork="true"
+                                      failonerror="true">
+                                    <classpath>
+                                        <pathelement location="${maven.multiModuleProjectDirectory}/target/build-quality-verifier"/>
+                                    </classpath>
+                                    <arg value="verify"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}"/>
+                                    <arg value="${project.basedir}/spotbugs-scope.tsv"/>
+                                    <arg value="${project.basedir}/spotbugs-accepted-findings.xml"/>
+                                    <arg value="${project.basedir}"/>
+                                </java>
                             </target>
                         </configuration>
                     </execution>
@@ -148,6 +166,21 @@
                     <skip>true</skip>
                 </configuration>
                 <executions>
+                    <execution>
+                        <id>create-reactor-spotbugs-raw-report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>spotbugs-aggregate</goal>
+                        </goals>
+                        <configuration>
+                            <skip>false</skip>
+                            <effort>Max</effort>
+                            <threshold>Low</threshold>
+                            <skipEmptyReport>false</skipEmptyReport>
+                            <outputDirectory>${project.build.directory}/spotbugs-raw</outputDirectory>
+                            <spotbugsXmlOutputFilename>spotbugs/spotbugs-raw.xml</spotbugsXmlOutputFilename>
+                        </configuration>
+                    </execution>
                     <execution>
                         <id>create-reactor-spotbugs-report</id>
                         <phase>verify</phase>

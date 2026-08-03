@@ -36,10 +36,12 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: spotbugs-reports-${{ github.run_number }}
-          # 19 module reports plus the build-support/spotbugs-report aggregate.
+          # Raw enforcement evidence, filtered module views and both aggregate views.
           path: |
+            **/target/spotbugs/spotbugs-raw.xml
             **/target/spotbugs/spotbugs.xml
             **/target/spotbugs/spotbugs.html
+            build-support/spotbugs-report/target/spotbugs-raw/spotbugs.html
           if-no-files-found: warn
           retention-days: 30
 
