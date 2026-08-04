@@ -2,8 +2,6 @@
 <spotbugs-accepted-findings schemaVersion="2" engineVersion="4.10.3">
     <review-trigger id="cli-exception-boundary-change">Review when command logging, exit-code mapping, or Picocli exception propagation changes.</review-trigger>
     <review-trigger id="nio-direct-child-provenance-change">Review when a dereferenced path no longer comes directly from Files.list of a verified directory.</review-trigger>
-    <review-trigger id="lifecycle-root-path-contract-change">Review when lifecycle directories cease to be validated roots or move targets cease to be safe leaf paths.</review-trigger>
-    <review-trigger id="remote-inbox-leaf-contract-change">Review when remote leaf validation or the direct-child relationship to the normalized inbox changes.</review-trigger>
     <review-trigger id="ingestion-startup-failure-contract-change">Review when startup recovery stops being fail-closed or failure propagation and intake shutdown ordering changes.</review-trigger>
     <review-trigger id="immutable-snapshot-construction-change">Review when construction stops copying payload collections or an exposed snapshot becomes mutable.</review-trigger>
     <review-trigger id="artifact-filter-construction-contract-change">Review when ArtifactFilter gains singleton identity semantics or configured construction stops using its public constructor.</review-trigger>
@@ -54,28 +52,6 @@
             <Method name="lambda$findRecords$4" />
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A/D-025 in the BUILD-SPOTBUGS-04 worknote.</rationale>
-    </finding>
-    <finding id="SB04-018" module="adapters/adapter-ingest" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="ed71e9161cf3ad0bebb1c31c07c0036f" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-B" review="lifecycle-root-path-contract-change">
-        <class name="com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle" />
-        <method name="fileName" signature="(Lcom/iocextractor/application/ingest/SourceKey;Ljava/nio/file/Path;)Ljava/lang/String;" />
-        <anchor sourcePath="com/iocextractor/adapter/in/ingest/FileSystemSourceLifecycle.java" startLine="95" bytecode="20" />
-        <suppression>
-            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
-            <Class name="com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle" />
-            <Method name="fileName" />
-        </suppression>
-        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-B in the BUILD-SPOTBUGS-04 worknote.</rationale>
-    </finding>
-    <finding id="SB04-019" module="adapters/adapter-ingest" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="cc923aad27b2cc302d2874fa859096d3" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-B" review="lifecycle-root-path-contract-change">
-        <class name="com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle" />
-        <method name="move" signature="(Ljava/nio/file/Path;Ljava/nio/file/Path;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/in/ingest/FileSystemSourceLifecycle.java" startLine="102" bytecode="10" />
-        <suppression>
-            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
-            <Class name="com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle" />
-            <Method name="move" />
-        </suppression>
-        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-B in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
     <finding id="SB04-020" module="adapters/adapter-ingest" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="7b3851a67750fc70dec5cf79ccc60545" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
         <class name="com.iocextractor.adapter.in.ingest.FileSystemSourceLifecycle" />
@@ -694,28 +670,6 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C2-REP-C in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-038" module="core/ioc-application" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="b4a1a3c4744e27774c3872fe8e1ac3f7" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-F" review="remote-inbox-leaf-contract-change">
-        <class name="com.iocextractor.application.sync.RemoteFetchService" />
-        <method name="finalPathFor" signature="(Lcom/iocextractor/application/sync/RemoteObject;)Ljava/nio/file/Path;" />
-        <anchor sourcePath="com/iocextractor/application/sync/RemoteFetchService.java" startLine="148" bytecode="34" />
-        <suppression>
-            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
-            <Class name="com.iocextractor.application.sync.RemoteFetchService" />
-            <Method name="finalPathFor" />
-        </suppression>
-        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-F in the BUILD-SPOTBUGS-04 worknote.</rationale>
-    </finding>
-    <finding id="SB04-039" module="core/ioc-application" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="b4a1a3c4744e27774c3872fe8e1ac3f7" occurrence="1" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-F" review="remote-inbox-leaf-contract-change">
-        <class name="com.iocextractor.application.sync.RemoteFetchService" />
-        <method name="finalPathFor" signature="(Lcom/iocextractor/application/sync/RemoteObject;)Ljava/nio/file/Path;" />
-        <anchor sourcePath="com/iocextractor/application/sync/RemoteFetchService.java" startLine="156" bytecode="112" />
-        <suppression>
-            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
-            <Class name="com.iocextractor.application.sync.RemoteFetchService" />
-            <Method name="finalPathFor" />
-        </suppression>
-        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-F in the BUILD-SPOTBUGS-04 worknote.</rationale>
-    </finding>
     <finding id="FUP-SB-01" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="26ca8efc8ada84b88a4e9f1f98d7847d" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="FUP-SB-01" review="ingestion-cleanup-propagation-change">
         <class name="com.iocextractor.application.ingest.IngestionService" />
         <method name="ingestGuarded" signature="(Lcom/iocextractor/application/port/in/ingest/IngestSourceCommand;)Lcom/iocextractor/application/port/in/ingest/IngestSourceResult;" />
@@ -763,7 +717,7 @@
     <finding id="SB04-099" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="5b4c8c3522a8c9b5fc449feff65e94e9" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.application.sync.RemoteFetchService" />
         <method name="fetchOne" signature="(Lcom/iocextractor/application/sync/RemoteFetchSource;Lcom/iocextractor/application/sync/RemoteObject;ZLcom/iocextractor/application/sync/RemoteFetchService$FetchCounters;)V" />
-        <anchor sourcePath="com/iocextractor/application/sync/RemoteFetchService.java" startLine="122" bytecode="345" />
+        <anchor sourcePath="com/iocextractor/application/sync/RemoteFetchService.java" startLine="122" bytecode="346" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.application.sync.RemoteFetchService" />

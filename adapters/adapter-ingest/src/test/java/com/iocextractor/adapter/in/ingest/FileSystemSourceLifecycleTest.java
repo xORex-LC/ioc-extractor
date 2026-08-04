@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class FileSystemSourceLifecycleTest {
 
@@ -62,5 +63,21 @@ class FileSystemSourceLifecycleTest {
                     assertThat(source.key().value()).isEqualTo("abc123");
                     assertThat(source.processingPath().getFileName().toString()).isEqualTo("abc123-source.html");
                 });
+    }
+
+    @Test
+    void rejects_empty_lifecycle_directory_paths_at_construction() {
+        Path empty = Path.of("");
+        Path directory = Path.of("directory");
+
+        assertThatThrownBy(() -> new FileSystemSourceLifecycle(empty, directory, directory))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("processingDir must not be an empty path");
+        assertThatThrownBy(() -> new FileSystemSourceLifecycle(directory, empty, directory))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("doneDir must not be an empty path");
+        assertThatThrownBy(() -> new FileSystemSourceLifecycle(directory, directory, empty))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("failedDir must not be an empty path");
     }
 }

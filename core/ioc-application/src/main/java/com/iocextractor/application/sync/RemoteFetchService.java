@@ -145,7 +145,7 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
     private Path finalPathFor(RemoteObject object) {
         String leaf = RemoteFetchSources.leafName(object.path());
         Path candidate = inbox.resolve(leaf).normalize();
-        if (!candidate.getParent().equals(inbox)) {
+        if (!inbox.equals(candidate.getParent())) {
             throw new IllegalArgumentException("remote object leaf escapes inbox: " + object.path());
         }
         if (!Files.exists(candidate)) {
@@ -153,7 +153,7 @@ public final class RemoteFetchService implements RemoteFetchUseCase {
         }
         String suffixed = suffix(leaf, object.identity());
         Path suffixedCandidate = inbox.resolve(suffixed).normalize();
-        if (!suffixedCandidate.getParent().equals(inbox)) {
+        if (!inbox.equals(suffixedCandidate.getParent())) {
             throw new IllegalArgumentException("remote object suffix escapes inbox: " + object.path());
         }
         if (Files.exists(suffixedCandidate)) {

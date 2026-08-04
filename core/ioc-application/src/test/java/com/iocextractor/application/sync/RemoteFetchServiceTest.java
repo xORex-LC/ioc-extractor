@@ -8,6 +8,8 @@ import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import com.iocextractor.diagnostics.codes.SyncDiagnosticCodes;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -231,6 +233,23 @@ class RemoteFetchServiceTest {
                 .isSameAs(transport.unexpectedGetFailure);
         assertThat(ledger.find(object.identity())).isEmpty();
         assertThat(tempDir.resolve("a.htm")).doesNotExist();
+        assertThat(stagingFiles()).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {".", "..", "/share/", "/share/.", "/share/..", "/share\\"})
+    void rejects_remote_objects_without_a_safe_leaf_before_download(String remotePath) {
+        RemoteObject object = object(remotePath, 10);
+        FakeTransport transport = new FakeTransport(List.of());
+        FakeLedger ledger = new FakeLedger();
+        var service = service(transport, ledger);
+
+        assertThatThrownBy(() -> service.fetch(new FetchRemoteObjectsCommand(
+                "src", "endpoint", "/share", List.of(object), false)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("remote path must end with one safe file name");
+        assertThat(transport.getCalls).isZero();
+        assertThat(ledger.find(object.identity())).isEmpty();
         assertThat(stagingFiles()).isEmpty();
     }
 

@@ -26,9 +26,9 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
     private final Path failedDir;
 
     public FileSystemSourceLifecycle(Path processingDir, Path doneDir, Path failedDir) {
-        this.processingDir = Objects.requireNonNull(processingDir, "processingDir");
-        this.doneDir = Objects.requireNonNull(doneDir, "doneDir");
-        this.failedDir = Objects.requireNonNull(failedDir, "failedDir");
+        this.processingDir = requireDirectory(processingDir, "processingDir");
+        this.doneDir = requireDirectory(doneDir, "doneDir");
+        this.failedDir = requireDirectory(failedDir, "failedDir");
     }
 
     @Override
@@ -92,14 +92,20 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
     }
 
     private String fileName(SourceKey key, Path source) {
-        String original = source.getFileName() == null ? "source" : source.getFileName().toString();
+        Path sourceFileName = source.getFileName();
+        String original = sourceFileName == null ? "source" : sourceFileName.toString();
         String prefix = key.value() + "-";
         return original.startsWith(prefix) ? original : prefix + original;
     }
 
     private void move(Path source, Path target) {
+        Path targetParent = target.getParent();
+        if (targetParent == null) {
+            throw new IocExtractorException(
+                    "Failed to move source file from " + source + " to parentless target " + target);
+        }
         try {
-            Files.createDirectories(target.getParent());
+            Files.createDirectories(targetParent);
             try {
                 Files.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             } catch (AtomicMoveNotSupportedException ignored) {
@@ -131,5 +137,13 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
         } catch (IOException e) {
             throw new IocExtractorException("Failed to inspect processing source: " + source, e);
         }
+    }
+
+    private static Path requireDirectory(Path directory, String name) {
+        Objects.requireNonNull(directory, name);
+        if (directory.toString().isBlank()) {
+            throw new IllegalArgumentException(name + " must not be an empty path");
+        }
+        return directory;
     }
 }

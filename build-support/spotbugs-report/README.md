@@ -60,8 +60,8 @@ producing `spotbugs.xml`; `default.xsl` renders its module HTML. This separation
 means a broad-enough presentation selector cannot hide a new finding from the
 blocking comparison.
 
-The accepted baseline contains 74 reviewed findings represented by 68 narrow
-selectors: 56 analyzer false positives and 18 exception-policy signals whose
+The accepted baseline contains 70 reviewed findings represented by 65 narrow
+selectors: 52 analyzer false positives and 18 exception-policy signals whose
 generic advice is inapplicable to a documented boundary contract. Each entry
 stores its evidence ID, module, bug metadata, hash and occurrence, primary
 class/member/JVM descriptor, source/bytecode anchor, disposition, owner,

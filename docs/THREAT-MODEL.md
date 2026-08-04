@@ -129,7 +129,7 @@ credentials — секрет.
 
 | Угроза | Вектор | Контроль | Остаточный риск |
 |---|---|---|---|
-| **T** — path traversal через враждебные remote-имена | `../` или абсолютные пути в listing | safe-leaf extraction + normalized inbox-containment в fetch path; transport остаётся за портом | enforcement существует, но нет отдельного negative/fuzz-корпуса hostile remote names (`SEC-VER-3`) |
+| **T** — path traversal через враждебные remote-имена | `../` или абсолютные пути в listing | safe-leaf extraction + null-safe normalized inbox-containment в fetch path; transport остаётся за портом; regression-корпус отклоняет dot, parent и trailing-separator имена до download | fuzz-корпус hostile remote names пока отсутствует (`SEC-VER-3`) |
 | **I** — утечка SMB credentials | вывод в лог/диагностику/health | `SEC-OPS-3`: redacted settings/log context, host-owned secret config | — |
 | **E** — избыточные права remote-аккаунта | over-privileged SMB user | `SEC-OPS-3`: operator guide минимальных прав (Manual) | Manual-контроль: зависит от дисциплины оператора |
 | **D** — недоступность/retry storm | сервер отдаёт ошибки/таймауты | keyed single-flight, bounded retry/backoff, reconcile backstop; `SEC-OPS-1` cgroup | — |
