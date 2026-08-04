@@ -100,15 +100,12 @@ public final class CsvArtifactSliceWriter implements ArtifactSliceWriter {
             createDirectoriesDurably(layout.stagingParent());
             Files.createDirectory(staging);
             fileOperations.forceDirectory(layout.stagingParent());
-            var materialization = new CsvSliceMaterialization(
-                    run, request.plan(), staging, codec, fileOperations);
-            try {
+            try (var materialization = new CsvSliceMaterialization(
+                    run, request.plan(), staging, codec, fileOperations)) {
                 reader.stream(request, materialization);
                 if (!materialization.ended()) {
                     throw new IllegalStateException("snapshot reader returned before end callback");
                 }
-            } finally {
-                materialization.close();
             }
             VerifiedSlice verified = verifier.verify(staging, run);
             if (!verified.successPresent()) {

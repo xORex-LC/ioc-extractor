@@ -68,43 +68,41 @@ public final class TikaSourceReader implements SourceReader {
 
     @Override
     public String readText(Path source) {
+        String resourceName;
         try {
-            String resourceName = resourceName(source);
-            try (InputStream in = Files.newInputStream(source)) {
-                BodyContentHandler handler = new BodyContentHandler(-1);
-                Metadata metadata = new Metadata();
-                metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, resourceName);
-                parser.parse(in, handler, metadata, parseContext());
-                var text = handler.toString();
-                LogEvents.info(log)
-                        .action(EventAction.SOURCE_READ)
-                        .outcome(EventOutcome.SUCCESS)
-                        .field(LogField.IOC_SOURCE_PATH, source)
-                        .message("source read")
-                        .log();
-                return text;
-            }
+            resourceName = resourceName(source);
+        } catch (Exception failure) {
+            throw readFailure(source, failure);
+        }
+
+        try (InputStream in = Files.newInputStream(source)) {
+            BodyContentHandler handler = new BodyContentHandler(-1);
+            Metadata metadata = new Metadata();
+            metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, resourceName);
+            parser.parse(in, handler, metadata, parseContext());
+            var text = handler.toString();
+            LogEvents.info(log)
+                    .action(EventAction.SOURCE_READ)
+                    .outcome(EventOutcome.SUCCESS)
+                    .field(LogField.IOC_SOURCE_PATH, source)
+                    .message("source read")
+                    .log();
+            return text;
         } catch (UnsupportedFormatException failure) {
             var diagnostic = diagnosticFactory.create(SourceDiagnosticCodes.UNSUPPORTED_FORMAT)
                     .with("source", source)
-                    .with("format", extension(source))
+                    .with("format", extension(resourceName))
                     .cause(failure)
                     .build();
             throw new DiagnosticException(diagnostic);
         } catch (Exception failure) {
-            var diagnostic = diagnosticFactory.create(SourceDiagnosticCodes.READ_FAILED)
-                    .with("source", source)
-                    .with("reason", reason(failure))
-                    .cause(failure)
-                    .build();
-            throw new DiagnosticException(diagnostic);
+            throw readFailure(source, failure);
         }
     }
 
-    private static String extension(Path source) {
-        String name = resourceName(source);
-        int separator = name.lastIndexOf('.');
-        return separator < 0 ? "unknown" : name.substring(separator + 1);
+    private static String extension(String resourceName) {
+        int separator = resourceName.lastIndexOf('.');
+        return separator < 0 ? "unknown" : resourceName.substring(separator + 1);
     }
 
     private static String resourceName(Path source) {
@@ -119,6 +117,15 @@ public final class TikaSourceReader implements SourceReader {
         return failure.getMessage() == null || failure.getMessage().isBlank()
                 ? failure.getClass().getSimpleName()
                 : failure.getMessage();
+    }
+
+    private DiagnosticException readFailure(Path source, Exception failure) {
+        var diagnostic = diagnosticFactory.create(SourceDiagnosticCodes.READ_FAILED)
+                .with("source", source)
+                .with("reason", reason(failure))
+                .cause(failure)
+                .build();
+        return new DiagnosticException(diagnostic);
     }
 
     private ParseContext parseContext() {
