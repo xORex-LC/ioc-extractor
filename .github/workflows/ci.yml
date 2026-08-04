@@ -38,7 +38,7 @@ jobs:
           name: spotbugs-reports-${{ github.run_number }}
           # Raw enforcement evidence, filtered module views and both aggregate views.
           path: |
-            **/target/spotbugs/spotbugs-raw.xml
+            **/target/spotbugs-raw/spotbugs-raw.xml
             **/target/spotbugs/spotbugs.xml
             **/target/spotbugs/spotbugs.html
             build-support/spotbugs-report/target/spotbugs-raw/spotbugs.html

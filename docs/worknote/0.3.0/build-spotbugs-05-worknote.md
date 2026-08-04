@@ -48,9 +48,9 @@ boundary. The coupling must be revalidated whenever the engine is upgraded.
 |---|---|
 | `build-support/spotbugs-report/spotbugs-accepted-findings.xml` | Single tracked source of truth for 74 accepted findings and 68 selectors |
 | `target/build-quality/spotbugs-accepted-filter.xml` | Deterministically generated `FindBugsFilter`; never committed or edited |
-| `<module>/target/spotbugs/spotbugs-raw.xml` | Unfiltered module evidence consumed by the blocking gate |
+| `<module>/target/spotbugs-raw/spotbugs-raw.xml` | Unfiltered module evidence consumed by the blocking gate |
 | `<module>/target/spotbugs/spotbugs.xml` and `.html` | Filtered module views |
-| `build-support/spotbugs-report/target/spotbugs/spotbugs-raw.xml` | Raw 19-module aggregate |
+| `build-support/spotbugs-report/target/spotbugs-raw/spotbugs-raw.xml` | Raw 19-module aggregate |
 | `build-support/spotbugs-report/target/spotbugs-raw/spotbugs.html` | Human-readable raw aggregate |
 | `build-support/spotbugs-report/target/spotbugs/spotbugs.xml` and `.html` | Filtered aggregate views |
 
@@ -91,14 +91,16 @@ The late aggregate gate requires:
   reports;
 - both filtered report pairs and the raw aggregate HTML.
 
-The dedicated fixture harness currently covers three happy paths and seventeen
+The dedicated baseline fixture harness currently covers three happy paths and seventeen
 negative scenarios: a new hash, a third same-hash occurrence, stale acceptance,
 bytecode and priority drift, engine drift, analyzer errors/missing classes,
 occurrence-max drift, visible filtered output, aggregate omission, selector
 mismatch, duplicate IDs and identities, missing rationale, broad suppression
 and malformed hash. The
 existing shared harness continues to cover four scope/report happy paths and
-fifteen negative reactor scenarios.
+eighteen negative reactor scenarios. Three of those mutations pin the raw module,
+raw aggregate and filtered aggregate output directories so a cross-directory
+dependency fails during root `validate`.
 
 ## Operating procedure
 
@@ -118,11 +120,12 @@ fifteen negative reactor scenarios.
 
 | Check | Result |
 |---|---|
-| Root contract validation | 4 shared happy / 15 shared negative; 3 baseline happy / 17 baseline negative |
+| Root contract validation | 4 shared happy / 18 shared negative; 3 baseline happy / 17 baseline negative |
 | Focused module lifecycle | `platform-concurrency` produced 2 raw / 0 filtered findings without a second analysis pass |
 | Adoption focused 22-project aggregate run | 77 raw / 0 filtered findings; raw HTML generated; exact verifier passed after dual-primary annotation characterization |
 | Recorded follow-up canonical 24-project `make verify` | 24/24 passed in `01:40`; 182 suites / 837 tests / 0 failures / 0 errors / 2 external SMB skips |
-| Reports and analyzer health | 19 raw XML with 76 findings; 19 filtered XML/HTML with 0 visible; raw/filtered aggregates; errors/missing classes `0/0` |
+| Reports and analyzer health | Latest full run: 19 raw XML with 74 findings; 19 filtered XML/HTML with 0 visible; raw/filtered aggregates; errors/missing classes `0/0` |
 | `SB04-016` removal proof | Exact gate first rejected a transient compiler-generated `RCN_*` replacement; after structural cleanup, focused and full runs contain neither `IS2_INCONSISTENT_SYNC` nor `RCN_*` |
-| `SB04-029..030` removal proof | Root regression exposed the previously wrapped nullable dereference; explicit source leaf validation removed both findings. Focused source-adapter test and Maven verify/SpotBugs passed with 0 adapter findings; full reactor intentionally not rerun |
+| `SB04-029..030` removal proof | Root regression exposed the previously wrapped nullable dereference; explicit source leaf validation removed both findings. Focused source-adapter verification passed with 0 adapter findings; the later full clean/repeat runs confirmed the 74-finding reactor baseline |
+| Aggregate clean-checkout regression | A clean focused 22-project reactor first reproduced the output/discovery coupling, then passed in `01:37` after raw module and aggregate XML moved to the same independently owned `target/spotbugs-raw/` layout. Full clean and incremental 24-project runs passed in `02:38` / `02:23`: 182 suites / 838 tests / 0 failures / 0 errors / 2 external SMB skips, 74 accepted / 0 visible |
 | Mutation proof | Removing `SB04-089` only from a target-local baseline copy returned exit `1` and reported its raw finding as new |

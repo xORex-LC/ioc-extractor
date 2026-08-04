@@ -35,6 +35,11 @@ public final class BuildQualityVerifier {
     private static final String ROOT_PATH = ".";
     private static final String PROJECT_GROUP = "com.iocextractor";
     private static final String SPOTBUGS_PLUGIN = "spotbugs-maven-plugin";
+    private static final String SPOTBUGS_AGGREGATE_GOAL = "spotbugs-aggregate";
+    private static final String SPOTBUGS_MODULE_GOAL = "spotbugs";
+    private static final String SPOTBUGS_MODULE_EXECUTION = "analyze-production-bytecode";
+    private static final String SPOTBUGS_RAW_EXECUTION = "create-reactor-spotbugs-raw-report";
+    private static final String SPOTBUGS_FILTERED_EXECUTION = "create-reactor-spotbugs-report";
     private static final String PMD_PLUGIN = "maven-pmd-plugin";
     private static final String CPD_EXECUTION = "create-repository-cpd-report";
     private static final String CPD_NAMESPACE = "https://pmd-code.org/schema/cpd-report";
@@ -209,7 +214,12 @@ public final class BuildQualityVerifier {
                 analyzedArtifacts,
                 dependencyArtifacts);
 
-        if (control == Control.CPD) {
+        if (control == Control.SPOTBUGS) {
+            validateSpotBugsModuleConfiguration(
+                    readSpotBugsModuleConfiguration(root.resolve("pom.xml")));
+            validateSpotBugsAggregateConfiguration(
+                    readSpotBugsAggregateConfiguration(reportPom));
+        } else {
             CpdConfiguration configuration = readCpdConfiguration(reportPom);
             compareSets(
                     "analyzed scope versus configured CPD source roots",
@@ -619,6 +629,210 @@ public final class BuildQualityVerifier {
         return artifacts;
     }
 
+    private static Map<String, SpotBugsAggregateConfiguration> readSpotBugsAggregateConfiguration(
+            Path reportPom)
+            throws Exception {
+        Document document = parseXml(reportPom);
+        Element project = document.getDocumentElement();
+        Element build = directChild(project, "build");
+        Element plugins = build == null ? null : directChild(build, "plugins");
+        if (plugins == null) {
+            throw new VerificationException("SpotBugs report POM has no direct build plugins");
+        }
+
+        Element spotBugsPlugin = null;
+        for (Element plugin : directChildren(plugins, "plugin")) {
+            if (SPOTBUGS_PLUGIN.equals(optionalDirectText(plugin, "artifactId", ""))) {
+                spotBugsPlugin = plugin;
+                break;
+            }
+        }
+        if (spotBugsPlugin == null) {
+            throw new VerificationException("SpotBugs report POM has no SpotBugs Maven Plugin");
+        }
+
+        LinkedHashMap<String, SpotBugsAggregateConfiguration> configurations =
+                new LinkedHashMap<>();
+        Element executions = directChild(spotBugsPlugin, "executions");
+        if (executions != null) {
+            for (Element execution : directChildren(executions, "execution")) {
+                Element goalsElement = directChild(execution, "goals");
+                LinkedHashSet<String> goals = new LinkedHashSet<>();
+                if (goalsElement != null) {
+                    for (Element goal : directChildren(goalsElement, "goal")) {
+                        goals.add(goal.getTextContent().trim());
+                    }
+                }
+                if (!goals.contains(SPOTBUGS_AGGREGATE_GOAL)) {
+                    continue;
+                }
+
+                String id = requiredDirectText(execution, "id", reportPom);
+                Element configuration = directChild(execution, "configuration");
+                if (configuration == null) {
+                    throw new VerificationException(
+                            "SpotBugs aggregate execution has no configuration: " + id);
+                }
+                SpotBugsAggregateConfiguration previous = configurations.putIfAbsent(
+                        id,
+                        new SpotBugsAggregateConfiguration(
+                                requiredDirectText(execution, "phase", reportPom),
+                                Set.copyOf(goals),
+                                requiredDirectText(configuration, "skip", reportPom),
+                                requiredDirectText(configuration, "effort", reportPom),
+                                requiredDirectText(configuration, "threshold", reportPom),
+                                requiredDirectText(configuration, "skipEmptyReport", reportPom),
+                                requiredDirectText(configuration, "outputDirectory", reportPom),
+                                requiredDirectText(
+                                        configuration,
+                                        "spotbugsXmlOutputFilename",
+                                        reportPom)));
+                if (previous != null) {
+                    throw new VerificationException(
+                            "duplicate SpotBugs aggregate execution: " + id);
+                }
+            }
+        }
+        compareSets(
+                "SpotBugs aggregate execution IDs",
+                Set.of(SPOTBUGS_RAW_EXECUTION, SPOTBUGS_FILTERED_EXECUTION),
+                configurations.keySet());
+        return Map.copyOf(configurations);
+    }
+
+    private static SpotBugsModuleConfiguration readSpotBugsModuleConfiguration(Path rootPom)
+            throws Exception {
+        Document document = parseXml(rootPom);
+        Element project = document.getDocumentElement();
+        Element build = directChild(project, "build");
+        Element plugins = build == null ? null : directChild(build, "plugins");
+        if (plugins == null) {
+            throw new VerificationException("root POM has no direct build plugins");
+        }
+
+        Element spotBugsPlugin = null;
+        for (Element plugin : directChildren(plugins, "plugin")) {
+            if (SPOTBUGS_PLUGIN.equals(optionalDirectText(plugin, "artifactId", ""))) {
+                spotBugsPlugin = plugin;
+                break;
+            }
+        }
+        if (spotBugsPlugin == null) {
+            throw new VerificationException("root POM has no SpotBugs Maven Plugin");
+        }
+
+        Element executions = directChild(spotBugsPlugin, "executions");
+        Element moduleExecution = null;
+        if (executions != null) {
+            for (Element execution : directChildren(executions, "execution")) {
+                if (SPOTBUGS_MODULE_EXECUTION.equals(optionalDirectText(execution, "id", ""))) {
+                    moduleExecution = execution;
+                    break;
+                }
+            }
+        }
+        if (moduleExecution == null) {
+            throw new VerificationException(
+                    "root POM has no " + SPOTBUGS_MODULE_EXECUTION + " execution");
+        }
+
+        Element configuration = directChild(moduleExecution, "configuration");
+        if (configuration == null) {
+            throw new VerificationException("SpotBugs module execution has no configuration");
+        }
+        Element goalsElement = directChild(moduleExecution, "goals");
+        LinkedHashSet<String> goals = new LinkedHashSet<>();
+        if (goalsElement != null) {
+            for (Element goal : directChildren(goalsElement, "goal")) {
+                goals.add(goal.getTextContent().trim());
+            }
+        }
+        return new SpotBugsModuleConfiguration(
+                requiredDirectText(moduleExecution, "phase", rootPom),
+                Set.copyOf(goals),
+                requiredDirectText(configuration, "effort", rootPom),
+                requiredDirectText(configuration, "threshold", rootPom),
+                requiredDirectText(configuration, "includeTests", rootPom),
+                requiredDirectText(configuration, "failOnError", rootPom),
+                requiredDirectText(configuration, "skipEmptyReport", rootPom),
+                requiredDirectText(configuration, "htmlOutput", rootPom),
+                requiredDirectText(configuration, "xmlOutput", rootPom),
+                requiredDirectText(configuration, "outputDirectory", rootPom),
+                requiredDirectText(configuration, "spotbugsXmlOutputDirectory", rootPom),
+                requiredDirectText(configuration, "spotbugsXmlOutputFilename", rootPom));
+    }
+
+    private static void validateSpotBugsModuleConfiguration(
+            SpotBugsModuleConfiguration configuration)
+            throws VerificationException {
+        requireValue("SpotBugs module phase", "verify", configuration.phase());
+        compareSets("SpotBugs module goals", Set.of(SPOTBUGS_MODULE_GOAL), configuration.goals());
+        requireValue("SpotBugs module effort", "Max", configuration.effort());
+        requireValue("SpotBugs module threshold", "Low", configuration.threshold());
+        requireValue("SpotBugs module includeTests", "false", configuration.includeTests());
+        requireValue("SpotBugs module failOnError", "true", configuration.failOnError());
+        requireValue(
+                "SpotBugs module skipEmptyReport", "false", configuration.skipEmptyReport());
+        requireValue("SpotBugs module htmlOutput", "false", configuration.htmlOutput());
+        requireValue("SpotBugs module xmlOutput", "false", configuration.xmlOutput());
+        requireValue(
+                "SpotBugs module outputDirectory",
+                "${project.build.directory}/spotbugs-raw",
+                configuration.outputDirectory());
+        requireValue(
+                "SpotBugs module XML outputDirectory",
+                "${project.build.directory}/spotbugs-raw",
+                configuration.xmlOutputDirectory());
+        requireValue(
+                "SpotBugs module XML filename",
+                "spotbugs-raw.xml",
+                configuration.xmlFilename());
+    }
+
+    private static void validateSpotBugsAggregateConfiguration(
+            Map<String, SpotBugsAggregateConfiguration> configurations)
+            throws VerificationException {
+        validateSpotBugsAggregateExecution(
+                "raw",
+                configurations.get(SPOTBUGS_RAW_EXECUTION),
+                "${project.build.directory}/spotbugs-raw",
+                "spotbugs-raw/spotbugs-raw.xml");
+        validateSpotBugsAggregateExecution(
+                "filtered",
+                configurations.get(SPOTBUGS_FILTERED_EXECUTION),
+                "${project.build.directory}/spotbugs",
+                "spotbugs/spotbugs.xml");
+    }
+
+    private static void validateSpotBugsAggregateExecution(
+            String view,
+            SpotBugsAggregateConfiguration configuration,
+            String outputDirectory,
+            String xmlFilename)
+            throws VerificationException {
+        requireValue("SpotBugs " + view + " aggregate phase", "verify", configuration.phase());
+        compareSets(
+                "SpotBugs " + view + " aggregate goals",
+                Set.of(SPOTBUGS_AGGREGATE_GOAL),
+                configuration.goals());
+        requireValue("SpotBugs " + view + " aggregate skip", "false", configuration.skip());
+        requireValue("SpotBugs " + view + " aggregate effort", "Max", configuration.effort());
+        requireValue(
+                "SpotBugs " + view + " aggregate threshold", "Low", configuration.threshold());
+        requireValue(
+                "SpotBugs " + view + " aggregate skipEmptyReport",
+                "false",
+                configuration.skipEmptyReport());
+        requireValue(
+                "SpotBugs " + view + " aggregate outputDirectory",
+                outputDirectory,
+                configuration.outputDirectory());
+        requireValue(
+                "SpotBugs " + view + " aggregate XML filename",
+                xmlFilename,
+                configuration.xmlFilename());
+    }
+
     private static CpdConfiguration readCpdConfiguration(Path reportPom)
             throws Exception {
         Document document = parseXml(reportPom);
@@ -935,6 +1149,32 @@ public final class BuildQualityVerifier {
             String outputDirectory,
             Set<String> sourceRoots,
             Set<String> excludes) {
+    }
+
+    private record SpotBugsAggregateConfiguration(
+            String phase,
+            Set<String> goals,
+            String skip,
+            String effort,
+            String threshold,
+            String skipEmptyReport,
+            String outputDirectory,
+            String xmlFilename) {
+    }
+
+    private record SpotBugsModuleConfiguration(
+            String phase,
+            Set<String> goals,
+            String effort,
+            String threshold,
+            String includeTests,
+            String failOnError,
+            String skipEmptyReport,
+            String htmlOutput,
+            String xmlOutput,
+            String outputDirectory,
+            String xmlOutputDirectory,
+            String xmlFilename) {
     }
 
     private record CpdReport(

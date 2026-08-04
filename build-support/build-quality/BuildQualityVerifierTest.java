@@ -106,6 +106,37 @@ public final class BuildQualityVerifierTest {
                                 "report\treport\texcluded"),
                         "SpotBugs report module must use aggregate disposition: report"),
                 new Scenario(
+                        "raw aggregate XML crosses into filtered output",
+                        Control.SPOTBUGS,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceReport(
+                                "spotbugs-raw/spotbugs-raw.xml",
+                                "spotbugs/spotbugs-raw.xml"),
+                        "SpotBugs raw aggregate XML filename must be "
+                                + "spotbugs-raw/spotbugs-raw.xml"),
+                new Scenario(
+                        "filtered aggregate XML crosses into raw output",
+                        Control.SPOTBUGS,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceReport(
+                                "spotbugs/spotbugs.xml",
+                                "spotbugs-raw/spotbugs.xml"),
+                        "SpotBugs filtered aggregate XML filename must be "
+                                + "spotbugs/spotbugs.xml"),
+                new Scenario(
+                        "module raw XML directory drifts from aggregate discovery",
+                        Control.SPOTBUGS,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceRoot(
+                                "<spotbugsXmlOutputDirectory>"
+                                        + "${project.build.directory}/spotbugs-raw"
+                                        + "</spotbugsXmlOutputDirectory>",
+                                "<spotbugsXmlOutputDirectory>"
+                                        + "${project.build.directory}/spotbugs"
+                                        + "</spotbugsXmlOutputDirectory>"),
+                        "SpotBugs module XML outputDirectory must be "
+                                + "${project.build.directory}/spotbugs-raw"),
+                new Scenario(
                         "missing SpotBugs module report",
                         Control.SPOTBUGS,
                         Mode.VERIFY_REPORTS,
@@ -335,8 +366,9 @@ public final class BuildQualityVerifierTest {
                                   <module>support</module>
                                   <module>report</module>
                                 </modules>
-                              </project>
-                            """);
+                            """
+                            + (control == Control.SPOTBUGS ? spotBugsModulePlugin() : "")
+                            + "</project>\n");
             addModule("app", "app", "jar", false);
             addModule("support", "support", "jar", control == Control.SPOTBUGS);
             write(
@@ -501,9 +533,75 @@ public final class BuildQualityVerifierTest {
                     + dependency("app")
                     + """
                         </dependencies>
-                    """
-                    + spotBugsSkipPlugin()
-                    + "</project>\n";
+                        <build>
+                          <plugins>
+                            <plugin>
+                              <artifactId>spotbugs-maven-plugin</artifactId>
+                              <configuration><skip>true</skip></configuration>
+                              <executions>
+                                <execution>
+                                  <id>create-reactor-spotbugs-raw-report</id>
+                                  <phase>verify</phase>
+                                  <goals><goal>spotbugs-aggregate</goal></goals>
+                                  <configuration>
+                                    <skip>false</skip>
+                                    <effort>Max</effort>
+                                    <threshold>Low</threshold>
+                                    <skipEmptyReport>false</skipEmptyReport>
+                                    <outputDirectory>${project.build.directory}/spotbugs-raw</outputDirectory>
+                                    <spotbugsXmlOutputFilename>spotbugs-raw/spotbugs-raw.xml</spotbugsXmlOutputFilename>
+                                  </configuration>
+                                </execution>
+                                <execution>
+                                  <id>create-reactor-spotbugs-report</id>
+                                  <phase>verify</phase>
+                                  <goals><goal>spotbugs-aggregate</goal></goals>
+                                  <configuration>
+                                    <skip>false</skip>
+                                    <effort>Max</effort>
+                                    <threshold>Low</threshold>
+                                    <skipEmptyReport>false</skipEmptyReport>
+                                    <outputDirectory>${project.build.directory}/spotbugs</outputDirectory>
+                                    <spotbugsXmlOutputFilename>spotbugs/spotbugs.xml</spotbugsXmlOutputFilename>
+                                  </configuration>
+                                </execution>
+                              </executions>
+                            </plugin>
+                          </plugins>
+                        </build>
+                      </project>
+                    """;
+        }
+
+        private String spotBugsModulePlugin() {
+            return """
+                      <build>
+                        <plugins>
+                          <plugin>
+                            <artifactId>spotbugs-maven-plugin</artifactId>
+                            <executions>
+                              <execution>
+                                <id>analyze-production-bytecode</id>
+                                <phase>verify</phase>
+                                <goals><goal>spotbugs</goal></goals>
+                                <configuration>
+                                  <effort>Max</effort>
+                                  <threshold>Low</threshold>
+                                  <includeTests>false</includeTests>
+                                  <failOnError>true</failOnError>
+                                  <skipEmptyReport>false</skipEmptyReport>
+                                  <htmlOutput>false</htmlOutput>
+                                  <xmlOutput>false</xmlOutput>
+                                  <outputDirectory>${project.build.directory}/spotbugs-raw</outputDirectory>
+                                  <spotbugsXmlOutputDirectory>${project.build.directory}/spotbugs-raw</spotbugsXmlOutputDirectory>
+                                  <spotbugsXmlOutputFilename>spotbugs-raw.xml</spotbugsXmlOutputFilename>
+                                </configuration>
+                              </execution>
+                            </executions>
+                          </plugin>
+                        </plugins>
+                      </build>
+                    """;
         }
 
         private String cpdReportPom() {

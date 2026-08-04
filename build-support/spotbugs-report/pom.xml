@@ -178,7 +178,7 @@
                             <threshold>Low</threshold>
                             <skipEmptyReport>false</skipEmptyReport>
                             <outputDirectory>${project.build.directory}/spotbugs-raw</outputDirectory>
-                            <spotbugsXmlOutputFilename>spotbugs/spotbugs-raw.xml</spotbugsXmlOutputFilename>
+                            <spotbugsXmlOutputFilename>spotbugs-raw/spotbugs-raw.xml</spotbugsXmlOutputFilename>
                         </configuration>
                     </execution>
                     <execution>

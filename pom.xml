@@ -154,8 +154,8 @@
                             <skipEmptyReport>false</skipEmptyReport>
                             <htmlOutput>false</htmlOutput>
                             <xmlOutput>false</xmlOutput>
-                            <outputDirectory>${project.build.directory}/spotbugs</outputDirectory>
-                            <spotbugsXmlOutputDirectory>${project.build.directory}/spotbugs</spotbugsXmlOutputDirectory>
+                            <outputDirectory>${project.build.directory}/spotbugs-raw</outputDirectory>
+                            <spotbugsXmlOutputDirectory>${project.build.directory}/spotbugs-raw</spotbugsXmlOutputDirectory>
                             <spotbugsXmlOutputFilename>spotbugs-raw.xml</spotbugsXmlOutputFilename>
                         </configuration>
                     </execution>
@@ -298,7 +298,7 @@
                                         <pathelement location="${maven.multiModuleProjectDirectory}/target/build-quality-verifier"/>
                                         <path refid="maven.plugin.classpath"/>
                                     </classpath>
-                                    <arg value="${project.build.directory}/spotbugs/spotbugs-raw.xml"/>
+                                    <arg value="${project.build.directory}/spotbugs-raw/spotbugs-raw.xml"/>
                                     <arg value="${maven.multiModuleProjectDirectory}/target/build-quality/spotbugs-accepted-filter.xml"/>
                                     <arg value="${project.build.directory}/spotbugs/spotbugs.xml"/>
                                 </java>

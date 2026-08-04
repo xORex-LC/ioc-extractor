@@ -269,9 +269,9 @@ public final class SpotBugsBaselineVerifierTest {
         void writeValidReports() throws IOException {
             String findings = finding(HASH, 0, 10, 2, 14)
                     + finding(HASH, 1, 20, 2, 14);
-            write("app/target/spotbugs/spotbugs-raw.xml", report(findings, 2, true));
+            write("app/target/spotbugs-raw/spotbugs-raw.xml", report(findings, 2, true));
             write("app/target/spotbugs/spotbugs.xml", report("", 0, true));
-            write("report/target/spotbugs/spotbugs-raw.xml", report(findings, 2, false));
+            write("report/target/spotbugs-raw/spotbugs-raw.xml", report(findings, 2, false));
             write("report/target/spotbugs/spotbugs.xml", report("", 0, false));
             write("report/target/spotbugs-raw/spotbugs.html", "<html>raw aggregate</html>");
         }
@@ -282,8 +282,8 @@ public final class SpotBugsBaselineVerifierTest {
             }
             replaceAppRaw("<Errors", additional + "<Errors");
             replaceAggregateRaw("<Errors", additional + "<Errors");
-            incrementSummary(root.resolve("app/target/spotbugs/spotbugs-raw.xml"));
-            incrementSummary(root.resolve("report/target/spotbugs/spotbugs-raw.xml"));
+            incrementSummary(root.resolve("app/target/spotbugs-raw/spotbugs-raw.xml"));
+            incrementSummary(root.resolve("report/target/spotbugs-raw/spotbugs-raw.xml"));
         }
 
         void removeSecondRawFinding() throws IOException {
@@ -370,11 +370,11 @@ public final class SpotBugsBaselineVerifierTest {
         }
 
         void replaceAppRaw(String expected, String replacement) throws IOException {
-            replace(root.resolve("app/target/spotbugs/spotbugs-raw.xml"), expected, replacement);
+            replace(root.resolve("app/target/spotbugs-raw/spotbugs-raw.xml"), expected, replacement);
         }
 
         void replaceAggregateRaw(String expected, String replacement) throws IOException {
-            replace(root.resolve("report/target/spotbugs/spotbugs-raw.xml"), expected, replacement);
+            replace(root.resolve("report/target/spotbugs-raw/spotbugs-raw.xml"), expected, replacement);
         }
 
         void replaceBaseline(String expected, String replacement) throws IOException {

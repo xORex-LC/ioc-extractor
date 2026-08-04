@@ -20,7 +20,7 @@ published library.
 | `../build-quality/BuildQualityVerifier.java` | Shared JDK-only scope and report-integrity verifier |
 | `../build-quality/SpotBugsBaselineVerifier.java` | Exact raw-baseline, analyzer-health and aggregate-union verifier |
 | `../build-quality/SpotBugsReportFilter.java` | Version-pinned bridge from raw XML to filtered XML without another analysis pass |
-| `target/spotbugs/spotbugs-raw.xml` | Unfiltered machine-readable reactor aggregate; blocking evidence |
+| `target/spotbugs-raw/spotbugs-raw.xml` | Unfiltered machine-readable reactor aggregate; blocking evidence |
 | `target/spotbugs-raw/spotbugs.html` | Unfiltered human-readable reactor aggregate for triage |
 | `target/spotbugs/spotbugs.xml` | Filtered machine-readable reactor aggregate |
 | `target/spotbugs/spotbugs.html` | Filtered human-readable reactor aggregate |
@@ -53,14 +53,14 @@ validates their structure, rejects reports from excluded scopes and reconciles
 the raw aggregate with the exact multiset union of module raw findings.
 
 SpotBugs runs once per analyzed module without exclusions and writes
-`target/spotbugs/spotbugs-raw.xml`. The raw document is the enforcement input.
+`target/spotbugs-raw/spotbugs-raw.xml`. The raw document is the enforcement input.
 The generated narrow filter is applied afterwards by SpotBugs' workflow filter,
 producing `spotbugs.xml`; `default.xsl` renders its module HTML. This separation
 means a broad-enough presentation selector cannot hide a new finding from the
 blocking comparison.
 
-The accepted baseline contains 76 reviewed findings represented by 70 narrow
-selectors: 58 analyzer false positives and 18 exception-policy signals whose
+The accepted baseline contains 74 reviewed findings represented by 68 narrow
+selectors: 56 analyzer false positives and 18 exception-policy signals whose
 generic advice is inapplicable to a documented boundary contract. Each entry
 stores its evidence ID, module, bug metadata, hash and occurrence, primary
 class/member/JVM descriptor, source/bytecode anchor, disposition, owner,
@@ -82,6 +82,14 @@ accepted entry must supply an exact method and/or field. Removing a finding
 without removing its entry fails as a stale acceptance. Analyzer errors,
 missing classes, metadata drift, new or moved findings, visible filtered output,
 missing reports and aggregate divergence all fail ordinary Maven `verify`.
+
+The Maven aggregate goal uses `spotbugsXmlOutputFilename` both to discover
+module XML and to choose its own XML destination. Raw module and aggregate XML
+therefore share the independent `target/spotbugs-raw/spotbugs-raw.xml` layout;
+filtered XML/HTML exclusively use `target/spotbugs/`. Root `validate` pins the
+module execution and both aggregate executions to this topology, including
+negative mutations for cross-directory output drift. Neither aggregate depends
+on the other execution to create its destination directory.
 
 When a new finding appears, fix it with a focused regression by default. Accept
 it only through a reviewed `spotbugs-accepted-findings.xml` entry with explicit

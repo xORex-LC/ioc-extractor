@@ -442,12 +442,18 @@ public final class SpotBugsBaselineVerifier {
         List<ObservedFinding> moduleRawFindings = new ArrayList<>();
 
         for (String module : scope.analyzedModules().stream().sorted().toList()) {
-            Path directory = root.resolve(module).resolve("target/spotbugs");
+            Path directory = root.resolve(module).resolve("target");
             try {
                 SpotBugsReport raw = readReport(
-                        directory.resolve("spotbugs-raw.xml"), module, baseline.engineVersion(), true);
+                        directory.resolve("spotbugs-raw/spotbugs-raw.xml"),
+                        module,
+                        baseline.engineVersion(),
+                        true);
                 SpotBugsReport filtered = readReport(
-                        directory.resolve("spotbugs.xml"), module, baseline.engineVersion(), true);
+                        directory.resolve("spotbugs/spotbugs.xml"),
+                        module,
+                        baseline.engineVersion(),
+                        true);
                 requireCleanAnalyzer(raw, "raw module " + module);
                 requireCleanAnalyzer(filtered, "filtered module " + module);
                 if (!filtered.findings().isEmpty()) {
@@ -463,7 +469,7 @@ public final class SpotBugsBaselineVerifier {
 
         for (String module : scope.excludedModules()) {
             Path directory = ROOT_PATH.equals(module) ? root : root.resolve(module);
-            Path raw = directory.resolve("target/spotbugs/spotbugs-raw.xml");
+            Path raw = directory.resolve("target/spotbugs-raw/spotbugs-raw.xml");
             if (Files.exists(raw)) {
                 problems.add("excluded module produced raw SpotBugs report: " + raw);
             }
@@ -477,7 +483,7 @@ public final class SpotBugsBaselineVerifier {
 
         try {
             SpotBugsReport rawAggregate = readReport(
-                    reportModule.resolve("target/spotbugs/spotbugs-raw.xml"),
+                    reportModule.resolve("target/spotbugs-raw/spotbugs-raw.xml"),
                     "<aggregate>", baseline.engineVersion(), false);
             SpotBugsReport filteredAggregate = readReport(
                     reportModule.resolve("target/spotbugs/spotbugs.xml"),

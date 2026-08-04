@@ -28,7 +28,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 
 | Control | Version/config | Local command | CI/report artifact | Runtime | Signal/noise | Owner | Stage |
 |---|---|---|---|---:|---|---|---|
-| SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only; exact raw-baseline gate | `make verify` | Per applicable module: raw XML + filtered XML/HTML; raw and filtered aggregates under `build-support/spotbugs-report/target/`; CI artifact `spotbugs-reports-<run>` | `120 s` adoption full-reactor wall; `+12 s` / `+11.1%` against the same-session pre-ratchet `108 s` run | Current baseline: 74 reviewed findings (56 false positives + 18 policy noise), 68 generated narrow selectors; latest full-reactor evidence predates the focused Tika removal and contains 76 raw / 0 visible | `R030-BUILD` | `blocking` |
+| SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only; exact raw-baseline gate | `make verify` | Per applicable module: raw XML + filtered XML/HTML; raw and filtered aggregates under `build-support/spotbugs-report/target/`; CI artifact `spotbugs-reports-<run>` | `120 s` adoption full-reactor wall; `+12 s` / `+11.1%` against the same-session pre-ratchet `108 s` run | Current full-reactor evidence: 74 reviewed findings (56 false positives + 18 policy noise), 68 generated narrow selectors, 0 visible | `R030-BUILD` | `blocking` |
 | PMD CPD aggregate | Maven Plugin `3.28.0`, bundled PMD `7.17.0`; Java production sources, `minimumTokens=75`, identifiers/literals/annotations significant | `make clean && make verify` | `build-support/cpd-report/target/cpd/`; CI artifact `cpd-report-<run>` | `95.52 s` clean reactor wall; CPD module `2.703 s` | 11 raw matches / 10 semantic findings; 7 debt candidates, 3 retained clusters | `R030-BUILD` + `R030-QUAL` | `report-only` |
 | Maven dependency analysis | Maven Dependency Plugin `3.11.0`; fast direct goal + opt-in full `dependency-analysis` profile; default bytecode analyzer | `make dependency-analysis` | Local console/report ledger; deliberately absent from regular CI | Fast sequential package + analysis observed at `5.313–7.677 s` Maven / `6.75–8.72 s` process; full profile timing below | 14 direct POM mismatches corrected; residual `56 / 34 / 12` candidate occurrences are test-aggregate, starter, SPI and transitive-runtime noise | `R030-BUILD` | `report-only`, blocking adoption deferred |
 
@@ -427,7 +427,7 @@ presentation filter.
 Поздний aggregate gate требует точного равенства baseline и raw instances,
 нулевых analyzer errors/missing classes, пустых filtered reports и multiset
 равенства raw aggregate объединению 19 module reports. New, stale, moved и
-metadata-drifted findings блокируют build. Root harness проходит 4 scope happy / 15
+metadata-drifted findings блокируют build. Root harness проходит 4 scope happy / 18
 negative и 3 baseline happy / 17 negative scenarios; отдельная target-local
 mutation, удалившая acceptance `SB04-089`, завершилась exit `1` и показала raw
 finding как новый.
@@ -445,9 +445,22 @@ Post-adoption Tika path hardening removed `SB04-029..030` after a focused root
 regression proved that the provider can open a filesystem root before the null
 file-name dereference. The focused source-adapter test and Maven verify/SpotBugs
 run passed with zero adapter findings; the tracked baseline is now 74 identities
-and 68 selectors. Per explicit task scope, the full reactor was not rerun, so the
-76-finding aggregate above remains the latest full-run evidence rather than a
-claim about the updated baseline.
+and 68 selectors. The later clean-checkout follow-up refreshed full-reactor
+evidence and confirmed the same 74-finding baseline.
+
+Clean-checkout follow-up выявил скрытый контракт Maven Plugin: у
+`spotbugs-aggregate` значение `spotbugsXmlOutputFilename` одновременно задаёт
+путь поиска module XML и путь собственного aggregate XML. Старый raw execution
+писал aggregate XML в каталог filtered execution и на чистом GitHub runner
+падал с `NoSuchFileException`, хотя warm local workspace проходил. Module и
+aggregate raw XML перенесены в единый независимый
+`target/spotbugs-raw/spotbugs-raw.xml`, filtered XML/HTML остаются в
+`target/spotbugs/`. Root `validate` теперь фиксирует обе стороны discovery/output
+контракта тремя negative mutations. Focused clean 22-project reactor прошёл за
+`01:37` с 74 accepted / 0 visible findings. Полный clean 24-project `make verify`
+и немедленный incremental repeat прошли за `02:38` и `02:23`: 182 suites / 838
+tests / 0 failures / 0 errors / 2 external SMB skips, 19 raw module XML, 19
+filtered XML/HTML и оба aggregate views, 74 accepted / 0 visible.
 
 ## PMD CPD findings
 
