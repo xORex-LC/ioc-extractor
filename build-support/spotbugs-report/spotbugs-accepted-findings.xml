@@ -296,65 +296,10 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C2-MIX-G in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-033" module="adapters/adapter-transport-smb" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="5e5bfca26b4d0a401aaf36091430e7c0" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
-        <class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
-        <method name="lambda$localFiles$10" signature="(Ljava/nio/file/Path;)Ljava/lang/String;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="247" bytecode="6" />
-        <suppression>
-            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
-            <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
-            <Method name="lambda$localFiles$10" />
-        </suppression>
-        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
-    </finding>
-    <finding id="SB04-034" module="adapters/adapter-transport-smb" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="9456a9c7e501bc30df6de8d94d6bc29c" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
-        <class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
-        <method name="lambda$localFiles$11" signature="(Ljava/nio/file/Path;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="248" bytecode="6" />
-        <suppression>
-            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
-            <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
-            <Method name="lambda$localFiles$11" />
-        </suppression>
-        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
-    </finding>
-    <finding id="SB04-035" module="adapters/adapter-transport-smb" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="ab4dd7d9826bddec6a3960784b7ae9a1" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
-        <class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
-        <method name="publish" signature="(Lcom/iocextractor/adapter/out/transport/smb/SmbShareClient;Lcom/iocextractor/application/sync/PublishAtomicallyRequest;)Lcom/iocextractor/application/sync/PublishReceipt;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="146" bytecode="188" />
-        <suppression>
-            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
-            <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
-            <Method name="publish" />
-        </suppression>
-        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
-    </finding>
-    <finding id="SB04-036" module="adapters/adapter-transport-smb" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="ab4dd7d9826bddec6a3960784b7ae9a1" occurrence="1" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
-        <class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
-        <method name="publish" signature="(Lcom/iocextractor/adapter/out/transport/smb/SmbShareClient;Lcom/iocextractor/application/sync/PublishAtomicallyRequest;)Lcom/iocextractor/application/sync/PublishReceipt;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="147" bytecode="215" />
-        <suppression>
-            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
-            <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
-            <Method name="publish" />
-        </suppression>
-        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
-    </finding>
-    <finding id="SB04-037" module="adapters/adapter-transport-smb" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="588e7a610a503a476d76ef12f69e2911" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
-        <class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
-        <method name="verifyUploadedSizes" signature="(Lcom/iocextractor/adapter/out/transport/smb/SmbShareClient;Ljava/util/List;Ljava/lang/String;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="257" bytecode="35" />
-        <suppression>
-            <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
-            <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
-            <Method name="verifyUploadedSizes" />
-        </suppression>
-        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
-    </finding>
     <finding id="SB04-091" module="adapters/adapter-transport-smb" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="94ece55bd8105af5894ae60a0ce84620" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
         <method name="publish" signature="(Lcom/iocextractor/adapter/out/transport/smb/SmbShareClient;Lcom/iocextractor/application/sync/PublishAtomicallyRequest;)Lcom/iocextractor/application/sync/PublishReceipt;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="168" bytecode="395" />
+        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="172" bytecode="413" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />

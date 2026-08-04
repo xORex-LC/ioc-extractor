@@ -21,7 +21,7 @@ The existing 19-module production-bytecode scope is unchanged. SpotBugs Maven
 Plugin `4.10.3.0` and engine `4.10.3` still run with `effort=Max`,
 `threshold=Low` and `includeTests=false`; FindSecBugs remains out of scope.
 
-The 70 remaining reviewed findings after BUILD-SPOTBUGS-04 and its focused
+The 65 remaining reviewed findings after BUILD-SPOTBUGS-04 and its focused
 follow-ups are represented by a
 structured accepted-findings document rather than a hand-maintained operational
 filter. Ordinary Maven `verify` analyzes unfiltered bytecode, compares every raw
@@ -47,7 +47,7 @@ boundary. The coupling must be revalidated whenever the engine is upgraded.
 
 | Artifact | Role |
 |---|---|
-| `build-support/spotbugs-report/spotbugs-accepted-findings.xml` | Single tracked source of truth for 70 accepted findings and 65 selectors |
+| `build-support/spotbugs-report/spotbugs-accepted-findings.xml` | Single tracked source of truth for 65 accepted findings and 61 selectors |
 | `target/build-quality/spotbugs-accepted-filter.xml` | Deterministically generated `FindBugsFilter`; never committed or edited |
 | `target/build-quality/spotbugs-baseline-proposal.xml` | On-demand, non-accepting new/stale identity delta; never committed or copied wholesale into the baseline |
 | `<module>/target/spotbugs-raw/spotbugs-raw.xml` | Unfiltered module evidence consumed by the blocking gate |
@@ -65,7 +65,7 @@ diagnostics but is advisory. The two current findings without a bytecode anchor
 fall back to their otherwise exact class/member identity.
 
 SpotBugs may assign one hash to several occurrences. The current baseline has
-three such hash groups and seven instances, including three occurrences in
+two such hash groups and five instances, including three occurrences in
 `PipelineRunner.executeInRunScope`. Consequently neither a hash set nor a
 method-level filter is accepted as the gate: an additional occurrence fails raw
 comparison even if the generated presentation filter also matches it.
@@ -90,7 +90,7 @@ The late aggregate gate requires:
 - raw and filtered XML for every analyzed module;
 - no raw report for excluded modules;
 - engine version `4.10.3` and `errors=0`, `missingClasses=0`;
-- exact equality between 70 accepted identities and the raw findings;
+- exact equality between 65 accepted identities and the raw findings;
 - zero findings in every filtered module report and aggregate;
 - exact multiset equality between the raw aggregate and the 19 module raw
   reports;
@@ -140,8 +140,8 @@ dependency fails during root `validate`.
 | Focused module lifecycle | `platform-concurrency` produced 2 raw / 0 filtered findings without a second analysis pass |
 | Adoption focused 22-project aggregate run | 77 raw / 0 filtered findings; raw HTML generated; exact verifier passed after dual-primary annotation characterization |
 | Recorded follow-up canonical 24-project `make verify` | 24/24 passed in `01:40`; 182 suites / 837 tests / 0 failures / 0 errors / 2 external SMB skips |
-| Reports and analyzer health | Latest full run: 19 raw XML with 70 findings; 19 filtered XML/HTML with 0 visible; raw/filtered aggregates; errors/missing classes `0/0` |
+| Reports and analyzer health | Latest full run: 19 raw XML with 65 findings; 19 filtered XML/HTML with 0 visible; raw/filtered aggregates; errors/missing classes `0/0` |
 | `SB04-016` removal proof | Exact gate first rejected a transient compiler-generated `RCN_*` replacement; after structural cleanup, focused and full runs contain neither `IS2_INCONSISTENT_SYNC` nor `RCN_*` |
-| Nullable-path removal proof | Root regression exposed the previously wrapped Tika dereference; explicit source leaf validation removed `SB04-029..030`. Later lifecycle/remote-inbox hardening made nullable parent/leaf handling local and analyzer-provable, removing `SB04-018..019/038..039`; focused regressions and the full reactor confirmed the 70-finding baseline |
+| Nullable-path removal proof | Root regression exposed the previously wrapped Tika dereference; explicit source leaf validation removed `SB04-029..030`. Later lifecycle/remote-inbox hardening made nullable parent/leaf handling local and analyzer-provable, removing `SB04-018..019/038..039`. SMB upload-plan hardening then removed `SB04-033..037`: `peek` no longer carries validation, and one immutable entry supplies the exact path to both upload and stat; focused and full-reactor evidence confirm the 65-finding baseline |
 | Aggregate clean-checkout regression | A clean focused 22-project reactor first reproduced the output/discovery coupling, then passed in `01:37` after raw module and aggregate XML moved to the same independently owned `target/spotbugs-raw/` layout. Full clean and incremental 24-project runs passed in `02:38` / `02:23`: 182 suites / 838 tests / 0 failures / 0 errors / 2 external SMB skips, 74 accepted / 0 visible |
 | Mutation proof | Removing `SB04-089` only from a target-local baseline copy returned exit `1` and reported its raw finding as new |

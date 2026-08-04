@@ -137,18 +137,22 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
                     "remote commit marker mismatch at " + remoteMarker);
         }
 
-        List<Path> files = localFiles(localDirectory);
         String temporaryPath = remotePath + ".tmp-" + UUID.randomUUID();
+        List<UploadFile> files = uploadPlan(localDirectory, temporaryPath);
+        UploadFile marker = files.stream()
+                .filter(file -> file.leafName().equals(request.commitMarkerName()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("commit marker is not a regular file: " + localMarker));
         cleanup(client, temporaryPath);
         try {
             client.createDirectories(temporaryPath);
-            for (Path file : files) {
-                if (!file.getFileName().toString().equals(request.commitMarkerName())) {
-                    client.upload(file, join(temporaryPath, safeLeaf(file.getFileName().toString())));
+            for (UploadFile file : files) {
+                if (!file.leafName().equals(request.commitMarkerName())) {
+                    client.upload(file.localPath(), file.remotePath());
                 }
             }
-            client.upload(localMarker, join(temporaryPath, request.commitMarkerName()));
-            verifyUploadedSizes(client, files, temporaryPath);
+            client.upload(marker.localPath(), marker.remotePath());
+            verifyUploadedSizes(client, files);
             if (client.directoryExists(remotePath) && !client.fileExists(remoteMarker)) {
                 client.deleteTree(remotePath);
             }
@@ -241,31 +245,41 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
         }
     }
 
-    private static List<Path> localFiles(Path localDirectory) {
+    private static List<UploadFile> uploadPlan(Path localDirectory, String temporaryPath) {
         try (var stream = Files.list(localDirectory)) {
             return stream.filter(Files::isRegularFile)
-                    .sorted(Comparator.comparing(path -> path.getFileName().toString()))
-                    .peek(path -> safeLeaf(path.getFileName().toString()))
+                    .map(path -> uploadFile(path, temporaryPath))
+                    .sorted(Comparator.comparing(UploadFile::leafName))
                     .toList();
         } catch (IOException e) {
             throw new IllegalArgumentException("localDirectory cannot be listed: " + localDirectory, e);
         }
     }
 
-    private static void verifyUploadedSizes(SmbShareClient client, List<Path> files, String temporaryPath) {
-        for (Path file : files) {
-            String remoteFile = join(temporaryPath, file.getFileName().toString());
-            Optional<SmbRemoteEntry> uploaded = client.stat(remoteFile);
+    private static UploadFile uploadFile(Path localPath, String temporaryPath) {
+        Path fileName = localPath.getFileName();
+        if (fileName == null) {
+            throw new IllegalArgumentException("local publish file has no leaf name: " + localPath);
+        }
+        String leafName = safeLeaf(fileName.toString());
+        return new UploadFile(localPath, leafName, join(temporaryPath, leafName));
+    }
+
+    private static void verifyUploadedSizes(SmbShareClient client, List<UploadFile> files) {
+        for (UploadFile file : files) {
+            Optional<SmbRemoteEntry> uploaded = client.stat(file.remotePath());
             if (uploaded.isEmpty()) {
-                throw new RemoteTransportException(RemoteErrorKind.TRANSIENT, "uploaded file is absent: " + remoteFile);
+                throw new RemoteTransportException(
+                        RemoteErrorKind.TRANSIENT, "uploaded file is absent: " + file.remotePath());
             }
             try {
-                long localSize = Files.size(file);
+                long localSize = Files.size(file.localPath());
                 if (uploaded.get().size() != localSize) {
-                    throw new RemoteTransportException(RemoteErrorKind.TRANSIENT, "uploaded file size mismatch: " + remoteFile);
+                    throw new RemoteTransportException(
+                            RemoteErrorKind.TRANSIENT, "uploaded file size mismatch: " + file.remotePath());
                 }
             } catch (IOException e) {
-                throw new IllegalArgumentException("local file size cannot be read: " + file, e);
+                throw new IllegalArgumentException("local file size cannot be read: " + file.localPath(), e);
             }
         }
     }
@@ -321,5 +335,8 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
     }
 
     private record CachedClient(SmbShareClient client, Instant lastUsedAt) {
+    }
+
+    private record UploadFile(Path localPath, String leafName, String remotePath) {
     }
 }

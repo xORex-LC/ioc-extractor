@@ -55,6 +55,9 @@ class SmbFileTransportTest {
         assertThat(firstDataUpload).isGreaterThan(indexOf(client.operations, "mkdir:export/profile"));
         assertThat(markerUpload).isGreaterThan(firstDataUpload);
         assertThat(rename).isGreaterThan(markerUpload);
+        assertThat(client.statPaths)
+                .as("size verification must address the exact paths selected for upload")
+                .containsExactlyInAnyOrderElementsOf(client.uploadPaths);
     }
 
     @Test
@@ -201,6 +204,8 @@ class SmbFileTransportTest {
         private final Map<String, byte[]> files = new HashMap<>();
         private final Set<String> directories = new HashSet<>();
         private final List<String> operations = new ArrayList<>();
+        private final List<String> uploadPaths = new ArrayList<>();
+        private final List<String> statPaths = new ArrayList<>();
         private String failOnUploadName;
         private boolean failList;
         private boolean closed;
@@ -219,6 +224,7 @@ class SmbFileTransportTest {
 
         @Override
         public Optional<SmbRemoteEntry> stat(String remotePath) {
+            statPaths.add(remotePath);
             byte[] content = files.get(remotePath);
             if (content == null) {
                 return Optional.empty();
@@ -276,6 +282,7 @@ class SmbFileTransportTest {
                 throw new RuntimeException("simulated upload failure: " + failOnUploadName);
             }
             try {
+                uploadPaths.add(remotePath);
                 files.put(remotePath, Files.readAllBytes(localFile));
                 operations.add(remotePath.endsWith("/_SUCCESS")
                         ? "upload-marker:" + parent(remotePath)
