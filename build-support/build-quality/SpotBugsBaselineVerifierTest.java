@@ -91,11 +91,38 @@ public final class SpotBugsBaselineVerifierTest {
                 new ValidationScenario(
                         "invalid instance hash",
                         fixture -> fixture.replaceBaseline(Fixture.HASH, "NOT_A_HASH"),
-                        "invalid instance hash"));
+                        "invalid instance hash"),
+                new ValidationScenario(
+                        "duplicate review trigger",
+                        Fixture::appendDuplicateReviewTrigger,
+                        "duplicate review trigger"),
+                new ValidationScenario(
+                        "unknown review trigger",
+                        fixture -> fixture.replaceBaseline(
+                                "review=\"nio-direct-child-contract-change\"",
+                                "review=\"unknown-contract-change\""),
+                        "references unknown review trigger"),
+                new ValidationScenario(
+                        "generic review trigger",
+                        fixture -> fixture.replaceBaseline(
+                                Fixture.REVIEW_TRIGGER_TEXT,
+                                "Review when code or analyzer behavior changes for any reason."),
+                        "is generic or incomplete"),
+                new ValidationScenario(
+                        "placeholder review trigger",
+                        fixture -> fixture.replaceBaseline(
+                                Fixture.REVIEW_TRIGGER_TEXT,
+                                "Review when TODO documents the actual external invariant change."),
+                        "is generic or incomplete"),
+                new ValidationScenario(
+                        "unused review trigger",
+                        Fixture::appendUnusedReviewTrigger,
+                        "unused review triggers"));
 
         runHappyPath();
         runAnchorlessFieldHappyPath();
         runDualPrimaryHappyPath();
+        runProposalHappyPath();
         List<String> failures = new ArrayList<>();
         for (Scenario scenario : scenarios) {
             try {
@@ -111,14 +138,24 @@ public final class SpotBugsBaselineVerifierTest {
                 failures.add(scenario.name() + ": " + e.getMessage());
             }
         }
+        try {
+            runProposalOutsideTargetFailure();
+        } catch (AssertionError | Exception e) {
+            failures.add("proposal outside target: " + e.getMessage());
+        }
+        try {
+            runProposalFailureRemovesStaleOutput();
+        } catch (AssertionError | Exception e) {
+            failures.add("failed proposal stale output: " + e.getMessage());
+        }
         if (!failures.isEmpty()) {
             throw new AssertionError(
                     "SpotBugsBaselineVerifier fixture failures:\n - "
                             + String.join("\n - ", failures));
         }
         System.out.printf(
-                "SpotBugsBaselineVerifier: 3 happy paths and %d negative scenarios passed%n",
-                scenarios.size() + validationScenarios.size());
+                "SpotBugsBaselineVerifier: 4 happy paths and %d negative scenarios passed%n",
+                scenarios.size() + validationScenarios.size() + 2);
     }
 
     private static void runHappyPath() throws Exception {
@@ -154,6 +191,60 @@ public final class SpotBugsBaselineVerifierTest {
             require(
                     verification.exitCode() == 0,
                     "dual-primary finding should pass: " + verification.standardError());
+        }
+    }
+
+    private static void runProposalHappyPath() throws Exception {
+        try (Fixture fixture = Fixture.create()) {
+            fixture.writeValidReports();
+            fixture.removeSecondRawFinding();
+            fixture.addRawFinding(finding("feedface", 0, 30, 2, 14));
+            String baselineBefore = Files.readString(fixture.baseline(), StandardCharsets.UTF_8);
+
+            Result proposal = fixture.executePropose(fixture.proposal());
+
+            require(proposal.exitCode() == 0, "proposal should pass: " + proposal.standardError());
+            String generated = Files.readString(fixture.proposal(), StandardCharsets.UTF_8);
+            require(generated.contains("<candidate"), "proposal must contain the new candidate");
+            require(generated.contains("hash=\"feedface\""), "proposal must retain analyzer identity");
+            require(
+                    generated.contains("<stale-acceptance id=\"SB04-002\""),
+                    "proposal must identify stale acceptance by reviewed ID");
+            for (String acceptanceField : List.of(
+                    "disposition=", "owner=", "evidence=", "review=", "<suppression", "<rationale")) {
+                require(
+                        !generated.contains(acceptanceField),
+                        "proposal must omit acceptance field: " + acceptanceField);
+            }
+            require(
+                    Files.readString(fixture.baseline(), StandardCharsets.UTF_8).equals(baselineBefore),
+                    "proposal must not modify the tracked baseline");
+        }
+    }
+
+    private static void runProposalOutsideTargetFailure() throws Exception {
+        try (Fixture fixture = Fixture.create()) {
+            fixture.writeValidReports();
+            Result proposal = fixture.executePropose(fixture.root().resolve("proposal.xml"));
+            require(proposal.exitCode() != 0, "proposal outside target unexpectedly passed");
+            require(
+                    proposal.standardError().contains("SpotBugs proposal output escapes reactor root"),
+                    "unexpected proposal path failure: " + proposal.standardError());
+        }
+    }
+
+    private static void runProposalFailureRemovesStaleOutput() throws Exception {
+        try (Fixture fixture = Fixture.create()) {
+            fixture.writeValidReports();
+            fixture.writeProposalPlaceholder();
+            fixture.removeAppRawReport();
+
+            Result proposal = fixture.executePropose(fixture.proposal());
+
+            require(proposal.exitCode() != 0, "proposal with a missing raw report unexpectedly passed");
+            require(
+                    !Files.exists(fixture.proposal()),
+                    "failed proposal must not leave an older output in place");
         }
     }
 
@@ -231,6 +322,8 @@ public final class SpotBugsBaselineVerifierTest {
     private static final class Fixture implements AutoCloseable {
 
         private static final String HASH = "abc123";
+        private static final String REVIEW_TRIGGER_TEXT =
+                "Review when the direct-child provenance or verified-directory contract changes.";
 
         private final Path root;
         private final Path scope;
@@ -266,6 +359,18 @@ public final class SpotBugsBaselineVerifierTest {
             return generatedFilter;
         }
 
+        Path root() {
+            return root;
+        }
+
+        Path baseline() {
+            return baseline;
+        }
+
+        Path proposal() {
+            return root.resolve("target/build-quality/spotbugs-baseline-proposal.xml");
+        }
+
         void writeValidReports() throws IOException {
             String findings = finding(HASH, 0, 10, 2, 14)
                     + finding(HASH, 1, 20, 2, 14);
@@ -274,6 +379,14 @@ public final class SpotBugsBaselineVerifierTest {
             write("report/target/spotbugs-raw/spotbugs-raw.xml", report(findings, 2, false));
             write("report/target/spotbugs/spotbugs.xml", report("", 0, false));
             write("report/target/spotbugs-raw/spotbugs.html", "<html>raw aggregate</html>");
+        }
+
+        void writeProposalPlaceholder() throws IOException {
+            write("target/build-quality/spotbugs-baseline-proposal.xml", "stale proposal");
+        }
+
+        void removeAppRawReport() throws IOException {
+            Files.delete(root.resolve("app/target/spotbugs-raw/spotbugs-raw.xml"));
         }
 
         void addRawFinding(String additional) throws IOException {
@@ -320,16 +433,33 @@ public final class SpotBugsBaselineVerifierTest {
             replaceBaseline("</spotbugs-accepted-findings>", duplicate + "</spotbugs-accepted-findings>");
         }
 
+        void appendDuplicateReviewTrigger() throws IOException {
+            replaceBaseline(
+                    "  <finding id=\"SB04-001\"",
+                    reviewTrigger("nio-direct-child-contract-change", REVIEW_TRIGGER_TEXT)
+                            + "  <finding id=\"SB04-001\"");
+        }
+
+        void appendUnusedReviewTrigger() throws IOException {
+            replaceBaseline(
+                    "  <finding id=\"SB04-001\"",
+                    reviewTrigger(
+                                    "unused-contract-change",
+                                    "Review when an otherwise unreferenced contract changes materially.")
+                            + "  <finding id=\"SB04-001\"");
+        }
+
         void writeAnchorlessFieldBaseline() throws IOException {
             write(
                     "accepted.xml",
                     """
                             <?xml version="1.0" encoding="UTF-8"?>
-                            <spotbugs-accepted-findings schemaVersion="1" engineVersion="4.10.3">
+                            <spotbugs-accepted-findings schemaVersion="2" engineVersion="4.10.3">
+                              <review-trigger id="serialization-boundary-change">Review when Java serialization or a remote object boundary is introduced.</review-trigger>
                               <finding id="SB04-115" module="app" type="SE_BAD_FIELD" hash="f"
                                        occurrence="0" priority="3" rank="18" category="BAD_PRACTICE"
                                        disposition="false-positive" owner="R030-BUILD" evidence="C2-MIX-F"
-                                       review="code-or-analyzer-change">
+                                       review="serialization-boundary-change">
                                 <class name="example.Sample" />
                                 <field name="value" signature="Ljava/lang/Object;" />
                                 <anchor />
@@ -361,6 +491,16 @@ public final class SpotBugsBaselineVerifierTest {
                 scope.toString(),
                 baseline.toString(),
                 reportModule.toString()
+            });
+        }
+
+        Result executePropose(Path output) {
+            return execute(new String[] {
+                "propose",
+                root.toString(),
+                scope.toString(),
+                baseline.toString(),
+                output.toString()
             });
         }
 
@@ -426,11 +566,13 @@ public final class SpotBugsBaselineVerifierTest {
         private static String baselineDocument() {
             return """
                     <?xml version="1.0" encoding="UTF-8"?>
-                    <spotbugs-accepted-findings schemaVersion="1" engineVersion="4.10.3">
+                    <spotbugs-accepted-findings schemaVersion="2" engineVersion="4.10.3">
+                    %s
                     %s
                     %s
                     </spotbugs-accepted-findings>
                     """.formatted(
+                    reviewTrigger("nio-direct-child-contract-change", REVIEW_TRIGGER_TEXT),
                     acceptedFinding("SB04-001", 0, 10),
                     acceptedFinding("SB04-002", 1, 20));
         }
@@ -441,7 +583,7 @@ public final class SpotBugsBaselineVerifierTest {
                                type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="%s"
                                occurrence="%d" priority="2" rank="14" category="STYLE"
                                disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A"
-                               review="code-or-analyzer-change">
+                               review="nio-direct-child-contract-change">
                         <class name="example.Sample" />
                         <method name="run" signature="()V" />
                         <anchor sourcePath="example/Sample.java" startLine="%d" bytecode="%d" />
@@ -453,6 +595,10 @@ public final class SpotBugsBaselineVerifierTest {
                         <rationale>Reviewed false positive.</rationale>
                       </finding>
                     """.formatted(id, HASH, occurrence, bytecode + 1, bytecode);
+        }
+
+        private static String reviewTrigger(String id, String text) {
+            return "  <review-trigger id=\"" + id + "\">" + text + "</review-trigger>\n";
         }
 
         private static String report(String findings, int total, boolean includeVersion) {

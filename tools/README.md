@@ -38,9 +38,21 @@ make context
 make doctor
 make bootstrap  # repo-local lychee, если его нет в PATH
 make dependency-analysis
+make spotbugs-baseline-proposal  # после SpotBugs ratchet failure
 make release-notes-context PREVIOUS_TAG=v0.1.0
 make pre-push
 ```
+
+`make spotbugs-baseline-proposal` не запускает анализатор повторно и не меняет
+tracked baseline. Команда читает уже сформированные module-local raw XML и пишет
+только диагностическую разницу в
+`target/build-quality/spotbugs-baseline-proposal.xml`: analyzer identity для
+новых candidates и ID устаревших acceptances. В proposal намеренно отсутствуют
+`disposition`, `owner`, `evidence`, review trigger, rationale и suppression;
+эти решения добавляются человеком только в reviewed diff
+`spotbugs-accepted-findings.xml`. Команду следует запускать сразу после
+SpotBugs-отказа полного `make verify`; отсутствующий или повреждённый raw report
+завершает proposal с ошибкой.
 
 `make dependency-analysis` последовательно собирает main/test bytecode с
 `-DskipTests` и выполняет быстрый dependency-hygiene report для всех

@@ -290,7 +290,8 @@ Scheduled stability/PIT jobs не блокируют каждый PR в 0.3.0, �
 - SpotBugs анализирует все применимые production modules, вызывается Maven
   `verify` и блокирует новые findings принятого signal;
 - SpotBugs accepted-findings baseline имеет точные identities/selectors,
-  rationale, owner и review condition;
+  rationale, owner и конкретный review trigger; proposal tooling не может
+  автоматически заполнить acceptance metadata или изменить tracked baseline;
 - CPD формирует repository-wide production-source report, а существенные
   findings имеют semantic disposition в `R030-QUAL`;
 - CPD остаётся report-only либо отдельное решение о ratchet содержит

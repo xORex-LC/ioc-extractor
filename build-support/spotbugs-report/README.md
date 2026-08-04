@@ -16,7 +16,7 @@ published library.
 |---|---|
 | `pom.xml` | Production dependency ordering, raw/filtered `spotbugs-aggregate` executions and the late blocking gate |
 | `spotbugs-scope.tsv` | Single disposition registry for every root and child reactor project |
-| `spotbugs-accepted-findings.xml` | Reviewed exact-finding baseline and the only suppression source of truth |
+| `spotbugs-accepted-findings.xml` | Reviewed exact-finding baseline, concrete review-trigger catalog and the only suppression source of truth |
 | `../build-quality/BuildQualityVerifier.java` | Shared JDK-only scope and report-integrity verifier |
 | `../build-quality/SpotBugsBaselineVerifier.java` | Exact raw-baseline, analyzer-health and aggregate-union verifier |
 | `../build-quality/SpotBugsReportFilter.java` | Version-pinned bridge from raw XML to filtered XML without another analysis pass |
@@ -24,6 +24,7 @@ published library.
 | `target/spotbugs-raw/spotbugs.html` | Unfiltered human-readable reactor aggregate for triage |
 | `target/spotbugs/spotbugs.xml` | Filtered machine-readable reactor aggregate |
 | `target/spotbugs/spotbugs.html` | Filtered human-readable reactor aggregate |
+| `../../target/build-quality/spotbugs-baseline-proposal.xml` | Untracked, non-accepting new/stale identity delta produced on demand |
 
 ## Dependencies
 
@@ -64,7 +65,10 @@ selectors: 56 analyzer false positives and 18 exception-policy signals whose
 generic advice is inapplicable to a documented boundary contract. Each entry
 stores its evidence ID, module, bug metadata, hash and occurrence, primary
 class/member/JVM descriptor, source/bytecode anchor, disposition, owner,
-rationale, review condition and presentation selector. Hashes are lowercase
+rationale, a reference to a concrete review trigger and presentation selector.
+The root-level trigger catalog names the external invariant or boundary change
+that invalidates the disposition; generic conditions such as “code or analyzer
+change” are rejected, as are unknown, duplicate and unused triggers. Hashes are lowercase
 hexadecimal values of 1–32 characters because SpotBugs does not preserve leading
 zeroes.
 
@@ -93,7 +97,13 @@ on the other execution to create its destination directory.
 
 When a new finding appears, fix it with a focused regression by default. Accept
 it only through a reviewed `spotbugs-accepted-findings.xml` entry with explicit
-evidence and a review condition. Toolchain, compiler or SpotBugs upgrades are
+evidence and a concrete review trigger. After a failed full analysis,
+`make spotbugs-baseline-proposal` may render the raw new/stale identity delta to
+`target/build-quality/spotbugs-baseline-proposal.xml`. The proposal cannot be
+used as a baseline: it is constrained to `target/`, never edits the tracked
+file, and deliberately omits disposition, owner, evidence, rationale, review
+trigger and suppression. Missing or unhealthy module raw reports fail the
+command. Toolchain, compiler or SpotBugs upgrades are
 separate rebaseline events: inspect every identity/rank delta and never refresh
 the file wholesale. A new Maven module first receives an explicit scope
 disposition; an analyzed module must then produce both raw and filtered reports.

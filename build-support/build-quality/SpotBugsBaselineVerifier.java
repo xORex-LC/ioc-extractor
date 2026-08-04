@@ -37,19 +37,29 @@ import org.w3c.dom.NodeList;
  * <p>The checked-in accepted-findings document is the only suppression source of truth.
  * {@code validate} materializes the narrow operational {@code FindBugsFilter};
  * {@code verify} compares raw findings exactly before checking filtered and aggregate
- * report integrity. The tool deliberately uses only JDK APIs so it can run during
- * Maven {@code validate} without introducing a build-plugin module.</p>
+ * report integrity; {@code propose} writes a non-accepting delta document under
+ * {@code target/}. The tool deliberately uses only JDK APIs so it can run during Maven
+ * {@code validate} without introducing a build-plugin module.</p>
  */
 public final class SpotBugsBaselineVerifier {
 
     private static final String ROOT_PATH = ".";
     private static final String BASELINE_ROOT = "spotbugs-accepted-findings";
-    private static final String BASELINE_SCHEMA_VERSION = "1";
+    private static final String BASELINE_SCHEMA_VERSION = "2";
+    private static final String PROPOSAL_ROOT = "spotbugs-baseline-proposal";
+    private static final String PROPOSAL_SCHEMA_VERSION = "1";
     private static final Pattern ID = Pattern.compile(
             "[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-[0-9]{2,4}");
     private static final Pattern HASH = Pattern.compile("[0-9a-f]{1,32}");
     private static final Pattern TOKEN = Pattern.compile("[A-Z][A-Z0-9_]*");
     private static final Pattern MODULE_PATH = Pattern.compile("[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*");
+    private static final Pattern REVIEW_TRIGGER_ID = Pattern.compile(
+            "[a-z][a-z0-9]*(?:-[a-z0-9]+)+");
+    private static final Set<String> INVALID_REVIEW_TRIGGER_TEXT = Set.of(
+            "review when code changes",
+            "review when analyzer changes",
+            "review when code or analyzer changes",
+            "review when the boundary contract changes");
     private static final Set<String> FINDING_ATTRIBUTES = Set.of(
             "id",
             "module",
@@ -78,8 +88,8 @@ public final class SpotBugsBaselineVerifier {
         try {
             if (args.length != 5) {
                 throw new BaselineException(
-                        "usage: SpotBugsBaselineVerifier <validate|verify> <reactor-root> "
-                                + "<scope-manifest> <accepted-findings> <generated-filter|report-module>");
+                        "usage: SpotBugsBaselineVerifier <validate|verify|propose> <reactor-root> "
+                                + "<scope-manifest> <accepted-findings> <mode-output>");
             }
 
             Mode mode = Mode.parse(args[0]);
@@ -88,6 +98,9 @@ public final class SpotBugsBaselineVerifier {
             Path baselineFile = Path.of(args[3]).toAbsolutePath().normalize();
             Path finalPath = Path.of(args[4]).toAbsolutePath().normalize();
             requireUnderRoot(root, finalPath, "baseline verifier output/report path");
+            if (mode == Mode.PROPOSE) {
+                prepareProposalOutput(root, finalPath);
+            }
             Scope scope = readScope(root, scopeManifest);
             Baseline baseline = readBaseline(root, baselineFile, scope);
 
@@ -98,12 +111,20 @@ public final class SpotBugsBaselineVerifier {
                         "[spotbugs-baseline] validate completed: %d findings, %d selectors%n",
                         baseline.findings().size(),
                         uniqueSuppressions(baseline.findings()).size());
-            } else {
+            } else if (mode == Mode.VERIFY) {
                 verifyReports(root, scope, baseline, finalPath);
                 standardOutput.printf(
                         Locale.ROOT,
                         "[spotbugs-baseline] verify completed: %d accepted, 0 visible%n",
                         baseline.findings().size());
+            } else {
+                ProposalSummary summary = writeProposal(root, scope, baseline, finalPath);
+                standardOutput.printf(
+                        Locale.ROOT,
+                        "[spotbugs-baseline] proposal completed: %d new, %d stale; output=%s%n",
+                        summary.newFindings(),
+                        summary.staleAcceptances(),
+                        finalPath);
             }
             return 0;
         } catch (BaselineException e) {
@@ -176,15 +197,32 @@ public final class SpotBugsBaselineVerifier {
                 requiredAttribute(documentRoot, "schemaVersion", "baseline root"));
         String engineVersion = requiredAttribute(documentRoot, "engineVersion", "baseline root");
 
+        LinkedHashMap<String, String> reviewTriggers = new LinkedHashMap<>();
+        List<Element> findingElements = new ArrayList<>();
+        for (Element element : directChildElements(documentRoot)) {
+            if ("review-trigger".equals(element.getTagName())) {
+                Map.Entry<String, String> trigger = readReviewTrigger(element);
+                if (reviewTriggers.putIfAbsent(trigger.getKey(), trigger.getValue()) != null) {
+                    throw new BaselineException("duplicate review trigger: " + trigger.getKey());
+                }
+            } else if ("finding".equals(element.getTagName())) {
+                findingElements.add(element);
+            } else {
+                throw new BaselineException(
+                        "unexpected element in accepted-findings baseline: "
+                                + element.getTagName());
+            }
+        }
+        if (reviewTriggers.isEmpty()) {
+            throw new BaselineException("accepted-findings baseline contains no review triggers");
+        }
+
         List<AcceptedFinding> findings = new ArrayList<>();
         LinkedHashSet<String> ids = new LinkedHashSet<>();
         LinkedHashSet<FindingKey> keys = new LinkedHashSet<>();
-        for (Element element : directChildElements(documentRoot)) {
-            if (!"finding".equals(element.getTagName())) {
-                throw new BaselineException(
-                        "unexpected element in accepted-findings baseline: " + element.getTagName());
-            }
-            AcceptedFinding finding = readAcceptedFinding(element, scope);
+        LinkedHashSet<String> usedReviewTriggers = new LinkedHashSet<>();
+        for (Element element : findingElements) {
+            AcceptedFinding finding = readAcceptedFinding(element, scope, reviewTriggers);
             if (!ids.add(finding.id())) {
                 throw new BaselineException("duplicate accepted finding id: " + finding.id());
             }
@@ -193,15 +231,53 @@ public final class SpotBugsBaselineVerifier {
                         "duplicate accepted finding identity: " + finding.key().summary());
             }
             findings.add(finding);
+            usedReviewTriggers.add(finding.reviewTrigger());
         }
         if (findings.isEmpty()) {
             throw new BaselineException("accepted-findings baseline contains no findings");
         }
         validateOccurrenceSequences(findings.stream().map(AcceptedFinding::key).toList(), "baseline");
+        Set<String> unusedReviewTriggers = new TreeSet<>(reviewTriggers.keySet());
+        unusedReviewTriggers.removeAll(usedReviewTriggers);
+        if (!unusedReviewTriggers.isEmpty()) {
+            throw new BaselineException("unused review triggers: " + unusedReviewTriggers);
+        }
         return new Baseline(engineVersion, List.copyOf(findings));
     }
 
-    private static AcceptedFinding readAcceptedFinding(Element element, Scope scope)
+    private static Map.Entry<String, String> readReviewTrigger(Element element)
+            throws BaselineException {
+        requireOnlyAttributes(element, Set.of("id"), "review trigger");
+        if (!directChildElements(element).isEmpty()) {
+            throw new BaselineException("review trigger must contain text only");
+        }
+        String id = requiredAttribute(element, "id", "review trigger");
+        if (!REVIEW_TRIGGER_ID.matcher(id).matches()) {
+            throw new BaselineException("invalid review trigger id: " + id);
+        }
+        String text = element.getTextContent().trim();
+        String normalized = text.toLowerCase(Locale.ROOT);
+        if (!text.startsWith("Review when ") || text.length() < 40) {
+            throw new BaselineException(
+                    "review trigger " + id + " must be a concrete 'Review when ...' condition");
+        }
+        if (INVALID_REVIEW_TRIGGER_TEXT.contains(normalized)
+                || normalized.contains("code or analyzer")
+                || normalized.contains("analyzer or code")
+                || normalized.contains("any code change")
+                || normalized.contains("todo")
+                || normalized.contains("tbd")
+                || normalized.contains("placeholder")
+                || normalized.contains("unreviewed")) {
+            throw new BaselineException("review trigger " + id + " is generic or incomplete");
+        }
+        return Map.entry(id, text);
+    }
+
+    private static AcceptedFinding readAcceptedFinding(
+            Element element,
+            Scope scope,
+            Map<String, String> reviewTriggers)
             throws BaselineException {
         requireOnlyAttributes(element, FINDING_ATTRIBUTES, "finding");
         String id = requiredAttribute(element, "id", "finding");
@@ -228,7 +304,12 @@ public final class SpotBugsBaselineVerifier {
                 requiredAttribute(element, "disposition", "finding " + id), id);
         String owner = requiredAttribute(element, "owner", "finding " + id);
         String evidence = requiredAttribute(element, "evidence", "finding " + id);
-        Review review = Review.parse(requiredAttribute(element, "review", "finding " + id), id);
+        String reviewTrigger = requiredAttribute(element, "review", "finding " + id);
+        if (!reviewTriggers.containsKey(reviewTrigger)) {
+            throw new BaselineException(
+                    "accepted finding " + id
+                            + " references unknown review trigger: " + reviewTrigger);
+        }
 
         Map<String, Element> children = uniqueDirectChildren(
                 element,
@@ -255,22 +336,6 @@ public final class SpotBugsBaselineVerifier {
             throw new BaselineException(
                     "suppression type/class must equal finding identity for " + id);
         }
-        if (disposition == Disposition.FALSE_POSITIVE
-                && review != Review.CODE_OR_ANALYZER_CHANGE) {
-            throw new BaselineException(
-                    "false-positive " + id + " must use code-or-analyzer-change review");
-        }
-        if (disposition == Disposition.POLICY_NOISE
-                && review != Review.BOUNDARY_CONTRACT_CHANGE) {
-            throw new BaselineException(
-                    "policy-noise " + id + " must use boundary-contract-change review");
-        }
-        if (disposition == Disposition.ACCEPTED_LEGACY
-                && review != Review.EXPLICIT_DEBT_REVIEW) {
-            throw new BaselineException(
-                    "accepted-legacy " + id + " must use explicit-debt-review");
-        }
-
         FindingKey key = new FindingKey(
                 module,
                 type,
@@ -292,7 +357,7 @@ public final class SpotBugsBaselineVerifier {
                 disposition,
                 owner,
                 evidence,
-                review,
+                reviewTrigger,
                 suppression,
                 rationale);
     }
@@ -359,6 +424,156 @@ public final class SpotBugsBaselineVerifier {
         }
         requireOnlyAttributes(element, Set.of("name"), "suppression " + tag + " of " + id);
         return requiredAttribute(element, "name", "suppression " + tag + " of " + id);
+    }
+
+    private static void prepareProposalOutput(Path root, Path target)
+            throws IOException, BaselineException {
+        Path proposalRoot = root.resolve("target").toAbsolutePath().normalize();
+        requireUnderRoot(proposalRoot, target, "SpotBugs proposal output");
+        if (target.equals(proposalRoot)) {
+            throw new BaselineException("SpotBugs proposal output must be a file under target/");
+        }
+        Files.deleteIfExists(target);
+    }
+
+    private static ProposalSummary writeProposal(
+            Path root,
+            Scope scope,
+            Baseline baseline,
+            Path target)
+            throws Exception {
+        List<ObservedFinding> observed = readModuleRawFindings(root, scope, baseline.engineVersion());
+        Map<FindingKey, ObservedFinding> observedByKey = new LinkedHashMap<>();
+        for (ObservedFinding finding : observed) {
+            ObservedFinding previous = observedByKey.putIfAbsent(finding.key(), finding);
+            if (previous != null) {
+                throw new BaselineException(
+                        "duplicate raw finding identity: " + finding.key().summary());
+            }
+        }
+        Map<FindingKey, AcceptedFinding> acceptedByKey = new LinkedHashMap<>();
+        for (AcceptedFinding finding : baseline.findings()) {
+            acceptedByKey.put(finding.key(), finding);
+        }
+
+        Set<FindingKey> newFindings = new TreeSet<>(FindingKey.ORDER);
+        newFindings.addAll(observedByKey.keySet());
+        newFindings.removeAll(acceptedByKey.keySet());
+        Set<FindingKey> staleAcceptances = new TreeSet<>(FindingKey.ORDER);
+        staleAcceptances.addAll(acceptedByKey.keySet());
+        staleAcceptances.removeAll(observedByKey.keySet());
+
+        Files.createDirectories(target.getParent());
+        Path temporary = Files.createTempFile(target.getParent(), "spotbugs-proposal-", ".xml");
+        try {
+            XMLOutputFactory factory = XMLOutputFactory.newFactory();
+            try (OutputStream output = Files.newOutputStream(temporary)) {
+                XMLStreamWriter writer = factory.createXMLStreamWriter(
+                        output, StandardCharsets.UTF_8.name());
+                writer.writeStartDocument(StandardCharsets.UTF_8.name(), "1.0");
+                writer.writeCharacters("\n");
+                writer.writeStartElement(PROPOSAL_ROOT);
+                writer.writeAttribute("schemaVersion", PROPOSAL_SCHEMA_VERSION);
+                writer.writeAttribute("engineVersion", baseline.engineVersion());
+                writer.writeAttribute("accepted", Integer.toString(baseline.findings().size()));
+                writer.writeAttribute("observed", Integer.toString(observed.size()));
+                writer.writeAttribute("new", Integer.toString(newFindings.size()));
+                writer.writeAttribute("stale", Integer.toString(staleAcceptances.size()));
+                writer.writeCharacters("\n");
+                for (FindingKey key : newFindings) {
+                    writeProposalCandidate(writer, observedByKey.get(key));
+                }
+                for (FindingKey key : staleAcceptances) {
+                    writeStaleAcceptance(writer, acceptedByKey.get(key));
+                }
+                writer.writeEndElement();
+                writer.writeCharacters("\n");
+                writer.writeEndDocument();
+                writer.close();
+            }
+            moveAtomically(temporary, target);
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
+        return new ProposalSummary(newFindings.size(), staleAcceptances.size());
+    }
+
+    private static List<ObservedFinding> readModuleRawFindings(
+            Path root,
+            Scope scope,
+            String engineVersion)
+            throws Exception {
+        List<ObservedFinding> findings = new ArrayList<>();
+        for (String module : scope.analyzedModules().stream().sorted().toList()) {
+            SpotBugsReport report = readReport(
+                    root.resolve(module).resolve("target/spotbugs-raw/spotbugs-raw.xml"),
+                    module,
+                    engineVersion,
+                    true);
+            requireCleanAnalyzer(report, "raw module " + module);
+            findings.addAll(report.findings());
+        }
+        return List.copyOf(findings);
+    }
+
+    private static void writeProposalCandidate(
+            XMLStreamWriter writer,
+            ObservedFinding finding)
+            throws Exception {
+        FindingKey key = finding.key();
+        writer.writeCharacters("    ");
+        writer.writeStartElement("candidate");
+        writeAttribute(writer, "module", key.module());
+        writeAttribute(writer, "type", key.type());
+        writeAttribute(writer, "hash", key.hash());
+        writeAttribute(writer, "occurrence", key.occurrence());
+        writeAttribute(writer, "priority", key.priority());
+        writeAttribute(writer, "rank", key.rank());
+        writeAttribute(writer, "category", key.category());
+        writer.writeCharacters("\n        ");
+        writer.writeEmptyElement("class");
+        writeAttribute(writer, "name", key.className());
+        writer.writeCharacters("\n        ");
+        writer.writeEmptyElement(key.memberKind() == MemberKind.METHOD ? "method" : "field");
+        writeAttribute(writer, "name", key.memberName());
+        writeAttribute(writer, "signature", key.signature());
+        writer.writeCharacters("\n        ");
+        writer.writeEmptyElement("anchor");
+        if (!key.sourcePath().isBlank()) {
+            writeAttribute(writer, "sourcePath", key.sourcePath());
+        }
+        if (finding.sourceLine() != null) {
+            writeAttribute(writer, "startLine", finding.sourceLine());
+        }
+        if (key.bytecode() != null) {
+            writeAttribute(writer, "bytecode", key.bytecode());
+        }
+        writer.writeCharacters("\n    ");
+        writer.writeEndElement();
+        writer.writeCharacters("\n");
+    }
+
+    private static void writeStaleAcceptance(
+            XMLStreamWriter writer,
+            AcceptedFinding finding)
+            throws Exception {
+        FindingKey key = finding.key();
+        writer.writeCharacters("    ");
+        writer.writeEmptyElement("stale-acceptance");
+        writeAttribute(writer, "id", finding.id());
+        writeAttribute(writer, "module", key.module());
+        writeAttribute(writer, "type", key.type());
+        writeAttribute(writer, "hash", key.hash());
+        writeAttribute(writer, "occurrence", key.occurrence());
+        writer.writeCharacters("\n");
+    }
+
+    private static void writeAttribute(
+            XMLStreamWriter writer,
+            String name,
+            Object value)
+            throws Exception {
+        writer.writeAttribute(name, Objects.toString(value));
     }
 
     private static void writeGeneratedFilter(Path target, Baseline baseline)
@@ -951,7 +1166,8 @@ public final class SpotBugsBaselineVerifier {
 
     private enum Mode {
         VALIDATE("validate"),
-        VERIFY("verify");
+        VERIFY("verify"),
+        PROPOSE("propose");
 
         private final String externalName;
 
@@ -990,27 +1206,6 @@ public final class SpotBugsBaselineVerifier {
         }
     }
 
-    private enum Review {
-        CODE_OR_ANALYZER_CHANGE("code-or-analyzer-change"),
-        BOUNDARY_CONTRACT_CHANGE("boundary-contract-change"),
-        EXPLICIT_DEBT_REVIEW("explicit-debt-review");
-
-        private final String externalName;
-
-        Review(String externalName) {
-            this.externalName = externalName;
-        }
-
-        static Review parse(String value, String id) throws BaselineException {
-            for (Review review : values()) {
-                if (review.externalName.equals(value)) {
-                    return review;
-                }
-            }
-            throw new BaselineException("invalid review condition for " + id + ": " + value);
-        }
-    }
-
     private enum MemberKind {
         METHOD,
         FIELD
@@ -1022,7 +1217,9 @@ public final class SpotBugsBaselineVerifier {
             String aggregateModule) {
     }
 
-    private record Baseline(String engineVersion, List<AcceptedFinding> findings) {
+    private record Baseline(
+            String engineVersion,
+            List<AcceptedFinding> findings) {
     }
 
     private record AcceptedFinding(
@@ -1032,7 +1229,7 @@ public final class SpotBugsBaselineVerifier {
             Disposition disposition,
             String owner,
             String evidence,
-            Review review,
+            String reviewTrigger,
             Suppression suppression,
             String rationale) {
     }
@@ -1107,6 +1304,9 @@ public final class SpotBugsBaselineVerifier {
             int errors,
             int missingClasses,
             List<ObservedFinding> findings) {
+    }
+
+    private record ProposalSummary(int newFindings, int staleAcceptances) {
     }
 
     private record AggregateKey(

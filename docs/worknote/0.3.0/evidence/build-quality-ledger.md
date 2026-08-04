@@ -428,7 +428,16 @@ presentation filter.
 нулевых analyzer errors/missing classes, пустых filtered reports и multiset
 равенства raw aggregate объединению 19 module reports. New, stale, moved и
 metadata-drifted findings блокируют build. Root harness проходит 4 scope happy / 18
-negative и 3 baseline happy / 17 negative scenarios; отдельная target-local
+negative и 4 baseline happy / 24 negative scenarios. Baseline schema `2`
+заменяет две общие review-категории каталогом конкретных triggers: каждая запись
+ссылается на условие изменения внешнего инварианта или boundary contract;
+generic, unknown, duplicate и unused triggers блокируют root `validate`.
+Proposal-only команда читает уже созданные raw module reports и пишет под
+`target/` только new candidate identities и stale acceptance IDs, намеренно не
+генерируя disposition/owner/evidence/rationale/review/suppression и не изменяя
+tracked baseline. Fixture закрепляет эти свойства и отказ для output вне
+`target/`; неудачная попытка также удаляет прежний generated proposal, чтобы он
+не выглядел актуальным. Отдельная target-local
 mutation, удалившая acceptance `SB04-089`, завершилась exit `1` и показала raw
 finding как новый.
 
