@@ -2,7 +2,7 @@
 title: "BUILD-SPOTBUGS-05 blocking ratchet worknote"
 version: "0.3.0"
 work_item: "BUILD-SPOTBUGS-05"
-status: "Implementation verification"
+status: "Closed"
 document_type: "Execution worknote"
 source_of_truth: false
 language: "en"

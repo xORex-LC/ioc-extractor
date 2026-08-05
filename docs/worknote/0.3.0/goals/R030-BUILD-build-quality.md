@@ -107,11 +107,13 @@ PMD в 0.3.0 используется именно как CPD. Полный PMD 
 
 `BUILD-CPD-02` не запускает goals `pmd`, `check` или `aggregate-pmd` и не
 принимает правила unused code, complexity, object creation/performance или
-error-prone categories. По умолчанию отдельное обсуждение и evidence-based
-evaluation полного PMD ruleset возвращается в очередь после
-`BUILD-SPOTBUGS-04`, когда SpotBugs findings уже семантически разобраны и можно
-оценить дополнительный, а не дублирующий signal. Раньше этот scope открывается
-только по конкретному risk/gap evidence и явному изменению status matrix.
+error-prone categories. Предварительное условие для отдельного обсуждения и
+evidence-based evaluation полного PMD ruleset выполнено закрытием
+`BUILD-SPOTBUGS-04`: SpotBugs findings семантически разобраны, поэтому теперь
+можно оценивать дополнительный, а не дублирующий signal. Сам scope остаётся
+отложенным и открывается только отдельным решением status matrix с явными risk,
+desired signal и границами work item; завершение SpotBugs не означает
+автоматического adoption PMD.
 
 CPD MUST:
 
@@ -162,8 +164,9 @@ Spring, reflection, ServiceLoader, resources и plugin loading проверяю�
 - Error Prone и NullAway;
 - SonarQube и Qodana;
 - GitHub CodeQL и более широкий SAST/SecOps-контур;
-- полный PMD ruleset помимо принятого CPD evaluation; revisit по умолчанию
-  после `BUILD-SPOTBUGS-04`, либо раньше только по concrete risk evidence.
+- полный PMD ruleset помимо принятого CPD evaluation; prerequisite
+  `BUILD-SPOTBUGS-04` выполнен, но evaluation остаётся отдельным deferred scope
+  до явного решения status matrix.
 
 Dependency convergence, compiler warning policy и generated-document
 consistency остаются неразрешёнными candidates. Они входят в 0.3.0 только после

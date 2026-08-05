@@ -497,8 +497,9 @@ filtered XML/HTML и оба aggregate views, 74 accepted / 0 visible.
 в root `validate` сверяет registry с root reactor и POM metadata, а analyzed
 set — одновременно с 19 ordering dependencies и 19 configured
 `src/main/java` roots. Положительный
-список анализирует 499 уникальных production Java source paths одним
-invocation, поэтому межмодульные совпадения видны, а `ioc-application-tck`,
+список анализирует все текущие production Java source paths одним invocation
+(508 в последнем полном report; 499 в adoption snapshot), поэтому
+межмодульные совпадения видны, а `ioc-application-tck`,
 tests, Maven-generated roots, build outputs и build-support POMs не попадают в
 scope. Checked-in vendor/generated trees в repository отсутствуют; явные
 `**/vendor/**` и `**/generated/**` selectors являются дополнительным guard.
@@ -508,8 +509,8 @@ Native machine-readable XML и Doxia HTML формируются в
 `cpd-check`/`aggregate-cpd-check` не подключены. Ошибка analyzer/report renderer
 останавливает Maven. `initialize` заранее удаляет предыдущий `target/cpd`, а
 после analysis verifier требует non-empty XML/HTML, проверяет CPD XML
-namespace/root и HTML document marker, затем сверяет 499 unique XML paths с
-текущими Java files всех analyzed roots. Поэтому stale, empty, malformed,
+namespace/root и HTML document marker, затем сверяет полный набор unique XML
+paths с текущими Java files всех analyzed roots. Поэтому stale, empty, malformed,
 incomplete или scope-drifted report не может завершить `verify`.
 
 | Finding | Occurrences | Shared knowledge/behavior | Semantic differences | Disposition | Rationale | R030-QUAL finding |
@@ -557,9 +558,10 @@ standalone execution занимал `1.13–2.65 s`.
 
 Общая автоматическая matrix, описанная в SpotBugs rollout, отдельно покрывает
 CPD production-source/config drift, accidental `includeTests=true` и malformed
-XML. Финальный clean run подтвердил 499 unique production source paths,
-11 duplications, отсутствие TCK/generated/vendor references и наличие обоих
-report formats.
+XML. Adoption clean run подтвердил 499 unique production source paths; последний
+полный report после ING-10 и SpotBugs follow-ups содержит 508 paths при тех же
+11 duplications. Оба snapshots не содержат TCK/generated/vendor references и
+имеют оба report formats.
 
 ## Maven dependency-analysis findings
 

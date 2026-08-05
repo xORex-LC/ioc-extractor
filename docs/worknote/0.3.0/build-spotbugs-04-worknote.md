@@ -3,7 +3,7 @@ title: "BUILD-SPOTBUGS-04 — SpotBugs finding triage worknote"
 version: "0.3.0"
 goal_id: "R030-BUILD"
 work_item: "BUILD-SPOTBUGS-04"
-status: "Active"
+status: "Closed"
 document_type: "Temporary execution worknote"
 source_of_truth: false
 language: "ru"
@@ -449,7 +449,7 @@ baseline; none is suppressed.
 |---|---|---|---|---|---|---|---|
 | `BL-SQL` | 10 findings in `C1-SQL-A/B/D/E/F` | Pattern + exact JDBC class/method | `false-positive` | Allow-list validated/quoted identifiers, bound values and code-owned migrations | `adapter-store-jdbc` | External migrations, grammar/allow-list expansion or new query-shape builder | `reviewed` |
 | `BL-NIO` | 9 findings in `C1-NP-A` | `NP_*` + exact class/method | `false-positive` | Proven direct-child provenance | Owning path modules | Path provenance changes | `reviewed`; lifecycle/remote-inbox and SMB upload-plan findings were hardened and removed under `NP-HARDEN-01` / `SMB-PLAN-01` |
-| `BL-C1-CONTRACT` | `SB04-015..016` | Pattern + exact class/member | `false-positive` | Immutable flyweight and synchronous monitor-confined callback contracts | `adapter-sink-csv` | Async callback or new identity/lifecycle semantics | `reviewed` |
+| `BL-C1-CONTRACT` | `SB04-015` | Pattern + exact class/member | `false-positive` | Immutable flyweight with a deliberately public configured-construction API | `adapter-sink-csv` | Construction, caching or identity/lifecycle semantics change | `reviewed` |
 | `BL-REP-FP` | 5 findings in `C2-REP-C/E` | `EI_EXPOSE_REP*` + exact class/member | `false-positive` | Immutable snapshots or deliberately shared lifecycle resources | Owning application/bootstrap modules | Construction stops copying or ownership crosses bootstrap | `reviewed` |
 | `BL-REP-SNAPSHOT-FP` | `SB04-046..063` | `EI_EXPOSE_REP` + exact generated accessor/field | `false-positive` | Null-preserving defensive copies have no external mutable owner; SpotBugs does not prove the wrapper/backing-copy relationship | `ioc-app/configuration` | Copy removal, mutable accessor or validation-semantics change | `reviewed` |
 | `BL-EXCEPTION` | 18 findings in `C2-EX-A..E`, `I4-SB-04`, `FUP-SB-01` | `THROWS_*` + exact class/method | `policy-noise` | Generic checked-exception policy is inapplicable to documented unchecked boundaries; five audited methods required explicit secondary-failure hardening | Owning boundary modules | Async/retry/translation/swallow contract change | `reviewed` |
@@ -483,6 +483,10 @@ category или pattern-only selector требует отдельного scope 
 | `C4 diagnostic clean/repeat` | initial `REP-FIX` tree with all 44 stale alias selectors removed | `make clean`, timed `make verify`, immediate timed repeat | 24/24; 836 tests, 2 external SMB skips; 19 module pairs + aggregate | clean report exposed 18 post-fix accessor false positives and 2 compiler-name-dependent VO selector misses | 0 / 0 | `01:35` / `01:32` Maven wall clock | baseline refinement required |
 | `C4 final clean` | final `REP-FIX` tree and stable reviewed filter | `make clean`, then `/usr/bin/time -p make verify` | 24/24; 836 tests, 2 external SMB skips; 19 module pairs + aggregate | 77 accepted / 0 visible | 0 / 0 | `01:38` Maven wall clock (`real 99.63 s`) | passed |
 | `C4 final immediate repeat` | same clean-derived bytecode and filter | `/usr/bin/time -p make verify` | 24/24; 836 tests, 2 external SMB skips; 19 module pairs + aggregate | 77 accepted / 0 visible; identical to clean run | 0 / 0 | `01:35` Maven wall clock (`real 96.80 s`) | passed |
+| Post-C4 `IS2` follow-up | `f78a1cf` | focused writer regression, then `make verify` | 24/24; 837 tests, 2 external SMB skips; 19 module pairs + aggregate | 76 accepted / 0 visible; `SB04-016` absent | 0 / 0 | recorded in `D-027` | passed |
+| Post-C4 Tika path follow-up | `fc25aae` | focused source-adapter test and SpotBugs report | focused reactor; source adapter report complete | 74 accepted / 68 selectors; `SB04-029..030` absent | 0 / 0 | focused | passed; full reactor intentionally deferred to next combined gate |
+| Post-C4 nullable-path follow-up | `aa6a516` | focused regressions, then repeated `make verify` after reviewed anchor drift | 24/24; 19 module pairs + aggregate | 70 accepted / 0 visible; `SB04-018..019/038..039` absent | 0 / 0 | `01:56` Maven wall clock | passed |
+| Current post-C4 SMB upload-plan gate | `68010d7` | focused SMB reactor, then `make verify` | 24/24; 182 suites / 845 tests / 2 external SMB skips; 19 module pairs + aggregate | 65 accepted / 61 selectors / 0 visible; `SB04-033..037` absent | 0 / 0 | `01:51` Maven wall clock | passed |
 
 Финальный evidence включает минимум один clean reactor run и один немедленный
 повторный run после применения fixes/baseline.
@@ -560,6 +564,7 @@ Module counts:
 | 2026-08-03 | `D-028` | `Tika NP hardening follow-up` | Негативный root regression опроверг прежнюю посылку: текущий provider открывает filesystem root, и старый код получал внутренний NPE на nullable `getFileName()`. NPE не протекал наружу, но SpotBugs signal был валиден. `TikaSourceReader` теперь валидирует leaf через единый `resourceName` guard до открытия/parser invocation; фактический `SourceReader` Javadoc синхронизирован с typed-failure contract | `SB04-029..030=resolved-by-fix`; identities/selectors удалены. Focused test — 3/3, focused Maven verify + SpotBugs — green, 0 source-adapter findings. Current baseline 74 findings / 68 selectors; full `make verify` intentionally not rerun |
 | 2026-08-04 | `D-029` | `Nullable-path hardening follow-up` | Lifecycle adapter отклоняет empty directory roots, captures nullable leaf/parent once и выдаёт contextual failure; remote inbox containment сравнивается от trusted root, а hostile remote leaf regressions выполняются до download. Первый full gate подтвердил исчезновение четырёх NIO findings и отдельно остановился на bytecode drift `SB04-099` `345 -> 346`; hash/type/member/source metadata совпали, поэтому обновлён только проверенный anchor. Повторный full reactor прошёл 24/24 за 01:56, integrity gate подтвердил 70 accepted / 0 visible | `SB04-018..019/038..039=resolved-by-hardening`; baseline 70 findings / 65 selectors; analyzer errors/missing classes `0/0` |
 | 2026-08-04 | `D-030` | `SMB upload-plan hardening follow-up` | `peek` больше не используется как validator. Adapter один раз строит immutable upload plan из local path, validated leaf и exact temporary remote path; data, marker upload и size verification используют те же entries. Focused 9-project tests прошли: SMB 35 tests / 2 external skips; focused production-bytecode report содержит только прежний `THROWS_*` policy signal. Полный reactor прошёл 24/24 за 01:51: 182 suites / 845 tests / 0 failures / 0 errors / 2 external skips, integrity gate подтвердил 65 accepted / 0 visible | `SB04-033..037=resolved-by-hardening`; baseline 65 findings / 61 selectors; analyzer errors/missing classes `0/0` |
+| 2026-08-04 | `D-031` | `Adapter failure-causality follow-up` | Последующий audit сохранил локальную materialization из `D-027`, но заменил ручной `finally` обратно на try-with-resources: secondary `close()` failure теперь подавляется исходным callback/body failure. Tika validation также отделена от parser catch-path, а extension вычисляется из уже проверенного resource name | Деталь cleanup из `D-027` superseded commit `1f781bf`; structural removal `SB04-016` не изменён. Последующие full gates через `68010d7` подтверждают текущий baseline 65 / 61 и 0 visible findings |
 
 ## 12. Рабочий change journal
 
@@ -575,8 +580,12 @@ Module counts:
 | `C3 fixes and baseline` | Consume copy-returning SLF4J builders, reject projection filesystem roots and accept only reviewed residual findings | production code/tests/docs, one exact inherited SpotBugs filter and module/aggregate baseline evidence | `8dfc88b`, `0014fb1`, `2ea59e7` | committed and verified |
 | `THROWS disposition` | Separate generic boundary-policy noise from secondary-failure defects | worknote, ledger and status matrix | `b98c2eb` | committed |
 | `MIX-FIX` | Resolve 11 small accepted-legacy findings and remove their selectors | production code/tests/docs and baseline | `eee527f` | committed and verified |
-| `REP-FIX` | Resolve 44 mutable aliases without weakening Spring collect-all validation | adapter/bootstrap value records, mutation/binding/validation regressions and baseline | this change | implementation and C4 clean/repeat verified |
-| `IS2 follow-up` | Remove avoidable writer-level callback state while preserving synchronous filesystem serialization | `CsvArtifactSliceWriter`, focused failure-isolation regression, exact baseline and evidence | this change | focused and full reactor verified |
+| `REP-FIX` | Resolve 44 mutable aliases without weakening Spring collect-all validation | adapter/bootstrap value records, mutation/binding/validation regressions and baseline | `69cefa7` | implementation and C4 clean/repeat verified |
+| `IS2 follow-up` | Remove avoidable writer-level callback state while preserving synchronous filesystem serialization | `CsvArtifactSliceWriter`, focused failure-isolation regression, exact baseline and evidence | `f78a1cf` | focused and full reactor verified |
+| `Adapter failure-causality follow-up` | Preserve primary callback/parser failures across cleanup and diagnostic enrichment | CSV writer and Tika source adapter | `1f781bf` | supersedes the cleanup detail in `D-027`; covered by subsequent full gates |
+| `Tika nullable-path follow-up` | Reject sources without a resource name before parser invocation | source adapter, typed-failure regression and exact baseline | `fc25aae` | focused verified; two findings removed |
+| `Nullable-path hardening follow-up` | Make lifecycle and remote-inbox parent/leaf invariants local and diagnostic | ingest/application code, hostile-path regressions and exact baseline | `aa6a516` | full reactor verified; four findings removed |
+| `SMB upload-plan hardening follow-up` | Use one validated immutable plan for upload and verification paths | SMB adapter, focused regressions and exact baseline | `68010d7` | focused and full reactor verified; five findings removed |
 
 ## 13. Completion checklist
 
