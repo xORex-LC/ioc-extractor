@@ -183,7 +183,9 @@ docs/       project maps, capability guides, ADRs and operator guides
 - [Processing](docs/dev/processing.md), [storage](docs/dev/storage.md),
   [ingestion](docs/dev/ingestion.md), [artifact export](docs/dev/artifact-export.md),
   [sync](docs/dev/sync.md), [configuration](docs/dev/configuration.md) and
-  [observability](docs/dev/observability.md) — capability maps for developers.
+  [observability](docs/dev/observability.md) — runtime capability maps for developers.
+- [Build quality](docs/dev/build-quality.md) — Maven gates, analyzer scope,
+  reports and the strict SpotBugs exact-finding ratchet.
 - [Operator guides](docs/guides/README.md) — deployment, complete configuration,
   daemon operation and remote storage synchronization.
 - [Security engineering](docs/SECURITY-ENGINEERING.md) and

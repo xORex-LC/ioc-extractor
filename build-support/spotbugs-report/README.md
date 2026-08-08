@@ -114,3 +114,6 @@ Every `spotbugs.version` update must verify the workflow filter entry point,
 module XML/HTML, both aggregates and the complete negative fixture matrix;
 replace the pinned bridge if a future plugin provides the same one-pass
 raw/filtered contract directly.
+
+The cross-module lifecycle and finding-maintenance procedure are documented in
+[`docs/dev/build-quality.md`](../../docs/dev/build-quality.md).

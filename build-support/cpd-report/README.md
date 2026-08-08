@@ -49,3 +49,6 @@ every current Java file in the analyzed roots.
 `minimumTokens=75` is the accepted 0.3.0 baseline after repository calibration.
 Duplicate findings remain report-only. Analyzer errors or missing XML/HTML
 outputs fail the reactor build.
+
+The cross-module lifecycle and semantic review policy are documented in
+[`docs/dev/build-quality.md`](../../docs/dev/build-quality.md).

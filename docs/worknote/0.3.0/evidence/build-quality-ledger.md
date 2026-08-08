@@ -15,6 +15,11 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 Этот ledger хранит изменяемые reports, findings и adoption decisions.
 Нормативный scope и rollout rules находятся только в goal contract.
 
+Долгоживущая механика build-quality, её Maven lifecycle, scope-контракты и
+процедуры сопровождения описаны в [build-quality.md](../../../dev/build-quality.md).
+Этот ledger хранит только release-specific план, измерения и evidence для 0.3.0
+и не является постоянным руководством после закрытия release line.
+
 ## Принятый evaluation scope
 
 | Control | Scope 0.3.0 | Начальный режим | Возможный результат |

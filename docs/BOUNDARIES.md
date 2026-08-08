@@ -89,9 +89,11 @@ root reactor. Поэтому новый модуль требует явного
 формирует reactor-wide SpotBugs XML/HTML aggregate; поздний report-integrity
 режим выводит ожидаемые пути из того же registry, требует non-empty,
 структурно корректные XML/HTML всех 19 production-модулей и aggregate и
-запрещает reports у excluded scopes. Findings на report-only этапе не блокируют
-сборку, но analyzer error, пропущенный применимый модуль или отсутствующий
-aggregate не превращаются в зелёный `verify`.
+запрещает reports у excluded scopes. Exact-baseline gate сравнивает unfiltered
+raw findings поэкземплярно: новый, stale, moved или metadata-drifted signal
+блокирует сборку вместе с analyzer error, пропущенным применимым модулем или
+отсутствующим aggregate. Полная механика и процедура triage описаны в
+[build-quality capability](dev/build-quality.md).
 
 Финальный build-only модуль `build-support/cpd-report` выполняет один
 repository-wide PMD CPD analysis над положительным allowlist всех 19

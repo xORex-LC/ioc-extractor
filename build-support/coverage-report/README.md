@@ -29,3 +29,5 @@ library.
 `core/ioc-application-tck` is intentionally outside the production denominator.
 The module defines no JaCoCo threshold or exclusion. SpotBugs aggregation and
 report-integrity validation belong to the sibling `spotbugs-report` module.
+The complete quality lifecycle is documented in
+[`docs/dev/build-quality.md`](../../docs/dev/build-quality.md).

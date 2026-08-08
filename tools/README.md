@@ -53,6 +53,8 @@ tracked baseline. Команда читает уже сформированны�
 `spotbugs-accepted-findings.xml`. Команду следует запускать сразу после
 SpotBugs-отказа полного `make verify`; отсутствующий или повреждённый raw report
 завершает proposal с ошибкой.
+Полный lifecycle, identity contract и правила принятия finding описаны в
+[build-quality capability](../docs/dev/build-quality.md).
 
 `make dependency-analysis` последовательно собирает main/test bytecode с
 `-DskipTests` и выполняет быстрый dependency-hygiene report для всех
