@@ -26,6 +26,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 |---|---|---|---|
 | SpotBugs | Все применимые production Java modules | Report only | Blocking no-new-findings check в `verify` |
 | PMD CPD | Repository-wide production-source duplication | Report only | Diagnostic control + semantic dispositions |
+| PMD source analysis | Поимённые rules в 19 production source roots | Report-only evaluation | `Adopt / Adopt with a reduced ruleset / Defer / Reject` |
 | Maven `dependency:analyze-only` | Dependency hygiene evaluation | Report only | `Adopt / Adopt with exclusions / Defer` |
 | PIT | Только `core/ioc-domain`; ведётся в R030-TEST | Diagnostic pilot | `Adopt / Extend / Defer / Reject` |
 
@@ -35,6 +36,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 |---|---|---|---|---:|---|---|---|
 | SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only; exact raw-baseline gate | `make verify` | Per applicable module: raw XML + filtered XML/HTML; raw and filtered aggregates under `build-support/spotbugs-report/target/`; CI artifact `spotbugs-reports-<run>` | `120 s` adoption full-reactor wall; `+12 s` / `+11.1%` against the same-session pre-ratchet `108 s` run | Current full-reactor evidence: 65 reviewed findings (47 false positives + 18 policy noise), 61 generated narrow selectors, 0 visible | `R030-BUILD` | `blocking` |
 | PMD CPD aggregate | Maven Plugin `3.28.0`, bundled PMD `7.17.0`; Java production sources, `minimumTokens=75`, identifiers/literals/annotations significant | `make clean && make verify` | `build-support/cpd-report/target/cpd/`; CI artifact `cpd-report-<run>` | `95.52 s` clean reactor wall; CPD module `2.703 s` | 11 raw matches / 10 semantic findings; 7 debt candidates, 3 retained clusters | `R030-BUILD` + `R030-QUAL` | `report-only` |
+| PMD source-analysis evaluation | Maven Plugin `3.28.0`; explicit PMD `7.26.0` is the P1 compatibility candidate; named rules only | Not implemented in P0 | None in P0 | Not measured | P0 inventory complete; raw signal/noise pending P1/P2 | `R030-BUILD` | `planned` (`P0` complete) |
 | Maven dependency analysis | Maven Dependency Plugin `3.11.0`; fast direct goal + opt-in full `dependency-analysis` profile; default bytecode analyzer | `make dependency-analysis` | Local console/report ledger; deliberately absent from regular CI | Fast sequential package + analysis observed at `5.313–7.677 s` Maven / `6.75–8.72 s` process; full profile timing below | 14 direct POM mismatches corrected; residual `56 / 34 / 12` candidate occurrences are test-aggregate, starter, SPI and transitive-runtime noise | `R030-BUILD` | `report-only`, blocking adoption deferred |
 
 Допустимые rollout stages: `planned`, `report-only`, `triaged`, `baselined`,
@@ -49,6 +51,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 | `BUILD-DEPS-03` | Semantic disposition of the captured dependency candidates and `Adopt / Adopt with exclusions / Defer` decision | Evaluation only | `BUILD-CPD-02` closed | `verified` |
 | `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow reviewed baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `verified` (`C0..C5` completed) |
 | `BUILD-SPOTBUGS-05` | Accepted no-new-findings signal wired into canonical Maven `verify` | Blocking ratchet | `BUILD-SPOTBUGS-04` closed | `verified` |
+| `BUILD-PMD-06` | Bounded evaluation of named PMD source-analysis rules and explicit adoption disposition | P0 inventory, then report-only measurement and triage | `BUILD-SPOTBUGS-04` closed and explicit status-matrix activation | `in-progress` (`P0` completed; `P1` pending) |
 
 The queue is sequential for operator/agent clarity, not a technical claim that
 the controls depend on each other. A confirmed immediate correctness, resource
@@ -693,6 +696,40 @@ SpotBugs имеет отдельное решение `Adopt` в 0.3.0. CPD ос
 control с условиями возможного будущего no-new-duplication ratchet; dependency
 analysis по итогам текущего evidence не получает такой ratchet.
 
+## PMD source-analysis evaluation
+
+Status matrix активировала `BUILD-PMD-06` после semantic closure SpotBugs.
+Это отдельное bounded evaluation, а не расширение принятого CPD control и не
+решение о постоянном adoption.
+
+`P0` завершён 2026-08-09 документационным inventory без изменения Maven/CI:
+
+- подтверждён текущий Maven PMD Plugin `3.28.0` с bundled PMD `7.17.0`;
+- PMD `7.26.0` выбран как compatibility candidate для `P1`, потому что это
+  текущий стабильный engine с более свежими fixes на рассматриваемой rule
+  surface; несовместимость не разрешает silent fallback;
+- scope зафиксирован как те же 19 production `src/main/java` roots, что CPD;
+  root, три build-only POMs, `ioc-application-tck`, tests и generated/vendor
+  sources имеют явное exclusion disposition;
+- default ruleset и целые categories отклонены: четыре интересующие категории
+  локального PMD `7.17.0` содержат 222 rules и смешивают разные policy;
+- поимённые candidates разделены на dead/unused, correctness/resource,
+  complexity и allocation/performance tracks; charset/locale portability
+  включена в correctness track;
+- test rules, security/SAST, style/documentation, broad architecture metrics и
+  multithreading rules не входят в initial evaluation;
+- baseline, suppressions, code fixes, `pmd:check`, обычный `make verify` и CI в
+  `P0` не изменялись.
+
+Следующий checkpoint `P1` должен отдельно доказать совместимость Maven PMD
+Plugin `3.28.0` + PMD `7.26.0`, точный 24-project disposition, deterministic
+XML/HTML, fail-closed report integrity и стоимость. Findings остаются
+report-only. После per-track triage `P3` обязан принять одно из решений:
+`Adopt`, `Adopt with a reduced ruleset`, `Defer` или `Reject`.
+
+Полный rules inventory, rationale, build-topology hypothesis и exit criteria:
+[BUILD-PMD-06 worknote](../build-pmd-06-worknote.md).
+
 ## Deferred tool boundaries
 
 Следующие controls не требуют evaluation для закрытия 0.3.0:
@@ -702,15 +739,14 @@ analysis по итогам текущего evidence не получает та�
 - japicmp и Revapi;
 - Error Prone и NullAway;
 - SonarQube и Qodana;
-- полный PMD ruleset помимо CPD.
+- PMD rules вне поимённого `BUILD-PMD-06` candidate inventory.
 
 Их отсутствие не является missing evidence текущего `R030-BUILD`.
 
-Полный PMD ruleset не принят вместе с CPD: unused-code, complexity,
-object-creation/performance и error-prone categories требуют отдельного
-signal/noise evaluation. Revisit по умолчанию следует после
-`BUILD-SPOTBUGS-04`; раньше — только по concrete risk/gap evidence и явному
-изменению status matrix.
+PMD source-analysis evaluation теперь ведётся отдельным `BUILD-PMD-06` и входит
+в текущую очередь `R030-BUILD`. Это не разрешает default/category-wide rules
+или автоматический adoption: только зафиксированный P0 ruleset проходит P1/P2,
+после чего требуется явное P3 disposition.
 
 ## Completion
 
@@ -726,6 +762,9 @@ signal/noise evaluation. Revisit по умолчанию следует посл
 - [x] Существенные CPD findings переданы в R030-QUAL
 - [x] Существенные CPD findings имеют semantic disposition
 - [x] PMD CPD diagnostic configuration и ownership приняты
+- [x] PMD source-analysis P0 scope и поимённый candidate ruleset зафиксированы
+- [ ] PMD source-analysis report/cost/signal evidence получены
+- [ ] PMD source-analysis adoption disposition принято
 - [x] Maven dependency-analysis report воспроизводим
 - [x] Dynamic/framework false positives проверены
 - [x] Maven dependency-analysis adoption decision принят

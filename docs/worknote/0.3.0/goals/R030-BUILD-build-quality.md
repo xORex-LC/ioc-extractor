@@ -56,7 +56,7 @@ required branch-protection status.
 
 ### Code-quality analysis
 
-В 0.3.0 принимаются два разных control с разной enforcement policy:
+В 0.3.0 приняты два постоянных control с разной enforcement policy:
 
 - SpotBugs — постоянный reactor-wide bytecode check;
 - PMD CPD — постоянный repository-wide duplicate-code detector, в этом релизе
@@ -66,6 +66,11 @@ required branch-protection status.
 не смешивается с массовым исправлением legacy findings. Для каждого control
 фиксируются version, scope, runtime cost, output artifacts, configuration owner
 и suppression/exclusion policy.
+
+После semantic closure SpotBugs отдельным решением status matrix открыт
+`BUILD-PMD-06`: bounded evaluation поимённых PMD source-analysis rules. Это
+добавляет обязательное evaluation/disposition к текущему `R030-BUILD`, но не
+делает PMD source analysis принятым постоянным control до завершения измерения.
 
 ### SpotBugs operating contract
 
@@ -102,18 +107,17 @@ blanket-ignore запрещены, если возможно описать ис
 
 ### PMD CPD operating contract
 
-PMD в 0.3.0 используется именно как CPD. Полный PMD ruleset не принимается
-неявно вместе с duplicate analysis.
+В `BUILD-CPD-02` PMD используется именно как CPD. PMD source-analysis rules не
+принимаются неявно вместе с duplicate analysis.
 
 `BUILD-CPD-02` не запускает goals `pmd`, `check` или `aggregate-pmd` и не
 принимает правила unused code, complexity, object creation/performance или
 error-prone categories. Предварительное условие для отдельного обсуждения и
-evidence-based evaluation полного PMD ruleset выполнено закрытием
+evidence-based evaluation PMD source-analysis rules выполнено закрытием
 `BUILD-SPOTBUGS-04`: SpotBugs findings семантически разобраны, поэтому теперь
-можно оценивать дополнительный, а не дублирующий signal. Сам scope остаётся
-отложенным и открывается только отдельным решением status matrix с явными risk,
-desired signal и границами work item; завершение SpotBugs не означает
-автоматического adoption PMD.
+можно оценивать дополнительный, а не дублирующий signal. Status matrix открыл
+этот bounded scope как `BUILD-PMD-06`; завершение SpotBugs и начало evaluation
+не означают автоматического adoption PMD.
 
 CPD MUST:
 
@@ -139,6 +143,32 @@ shared abstraction.
 для одного PR. Blocking CPD ratchet не является обязательным deliverable
 0.3.0.
 
+### PMD source-analysis evaluation contract
+
+`BUILD-PMD-06` оценивает PMD как отдельный production-source analyzer. Работа
+начинается с report-only inventory и не меняет обычный Maven `verify`, пока
+version compatibility, стоимость и signal/noise не подтверждены evidence.
+
+Evaluation MUST:
+
+- использовать только поимённо перечисленные rules; default ruleset и ссылки
+  на целые categories запрещены;
+- разделять unused/dead code, correctness/resource, complexity и performance
+  tracks, чтобы одна шумная policy не скрывала полезный signal другой;
+- анализировать те же 19 production `src/main/java` roots, что CPD, при явном
+  исключении root/build-only POMs, `ioc-application-tck`, tests и
+  generated/vendor sources;
+- формировать machine-readable XML и human-readable HTML;
+- падать при analyzer/ruleset/report failure или неполном scope, но не падать
+  от findings на evaluation stage;
+- измерить стоимость, overlap с действующими controls и raw signal/noise до
+  выбора `Adopt`, `Adopt with a reduced ruleset`, `Defer` или `Reject`;
+- не создавать suppression/baseline и не выполнять массовое исправление
+  findings в measurement change.
+
+Точный P0 inventory, version candidate и checkpoints ведутся в
+[BUILD-PMD-06 worknote](../build-pmd-06-worknote.md).
+
 ### Dependency hygiene evaluation
 
 Maven Dependency Plugin `dependency:analyze-only` MUST пройти bounded
@@ -163,10 +193,7 @@ Spring, reflection, ServiceLoader, resources и plugin loading проверяю�
 - japicmp и Revapi;
 - Error Prone и NullAway;
 - SonarQube и Qodana;
-- GitHub CodeQL и более широкий SAST/SecOps-контур;
-- полный PMD ruleset помимо принятого CPD evaluation; prerequisite
-  `BUILD-SPOTBUGS-04` выполнен, но evaluation остаётся отдельным deferred scope
-  до явного решения status matrix.
+- GitHub CodeQL и более широкий SAST/SecOps-контур.
 
 Dependency convergence, compiler warning policy и generated-document
 consistency остаются неразрешёнными candidates. Они входят в 0.3.0 только после
@@ -301,6 +328,8 @@ Scheduled stability/PIT jobs не блокируют каждый PR в 0.3.0, �
   deterministic baseline и точную enforcement policy;
 - Maven dependency analysis имеет report и adoption disposition без
   необоснованного `failOnWarning`;
+- PMD source-analysis evaluation имеет поимённый ruleset, воспроизводимый
+  report, signal/noise/cost evidence и явное adoption disposition;
 - plugin versions pinned;
 - new violations блокируются для checks с решением `Adopt`;
 - legacy findings имеют baseline/disposition;
