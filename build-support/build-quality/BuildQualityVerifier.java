@@ -24,7 +24,7 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
 /**
- * Verifies fail-closed SpotBugs and CPD scope registries and their generated reports.
+ * Verifies fail-closed SpotBugs, CPD and PMD scope registries and reports.
  *
  * <p>This source-file tool deliberately uses only JDK APIs so Maven can run it
  * with {@code java BuildQualityVerifier.java ...} without adding a build-time
@@ -41,11 +41,59 @@ public final class BuildQualityVerifier {
     private static final String SPOTBUGS_RAW_EXECUTION = "create-reactor-spotbugs-raw-report";
     private static final String SPOTBUGS_FILTERED_EXECUTION = "create-reactor-spotbugs-report";
     private static final String PMD_PLUGIN = "maven-pmd-plugin";
+    private static final String ANTRUN_PLUGIN = "maven-antrun-plugin";
     private static final String CPD_EXECUTION = "create-repository-cpd-report";
+    private static final String PMD_PROFILE = "pmd-evaluation";
+    private static final String PMD_EXECUTION = "create-repository-pmd-report";
+    private static final String PMD_CLEAN_EXECUTION = "clean-stale-pmd-output";
+    private static final String PMD_VERIFY_EXECUTION = "verify-pmd-report-integrity";
+    private static final String PMD_ENGINE_VERSION = "7.26.0";
+    private static final String PMD_RULESET = "${project.basedir}/pmd-ruleset.xml";
     private static final String CPD_NAMESPACE = "https://pmd-code.org/schema/cpd-report";
+    private static final String PMD_REPORT_NAMESPACE =
+            "http://pmd.sourceforge.net/report/2.0.0";
+    private static final String PMD_RULESET_NAMESPACE =
+            "http://pmd.sourceforge.net/ruleset/2.0.0";
     private static final String SOURCE_ROOT_PREFIX = "${maven.multiModuleProjectDirectory}/";
     private static final String SOURCE_ROOT_SUFFIX = "/src/main/java";
     private static final Pattern ARTIFACT_ID = Pattern.compile("[A-Za-z0-9_.-]+");
+    private static final Pattern PMD_SUPPRESSION = Pattern.compile(
+            "\\bNOPMD\\b|@SuppressWarnings\\s*\\((?s:[^)]*?\\bPMD(?:\\.[A-Za-z0-9]+)?\\b[^)]*?)\\)");
+    static final Set<String> PMD_EVALUATION_RULES = Set.of(
+            "category/java/bestpractices.xml/UnusedAssignment",
+            "category/java/bestpractices.xml/UnusedFormalParameter",
+            "category/java/bestpractices.xml/UnusedLocalVariable",
+            "category/java/bestpractices.xml/UnusedPrivateField",
+            "category/java/bestpractices.xml/UnusedPrivateMethod",
+            "category/java/bestpractices.xml/PreserveStackTrace",
+            "category/java/bestpractices.xml/UseTryWithResources",
+            "category/java/bestpractices.xml/RelianceOnDefaultCharset",
+            "category/java/bestpractices.xml/UseStandardCharsets",
+            "category/java/errorprone.xml/EmptyCatchBlock",
+            "category/java/errorprone.xml/CloseResource",
+            "category/java/errorprone.xml/DoNotThrowExceptionInFinally",
+            "category/java/errorprone.xml/ReturnFromFinallyBlock",
+            "category/java/errorprone.xml/AvoidLosingExceptionInformation",
+            "category/java/errorprone.xml/BrokenNullCheck",
+            "category/java/errorprone.xml/MisplacedNullCheck",
+            "category/java/errorprone.xml/UnusedNullCheckInEquals",
+            "category/java/errorprone.xml/UselessOperationOnImmutable",
+            "category/java/errorprone.xml/UselessPureMethodCall",
+            "category/java/errorprone.xml/InvalidLogMessageFormat",
+            "category/java/errorprone.xml/UseLocaleWithCaseConversions",
+            "category/java/design.xml/CognitiveComplexity",
+            "category/java/design.xml/CyclomaticComplexity",
+            "category/java/design.xml/NPathComplexity",
+            "category/java/design.xml/AvoidDeeplyNestedIfStmts",
+            "category/java/design.xml/NcssCount",
+            "category/java/design.xml/ExcessiveParameterList",
+            "category/java/performance.xml/AvoidInstantiatingObjectsInLoops",
+            "category/java/performance.xml/InefficientStringBuffering",
+            "category/java/performance.xml/ConsecutiveAppendsShouldReuse",
+            "category/java/performance.xml/ConsecutiveLiteralAppends",
+            "category/java/performance.xml/StringInstantiation",
+            "category/java/performance.xml/AddEmptyString",
+            "category/java/performance.xml/UselessStringValueOf");
 
     private BuildQualityVerifier() {
     }
@@ -64,7 +112,8 @@ public final class BuildQualityVerifier {
         try {
             if (args.length != 5) {
                 throw new VerificationException(
-                        "usage: BuildQualityVerifier <spotbugs|cpd> <validate|verify-reports> "
+                        "usage: BuildQualityVerifier <spotbugs|cpd|pmd> "
+                                + "<validate|verify-reports> "
                                 + "<reactor-root> <scope-manifest> <report-pom>");
             }
 
@@ -219,13 +268,21 @@ public final class BuildQualityVerifier {
                     readSpotBugsModuleConfiguration(root.resolve("pom.xml")));
             validateSpotBugsAggregateConfiguration(
                     readSpotBugsAggregateConfiguration(reportPom));
-        } else {
+        } else if (control == Control.CPD) {
             CpdConfiguration configuration = readCpdConfiguration(reportPom);
             compareSets(
                     "analyzed scope versus configured CPD source roots",
                     configuredSourceRoots,
                     configuration.sourceRoots());
             validateCpdConfiguration(configuration);
+        } else {
+            PmdConfiguration configuration = readPmdConfiguration(reportPom);
+            compareSets(
+                    "analyzed scope versus configured PMD source roots",
+                    configuredSourceRoots,
+                    configuration.sourceRoots());
+            validatePmdConfiguration(configuration, reportPom, root.resolve("pom.xml"));
+            validateNoPmdSourceSuppressions(collectExpectedSources(analyzedSourceRoots));
         }
 
         Registry registry = new Registry(
@@ -279,6 +336,129 @@ public final class BuildQualityVerifier {
                 configuration.excludes());
     }
 
+    private static void validatePmdConfiguration(
+            PmdConfiguration configuration,
+            Path reportPom,
+            Path rootPom)
+            throws Exception {
+        requireValue("PMD execution phase", "verify", configuration.phase());
+        compareSets(
+                "PMD execution goals",
+                Set.of("aggregate-pmd-no-fork"),
+                configuration.goals());
+        requireValue("PMD skip", "false", configuration.skip());
+        requireValue("PMD language", "java", configuration.language());
+        requireValue("PMD targetJdk", "${java.version}", configuration.targetJdk());
+        requireValue("PMD typeResolution", "true", configuration.typeResolution());
+        requireValue("PMD includeTests", "false", configuration.includeTests());
+        requireValue("PMD analysisCache", "false", configuration.analysisCache());
+        requireValue("PMD skipPmdError", "false", configuration.skipPmdError());
+        requireValue(
+                "PMD renderProcessingErrors",
+                "true",
+                configuration.renderProcessingErrors());
+        requireValue("PMD skipEmptyReport", "false", configuration.skipEmptyReport());
+        requireValue("PMD linkXRef", "false", configuration.linkXRef());
+        requireValue("PMD format", "xml", configuration.format());
+        requireValue(
+                "PMD targetDirectory",
+                "${project.build.directory}/pmd",
+                configuration.targetDirectory());
+        requireValue(
+                "PMD outputDirectory",
+                "${project.build.directory}/pmd",
+                configuration.outputDirectory());
+        compareSets("PMD ruleset configuration", Set.of(PMD_RULESET), configuration.rulesets());
+        compareSets(
+                "PMD generated/vendor excludes",
+                Set.of("**/generated/**", "**/vendor/**"),
+                configuration.excludes());
+        compareSets(
+                "PMD engine plugin dependencies",
+                Set.of(
+                        "net.sourceforge.pmd:pmd-core:${pmd-evaluation.version}",
+                        "net.sourceforge.pmd:pmd-java:${pmd-evaluation.version}"),
+                configuration.pluginDependencies());
+
+        Document rootDocument = parseXml(rootPom);
+        Element properties = directChild(rootDocument.getDocumentElement(), "properties");
+        requireValue(
+                "reactor source encoding",
+                "UTF-8",
+                requiredDirectText(properties, "project.build.sourceEncoding", rootPom));
+        requireValue(
+                "reactor reporting output encoding",
+                "UTF-8",
+                requiredDirectText(properties, "project.reporting.outputEncoding", rootPom));
+
+        Path ruleset = reportPom.getParent().resolve("pmd-ruleset.xml");
+        requireFile(ruleset, "PMD evaluation ruleset");
+        validatePmdRuleset(ruleset);
+    }
+
+    private static void validatePmdRuleset(Path ruleset)
+            throws Exception {
+        Document document = parseXml(ruleset);
+        Element root = document.getDocumentElement();
+        if (!"ruleset".equals(root.getLocalName())
+                || !PMD_RULESET_NAMESPACE.equals(root.getNamespaceURI())) {
+            throw new VerificationException(
+                    "unexpected PMD ruleset root: {" + root.getNamespaceURI()
+                            + "}" + root.getLocalName());
+        }
+
+        if (document.getElementsByTagNameNS(PMD_RULESET_NAMESPACE, "exclude").getLength() != 0
+                || document.getElementsByTagNameNS(
+                        PMD_RULESET_NAMESPACE,
+                        "exclude-pattern").getLength() != 0
+                || document.getElementsByTagNameNS(
+                        PMD_RULESET_NAMESPACE,
+                        "include-pattern").getLength() != 0) {
+            throw new VerificationException(
+                    "PMD evaluation ruleset must not contain source filters or exclusions");
+        }
+
+        LinkedHashSet<String> rules = new LinkedHashSet<>();
+        NodeList ruleElements = document.getElementsByTagNameNS(PMD_RULESET_NAMESPACE, "rule");
+        for (int index = 0; index < ruleElements.getLength(); index++) {
+            Element rule = (Element) ruleElements.item(index);
+            String reference = rule.getAttribute("ref").trim();
+            if (reference.isEmpty()) {
+                throw new VerificationException("PMD evaluation ruleset contains a rule without ref");
+            }
+            int separator = reference.indexOf(".xml/");
+            if (separator < 0 || separator + 5 >= reference.length()) {
+                throw new VerificationException(
+                        "PMD evaluation rule must reference one exact rule: " + reference);
+            }
+            if (!rules.add(reference)) {
+                throw new VerificationException(
+                        "duplicate PMD evaluation rule reference: " + reference);
+            }
+            NodeList ruleChildren = rule.getChildNodes();
+            for (int childIndex = 0; childIndex < ruleChildren.getLength(); childIndex++) {
+                Node child = ruleChildren.item(childIndex);
+                if (child instanceof Element element) {
+                    throw new VerificationException(
+                            "PMD evaluation rule must not contain properties or exclusions: "
+                                    + reference + " has " + element.getLocalName());
+                }
+            }
+        }
+        compareSets("PMD evaluation rules", PMD_EVALUATION_RULES, rules);
+    }
+
+    private static void validateNoPmdSourceSuppressions(Set<Path> sources)
+            throws IOException, VerificationException {
+        for (Path source : sources) {
+            String content = Files.readString(source, StandardCharsets.UTF_8);
+            if (PMD_SUPPRESSION.matcher(content).find()) {
+                throw new VerificationException(
+                        "PMD source suppression marker is forbidden during evaluation: " + source);
+            }
+        }
+    }
+
     private static void requireValue(String subject, String expected, String actual)
             throws VerificationException {
         if (!expected.equals(actual)) {
@@ -291,8 +471,10 @@ public final class BuildQualityVerifier {
             throws Exception {
         if (control == Control.SPOTBUGS) {
             verifySpotBugsReports(registry);
-        } else {
+        } else if (control == Control.CPD) {
             verifyCpdReports(registry);
+        } else {
+            verifyPmdReports(registry);
         }
     }
 
@@ -312,6 +494,76 @@ public final class BuildQualityVerifier {
                 report.sourceFiles());
         verifyHtml(html);
 
+    }
+
+    private static void verifyPmdReports(Registry registry)
+            throws Exception {
+        Path reportDirectory = registry.reportModuleDirectory().resolve("target/pmd");
+        Path xml = reportDirectory.resolve("pmd.xml");
+        Path html = reportDirectory.resolve("pmd.html");
+        requireNonEmptyReport(xml, "PMD XML");
+        requireNonEmptyReport(html, "PMD HTML");
+
+        Set<Path> expectedSources = collectExpectedSources(registry.analyzedSourceRoots());
+        readPmdReport(registry.root(), xml, expectedSources);
+        verifyPmdHtml(html);
+    }
+
+    private static void readPmdReport(
+            Path root,
+            Path xml,
+            Set<Path> expectedSources)
+            throws Exception {
+        Document document = parseXml(xml);
+        Element report = document.getDocumentElement();
+        if (!"pmd".equals(report.getLocalName())
+                || !PMD_REPORT_NAMESPACE.equals(report.getNamespaceURI())) {
+            throw new VerificationException(
+                    "unexpected PMD XML root: {" + report.getNamespaceURI()
+                            + "}" + report.getLocalName());
+        }
+        requireValue("PMD report engine version", PMD_ENGINE_VERSION, report.getAttribute("version"));
+
+        int processingErrors = report
+                .getElementsByTagNameNS(PMD_REPORT_NAMESPACE, "error")
+                .getLength();
+        int configurationErrors = report
+                .getElementsByTagNameNS(PMD_REPORT_NAMESPACE, "configerror")
+                .getLength();
+        if (processingErrors != 0 || configurationErrors != 0) {
+            throw new VerificationException(
+                    "PMD XML contains analyzer errors: processing=" + processingErrors
+                            + ", configuration=" + configurationErrors);
+        }
+
+        NodeList files = report.getElementsByTagNameNS(PMD_REPORT_NAMESPACE, "file");
+        for (int index = 0; index < files.getLength(); index++) {
+            Element file = (Element) files.item(index);
+            String rawPath = file.getAttribute("name");
+            if (rawPath.isBlank()) {
+                throw new VerificationException("PMD XML contains a file without name");
+            }
+            Path source = Path.of(rawPath);
+            if (!source.isAbsolute()) {
+                source = root.resolve(source);
+            }
+            source = source.toAbsolutePath().normalize();
+            requireUnderRoot(root, source, "PMD XML source path");
+            if (!expectedSources.contains(source)) {
+                throw new VerificationException(
+                        "PMD XML references a source outside the analyzed inventory: " + source);
+            }
+        }
+    }
+
+    private static void verifyPmdHtml(Path html)
+            throws IOException, VerificationException {
+        String content = Files.readString(html, StandardCharsets.UTF_8)
+                .toLowerCase(Locale.ROOT);
+        if (!content.contains("<html") || !content.contains("pmd results")) {
+            throw new VerificationException(
+                    "PMD HTML does not contain the expected report document: " + html);
+        }
     }
 
     private static void verifySpotBugsReports(Registry registry)
@@ -411,7 +663,7 @@ public final class BuildQualityVerifier {
             }
         }
         if (sources.isEmpty()) {
-            throw new VerificationException("analyzed CPD scope contains no Java sources");
+            throw new VerificationException("analyzed source scope contains no Java sources");
         }
         return sources;
     }
@@ -916,6 +1168,265 @@ public final class BuildQualityVerifier {
                 Set.copyOf(excludes));
     }
 
+    private static PmdConfiguration readPmdConfiguration(Path reportPom)
+            throws Exception {
+        Document document = parseXml(reportPom);
+        Element project = document.getDocumentElement();
+        Element profiles = directChild(project, "profiles");
+        if (profiles == null) {
+            throw new VerificationException("PMD report POM has no profiles");
+        }
+
+        Element evaluationProfile = null;
+        for (Element profile : directChildren(profiles, "profile")) {
+            if (!PMD_PROFILE.equals(optionalDirectText(profile, "id", ""))) {
+                continue;
+            }
+            if (evaluationProfile != null) {
+                throw new VerificationException("duplicate PMD evaluation profile");
+            }
+            evaluationProfile = profile;
+        }
+        if (evaluationProfile == null) {
+            throw new VerificationException(
+                    "PMD report POM has no " + PMD_PROFILE + " profile");
+        }
+
+        Element build = directChild(evaluationProfile, "build");
+        Element plugins = build == null ? null : directChild(build, "plugins");
+        if (plugins == null) {
+            throw new VerificationException("PMD evaluation profile has no build plugins");
+        }
+
+        validatePmdLifecycleWiring(plugins, reportPom);
+
+        Element pmdPlugin = null;
+        for (Element plugin : directChildren(plugins, "plugin")) {
+            if (PMD_PLUGIN.equals(optionalDirectText(plugin, "artifactId", ""))) {
+                if (pmdPlugin != null) {
+                    throw new VerificationException(
+                            "PMD evaluation profile has duplicate Maven PMD Plugin entries");
+                }
+                pmdPlugin = plugin;
+            }
+        }
+        if (pmdPlugin == null) {
+            throw new VerificationException(
+                    "PMD evaluation profile has no Maven PMD Plugin");
+        }
+
+        LinkedHashSet<String> pluginDependencies = new LinkedHashSet<>();
+        Element dependencies = directChild(pmdPlugin, "dependencies");
+        if (dependencies != null) {
+            for (Element dependency : directChildren(dependencies, "dependency")) {
+                String coordinate = requiredDirectText(dependency, "groupId", reportPom)
+                        + ":" + requiredDirectText(dependency, "artifactId", reportPom)
+                        + ":" + requiredDirectText(dependency, "version", reportPom);
+                if (!pluginDependencies.add(coordinate)) {
+                    throw new VerificationException(
+                            "duplicate PMD engine plugin dependency: " + coordinate);
+                }
+            }
+        }
+
+        Element executions = directChild(pmdPlugin, "executions");
+        Element pmdExecution = null;
+        if (executions != null) {
+            for (Element execution : directChildren(executions, "execution")) {
+                if (!PMD_EXECUTION.equals(optionalDirectText(execution, "id", ""))) {
+                    continue;
+                }
+                if (pmdExecution != null) {
+                    throw new VerificationException("duplicate PMD report execution");
+                }
+                pmdExecution = execution;
+            }
+        }
+        if (pmdExecution == null) {
+            throw new VerificationException(
+                    "PMD report POM has no " + PMD_EXECUTION + " execution");
+        }
+
+        Element configuration = directChild(pmdExecution, "configuration");
+        if (configuration == null) {
+            throw new VerificationException("PMD execution has no configuration");
+        }
+
+        LinkedHashSet<String> goals = readDirectTextSet(
+                directChild(pmdExecution, "goals"),
+                "goal",
+                "PMD execution goal");
+        LinkedHashSet<String> sourceRoots = readDirectTextSet(
+                directChild(configuration, "compileSourceRoots"),
+                "compileSourceRoot",
+                "configured PMD source root");
+        LinkedHashSet<String> excludes = readDirectTextSet(
+                directChild(configuration, "excludes"),
+                "exclude",
+                "configured PMD exclude");
+        LinkedHashSet<String> rulesets = readDirectTextSet(
+                directChild(configuration, "rulesets"),
+                "ruleset",
+                "configured PMD ruleset");
+
+        return new PmdConfiguration(
+                requiredDirectText(pmdExecution, "phase", reportPom),
+                Set.copyOf(goals),
+                requiredDirectText(configuration, "skip", reportPom),
+                requiredDirectText(configuration, "language", reportPom),
+                requiredDirectText(configuration, "targetJdk", reportPom),
+                requiredDirectText(configuration, "typeResolution", reportPom),
+                requiredDirectText(configuration, "includeTests", reportPom),
+                requiredDirectText(configuration, "analysisCache", reportPom),
+                requiredDirectText(configuration, "skipPmdError", reportPom),
+                requiredDirectText(configuration, "renderProcessingErrors", reportPom),
+                requiredDirectText(configuration, "skipEmptyReport", reportPom),
+                requiredDirectText(configuration, "linkXRef", reportPom),
+                requiredDirectText(configuration, "format", reportPom),
+                requiredDirectText(configuration, "targetDirectory", reportPom),
+                requiredDirectText(configuration, "outputDirectory", reportPom),
+                Set.copyOf(rulesets),
+                Set.copyOf(sourceRoots),
+                Set.copyOf(excludes),
+                Set.copyOf(pluginDependencies));
+    }
+
+    private static void validatePmdLifecycleWiring(Element plugins, Path reportPom)
+            throws VerificationException {
+        Element antrunPlugin = null;
+        for (Element plugin : directChildren(plugins, "plugin")) {
+            if (!ANTRUN_PLUGIN.equals(optionalDirectText(plugin, "artifactId", ""))) {
+                continue;
+            }
+            if (antrunPlugin != null) {
+                throw new VerificationException(
+                        "PMD evaluation profile has duplicate Maven AntRun Plugin entries");
+            }
+            antrunPlugin = plugin;
+        }
+        if (antrunPlugin == null) {
+            throw new VerificationException(
+                    "PMD evaluation profile has no Maven AntRun Plugin integrity wiring");
+        }
+
+        Element executions = directChild(antrunPlugin, "executions");
+        LinkedHashMap<String, Element> byId = new LinkedHashMap<>();
+        if (executions != null) {
+            for (Element execution : directChildren(executions, "execution")) {
+                String id = requiredDirectText(execution, "id", reportPom);
+                Element previous = byId.putIfAbsent(id, execution);
+                if (previous != null) {
+                    throw new VerificationException(
+                            "duplicate PMD lifecycle execution: " + id);
+                }
+            }
+        }
+        compareSets(
+                "PMD lifecycle execution IDs",
+                Set.of(PMD_CLEAN_EXECUTION, PMD_VERIFY_EXECUTION),
+                byId.keySet());
+
+        Element clean = byId.get(PMD_CLEAN_EXECUTION);
+        validateExecutionPhaseAndGoal(clean, reportPom, PMD_CLEAN_EXECUTION, "initialize");
+        Element cleanTarget = requiredDirectChild(
+                requiredDirectChild(clean, "configuration", reportPom),
+                "target",
+                reportPom);
+        Element delete = requiredDirectChild(cleanTarget, "delete", reportPom);
+        requireValue(
+                "PMD stale-output directory",
+                "${project.build.directory}/pmd",
+                delete.getAttribute("dir"));
+        requireValue("PMD stale-output delete quiet", "true", delete.getAttribute("quiet"));
+
+        Element verify = byId.get(PMD_VERIFY_EXECUTION);
+        validateExecutionPhaseAndGoal(verify, reportPom, PMD_VERIFY_EXECUTION, "verify");
+        Element verifyTarget = requiredDirectChild(
+                requiredDirectChild(verify, "configuration", reportPom),
+                "target",
+                reportPom);
+        Element command = requiredDirectChild(verifyTarget, "exec", reportPom);
+        requireValue(
+                "PMD report verifier executable",
+                "${java.home}/bin/java",
+                command.getAttribute("executable"));
+        requireValue(
+                "PMD report verifier failonerror",
+                "true",
+                command.getAttribute("failonerror"));
+
+        List<String> arguments = new ArrayList<>();
+        for (Element argument : directChildren(command, "arg")) {
+            String value = argument.getAttribute("value");
+            if (value.isBlank()) {
+                throw new VerificationException("PMD report verifier argument must not be blank");
+            }
+            arguments.add(value);
+        }
+        List<String> expectedArguments = List.of(
+                "${maven.multiModuleProjectDirectory}/build-support/build-quality/BuildQualityVerifier.java",
+                "pmd",
+                "verify-reports",
+                "${maven.multiModuleProjectDirectory}",
+                "${project.basedir}/pmd-scope.tsv",
+                "${project.basedir}/pom.xml");
+        if (!expectedArguments.equals(arguments)) {
+            throw new VerificationException(
+                    "PMD report verifier arguments differ; expected=" + expectedArguments
+                            + ", actual=" + arguments);
+        }
+    }
+
+    private static void validateExecutionPhaseAndGoal(
+            Element execution,
+            Path pom,
+            String executionId,
+            String expectedPhase)
+            throws VerificationException {
+        requireValue(
+                executionId + " phase",
+                expectedPhase,
+                requiredDirectText(execution, "phase", pom));
+        compareSets(
+                executionId + " goals",
+                Set.of("run"),
+                readDirectTextSet(
+                        directChild(execution, "goals"),
+                        "goal",
+                        executionId + " goal"));
+    }
+
+    private static Element requiredDirectChild(Element parent, String name, Path file)
+            throws VerificationException {
+        Element child = directChild(parent, name);
+        if (child == null) {
+            throw new VerificationException(
+                    "missing " + name + " in " + file + " under " + parent.getLocalName());
+        }
+        return child;
+    }
+
+    private static LinkedHashSet<String> readDirectTextSet(
+            Element parent,
+            String childName,
+            String subject)
+            throws VerificationException {
+        LinkedHashSet<String> values = new LinkedHashSet<>();
+        if (parent == null) {
+            return values;
+        }
+        for (Element child : directChildren(parent, childName)) {
+            String value = child.getTextContent().trim();
+            if (value.isEmpty()) {
+                throw new VerificationException(subject + " must not be blank");
+            }
+            if (!values.add(value)) {
+                throw new VerificationException("duplicate " + subject + ": " + value);
+            }
+        }
+        return values;
+    }
+
     private static Document parseXml(Path file)
             throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
@@ -1062,7 +1573,8 @@ public final class BuildQualityVerifier {
 
     private enum Control {
         SPOTBUGS("spotbugs", "SpotBugs"),
-        CPD("cpd", "CPD");
+        CPD("cpd", "CPD"),
+        PMD("pmd", "PMD");
 
         private final String externalName;
         private final String displayName;
@@ -1149,6 +1661,28 @@ public final class BuildQualityVerifier {
             String outputDirectory,
             Set<String> sourceRoots,
             Set<String> excludes) {
+    }
+
+    private record PmdConfiguration(
+            String phase,
+            Set<String> goals,
+            String skip,
+            String language,
+            String targetJdk,
+            String typeResolution,
+            String includeTests,
+            String analysisCache,
+            String skipPmdError,
+            String renderProcessingErrors,
+            String skipEmptyReport,
+            String linkXRef,
+            String format,
+            String targetDirectory,
+            String outputDirectory,
+            Set<String> rulesets,
+            Set<String> sourceRoots,
+            Set<String> excludes,
+            Set<String> pluginDependencies) {
     }
 
     private record SpotBugsAggregateConfiguration(

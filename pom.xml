@@ -21,6 +21,8 @@
     <properties>
         <revision>0.3.0-SNAPSHOT</revision>
         <java.version>21</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <tomcat.version>11.0.24</tomcat.version>
         <jackson-2-bom.version>2.21.5</jackson-2-bom.version>
         <log4j2.version>2.25.5</log4j2.version>
@@ -34,6 +36,7 @@
         <spotbugs-maven-plugin.version>4.10.3.0</spotbugs-maven-plugin.version>
         <spotbugs.version>4.10.3</spotbugs.version>
         <maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
+        <pmd-evaluation.version>7.26.0</pmd-evaluation.version>
         <maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
         <maven-antrun-plugin.version>3.2.0</maven-antrun-plugin.version>
         <commons-csv.version>1.12.0</commons-csv.version>
@@ -68,6 +71,7 @@
         <module>build-support/coverage-report</module>
         <module>build-support/spotbugs-report</module>
         <module>build-support/cpd-report</module>
+        <module>build-support/pmd-report</module>
     </modules>
 
     <!-- Test stack shared by every module. -->
@@ -161,7 +165,7 @@
                     </execution>
                 </executions>
             </plugin>
-            <!-- Keep before AntRun: the final CPD verifier consumes this plugin's report outputs. -->
+            <!-- Keep before AntRun: final CPD/PMD verifiers consume this plugin's report outputs. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-pmd-plugin</artifactId>
@@ -254,6 +258,18 @@
                                     <arg value="${maven.multiModuleProjectDirectory}"/>
                                     <arg value="${maven.multiModuleProjectDirectory}/build-support/cpd-report/cpd-scope.tsv"/>
                                     <arg value="${maven.multiModuleProjectDirectory}/build-support/cpd-report/pom.xml"/>
+                                </java>
+                                <java classname="BuildQualityVerifier"
+                                      fork="true"
+                                      failonerror="true">
+                                    <classpath>
+                                        <pathelement location="${project.build.directory}/build-quality-verifier"/>
+                                    </classpath>
+                                    <arg value="pmd"/>
+                                    <arg value="validate"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/pmd-report/pmd-scope.tsv"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/pmd-report/pom.xml"/>
                                 </java>
                             </target>
                         </configuration>

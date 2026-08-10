@@ -22,5 +22,5 @@ adapters/adapter-cli-picocli	ioc-adapter-cli-picocli	analyzed	Production runtime
 bootstrap/ioc-app	ioc-app	analyzed	Production runtime Java sources
 build-support/coverage-report	ioc-coverage-report	excluded	Build-only JaCoCo aggregate POM
 build-support/spotbugs-report	ioc-spotbugs-report	excluded	Build-only SpotBugs aggregate and integrity POM
-build-support/cpd-report	ioc-cpd-report	aggregate	Build-only repository-wide CPD report and integrity owner
-build-support/pmd-report	ioc-pmd-report	excluded	Build-only PMD source-analysis report POM
+build-support/cpd-report	ioc-cpd-report	excluded	Build-only PMD CPD aggregate and integrity POM
+build-support/pmd-report	ioc-pmd-report	aggregate	Build-only PMD source-analysis report and integrity owner

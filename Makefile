@@ -40,7 +40,7 @@ GITHUB ?= 0
 .PHONY: help \
 	doctor doctor-core doctor-dev doctor-ci doctor-security bootstrap \
 	clean package test test-module test-one verify version extract export \
-	dependency-analysis spotbugs-baseline-proposal \
+	dependency-analysis pmd-analysis spotbugs-baseline-proposal \
 	context \
 	run stop runtime-up runtime-down runtime-status runtime-reset submit \
 	fixture fixture-1k fixture-5k fixture-100k smoke smoke-cli smoke-oneshot smoke-daemon \
@@ -102,6 +102,9 @@ test-one: ## Run one test selector; MODULE=... TEST=Class#method
 
 verify: ## Run the release-quality Maven reactor gate
 	@tools/ci/build.sh
+
+pmd-analysis: ## Run the opt-in report-only PMD production-source evaluation
+	@$(MAVEN) -Ppmd-evaluation -pl build-support/pmd-report -am verify
 
 spotbugs-baseline-proposal: ## Render a non-accepting SpotBugs baseline delta from current raw reports
 	@$(MAVEN_SEQUENTIAL) -N validate

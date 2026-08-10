@@ -662,7 +662,7 @@
     <finding id="SB04-099" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="5b4c8c3522a8c9b5fc449feff65e94e9" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.application.sync.RemoteFetchService" />
         <method name="fetchOne" signature="(Lcom/iocextractor/application/sync/RemoteFetchSource;Lcom/iocextractor/application/sync/RemoteObject;ZLcom/iocextractor/application/sync/RemoteFetchService$FetchCounters;)V" />
-        <anchor sourcePath="com/iocextractor/application/sync/RemoteFetchService.java" startLine="122" bytecode="346" />
+        <anchor sourcePath="com/iocextractor/application/sync/RemoteFetchService.java" startLine="122" bytecode="345" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.application.sync.RemoteFetchService" />

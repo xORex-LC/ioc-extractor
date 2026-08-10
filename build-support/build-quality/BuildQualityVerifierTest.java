@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.TreeSet;
 
 /**
  * Black-box fixture tests for {@link BuildQualityVerifier}.
@@ -189,12 +190,202 @@ public final class BuildQualityVerifierTest {
                                     "report/target/cpd/cpd.xml",
                                     "<unexpected/>");
                         },
-                        "unexpected CPD XML root"));
+                        "unexpected CPD XML root"),
+                new Scenario(
+                        "PMD configured source roots drift",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceReport(
+                                sourceRoot("app"),
+                                sourceRoot("support")),
+                        "analyzed scope versus configured PMD source roots differ"),
+                new Scenario(
+                        "PMD test source analysis is enabled",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceReport(
+                                "<includeTests>false</includeTests>",
+                                "<includeTests>true</includeTests>"),
+                        "PMD includeTests must be false"),
+                new Scenario(
+                        "PMD analysis cache is enabled",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceReport(
+                                "<analysisCache>false</analysisCache>",
+                                "<analysisCache>true</analysisCache>"),
+                        "PMD analysisCache must be false"),
+                new Scenario(
+                        "PMD analyzer errors are ignored",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceReport(
+                                "<skipPmdError>false</skipPmdError>",
+                                "<skipPmdError>true</skipPmdError>"),
+                        "PMD skipPmdError must be false"),
+                new Scenario(
+                        "PMD aggregate goal forks the lifecycle",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceReport(
+                                "<goal>aggregate-pmd-no-fork</goal>",
+                                "<goal>aggregate-pmd</goal>"),
+                        "PMD execution goals differ"),
+                new Scenario(
+                        "PMD engine version drifts",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceReport(
+                                "<version>${pmd-evaluation.version}</version>",
+                                "<version>7.25.0</version>"),
+                        "PMD engine plugin dependencies differ"),
+                new Scenario(
+                        "PMD source encoding drifts",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceRoot(
+                                "<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>",
+                                "<project.build.sourceEncoding>UTF-16</project.build.sourceEncoding>"),
+                        "reactor source encoding must be UTF-8"),
+                new Scenario(
+                        "PMD stale-output cleanup wiring is removed",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceReport(
+                                "<id>clean-stale-pmd-output</id>",
+                                "<id>disabled-clean-stale-pmd-output</id>"),
+                        "PMD lifecycle execution IDs differ"),
+                new Scenario(
+                        "PMD report-integrity wiring is removed",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceReport(
+                                "<id>verify-pmd-report-integrity</id>",
+                                "<id>disabled-verify-pmd-report-integrity</id>"),
+                        "PMD lifecycle execution IDs differ"),
+                new Scenario(
+                        "PMD report verifier fails open",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceReport(
+                                "<exec executable=\"${java.home}/bin/java\" failonerror=\"true\">",
+                                "<exec executable=\"${java.home}/bin/java\" failonerror=\"false\">"),
+                        "PMD report verifier failonerror must be true"),
+                new Scenario(
+                        "PMD ruleset uses a category-wide reference",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceRuleset(
+                                "category/java/errorprone.xml/CloseResource",
+                                "category/java/errorprone.xml"),
+                        "PMD evaluation rule must reference one exact rule"),
+                new Scenario(
+                        "PMD rule introduces a suppression property",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceRuleset(
+                                "<rule ref=\"category/java/errorprone.xml/CloseResource\"/>",
+                                "<rule ref=\"category/java/errorprone.xml/CloseResource\">"
+                                        + "<properties><property name=\"violationSuppressRegex\" "
+                                        + "value=\".*\"/></properties></rule>"),
+                        "PMD evaluation rule must not contain properties or exclusions"),
+                new Scenario(
+                        "PMD ruleset loses an accepted candidate",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceRuleset(
+                                "  <rule ref=\"category/java/bestpractices.xml/UnusedAssignment\"/>\n",
+                                ""),
+                        "PMD evaluation rules differ"),
+                new Scenario(
+                        "PMD ruleset duplicates a candidate",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceRuleset(
+                                "  <rule ref=\"category/java/bestpractices.xml/UnusedAssignment\"/>\n",
+                                "  <rule ref=\"category/java/bestpractices.xml/UnusedAssignment\"/>\n"
+                                        + "  <rule ref=\"category/java/bestpractices.xml/UnusedAssignment\"/>\n"),
+                        "duplicate PMD evaluation rule reference"),
+                new Scenario(
+                        "PMD ruleset introduces an exclusion",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceRuleset(
+                                "</ruleset>",
+                                "  <exclude-pattern>.*/Legacy.java</exclude-pattern>\n</ruleset>"),
+                        "PMD evaluation ruleset must not contain source filters or exclusions"),
+                new Scenario(
+                        "PMD source introduces a suppression marker",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.write(
+                                "app/src/main/java/App.java",
+                                "final class App {} // NOPMD\n"),
+                        "PMD source suppression marker is forbidden during evaluation"),
+                new Scenario(
+                        "PMD XML is missing",
+                        Control.PMD,
+                        Mode.VERIFY_REPORTS,
+                        fixture -> {
+                            fixture.writeValidReports();
+                            Files.delete(fixture.root().resolve("report/target/pmd/pmd.xml"));
+                        },
+                        "PMD XML is missing or empty"),
+                new Scenario(
+                        "PMD HTML is missing",
+                        Control.PMD,
+                        Mode.VERIFY_REPORTS,
+                        fixture -> {
+                            fixture.writeValidReports();
+                            Files.delete(fixture.root().resolve("report/target/pmd/pmd.html"));
+                        },
+                        "PMD HTML is missing or empty"),
+                new Scenario(
+                        "PMD XML contains an analyzer error",
+                        Control.PMD,
+                        Mode.VERIFY_REPORTS,
+                        fixture -> {
+                            fixture.writeValidReports();
+                            fixture.replace(
+                                    fixture.root().resolve("report/target/pmd/pmd.xml"),
+                                    "</pmd>",
+                                    "<error filename=\"App.java\" msg=\"failure\"/>\n</pmd>");
+                        },
+                        "PMD XML contains analyzer errors"),
+                new Scenario(
+                        "PMD XML references an excluded source",
+                        Control.PMD,
+                        Mode.VERIFY_REPORTS,
+                        fixture -> {
+                            fixture.writeValidReports();
+                            Path report = fixture.root().resolve("report/target/pmd/pmd.xml");
+                            fixture.replace(
+                                    report,
+                                    fixture.root().resolve("app/src/main/java/App.java")
+                                            .toAbsolutePath().normalize().toString(),
+                                    fixture.root().resolve("support/src/main/java/Support.java")
+                                            .toAbsolutePath().normalize().toString());
+                        },
+                        "PMD XML references a source outside the analyzed inventory"),
+                new Scenario(
+                        "PMD XML engine version drifts",
+                        Control.PMD,
+                        Mode.VERIFY_REPORTS,
+                        fixture -> {
+                            fixture.writeValidReports();
+                            fixture.replace(
+                                    fixture.root().resolve("report/target/pmd/pmd.xml"),
+                                    "version=\"7.26.0\"",
+                                    "version=\"7.25.0\"");
+                        },
+                        "PMD report engine version must be 7.26.0"));
 
         runHappyPath(Control.SPOTBUGS, Mode.VALIDATE);
         runHappyPath(Control.CPD, Mode.VALIDATE);
+        runHappyPath(Control.PMD, Mode.VALIDATE);
         runHappyPath(Control.SPOTBUGS, Mode.VERIFY_REPORTS);
         runHappyPath(Control.CPD, Mode.VERIFY_REPORTS);
+        runHappyPath(Control.PMD, Mode.VERIFY_REPORTS);
 
         List<String> failures = new ArrayList<>();
         for (Scenario scenario : scenarios) {
@@ -211,7 +402,7 @@ public final class BuildQualityVerifierTest {
                             + String.join("\n - ", failures));
         }
         System.out.printf(
-                "BuildQualityVerifier: 4 happy paths and %d negative scenarios passed%n",
+                "BuildQualityVerifier: 6 happy paths and %d negative scenarios passed%n",
                 scenarios.size());
     }
 
@@ -279,7 +470,8 @@ public final class BuildQualityVerifierTest {
 
     private enum Control {
         SPOTBUGS("spotbugs"),
-        CPD("cpd");
+        CPD("cpd"),
+        PMD("pmd");
 
         private final String externalName;
 
@@ -361,6 +553,10 @@ public final class BuildQualityVerifierTest {
                             + """
                                 <artifactId>root</artifactId>
                                 <packaging>pom</packaging>
+                                <properties>
+                                  <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+                                  <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+                                </properties>
                                 <modules>
                                   <module>app</module>
                                   <module>support</module>
@@ -388,7 +584,14 @@ public final class BuildQualityVerifierTest {
                             """);
             write(
                     "report/pom.xml",
-                    control == Control.SPOTBUGS ? spotBugsReportPom() : cpdReportPom());
+                    switch (control) {
+                        case SPOTBUGS -> spotBugsReportPom();
+                        case CPD -> cpdReportPom();
+                        case PMD -> pmdReportPom();
+                    });
+            if (control == Control.PMD) {
+                write("report/pmd-ruleset.xml", pmdRuleset());
+            }
         }
 
         void addModule(
@@ -413,6 +616,29 @@ public final class BuildQualityVerifierTest {
                 write("app/target/spotbugs/spotbugs.html", "<html>app</html>");
                 write("report/target/spotbugs/spotbugs.xml", "<BugCollection/>");
                 write("report/target/spotbugs/spotbugs.html", "<html>aggregate</html>");
+                return;
+            }
+
+            if (control == Control.PMD) {
+                String source = root.resolve("app/src/main/java/App.java")
+                        .toAbsolutePath()
+                        .normalize()
+                        .toString();
+                write(
+                        "report/target/pmd/pmd.xml",
+                        """
+                                <pmd xmlns="http://pmd.sourceforge.net/report/2.0.0"
+                                     version="7.26.0">
+                                  <file name="%s">
+                                    <violation rule="UnusedLocalVariable" priority="3"
+                                               beginline="1" endline="1"
+                                               begincolumn="1" endcolumn="1">test</violation>
+                                  </file>
+                                </pmd>
+                                """.formatted(source));
+                write(
+                        "report/target/pmd/pmd.html",
+                        "<html><title>PMD Results</title></html>");
                 return;
             }
 
@@ -486,6 +712,11 @@ public final class BuildQualityVerifierTest {
         void replaceReport(String expected, String replacement)
                 throws IOException {
             replace(reportPom, expected, replacement);
+        }
+
+        void replaceRuleset(String expected, String replacement)
+                throws IOException {
+            replace(root.resolve("report/pmd-ruleset.xml"), expected, replacement);
         }
 
         void replace(Path file, String expected, String replacement)
@@ -646,6 +877,123 @@ public final class BuildQualityVerifierTest {
                         </build>
                       </project>
                     """.formatted(sourceRoot("app"));
+        }
+
+        private String pmdReportPom() {
+            return POM_HEADER
+                    + """
+                        <artifactId>report</artifactId>
+                        <packaging>pom</packaging>
+                        <dependencies>
+                    """
+                    + dependency("app")
+                    + """
+                        </dependencies>
+                        <profiles>
+                          <profile>
+                            <id>pmd-evaluation</id>
+                            <build>
+                              <plugins>
+                                <plugin>
+                                  <artifactId>maven-pmd-plugin</artifactId>
+                                  <dependencies>
+                                    <dependency>
+                                      <groupId>net.sourceforge.pmd</groupId>
+                                      <artifactId>pmd-core</artifactId>
+                                      <version>${pmd-evaluation.version}</version>
+                                    </dependency>
+                                    <dependency>
+                                      <groupId>net.sourceforge.pmd</groupId>
+                                      <artifactId>pmd-java</artifactId>
+                                      <version>${pmd-evaluation.version}</version>
+                                    </dependency>
+                                  </dependencies>
+                                  <executions>
+                                    <execution>
+                                      <id>create-repository-pmd-report</id>
+                                      <phase>verify</phase>
+                                      <goals><goal>aggregate-pmd-no-fork</goal></goals>
+                                      <configuration>
+                                        <skip>false</skip>
+                                        <language>java</language>
+                                        <targetJdk>${java.version}</targetJdk>
+                                        <typeResolution>true</typeResolution>
+                                        <includeTests>false</includeTests>
+                                        <analysisCache>false</analysisCache>
+                                        <skipPmdError>false</skipPmdError>
+                                        <renderProcessingErrors>true</renderProcessingErrors>
+                                        <skipEmptyReport>false</skipEmptyReport>
+                                        <linkXRef>false</linkXRef>
+                                        <format>xml</format>
+                                        <targetDirectory>${project.build.directory}/pmd</targetDirectory>
+                                        <outputDirectory>${project.build.directory}/pmd</outputDirectory>
+                                        <rulesets>
+                                          <ruleset>${project.basedir}/pmd-ruleset.xml</ruleset>
+                                        </rulesets>
+                                        <compileSourceRoots>
+                                          %s
+                                        </compileSourceRoots>
+                                        <excludes>
+                                          <exclude>**/generated/**</exclude>
+                                          <exclude>**/vendor/**</exclude>
+                                        </excludes>
+                                      </configuration>
+                                    </execution>
+                                  </executions>
+                                </plugin>
+                                <plugin>
+                                  <artifactId>maven-antrun-plugin</artifactId>
+                                  <executions>
+                                    <execution>
+                                      <id>clean-stale-pmd-output</id>
+                                      <phase>initialize</phase>
+                                      <goals><goal>run</goal></goals>
+                                      <configuration>
+                                        <target>
+                                          <delete dir="${project.build.directory}/pmd" quiet="true"/>
+                                        </target>
+                                      </configuration>
+                                    </execution>
+                                    <execution>
+                                      <id>verify-pmd-report-integrity</id>
+                                      <phase>verify</phase>
+                                      <goals><goal>run</goal></goals>
+                                      <configuration>
+                                        <target>
+                                          <exec executable="${java.home}/bin/java" failonerror="true">
+                                            <arg value="${maven.multiModuleProjectDirectory}/build-support/build-quality/BuildQualityVerifier.java"/>
+                                            <arg value="pmd"/>
+                                            <arg value="verify-reports"/>
+                                            <arg value="${maven.multiModuleProjectDirectory}"/>
+                                            <arg value="${project.basedir}/pmd-scope.tsv"/>
+                                            <arg value="${project.basedir}/pom.xml"/>
+                                          </exec>
+                                        </target>
+                                      </configuration>
+                                    </execution>
+                                  </executions>
+                                </plugin>
+                              </plugins>
+                            </build>
+                          </profile>
+                        </profiles>
+                      </project>
+                    """.formatted(sourceRoot("app"));
+        }
+
+        private String pmdRuleset() {
+            StringBuilder rules = new StringBuilder();
+            for (String rule : new TreeSet<>(BuildQualityVerifier.PMD_EVALUATION_RULES)) {
+                rules.append("  <rule ref=\"")
+                        .append(rule)
+                        .append("\"/>\n");
+            }
+            return """
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <ruleset name="test"
+                             xmlns="http://pmd.sourceforge.net/ruleset/2.0.0">
+                    %s</ruleset>
+                    """.formatted(rules);
         }
     }
 }
