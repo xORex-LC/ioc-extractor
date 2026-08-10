@@ -36,7 +36,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 |---|---|---|---|---:|---|---|---|
 | SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only; exact raw-baseline gate | `make verify` | Per applicable module: raw XML + filtered XML/HTML; raw and filtered aggregates under `build-support/spotbugs-report/target/`; CI artifact `spotbugs-reports-<run>` | `120 s` adoption full-reactor wall; `+12 s` / `+11.1%` against the same-session pre-ratchet `108 s` run | Current full-reactor evidence: 65 reviewed findings (47 false positives + 18 policy noise), 61 generated narrow selectors, 0 visible | `R030-BUILD` | `blocking` |
 | PMD CPD aggregate | Maven Plugin `3.28.0`, bundled PMD `7.17.0`; Java production sources, `minimumTokens=75`, identifiers/literals/annotations significant | `make clean && make verify` | `build-support/cpd-report/target/cpd/`; CI artifact `cpd-report-<run>` | `95.52 s` clean reactor wall; CPD module `2.703 s` | 11 raw matches / 10 semantic findings; 7 debt candidates, 3 retained clusters | `R030-BUILD` + `R030-QUAL` | `report-only` |
-| PMD source-analysis evaluation | Maven Plugin `3.28.0`; explicit PMD `7.26.0` is the P1 compatibility candidate; named rules only | Not implemented in P0 | None in P0 | Not measured | P0 inventory complete; raw signal/noise pending P1/P2 | `R030-BUILD` | `planned` (`P0` complete) |
+| PMD source-analysis evaluation | Maven Plugin `3.28.0`; explicit PMD `7.26.0`; 34 exact named rules over 19 production roots | `make pmd-analysis` | Local XML/HTML under `build-support/pmd-report/target/pmd/`; deliberately absent from regular CI | Clean `98.28 s`, repeat `88.97 s`; PMD owner `3.520–3.632 s`; peak RSS `986,692–1,189,012 KiB` | 92 raw occurrences / 48 files: A 6, B 25, C 37, D 24; semantic signal/noise pending P2 | `R030-BUILD` | `report-only` (`P1` complete) |
 | Maven dependency analysis | Maven Dependency Plugin `3.11.0`; fast direct goal + opt-in full `dependency-analysis` profile; default bytecode analyzer | `make dependency-analysis` | Local console/report ledger; deliberately absent from regular CI | Fast sequential package + analysis observed at `5.313–7.677 s` Maven / `6.75–8.72 s` process; full profile timing below | 14 direct POM mismatches corrected; residual `56 / 34 / 12` candidate occurrences are test-aggregate, starter, SPI and transitive-runtime noise | `R030-BUILD` | `report-only`, blocking adoption deferred |
 
 Допустимые rollout stages: `planned`, `report-only`, `triaged`, `baselined`,
@@ -51,7 +51,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 | `BUILD-DEPS-03` | Semantic disposition of the captured dependency candidates and `Adopt / Adopt with exclusions / Defer` decision | Evaluation only | `BUILD-CPD-02` closed | `verified` |
 | `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow reviewed baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `verified` (`C0..C5` completed) |
 | `BUILD-SPOTBUGS-05` | Accepted no-new-findings signal wired into canonical Maven `verify` | Blocking ratchet | `BUILD-SPOTBUGS-04` closed | `verified` |
-| `BUILD-PMD-06` | Bounded evaluation of named PMD source-analysis rules and explicit adoption disposition | P0 inventory, then report-only measurement and triage | `BUILD-SPOTBUGS-04` closed and explicit status-matrix activation | `in-progress` (`P0` completed; `P1` pending) |
+| `BUILD-PMD-06` | Bounded evaluation of named PMD source-analysis rules and explicit adoption disposition | P0 inventory, then report-only measurement and triage | `BUILD-SPOTBUGS-04` closed and explicit status-matrix activation | `in-progress` (`P0/P1` completed; `P2` pending) |
 
 The queue is sequential for operator/agent clarity, not a technical claim that
 the controls depend on each other. A confirmed immediate correctness, resource
@@ -709,7 +709,7 @@ Status matrix активировала `BUILD-PMD-06` после semantic closur
   текущий стабильный engine с более свежими fixes на рассматриваемой rule
   surface; несовместимость не разрешает silent fallback;
 - scope зафиксирован как те же 19 production `src/main/java` roots, что CPD;
-  root, три build-only POMs, `ioc-application-tck`, tests и generated/vendor
+  root, существовавшие тогда три build-only POMs, `ioc-application-tck`, tests и generated/vendor
   sources имеют явное exclusion disposition;
 - default ruleset и целые categories отклонены: четыре интересующие категории
   локального PMD `7.17.0` содержат 222 rules и смешивают разные policy;
@@ -721,11 +721,74 @@ Status matrix активировала `BUILD-PMD-06` после semantic closur
 - baseline, suppressions, code fixes, `pmd:check`, обычный `make verify` и CI в
   `P0` не изменялись.
 
-Следующий checkpoint `P1` должен отдельно доказать совместимость Maven PMD
-Plugin `3.28.0` + PMD `7.26.0`, точный 24-project disposition, deterministic
-XML/HTML, fail-closed report integrity и стоимость. Findings остаются
-report-only. После per-track triage `P3` обязан принять одно из решений:
-`Adopt`, `Adopt with a reduced ruleset`, `Defer` или `Reject`.
+`P1` завершён 2026-08-10 отдельной report-only реализацией:
+
+- `build-support/pmd-report` стал четвёртым build-only POM и довёл полный
+  reactor до 25 проектов; `pmd-scope.tsv` даёт явный disposition каждому из
+  них и сверяется с root modules, ordering dependencies и 19 положительными
+  source roots;
+- Maven PMD Plugin `3.28.0` действительно загрузил `pmd-core`/`pmd-java`
+  `7.26.0` на JDK 21; exact ruleset содержит 34 rules без category refs,
+  exclusions, suppressions или baseline;
+- `aggregate-pmd-no-fork` выполняется в `verify` только opt-in профиля. Команда
+  `make pmd-analysis` выбирает PMD owner и его upstream через `-pl ... -am`,
+  чтобы PMD aggregator не конкурировал с независимыми JaCoCo/SpotBugs/CPD
+  aggregators полного параллельного reactor;
+- XML/HTML формируются в `build-support/pmd-report/target/pmd/`; scope/ruleset/
+  engine drift, analyzer/config errors, stale/missing/malformed reports и
+  out-of-scope report paths завершают invocation ошибкой, но сами findings не
+  блокируют;
+- shared harness проходит 6 happy paths и 39 negative scenarios, включая
+  mutations source suppressions и lifecycle wiring. Обычный `make verify` и CI
+  PMD source analysis не активируют.
+- clean full-reactor rebuild отдельно выявил stale bytecode anchor одной уже
+  принятой SpotBugs-записи `RemoteFetchService.fetchOne`: offset изменился с
+  `346` на `345` при неизменных type/class/method/signature/source line/hash/
+  occurrence/disposition. Обновлён только этот точный anchor; новая находка или
+  расширение suppression в P1 не принимались.
+
+Clean run и immediate repeat дали соответственно `98.28 s` / `88.97 s`
+process wall, `1,189,012 KiB` / `986,692 KiB` peak RSS и один результат:
+92 occurrences в 48 файлах. После удаления generated `timestamp` XML совпал
+побайтно; HTML совпал без нормализации. Сам PMD owner занял `3.520–3.632 s`.
+Selected reactor выполнил 182 suites / 845 tests, 0 failures, 0 errors и два
+внешних SMB skips.
+
+После добавления guards на lifecycle wiring и source/rule suppressions
+финальный warm `make pmd-analysis` прошёл 22/22 за `01:44`; PMD owner занял
+`4.144 s` и сохранил 92 occurrences / 48 files. Этот контрольный run не
+подменяет clean/repeat cost pair.
+
+Финальный обычный `make verify` прошёл полный 25-project reactor за `01:31` с
+теми же 182 suites / 845 tests, 0 failures, 0 errors и 2 skips. SpotBugs
+подтвердил 65 accepted / 0 visible findings, CPD integrity прошёл, а
+`ioc-pmd-report` завершился за `0.135 s` без PMD evaluation execution. Тем самым
+проверено, что P1 не подключил source analysis к обычному lifecycle/CI пути.
+
+Raw findings по tracks:
+
+| Track | Count | Ненулевые rules |
+|---|---:|---|
+| A — dead/unused | 6 | `UnusedAssignment` 3; `UnusedFormalParameter` 3 |
+| B — correctness/resource/portability | 25 | `CloseResource` 15; `PreserveStackTrace` 5; `UseTryWithResources` 3; `RelianceOnDefaultCharset` 2 |
+| C — complexity | 37 | `CyclomaticComplexity` 25; `ExcessiveParameterList` 9; `CognitiveComplexity` 2; `AvoidDeeplyNestedIfStmts` 1 |
+| D — allocation/string | 24 | `AvoidInstantiatingObjectsInLoops` 23; `ConsecutiveAppendsShouldReuse` 1 |
+
+Остальные 22 candidates не дали findings. Findings распределены по 9 модулям:
+`ioc-app` 27, SMB 19, application 16, CSV 13, JDBC 9, ingest 3, CLI 2,
+platform-etl 2 и platform-concurrency 1. SpotBugs accepted registry пересекается
+с PMD report на уровне 11 из 48 файлов, но это ещё не semantic equivalence.
+Javac и 27 ArchUnit rules зелёные и не владеют PMD unused/resource/complexity
+policy; runtime tests также не заменяют статическую диспозицию.
+
+PMD сообщает, что два нулевых правила — `AvoidLosingExceptionInformation` и
+`UselessOperationOnImmutable` — будут удалены в PMD 8. Это явный migration
+caveat для P2/P3, а не скрытая analyzer error.
+
+Следующий checkpoint `P2` должен дать semantic disposition raw occurrences,
+отделить incremental signal от SpotBugs/compiler/ArchUnit/tests и проверить
+threshold sensitivity. После него `P3` обязан принять одно из решений: `Adopt`,
+`Adopt with a reduced ruleset`, `Defer` или `Reject`.
 
 Полный rules inventory, rationale, build-topology hypothesis и exit criteria:
 [BUILD-PMD-06 worknote](../build-pmd-06-worknote.md).
@@ -763,7 +826,7 @@ PMD source-analysis evaluation теперь ведётся отдельным `B
 - [x] Существенные CPD findings имеют semantic disposition
 - [x] PMD CPD diagnostic configuration и ownership приняты
 - [x] PMD source-analysis P0 scope и поимённый candidate ruleset зафиксированы
-- [ ] PMD source-analysis report/cost/signal evidence получены
+- [x] PMD source-analysis report/cost/raw-signal evidence получены
 - [ ] PMD source-analysis adoption disposition принято
 - [x] Maven dependency-analysis report воспроизводим
 - [x] Dynamic/framework false positives проверены

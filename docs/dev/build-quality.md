@@ -24,7 +24,7 @@ make verify
        +-- root validate
        |    compile JDK-only quality verifiers
        |    run their synthetic-reactor contract matrices
-       |    reconcile reactor modules with SpotBugs/CPD scope manifests
+       |    reconcile reactor modules with SpotBugs/CPD/PMD scope manifests
        |    validate the accepted SpotBugs baseline and generate its filter
        |
        +-- initialize
@@ -45,6 +45,22 @@ CI build completion
   -> upload SpotBugs and CPD evidence even when the build failed late
 ```
 
+PMD source analysis is deliberately outside that canonical path while its
+rules are being evaluated:
+
+```text
+make pmd-analysis
+  -> ./mvnw -Ppmd-evaluation -pl build-support/pmd-report -am verify
+       compile and test the selected upstream reactor
+       run one aggregate-pmd-no-fork execution
+       verify exact scope, ruleset, engine and XML/HTML integrity
+```
+
+Selecting the PMD report owner and its upstream graph keeps this opt-in
+aggregator from racing the independent JaCoCo, SpotBugs and CPD aggregate mojos
+in the parallel full reactor. It does not replace the separate `make verify`
+release gate.
+
 Maven may report that aggregate mojos require exclusive reactor access during
 the parallel build. That message describes Maven serialization of aggregate
 work, not an analyzer error. Correct ordering comes from the build-support POMs:
@@ -61,6 +77,7 @@ runs only after the applicable modules.
 | JaCoCo | Test execution data and production classes | Report generation is part of `verify`; coverage values are currently diagnostic |
 | SpotBugs | Applicable production bytecode | New, stale, moved or metadata-drifted findings block the exact ratchet; analyzer/report failures also block |
 | PMD CPD | Applicable checked-in production Java sources | Findings are diagnostic; analyzer, scope or report failure blocks |
+| PMD source evaluation | Named rules over applicable checked-in production Java sources | Opt-in and report-only; findings are diagnostic, while analyzer/scope/ruleset/report failure blocks the evaluation command |
 | Maven dependency analysis | Main and test bytecode | Opt-in advisory report; not part of ordinary `verify` |
 | Dependency-Check | Resolved dependency graph and local vulnerability data | Separate security workflow, deliberately outside ordinary `verify` |
 
@@ -80,6 +97,7 @@ reviewed exact baseline fail the build.
 | Shared scope/report verifier and contract matrices | [`build-support/build-quality/`](../../build-support/build-quality/) |
 | SpotBugs scope, accepted baseline, aggregation and late gate | [`build-support/spotbugs-report/`](../../build-support/spotbugs-report/) |
 | CPD scope, source universe, aggregation and late gate | [`build-support/cpd-report/`](../../build-support/cpd-report/) |
+| PMD source-evaluation scope, exact ruleset, aggregation and late gate | [`build-support/pmd-report/`](../../build-support/pmd-report/) |
 | JaCoCo aggregate universe | [`build-support/coverage-report/`](../../build-support/coverage-report/) |
 
 The `build-support/build-quality` directory is intentionally not a Maven
@@ -266,6 +284,48 @@ and language options belong to the CPD report POM and require repository
 calibration before change. A future no-new-duplication ratchet needs a separate
 baseline and enforcement decision.
 
+## PMD source-analysis evaluation
+
+PMD source analysis is a bounded opt-in evaluation, separate from the adopted
+CPD report even though both use Maven PMD Plugin. Its
+[`pmd-scope.tsv`](../../build-support/pmd-report/pmd-scope.tsv) gives every
+reactor project one disposition, while the report POM owns a positive list of
+production `src/main/java` roots and ordering dependencies.
+
+The checked-in [`pmd-ruleset.xml`](../../build-support/pmd-report/pmd-ruleset.xml)
+is an exact policy candidate: every rule is named individually. Category-wide
+references, ruleset exclusions, suppressions and an accepted-findings baseline
+are forbidden during evaluation. Plugin and PMD engine dependencies are pinned
+independently so an engine upgrade cannot silently fall back to the plugin's
+bundled version.
+
+The profile runs one `aggregate-pmd-no-fork` execution in `verify`. It deletes
+stale PMD output first and writes:
+
+- `build-support/pmd-report/target/pmd/pmd.xml` — machine-readable findings;
+- `build-support/pmd-report/target/pmd/pmd.html` — human-readable report.
+
+The integrity verifier reconciles the root reactor, scope registry, report
+dependencies, configured source roots, UTF-8 contract, engine dependencies and
+exact ruleset. It then requires both reports, rejects PMD processing or
+configuration errors and rejects any reported file outside the current source
+inventory. PMD XML contains only files with findings; a source with zero
+findings is therefore covered through the positive root/source inventory, not
+through a fabricated report entry.
+
+Root validation also pins the stale-output cleanup and late report-verifier
+command, including `failonerror=true`. It rejects rule-level configuration,
+source include/exclude patterns and production-source `NOPMD` or
+`@SuppressWarnings("PMD…")` markers. Evaluation findings therefore cannot be
+made invisible by deleting the gate or adding an unreviewed local suppression.
+
+Findings do not fail `make pmd-analysis`; tool-health and contract failures do.
+Do not add `pmd:check`, `NOPMD`, annotations, excludes or a baseline to make the
+report green. Triage must first distinguish real incremental signal from
+SpotBugs, compiler, architecture-test and runtime-test overlap. Permanent
+adoption, a reduced ruleset, CI execution or a no-new-findings ratchet each
+requires a separate recorded decision.
+
 ## Coverage
 
 The inherited JaCoCo agent records test execution for functional modules.
@@ -300,10 +360,10 @@ SpotBugs or CPD code-quality acceptance.
 
 1. Add or change the module in the root reactor and preserve dependency
    direction.
-2. Give the project an explicit disposition in both SpotBugs and CPD manifests;
-   the two dispositions may differ only for a documented reason.
-3. For an analyzed scope, add the matching ordering dependency and, for CPD,
-   the exact production source root to the report module.
+2. Give the project an explicit disposition in the SpotBugs, CPD and PMD
+   manifests; dispositions may differ only for a documented reason.
+3. For an analyzed scope, add the matching ordering dependency and, for CPD or
+   PMD, the exact production source root to the owning report module.
 4. For a SpotBugs-excluded child project, configure inherited analysis with an
    explicit `skip=true`.
 5. Run full `make verify`; confirm the expected raw/filtered module reports and
@@ -336,7 +396,7 @@ has different identity, noise and failure semantics.
 
 - Reactor, plugin versions, phases and inheritance: root
   [`pom.xml`](../../pom.xml).
-- Scope and report topology: SpotBugs and CPD manifests plus their build-support
+- Scope and report topology: SpotBugs, CPD and PMD manifests plus their build-support
   POMs and co-located READMEs.
 - Exact SpotBugs identity and acceptance schema:
   [`SpotBugsBaselineVerifier.java`](../../build-support/build-quality/SpotBugsBaselineVerifier.java)
@@ -377,3 +437,5 @@ individual accepted finding unless the mechanism itself changes.
   — exact report-module reference.
 - [`build-support/cpd-report/README.md`](../../build-support/cpd-report/README.md)
   — CPD report-module reference.
+- [`build-support/pmd-report/README.md`](../../build-support/pmd-report/README.md)
+  — opt-in PMD source-evaluation report-module reference.

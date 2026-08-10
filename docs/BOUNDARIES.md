@@ -84,7 +84,8 @@ Parent reactor применяет ко всем модулям:
 Root-only AntRun execution в фазе `validate` компилирует общий JDK-only
 `build-support/build-quality/BuildQualityVerifier`, прогоняет synthetic-reactor
 contract matrix и до начала дочерних проектов сверяет SpotBugs/CPD manifests с
-root reactor. Поэтому новый модуль требует явного disposition сразу, а не после
+root reactor. PMD source-evaluation manifest и exact ruleset проверяются там же.
+Поэтому новый модуль требует явного disposition сразу, а не после
 полного анализа. Финальный build-only модуль `build-support/spotbugs-report`
 формирует reactor-wide SpotBugs XML/HTML aggregate; поздний report-integrity
 режим выводит ожидаемые пути из того же registry, требует non-empty,
@@ -106,6 +107,15 @@ configured source roots. Перед analysis удаляются stale outputs; �
 Maven generated outputs и vendor trees исключены. CPD findings остаются
 report-only; analyzer, scope или report-integrity error блокирует `verify`.
 
+Отдельный `build-support/pmd-report` владеет bounded PMD source-analysis
+evaluation. Его opt-in профиль выполняет один `aggregate-pmd-no-fork` над теми
+же 19 production roots и формирует XML/HTML в собственном `target/pmd/`.
+Verifier сверяет точный 25-project disposition, ordering dependencies,
+положительные source roots, UTF-8, engine dependencies и поимённый ruleset без
+category refs/exclusions; analyzer/configuration error, пропавший или
+out-of-scope report красит evaluation command. Сами findings остаются
+report-only, а обычный `make verify` профиль не активирует.
+
 `ioc-domain` дополнительно запрещает Spring, Tika, Commons CSV/IO, Guava,
 RE2/J, picocli, HikariCP и sqlite-jdbc. `ioc-application` запрещает JDBC,
 Spring transactions, HikariCP и sqlite-jdbc. Точные coordinates принадлежат
@@ -114,7 +124,7 @@ Spring transactions, HikariCP и sqlite-jdbc. Точные coordinates прин�
 
 Opt-in profile `dependency-analysis` запускает Maven Dependency Plugin
 `analyze-only` над всеми 20 functional JAR-модулями, включая reusable TCK;
-root и три build-only reporting POM пропускаются самим plugin как
+root и четыре build-only reporting POM пропускаются самим plugin как
 `packaging=pom`. Анализ остаётся advisory и не входит в обычный `verify`: после
 semantic triage сохранились доказанные starter/SPI/test-aggregate false
 positives, а глобальные ignores ослабили бы signal для новых модулей. В отличие
