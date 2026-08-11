@@ -3,7 +3,7 @@ title: "BUILD-PMD-06 — PMD rule evaluation worknote"
 version: "0.3.0"
 goal_id: "R030-BUILD"
 work_item: "BUILD-PMD-06"
-status: "P0/P1 complete; P2 pending"
+status: "P0/P1/P2 complete; P3 pending"
 document_type: "Temporary execution worknote"
 source_of_truth: false
 language: "en"
@@ -66,7 +66,7 @@ remain advisory.
 |---|---|---|---|
 | `P0` | Rule and tool inventory | Versions, module disposition, named candidate rules, exclusions and P1 acceptance criteria are recorded | `completed` |
 | `P1` | Report-only compatibility and baseline run | Candidate engine works with the pinned plugin; XML/HTML reports cover exactly 19 production roots; cost and raw findings are captured | `completed` |
-| `P2` | Semantic triage | Each rule track has actionable/noise/overlap counts and representative dispositions | `pending` |
+| `P2` | Semantic triage | Each rule track has actionable/noise/overlap counts and representative dispositions | `completed` |
 | `P3` | Adoption decision | `Adopt`, `Adopt with a reduced ruleset`, `Defer` or `Reject` is recorded with lifecycle and ownership consequences | `pending` |
 
 Only one checkpoint is active at a time. P0 intentionally changed no POM,
@@ -170,7 +170,7 @@ deletion.
 | `category/java/design.xml/NcssCount` | unusually large method/type | Size is navigation evidence, not a quality verdict |
 | `category/java/design.xml/ExcessiveParameterList` | unstable or overly broad boundary | Constructors/config records and explicit ports need separate treatment |
 
-P1 must report threshold sweeps separately. It must not choose thresholds merely
+P2 must report threshold sweeps separately. It must not choose thresholds merely
 to reach zero findings or copy defaults from another repository.
 
 ### Track D — allocation and string-construction candidates
@@ -225,9 +225,8 @@ The implemented topology is:
 - a fail-closed integrity check for scope drift, missing sources and missing or
   malformed reports;
 - a single analysis pass; no additional `pmd:check` pass;
-- no regular `make verify` or CI adoption until P2 signal/noise and P3 adoption
-  are
-  reviewed.
+- no regular `make verify` or CI adoption unless P3 explicitly accepts a
+  lifecycle after reviewing the completed P2 evidence.
 
 The execution is `aggregate-pmd-no-fork` in `verify`. The developer command
 selects `build-support/pmd-report` and its upstream projects with `-pl ... -am`.
@@ -292,8 +291,8 @@ selects a 22-project upstream reactor ending in `ioc-pmd-report`.
 
 PMD `7.26.0` warns that `AvoidLosingExceptionInformation` and
 `UselessOperationOnImmutable` are scheduled for removal in PMD 8. Both produced
-zero P1 findings. P2/P3 must decide whether to replace or remove them before any
-future PMD 8 upgrade; the warning is not hidden.
+zero P1 findings. P2's replacement disposition is recorded below and P3 must
+apply it before any future PMD 8 upgrade; the warning is not hidden.
 
 ### Raw signal
 
@@ -343,8 +342,8 @@ not substituted for the clean/repeat cost pair above.
 
 The selected reactor also completed 182 test suites / 845 tests with 0 failures,
 0 errors and the same 2 external SMB skips. SpotBugs has accepted findings in 11
-of the 48 PMD-reported files, but file overlap is not finding equivalence; P2
-must compare individual semantics. Javac and all 27 ArchUnit rules were green:
+of the 48 PMD-reported files, but file overlap is not finding equivalence; P2's
+semantic comparison is recorded below. Javac and all 27 ArchUnit rules were green:
 they provide compilation and dependency-boundary evidence, not unused/resource/
 complexity policy. Existing tests protect runtime behavior but do not make the
 static findings true or false.
@@ -356,7 +355,212 @@ The PMD report owner completed in `0.135 s` without running the evaluation
 execution, confirming that P1 did not add PMD source analysis to the ordinary
 lifecycle or CI path.
 
-## 11. Decision log
+## 11. P2 semantic triage
+
+P2 reviewed every one of the 92 raw occurrences against the production code,
+resource ownership, exception precedence, concurrency contracts and focused
+tests. It changed no production source, analyzer configuration, suppression or
+accepted-findings baseline. No immediate correctness, resource or concurrency
+defect was confirmed, so P2 did not interrupt the evaluation for remediation.
+
+The occurrence taxonomy is deliberately more precise than a binary
+signal/noise label:
+
+- `actionable-fix` — a real bounded improvement, but not an immediate release
+  risk;
+- `debt-hotspot` — maintainability evidence for a future refactoring queue, not
+  proof of incorrect behavior;
+- `overlap` — the occurrence repeats another PMD metric or an already reviewed
+  control at the same semantic boundary;
+- `analyzer-false-positive` — the stated condition is not true under the
+  implementation's ownership or data-flow contract;
+- `policy-noise` — PMD observes the syntax correctly, but the generic policy is
+  inappropriate for this boundary.
+
+### 11.1 Overall disposition
+
+| Disposition | Occurrences | Meaning in this baseline |
+|---|---:|---|
+| `actionable-fix` | 3 | One redundant initialization and two default-charset constructors |
+| `debt-hotspot` | 7 | Seven distinct orchestration/construction seams; no behavior fix is authorized by the metric alone |
+| `overlap` | 5 | Four duplicate PMD hotspot occurrences and one semantic overlap with the reviewed SpotBugs exception boundary |
+| `analyzer-false-positive` | 17 | Resource/data-flow ownership is present but not proved by PMD |
+| `policy-noise` | 60 | Correct syntax observation with no useful repository policy signal |
+| **Total** | **92** | **Complete P1 baseline accounting** |
+
+The raw occurrence signal is therefore 3 bounded fixes plus 7 semantic debt
+clusters. The other 82 occurrences are overlap or noise. This does not imply a
+10/92 defect rate: the seven hotspots are refactoring evidence, not defects,
+and the two charset occurrences are one code change at one boundary.
+
+### 11.2 Track A — dead and unused code
+
+| Rule/site | Count | Disposition | Evidence |
+|---|---:|---|---|
+| `UnusedAssignment`: `SmbChangeNotifyWatcher.runSession/currentPending` | 1 | `analyzer-false-positive` | The volatile null publication is read by concurrent `close()` and is not dead even though the worker thread does not reread it |
+| `UnusedAssignment`: `RemoteFetchDetectionCoordinator.runDetection/detected` | 1 | `actionable-fix` | The initial zero is overwritten before every read; removal is a small behavior-neutral cleanup, not a correctness fix |
+| `UnusedAssignment`: `ArtifactWritePlan.materialize/idOffset++` | 1 | `analyzer-false-positive` | The incremented state supplies the next loop iteration; PMD mistakes the post-increment expression for an unused store |
+| `UnusedFormalParameter`: the three JDBC `RowMapper` methods | 3 | `policy-noise` | `rowNum` is required by Spring's callback signature even though these mappings do not need it |
+
+Track A totals: 1 actionable cleanup, 2 analyzer false positives and 3 policy
+noise occurrences. `UnusedLocalVariable`, `UnusedPrivateField` and
+`UnusedPrivateMethod` produced no findings.
+
+### 11.3 Track B — correctness, failure and portability
+
+| Rule/site cluster | Count | Disposition | Evidence |
+|---|---:|---|---|
+| `CloseResource`: four locals in `CsvSliceMaterialization.beginArtifact` | 4 | `analyzer-false-positive` | Ownership is transferred through writer/digest layers to the retained `CSVPrinter`; partial construction closes the deepest available owner and preserves close failure as suppressed |
+| `UseTryWithResources`: `NioExportOperationGuard.FileLease.close` | 1 | `policy-noise` | The method implements the `AutoCloseable` boundary itself and must release lock, channel and local lock in a controlled order |
+| `PreserveStackTrace`: `JdbcExportRunLedger.tryStart` | 1 | `policy-noise` | A unique-index conflict is decoded into an idempotent winner or a typed state-transition diagnostic; an unexplained database failure is rethrown unchanged |
+| `CloseResource`: `SmbChangeNotifyWatcher.WatchWorker.close` | 1 | `analyzer-false-positive` | The local is a volatile alias of the TWR-owned current session, used only to cancel it from another thread |
+| `CloseResource`: `SmbFileTransport.withClient` | 1 | `analyzer-false-positive` | Clients are intentionally cached per endpoint and closed on transient failure, idle expiry or adapter shutdown |
+| `CloseResource`: connection/share in `SmbjChangeNotifySessionFactory.open` | 2 | `analyzer-false-positive` | The returned session owns directory/share/client; partial initialization closes the client, which owns its connections |
+| `UseTryWithResources`: `SmbjChangeNotifySession.close` | 1 | `policy-noise` | Explicit best-effort directory/share cleanup guarantees final client teardown |
+| `PreserveStackTrace`: `SmbjChangeNotifyPending.await` | 1 | `analyzer-false-positive` | `ExecutionException` is intentionally unwrapped and its actual cause becomes the cause of `RemoteTransportException` |
+| `UseTryWithResources`: `SmbjShareClient.close` | 1 | `policy-noise` | Explicit share cleanup followed by unconditional client teardown is the resource's own close implementation |
+| `CloseResource`: connection/share in `SmbjShareClientFactory.open` | 2 | `analyzer-false-positive` | The returned adapter owns the client/share graph; failed construction closes the client |
+| `RelianceOnDefaultCharset`: `IocExtractorApplication` stdout/stderr writers | 2 | `actionable-fix` | Early CLI help/error text currently follows the host default charset; an explicit console encoding removes host-dependent behavior |
+| `CloseResource`: Spring application context in `IocExtractorApplication.main` | 1 | `policy-noise` | Daemon context is process-lifetime state; the oneshot path delegates orderly shutdown to `SpringApplication.exit` |
+| `CloseResource`: `DaemonExportScheduler.nudge` executor alias | 1 | `analyzer-false-positive` | The field-owned executor is created in `start` and shut down in `stop`; the local prevents a concurrent field reread |
+| `PreserveStackTrace`: the two `IdStart` conversion catches | 2 | `policy-noise` | Binding deliberately exposes one stable validation exception and value-free operator contract rather than parser implementation detail |
+| `CloseResource`: `LazyServiceStorage.initialize` | 1 | `analyzer-false-positive` | Successful datasource ownership moves to the lifecycle bean; failed migration closes it and suppresses a secondary close failure |
+| `CloseResource`: `RemoteChangeWatchLifecycle.closeStartedWatches` | 1 | `analyzer-false-positive` | Watches are map-owned and the startup rollback loop closes every successfully created watch |
+| `CloseResource`: `SyncConfig.transportRegistry` | 1 | `analyzer-false-positive` | Ownership moves into the Spring-managed `TransportRegistry`, whose close method deduplicates and closes adapter lifecycles |
+| `PreserveStackTrace`: `PipelineRunner.executeInRunScope` | 1 | `overlap` | The original propagated failure is deliberately rethrown and observer/summary failures are suppressed; focused tests already pin the same boundary reviewed by SpotBugs |
+
+Track B totals: 2 actionable portability occurrences, 15 analyzer false
+positives, 7 policy-noise occurrences and 1 semantic overlap. The inspection
+also confirmed the existing partial-construction and secondary-failure tests;
+no resource leak or primary-exception replacement was found.
+
+### 11.4 Track C — complexity
+
+| Site cluster | Count | Disposition | Evidence |
+|---|---:|---|---|
+| `FileSourceMessageHandler.handle` (`Cognitive` + `Cyclomatic`) | 2 | 1 `debt-hotspot`, 1 `overlap` | One method owns retry, rejection and terminal diagnostic flow; the second metric adds no second debt item |
+| `CsvArtifactSliceWriter` four methods | 4 | `policy-noise` | Flat state/protocol guards and typed failure mapping inflate path count without obscuring the slice lifecycle |
+| `CsvSliceMaterialization.begin/beginArtifact` | 2 | `policy-noise` | Ordered callback and metadata invariants are expressed as explicit guard predicates |
+| `SliceTreeVerifier.verifyIdentity` | 1 | `policy-noise` | Independent manifest identity guards are intentionally fail-closed |
+| `JdbcExportRunLedger.validateTransitionData` | 1 | `policy-noise` | The branches are the explicit transition data contract |
+| `SmbEndpointSettings` constructor | 1 | `policy-noise` | A cohesive immutable endpoint value contains ten independently validated configuration fields |
+| `SmbExceptionMapper` three metrics | 3 | `policy-noise` | Cause-chain traversal and a flat closed token classification table are easier to audit in their current form |
+| `SmbFileTransport` class/publish/path normalization | 3 | 1 `debt-hotspot`, 2 `policy-noise` | Atomic publish is a meaningful future decomposition seam; class total and security allow-list branches are not separate hotspots |
+| `SmbjChangeNotifyPending.await` | 1 | `policy-noise` | Timeout, interrupt, cancellation and completion are the complete asynchronous outcome set |
+| `AppConfig` class and two bean methods | 3 | `policy-noise` | Total complexity and long injection lists measure the composition root's explicit wiring role |
+| `ExportPlanCatalog.format` | 1 | `policy-noise` | Flat format validation is the public-byte contract |
+| `IocConfigPreflight` class total | 1 | `policy-noise` | The highest individual method is 7; total complexity merely aggregates independent validation rules |
+| `IocEnvironmentPropertyMatcher.match` | 1 | `policy-noise` | Recursive record/list/map grammar is cohesive and bounded |
+| `SyncHealthIndicator.overallStatus` | 1 | `policy-noise` | The boolean branches directly encode DOWN-before-DEGRADED precedence |
+| JSON escaping and schema fingerprinting | 2 | `policy-noise` | Closed character escaping and aligned schema validation are auditable algorithms, not decomposition candidates |
+| `ExportService` constructors | 2 | 1 `debt-hotspot`, 1 `overlap` | Both findings describe one broad orchestration collaborator surface |
+| `IngestionService` constructor and recovery flow | 2 | 2 `debt-hotspot` | Collaborator breadth and recovery control flow are distinct future seams |
+| `IocExtractionService` construction/pipeline plus its factory | 3 | 1 `debt-hotspot`, 2 `overlap` | All three expose one missing construction/wiring bundle rather than three independent problems |
+| `ArtifactPublishService` class total | 1 | `debt-hotspot` | Reconcile, discovery and execution remain cohesive today but form a credible future decomposition seam |
+| `BoundedKeyedSerialExecutor.submit` nesting | 1 | `policy-noise` | Nesting is confined to one synchronized admission state machine; mechanical extraction would hide its lock invariant |
+| `PipelineRunner.executeInRunScope` | 1 | `policy-noise` | Nested scopes preserve exact stage/observer/diagnostic failure precedence and have focused regression coverage |
+
+Track C totals: 7 distinct debt hotspots, 4 duplicate metric occurrences and
+26 policy-noise occurrences. No metric is treated as proof that a class violates
+SRP or that a method is incorrect.
+
+The seven debt hotspots are handed to the `R030-QUAL` review ledger as
+`QUAL-PMD-01..07`, in the table order represented by handler, SMB publish,
+export construction, ingestion construction, ingestion recovery, extraction
+construction and publish saga. Their `debt` disposition does not schedule a
+0.3.0 refactoring.
+
+### 11.5 Complexity threshold sensitivity
+
+The PMD XML already records each measured metric value, so P2 recalculated the
+inclusive threshold results from that authoritative report. No alternate
+ruleset was written and no analyzer run was used to select a cosmetically empty
+result.
+
+| Rule | Thresholds | Findings | Interpretation |
+|---|---|---:|---|
+| `CyclomaticComplexity` | method `10`, class `80` (default) | 25 | 21 methods + 4 class totals; dominated by guard and composition-root noise |
+| `CyclomaticComplexity` | method `12`, class `100` | 14 | Keeps the real handler hotspot but also 13 state/validation occurrences |
+| `CyclomaticComplexity` | method `15`, class `120` | 3 | Drops the handler hotspot while retaining flat metadata/token checks and the composition root |
+| `CyclomaticComplexity` | method `18`, class `140` | 1 | Retains only the flat SMB token classifier; raising the threshold cannot isolate useful signal |
+| `CognitiveComplexity` | `15` (default) | 2 | Handler `20` plus SMB exception mapper `15` |
+| `CognitiveComplexity` | `16` | 1 | Retains only the handler hotspot; this is the evidence-based P3 candidate |
+| `CognitiveComplexity` | `20` / `21` | 1 / 0 | Shows the boundary; zero is not the selection objective |
+| `ExcessiveParameterList` | `10` (default) | 9 | Mixes configuration/value objects, Spring wiring and application construction |
+| `ExcessiveParameterList` | `12` | 4 | Narrows to export/extraction construction surfaces |
+| `ExcessiveParameterList` | `13` | 3 | Two semantic hotspots: full export construction and extraction service/factory |
+| `ExcessiveParameterList` | `14` | 1 | Retains only the 15-parameter extraction constructor |
+
+No useful `CyclomaticComplexity` threshold separates the reviewed signal from
+the noise. `CognitiveComplexity=16` and `ExcessiveParameterList=13` do. The
+default `NPathComplexity=200` and default `NcssCount` produced zero findings;
+lower thresholds were not invented merely to create work.
+
+### 11.6 Track D — allocation and strings
+
+All 24 Track D occurrences are `policy-noise`:
+
+- the 23 `AvoidInstantiatingObjectsInLoops` sites create an object whose
+  identity belongs to one row, artifact, endpoint, remote watch, batch or
+  failure (`FileSourceMessageHandler`, CSV/JDBC row materialization,
+  `DataframeSchemaReconciler`, `JdbcSnapshotSliceReader`, `SmbFileTransport`,
+  `AppConfig`, `DaemonPublishScheduler`, `ExportPlanCatalog`,
+  `IocConfigPreflight`, `RemoteChangeWatchLifecycle`, `SyncHealthIndicator`,
+  `TransportRegistry`, `IngestRunRecoveryService`, `IngestionService`,
+  `WriteArtifactsStage` and `RemoteSourceMonitor`); the two early-CLI callback
+  objects are created only while building a lightweight command model;
+- `ArtifactIdentityDefinition` has one
+  `ConsecutiveAppendsShouldReuse` occurrence. Chaining the same builder would
+  be cosmetic and would not remove an established allocation path.
+
+There is no profile, allocation measurement or plausible reusable mutable
+object behind these findings. P2 therefore does not authorize object pooling,
+collection reuse across emitted rows/batches or performance claims.
+
+### 11.7 Overlap with existing controls and tests
+
+The file-level SpotBugs intersection remains 11 of 48 PMD-reported files. An
+exact method comparison finds 12 PMD occurrences in 9 methods that also carry a
+SpotBugs accepted identity, but almost all concern different semantics: SQL
+construction versus row allocation, unchecked boundary policy versus
+complexity/allocation, or lifecycle ownership versus exception translation.
+Only `PipelineRunner.executeInRunScope/PreserveStackTrace` is a semantic
+duplicate of an already reviewed SpotBugs failure-precedence boundary.
+
+Focused tests provide supporting evidence for the reviewed behavior rather
+than making findings disappear: `PipelineRunnerTest` and
+`LazyServiceStorageTest` pin secondary-failure suppression;
+`NioExportOperationGuardTest`, SMB watcher/transport tests,
+`RemoteChangeWatchLifecycleTest` and scheduler tests pin lifecycle ownership;
+JDBC export-ledger tests pin concurrent-start classification; ingestion and
+keyed-executor tests pin the state machines identified as complexity hotspots.
+There is no performance benchmark supporting Track D. Javac and ArchUnit remain
+complementary controls and produced no equivalent unused/resource/complexity
+finding.
+
+### 11.8 Per-rule P3 candidates
+
+P2 does not edit the 34-rule evaluation ruleset. It hands P3 the following
+explicit candidates:
+
+| P3 candidate | Rules | P2 rationale |
+|---|---|---|
+| Carry as named | `UnusedAssignment`, `UnusedLocalVariable`, `UnusedPrivateField`, `UnusedPrivateMethod` | One real cleanup plus low-volume dead-code guards; exact false positives would still need an adoption contract |
+| Carry as named | `RelianceOnDefaultCharset`, `UseStandardCharsets`, `EmptyCatchBlock`, `DoNotThrowExceptionInFinally`, `ReturnFromFinallyBlock`, `BrokenNullCheck`, `MisplacedNullCheck`, `UnusedNullCheckInEquals`, `UselessPureMethodCall`, `InvalidLogMessageFormat`, `UseLocaleWithCaseConversions` | Bounded correctness/portability checks with two actionable occurrences and no demonstrated category-wide policy expansion |
+| Carry with properties | `CognitiveComplexity` at `reportLevel=16`; `ExcessiveParameterList` at `reportLevel=13` | Repository values isolate the reviewed handler and construction hotspots better than defaults |
+| Carry as named | `NPathComplexity` | Default 200-path guard stayed silent and represents a materially high outlier rather than style |
+| Carry as named | `InefficientStringBuffering`, `StringInstantiation`, `UselessStringValueOf` | Zero-signal, narrow high-confidence allocation/string mistakes; no generic loop policy |
+| Defer from an adopted gate | `PreserveStackTrace`, `CloseResource` | Potentially valuable failure/resource themes, but current results are 1 overlap + 19 noise/false positives and require a separate ownership-aware suppression/ratchet model |
+| Drop | `UnusedFormalParameter`, `UseTryWithResources`, `CyclomaticComplexity`, `AvoidDeeplyNestedIfStmts`, `NcssCount`, `AvoidInstantiatingObjectsInLoops`, `ConsecutiveAppendsShouldReuse`, `ConsecutiveLiteralAppends`, `AddEmptyString` | Current repository evidence is framework/lifecycle/state-machine/style noise or lacks performance evidence |
+| Replace/remove before PMD 8 | `AvoidLosingExceptionInformation`, `UselessOperationOnImmutable` | PMD 7.26.0 marks both for removal and names already-selected `UselessPureMethodCall` as their replacement |
+
+This yields 21 carry candidates, 2 deferred rules and 11 drop/replace
+candidates. It is evidence for P3, not an adoption decision. P3 must still
+choose lifecycle (`report-only` versus a ratchet), ownership, treatment of the
+three bounded fixes and the seven debt hotspots, and whether a reduced ruleset
+has enough incremental value to justify its measured cost.
+
+## 12. Decision log
 
 | Date | Decision | Rationale |
 |---|---|---|
@@ -367,3 +571,5 @@ lifecycle or CI path.
 | 2026-08-10 | Complete P1 with a dedicated opt-in report owner and fail-closed integrity contract | The candidate versions work on JDK 21, exact scope and reports are reproducible, while findings remain advisory |
 | 2026-08-10 | Select only `pmd-report` and its upstream reactor in `make pmd-analysis` | Running all independent aggregate report mojos concurrently exposed Maven artifact-resolution contention; selected-reactor execution retains the intended source/test graph without the race |
 | 2026-08-10 | Carry 92 raw occurrences into P2 without remediation or suppression | P1 measures compatibility and inventory; semantic signal/noise decisions belong to the next checkpoint |
+| 2026-08-11 | Complete P2 with full occurrence accounting and no production remediation | Review found 3 bounded fixes, 7 semantic debt hotspots, 5 overlaps and 77 noise/false-positive occurrences, but no immediate correctness/resource defect |
+| 2026-08-11 | Leave the P1 ruleset unchanged until P3 | Threshold sensitivity supports a reduced candidate set, but lifecycle, ownership and adoption consequences require the explicit P3 decision |

@@ -36,7 +36,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 |---|---|---|---|---:|---|---|---|
 | SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only; exact raw-baseline gate | `make verify` | Per applicable module: raw XML + filtered XML/HTML; raw and filtered aggregates under `build-support/spotbugs-report/target/`; CI artifact `spotbugs-reports-<run>` | `120 s` adoption full-reactor wall; `+12 s` / `+11.1%` against the same-session pre-ratchet `108 s` run | Current full-reactor evidence: 65 reviewed findings (47 false positives + 18 policy noise), 61 generated narrow selectors, 0 visible | `R030-BUILD` | `blocking` |
 | PMD CPD aggregate | Maven Plugin `3.28.0`, bundled PMD `7.17.0`; Java production sources, `minimumTokens=75`, identifiers/literals/annotations significant | `make clean && make verify` | `build-support/cpd-report/target/cpd/`; CI artifact `cpd-report-<run>` | `95.52 s` clean reactor wall; CPD module `2.703 s` | 11 raw matches / 10 semantic findings; 7 debt candidates, 3 retained clusters | `R030-BUILD` + `R030-QUAL` | `report-only` |
-| PMD source-analysis evaluation | Maven Plugin `3.28.0`; explicit PMD `7.26.0`; 34 exact named rules over 19 production roots | `make pmd-analysis` | Local XML/HTML under `build-support/pmd-report/target/pmd/`; deliberately absent from regular CI | Clean `98.28 s`, repeat `88.97 s`; PMD owner `3.520–3.632 s`; peak RSS `986,692–1,189,012 KiB` | 92 raw occurrences / 48 files: A 6, B 25, C 37, D 24; semantic signal/noise pending P2 | `R030-BUILD` | `report-only` (`P1` complete) |
+| PMD source-analysis evaluation | Maven Plugin `3.28.0`; explicit PMD `7.26.0`; 34 exact named rules over 19 production roots | `make pmd-analysis` | Local XML/HTML under `build-support/pmd-report/target/pmd/`; deliberately absent from regular CI | Clean `98.28 s`, repeat `88.97 s`; PMD owner `3.520–3.632 s`; peak RSS `986,692–1,189,012 KiB` | 92 occurrences: 3 bounded fixes, 7 semantic debt hotspots, 5 overlaps, 17 false positives and 60 policy-noise; no immediate defect | `R030-BUILD` | `triaged` (`P2` complete; P3 pending) |
 | Maven dependency analysis | Maven Dependency Plugin `3.11.0`; fast direct goal + opt-in full `dependency-analysis` profile; default bytecode analyzer | `make dependency-analysis` | Local console/report ledger; deliberately absent from regular CI | Fast sequential package + analysis observed at `5.313–7.677 s` Maven / `6.75–8.72 s` process; full profile timing below | 14 direct POM mismatches corrected; residual `56 / 34 / 12` candidate occurrences are test-aggregate, starter, SPI and transitive-runtime noise | `R030-BUILD` | `report-only`, blocking adoption deferred |
 
 Допустимые rollout stages: `planned`, `report-only`, `triaged`, `baselined`,
@@ -51,7 +51,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 | `BUILD-DEPS-03` | Semantic disposition of the captured dependency candidates and `Adopt / Adopt with exclusions / Defer` decision | Evaluation only | `BUILD-CPD-02` closed | `verified` |
 | `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow reviewed baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `verified` (`C0..C5` completed) |
 | `BUILD-SPOTBUGS-05` | Accepted no-new-findings signal wired into canonical Maven `verify` | Blocking ratchet | `BUILD-SPOTBUGS-04` closed | `verified` |
-| `BUILD-PMD-06` | Bounded evaluation of named PMD source-analysis rules and explicit adoption disposition | P0 inventory, then report-only measurement and triage | `BUILD-SPOTBUGS-04` closed and explicit status-matrix activation | `in-progress` (`P0/P1` completed; `P2` pending) |
+| `BUILD-PMD-06` | Bounded evaluation of named PMD source-analysis rules and explicit adoption disposition | P0 inventory, then report-only measurement and triage | `BUILD-SPOTBUGS-04` closed and explicit status-matrix activation | `in-progress` (`P0/P1/P2` completed; `P3` pending) |
 
 The queue is sequential for operator/agent clarity, not a technical claim that
 the controls depend on each other. A confirmed immediate correctness, resource
@@ -783,12 +783,46 @@ policy; runtime tests также не заменяют статическую д
 
 PMD сообщает, что два нулевых правила — `AvoidLosingExceptionInformation` и
 `UselessOperationOnImmutable` — будут удалены в PMD 8. Это явный migration
-caveat для P2/P3, а не скрытая analyzer error.
+caveat для P3, а не скрытая analyzer error.
 
-Следующий checkpoint `P2` должен дать semantic disposition raw occurrences,
-отделить incremental signal от SpotBugs/compiler/ArchUnit/tests и проверить
-threshold sensitivity. После него `P3` обязан принять одно из решений: `Adopt`,
-`Adopt with a reduced ruleset`, `Defer` или `Reject`.
+`P2` завершён 2026-08-11 полным semantic triage всех 92 occurrences без
+изменения production-кода, ruleset, suppressions или baseline:
+
+- подтверждены 3 bounded fixes: одно лишнее начальное присваивание и два
+  host-dependent `PrintWriter` без явного charset; это не immediate release
+  defects;
+- 10 complexity occurrences сведены к 7 semantic debt hotspots:
+  retry/rejection handler, atomic SMB publish, export construction,
+  ingestion construction, ingestion recovery, extraction construction и
+  publish saga; они переданы в review ledger как `QUAL-PMD-01..07` с
+  disposition `debt` и явными owners;
+- 5 occurrences являются semantic overlap, включая один настоящий overlap с
+  уже разобранной SpotBugs failure-precedence границей `PipelineRunner`;
+- 17 occurrences являются analyzer false positives, 60 — policy noise;
+  утечек ресурсов, замены исходного исключения или concurrency-дефекта не
+  найдено;
+- пересечение с SpotBugs на уровне файлов (`11 / 48`) и методов не принято за
+  equivalence: из 12 PMD occurrences в 9 методах с SpotBugs identity только
+  `PipelineRunner/PreserveStackTrace` проверяет ту же семантику;
+- Track D (`24 / 24`) не имеет performance evidence: объекты принадлежат
+  отдельным rows/artifacts/endpoints/batches/failures либо создаются в startup
+  path, поэтому reuse/pooling не разрешён;
+- sensitivity показала, что `CyclomaticComplexity` нельзя отделить от noise
+  порогом: `25 → 14 → 3 → 1` при парах method/class `10/80`, `12/100`,
+  `15/120`, `18/140`, причём полезный handler исчезает раньше оставшегося
+  шума. Для P3 evidence-based candidates — `CognitiveComplexity=16` (1
+  finding) и `ExcessiveParameterList=13` (3 occurrences / 2 semantic seams).
+
+P2 передаёт P3 явную rule disposition: 21 carry candidate, 2 ownership-noisy
+rules (`PreserveStackTrace`, `CloseResource`) для defer и 11 drop/PMD-8
+replacement candidates. Deprecated `AvoidLosingExceptionInformation` и
+`UselessOperationOnImmutable` должны быть удалены в пользу уже выбранного
+`UselessPureMethodCall`. Это ещё не adoption: текущий 34-rule evaluation
+ruleset намеренно не изменён.
+
+Следующий checkpoint `P3` обязан принять одно из решений: `Adopt`, `Adopt with
+a reduced ruleset`, `Defer` или `Reject`, определить lifecycle/owner и решить,
+нужны ли три bounded fixes и семь debt hotspots до либо после adoption.
 
 Полный rules inventory, rationale, build-topology hypothesis и exit criteria:
 [BUILD-PMD-06 worknote](../build-pmd-06-worknote.md).
