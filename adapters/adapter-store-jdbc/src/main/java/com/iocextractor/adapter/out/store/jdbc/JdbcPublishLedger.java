@@ -293,7 +293,7 @@ public final class JdbcPublishLedger implements PublishLedger {
                 counts.getOrDefault(PublishStatus.ABANDONED, 0L));
     }
 
-    private static PublishRecord map(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+    private static PublishRecord map(java.sql.ResultSet rs, int ignoredRowNum) throws java.sql.SQLException {
         return new PublishRecord(
                 rs.getString("slice_id"),
                 rs.getString("target_id"),

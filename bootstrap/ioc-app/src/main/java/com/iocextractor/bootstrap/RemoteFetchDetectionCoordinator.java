@@ -149,7 +149,6 @@ public final class RemoteFetchDetectionCoordinator implements RemoteFetchDetecti
         String originalThreadName = current.getName();
         current.setName("ioc-sync-fetch-detection-" + source.sourceId() + "-" + source.endpoint());
         long startedNanos = System.nanoTime();
-        int detected = 0;
         try {
             LogEvents.debug(log)
                     .action(EventAction.SYNC_FETCH_START)
@@ -160,7 +159,7 @@ public final class RemoteFetchDetectionCoordinator implements RemoteFetchDetecti
                     .log();
             List<RemoteChangeBatchDetected> events = monitor.detect(
                     new RemoteFetchCommand(Optional.of(source.sourceId()), false));
-            detected = events.stream().mapToInt(event -> event.objects().size()).sum();
+            int detected = events.stream().mapToInt(event -> event.objects().size()).sum();
             for (RemoteChangeBatchDetected event : events) {
                 publish(event);
             }

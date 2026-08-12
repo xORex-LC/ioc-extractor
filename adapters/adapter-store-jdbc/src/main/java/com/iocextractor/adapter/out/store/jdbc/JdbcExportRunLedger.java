@@ -382,7 +382,7 @@ public final class JdbcExportRunLedger implements ExportRunLedger, ExportRunRead
         return new DiagnosticException(diagnostic);
     }
 
-    private static ExportRun mapRun(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+    private static ExportRun mapRun(java.sql.ResultSet rs, int ignoredRowNum) throws java.sql.SQLException {
         return new ExportRun(
                 rs.getString("run_id"),
                 rs.getString("profile"),

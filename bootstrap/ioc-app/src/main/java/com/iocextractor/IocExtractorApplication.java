@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.OptionalInt;
 
 /**
@@ -20,8 +21,8 @@ public class IocExtractorApplication {
 
     public static void main(String[] args) {
         OptionalInt earlyExit = new EarlyCliLauncher(
-                new PrintWriter(System.out, true),
-                new PrintWriter(System.err, true))
+                new PrintWriter(System.out, true, StandardCharsets.UTF_8),
+                new PrintWriter(System.err, true, StandardCharsets.UTF_8))
                 .executeIfHandled(args);
         if (earlyExit.isPresent()) {
             System.exit(earlyExit.getAsInt());

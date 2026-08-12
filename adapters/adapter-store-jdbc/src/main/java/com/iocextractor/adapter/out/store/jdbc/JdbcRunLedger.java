@@ -142,7 +142,7 @@ public final class JdbcRunLedger implements RunLedger {
         };
     }
 
-    private static IngestRun mapRun(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+    private static IngestRun mapRun(java.sql.ResultSet rs, int ignoredRowNum) throws java.sql.SQLException {
         return new IngestRun(
                 rs.getString("run_id"),
                 rs.getString("source_key"),
