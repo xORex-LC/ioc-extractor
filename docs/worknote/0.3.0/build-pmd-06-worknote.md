@@ -3,7 +3,7 @@ title: "BUILD-PMD-06 — PMD rule evaluation worknote"
 version: "0.3.0"
 goal_id: "R030-BUILD"
 work_item: "BUILD-PMD-06"
-status: "P0/P1/P2 complete; P3 pending"
+status: "P0/P1/P2/P3 complete; reduced report-only policy adopted"
 document_type: "Temporary execution worknote"
 source_of_truth: false
 language: "en"
@@ -13,9 +13,10 @@ language: "en"
 
 ## 1. Purpose and authority
 
-This temporary worknote records the evidence-based evaluation of PMD rules
-beyond the already adopted CPD control. It does not make PMD an accepted build
-gate and does not replace the authoritative release documents:
+This temporary worknote records the evidence-based evaluation and P3 adoption
+of PMD rules beyond the already adopted CPD control. Findings remain advisory;
+the adopted control blocks tool-health and contract failures rather than PMD
+violations. This worknote does not replace the authoritative release documents:
 
 - contract: [R030-BUILD](goals/R030-BUILD-build-quality.md);
 - current state: [status matrix](status-matrix.md);
@@ -67,7 +68,7 @@ remain advisory.
 | `P0` | Rule and tool inventory | Versions, module disposition, named candidate rules, exclusions and P1 acceptance criteria are recorded | `completed` |
 | `P1` | Report-only compatibility and baseline run | Candidate engine works with the pinned plugin; XML/HTML reports cover exactly 19 production roots; cost and raw findings are captured | `completed` |
 | `P2` | Semantic triage | Each rule track has actionable/noise/overlap counts and representative dispositions | `completed` |
-| `P3` | Adoption decision | `Adopt`, `Adopt with a reduced ruleset`, `Defer` or `Reject` is recorded with lifecycle and ownership consequences | `pending` |
+| `P3` | Adoption decision | `Adopt`, `Adopt with a reduced ruleset`, `Defer` or `Reject` is recorded with lifecycle and ownership consequences | `completed` |
 
 Only one checkpoint is active at a time. P0 intentionally changed no POM,
 reactor module, Make target or CI workflow; P1 added only opt-in report
@@ -538,27 +539,68 @@ There is no performance benchmark supporting Track D. Javac and ArchUnit remain
 complementary controls and produced no equivalent unused/resource/complexity
 finding.
 
-### 11.8 Per-rule P3 candidates
+### 11.8 P3 adoption decision
 
-P2 does not edit the 34-rule evaluation ruleset. It hands P3 the following
-explicit candidates:
+P3 adopts PMD source analysis with a reduced 22-rule report-only policy. It
+keeps three still-interesting ownership/size rules executable in a separate
+opt-in watchlist, drops seven rules whose current semantics cannot support a
+useful repository policy and replaces two PMD-8-deprecated rules with the
+already adopted successor.
 
-| P3 candidate | Rules | P2 rationale |
+| P3 disposition | Rules | Decision rationale |
 |---|---|---|
-| Carry as named | `UnusedAssignment`, `UnusedLocalVariable`, `UnusedPrivateField`, `UnusedPrivateMethod` | One real cleanup plus low-volume dead-code guards; exact false positives would still need an adoption contract |
-| Carry as named | `RelianceOnDefaultCharset`, `UseStandardCharsets`, `EmptyCatchBlock`, `DoNotThrowExceptionInFinally`, `ReturnFromFinallyBlock`, `BrokenNullCheck`, `MisplacedNullCheck`, `UnusedNullCheckInEquals`, `UselessPureMethodCall`, `InvalidLogMessageFormat`, `UseLocaleWithCaseConversions` | Bounded correctness/portability checks with two actionable occurrences and no demonstrated category-wide policy expansion |
-| Carry with properties | `CognitiveComplexity` at `reportLevel=16`; `ExcessiveParameterList` at `reportLevel=13` | Repository values isolate the reviewed handler and construction hotspots better than defaults |
-| Carry as named | `NPathComplexity` | Default 200-path guard stayed silent and represents a materially high outlier rather than style |
-| Carry as named | `InefficientStringBuffering`, `StringInstantiation`, `UselessStringValueOf` | Zero-signal, narrow high-confidence allocation/string mistakes; no generic loop policy |
-| Defer from an adopted gate | `PreserveStackTrace`, `CloseResource` | Potentially valuable failure/resource themes, but current results are 1 overlap + 19 noise/false positives and require a separate ownership-aware suppression/ratchet model |
-| Drop | `UnusedFormalParameter`, `UseTryWithResources`, `CyclomaticComplexity`, `AvoidDeeplyNestedIfStmts`, `NcssCount`, `AvoidInstantiatingObjectsInLoops`, `ConsecutiveAppendsShouldReuse`, `ConsecutiveLiteralAppends`, `AddEmptyString` | Current repository evidence is framework/lifecycle/state-machine/style noise or lacks performance evidence |
-| Replace/remove before PMD 8 | `AvoidLosingExceptionInformation`, `UselessOperationOnImmutable` | PMD 7.26.0 marks both for removal and names already-selected `UselessPureMethodCall` as their replacement |
+| Adopt as named | `UnusedAssignment`, `UnusedFormalParameter`, `UnusedLocalVariable`, `UnusedPrivateField`, `UnusedPrivateMethod` | The three formal-parameter findings were cheaply clarified as intentionally ignored JDBC callback arguments; retaining the rule protects future real API leftovers without accepting a baseline |
+| Adopt as named | `RelianceOnDefaultCharset`, `UseStandardCharsets`, `EmptyCatchBlock`, `DoNotThrowExceptionInFinally`, `ReturnFromFinallyBlock`, `BrokenNullCheck`, `MisplacedNullCheck`, `UnusedNullCheckInEquals`, `UselessPureMethodCall`, `InvalidLogMessageFormat`, `UseLocaleWithCaseConversions` | Bounded correctness/portability rules; the two charset findings were fixed and the remaining rules are narrow guards rather than broad style policy |
+| Adopt with calibrated properties | `CognitiveComplexity` at `reportLevel=16`; `ExcessiveParameterList` at `minimum=13` | Repository thresholds retain reviewed handler/construction seams; `minimum` is the actual PMD 7 property name, not `reportLevel` |
+| Adopt as named | `NPathComplexity` | Default 200-path guard stayed silent and represents a materially high outlier rather than style |
+| Adopt as named | `InefficientStringBuffering`, `StringInstantiation`, `UselessStringValueOf` | Zero-signal, narrow high-confidence allocation/string mistakes; no generic loop policy |
+| Executable watchlist | `PreserveStackTrace`, `CloseResource`, `NcssCount` | Preserve future signal, but keep 20 ownership-noisy occurrences and the currently silent size rule outside regular CI until lifecycle/ownership or size evidence changes |
+| Drop | `UseTryWithResources`, `CyclomaticComplexity`, `AvoidDeeplyNestedIfStmts`, `AvoidInstantiatingObjectsInLoops`, `ConsecutiveAppendsShouldReuse`, `ConsecutiveLiteralAppends`, `AddEmptyString` | Current repository evidence is framework/lifecycle/state-machine/style noise or lacks measured performance benefit; enabling them would institutionalize noise rather than preserve signal |
+| Replace/remove | `AvoidLosingExceptionInformation`, `UselessOperationOnImmutable` | PMD 7.26.0 marks both for removal; adopted `UselessPureMethodCall` is their named PMD 8 successor |
 
-This yields 21 carry candidates, 2 deferred rules and 11 drop/replace
-candidates. It is evidence for P3, not an adoption decision. P3 must still
-choose lifecycle (`report-only` versus a ratchet), ownership, treatment of the
-three bounded fixes and the seven debt hotspots, and whether a reduced ruleset
-has enough incremental value to justify its measured cost.
+The P3 count is therefore 22 adopted, 3 watchlist, 7 dropped and 2 replaced.
+"Dropped" means absent from both routine analysis and watchlist; it is not an
+acceptance of current findings. A future code shape, PMD improvement or measured
+signal can reopen a rule through the same bounded evaluation. "Watchlist" means
+the rule remains runnable and strictly configured, but is not part of the
+regular CI job.
+
+### 11.9 P3 implementation and verification
+
+P3 removed six P1 occurrences through bounded implementation changes: the
+three P2 actionable occurrences plus three deliberately ignored callback
+parameters that made `UnusedFormalParameter` cheap to adopt:
+
+- early CLI stdout/stderr writers now use explicit UTF-8;
+- the overwritten `detected` initialization was removed from
+  `RemoteFetchDetectionCoordinator`;
+- three Spring JDBC callback arguments were renamed to `ignoredRowNum` so the
+  intentional interface obligation is explicit.
+
+The adopted ruleset now reports 6 visible advisory occurrences in 6 files:
+`UnusedAssignment` 2, `CognitiveComplexity` 1 and
+`ExcessiveParameterList` 3. The two assignments remain reviewed analyzer false
+positives; the complexity occurrences map to existing `QUAL-PMD-01`,
+`QUAL-PMD-03` and `QUAL-PMD-06` debt rather than a hidden baseline. The
+watchlist reports 20 occurrences in 13 files: `CloseResource` 15 and
+`PreserveStackTrace` 5; `NcssCount` remains at zero.
+
+`tools/ci/pmd.sh policy` is the single developer/CI leaf command. GitHub runs it
+as a separate regular job and uploads `target/pmd/`; `make ci` runs the same job
+before the full reactor build. Ordinary `make verify` still leaves the profile
+inactive because P1 demonstrated aggregate-mojo contention in the parallel full
+reactor. `make pmd-watchlist` selects a different ruleset and
+`target/pmd-watchlist/`, so it neither overwrites nor validates the policy output.
+
+Root validation pins both exact rule sets, both calibrated properties, profile
+selection, output paths and late verifier arguments. The synthetic harness
+passes 7 happy paths and 48 negative scenarios, including engine/property,
+ruleset-attribute, calibrated-threshold, watchlist selection,
+directory and missing-report mutations. A warm policy repeat completed in
+`12.26 s` process wall (`11.127 s` Maven wall, `667,076 KiB` peak RSS); the
+watchlist completed in `8.97 s` process wall (`7.928 s` Maven wall,
+`625,200 KiB` peak RSS). Both used PMD `7.26.0`, produced XML/HTML and passed
+scope/report integrity with no analyzer errors.
 
 ## 12. Decision log
 
@@ -573,3 +615,6 @@ has enough incremental value to justify its measured cost.
 | 2026-08-10 | Carry 92 raw occurrences into P2 without remediation or suppression | P1 measures compatibility and inventory; semantic signal/noise decisions belong to the next checkpoint |
 | 2026-08-11 | Complete P2 with full occurrence accounting and no production remediation | Review found 3 bounded fixes, 7 semantic debt hotspots, 5 overlaps and 77 noise/false-positive occurrences, but no immediate correctness/resource defect |
 | 2026-08-11 | Leave the P1 ruleset unchanged until P3 | Threshold sensitivity supports a reduced candidate set, but lifecycle, ownership and adoption consequences require the explicit P3 decision |
+| 2026-08-12 | Adopt a reduced 22-rule PMD source policy in report-only mode | The reduced set retains bounded correctness/dead-code guards and calibrated debt signal without converting 86 reviewed noise/debt occurrences into a suppression baseline |
+| 2026-08-12 | Keep `PreserveStackTrace`, `CloseResource` and `NcssCount` in a separate executable watchlist | The rules retain possible future value, while current ownership assumptions or zero signal do not justify regular CI policy |
+| 2026-08-12 | Run the adopted policy as a separate regular CI job | Selected-reactor Maven `verify` preserves fail-closed scope/ruleset/report checks and avoids the aggregate-mojo contention observed in the full parallel reactor |

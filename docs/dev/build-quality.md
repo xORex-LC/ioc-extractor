@@ -43,23 +43,35 @@ make verify
 
 CI build completion
   -> upload SpotBugs and CPD evidence even when the build failed late
+
+regular PMD source-policy job
+  -> tools/ci/pmd.sh policy
+  -> selected 22-project upstream reactor, tests/analyzers not owned here skipped
+  -> exact adopted ruleset + XML/HTML integrity
+  -> upload PMD source evidence even when analysis failed late
 ```
 
-PMD source analysis is deliberately outside that canonical path while its
-rules are being evaluated:
+PMD source analysis is an adopted regular control, but it stays in its own CI
+job rather than the canonical full-reactor lifecycle:
 
 ```text
 make pmd-analysis
-  -> ./mvnw -Ppmd-evaluation -pl build-support/pmd-report -am verify
-       compile and test the selected upstream reactor
+  -> tools/ci/pmd.sh policy
+  -> ./mvnw -Ppmd-analysis -pl build-support/pmd-report -am verify
+       compile the selected upstream reactor; skip tests, JaCoCo and SpotBugs
        run one aggregate-pmd-no-fork execution
        verify exact scope, ruleset, engine and XML/HTML integrity
+
+make pmd-watchlist
+  -> tools/ci/pmd.sh watchlist
+  -> the same lifecycle with a separate three-rule ruleset and output directory
 ```
 
-Selecting the PMD report owner and its upstream graph keeps this opt-in
+Selecting the PMD report owner and its upstream graph keeps this selected-reactor
 aggregator from racing the independent JaCoCo, SpotBugs and CPD aggregate mojos
-in the parallel full reactor. It does not replace the separate `make verify`
-release gate.
+in the parallel full reactor. The regular policy job complements rather than
+replaces the separate `make verify` release gate. The watchlist is locally
+opt-in and is not a merge gate.
 
 Maven may report that aggregate mojos require exclusive reactor access during
 the parallel build. That message describes Maven serialization of aggregate
@@ -77,7 +89,8 @@ runs only after the applicable modules.
 | JaCoCo | Test execution data and production classes | Report generation is part of `verify`; coverage values are currently diagnostic |
 | SpotBugs | Applicable production bytecode | New, stale, moved or metadata-drifted findings block the exact ratchet; analyzer/report failures also block |
 | PMD CPD | Applicable checked-in production Java sources | Findings are diagnostic; analyzer, scope or report failure blocks |
-| PMD source evaluation | Named rules over applicable checked-in production Java sources | Opt-in and report-only; findings are diagnostic, while analyzer/scope/ruleset/report failure blocks the evaluation command |
+| PMD source policy | 22 named rules over applicable checked-in production Java sources | Regular separate CI job, report-only findings; analyzer/scope/ruleset/report failure blocks |
+| PMD source watchlist | Three deferred rules over the same sources | Explicit local review command; findings remain diagnostic and it is not a regular CI gate |
 | Maven dependency analysis | Main and test bytecode | Opt-in advisory report; not part of ordinary `verify` |
 | Dependency-Check | Resolved dependency graph and local vulnerability data | Separate security workflow, deliberately outside ordinary `verify` |
 
@@ -97,7 +110,7 @@ reviewed exact baseline fail the build.
 | Shared scope/report verifier and contract matrices | [`build-support/build-quality/`](../../build-support/build-quality/) |
 | SpotBugs scope, accepted baseline, aggregation and late gate | [`build-support/spotbugs-report/`](../../build-support/spotbugs-report/) |
 | CPD scope, source universe, aggregation and late gate | [`build-support/cpd-report/`](../../build-support/cpd-report/) |
-| PMD source-evaluation scope, exact ruleset, aggregation and late gate | [`build-support/pmd-report/`](../../build-support/pmd-report/) |
+| PMD source-policy/watchlist scope, exact rulesets, aggregation and late gate | [`build-support/pmd-report/`](../../build-support/pmd-report/) |
 | JaCoCo aggregate universe | [`build-support/coverage-report/`](../../build-support/coverage-report/) |
 
 The `build-support/build-quality` directory is intentionally not a Maven
@@ -284,26 +297,56 @@ and language options belong to the CPD report POM and require repository
 calibration before change. A future no-new-duplication ratchet needs a separate
 baseline and enforcement decision.
 
-## PMD source-analysis evaluation
+## PMD source-analysis policy and watchlist
 
-PMD source analysis is a bounded opt-in evaluation, separate from the adopted
-CPD report even though both use Maven PMD Plugin. Its
+PMD source analysis is a permanent report-only control, separate from the CPD
+report even though both use Maven PMD Plugin. Its
 [`pmd-scope.tsv`](../../build-support/pmd-report/pmd-scope.tsv) gives every
 reactor project one disposition, while the report POM owns a positive list of
 production `src/main/java` roots and ordering dependencies.
 
 The checked-in [`pmd-ruleset.xml`](../../build-support/pmd-report/pmd-ruleset.xml)
-is an exact policy candidate: every rule is named individually. Category-wide
-references, ruleset exclusions, suppressions and an accepted-findings baseline
-are forbidden during evaluation. Plugin and PMD engine dependencies are pinned
-independently so an engine upgrade cannot silently fall back to the plugin's
-bundled version.
+is the adopted policy: all 22 rules are named individually. Its calibrated
+properties are `CognitiveComplexity.reportLevel=16` and
+`ExcessiveParameterList.minimum=13`. Category-wide references, ruleset
+exclusions, suppressions and an accepted-findings baseline are forbidden.
+Plugin and PMD engine dependencies are pinned independently so an engine
+upgrade cannot silently fall back to the plugin's bundled version.
+
+The separate
+[`pmd-watchlist-ruleset.xml`](../../build-support/pmd-report/pmd-watchlist-ruleset.xml)
+contains exactly `PreserveStackTrace`, `CloseResource` and `NcssCount`. The first
+two currently mostly report framework/lifecycle ownership that PMD cannot see;
+the third is retained as a high-size observation but currently produces no
+finding. Keeping them executable preserves future detection without pretending
+that their present signal has adoption quality.
+
+Rule disposition is about routine execution, not whether a rule happened to
+find code on adoption day:
+
+| Disposition | Meaning | Current rules outside the adopted set |
+|---|---|---|
+| Adopted | Runs in every PMD policy job. A zero-result high-confidence rule remains active and will expose a future occurrence | The 22 exact references in `pmd-ruleset.xml` |
+| Watchlist | Still executable with full scope/report integrity, but not regular CI policy | `PreserveStackTrace`, `CloseResource`, `NcssCount` |
+| Dropped | Not executed routinely because repository evidence showed style, framework/state-machine noise or unmeasured optimization advice | `UseTryWithResources`, `CyclomaticComplexity`, `AvoidDeeplyNestedIfStmts`, `AvoidInstantiatingObjectsInLoops`, `ConsecutiveAppendsShouldReuse`, `ConsecutiveLiteralAppends`, `AddEmptyString` |
+| Replaced | Removed deprecated PMD 7 names; the maintained successor is already adopted | `AvoidLosingExceptionInformation`, `UselessOperationOnImmutable` → `UselessPureMethodCall` |
+
+Dropped does not mean permanently forbidden or that old findings were accepted.
+Re-evaluate the relevant rule family after a PMD major/minor upgrade that
+changes rule semantics, a demonstrated escaped defect, a materially new
+framework/lifecycle pattern, measured allocation/string performance debt, or a
+release-quality policy review. Re-evaluation starts in report-only mode against
+the whole production-source scope; it does not add the rule directly to the
+adopted set.
 
 The profile runs one `aggregate-pmd-no-fork` execution in `verify`. It deletes
-stale PMD output first and writes:
+only the selected stale PMD output first. The policy writes:
 
 - `build-support/pmd-report/target/pmd/pmd.xml` — machine-readable findings;
 - `build-support/pmd-report/target/pmd/pmd.html` — human-readable report.
+
+The watchlist writes the same pair under `target/pmd-watchlist/`, so running it
+does not overwrite or validate the policy report accidentally.
 
 The integrity verifier reconciles the root reactor, scope registry, report
 dependencies, configured source roots, UTF-8 contract, engine dependencies and
@@ -313,18 +356,40 @@ inventory. PMD XML contains only files with findings; a source with zero
 findings is therefore covered through the positive root/source inventory, not
 through a fabricated report entry.
 
-Root validation also pins the stale-output cleanup and late report-verifier
-command, including `failonerror=true`. It rejects rule-level configuration,
-source include/exclude patterns and production-source `NOPMD` or
-`@SuppressWarnings("PMD…")` markers. Evaluation findings therefore cannot be
-made invisible by deleting the gate or adding an unreviewed local suppression.
+Root validation also pins both exact rulesets, calibrated properties, profile
+selection, stale-output cleanup and late report-verifier command, including
+`failonerror=true`. It rejects unexpected rule-level configuration, source
+include/exclude patterns and production-source `NOPMD` or
+`@SuppressWarnings("PMD…")` markers. Findings therefore cannot be made
+invisible by deleting the gate or adding an unreviewed local suppression.
+The late verifier also rejects a violation whose rule does not belong to the
+selected policy/watchlist, so the two report paths cannot be substituted for
+one another silently.
 
 Findings do not fail `make pmd-analysis`; tool-health and contract failures do.
-Do not add `pmd:check`, `NOPMD`, annotations, excludes or a baseline to make the
-report green. Triage must first distinguish real incremental signal from
-SpotBugs, compiler, architecture-test and runtime-test overlap. Permanent
-adoption, a reduced ruleset, CI execution or a no-new-findings ratchet each
-requires a separate recorded decision.
+The regular CI job calls the same repository-owned leaf command and retains the
+policy XML/HTML. Ordinary `make verify` does not activate the profile because
+the selected aggregator previously contended with independent aggregate mojos
+inside the parallel full reactor.
+
+Do not add `pmd:check`, `NOPMD`, annotations, excludes or a baseline to make a
+report green. Review each new occurrence semantically and either fix it, retain
+it as visible advisory evidence with an owned debt item, or revisit the rule's
+adoption disposition. Moving a rule to the watchlist requires evidence and a
+reviewed policy change; it is not a suppression mechanism.
+
+Run `make pmd-watchlist` when any of these assumptions change:
+
+- exception translation, causal-chain or secondary-failure precedence;
+- ownership transfer for JDBC, SMB, Spring contexts, executors or other
+  closeable lifecycles;
+- a large method/type is materially restructured or a new one appears;
+- PMD engine, Maven PMD Plugin, JDK or source-language level changes;
+- before proposing adoption of any watchlist rule.
+
+The watchlist remains advisory and outside regular CI. Its result must still be
+structurally healthy: missing reports, analyzer errors, scope drift or ruleset
+drift fail the command.
 
 ## Coverage
 
@@ -438,4 +503,4 @@ individual accepted finding unless the mechanism itself changes.
 - [`build-support/cpd-report/README.md`](../../build-support/cpd-report/README.md)
   — CPD report-module reference.
 - [`build-support/pmd-report/README.md`](../../build-support/pmd-report/README.md)
-  — opt-in PMD source-evaluation report-module reference.
+  — adopted PMD source-policy and watchlist report-module reference.

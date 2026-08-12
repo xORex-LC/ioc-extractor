@@ -56,21 +56,24 @@ required branch-protection status.
 
 ### Code-quality analysis
 
-В 0.3.0 приняты два постоянных control с разной enforcement policy:
+В 0.3.0 приняты три постоянных control с разной enforcement policy:
 
 - SpotBugs — постоянный reactor-wide bytecode check;
 - PMD CPD — постоянный repository-wide duplicate-code detector, в этом релизе
-  работающий как diagnostic control.
+  работающий как diagnostic control;
+- PMD source analysis — отдельный repository-wide report-only control по 22
+  поимённым rules, выполняемый регулярным отдельным CI job.
 
 Оба инструмента сначала вводятся в report-only mode. Tool-introduction change
 не смешивается с массовым исправлением legacy findings. Для каждого control
 фиксируются version, scope, runtime cost, output artifacts, configuration owner
 и suppression/exclusion policy.
 
-После semantic closure SpotBugs отдельным решением status matrix открыт
-`BUILD-PMD-06`: bounded evaluation поимённых PMD source-analysis rules. Это
-добавляет обязательное evaluation/disposition к текущему `R030-BUILD`, но не
-делает PMD source analysis принятым постоянным control до завершения измерения.
+После semantic closure SpotBugs отдельным решением status matrix был открыт
+`BUILD-PMD-06`: bounded evaluation поимённых PMD source-analysis rules. P3
+завершил measurement и принял reduced 22-rule policy; три ownership/size rules
+оставлены в исполняемом opt-in watchlist, а findings обоих наборов остаются
+diagnostic.
 
 ### SpotBugs operating contract
 
@@ -143,30 +146,33 @@ shared abstraction.
 для одного PR. Blocking CPD ratchet не является обязательным deliverable
 0.3.0.
 
-### PMD source-analysis evaluation contract
+### PMD source-analysis operating contract
 
-`BUILD-PMD-06` оценивает PMD как отдельный production-source analyzer. Работа
-начинается с report-only inventory и не меняет обычный Maven `verify`, пока
-version compatibility, стоимость и signal/noise не подтверждены evidence.
+`BUILD-PMD-06` принял PMD как отдельный production-source analyzer после
+report-only inventory и полного semantic triage. Обычный Maven `verify` не
+активирует PMD profile: регулярный CI запускает ту же Maven `verify` selected-
+reactor команду отдельным job, чтобы PMD aggregator не конкурировал с JaCoCo,
+SpotBugs и CPD aggregate mojos полного parallel reactor.
 
-Evaluation MUST:
+Adopted control MUST:
 
 - использовать только поимённо перечисленные rules; default ruleset и ссылки
   на целые categories запрещены;
-- разделять unused/dead code, correctness/resource, complexity и performance
-  tracks, чтобы одна шумная policy не скрывала полезный signal другой;
+- хранить точный adopted ruleset отдельно от исполняемого deferred watchlist;
 - анализировать те же 19 production `src/main/java` roots, что CPD, при явном
   исключении root/build-only POMs, `ioc-application-tck`, tests и
   generated/vendor sources;
 - формировать machine-readable XML и human-readable HTML;
 - падать при analyzer/ruleset/report failure или неполном scope, но не падать
-  от findings на evaluation stage;
-- измерить стоимость, overlap с действующими controls и raw signal/noise до
-  выбора `Adopt`, `Adopt with a reduced ruleset`, `Defer` или `Reject`;
-- не создавать suppression/baseline и не выполнять массовое исправление
-  findings в measurement change.
+  от findings;
+- запрещать source-local `NOPMD`/PMD suppressions и не создавать accepted-
+  findings baseline без отдельного решения;
+- запускать adopted policy регулярным CI job и сохранять reports как evidence;
+- сохранять `PreserveStackTrace`, `CloseResource` и `NcssCount` в отдельном
+  opt-in watchlist до нового ownership/size evidence, не выдавая их за adopted
+  merge policy.
 
-Точный P0 inventory, version candidate и checkpoints ведутся в
+Точный inventory, triage и P3 adoption evidence ведутся в
 [BUILD-PMD-06 worknote](../build-pmd-06-worknote.md).
 
 ### Dependency hygiene evaluation
@@ -328,10 +334,12 @@ Scheduled stability/PIT jobs не блокируют каждый PR в 0.3.0, �
   deterministic baseline и точную enforcement policy;
 - Maven dependency analysis имеет report и adoption disposition без
   необоснованного `failOnWarning`;
-- PMD source-analysis evaluation имеет поимённый ruleset, воспроизводимый
-  report, signal/noise/cost evidence и явное adoption disposition;
+- PMD source-analysis control имеет поимённый adopted ruleset, отдельный
+  watchlist, воспроизводимые reports, signal/noise/cost evidence и явное
+  report-only adoption disposition;
 - plugin versions pinned;
-- new violations блокируются для checks с решением `Adopt`;
+- new violations блокируются только для checks, чьё adoption decision явно
+  включает blocking/ratchet policy;
 - legacy findings имеют baseline/disposition;
 - suppressions узкие;
 - build time regression имеет disposition;

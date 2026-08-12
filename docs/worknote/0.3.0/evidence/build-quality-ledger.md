@@ -26,7 +26,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 |---|---|---|---|
 | SpotBugs | Все применимые production Java modules | Report only | Blocking no-new-findings check в `verify` |
 | PMD CPD | Repository-wide production-source duplication | Report only | Diagnostic control + semantic dispositions |
-| PMD source analysis | Поимённые rules в 19 production source roots | Report-only evaluation | `Adopt / Adopt with a reduced ruleset / Defer / Reject` |
+| PMD source analysis | 22 поимённых rules в 19 production source roots + отдельный 3-rule watchlist | Report-only policy | Adopted regular CI control; findings advisory |
 | Maven `dependency:analyze-only` | Dependency hygiene evaluation | Report only | `Adopt / Adopt with exclusions / Defer` |
 | PIT | Только `core/ioc-domain`; ведётся в R030-TEST | Diagnostic pilot | `Adopt / Extend / Defer / Reject` |
 
@@ -36,7 +36,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 |---|---|---|---|---:|---|---|---|
 | SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only; exact raw-baseline gate | `make verify` | Per applicable module: raw XML + filtered XML/HTML; raw and filtered aggregates under `build-support/spotbugs-report/target/`; CI artifact `spotbugs-reports-<run>` | `120 s` adoption full-reactor wall; `+12 s` / `+11.1%` against the same-session pre-ratchet `108 s` run | Current full-reactor evidence: 65 reviewed findings (47 false positives + 18 policy noise), 61 generated narrow selectors, 0 visible | `R030-BUILD` | `blocking` |
 | PMD CPD aggregate | Maven Plugin `3.28.0`, bundled PMD `7.17.0`; Java production sources, `minimumTokens=75`, identifiers/literals/annotations significant | `make clean && make verify` | `build-support/cpd-report/target/cpd/`; CI artifact `cpd-report-<run>` | `95.52 s` clean reactor wall; CPD module `2.703 s` | 11 raw matches / 10 semantic findings; 7 debt candidates, 3 retained clusters | `R030-BUILD` + `R030-QUAL` | `report-only` |
-| PMD source-analysis evaluation | Maven Plugin `3.28.0`; explicit PMD `7.26.0`; 34 exact named rules over 19 production roots | `make pmd-analysis` | Local XML/HTML under `build-support/pmd-report/target/pmd/`; deliberately absent from regular CI | Clean `98.28 s`, repeat `88.97 s`; PMD owner `3.520–3.632 s`; peak RSS `986,692–1,189,012 KiB` | 92 occurrences: 3 bounded fixes, 7 semantic debt hotspots, 5 overlaps, 17 false positives and 60 policy-noise; no immediate defect | `R030-BUILD` | `triaged` (`P2` complete; P3 pending) |
+| PMD source-analysis policy | Maven Plugin `3.28.0`; explicit PMD `7.26.0`; 22 adopted exact rules + 3-rule watchlist over 19 production roots | `make pmd-analysis`; `make pmd-watchlist` | Separate regular CI policy job uploads `build-support/pmd-report/target/pmd/`; watchlist stays local under `target/pmd-watchlist/` | P3 warm policy `12.26 s` process / `11.127 s` Maven; watchlist `8.97 s` / `7.928 s`; earlier P1 clean cost retained below | Policy: 6 visible advisory findings in 6 files; watchlist: 20 in 13 files; 3 actionable + 3 intentionally ignored-parameter occurrences removed, no suppressions/baseline | `R030-BUILD` | `report-only adopted` (`P3` complete) |
 | Maven dependency analysis | Maven Dependency Plugin `3.11.0`; fast direct goal + opt-in full `dependency-analysis` profile; default bytecode analyzer | `make dependency-analysis` | Local console/report ledger; deliberately absent from regular CI | Fast sequential package + analysis observed at `5.313–7.677 s` Maven / `6.75–8.72 s` process; full profile timing below | 14 direct POM mismatches corrected; residual `56 / 34 / 12` candidate occurrences are test-aggregate, starter, SPI and transitive-runtime noise | `R030-BUILD` | `report-only`, blocking adoption deferred |
 
 Допустимые rollout stages: `planned`, `report-only`, `triaged`, `baselined`,
@@ -51,7 +51,7 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 | `BUILD-DEPS-03` | Semantic disposition of the captured dependency candidates and `Adopt / Adopt with exclusions / Defer` decision | Evaluation only | `BUILD-CPD-02` closed | `verified` |
 | `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow reviewed baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `verified` (`C0..C5` completed) |
 | `BUILD-SPOTBUGS-05` | Accepted no-new-findings signal wired into canonical Maven `verify` | Blocking ratchet | `BUILD-SPOTBUGS-04` closed | `verified` |
-| `BUILD-PMD-06` | Bounded evaluation of named PMD source-analysis rules and explicit adoption disposition | P0 inventory, then report-only measurement and triage | `BUILD-SPOTBUGS-04` closed and explicit status-matrix activation | `in-progress` (`P0/P1/P2` completed; `P3` pending) |
+| `BUILD-PMD-06` | Reduced named PMD source-analysis policy with explicit watchlist and adoption disposition | Report-only findings; regular separate CI tool-health/contract gate | `BUILD-SPOTBUGS-04` closed and explicit status-matrix activation | `verified` (`P0/P1/P2/P3` completed) |
 
 The queue is sequential for operator/agent clarity, not a technical claim that
 the controls depend on each other. A confirmed immediate correctness, resource
@@ -696,7 +696,7 @@ SpotBugs имеет отдельное решение `Adopt` в 0.3.0. CPD ос
 control с условиями возможного будущего no-new-duplication ratchet; dependency
 analysis по итогам текущего evidence не получает такой ratchet.
 
-## PMD source-analysis evaluation
+## PMD source-analysis evaluation and adoption
 
 Status matrix активировала `BUILD-PMD-06` после semantic closure SpotBugs.
 Это отдельное bounded evaluation, а не расширение принятого CPD control и не
@@ -813,18 +813,53 @@ caveat для P3, а не скрытая analyzer error.
   шума. Для P3 evidence-based candidates — `CognitiveComplexity=16` (1
   finding) и `ExcessiveParameterList=13` (3 occurrences / 2 semantic seams).
 
-P2 передаёт P3 явную rule disposition: 21 carry candidate, 2 ownership-noisy
-rules (`PreserveStackTrace`, `CloseResource`) для defer и 11 drop/PMD-8
-replacement candidates. Deprecated `AvoidLosingExceptionInformation` и
-`UselessOperationOnImmutable` должны быть удалены в пользу уже выбранного
-`UselessPureMethodCall`. Это ещё не adoption: текущий 34-rule evaluation
-ruleset намеренно не изменён.
+P2 первоначально передал P3 21 carry candidate, 2 ownership-noisy rules и 11
+drop/PMD-8 replacement candidates. P3 уточнил эту предварительную разбивку на
+основании операционной ценности правил и принял решение `Adopt with a reduced
+ruleset`:
 
-Следующий checkpoint `P3` обязан принять одно из решений: `Adopt`, `Adopt with
-a reduced ruleset`, `Defer` или `Reject`, определить lifecycle/owner и решить,
-нужны ли три bounded fixes и семь debt hotspots до либо после adoption.
+- 22 exact rules входят в постоянную report-only policy; в том числе
+  `UnusedFormalParameter`, поскольку три текущих callback-параметра дёшево
+  обозначены как intentionally ignored, а правило сохраняет полезный future
+  signal;
+- `CognitiveComplexity` закреплён с `reportLevel=16`, а
+  `ExcessiveParameterList` — с фактическим PMD property `minimum=13`;
+- `PreserveStackTrace`, `CloseResource` и `NcssCount` вынесены в отдельный
+  исполняемый watchlist. Это не suppression: report формируется по явной
+  команде, но не входит в регулярный CI до нового ownership/size evidence;
+- 7 правил удалены из текущей policy как доказанный style/framework/
+  state-machine/performance noise; два PMD-8-deprecated правила заменены уже
+  принятым `UselessPureMethodCall`;
+- category refs, `NOPMD`, PMD annotations, filters и accepted-findings baseline
+  по-прежнему запрещены.
 
-Полный rules inventory, rationale, build-topology hypothesis и exit criteria:
+До adoption удалены 6 P1 occurrences: три actionable findings (ранний CLI
+output теперь использует UTF-8, лишнее начальное присваивание `detected`
+удалено) и три intentionally ignored JDBC callback arguments, переименованные
+в `ignoredRowNum`. Adopted report после этого содержит 6 видимых
+advisory occurrences в 6 файлах: 2 `UnusedAssignment` false positives,
+1 `CognitiveComplexity` и 3 `ExcessiveParameterList`. Complexity signal связан
+с существующими `QUAL-PMD-01`, `QUAL-PMD-03` и `QUAL-PMD-06`, а не спрятан в
+baseline. Watchlist содержит 20 occurrences в 13 файлах: `CloseResource=15`,
+`PreserveStackTrace=5`, `NcssCount=0`.
+
+Adopted policy запускается единым leaf `tools/ci/pmd.sh policy`: локально через
+`make pmd-analysis`, а в GitHub — отдельным регулярным job с upload XML/HTML.
+Обычный `make verify` профиль не активирует, потому что P1 доказал contention
+нескольких aggregate mojos в полном parallel reactor. `make ci` выполняет PMD
+job перед полным build. Отдельный `make pmd-watchlist` использует собственные
+ruleset/output и не перезаписывает adopted report.
+
+Root verifier закрепляет оба exact ruleset, thresholds, profile overrides,
+output paths и late verifier command. Synthetic harness проходит 7 happy paths
+и 48 negative scenarios, включая engine/property drift, rule attributes и
+missing/wrong-policy watchlist reports. Warm повтор adopted
+policy: `12.26 s` process / `11.127 s` Maven wall, `667,076 KiB` peak RSS;
+watchlist: `8.97 s` process / `7.928 s` Maven wall, `625,200 KiB` peak RSS.
+Оба прогона использовали PMD `7.26.0`, сформировали XML/HTML и завершились без
+analyzer errors.
+
+Полный rules inventory, rationale и checkpoint evidence:
 [BUILD-PMD-06 worknote](../build-pmd-06-worknote.md).
 
 ## Deferred tool boundaries
@@ -840,10 +875,9 @@ a reduced ruleset`, `Defer` или `Reject`, определить lifecycle/owne
 
 Их отсутствие не является missing evidence текущего `R030-BUILD`.
 
-PMD source-analysis evaluation теперь ведётся отдельным `BUILD-PMD-06` и входит
-в текущую очередь `R030-BUILD`. Это не разрешает default/category-wide rules
-или автоматический adoption: только зафиксированный P0 ruleset проходит P1/P2,
-после чего требуется явное P3 disposition.
+PMD source analysis принят отдельным `BUILD-PMD-06` report-only control. Это не
+разрешает default/category-wide rules или автоматическое расширение policy:
+новое правило проходит отдельный evidence-based review.
 
 ## Completion
 
@@ -861,7 +895,7 @@ PMD source-analysis evaluation теперь ведётся отдельным `B
 - [x] PMD CPD diagnostic configuration и ownership приняты
 - [x] PMD source-analysis P0 scope и поимённый candidate ruleset зафиксированы
 - [x] PMD source-analysis report/cost/raw-signal evidence получены
-- [ ] PMD source-analysis adoption disposition принято
+- [x] PMD source-analysis adoption disposition принято
 - [x] Maven dependency-analysis report воспроизводим
 - [x] Dynamic/framework false positives проверены
 - [x] Maven dependency-analysis adoption decision принят
