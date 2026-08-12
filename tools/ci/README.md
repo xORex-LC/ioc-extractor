@@ -11,6 +11,7 @@ step (`make bootstrap` локально, `tools/dev/bootstrap.sh lychee` в CI).
 | Команда | Gate |
 |---|---|
 | `build.sh` | Полный Maven reactor `verify` + atomic evidence под `.dev/state/` |
+| `pmd.sh policy\|watchlist` | Принятая PMD production-source policy либо отдельный deferred watchlist |
 | `packaging.sh` | ShellCheck + packaging contract tests |
 | `docs.sh` | Offline link check через `lychee` |
 | `dependency-security.sh update|scan|report` | Явное обновление NVD data, offline scan или поиск готового отчёта |
@@ -26,6 +27,7 @@ step (`make bootstrap` локально, `tools/dev/bootstrap.sh lychee` в CI).
 | Make target | Локальное использование того же leaf script |
 |---|---|
 | `make ci-build` | Локальная копия GitHub build job |
+| `make ci-pmd` | Локальная копия регулярного PMD source-policy job |
 | `make ci-packaging` | Локальная копия GitHub packaging job |
 | `make ci-docs` | Локальная копия GitHub docs job |
 | `make ci` / `make pre-push` | Все регулярные gates последовательно |

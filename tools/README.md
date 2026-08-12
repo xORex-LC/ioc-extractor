@@ -39,6 +39,7 @@ make doctor
 make bootstrap  # repo-local lychee, если его нет в PATH
 make dependency-analysis
 make pmd-analysis
+make pmd-watchlist
 make spotbugs-baseline-proposal  # после SpotBugs ratchet failure
 make release-notes-context PREVIOUS_TAG=v0.1.0
 make pre-push
@@ -65,14 +66,22 @@ Findings остаются advisory: обычный `make verify` и CI не вк
 профиль. Не заменяйте `-DskipTests` на `-Dmaven.test.skip=true`: второе
 отключает компиляцию test bytecode и обедняет анализ scope.
 
-`make pmd-analysis` запускает bounded report-only PMD source evaluation по
-точному ruleset и 19 production `src/main/java` roots. Команда выбирает
+`make pmd-analysis` запускает принятую report-only PMD source policy по 22
+точным rules и 19 production `src/main/java` roots. Команда выбирает
 `build-support/pmd-report` и его upstream reactor через `-pl ... -am`, чтобы
 PMD aggregate mojo не конкурировал в parallel build с независимыми JaCoCo,
 SpotBugs и CPD aggregators. XML/HTML появляются в
 `build-support/pmd-report/target/pmd/`; findings advisory, но scope/ruleset/
 engine drift, analyzer errors и отсутствующий либо повреждённый report завершают
-команду ошибкой. Обычный `make verify` и CI PMD source profile не активируют.
+команду ошибкой. Регулярный CI запускает эту же policy отдельным job; обычный
+`make verify` PMD source profile не активирует.
+
+`make pmd-watchlist` тем же механизмом формирует отдельный отчёт в
+`build-support/pmd-report/target/pmd-watchlist/` только для
+`PreserveStackTrace`, `CloseResource` и `NcssCount`. Watchlist не входит в
+регулярный CI и не является suppressions/baseline: его запускают при изменении
+resource/exception ownership, lifecycle contracts, PMD/JDK или перед повторным
+решением об adoption этих правил.
 
 `make pre-push` последовательно выполняет те же leaf scripts, а значит те же
 Maven, shell-contract и offline-documentation gates, что обычный GitHub CI.

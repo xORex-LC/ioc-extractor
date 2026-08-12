@@ -236,9 +236,17 @@ public final class BuildQualityVerifierTest {
                         Control.PMD,
                         Mode.VALIDATE,
                         fixture -> fixture.replaceReport(
-                                "<version>${pmd-evaluation.version}</version>",
+                                "<version>${pmd.version}</version>",
                                 "<version>7.25.0</version>"),
                         "PMD engine plugin dependencies differ"),
+                new Scenario(
+                        "PMD engine version property drifts",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceRoot(
+                                "<pmd.version>7.26.0</pmd.version>",
+                                "<pmd.version>7.25.0</pmd.version>"),
+                        "PMD engine version property must be 7.26.0"),
                 new Scenario(
                         "PMD source encoding drifts",
                         Control.PMD,
@@ -276,19 +284,19 @@ public final class BuildQualityVerifierTest {
                         Control.PMD,
                         Mode.VALIDATE,
                         fixture -> fixture.replaceRuleset(
-                                "category/java/errorprone.xml/CloseResource",
+                                "category/java/errorprone.xml/UselessPureMethodCall",
                                 "category/java/errorprone.xml"),
-                        "PMD evaluation rule must reference one exact rule"),
+                        "PMD policy rule must reference one exact rule"),
                 new Scenario(
                         "PMD rule introduces a suppression property",
                         Control.PMD,
                         Mode.VALIDATE,
                         fixture -> fixture.replaceRuleset(
-                                "<rule ref=\"category/java/errorprone.xml/CloseResource\"/>",
-                                "<rule ref=\"category/java/errorprone.xml/CloseResource\">"
+                                "<rule ref=\"category/java/bestpractices.xml/UnusedAssignment\"/>",
+                                "<rule ref=\"category/java/bestpractices.xml/UnusedAssignment\">"
                                         + "<properties><property name=\"violationSuppressRegex\" "
                                         + "value=\".*\"/></properties></rule>"),
-                        "PMD evaluation rule must not contain properties or exclusions"),
+                        "PMD policy rule properties differ"),
                 new Scenario(
                         "PMD ruleset loses an accepted candidate",
                         Control.PMD,
@@ -296,7 +304,7 @@ public final class BuildQualityVerifierTest {
                         fixture -> fixture.replaceRuleset(
                                 "  <rule ref=\"category/java/bestpractices.xml/UnusedAssignment\"/>\n",
                                 ""),
-                        "PMD evaluation rules differ"),
+                        "PMD policy rules differ"),
                 new Scenario(
                         "PMD ruleset duplicates a candidate",
                         Control.PMD,
@@ -305,7 +313,7 @@ public final class BuildQualityVerifierTest {
                                 "  <rule ref=\"category/java/bestpractices.xml/UnusedAssignment\"/>\n",
                                 "  <rule ref=\"category/java/bestpractices.xml/UnusedAssignment\"/>\n"
                                         + "  <rule ref=\"category/java/bestpractices.xml/UnusedAssignment\"/>\n"),
-                        "duplicate PMD evaluation rule reference"),
+                        "duplicate PMD policy rule reference"),
                 new Scenario(
                         "PMD ruleset introduces an exclusion",
                         Control.PMD,
@@ -313,7 +321,59 @@ public final class BuildQualityVerifierTest {
                         fixture -> fixture.replaceRuleset(
                                 "</ruleset>",
                                 "  <exclude-pattern>.*/Legacy.java</exclude-pattern>\n</ruleset>"),
-                        "PMD evaluation ruleset must not contain source filters or exclusions"),
+                        "PMD policy ruleset must not contain source filters or exclusions"),
+                new Scenario(
+                        "PMD calibrated cognitive threshold drifts",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceRuleset(
+                                "<property name=\"reportLevel\" value=\"16\"/>",
+                                "<property name=\"reportLevel\" value=\"15\"/>"),
+                        "PMD policy rule properties differ for "
+                                + "category/java/design.xml/CognitiveComplexity"),
+                new Scenario(
+                        "PMD calibrated parameter threshold drifts",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceRuleset(
+                                "<property name=\"minimum\" value=\"13\"/>",
+                                "<property name=\"minimum\" value=\"12\"/>"),
+                        "PMD policy rule properties differ for "
+                                + "category/java/design.xml/ExcessiveParameterList"),
+                new Scenario(
+                        "PMD policy rule adds an attribute override",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceRuleset(
+                                "<rule ref=\"category/java/bestpractices.xml/UnusedAssignment\"/>",
+                                "<rule ref=\"category/java/bestpractices.xml/UnusedAssignment\" "
+                                        + "message=\"overridden\"/>"),
+                        "PMD policy rule must contain only the exact ref attribute"),
+                new Scenario(
+                        "PMD watchlist ruleset loses a reviewed rule",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceWatchlistRuleset(
+                                "  <rule ref=\"category/java/errorprone.xml/CloseResource\"/>\n",
+                                ""),
+                        "PMD watchlist rules differ"),
+                new Scenario(
+                        "PMD watchlist report selection drifts",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceReport(
+                                "${project.build.directory}/pmd-watchlist",
+                                "${project.build.directory}/pmd-deferred"),
+                        "PMD watchlist report directory must be "
+                                + "${project.build.directory}/pmd-watchlist"),
+                new Scenario(
+                        "PMD watchlist profile gains activation behavior",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceReport(
+                                "<id>pmd-watchlist</id>",
+                                "<id>pmd-watchlist</id><activation/>"),
+                        "PMD watchlist profile elements differ"),
                 new Scenario(
                         "PMD source introduces a suppression marker",
                         Control.PMD,
@@ -321,7 +381,7 @@ public final class BuildQualityVerifierTest {
                         fixture -> fixture.write(
                                 "app/src/main/java/App.java",
                                 "final class App {} // NOPMD\n"),
-                        "PMD source suppression marker is forbidden during evaluation"),
+                        "PMD source suppression marker is forbidden"),
                 new Scenario(
                         "PMD XML is missing",
                         Control.PMD,
@@ -378,7 +438,21 @@ public final class BuildQualityVerifierTest {
                                     "version=\"7.26.0\"",
                                     "version=\"7.25.0\"");
                         },
-                        "PMD report engine version must be 7.26.0"));
+                        "PMD report engine version must be 7.26.0"),
+                new Scenario(
+                        "PMD watchlist XML contains a policy rule",
+                        Control.PMD,
+                        Mode.VERIFY_REPORTS,
+                        fixture -> {
+                            fixture.writeValidReports();
+                            fixture.replace(
+                                    fixture.root().resolve(
+                                            "report/target/pmd-watchlist/pmd.xml"),
+                                    "rule=\"CloseResource\"",
+                                    "rule=\"UnusedLocalVariable\"");
+                        },
+                        "PMD XML contains a rule outside the selected policy",
+                        "watchlist"));
 
         runHappyPath(Control.SPOTBUGS, Mode.VALIDATE);
         runHappyPath(Control.CPD, Mode.VALIDATE);
@@ -386,6 +460,8 @@ public final class BuildQualityVerifierTest {
         runHappyPath(Control.SPOTBUGS, Mode.VERIFY_REPORTS);
         runHappyPath(Control.CPD, Mode.VERIFY_REPORTS);
         runHappyPath(Control.PMD, Mode.VERIFY_REPORTS);
+        runPmdWatchlistHappyPath();
+        runPmdWatchlistMissingReportNegativePath();
 
         List<String> failures = new ArrayList<>();
         for (Scenario scenario : scenarios) {
@@ -402,8 +478,36 @@ public final class BuildQualityVerifierTest {
                             + String.join("\n - ", failures));
         }
         System.out.printf(
-                "BuildQualityVerifier: 6 happy paths and %d negative scenarios passed%n",
-                scenarios.size());
+                "BuildQualityVerifier: 7 happy paths and %d negative scenarios passed%n",
+                scenarios.size() + 1);
+    }
+
+    private static void runPmdWatchlistHappyPath()
+            throws Exception {
+        try (Fixture fixture = Fixture.create(Control.PMD)) {
+            fixture.writeValidReports();
+            Result result = fixture.execute(Mode.VERIFY_REPORTS, "watchlist");
+            require(
+                    result.exitCode() == 0,
+                    "PMD watchlist verify-reports should pass, stderr="
+                            + result.standardError());
+        }
+    }
+
+    private static void runPmdWatchlistMissingReportNegativePath()
+            throws Exception {
+        try (Fixture fixture = Fixture.create(Control.PMD)) {
+            fixture.writeValidReports();
+            Files.delete(fixture.root().resolve("report/target/pmd-watchlist/pmd.xml"));
+            Result result = fixture.execute(Mode.VERIFY_REPORTS, "watchlist");
+            require(
+                    result.exitCode() != 0,
+                    "PMD watchlist without XML unexpectedly passed");
+            require(
+                    result.standardError().contains("PMD XML is missing or empty"),
+                    "PMD watchlist missing-report failure differs, stderr="
+                            + result.standardError());
+        }
     }
 
     private static void runHappyPath(Control control, Mode mode)
@@ -424,7 +528,7 @@ public final class BuildQualityVerifierTest {
             throws Exception {
         try (Fixture fixture = Fixture.create(scenario.control())) {
             scenario.mutation().apply(fixture);
-            Result result = fixture.execute(scenario.mode());
+            Result result = fixture.execute(scenario.mode(), scenario.pmdReportKind());
             require(
                     result.exitCode() != 0,
                     "scenario unexpectedly passed");
@@ -509,7 +613,17 @@ public final class BuildQualityVerifierTest {
             Control control,
             Mode mode,
             Mutation mutation,
-            String expectedError) {
+            String expectedError,
+            String pmdReportKind) {
+
+        Scenario(
+                String name,
+                Control control,
+                Mode mode,
+                Mutation mutation,
+                String expectedError) {
+            this(name, control, mode, mutation, expectedError, "policy");
+        }
     }
 
     private record Result(
@@ -556,6 +670,7 @@ public final class BuildQualityVerifierTest {
                                 <properties>
                                   <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
                                   <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+                                  <pmd.version>7.26.0</pmd.version>
                                 </properties>
                                 <modules>
                                   <module>app</module>
@@ -591,6 +706,7 @@ public final class BuildQualityVerifierTest {
                     });
             if (control == Control.PMD) {
                 write("report/pmd-ruleset.xml", pmdRuleset());
+                write("report/pmd-watchlist-ruleset.xml", pmdWatchlistRuleset());
             }
         }
 
@@ -624,21 +740,8 @@ public final class BuildQualityVerifierTest {
                         .toAbsolutePath()
                         .normalize()
                         .toString();
-                write(
-                        "report/target/pmd/pmd.xml",
-                        """
-                                <pmd xmlns="http://pmd.sourceforge.net/report/2.0.0"
-                                     version="7.26.0">
-                                  <file name="%s">
-                                    <violation rule="UnusedLocalVariable" priority="3"
-                                               beginline="1" endline="1"
-                                               begincolumn="1" endcolumn="1">test</violation>
-                                  </file>
-                                </pmd>
-                                """.formatted(source));
-                write(
-                        "report/target/pmd/pmd.html",
-                        "<html><title>PMD Results</title></html>");
+                writePmdReport("report/target/pmd", source, "UnusedLocalVariable");
+                writePmdReport("report/target/pmd-watchlist", source, "CloseResource");
                 return;
             }
 
@@ -661,7 +764,30 @@ public final class BuildQualityVerifierTest {
                     "<html><title>CPD Results</title></html>");
         }
 
+        private void writePmdReport(String reportDirectory, String source, String rule)
+                throws IOException {
+            write(
+                        reportDirectory + "/pmd.xml",
+                        """
+                                <pmd xmlns="http://pmd.sourceforge.net/report/2.0.0"
+                                     version="7.26.0">
+                                  <file name="%s">
+                                    <violation rule="%s" priority="3"
+                                               beginline="1" endline="1"
+                                               begincolumn="1" endcolumn="1">test</violation>
+                                  </file>
+                                </pmd>
+                                """.formatted(source, rule));
+            write(
+                    reportDirectory + "/pmd.html",
+                    "<html><title>PMD Results</title></html>");
+        }
+
         Result execute(Mode mode) {
+            return execute(mode, "policy");
+        }
+
+        Result execute(Mode mode, String pmdReportKind) {
             ByteArrayOutputStream standardOutput = new ByteArrayOutputStream();
             ByteArrayOutputStream standardError = new ByteArrayOutputStream();
             int exitCode;
@@ -673,14 +799,17 @@ public final class BuildQualityVerifierTest {
                             standardError,
                             true,
                             StandardCharsets.UTF_8)) {
+                List<String> arguments = new ArrayList<>(List.of(
+                        control.externalName(),
+                        mode.externalName(),
+                        root.toString(),
+                        manifest.toString(),
+                        reportPom.toString()));
+                if (control == Control.PMD && mode == Mode.VERIFY_REPORTS) {
+                    arguments.add(pmdReportKind);
+                }
                 exitCode = BuildQualityVerifier.execute(
-                        new String[] {
-                            control.externalName(),
-                            mode.externalName(),
-                            root.toString(),
-                            manifest.toString(),
-                            reportPom.toString()
-                        },
+                        arguments.toArray(String[]::new),
                         out,
                         err);
             }
@@ -717,6 +846,11 @@ public final class BuildQualityVerifierTest {
         void replaceRuleset(String expected, String replacement)
                 throws IOException {
             replace(root.resolve("report/pmd-ruleset.xml"), expected, replacement);
+        }
+
+        void replaceWatchlistRuleset(String expected, String replacement)
+                throws IOException {
+            replace(root.resolve("report/pmd-watchlist-ruleset.xml"), expected, replacement);
         }
 
         void replace(Path file, String expected, String replacement)
@@ -884,6 +1018,11 @@ public final class BuildQualityVerifierTest {
                     + """
                         <artifactId>report</artifactId>
                         <packaging>pom</packaging>
+                        <properties>
+                          <ioc.pmd.ruleset>${project.basedir}/pmd-ruleset.xml</ioc.pmd.ruleset>
+                          <ioc.pmd.reportDirectory>${project.build.directory}/pmd</ioc.pmd.reportDirectory>
+                          <ioc.pmd.reportKind>policy</ioc.pmd.reportKind>
+                        </properties>
                         <dependencies>
                     """
                     + dependency("app")
@@ -891,7 +1030,7 @@ public final class BuildQualityVerifierTest {
                         </dependencies>
                         <profiles>
                           <profile>
-                            <id>pmd-evaluation</id>
+                            <id>pmd-analysis</id>
                             <build>
                               <plugins>
                                 <plugin>
@@ -900,12 +1039,12 @@ public final class BuildQualityVerifierTest {
                                     <dependency>
                                       <groupId>net.sourceforge.pmd</groupId>
                                       <artifactId>pmd-core</artifactId>
-                                      <version>${pmd-evaluation.version}</version>
+                                      <version>${pmd.version}</version>
                                     </dependency>
                                     <dependency>
                                       <groupId>net.sourceforge.pmd</groupId>
                                       <artifactId>pmd-java</artifactId>
-                                      <version>${pmd-evaluation.version}</version>
+                                      <version>${pmd.version}</version>
                                     </dependency>
                                   </dependencies>
                                   <executions>
@@ -925,10 +1064,10 @@ public final class BuildQualityVerifierTest {
                                         <skipEmptyReport>false</skipEmptyReport>
                                         <linkXRef>false</linkXRef>
                                         <format>xml</format>
-                                        <targetDirectory>${project.build.directory}/pmd</targetDirectory>
-                                        <outputDirectory>${project.build.directory}/pmd</outputDirectory>
+                                        <targetDirectory>${ioc.pmd.reportDirectory}</targetDirectory>
+                                        <outputDirectory>${ioc.pmd.reportDirectory}</outputDirectory>
                                         <rulesets>
-                                          <ruleset>${project.basedir}/pmd-ruleset.xml</ruleset>
+                                          <ruleset>${ioc.pmd.ruleset}</ruleset>
                                         </rulesets>
                                         <compileSourceRoots>
                                           %s
@@ -950,7 +1089,7 @@ public final class BuildQualityVerifierTest {
                                       <goals><goal>run</goal></goals>
                                       <configuration>
                                         <target>
-                                          <delete dir="${project.build.directory}/pmd" quiet="true"/>
+                                          <delete dir="${ioc.pmd.reportDirectory}" quiet="true"/>
                                         </target>
                                       </configuration>
                                     </execution>
@@ -967,6 +1106,7 @@ public final class BuildQualityVerifierTest {
                                             <arg value="${maven.multiModuleProjectDirectory}"/>
                                             <arg value="${project.basedir}/pmd-scope.tsv"/>
                                             <arg value="${project.basedir}/pom.xml"/>
+                                            <arg value="${ioc.pmd.reportKind}"/>
                                           </exec>
                                         </target>
                                       </configuration>
@@ -976,6 +1116,14 @@ public final class BuildQualityVerifierTest {
                               </plugins>
                             </build>
                           </profile>
+                          <profile>
+                            <id>pmd-watchlist</id>
+                            <properties>
+                              <ioc.pmd.ruleset>${project.basedir}/pmd-watchlist-ruleset.xml</ioc.pmd.ruleset>
+                              <ioc.pmd.reportDirectory>${project.build.directory}/pmd-watchlist</ioc.pmd.reportDirectory>
+                              <ioc.pmd.reportKind>watchlist</ioc.pmd.reportKind>
+                            </properties>
+                          </profile>
                         </profiles>
                       </project>
                     """.formatted(sourceRoot("app"));
@@ -983,14 +1131,38 @@ public final class BuildQualityVerifierTest {
 
         private String pmdRuleset() {
             StringBuilder rules = new StringBuilder();
-            for (String rule : new TreeSet<>(BuildQualityVerifier.PMD_EVALUATION_RULES)) {
+            for (String rule : new TreeSet<>(BuildQualityVerifier.PMD_POLICY_RULES)) {
+                rules.append("  <rule ref=\"").append(rule).append("\"");
+                if (rule.endsWith("/CognitiveComplexity")) {
+                    rules.append(">\n    <properties>\n"
+                            + "      <property name=\"reportLevel\" value=\"16\"/>\n"
+                            + "    </properties>\n  </rule>\n");
+                } else if (rule.endsWith("/ExcessiveParameterList")) {
+                    rules.append(">\n    <properties>\n"
+                            + "      <property name=\"minimum\" value=\"13\"/>\n"
+                            + "    </properties>\n  </rule>\n");
+                } else {
+                    rules.append("/>\n");
+                }
+            }
+            return """
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <ruleset name="test"
+                             xmlns="http://pmd.sourceforge.net/ruleset/2.0.0">
+                    %s</ruleset>
+                    """.formatted(rules);
+        }
+
+        private String pmdWatchlistRuleset() {
+            StringBuilder rules = new StringBuilder();
+            for (String rule : new TreeSet<>(BuildQualityVerifier.PMD_WATCHLIST_RULES)) {
                 rules.append("  <rule ref=\"")
                         .append(rule)
                         .append("\"/>\n");
             }
             return """
                     <?xml version="1.0" encoding="UTF-8"?>
-                    <ruleset name="test"
+                    <ruleset name="watchlist-test"
                              xmlns="http://pmd.sourceforge.net/ruleset/2.0.0">
                     %s</ruleset>
                     """.formatted(rules);

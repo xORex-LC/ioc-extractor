@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="IOC Extractor PMD advisory watchlist"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.github.io/schema/ruleset_2_0_0.xsd">
+    <description>
+        High-value BUILD-PMD-06/P3 rules whose current ownership or size signal is
+        too noisy for the adopted policy. This ruleset is report-only and is run
+        only through the explicit watchlist command and documented review triggers.
+    </description>
+
+    <rule ref="category/java/bestpractices.xml/PreserveStackTrace"/>
+    <rule ref="category/java/errorprone.xml/CloseResource"/>
+    <rule ref="category/java/design.xml/NcssCount"/>
+</ruleset>

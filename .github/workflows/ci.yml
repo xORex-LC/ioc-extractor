@@ -54,6 +54,30 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+  pmd-source-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Analyze production sources with adopted PMD policy
+        run: tools/ci/pmd.sh policy
+
+      - name: Upload PMD source-analysis report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pmd-source-report-${{ github.run_number }}
+          path: build-support/pmd-report/target/pmd/
+          if-no-files-found: warn
+          retention-days: 30
+
   packaging-contracts:
     runs-on: ubuntu-latest
     steps:

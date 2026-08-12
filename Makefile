@@ -40,13 +40,13 @@ GITHUB ?= 0
 .PHONY: help \
 	doctor doctor-core doctor-dev doctor-ci doctor-security bootstrap \
 	clean package test test-module test-one verify version extract export \
-	dependency-analysis pmd-analysis spotbugs-baseline-proposal \
+	dependency-analysis pmd-analysis pmd-watchlist spotbugs-baseline-proposal \
 	context \
 	run stop runtime-up runtime-down runtime-status runtime-reset submit \
 	fixture fixture-1k fixture-5k fixture-100k smoke smoke-cli smoke-oneshot smoke-daemon \
 	db logs logs-errors release-notes-context \
 	lint-shell docs security-update security-scan security-report \
-	ci-build ci-packaging ci-docs ci pre-push
+	ci-build ci-pmd ci-packaging ci-docs ci pre-push
 
 help: ## Show this command reference
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target> [NAME=value ...]\n"} \
@@ -103,8 +103,11 @@ test-one: ## Run one test selector; MODULE=... TEST=Class#method
 verify: ## Run the release-quality Maven reactor gate
 	@tools/ci/build.sh
 
-pmd-analysis: ## Run the opt-in report-only PMD production-source evaluation
-	@$(MAVEN) -Ppmd-evaluation -pl build-support/pmd-report -am verify
+pmd-analysis: ## Run the adopted report-only PMD production-source policy
+	@tools/ci/pmd.sh policy
+
+pmd-watchlist: ## Run the deferred PMD ownership/size watchlist
+	@tools/ci/pmd.sh watchlist
 
 spotbugs-baseline-proposal: ## Render a non-accepting SpotBugs baseline delta from current raw reports
 	@$(MAVEN_SEQUENTIAL) -N validate
@@ -223,6 +226,9 @@ security-report: ## Print existing Dependency-Check report paths
 ci-build: ## CI leaf: Maven verify
 	@tools/ci/build.sh
 
+ci-pmd: ## CI leaf: adopted PMD production-source policy
+	@tools/ci/pmd.sh policy
+
 ci-packaging: ## CI leaf: ShellCheck and shell contracts
 	@tools/ci/packaging.sh
 
@@ -230,6 +236,7 @@ ci-docs: ## CI leaf: offline documentation links
 	@tools/ci/docs.sh
 
 ci: ## Run the same regular gates as GitHub CI, sequentially
+	@$(MAKE) --no-print-directory ci-pmd
 	@$(MAKE) --no-print-directory ci-build
 	@$(MAKE) --no-print-directory ci-packaging
 	@$(MAKE) --no-print-directory ci-docs

@@ -36,7 +36,7 @@
         <spotbugs-maven-plugin.version>4.10.3.0</spotbugs-maven-plugin.version>
         <spotbugs.version>4.10.3</spotbugs.version>
         <maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
-        <pmd-evaluation.version>7.26.0</pmd-evaluation.version>
+        <pmd.version>7.26.0</pmd.version>
         <maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
         <maven-antrun-plugin.version>3.2.0</maven-antrun-plugin.version>
         <commons-csv.version>1.12.0</commons-csv.version>
