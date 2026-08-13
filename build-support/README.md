@@ -13,9 +13,11 @@ build-support.
 
 | Directory | Purpose |
 |---|---|
+| `build-quality/` | Shared JDK-only analyzer scope/report verifiers and synthetic contract harnesses; not a reactor module |
 | `coverage-report/` | Reactor-wide JaCoCo HTML/XML report aggregation |
 | `spotbugs-report/` | Reactor-wide SpotBugs XML/HTML aggregation and report-integrity validation |
 | `cpd-report/` | Repository-wide production-source PMD CPD XML/HTML report and integrity validation |
+| `pmd-report/` | Adopted PMD source-policy and watchlist XML/HTML reports with fail-closed scope/ruleset integrity |
 
 ## Dependencies
 

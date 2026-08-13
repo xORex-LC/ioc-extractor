@@ -54,6 +54,12 @@ Tool versions и точная Maven configuration определяются imple
 Maven `verify`; Codecov не становится заменой локального gate и не получает
 required branch-protection status.
 
+Завершение всех analyzer work items не закрывает эти shared criteria
+автоматически. Пока R030-TEST не подтвердит Surefire/Failsafe lifecycle,
+JaCoCo checks и missing-report policy, Codecov evidence и required CI statuses,
+общий `R030-BUILD` остаётся `in-progress`, даже если все `BUILD-*`
+analyzer items имеют статус `verified`.
+
 ### Code-quality analysis
 
 В 0.3.0 приняты три постоянных control с разной enforcement policy:
@@ -64,7 +70,7 @@ required branch-protection status.
 - PMD source analysis — отдельный repository-wide report-only control по 22
   поимённым rules, выполняемый регулярным отдельным CI job.
 
-Оба инструмента сначала вводятся в report-only mode. Tool-introduction change
+Analyzer controls сначала вводятся в report-only mode. Tool-introduction change
 не смешивается с массовым исправлением legacy findings. Для каждого control
 фиксируются version, scope, runtime cost, output artifacts, configuration owner
 и suppression/exclusion policy.

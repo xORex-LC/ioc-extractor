@@ -49,7 +49,9 @@ make pmd-watchlist
 
 Ordinary `make verify` includes this build-only POM in reactor topology but does
 not activate PMD source analysis. The regular CI workflow invokes
-`tools/ci/pmd.sh policy` in a separate required job. Both developer targets
+`tools/ci/pmd.sh policy` in a separate job. Whether that job is required for a
+merge is external branch-protection/ruleset state, not a property of this POM or
+workflow file, and must be checked separately. Both developer targets
 select this module and its upstream reactor with `-pl build-support/pmd-report
 -am`; that keeps the PMD aggregator away from the independent coverage,
 SpotBugs and CPD aggregate mojos in a parallel full-reactor build. The

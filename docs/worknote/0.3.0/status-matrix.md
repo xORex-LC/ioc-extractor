@@ -16,7 +16,7 @@ language: "ru"
 | Goal | State | Evidence | Next gate |
 |---|---|---|---|
 | `R030-BASE` | `verified` | [baseline](evidence/baseline.md), [compatibility ledger](evidence/compatibility-ledger.md) | Closed; re-baseline only by explicit scope/contract decision |
-| `R030-BUILD` | `in-progress` | [build-quality ledger](evidence/build-quality-ledger.md) | `BUILD-PMD-06/P3`: choose explicit adoption disposition and lifecycle from the completed P2 semantic evidence; SpotBugs blocking adoption remains closed |
+| `R030-BUILD` | `in-progress` | [build-quality ledger](evidence/build-quality-ledger.md) | All named analyzer work items are verified. Immediate next gate: `TEST-LIFECYCLE-01`; goal closure then requires the shared R030-TEST coverage/Codecov deliverables and required branch-status evidence |
 | `R030-TEST` global controls | `planned` | [test-quality ledger](evidence/test-quality-ledger.md) | `TEST-LIFECYCLE-01` taxonomy and lifecycle separation |
 | `R030-SEC` | `planned` | — | Security gap analysis |
 | `R030-LIB` | `planned` | [shared-code inventory](evidence/shared-code-inventory.md) | `LIB-1` concurrency-library admission record |

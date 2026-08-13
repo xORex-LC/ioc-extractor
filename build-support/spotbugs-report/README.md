@@ -35,11 +35,12 @@ published library.
 
 ## Notes
 
-`core/ioc-application-tck`, the root parent, `coverage-report` and `cpd-report`
-are explicitly excluded from production-bytecode analysis. `spotbugs-report`
-has the separate `aggregate` disposition. The root lifecycle removes stale
-module-local SpotBugs outputs during `initialize`, so an incremental build cannot
-satisfy the integrity gate with a report from a prior invocation.
+`core/ioc-application-tck`, the root parent, `coverage-report`, `cpd-report` and
+`pmd-report` are explicitly excluded from production-bytecode analysis.
+`spotbugs-report` has the separate `aggregate` disposition. The root lifecycle
+removes stale module-local SpotBugs outputs during `initialize`, so an
+incremental build cannot satisfy the integrity gate with a report from a prior
+invocation.
 
 The root-only `validate` gate runs the shared verifiers before child projects
 are built. It requires the registry to cover exactly the root Maven reactor,

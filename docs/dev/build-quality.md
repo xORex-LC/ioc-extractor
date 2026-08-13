@@ -2,10 +2,11 @@
 
 Build quality is a repository-owned Maven capability, not an external service.
 The canonical `verify` lifecycle compiles and tests the reactor, enforces module
-and architecture rules, analyzes production code, builds aggregate reports and
-checks that every expected result is current and complete. Controls have
-different policies: some findings block immediately, some remain diagnostic,
-and analyzer or report-integrity failures never become a green build silently.
+and architecture rules, analyzes production code and builds aggregate reports.
+Each adopted static-analysis control checks that its expected result is current
+and complete. Controls have different policies: some findings block
+immediately, some remain diagnostic, and analyzer or report-integrity failures
+for an adopted control never become a green build silently.
 
 This document explains the durable mechanism and its maintenance workflow. It
 does not record release snapshots, tool-version history, current finding counts
@@ -73,6 +74,11 @@ in the parallel full reactor. The regular policy job complements rather than
 replaces the separate `make verify` release gate. The watchlist is locally
 opt-in and is not a merge gate.
 
+Workflow presence and branch enforcement are different contracts. The
+repository owns the jobs and artifacts in `.github/workflows/ci.yml`; whether a
+job is a required merge status is external GitHub branch/ruleset state and must
+be verified explicitly before claiming it as a required gate.
+
 Maven may report that aggregate mojos require exclusive reactor access during
 the parallel build. That message describes Maven serialization of aggregate
 work, not an analyzer error. Correct ordering comes from the build-support POMs:
@@ -84,7 +90,7 @@ runs only after the applicable modules.
 | Control | Input | Enforcement |
 |---|---|---|
 | Maven Enforcer | Toolchain and POM metadata | Violations block every ordinary build |
-| JUnit/Surefire contracts | Unit, integration, architecture, golden and documentation tests | Test failure blocks `verify` |
+| JUnit/Surefire contracts | Current unit, integration, architecture, golden and documentation suites | All deterministic suites currently run through Surefire and failures block `verify`; Failsafe separation is pending |
 | ArchUnit | Compiled production classes | Dependency or package-boundary violation blocks `verify` |
 | JaCoCo | Test execution data and production classes | Report generation is part of `verify`; coverage values are currently diagnostic |
 | SpotBugs | Applicable production bytecode | New, stale, moved or metadata-drifted findings block the exact ratchet; analyzer/report failures also block |
@@ -98,6 +104,12 @@ The distinction between a finding policy and tool health is important. CPD
 duplicates do not fail the build, but a missing CPD report does. SpotBugs is
 stricter: both an unhealthy analysis and any raw finding not represented by the
 reviewed exact baseline fail the build.
+
+The test lifecycle is intentionally transitional. A class named `*IT` is not
+yet evidence of a Failsafe-owned integration-test phase: the current reactor
+runs deterministic test suites through Surefire. Introducing Failsafe must
+preserve test counts, JaCoCo execution data, report retention and failure
+semantics before the lifecycle split can be described as complete.
 
 ## Ownership boundaries
 
@@ -400,8 +412,12 @@ coverage module combines the applicable production universe under
 
 The reusable TCK is not part of the production coverage denominator. The
 current lifecycle generates HTML/XML evidence but does not enforce a numeric
-coverage floor. Introducing a floor or ratchet requires an explicit universe,
-missing-report policy and measured baseline rather than a copied percentage.
+coverage floor, a project-owned missing-report gate or a coverage ratchet.
+Codecov is not currently wired. Introducing any of these controls requires an
+explicit universe, missing-report policy and measured baseline rather than a
+copied percentage. A future Surefire/Failsafe split must also prove that both
+test lifecycles contribute to the intended JaCoCo data before coverage evidence
+can become blocking.
 
 ## Dependency and security analysis
 

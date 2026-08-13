@@ -84,7 +84,8 @@ Parent reactor применяет ко всем модулям:
 Root-only AntRun execution в фазе `validate` компилирует общий JDK-only
 `build-support/build-quality/BuildQualityVerifier`, прогоняет synthetic-reactor
 contract matrix и до начала дочерних проектов сверяет SpotBugs/CPD manifests с
-root reactor. PMD source-evaluation manifest и exact ruleset проверяются там же.
+root reactor. PMD source-policy/watchlist manifest и exact rulesets
+проверяются там же.
 Поэтому новый модуль требует явного disposition сразу, а не после
 полного анализа. Финальный build-only модуль `build-support/spotbugs-report`
 формирует reactor-wide SpotBugs XML/HTML aggregate; поздний report-integrity
@@ -107,14 +108,17 @@ configured source roots. Перед analysis удаляются stale outputs; �
 Maven generated outputs и vendor trees исключены. CPD findings остаются
 report-only; analyzer, scope или report-integrity error блокирует `verify`.
 
-Отдельный `build-support/pmd-report` владеет bounded PMD source-analysis
-evaluation. Его opt-in профиль выполняет один `aggregate-pmd-no-fork` над теми
-же 19 production roots и формирует XML/HTML в собственном `target/pmd/`.
+Отдельный `build-support/pmd-report` владеет принятой PMD source
+policy и ownership/size watchlist. Каждый профиль выполняет один
+`aggregate-pmd-no-fork` над теми же 19 production roots и формирует
+XML/HTML в раздельных `target/pmd/` и `target/pmd-watchlist/`.
 Verifier сверяет точный 25-project disposition, ordering dependencies,
-положительные source roots, UTF-8, engine dependencies и поимённый ruleset без
-category refs/exclusions; analyzer/configuration error, пропавший или
-out-of-scope report красит evaluation command. Сами findings остаются
-report-only, а обычный `make verify` профиль не активирует.
+положительные source roots, UTF-8, engine dependencies и оба поимённых
+ruleset без category refs/exclusions; analyzer/configuration error, пропавший
+или out-of-scope report красит выбранную command. Policy работает
+как отдельный regular CI job, watchlist остаётся локально opt-in;
+найденные violations в обоих случаях report-only, а обычный
+`make verify` не активирует ни один из профилей.
 
 `ioc-domain` дополнительно запрещает Spring, Tika, Commons CSV/IO, Guava,
 RE2/J, picocli, HikariCP и sqlite-jdbc. `ioc-application` запрещает JDBC,

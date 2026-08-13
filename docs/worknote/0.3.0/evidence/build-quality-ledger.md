@@ -2,7 +2,7 @@
 title: "0.3.0 build-quality evidence"
 version: "0.3.0"
 goal_id: "R030-BUILD"
-status: "Baseline captured"
+status: "In progress — code-quality controls verified"
 document_type: "Evidence ledger"
 source_of_truth: false
 language: "ru"
@@ -57,6 +57,36 @@ The queue is sequential for operator/agent clarity, not a technical claim that
 the controls depend on each other. A confirmed immediate correctness, resource
 or concurrency risk may move `BUILD-SPOTBUGS-04` forward through an explicit
 status-matrix decision.
+
+## Closure audit — 2026-08-13
+
+Аудит текущего `release-0.3.0` на commit `9f98819` сверил release
+contracts, Maven/CI configuration, executable verifiers и generated evidence:
+
+- reactor содержит 25 projects: root, 20 functional JAR modules и четыре
+  build-only report POMs;
+- все SpotBugs/CPD/PMD registries покрывают эти 25 projects как
+  `19 analyzed / 5 excluded / 1 aggregate`;
+- root-only validation прошёл: `BuildQualityVerifier` выполнил
+  `7` happy и `48` negative scenarios, `SpotBugsBaselineVerifier` — `4` happy
+  и `24` negative scenarios; baseline содержит `65` exact findings и
+  `61` presentation selectors;
+- `make pmd-analysis`, `make pmd-watchlist` и `make dependency-analysis`
+  завершились успешно; adopted PMD policy видит `6` advisory
+  findings, watchlist — `20`;
+- GitHub Actions run
+  [`31615131300`](https://github.com/xORex-LC/ioc-extractor/actions/runs/31615131300)
+  на том же commit завершил jobs `build`, `pmd-source-policy`,
+  `packaging-contracts` и `doc-links` успешно; SpotBugs, CPD и PMD XML/HTML
+  сохранены как CI artifacts.
+
+При этом общий goal ещё не закрыт: все deterministic tests пока
+выполняются Surefire без Failsafe separation; JaCoCo формирует reports,
+но не имеет numeric checks, ratchets и project-owned missing-report gate;
+Codecov не подключён; branch protection/rules не делают CI jobs required.
+Следовательно, все поимённые `BUILD-*` analyzer work items закрыты,
+а `R030-BUILD` как release goal остаётся `in-progress` до shared
+R030-TEST closure.
 
 ## `BASE-QUALITY-06` — baseline действующих controls
 
@@ -879,7 +909,7 @@ PMD source analysis принят отдельным `BUILD-PMD-06` report-only c
 разрешает default/category-wide rules или автоматическое расширение policy:
 новое правило проходит отдельный evidence-based review.
 
-## Completion
+## Code-quality slice completion
 
 - [x] SpotBugs report воспроизводим
 - [x] SpotBugs signal/noise/cost оценены
@@ -901,3 +931,12 @@ PMD source analysis принят отдельным `BUILD-PMD-06` report-only c
 - [x] Maven dependency-analysis adoption decision принят
 - [x] Adopted ratchets и suppressions документированы (`Defer`: ratchet/suppressions отсутствуют)
 - [x] Status matrix обновлена
+
+## R030-BUILD goal closure dependencies
+
+- [ ] `TEST-LIFECYCLE-01`: Surefire/Failsafe taxonomy и lifecycle separation
+- [ ] `TEST-COVERAGE-02`: JaCoCo checks/ratchets, explicit universe и
+  missing-report enforcement
+- [ ] Codecov best-effort upload и evidence, без required-status semantics
+- [ ] Required CI branch statuses и финальный closure run при активной
+  repository branch policy

@@ -272,8 +272,10 @@ selects a 22-project upstream reactor ending in `ioc-pmd-report`.
 - the registry contains one disposition for each of the 25 reactor projects:
   19 production JARs analyzed, the TCK/root/other report POMs excluded and the
   PMD report POM marked aggregate;
-- the positive scope contains 19 checked-in production roots and 510 Java
-  source files. PMD XML lists only the 48 files with violations, so coverage is
+- the positive scope contains 19 checked-in production roots and 508 Java
+  source files. The two main-source files in the explicitly excluded reusable
+  TCK make the repository-wide production-plus-TCK count 510, but are not PMD
+  policy input. PMD XML lists only the 48 files with violations, so coverage is
   proven by the guarded positive source configuration rather than by pretending
   that a zero-finding source appears in the report;
 - stale output is deleted before the run. Missing/empty XML or HTML, malformed

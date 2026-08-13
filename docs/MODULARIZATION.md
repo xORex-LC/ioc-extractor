@@ -53,7 +53,7 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
     ├── coverage-report            (build-only JaCoCo aggregate; не runtime/library)
     ├── spotbugs-report            (build-only SpotBugs aggregate + report integrity; не runtime/library)
     ├── cpd-report                 (build-only repository-wide PMD CPD report + integrity; не runtime/library)
-    └── pmd-report                 (build-only opt-in PMD source-analysis evaluation + integrity; не runtime/library)
+    └── pmd-report                 (build-only PMD source policy/watchlist + integrity; не runtime/library)
 ```
 
 > ArtifactId имеют префикс `ioc-*`, например `ioc-platform-etl`,
@@ -99,9 +99,12 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
   fail-closed registry сверяет reactor, ordering dependencies, source roots и
   итоговый XML source universe.
 - `pmd-report` зависит на те же 19 production-модулей только для reactor
-  ordering и type resolution. Opt-in профиль анализирует явный allowlist
-  `src/main/java` по точному ruleset, а fail-closed registry проверяет reactor,
-  source roots, engine/ruleset contract и итоговые XML/HTML.
+  ordering и type resolution. Поимённая 22-rule policy выполняется
+  отдельным regular CI job, а 3-rule ownership/size watchlist остаётся
+  локально opt-in. Оба профиля анализируют явный allowlist
+  `src/main/java`; fail-closed registry проверяет reactor, source roots,
+  engine/ruleset contract и итоговые XML/HTML. Обычный `make verify`
+  не активирует ни один из PMD source профилей.
   Все четыре build-support модуля не входят в runtime-архитектуру, не публикуются
   как библиотеки и не могут быть зависимостями production-кода.
 
@@ -146,7 +149,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `coverage-report` (build-support) | Непубликуемый Maven report-модуль: полный JaCoCo HTML/XML aggregate |
 | `spotbugs-report` (build-support) | Непубликуемый Maven report-модуль: полный SpotBugs XML/HTML aggregate и report-integrity gate для production bytecode reactor |
 | `cpd-report` (build-support) | Непубликуемый Maven report-модуль: repository-wide PMD CPD XML/HTML и report-integrity gate для production Java sources |
-| `pmd-report` (build-support) | Непубликуемый opt-in Maven report-модуль: bounded PMD source-analysis XML/HTML и fail-closed scope/ruleset/report integrity для production Java sources |
+| `pmd-report` (build-support) | Непубликуемый Maven report-модуль: regular report-only PMD source policy, локально opt-in watchlist и fail-closed scope/ruleset/report integrity для production Java sources |
 
 ## Гранулярность
 
