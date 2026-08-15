@@ -1,0 +1,246 @@
+---
+title: "DATA-TTL-01 — implementation plan"
+version: "0.3.0"
+status: "Review"
+document_type: "Implementation plan"
+source_of_truth: false
+language: "ru"
+---
+
+# DATA-TTL-01 — implementation plan
+
+## Execution rule
+
+Работа идёт inward → outward небольшими checkpoint slices. Одновременно
+implementation-active только один slice. P2–P5 могут добавлять dormant schema и
+code на feature branch, но ни один промежуточный результат не включает TTL в
+fresh production template и не считается releaseable capability. Activation
+surface и итоговое evidence закрываются только P6.
+
+Production implementation не начинается до отдельного go-ahead после review
+[architecture project](architecture-project.md), draft
+[ADR-0020](../../../ADR/0020-canonical-record-expiration-lifecycle.md) и
+[release contract](release-contract.md).
+
+## Slice map
+
+| Slice | Outcome | Activation | State |
+|---|---|---|---|
+| `P0` | Decision, scope contract и characterization | none | `review` |
+| `P1` | Framework-free application contracts and TCK | none | `planned` |
+| `P2` | Additive durable SQLite foundation | disabled behavior only | `planned` |
+| `P3` | Atomic lifecycle-aware write/read path | production preset unchanged | `planned` |
+| `P4` | Expiry, recovery, scheduling and health | production preset unchanged | `planned` |
+| `P5` | Duplicate receipt and explicit upgrade activation UX | opt-in existing installs only | `planned` |
+| `P6` | Fresh preset, docs and release evidence | complete capability | `planned` |
+
+## P0 — decision and characterization
+
+### Deliverables
+
+- architecture project, draft ADR, release scope change, bundle index,
+  goal/work-item contract and this plan;
+- executable inventory of current canonical write/load/snapshot/projection,
+  public ID allocation, ingestion duplicate and startup/admission paths;
+- characterization tests for current public row bytes/order, public `time_*`
+  nulls, revision behavior, immutable snapshot consistency and disabled startup;
+- exact decision on config record shape and clock rollback tolerance inputs;
+- characterization of current insert-driven `artifact_revision`/export
+  pre-gates and accepted I-20 rule that expiry preserves this behavior.
+
+### Exit gate
+
+- user approves architecture project/ADR/contract/plan;
+- separate implementation go-ahead is recorded;
+- P1 change list fits one reviewable inward-facing scope.
+
+## P1 — application contracts
+
+### Scope
+
+`core/ioc-application` and `core/ioc-application-tck`; no Spring, JDBC, CSV or
+runtime activation.
+
+### Deliverables
+
+- lifecycle value objects/results, durable observation identity and injected
+  UTC time boundary;
+- minimal `ExpirationPolicy` Strategy with one `FixedExpirationPolicy`;
+- lifecycle-aware canonical command/read/reconciliation/activation ports;
+- durable allocator, lifecycle state and projection-work abstractions only
+  where required by actual use cases;
+- reusable TCK for active/due/new-lifecycle/revision/ID invariants.
+
+### Exit gate
+
+- fixed duration is strictly positive;
+- one transaction-level `asOf` is explicit in contracts;
+- application API cannot persist a business row without required lifecycle
+  state when policy is active;
+- no speculative factory hierarchy, rules engine or source-owned TTL.
+
+## P2 — durable storage foundation
+
+### Scope
+
+`adapters/adapter-store-jdbc` plus adapter TCK wiring. Behavior remains
+observable-compatible while mode is `disabled`.
+
+### Deliverables
+
+- versioned additive SQLite migration for per-artifact lifecycle columns and
+  numeric `(_expires_at_epoch_ms, _lifecycle_id)` indexes;
+- typed mirror history and compact source-summary tables with retention index;
+- singleton activation/clock high-water state and resumable activation progress;
+- global lifecycle sequence and durable per-artifact public ID allocator;
+- durable required/projected generation work, observation idempotency markers
+  and complete typed receipt schema;
+- migration/query-plan/invariant integration tests.
+
+### Exit gate
+
+- upgrade fixture with lifecycle absent opens unchanged in disabled mode;
+- allocator never derives reuse safety only from active `MAX(id)`;
+- lifecycle/history schema remains inside JDBC adapter and preserves configured
+  public column order/types;
+- no active row is exposed to enabled state with partial lifecycle metadata.
+
+## P3 — lifecycle-aware canonical transaction and reads
+
+### Scope
+
+Application/JDBC canonical write and every service-local active read boundary;
+projection policy stays outside the repository.
+
+### Deliverables
+
+- atomic insert, renewal, due-close-and-recreate and provenance handling;
+- successful canonical commit as the only confirmation point;
+- one write-owned effective UTC `asOf` and linearizable confirmation×expiry
+  outcome;
+- durable public/lifecycle ID reservation with non-reused failed ranges;
+- active predicate in repository load, mutable projection and immutable
+  multi-artifact snapshot using the correct shared `asOf` semantics;
+- existing insert-driven artifact revision, per-observation commit idempotency
+  and complete receipt writer rules.
+
+### Exit gate
+
+- deterministic boundary/race tests use controllable clocks and latches, never
+  real sleeps;
+- `asOf == expires_at` is expired;
+- renewal and expiry do not change artifact revision; insert or a new
+  lifecycle/public row does;
+- failed transaction does not confirm, allocate reusable IDs or publish a
+  complete receipt;
+- recovery of the same observation after commit does not renew it a second time;
+- existing public schemas and `time_* == NULL` are byte/order compatible.
+
+## P4 — expiry, recovery and operations
+
+### Scope
+
+Lifecycle reconciliation in application/JDBC and bootstrap scheduling,
+admission, health and diagnostics. CSV remains a projection adapter.
+
+### Deliverables
+
+- indexed keyset-batch archive/delete and independent bounded history cleanup;
+- durable projection convergence with one projection per affected artifact/cycle;
+- no lifecycle-specific immutable-export event or urgent export nudge;
+- idempotent pre-readiness admission sequence: recovery → policy/clock validate
+  → activation resume → due expiry → pending projection convergence;
+- nearest-deadline daemon scheduler plus periodic correctness backstop;
+- injected system UTC clock, monotonic wait/duration clock, durable high-water,
+  `DEGRADED` clamp and fail-closed `DOWN` policy;
+- aggregate health, stable diagnostics and aggregate ECS events.
+
+### Exit gate
+
+- crash/fault injection covers history move, delete/projection generation,
+  projection replace/ack and restart without resurrection or partially visible
+  active data;
+- healthy idle reconciliation starts within `5s` of deadline;
+- `DEGRADED` keeps intake open only while logical filtering is provable;
+- health is read-only and never exposes IOC/source identifiers;
+- no manual mutating lifecycle CLI exists.
+
+## P5 — duplicate receipt and upgrade activation UX
+
+### Scope
+
+`adapter-ingest`, bootstrap config/admission and packaged upgrade path.
+
+### Deliverables
+
+- content identity separated from a durable observation/attempt identity, so a
+  later identical delivery confirms records while recovery remains idempotent;
+- complete receipt fast path keyed by source identity and processing-policy
+  fingerprint, with `30d` retention and ordinary ETL fallback on missing/stale
+  receipt;
+- strict `disabled|fixed` configuration with positive fixed duration;
+- persisted one-way activation and idempotent `existing-records: expire`;
+- two-step compatibility-start then explicit-cutover procedure;
+- daemon and stateful oneshot/export enforcement.
+
+### Exit gate
+
+- legacy 0.2.0 fixture can be interrupted at activation boundaries and resume;
+- activation closes all legacy rows with history, activation-cycle and
+  projection work without advancing insert-driven revision, can yield an empty
+  active set and never auto-replays archives;
+- old source ledgers do not block a new lifecycle after new accepted input;
+- startup rejects fixed-without-positive-TTL and disabled-after-activation with
+  stable diagnostics;
+- exact config + both SQLite DB form the documented rollback point.
+
+## P6 — release closure
+
+### Deliverables
+
+- fresh-install packaging template fixed at `12h`; upgrade/classpath default
+  remains `disabled`; history/receipt retention defaults to `30d`;
+- operator guide for two-step activation, destructive legacy expiry, possible
+  empty output, clock prerequisite, health and rollback boundary;
+- affected English capability docs, module README, architecture/module maps,
+  generated diagnostics/config references and release notes;
+- packaging fresh-install/upgrade/rollback smoke;
+- 100k simultaneous-expiry reference scenario and stored environment profile,
+  query plans, throughput/drain baseline and justified regression threshold;
+- targeted tests, `make docs`, full `make verify` and refreshed status/evidence.
+
+### Release gate
+
+P6 may enable the fresh production preset only after P1–P5 evidence is green.
+The capability is not merge/release complete while any required crash/race,
+read-path, migration, packaged rollout or performance evidence is missing.
+
+## Required test matrix
+
+| Area | Mandatory evidence |
+|---|---|
+| Lifecycle semantics | boundary, renewal, prospective policy change, expiry→new ID, public `time_*` unchanged |
+| Transaction/race | SQLite confirmation×expiry ordering, rollback, ID non-reuse, no lost observation |
+| Migration/recovery | 0.2.0 fixture, activation fault injection, restart, projection convergence |
+| Read surfaces | canonical load, mutable dataframe, immutable slice with active-only one-`asOf` behavior |
+| Export trigger | expiry leaves `artifact_revision` unchanged; next new-row trigger exports current active membership |
+| Runtime/config | daemon, stateful oneshot/export, defaults, one-way transition, clock rollback states |
+| Load | 100k same deadline, start ≤5s, bounded batches/memory/transactions, no starvation, eventual drain |
+
+## Risk controls
+
+- No `ttl=0` migration shortcut.
+- No source/provenance join on every active read.
+- No per-row timers, full-table polling or full-set JVM materialization.
+- No second write after canonical commit to attach lifecycle metadata.
+- No `MAX(id)+1` reuse after expired-row deletion.
+- No in-memory event as expiry/projection correctness authority.
+- No use of public `time_first_seen`/`time_last_seen` as technical timestamps.
+- No release claim from aggregate coverage or happy path alone.
+
+## Evidence location
+
+P0 documents stay in this directory. Implementation evidence should be added as
+`evidence.md` or a small `evidence/` subtree inside this bundle when P1 begins;
+generated build reports remain untracked under their normal `target/` paths and
+are referenced by reproducible command/commit/environment metadata.
