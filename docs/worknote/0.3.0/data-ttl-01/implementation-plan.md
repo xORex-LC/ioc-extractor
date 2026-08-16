@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 — implementation plan"
 version: "0.3.0"
-status: "Review"
+status: "Implementation"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "ru"
@@ -17,17 +17,17 @@ code на feature branch, но ни один промежуточный резу
 fresh production template и не считается releaseable capability. Activation
 surface и итоговое evidence закрываются только P6.
 
-Production implementation не начинается до отдельного go-ahead после review
-[architecture project](architecture-project.md), draft
+Отдельный go-ahead после review [architecture project](architecture-project.md),
 [ADR-0020](../../../ADR/0020-canonical-record-expiration-lifecycle.md) и
-[release contract](release-contract.md).
+[release contract](release-contract.md) получен 2026-08-16. Он разрешает
+последовательное выполнение P1–P6, но не частичную production activation.
 
 ## Slice map
 
 | Slice | Outcome | Activation | State |
 |---|---|---|---|
-| `P0` | Decision, scope contract и characterization | none | `review` |
-| `P1` | Framework-free application contracts and TCK | none | `planned` |
+| `P0` | Decision, scope contract и characterization | none | `complete` |
+| `P1` | Framework-free application contracts and TCK | none | `complete` |
 | `P2` | Additive durable SQLite foundation | disabled behavior only | `planned` |
 | `P3` | Atomic lifecycle-aware write/read path | production preset unchanged | `planned` |
 | `P4` | Expiry, recovery, scheduling and health | production preset unchanged | `planned` |
@@ -38,7 +38,7 @@ Production implementation не начинается до отдельного go
 
 ### Deliverables
 
-- architecture project, draft ADR, release scope change, bundle index,
+- architecture project, ADR, release scope change, bundle index,
   goal/work-item contract and this plan;
 - executable inventory of current canonical write/load/snapshot/projection,
   public ID allocation, ingestion duplicate and startup/admission paths;
@@ -46,7 +46,9 @@ Production implementation не начинается до отдельного go
   nulls, revision behavior, immutable snapshot consistency and disabled startup;
 - exact decision on config record shape and clock rollback tolerance inputs;
 - characterization of current insert-driven `artifact_revision`/export
-  pre-gates and accepted I-20 rule that expiry preserves this behavior.
+  pre-gates and accepted I-20 rule that expiry preserves this behavior;
+- accepted I-21 vocabulary and runtime disposition: validity policy produces a
+  persisted absolute boundary, while expiration and retention remain separate.
 
 ### Exit gate
 
@@ -65,7 +67,9 @@ runtime activation.
 
 - lifecycle value objects/results, durable observation identity and injected
   UTC time boundary;
-- minimal `ExpirationPolicy` Strategy with one `FixedExpirationPolicy`;
+- minimal `RecordValidityPolicy` Strategy with one
+  `FixedRecordValidityPolicy`; policy returns an absolute `ValidityDecision`,
+  not a persistence or scheduling command;
 - lifecycle-aware canonical command/read/reconciliation/activation ports;
 - durable allocator, lifecycle state and projection-work abstractions only
   where required by actual use cases;
@@ -79,6 +83,9 @@ runtime activation.
   state when policy is active;
 - no speculative factory hierarchy, rules engine or source-owned TTL.
 
+**Status:** completed on 2026-08-16. Evidence is recorded in
+[evidence.md](evidence.md#p1--framework-free-application-contracts).
+
 ## P2 — durable storage foundation
 
 ### Scope
@@ -89,7 +96,7 @@ observable-compatible while mode is `disabled`.
 ### Deliverables
 
 - versioned additive SQLite migration for per-artifact lifecycle columns and
-  numeric `(_expires_at_epoch_ms, _lifecycle_id)` indexes;
+  numeric `(_valid_until_epoch_ms, _lifecycle_id)` indexes;
 - typed mirror history and compact source-summary tables with retention index;
 - singleton activation/clock high-water state and resumable activation progress;
 - global lifecycle sequence and durable per-artifact public ID allocator;
@@ -128,7 +135,7 @@ projection policy stays outside the repository.
 
 - deterministic boundary/race tests use controllable clocks and latches, never
   real sleeps;
-- `asOf == expires_at` is expired;
+- `asOf == valid_until` is expired;
 - renewal and expiry do not change artifact revision; insert or a new
   lifecycle/public row does;
 - failed transaction does not confirm, allocate reusable IDs or publish a
@@ -151,6 +158,9 @@ admission, health and diagnostics. CSV remains a projection adapter.
 - idempotent pre-readiness admission sequence: recovery → policy/clock validate
   → activation resume → due expiry → pending projection convergence;
 - nearest-deadline daemon scheduler plus periodic correctness backstop;
+- `SmartLifecycle`-managed deadline scheduler on an explicitly owned
+  `ScheduledExecutorService`, inert until common admission completes; no Spring
+  `@Scheduled`, ShedLock or Spring Batch runtime in V1;
 - injected system UTC clock, monotonic wait/duration clock, durable high-water,
   `DEGRADED` clamp and fail-closed `DOWN` policy;
 - aggregate health, stable diagnostics and aggregate ECS events.
@@ -178,7 +188,8 @@ admission, health and diagnostics. CSV remains a projection adapter.
 - complete receipt fast path keyed by source identity and processing-policy
   fingerprint, with `30d` retention and ordinary ETL fallback on missing/stale
   receipt;
-- strict `disabled|fixed` configuration with positive fixed duration;
+- strict `ioc.lifecycle.validity` configuration with `disabled|fixed` mode and
+  positive fixed duration;
 - persisted one-way activation and idempotent `existing-records: expire`;
 - two-step compatibility-start then explicit-cutover procedure;
 - daemon and stateful oneshot/export enforcement.
@@ -232,6 +243,10 @@ read-path, migration, packaged rollout or performance evidence is missing.
 - No `ttl=0` migration shortcut.
 - No source/provenance join on every active read.
 - No per-row timers, full-table polling or full-set JVM materialization.
+- No per-read decay formula or reuse of public `score` as lifecycle state.
+- No mapping of ordinary expiry to STIX `revoked` or OpenCTI `detection`.
+- No `@Scheduled`, ShedLock or Spring Batch without the measured scale or
+  deployment condition that justifies another runtime subsystem.
 - No second write after canonical commit to attach lifecycle metadata.
 - No `MAX(id)+1` reuse after expired-row deletion.
 - No in-memory event as expiry/projection correctness authority.

@@ -1,14 +1,13 @@
-# 0020 — Canonical record expiration lifecycle
+# 0020 — Canonical record validity and expiration lifecycle
 
 ## Status
 
-**Drafted on 2026-08-15. Under architecture review; not accepted or
-implemented.**
+**Accepted on 2026-08-16. Implementation in progress; P1 application contracts
+are complete, while storage and runtime behavior remain inactive.**
 
-This draft proposes a canonical-record expiration capability for release 0.3.0.
-It is not yet an authoritative decision. A companion architecture project in
-the local release worknote drives review; until the ADR is accepted and
-implemented, canonical records retain the behavior described by the existing
+This ADR establishes a canonical-record validity and expiration capability for
+release 0.3.0. Until its storage, pipeline and runtime slices are implemented
+and activated, canonical records retain the behavior described by the existing
 storage and export documentation.
 
 ## Context
@@ -39,16 +38,18 @@ The requirements are:
 
 ## Decision
 
-### 1. Expiration belongs to the canonical record lifecycle
+### 1. Validity belongs to the canonical record lifecycle
 
 TTL belongs to a storage-neutral canonical artifact record lifecycle, not to an
 IOC type, source or provenance row. A source supplies observation evidence;
 application policy calculates a deadline; the storage adapter commits the
 record, provenance and lifecycle atomically.
 
-V1 provides one `FixedExpirationPolicy` behind a small application-level
-strategy. Per-source, per-type and rules-engine policies are deferred. Fixed TTL
-must be strictly positive.
+V1 provides one `FixedRecordValidityPolicy` behind the small
+application-level `RecordValidityPolicy` strategy. The strategy returns an
+absolute validity decision rather than exposing storage or scheduling details.
+Per-source, per-type and rules-engine policies are deferred. Fixed TTL must be
+strictly positive.
 
 An observation confirms freshness only when its canonical transaction commits
 successfully after parsing and the failure-policy checkpoint. File detection,
@@ -62,12 +63,19 @@ An active lifecycle stores internal UTC instants equivalent to:
 
 - `first_confirmed_at`;
 - `last_confirmed_at`;
-- `expires_at`.
+- `valid_until`.
 
-The active interval is `[first_confirmed_at, expires_at)`. Every canonical read
-that can feed a dataframe or export applies `expires_at > asOf`; therefore a row
-is inactive when `asOf == expires_at`, even if physical cleanup has not yet run.
+The active interval is `[first_confirmed_at, valid_until)`. Every canonical read
+that can feed a dataframe or export applies `valid_until > asOf`; therefore a
+row is inactive when `asOf == valid_until`, even if physical cleanup has not yet
+run.
 Reads do not recalculate stored deadlines from current configuration.
+
+`valid_until` is internal canonical lifecycle vocabulary aligned with the STIX
+2.1 meaning of an Indicator validity boundary. It does not make an artifact row
+a STIX Indicator and does not map `first_confirmed_at` to STIX `valid_from`.
+Source assertions and STIX projection remain separate versioned mapping
+contracts.
 
 When an accepted observation finds an active lifecycle, it renews the deadline
 to `asOf + fixedTtl`. When it finds the same row already due, the old lifecycle
@@ -126,7 +134,7 @@ this automatic daemon trigger rule.
 
 The existing public `time_first_seen` and `time_last_seen` columns retain their
 position and remain `NULL` in V1. Internal lifecycle timestamps are not mapped
-to those business fields. `expires_at` is not added to existing dataframe or
+to those business fields. `valid_until` is not added to existing dataframe or
 export schemas. A future consumer deadline is a separate versioned mapping or
 integration contract.
 
@@ -153,6 +161,11 @@ the deadline. V1 release evidence covers 100,000 simultaneously due records as
 a validation envelope, including bounded drain, absence of writer starvation
 and eventual convergence. This is not a hard product-size limit.
 
+The bootstrap implementation uses a `SmartLifecycle`-managed scheduler on an
+explicitly owned `ScheduledExecutorService`. It remains inert until the common
+canonical-data admission barrier opens, then reschedules from durable nearest-
+deadline state after each aggregate hint or reconciliation pass.
+
 ### 7. Time is an isolated system dependency
 
 Absolute expiry uses an injected system UTC `Clock`; timezone and daylight
@@ -170,18 +183,19 @@ reconciliation.
 
 ### 8. Activation is explicit and one-way for an existing database
 
-The classpath and upgrade-compatible default is expiration disabled. A fresh
-production installation explicitly enables fixed TTL with a 12-hour default.
+The classpath and upgrade-compatible default has record validity disabled. A
+fresh production installation explicitly enables fixed TTL with a 12-hour
+default.
 This value intentionally permits an empty active set or gaps between feeds when
 observations are less frequent than the TTL.
 
 Existing installations use a two-step rollout:
 
-1. deploy the expiration-capable application and verify it with expiration
+1. deploy the validity-capable application and verify it with validity mode
    disabled;
 2. stop stateful work, capture the exact configuration and a consistent backup
-   of both SQLite databases, then explicitly enable fixed expiration with the
-   named `existing-records: expire` activation policy.
+   of both SQLite databases, then explicitly enable the fixed record-validity
+   policy with the named `existing-records: expire` activation policy.
 
 Activation runs idempotently before readiness, intake and export. It closes all
 legacy records with audit, activation-cycle and projection recovery, so active
@@ -189,7 +203,7 @@ output may legitimately become empty. It does not advance the insert-driven
 artifact revision. Archived inputs are not replayed automatically.
 The fixed duration value `0` is invalid and never acts as a destructive command.
 
-After durable activation, starting the same database with expiration disabled
+After durable activation, starting the same database with validity disabled
 fails closed. Duration changes are prospective: existing absolute deadlines
 remain until the next accepted observation. V1 has no deactivation, retroactive
 recalculation, bulk extension or manual expiry command.
@@ -303,6 +317,22 @@ Rejected because timers are not durable and scale with record count, while the
 existing SQLite model can provide indexed deadline discovery, bounded batches
 and startup reconciliation without a new integration family.
 
+Spring `@Scheduled` is not used because V1 needs dynamic nearest-deadline
+rescheduling and explicit startup admission phases. ShedLock is not used because
+the supported deployment has one daemon and correctness is already serialized
+by SQLite transactions; a future multi-process deployment requires a broader
+writer/fencing design. Spring Batch is not used because its job metadata and
+restart/partition model would duplicate the bounded keyset reconciler and
+durable lifecycle cycle state at the current validation envelope.
+
+### Map ordinary time expiry to `revoked`, `detection` or decay score
+
+Rejected because STIX revocation is permanent for an object identity, whereas
+an expired IOC may later create a new lifecycle and identity. OpenCTI detection
+and score are platform-specific state, and the existing public artifact `score`
+has an independent contract. V1 records `LifecycleCloseReason.EXPIRED` and does
+not calculate a decay score on every canonical read.
+
 ### Treat events or successful projection as expiration authority
 
 Rejected because events can be lost and filesystem/remote side effects cannot
@@ -324,6 +354,30 @@ are the correctness authority.
   measured drain regression threshold;
 - updated capability, operator, configuration, observability and release docs;
 - final clean reactor verification on the release candidate.
+
+## Reference inputs
+
+The local decision was compared with established lifecycle models and runtime
+mechanisms. These references inform vocabulary and extension seams; they are not
+adopted as wire formats or implementation dependencies:
+
+- [STIX 2.1 specification](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html)
+  for Indicator `valid_until`, `valid_from` and permanent revocation semantics;
+- [OpenCTI Indicators lifecycle](https://docs.opencti.io/latest/usage/indicators-lifecycle/),
+  [decay rules](https://docs.opencti.io/latest/administration/decay-rules/),
+  [retention policies](https://docs.opencti.io/latest/administration/retentions/)
+  and its
+  [expiration manager](https://github.com/OpenCTI-Platform/opencti/blob/master/opencti-platform/opencti-graphql/src/manager/expiredManager.js)
+  for separation of validity, expiration management and retention;
+- MISP
+  [`DecayingModel`](https://github.com/MISP/MISP/blob/2.5/app/Model/DecayingModel.php)
+  and the versioned
+  [`misp-decaying-models`](https://github.com/MISP/misp-decaying-models)
+  catalog for the future policy/strategy seam;
+- [Spring scheduling](https://docs.spring.io/spring-framework/reference/integration/scheduling.html),
+  [ShedLock](https://github.com/lukas-krecan/ShedLock) and
+  [Spring Batch chunk processing](https://docs.spring.io/spring-batch/reference/step/chunk-oriented-processing.html)
+  for the V1 runtime/framework disposition.
 
 ## Related published documents
 

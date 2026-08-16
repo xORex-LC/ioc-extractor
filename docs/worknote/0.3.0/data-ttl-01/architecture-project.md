@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 — architecture project"
 version: "0.3.0"
-status: "Draft for review"
+status: "Accepted for implementation"
 document_type: "Architecture project"
 source_of_truth: false
 language: "en"
@@ -14,7 +14,7 @@ language: "en"
 DATA-TTL-01 should be implemented as a **canonical artifact record lifecycle**,
 not as a background `DELETE` job and not as a source-owned IOC timeout. The
 stored duration is policy; the durable fact used by reads is an absolute
-expiration deadline for one concrete canonical row lifecycle.
+`validUntil` decision for one concrete canonical row lifecycle.
 
 The recommended V1 shape is:
 
@@ -41,14 +41,42 @@ artifacts are ordinary JARs, while only `bootstrap/ioc-app` assembles the
 executable fat JAR. A new module would therefore be an additional architectural
 boundary, not a prerequisite for internal reuse.
 
-This document is the design input for review. ADR-0020 remains a draft until
-this project and its unresolved implementation parameters are accepted.
+This design was accepted for implementation on 2026-08-16. Parameters that do
+not alter the business semantics remain owned by their implementation slices.
+
+### 1.1 Lifecycle vocabulary and reference-derived constraints
+
+The design uses three deliberately separate terms:
+
+- **validity** is the business property of a canonical record lifecycle;
+- **expiration** is the transition and reconciliation process after the
+  validity boundary;
+- **retention** is the later deletion of historical/audit state.
+
+The internal boundary is named `validUntil`, persisted as
+`_valid_until_epoch_ms`. This follows the STIX 2.1 meaning of `valid_until`, but
+does not claim that a canonical artifact row is a STIX Indicator. The existing
+`firstConfirmedAt` remains an observation fact and is not silently mapped to
+STIX `valid_from`. Likewise, time expiry is represented by
+`LifecycleCloseReason.EXPIRED`, not by STIX `revoked`: STIX revocation is
+permanent for an object identity, whereas this service deliberately permits a
+later observation to create a new lifecycle and identity.
+
+OpenCTI validates the separation of a stored absolute validity boundary,
+policy-driven calculation, expiration management and later retention. MISP
+validates a Strategy seam and versioned type-sensitive decay models. V1 adopts
+those seams without adopting OpenCTI's `revoked`/`detection` mutation or MISP's
+per-read decay-score filtering. The active-read predicate remains the exact
+truth even if scheduling or reconciliation is delayed.
+
+Detailed evidence and tool/library disposition are recorded in
+[discovery I-21](discovery.md#i-21--external-reference-review-and-final-validity-vocabulary).
 
 ## 2. Scope and evidence
 
 This project is based on:
 
-- accepted interview outcomes I-01 through I-20 in [discovery.md](discovery.md);
+- accepted interview outcomes I-01 through I-21 in [discovery.md](discovery.md);
 - the release outcome and exclusions in [release-contract.md](release-contract.md);
 - the current implementation of canonical writes, mutable projection,
   immutable export, ingestion recovery, SQLite schema reconciliation and daemon
@@ -75,7 +103,7 @@ firewall or other downstream target lifecycle protocols.
 
 - per-source, per-IOC-type or risk-scored TTL policies;
 - negative evidence from absence in an incomplete feed;
-- public `expires_at` or population of public `time_first_seen` and
+- public `valid_until` or population of public `time_first_seen` and
   `time_last_seen`;
 - downstream acknowledgement, revoke or delivery state;
 - manual bulk mutation commands;
@@ -91,8 +119,8 @@ firewall or other downstream target lifecycle protocols.
 | `BR-01` | TTL belongs to one concrete DB record lifecycle | Lifecycle columns are co-located with the active artifact row; source and IOC taxonomy are not owners |
 | `BR-02` | Only a successful canonical commit confirms freshness | Confirmation is part of the atomic canonical write port after the failure-policy checkpoint |
 | `BR-03` | Absence from a later document is not revocation | No snapshot-diff deletion and no source withdrawal logic in V1 |
-| `BR-04` | Every accepted observation renews a still-active row | V1 writes `lastConfirmedAt` and `expiresAt = asOf + fixedTtl`; no near-deadline threshold optimization |
-| `BR-05` | At the exact deadline the row is inactive | Every active read applies a half-open `expiresAt > asOf` predicate |
+| `BR-04` | Every accepted observation renews a still-active row | V1 writes `lastConfirmedAt` and `validUntil = asOf + fixedTtl`; no near-deadline threshold optimization |
+| `BR-05` | At the exact deadline the row is inactive | Every active read applies a half-open `validUntil > asOf` predicate |
 | `BR-06` | Observation after expiry is a new record lifecycle | Old state is archived; a new lifecycle and new service-owned ID are allocated |
 | `BR-07` | Service IDs are never reused; source IDs are separate | Durable allocators survive deletion/restart; source IDs remain namespaced provenance |
 | `BR-08` | Fresh production installs use fixed `12h` | Packaging explicitly overrides the compatibility default |
@@ -150,7 +178,7 @@ use one explicit integer precision, not rely on lexical ordering of serialized
 
 | Attribute | Required scenario | Design response |
 |---|---|---|
-| Correctness | A read starts exactly at `expiresAt` before physical cleanup | `expiresAt > asOf` excludes the row |
+| Correctness | A read starts exactly at `validUntil` before physical cleanup | `validUntil > asOf` excludes the row |
 | Atomicity | Confirmation races the expiry worker | SQLite write serialization produces either renew-before-close or close-then-new-lifecycle; no mixed state |
 | Idempotency | Process crashes after artifact commit but before service-ledger checkpoint | Durable `(observationId, artifact)` commit marker returns the prior result without renewing again |
 | Recovery | CSV replacement or projection acknowledgement fails | Pending projection generation survives and is retried at startup/backstop |
@@ -190,7 +218,8 @@ driving adapters / bootstrap
 Add `com.iocextractor.application.artifact.lifecycle` in
 `core/ioc-application`. It owns:
 
-- `ExpirationPolicy` and V1 `FixedExpirationPolicy`;
+- `RecordValidityPolicy`, its absolute `ValidityDecision(validUntil)` result and
+  V1 `FixedRecordValidityPolicy`;
 - value objects such as `ObservationId`, `LifecycleId`, `EffectiveTime`,
   `LifecycleDeadline`, `LifecycleCloseReason` and projection generation;
 - confirmation, expiry reconciliation, activation, projection convergence and
@@ -293,7 +322,7 @@ lifecycle_reconcile_cycle
 
 confirmation_receipt
   receipt_id, source_key, processing_policy_fingerprint,
-  state, expected_artifacts, row_count, completed_at_ms, expires_at_ms
+  state, expected_artifacts, row_count, completed_at_ms, purge_after_ms
 ```
 
 Names are provisional, but the ownership and invariants are not. Every technical
@@ -317,14 +346,14 @@ active artifact table:
 _lifecycle_id                 INTEGER
 _first_confirmed_at_epoch_ms  INTEGER
 _last_confirmed_at_epoch_ms   INTEGER
-_expires_at_epoch_ms          INTEGER
+_valid_until_epoch_ms         INTEGER
 ```
 
 and create:
 
 ```text
 UNIQUE(_lifecycle_id)
-INDEX(_expires_at_epoch_ms, _lifecycle_id)
+INDEX(_valid_until_epoch_ms, _lifecycle_id)
 ```
 
 The physical columns must initially be nullable because SQLite cannot safely add
@@ -431,10 +460,10 @@ commit-to-ledger crash window.
 Both operations serialize through SQLite write ownership and use a half-open
 deadline:
 
-- confirmation owns the writer first and sees `expiresAt > asOf`: it renews;
+- confirmation owns the writer first and sees `validUntil > asOf`: it renews;
 - expiration owns the writer first and closes the due lifecycle: later
   confirmation inserts a new lifecycle;
-- confirmation sees `expiresAt <= asOf`: it performs close-and-new itself;
+- confirmation sees `validUntil <= asOf`: it performs close-and-new itself;
 - rollback changes neither lifecycle nor confirmation marker.
 
 No in-memory lock is the correctness mechanism. A keyed guard may reduce local
@@ -444,7 +473,7 @@ contention, but the database transaction is authoritative.
 
 One reconciliation cycle captures one safe `cycleAsOf`. For each configured
 artifact it repeatedly selects a bounded keyset batch through
-`(_expires_at_epoch_ms, _lifecycle_id)`, copies row/source snapshots to history,
+`(_valid_until_epoch_ms, _lifecycle_id)`, copies row/source snapshots to history,
 deletes active rows and records projection work in the same transaction.
 
 The first committed affected batch is enough to nudge projection: the projection
@@ -462,7 +491,7 @@ Every read capable of feeding a current dataframe or export must receive one
 explicit `asOf` and apply:
 
 ```sql
-WHERE _expires_at_epoch_ms > :as_of_epoch_ms
+WHERE _valid_until_epoch_ms > :as_of_epoch_ms
 ```
 
 In compatibility-disabled mode, legacy rows retain current read behavior. In
@@ -606,18 +635,18 @@ Recommended strict configuration shape:
 ```yaml
 ioc:
   lifecycle:
-    expiration:
+    validity:
       mode: disabled            # disabled | fixed
       fixed-ttl: 12h            # required and > 0 when fixed
       existing-records: reject  # reject | expire; meaningful only at activation
-      history-retention: 30d
-      receipt-retention: 30d
-      reconcile:
-        backstop-interval: 5s
-        batch-size: 1000
-      clock:
-        max-backward-skew: 2s
-        max-clamp-duration: 30s
+    history-retention: 30d
+    receipt-retention: 30d
+    reconcile:
+      backstop-interval: 5s
+      batch-size: 1000
+    clock:
+      max-backward-skew: 2s
+      max-clamp-duration: 30s
 ```
 
 The two clock defaults and batch size are architecture recommendations, not yet
@@ -684,9 +713,11 @@ types, making it a thin forwarding layer, or force storage-specific canonical
 concepts into a falsely generic API. Both increase dependency and release
 surface without a second consumer.
 
-No new third-party Java library is needed. JDK time/concurrency, existing Spring
-Boot scheduling/bootstrap and SQLite are sufficient. Typed receipt tables avoid
-introducing a serialization library solely for an internal cache.
+No new third-party Java library is needed. JDK time/concurrency, an explicitly
+owned scheduled executor, Spring `SmartLifecycle` at the bootstrap boundary and
+SQLite are sufficient. The scheduler remains inert until common admission
+completes. Typed receipt tables avoid introducing a serialization library solely
+for an internal cache.
 
 ### 13.2 Future extraction criteria
 
@@ -814,9 +845,11 @@ schema is acceptable; a partially admitted lifecycle is not.
 
 ## 18. Decisions, recommendations and remaining parameters
 
-### 18.1 Architecture decisions ready for review
+### 18.1 Accepted architecture decisions
 
 - lifecycle ownership is canonical artifact record/application capability;
+- canonical business vocabulary is validity/`validUntil`; expiration and
+  retention remain separate processes;
 - active predicate is authoritative; cleanup is reconciliation;
 - existing modules and integration families are sufficient;
 - durable allocator and observation idempotency are mandatory, not optional
@@ -824,9 +857,12 @@ schema is acceptable; a partially admitted lifecycle is not.
 - mutable projection generation is distinct from immutable export revision;
 - events are lossy aggregate nudges over durable work;
 - typed per-artifact history and receipts avoid a generic JSON/EAV subsystem;
-- one explicit admission graph replaces implicit lifecycle/runner ordering.
+- one explicit admission graph replaces implicit lifecycle/runner ordering;
+- an admission-gated `SmartLifecycle` plus the existing explicit
+  scheduled-executor style owns V1 runtime triggering; `@Scheduled`, ShedLock
+  and Spring Batch are not added.
 
-### 18.2 Parameters to finalize before implementation
+### 18.2 Parameters owned by implementation slices
 
 - exact config property names after strict-preflight compatibility review;
 - default reconciliation batch size after SQLite benchmark;
@@ -853,13 +889,18 @@ characterization.
 - expiry-driven `artifact_revision` or immutable export;
 - in-memory events as work authority;
 - an outbox/broker/event-sourced model in V1;
+- STIX `revoked`, OpenCTI `detection` or public `score` as ordinary time-expiry
+  state;
+- per-read decay-score calculation as the canonical active filter;
+- `@Scheduled`/ShedLock/Spring Batch where the explicit V1 scheduler and bounded
+  keyset reconciliation already satisfy the requirements;
 - a new Maven module or generic TTL library without a second consumer;
 - opaque serialized receipts when the existing typed artifact schema can be
   reused.
 
-## 20. Review gate
+## 20. Review outcome
 
-ADR-0020 may move from draft to proposed/accepted only after review confirms:
+Architecture review and the implementation go-ahead on 2026-08-16 confirmed:
 
 1. this component/data/transaction model;
 2. the separate revision versus projection-generation semantics;
@@ -868,5 +909,5 @@ ADR-0020 may move from draft to proposed/accepted only after review confirms:
 5. the no-new-module decision and future extraction criteria;
 6. the remaining implementation parameters or the P0 evidence used to fix them.
 
-Production implementation still requires a separate explicit go-ahead after
-that review.
+P1 implements the framework-free language and contracts. Database, pipeline,
+configuration and runtime activation remain assigned to P2–P6.

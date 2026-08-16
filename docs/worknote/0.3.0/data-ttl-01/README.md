@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 — рабочий комплект"
 version: "0.3.0"
-status: "Review"
+status: "Implementation"
 document_type: "Worknote bundle index"
 source_of_truth: false
 language: "ru"
@@ -18,21 +18,28 @@ language: "ru"
 - интервью I-01..I-19 завершено, решения подтверждены заказчиком;
 - I-20 закрыт: expiry не инициирует immutable export; automatic slice создаётся
   только после добавления новых public active rows;
+- I-21 фиксирует результаты анализа OpenCTI, MISP, STIX 2.1 и Spring runtime
+  options: canonical vocabulary использует `valid_until`, а `revoked`, decay
+  score и новые scheduling frameworks не входят в V1;
 - DATA-TTL-01 принят как отдельный release-blocking scope change под MUST-goal
   `R030-DATA`;
-- P0 оформляет решение и план для review;
-- production code, SQLite migrations и runtime activation ещё не начинались;
-- P1–P6 начинаются только после отдельного implementation go-ahead.
+- architecture/ADR/contract приняты и implementation go-ahead получен
+  2026-08-16; P0 закрыт;
+- P1 framework-free lifecycle model, ports, unit tests и reusable TCK
+  реализованы и проверены;
+- SQLite migrations, pipeline integration и runtime activation ещё не
+  начинались; следующий slice — P2.
 
 ## Навигация
 
 | Документ | Назначение |
 |---|---|
-| [discovery.md](discovery.md) | Полный журнал интервью, варианты, риски и подтверждённые решения I-01..I-20 |
+| [discovery.md](discovery.md) | Полный журнал интервью, варианты, риски и подтверждённые решения I-01..I-21 |
 | [release-contract.md](release-contract.md) | Scope, MUST outcome, DoR/DoD, compatibility и обязательное evidence |
 | [architecture-project.md](architecture-project.md) | Целевая component/data/transaction/event architecture, module/library decision и risk model |
 | [implementation-plan.md](implementation-plan.md) | Порядок P0–P6, границы slices, gates и verification plan |
-| [ADR-0020](../../../ADR/0020-canonical-record-expiration-lifecycle.md) | Draft decision record; не становится authoritative до завершения architecture review |
+| [evidence.md](evidence.md) | Выполненные slices, изменённые boundaries и воспроизводимые проверки |
+| [ADR-0020](../../../ADR/0020-canonical-record-expiration-lifecycle.md) | Принятое архитектурное решение; storage/runtime slices ещё не реализованы |
 
 Будущее execution evidence добавляется только в этот bundle либо в явно
 указанный внешний release ledger. В общих `engineering-release.md` и
@@ -40,23 +47,23 @@ language: "ru"
 
 ## Зафиксированные defaults V1
 
-- classpath/upgrade default: expiration `disabled`;
+- classpath/upgrade default: record validity `disabled`;
 - fresh-install production template: fixed TTL `12h`;
 - history и complete duplicate-receipt retention: configurable, default `30d`;
-- logical active interval: `[first_confirmed_at, expires_at)`;
+- logical active interval: `[first_confirmed_at, valid_until)`;
 - healthy idle daemon начинает reconciliation не позднее чем через `5s` после
   deadline;
 - public `time_first_seen`/`time_last_seen` сохраняют порядок и остаются `NULL`;
-- `expires_at` не входит в существующие dataframe/export schemas.
+- `valid_until` не входит в существующие dataframe/export schemas.
 
 Значение `12h` осознанно допускает пустой active set и окна между редкими feeds.
 Оно не гарантирует непрерывность при суточной доставке источника.
 
 ## Граница authority
 
-- Architecture project фиксирует полный проект для review, но не является
+- Architecture project фиксирует принятый implementation design, но не является
   published authority.
-- ADR фиксирует долгоживущую семантику только после отдельного принятия.
+- Принятый ADR фиксирует долгоживущую семантику как published authority.
 - Release contract определяет, что блокирует 0.3.0.
 - Implementation plan определяет порядок работы, но не доказывает выполнение.
 - Discovery сохраняет контекст выбора и не является runtime contract.

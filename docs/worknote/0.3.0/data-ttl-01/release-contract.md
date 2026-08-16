@@ -1,15 +1,15 @@
 ---
-title: "R030-DATA / DATA-TTL-01 — canonical record lifecycle"
+title: "R030-DATA / DATA-TTL-01 — canonical record validity lifecycle"
 version: "0.3.0"
 goal_id: "R030-DATA"
 work_item_id: "DATA-TTL-01"
-status: "Review"
+status: "Implementation"
 document_type: "Release goal and work-item contract"
 source_of_truth: false
 language: "ru"
 ---
 
-# R030-DATA / DATA-TTL-01 — canonical record lifecycle
+# R030-DATA / DATA-TTL-01 — canonical record validity lifecycle
 
 ## Outcome
 
@@ -27,11 +27,11 @@ work item — `DATA-TTL-01`; он выполняется по
 
 ### Входит в V1
 
-- один storage-neutral fixed expiration policy для всех canonical records;
+- один storage-neutral `FixedRecordValidityPolicy` для всех canonical records;
 - atomic confirmation после parsing и failure-policy checkpoint, внутри
   successful canonical transaction;
 - internal UTC lifecycle timestamps и exact active predicate
-  `expires_at > asOf`;
+  `valid_until > asOf`;
 - expiry, history, durable ID allocation и lifecycle projection recovery;
 - bounded deadline reconciliation, startup recovery и history cleanup;
 - `disabled` compatibility mode, explicit one-way activation и named
@@ -47,16 +47,22 @@ work item — `DATA-TTL-01`; он выполняется по
 
 ### Не входит
 
-- TTL по source, IOC type, artifact или отдельному record;
+- выбор разных validity policies или TTL-значений по source, IOC type,
+  artifact либо отдельной record; V1 применяет одну fixed policy, но сохраняет
+  отдельный `valid_until` для каждой lifecycle;
 - отсутствие IOC в неполном feed как немедленный revoke;
 - downstream DNS/firewall lifecycle management или acknowledgement protocol;
 - изменение существующих public schemas, заполнение public `time_*` либо
-  передача `expires_at`;
+  передача `valid_until`;
 - manual `reconcile-now`, `expire-all`, `extend-all` или `disable-now` CLI/API;
 - retroactive duration recompute, mass extension или deactivation migration;
 - per-record history search UX;
 - бессрочная гарантия no-ETL duplicate path;
-- multi-daemon lease/fencing и новая database/scheduler library.
+- STIX `revoked`, OpenCTI `detection` или public `score` как состояние обычного
+  expiry;
+- per-read decay-score calculation вместо indexed active predicate;
+- Spring `@Scheduled`, ShedLock, Spring Batch, multi-daemon lease/fencing либо
+  новая database/scheduler library в V1.
 
 ## Обязательные invariants
 
@@ -68,7 +74,7 @@ work item — `DATA-TTL-01`; он выполняется по
 3. Любое принятое observation продлевает active lifecycle до `asOf + fixedTtl`.
    Физическое coalescing renewal writes допустимо только после отдельного
    доказательства эквивалентности и не входит в V1.
-4. Граница активности half-open: при `asOf == expires_at` запись уже expired.
+4. Граница активности half-open: при `asOf == valid_until` запись уже expired.
 5. Confirmation после deadline не воскрешает старую history: прежняя lifecycle
    закрывается, новая получает новые lifecycle/public IDs.
 6. Service-owned public ID никогда не переиспользуется; gaps допустимы.
@@ -141,7 +147,7 @@ duration запрещены. `ttl=0` никогда не является migrat
 
 | Surface | Responsibility |
 |---|---|
-| `core/ioc-application` | Lifecycle policy, values, use cases and inward ports |
+| `core/ioc-application` | `RecordValidityPolicy`, lifecycle values, use cases and inward ports |
 | `core/ioc-application-tck` | Reusable lifecycle/repository contracts |
 | `adapters/adapter-store-jdbc` | SQLite schema, atomic SQL, indexes, history, durable recovery |
 | `adapters/adapter-sink-csv` | Active-only projection through existing projection boundary |
@@ -154,17 +160,20 @@ duration запрещены. `ttl=0` никогда не является migrat
 
 ## Definition of Ready
 
-- [ ] Architecture project, draft ADR и этот contract прошли review и получили
+- [x] Architecture project, ADR и этот contract прошли review и получили
   явное принятие.
 - [ ] I-20 contract закреплён тестами: expiry не продвигает
   `artifact_revision`, mutable projection всё равно сходится, а следующий
   new-row export исключает накопившиеся expired rows.
-- [ ] P0 characterization inventory подтверждает все current ID/read/projection/
+- [x] I-21 vocabulary/framework disposition закреплён в ADR: `valid_until`
+  является durable boundary, expiry не означает `revoked`, а V1 использует
+  explicit lifecycle scheduling без нового framework.
+- [x] P0 characterization inventory подтверждает все current ID/read/projection/
   startup paths, которые должны измениться.
 - [ ] Exact configuration shape, clock rollback tolerance и reference
   performance environment задокументированы до соответствующих slices.
-- [ ] Для каждого P1–P6 указаны owner, affected paths, tests и rollback boundary.
-- [ ] Получен отдельный implementation go-ahead; принятие интервью его не
+- [x] Для каждого P1–P6 указаны owner, affected paths, tests и rollback boundary.
+- [x] Получен отдельный implementation go-ahead; принятие интервью его не
   заменяет.
 
 ## Definition of Done
@@ -193,5 +202,7 @@ build gates. До закрытия `R030-DATA` релиз 0.3.0 не готов.
 
 ## Current disposition
 
-`analyzed / review`: interview decisions accepted, P0 documents prepared,
-production implementation not authorized and not started.
+`implementation`: architecture and ADR accepted on 2026-08-16; P0 is complete
+and P1 framework-free application contracts/TCK are implemented. TTL remains
+inactive until P2–P6 provide storage, integration, activation and release
+evidence.

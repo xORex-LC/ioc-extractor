@@ -77,7 +77,7 @@ Worknote не является опубликованным контрактом
 Требование разделяется на два независимых контракта:
 
 1. каждое принятое подтверждение **логически** обновляет актуальность record;
-2. частоту физической записи `expires_at` можно оптимизировать, если это не
+2. частоту физической записи `valid_until` можно оптимизировать, если это не
    меняет наблюдаемое поведение.
 
 Фиксированное часовое renewal window нельзя принимать как correctness policy:
@@ -95,7 +95,7 @@ hexagonal dependency direction и не переносит storage/source couplin
 
 - V1: любое успешно принятое подтверждение продлевает row-level срок на один
   configured fixed TTL.
-- Отдельный минимальный `ExpirationPolicy`/Strategy скрывает способ вычисления
+- Отдельный минимальный `RecordValidityPolicy`/Strategy скрывает способ вычисления
   срока; единственная V1-реализация использует fixed TTL. Factory/Decorator и
   иерархия policy пока не нужны.
 - Provenance остаётся отдельной моделью доказательств и не владеет expiry.
@@ -161,17 +161,17 @@ Historical record не является неактивной разновидн�
 identity/provenance snapshot или только lifecycle audit — ещё не определён.
 
 Физический reaper и логическая видимость должны быть разделены. Даже при
-периодической batch-очистке read-path обязан исключать `expires_at <= asOf`,
+периодической batch-очистке read-path обязан исключать `valid_until <= asOf`,
 иначе export между deadline и следующим sweep выдаст уже просроченную запись.
 Reaper отвечает за ограничение размера active tables, а не за саму семантику
 expiry.
 
 **Предварительная рекомендация по SQL-path.**
 
-- Хранить индексируемый `expires_at` рядом с active canonical record; не
+- Хранить индексируемый `valid_until` рядом с active canonical record; не
   вычислять expiry через aggregate join с provenance на каждом export.
 - Выбирать expired rows ограниченными batches через range predicate по
-  `expires_at`, без загрузки всей таблицы в application memory.
+  `valid_until`, без загрузки всей таблицы в application memory.
 - В одной artifact-local transaction сохранять требуемый audit, удалять active
   row/provenance и ровно один раз продвигать `artifact_revision` для фактически
   изменившегося public content.
@@ -398,8 +398,8 @@ content-hash `SourceKey`.
   объявленного source contract.
 
 **SQL/clock следствие.** «Постепенное уменьшение TTL» является вычислением, а не
-фоновым UPDATE каждой строки. Storage хранит абсолютный `expires_at`; оставшееся
-время равно `expires_at - asOf`. Это устраняет периодическую write amplification
+фоновым UPDATE каждой строки. Storage хранит абсолютный `valid_until`; оставшееся
+время равно `valid_until - asOf`. Это устраняет периодическую write amplification
 и позволяет использовать B-tree range index для expiry candidates.
 
 **Статус:** подтверждено.
@@ -432,10 +432,10 @@ write. Source timestamps и filesystem mtime не считаются довер�
 
 Граничный контракт:
 
-- record активна только при `asOf < expires_at`; равенство означает expiry;
-- observation transaction при `confirmed_at < expires_at` продлевает текущий
+- record активна только при `asOf < valid_until`; равенство означает expiry;
+- observation transaction при `confirmed_at < valid_until` продлевает текущий
   lifecycle;
-- при `confirmed_at >= expires_at` создаётся новый lifecycle, даже если reaper
+- при `confirmed_at >= valid_until` создаётся новый lifecycle, даже если reaper
   ещё физически не перенёс старую row в history;
 - один export snapshot использует единый `asOf` для всех artifacts, а не читает
   часы отдельно для каждой строки.
@@ -453,9 +453,9 @@ canonical transaction после parsing и failure-policy checkpoint.
 - `confirmed_at` принадлежит durable canonical commit, а не detection, claim,
   source timestamp или filesystem metadata.
 - Непроверенный backlog не продлевает TTL.
-- Commit после `expires_at` создаёт новый lifecycle; ретроспективного восстановления
+- Commit после `valid_until` создаёт новый lifecycle; ретроспективного восстановления
   непрерывности нет.
-- Boundary остаётся half-open: `[confirmed_at, expires_at)`, equality означает
+- Boundary остаётся half-open: `[confirmed_at, valid_until)`, equality означает
   expiry.
 - Policy и tests используют injected `Clock`; row-by-row wall-clock reads не
   участвуют в одном logical decision.
@@ -490,7 +490,7 @@ canonical truth.
 - Reconciliation архивирует/deletes due lifecycles, продвигает artifact
   revisions и запускает recoverable mutable reprojection.
 - Periodic expiry scheduler поддерживает состояние после startup; read-path
-  predicate `expires_at > asOf` остаётся defense in depth, а не заменой mutation.
+  predicate `valid_until > asOf` остаётся defense in depth, а не заменой mutation.
 - Stateful oneshot `extract` и `export` выполняют expiry reconciliation до
   operation. Это особенно важно для export: текущий revision pre-gate иначе
   может не заметить изменение, вызванное только ходом времени.
@@ -543,7 +543,7 @@ state, а уже созданные immutable slices не переписываю
 **Текущая рекомендация: вариант 2, explicit opt-in.**
 
 - В V1 использовать один понятный режим, например
-  `ioc.lifecycle.expiration.mode: disabled|fixed`; для `fixed` обязательно
+  `ioc.lifecycle.validity.mode: disabled|fixed`; для `fixed` обязательно
   положительное `ttl`. Значения `0`, отрицательная duration и неявное
   «бесконечно» должны отклоняться strict semantic validation.
 - Classpath default сохраняет прежнее поведение (`disabled`), поэтому сам
@@ -632,7 +632,7 @@ policy:
    observations.
 2. **`grant-ttl`** — считать момент включения TTL первым условным подтверждением
    и дать всем legacy rows полный срок `activated_at + fixed.ttl`.
-3. **`from-created-at`** — рассчитать `expires_at = _created_at + fixed.ttl`;
+3. **`from-created-at`** — рассчитать `valid_until = _created_at + fixed.ttl`;
    старые rows истекут сразу, достаточно свежие доживут остаток срока.
 
 **Текущая рекомендация с учётом ответа заказчика: explicit `expire`.** Это
@@ -704,12 +704,12 @@ TTL требует собственных storage-neutral времён неза�
 
 - `first_confirmed_at` — первый accepted observation текущей lifecycle;
 - `last_confirmed_at` — последний accepted observation от любого источника;
-- `expires_at` — абсолютная граница активности, вычисленная policy;
+- `valid_until` — абсолютная граница активности, вычисленная policy;
 - history additionally фиксирует фактическое закрытие/reconciliation, не
   подменяя им business expiry deadline.
 
 Все времена — UTC instants; граница остаётся half-open
-`[first_confirmed_at, expires_at)`. После expiry новая lifecycle начинает
+`[first_confirmed_at, valid_until)`. После expiry новая lifecycle начинает
 `first_confirmed_at` заново. Время из имени/метаданных source document не может
 подменить эти значения: оно остаётся отдельным provenance evidence.
 
@@ -729,7 +729,7 @@ expiry с отдельной задачей enrichment `OUT-1` и не созд�
 slices только из-за повторных observations. Внутренние timestamps при этом не
 являются optional: они нужны для policy, history и operator visibility.
 
-`expires_at` также не рекомендуется добавлять в существующие reputation-list
+`valid_until` также не рекомендуется добавлять в существующие reputation-list
 schemas: DNS/firewall consumers должны получать только active rows и не
 реализовывать TTL повторно. Если конкретному downstream нужен expiry deadline,
 это должен быть отдельный versioned export profile/contract, а не скрытое
@@ -741,7 +741,7 @@ schemas: DNS/firewall consumers должны получать только activ
    `time_first_seen`/`time_last_seen`, либо им достаточно состава active set;
 2. если public `time_last_seen` обязателен, приемлемы ли revision/export/publish
    updates при каждом принятом подтверждении;
-3. нужен ли какому-либо внешнему consumer точный `expires_at`, или он должен
+3. нужен ли какому-либо внешнему consumer точный `valid_until`, или он должен
    оставаться только operator/internal lifecycle metadata.
 
 **Ответ заказчика.** `time_first_seen` и `time_last_seen` являются обязательными
@@ -749,7 +749,7 @@ business columns: dataframe используется конечными сист
 существующую схему и порядок полей. В TTL V1 их значения остаются `NULL`, как и
 сейчас. Жёсткой связи с lifecycle timestamps пока не вводится.
 
-Точный `expires_at` текущим конечным системам не нужен. Их contract — получить
+Точный `valid_until` текущим конечным системам не нужен. Их contract — получить
 актуальный набор и понять, что устаревшую запись следует удалить/забыть. В
 будущем отдельная целевая система может потребовать самостоятельный TTL; дизайн
 должен позволять передать deadline через подходящий для неё integration
@@ -759,11 +759,11 @@ contract, не меняя семантику всех существующих c
 
 - порядок и наличие public `time_first_seen`/`time_last_seen` не меняются;
 - оба business field остаются `NULL` во всех текущих dataframe/export schemas;
-- внутренние `first_confirmed_at`, `last_confirmed_at` и `expires_at` не
+- внутренние `first_confirmed_at`, `last_confirmed_at` и `valid_until` не
   маппятся в эти колонки и не меняют public row bytes при renewal;
 - observation-only renewal не bump-ит artifact revision ради `time_last_seen` и
   сам по себе не создаёт export/publish churn;
-- `expires_at` остаётся internal/operator metadata;
+- `valid_until` остаётся internal/operator metadata;
 - будущий mapping lifecycle metadata в business columns является отдельной
   policy/enrichment capability с явным revision contract;
 - будущая передача deadline конкретному consumer выполняется отдельным
@@ -803,7 +803,7 @@ SQLite transaction
   удаление active rows/provenance и revision bump для фактически изменившихся
   artifacts. Большие наборы могут обрабатываться bounded batches, но export
   нельзя открывать посередине незавершённого reconciliation cycle.
-- Любой canonical read дополнительно применяет `expires_at > asOf`. Поэтому
+- Любой canonical read дополнительно применяет `valid_until > asOf`. Поэтому
   новый snapshot не включает логически expired row даже до её физического
   переноса reaper-ом.
 - Успешный expiry commit нельзя откатывать только из-за ошибки CSV projection
@@ -831,7 +831,7 @@ SQLite transaction
 2. Если canonical expiry уже committed, а reprojection/export/publish упал,
    подтверждаем ли поведение: запись остаётся expired, сервис показывает
    degradation и повторяет side effect, но не возвращает запись в active set?
-3. Какова допустимая задержка в исправно работающей системе между `expires_at`
+3. Какова допустимая задержка в исправно работающей системе между `valid_until`
    и успешным обновлением внешнего consumer: практически сразу, фиксированный
    верхний предел или очередной плановый export без отдельного SLA?
 
@@ -848,7 +848,7 @@ constraints, не расширяя задачу до delivery orchestration.
 
 **Зафиксированный service-local contract.**
 
-- На logical read boundary задержка равна нулю: при `asOf >= expires_at` запись
+- На logical read boundary задержка равна нулю: при `asOf >= valid_until` запись
   уже неактивна и не может попасть ни в новый canonical read, ни в начатый после
   deadline dataframe/export snapshot, даже если reaper ещё не удалил row.
 - Healthy daemon должен быстро запустить физический reconciliation и обновление
@@ -879,17 +879,17 @@ Row-by-row timers плохо восстанавливаются после resta
 
 **Текущая рекомендация.**
 
-- Логическая актуальность остаётся точной через `expires_at > asOf`; она не
+- Логическая актуальность остаётся точной через `valid_until > asOf`; она не
   зависит от скорости физической уборки.
-- На каждой active artifact table нужен B-tree index `(expires_at, id)`: он
+- На каждой active artifact table нужен B-tree index `(valid_until, id)`: он
   обслуживает поиск ближайшего deadline, due-range и стабильный keyset batch.
 - Primary daemon scheduler держит один ближайший deadline, полученный через
-  indexed `MIN(expires_at)`, и пересчитывает его после commit/renewal/reaping.
+  indexed `MIN(valid_until)`, и пересчитывает его после commit/renewal/reaping.
   Новая более ранняя дата только reschedule/nudge-ит один timer — отдельных
   timers на rows нет.
 - Редкий periodic reconcile остаётся correctness backstop для lost nudge,
   clock jump и restart; это не частый full-table scan.
-- Due rows выбираются ограниченными batches по `(expires_at, id)`. Каждая batch
+- Due rows выбираются ограниченными batches по `(valid_until, id)`. Каждая batch
   transaction архивирует/deletes rows и bump-ит revisions; projection
   coalesces на завершение reconciliation cycle, а не запускается на каждый row.
 - При burst expiry новые reads уже исключают весь due set. Физический reaping и
@@ -901,7 +901,7 @@ Row-by-row timers плохо восстанавливаются после resta
 
 Предлагаемая конкретизация «практически мгновенно» внутри healthy service:
 
-1. semantic exclusion — непосредственно на границе `expires_at`;
+1. semantic exclusion — непосредственно на границе `valid_until`;
 2. scheduler reaction — начало reconciliation не позднее чем через 5 секунд
    после deadline при отсутствии уже выполняющейся canonical operation;
 3. completion time для массового burst измеряется и ограничивается объёмом
@@ -964,7 +964,7 @@ Row-by-row timers плохо восстанавливаются после resta
    найти конкретный IOC/public ID и объяснить его судьбу.
 2. **Lifecycle tombstone:** отдельный history ID, artifact/row identity,
    прежний public ID как evidence, snapshot business row,
-   `first_confirmed_at`, `last_confirmed_at`, `expires_at`, фактический
+   `first_confirmed_at`, `last_confirmed_at`, `valid_until`, фактический
    `closed_at` и typed close reason. Этого достаточно для поиска и объяснения.
 3. **Полный observation archive:** tombstone плюс все per-source
    `first_seen_at`/`last_seen_at`/`occurrences`. Максимальная доказательность, но
@@ -1036,11 +1036,11 @@ Row-by-row timers плохо восстанавливаются после resta
 Если каждый read пересчитывает expiry из **текущего** config, изменение `24h →
 48h` задним числом перепишет смысл всех lifecycles без DB transaction/audit, а
 `24h → 1h` может мгновенно отозвать весь active set. Это противоречит модели, в
-которой `expires_at` является зафиксированным результатом accepted observation.
+которой `valid_until` является зафиксированным результатом accepted observation.
 
 Для изменения duration есть два основных контракта:
 
-1. **Prospective:** уже записанный `expires_at` не меняется; новый TTL
+1. **Prospective:** уже записанный `valid_until` не меняется; новый TTL
    применяется при следующем successful confirmation или создании новой
    lifecycle.
 2. **Retroactive:** на startup пересчитать все active deadlines как
@@ -1048,7 +1048,7 @@ Row-by-row timers плохо восстанавливаются после resta
 
 **Текущая рекомендация: prospective duration changes.**
 
-- `ExpirationPolicy` вычисляет абсолютный deadline в момент accepted
+- `RecordValidityPolicy` вычисляет абсолютный deadline в момент accepted
   observation; repository хранит результат, а reads не консультируются с
   текущей duration.
 - И увеличение, и уменьшение TTL влияют только на последующие confirmations.
@@ -1058,7 +1058,7 @@ Row-by-row timers плохо восстанавливаются после resta
   он оформляется отдельной named/audited migration policy.
 
 `disabled` после activation сложнее. Если просто перестать применять
-`expires_at > asOf`, ещё не удалённые expired rows могут снова появиться. Если
+`valid_until > asOf`, ещё не удалённые expired rows могут снова появиться. Если
 обнулить deadlines, это неявно превращает все active records в бессрочные. Если
 прекратить только новые renewals, получится смешанное состояние с неожиданным
 истечением старых rows.
@@ -1087,7 +1087,7 @@ successful confirmations.
 
 **Зафиксированный policy-transition contract.**
 
-- Persisted `expires_at` является lifecycle fact и никогда не пересчитывается
+- Persisted `valid_until` является lifecycle fact и никогда не пересчитывается
   лениво из текущего config.
 - Новая fixed duration применяется только при создании lifecycle или следующем
   accepted observation существующей active record.
@@ -1124,7 +1124,7 @@ HTTP-observability начинает владеть business correctness.
   всё равно не видны canonical reads.
 - `DOWN`: lifecycle metadata/policy state невозможно прочитать или изменить,
   persisted policy не согласуется с config, startup barrier упал либо нельзя
-  гарантировать `expires_at > asOf` на read path. Readiness, daemon intake и
+  гарантировать `valid_until > asOf` на read path. Readiness, daemon intake и
   stateful `extract`/`export` остаются закрыты до recovery.
 
 Projection/export failure после canonical expiry остаётся в соответствующем
@@ -1198,7 +1198,7 @@ TTL-статистики в health достаточно. Manual mutating/reconci
 
 ```text
 09:59:55  файл обнаружен и parsing начался
-10:00:00  прежний expires_at
+10:00:00  прежний valid_until
 10:00:01  canonical transaction получает право на запись
 ```
 
@@ -1222,7 +1222,7 @@ TTL-статистики в health достаточно. Manual mutating/reconci
 
 **Ответ заказчика по сценариям 1–2.** Оба контракта подтверждены:
 
-- observation, committed после прежнего `expires_at`, считается новой записью,
+- observation, committed после прежнего `valid_until`, считается новой записью,
   даже если файл был обнаружен до deadline;
 - при одновременных expiry и confirmation подходит transaction-order contract
   без потери observation.
@@ -1404,7 +1404,7 @@ ingestion. Ошибка может не проявиться исключени�
 **Текущая рекомендация: следующий correctness set является release-blocking.**
 
 1. **Deterministic lifecycle semantics.** Tests с injected controllable `Clock`,
-   без реальных ожиданий, покрывают boundary `expires_at == asOf`, renewal,
+   без реальных ожиданий, покрывают boundary `valid_until == asOf`, renewal,
    prospective TTL change, expiry→new lifecycle/public ID, duplicate bulk
    confirmation и неизменность публичных `time_* == NULL`.
 2. **Transaction/race contract.** На реальной SQLite проверяется порядок
@@ -1450,7 +1450,7 @@ environment перед релизом, сохранить baseline и тольк
 реалистичный regression threshold.
 
 **Не входят в V1 release gate:** multi-day soak, внешняя target-system delivery,
-per-source/per-type TTL policies, public `expires_at`, manual expiry CLI и
+per-source/per-type TTL policies, public `valid_until`, manual expiry CLI и
 retroactive mass TTL changes. Это не ослабляет canonical correctness scope.
 
 **Ответ заказчика.** Все три положения приняты:
@@ -1474,7 +1474,7 @@ release evidence.
 
 > **Historical note.** This section preserves the recommendation that existed
 > before I-20. Its statements about expiry advancing `artifact_revision` and
-> the `(_expires_at, id)` key are superseded by I-20 and the reviewed candidate
+> the `(_valid_until, id)` key are superseded by I-20 and the reviewed candidate
 > in `architecture-project.md`: immutable export revision remains insert-driven,
 > mutable projection uses a separate generation, and the uniform due index uses
 > technical epoch time plus lifecycle identity.
@@ -1513,7 +1513,7 @@ Canonical write, read, ID allocation, revision и projection recovery должн
 ```text
 core/ioc-application
   artifact/lifecycle
-    ExpirationPolicy -> FixedExpirationPolicy (V1)
+    RecordValidityPolicy -> FixedRecordValidityPolicy (V1)
     lifecycle values/results + reconciliation/activation services
   port/out/artifact
     lifecycle-aware canonical store
@@ -1535,7 +1535,7 @@ bootstrap/ioc-app
 
 `core/ioc-domain` не получает Spring/JDBC/CSV и пока не меняется: речь идёт о
 canonical artifact lifecycle application layer, а не о новой IOC taxonomy.
-`ExpirationPolicy` остаётся малой Strategy; factory hierarchy, decorator chain
+`RecordValidityPolicy` остаётся малой Strategy; factory hierarchy, decorator chain
 и rules engine в V1 не нужны.
 
 Существующий `CanonicalArtifactRepository` должен эволюционировать в
@@ -1551,16 +1551,16 @@ Lifecycle fields размещаются непосредственно в каж
 _lifecycle_id
 _first_confirmed_at
 _last_confirmed_at
-_expires_at
+_valid_until
 ```
 
 Это лучше центральной polymorphic table с парой `artifact + row_id`:
 
 - DB row и его lifecycle меняются одной transaction без слабой generic FK;
-- каждый current read получает простой predicate `_expires_at > :asOf` без
+- каждый current read получает простой predicate `_valid_until > :asOf` без
   join;
 - существующий table-per-artifact/config-driven schema pattern сохраняется;
-- на каждом artifact создаётся range index `(_expires_at, id)`; scheduler
+- на каждом artifact создаётся range index `(_valid_until, id)`; scheduler
   опрашивает небольшой configured artifact catalog, а не создаёт per-row timer;
 - TTL остаётся свойством конкретной canonical artifact record и не связывается
   с IOC type или source.
@@ -1598,14 +1598,14 @@ Stable format migration дополнительно создаёт:
 Одна lifecycle-aware artifact transaction получает write ownership, затем один
 effective UTC `asOf` и для каждого observation выполняет ровно один вариант:
 
-1. active row и `_expires_at > asOf` — renew timestamps/deadline и provenance;
+1. active row и `_valid_until > asOf` — renew timestamps/deadline и provenance;
    public bytes/revision не меняются;
 2. row существует, но уже due — прежняя lifecycle архивируется/удаляется, затем
    observation создаёт новую lifecycle и новый public ID;
 3. row отсутствует — создаётся новая lifecycle;
 4. любой failure откатывает business row, provenance и lifecycle вместе.
 
-Expiry reconciliation выбирает keyset-batch через `(_expires_at, id)`, копирует
+Expiry reconciliation выбирает keyset-batch через `(_valid_until, id)`, копирует
 business/provenance snapshot в history, удаляет active row и в той же transaction
 двигает artifact revision и durable projection-work target. Каждая DB transaction
 ограничена; после cycle projection выполняется один раз на affected artifact.
@@ -1633,7 +1633,7 @@ effective `asOf`; multi-artifact export передаёт его всем SELECT 
 snapshot. Mutable projection получает один `asOf` на artifact. Health читает
 aggregate state и не продвигает clock/state.
 
-Все canonical read paths используют `_expires_at > :asOf`, поэтому correctness
+Все canonical read paths используют `_valid_until > :asOf`, поэтому correctness
 не зависит от скорости physical cleanup. `artifact_revision` двигается при
 insert/remove/replacement, но не при renewal. Expiry transaction upsert-ит
 durable projection target; CSV atomic replace подтверждает projected revision
@@ -1747,7 +1747,7 @@ release contract и не получить частично активируем�
   `core/ioc-application-tck`, `adapter-store-jdbc`, `adapter-sink-csv`,
   `adapter-ingest`, `bootstrap/ioc-app`, packaging и affected docs;
 - не расширять scope на downstream target management, per-source TTL,
-  public `expires_at`, manual mutation CLI или другие исключения I-01..I-18.
+  public `valid_until`, manual mutation CLI или другие исключения I-01..I-18.
 
 #### Рекомендуемые implementation slices
 
@@ -1820,7 +1820,7 @@ release worknotes остаются только registration/status links; ав�
 В I-02, I-10, I-11 и I-18 подтверждены отдельные части контракта:
 
 - уже созданные immutable slices не переписываются;
-- любой **новый** snapshot с `asOf >= expires_at` не содержит expired record,
+- любой **новый** snapshot с `asOf >= valid_until` не содержит expired record,
   даже если physical reaper ещё не удалил row;
 - expiry/removal изменяет active membership и должен двигать artifact revision;
 - canonical expiry не откатывается при failure projection/export;
@@ -1865,7 +1865,7 @@ Active membership меняется на самой границе времени
 `artifact_revision` не меняется автоматически от хода часов. Если manual или
 scheduled export после deadline сначала выполнит только revision pre-gate, он
 может решить, что изменений нет, и не открыть snapshot, хотя
-`expires_at > asOf` уже исключил бы rows.
+`valid_until > asOf` уже исключил бы rows.
 
 Поэтому недостаточно просто добавить event после physical delete. Каждый export
 entry point должен сначала выполнить lifecycle precondition для своего `asOf`:
@@ -1996,17 +1996,161 @@ filtering и durable mutable-projection recovery сохраняются.
 
 **Статус:** подтверждено; urgent-withdrawal recommendation отклонена для V1.
 
+### I-21 — external reference review and final validity vocabulary
+
+После завершения интервью отдельно рассмотрены актуальные реализации
+[OpenCTI](https://github.com/OpenCTI-Platform/opencti),
+[MISP](https://github.com/MISP/MISP), STIX 2.1 и применимость Spring runtime
+инструментов. Цель review — проверить, не создаёт ли локальный проект
+нестандартную TTL-модель и какие seams нужны для будущего перехода от fixed TTL
+к decay policies.
+
+#### OpenCTI: deadline, expiration manager и retention
+
+Текущий OpenCTI
+[`expiredManager.js`](https://github.com/OpenCTI-Platform/opencti/blob/master/opencti-platform/opencti-graphql/src/manager/expiredManager.js)
+периодически выбирает объекты с прошедшим `valid_until`, берёт cluster-wide
+lock и bounded-concurrently обновляет их состояние. Для Indicator он выставляет
+`revoked=true`, отключает `x_opencti_detection` и снижает score. Это подтверждает
+правильность aggregate manager вместо timer/job на каждый IOC, но сама mutation
+model не переносится в DATA-TTL-01.
+
+OpenCTI
+[Indicators Lifecycle](https://docs.opencti.io/latest/usage/indicators-lifecycle/)
+и [Decay rules](https://docs.opencti.io/latest/administration/decay-rules/)
+дают полезные проектные прецеденты:
+
+- абсолютный `valid_until` хранится как факт конкретного lifecycle;
+- decay rule выбирается отдельно от storage и определяет validity boundary;
+- rule changes не должны молча пересчитывать уже принятые lifecycles;
+- reaction points нужны для materialized score, но не для самого факта
+  active/inactive;
+- expiration manager обслуживает данные, но TTL не превращается в набор
+  индивидуальных scheduled jobs.
+
+OpenCTI
+[Retention policies](https://docs.opencti.io/latest/administration/retentions/)
+отдельно удаляют старые объекты. Для нашего проекта это закрепляет три разных
+понятия: validity boundary, expiration/archive reconciliation и последующий
+history retention purge.
+
+#### STIX: `valid_until` полезен, `revoked` не эквивалентен expiry
+
+[STIX 2.1](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html)
+определяет `valid_until` как момент, после которого Indicator больше не должен
+считаться валидным, и требует `valid_until > valid_from`. Это соответствует
+нашему half-open predicate `valid_until > asOf` и делает `valid_until` более
+точным canonical vocabulary, чем generic `expires_at`.
+
+Совпадение термина не означает автоматическую STIX-совместимость:
+
+- canonical artifact row не является STIX Indicator;
+- `first_confirmed_at` фиксирует нашу successful canonical transaction и не
+  переименовывается в STIX `valid_from`;
+- source-supplied validity dates в V1 не принимаются как lifecycle policy;
+- передача validity fields наружу требует отдельного versioned mapping contract.
+
+STIX revocation является перманентным для object identity: после `revoked=true`
+нельзя выпускать новую версию того же объекта. Наш expired IOC может появиться
+снова как новая lifecycle с новым internal/public ID. Поэтому V1 сохраняет
+`LifecycleCloseReason.EXPIRED`, а не вводит `revoked` или `detection`. OpenCTI
+использует эти поля как собственный platform workflow, не как обязательный
+шаблон для нашего storage contract.
+
+#### MISP: будущая policy Strategy, но не V1 read algorithm
+
+MISP
+[`DecayingModel.php`](https://github.com/MISP/MISP/blob/2.5/app/Model/DecayingModel.php)
+и formula classes отделяют выбор модели от вычисления score. Polynomial model
+использует монотонную функцию от base score, elapsed time, lifetime и decay
+speed, а threshold определяет состояние `decayed`. Последнее sighting,
+`last_seen` или update time задаёт начало нового decay interval.
+
+Официальный
+[`misp-decaying-models`](https://github.com/MISP/misp-decaying-models)
+хранит versioned JSON models: например, phishing model имеет существенно
+меньший lifetime, чем NIDS model. Это подтверждает будущую возможность
+type/risk-sensitive policy, но не меняет V1 requirement одного fixed TTL.
+
+Для монотонной decay curve policy может аналитически вычислить время достижения
+threshold и сохранить один абсолютный `validUntil`. Поэтому будущая замена
+fixed policy не требует periodic UPDATE score каждой строки:
+
+```text
+accepted confirmation
+  -> RecordValidityPolicy selects/evaluates model
+  -> ValidityDecision(validUntil)
+  -> atomic canonical commit stores absolute boundary
+```
+
+MISP API `excludeDecayed` вычисляет decay score в per-attribute processing и
+отбрасывает decayed results после чтения batches. Это полезный optional query
+feature CTI-платформы, но не подходит как обязательный canonical read predicate
+для нашего expected scale: формула, tags/sightings и application filtering
+ухудшили бы index selectivity и latency. V1 и будущие policy-backed reads
+сохраняют SQL predicate по persisted `valid_until`.
+
+Существующую public dataframe column `score` запрещено переиспользовать под
+decay score: её контракт независим от MISP score, OpenCTI `x_opencti_score` и
+STIX confidence. Если score lifecycle когда-либо станет consumer requirement,
+он получит отдельную internal модель и versioned projection mapping.
+
+#### Runtime/framework disposition
+
+| Option | V1 disposition | Reason |
+|---|---|---|
+| Admission-gated `SmartLifecycle` + `ScheduledExecutorService` | use | Остаётся inert до общего canonical-data admission, затем поддерживает nearest-deadline one-shot, reschedule/coalescing и deterministic executor tests |
+| Spring `@Scheduled` | reject | Годится для fixed periodic trigger, но не выражает dynamic nearest deadline и admission ordering; второй scheduling style не даёт выигрыша |
+| ShedLock | reject | Решает только concurrent invocation нескольких nodes, пропускает contender execution и опирается на time-based lock; V1 имеет один daemon и SQLite transaction truth |
+| Spring Batch | reject for V1 | Chunk/restart/partition infrastructure дублирует bounded keyset reconciler и durable cycle state при текущем `100k` envelope |
+
+OpenCTI cluster lock не является аргументом в пользу ShedLock для текущего
+deployment: в OpenCTI один manager стартует в каждом API process. Если наш
+проект перейдёт к multi-process deployment, потребуется общий design writer
+ownership, fencing, activation leader и projection ownership; один scheduler
+lock эту задачу не закрывает.
+
+Spring Batch следует пересмотреть только при измеренном переходе к
+millions/tens-of-millions, многочасовым restartable jobs, multi-step
+reclassification или partitioned/multi-writer storage. До этого основными
+ограничениями вероятнее станут SQLite single writer и стоимость полной CSV
+projection, а не отсутствие batch framework.
+
+#### Принятый implementation vocabulary
+
+| Concept | V1 name |
+|---|---|
+| Business strategy | `RecordValidityPolicy` |
+| Fixed implementation | `FixedRecordValidityPolicy` |
+| Policy result | `ValidityDecision(validUntil)` |
+| Durable column | `_valid_until_epoch_ms` |
+| Active predicate | `_valid_until_epoch_ms > :as_of_epoch_ms` |
+| Due predicate | `_valid_until_epoch_ms <= :as_of_epoch_ms` |
+| Transition/process | expiration / expiry reconciliation |
+| Historical purge | retention cleanup |
+| Time-based close reason | `LifecycleCloseReason.EXPIRED` |
+
+`RecordValidityPolicy` остаётся единственной малой Strategy в P1. Registry,
+formula DSL, selector hierarchy и model persistence не создаются без реальной
+второй policy. При их появлении selection может использовать IOC type, risk и
+provenance summary как входные facts, но lifecycle и сохранённый `validUntil`
+всё равно принадлежат canonical record, а не source или IOC taxonomy.
+
+**Статус:** external review завершён; vocabulary и framework disposition
+приняты как уточнение I-01..I-20 и внесены в architecture/ADR/implementation
+documents. Production implementation по-прежнему требует отдельного go-ahead.
+
 ## 5. Emerging model
 
 ```text
 accepted observation
         |
         v
-canonical record lifecycle ----> expires_at / active-at(now)
+canonical record lifecycle ----> valid_until / active-at(asOf)
         |                                  |
         +---- provenance evidence          +---- current projections/export
         |
-        +---- expiration policy (fixed TTL in V1; extensible later)
+        +---- record-validity policy (fixed TTL in V1; extensible later)
         |
         +---- fingerprinted source receipt (bounded duplicate fast path)
 ```
