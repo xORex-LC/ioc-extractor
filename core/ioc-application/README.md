@@ -4,7 +4,9 @@
 
 Application layer: use-case ports, IOC ETL payloads/stages, extraction
 orchestration и storage-neutral Artifact Emission contracts, model,
-formation saga/change detection/forward recovery.
+formation saga/change detection/forward recovery. Модель canonical record
+validity находится в `application.artifact.lifecycle`; её client-shaped driven
+ports остаются framework-free и не активируются до JDBC-slices.
 
 Extraction возвращает first-class completion/diagnostic outcome. Pure domain
 decisions материализуются один раз; application stages используют их

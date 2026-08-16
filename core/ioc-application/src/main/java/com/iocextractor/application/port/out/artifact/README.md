@@ -17,6 +17,7 @@ Driven-порты для canonical artifact storage, artifact identity, CSV proj
 | `ArtifactProjectionCommand.java` | Обязательные run/artifact identity одной projection operation |
 | `ArtifactProjectionResult.java` | Immutable row count + advisory diagnostics успешно установленной проекции |
 | `RunLedger.java` | Durable checkpoint store для write→project recovery |
+| `lifecycle/` | Lifecycle-aware canonical write/read, expiry, activation and projection-work ports |
 
 ## Границы
 
