@@ -8,11 +8,15 @@ import java.util.Objects;
  * Lifecycle-aware canonical command for one artifact transaction.
  *
  * @param observationId durable delivery-attempt identity
+ * @param sourceKey stable identity of the accepted source content
+ * @param receipt bounded prepared-row receipt publication context
  * @param artifactName configured artifact name
  * @param header ordered public artifact columns
  * @param records identity-resolved prepared records
  */
 public record CanonicalArtifactConfirmation(ObservationId observationId,
+                                            String sourceKey,
+                                            ConfirmationReceiptContext receipt,
                                             String artifactName,
                                             List<String> header,
                                             List<CanonicalRecordConfirmation> records) {
@@ -20,6 +24,8 @@ public record CanonicalArtifactConfirmation(ObservationId observationId,
     /** Copies collections and rejects ambiguous duplicate row keys. */
     public CanonicalArtifactConfirmation {
         Objects.requireNonNull(observationId, "observationId");
+        sourceKey = requireText(sourceKey, "sourceKey");
+        Objects.requireNonNull(receipt, "receipt");
         artifactName = requireText(artifactName, "artifactName");
         header = List.copyOf(Objects.requireNonNull(header, "header"));
         records = List.copyOf(Objects.requireNonNull(records, "records"));

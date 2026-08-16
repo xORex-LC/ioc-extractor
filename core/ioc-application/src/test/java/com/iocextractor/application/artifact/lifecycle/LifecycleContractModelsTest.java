@@ -4,6 +4,7 @@ import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.ArtifactRowKey;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -93,5 +94,30 @@ class LifecycleContractModelsTest {
                 Optional.empty()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("requires policy and activation time");
+    }
+
+    @Test
+    void confirmation_receipt_context_requires_publishable_identity_and_bounds() {
+        var id = new ConfirmationReceiptId("receipt-1");
+
+        assertThat(new ConfirmationReceiptContext(id, "policy-v1", 2, Duration.ofDays(30)))
+                .extracting(ConfirmationReceiptContext::expectedArtifacts,
+                        ConfirmationReceiptContext::retention)
+                .containsExactly(2, Duration.ofDays(30));
+        assertThatThrownBy(() -> new ConfirmationReceiptId(" "))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not be blank");
+        assertThatThrownBy(() -> new ConfirmationReceiptContext(
+                id, " ", 1, Duration.ofDays(30)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("fingerprint");
+        assertThatThrownBy(() -> new ConfirmationReceiptContext(
+                id, "policy-v1", 0, Duration.ofDays(30)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("artifact count");
+        assertThatThrownBy(() -> new ConfirmationReceiptContext(
+                id, "policy-v1", 1, Duration.ZERO))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("retention");
     }
 }

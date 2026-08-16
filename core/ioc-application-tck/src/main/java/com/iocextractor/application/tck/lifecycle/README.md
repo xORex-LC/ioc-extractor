@@ -19,4 +19,5 @@ adapter.
 
 **Depends on:** `ioc-application`, JUnit 5 and AssertJ.
 
-**Consumed by:** `adapter-store-jdbc` beginning with DATA-TTL-01 P2.
+**Consumed by:** `adapter-store-jdbc` beginning with DATA-TTL-01 P3; the JDBC
+subclass executes the contract against real SQLite storage.

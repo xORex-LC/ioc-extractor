@@ -16,10 +16,10 @@ implement them through inward-facing ports.
 | `RecordValidityPolicy.java` / `FixedRecordValidityPolicy.java` | Strategy seam and fixed V1 policy |
 | `EffectiveTime.java` / `LifecycleDeadline.java` / `ValidityDecision.java` | Explicit transaction time and absolute boundary |
 | `LifecycleTimeSource.java` | Injected UTC time boundary; runtime clock safety remains outside the model |
-| `LifecycleId.java` / `ObservationId.java` | Durable, non-interchangeable identities |
+| `LifecycleId.java` / `ObservationId.java` / `ConfirmationReceiptId.java` | Durable, non-interchangeable identities |
 | `RecordLifecycle.java` / `LifecycleCloseReason.java` | Active lifecycle invariants and close vocabulary |
 | `ProjectionGeneration.java` | Mutable-projection work version |
-| `Canonical*Confirmation.java` / `LifecycleWriteResult.java` | Identity-resolved write command and classified durable outcome |
+| `Canonical*Confirmation.java` / `ConfirmationReceiptContext.java` / `LifecycleWriteResult.java` | Identity-resolved write command, bounded receipt facts and classified durable outcome |
 | `ActiveArtifact*.java` / `ExpiryBatchResult.java` | Active snapshot and bounded reconciliation results |
 | `LifecycleControlState.java` | One-way persisted activation model |
 | `ArtifactProjectionState.java` / `ProjectionAcknowledgement.java` | Projection convergence and CAS evidence |

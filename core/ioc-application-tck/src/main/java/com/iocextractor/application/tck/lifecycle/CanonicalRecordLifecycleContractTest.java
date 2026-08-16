@@ -6,6 +6,8 @@ import com.iocextractor.application.artifact.PreparedArtifactRow;
 import com.iocextractor.application.artifact.lifecycle.ActiveArtifactRecord;
 import com.iocextractor.application.artifact.lifecycle.CanonicalArtifactConfirmation;
 import com.iocextractor.application.artifact.lifecycle.CanonicalRecordConfirmation;
+import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptContext;
+import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptId;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
 import com.iocextractor.application.artifact.lifecycle.LifecycleTimeSource;
@@ -216,6 +218,12 @@ public abstract class CanonicalRecordLifecycleContractTest {
                 .toList();
         return new CanonicalArtifactConfirmation(
                 new ObservationId(observation),
+                "test-source",
+                new ConfirmationReceiptContext(
+                        new ConfirmationReceiptId("receipt-" + observation),
+                        "test-policy-v1",
+                        1,
+                        Duration.ofDays(30)),
                 ARTIFACT,
                 List.of("id", "value", "source"),
                 confirmations);
