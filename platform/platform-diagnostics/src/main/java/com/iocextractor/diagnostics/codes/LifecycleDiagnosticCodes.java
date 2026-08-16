@@ -11,6 +11,8 @@ public enum LifecycleDiagnosticCodes implements DiagnosticCode {
             "Canonical lifecycle admission failed: {reason}"),
     CLOCK_UNSAFE(DiagnosticSeverity.FATAL, "lifecycle.clock-unsafe",
             "System UTC clock cannot establish a safe lifecycle time: {reason}"),
+    POLICY_MISMATCH(DiagnosticSeverity.FATAL, "lifecycle.policy-mismatch",
+            "Canonical lifecycle policy conflicts with durable activation state: {reason}"),
     RECONCILIATION_FAILED(DiagnosticSeverity.ERROR, "lifecycle.reconciliation-failed",
             "Canonical expiration reconciliation failed: {reason}"),
     PROJECTION_FAILED(DiagnosticSeverity.ERROR, "lifecycle.projection-failed",

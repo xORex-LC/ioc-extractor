@@ -4,6 +4,7 @@ import com.iocextractor.application.artifact.lifecycle.ArtifactProjectionConverg
 import com.iocextractor.application.artifact.lifecycle.LifecycleAdmissionResult;
 import com.iocextractor.application.artifact.lifecycle.LifecycleClockUnsafeException;
 import com.iocextractor.application.artifact.lifecycle.LifecycleHistoryRetentionResult;
+import com.iocextractor.application.artifact.lifecycle.LifecyclePolicyMismatchException;
 import com.iocextractor.application.artifact.lifecycle.LifecycleReconciliationResult;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.LifecycleDiagnosticCodes;
@@ -41,9 +42,11 @@ public final class LifecycleRuntimeObserver {
     }
 
     public void admissionFailed(RuntimeException failure) {
-        LifecycleDiagnosticCodes code = failure instanceof LifecycleClockUnsafeException
-                ? LifecycleDiagnosticCodes.CLOCK_UNSAFE
-                : LifecycleDiagnosticCodes.ADMISSION_FAILED;
+        LifecycleDiagnosticCodes code = switch (failure) {
+            case LifecycleClockUnsafeException ignored -> LifecycleDiagnosticCodes.CLOCK_UNSAFE;
+            case LifecyclePolicyMismatchException ignored -> LifecycleDiagnosticCodes.POLICY_MISMATCH;
+            default -> LifecycleDiagnosticCodes.ADMISSION_FAILED;
+        };
         emit(code, failure);
         LogEvents.error(log)
                 .action(failure instanceof LifecycleClockUnsafeException

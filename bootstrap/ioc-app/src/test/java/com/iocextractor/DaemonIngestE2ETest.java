@@ -184,9 +184,13 @@ class DaemonIngestE2ETest {
         Files.move(partial, published, StandardCopyOption.ATOMIC_MOVE);
 
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            Path done = Path.of("target/daemon-e2e/done");
             assertThat(published).doesNotExist();
-            assertThat(Path.of("target/daemon-e2e/done", key.value() + "-watched-source.html"))
-                    .exists();
+            assertThat(done).isDirectory();
+            try (var archivedSources = Files.list(done)) {
+                assertThat(archivedSources.map(path -> path.getFileName().toString()))
+                        .anyMatch(name -> name.endsWith("__" + key.value() + "-watched-source.html"));
+            }
             assertThat(countForSourceKey(key.value())).isPositive();
         });
     }

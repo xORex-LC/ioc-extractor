@@ -41,6 +41,16 @@ final class IocConfigPreflight implements Validator {
         }
         rejectIfNotPositive(errors, "lifecycle.historyRetention", lifecycle.historyRetention(),
                 "ioc.lifecycle.history-retention");
+        rejectIfNotPositive(errors, "lifecycle.receiptRetention", lifecycle.receiptRetention(),
+                "ioc.lifecycle.receipt-retention");
+        if (lifecycle.validity() != null
+                && lifecycle.validity().mode() == LifecycleValidityMode.FIXED) {
+            Duration fixedTtl = lifecycle.validity().fixedTtl();
+            if (!isPositive(fixedTtl)) {
+                reject(errors, "lifecycle.validity.fixedTtl", fixedTtl,
+                        "ioc.lifecycle.validity.fixed-ttl is required in fixed mode and must be positive");
+            }
+        }
         if (lifecycle.reconcile() != null) {
             rejectIfNotPositive(errors, "lifecycle.reconcile.backstopInterval",
                     lifecycle.reconcile().backstopInterval(),

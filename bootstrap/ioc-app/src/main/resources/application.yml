@@ -287,11 +287,15 @@ ioc:
       targets: []
 
   # ---- Canonical record lifecycle runtime safety ---------------------------
-  # P4 keeps validity disabled in the production composition. These settings
-  # bound reconciliation, history cleanup and system-clock rollback handling;
-  # the validity mode and fixed TTL are activated separately in P5.
+  # Upgrade-compatible classpath default. Existing installations first start
+  # disabled, then explicitly choose fixed + existing-records=expire at cutover.
   lifecycle:
+    validity:
+      mode: disabled
+      fixed-ttl: 12h
+      existing-records: reject
     history-retention: 30d
+    receipt-retention: 30d
     reconcile:
       backstop-interval: 5s
       batch-size: 1000

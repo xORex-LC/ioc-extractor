@@ -82,7 +82,8 @@ class SyncSelectionCatalogTest {
         IocProperties properties = new IocProperties(
                 defaults.engine(), defaults.runtime(), defaults.storage(), defaults.source(), defaults.refang(),
                 defaults.patterns(), defaults.classify(), defaults.sink(), defaults.pipeline(), defaults.ingestion(),
-                defaults.artifactIdentity(), defaults.export(), sync, defaults.maintenance(), defaults.observability());
+                defaults.artifactIdentity(), defaults.export(), sync, defaults.maintenance(),
+                defaults.lifecycle(), defaults.observability());
         return new SyncSelectionCatalog(properties);
     }
 

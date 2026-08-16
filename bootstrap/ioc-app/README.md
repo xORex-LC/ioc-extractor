@@ -73,7 +73,7 @@ daemon template явно задаёт `collect-and-continue` и budget 10 000.
 
 ## Canonical lifecycle runtime
 
-P4 собирает framework-free lifecycle use cases с SQLite adapters через common
+Bootstrap собирает framework-free lifecycle use cases с SQLite adapters через common
 `CanonicalDataAdmissionState`. Stateful oneshot extract/export вызывают
 admission defensively; daemon export, deadline и mutable-projection schedulers
 остаются инертны, пока ingestion startup coordinator не завершит run/source
@@ -82,9 +82,12 @@ single-thread `ScheduledExecutorService`, coalesce-ят lossy events и опир
 на durable nearest deadline/generation плюс `5s` backstop.
 
 `LifecycleHealthIndicator` только читает aggregate durable state и отображает
-safe `UP`, recoverable `DEGRADED` или fail-closed `DOWN`. Typed `ioc.lifecycle`
-P4 settings ограничивают batch/backstop/history и clock rollback, но production
-preset остаётся `DISABLED_COMPATIBLE` до explicit P5 activation. Spring
+safe `UP`, recoverable `DEGRADED` или fail-closed `DOWN`. Typed
+`ioc.lifecycle.validity` выбирает `disabled|fixed`, positive fixed TTL и explicit
+legacy policy; activation выполняется admission-ом до stateful work. Composition
+также вычисляет processing-policy fingerprint и подключает 30-day receipt fast
+path для daemon, а stateful oneshot пишет через тот же lifecycle writer. P5
+classpath и upgrade presets остаются `disabled`. Spring
 `@Scheduled`, ShedLock, Spring Batch, новый module и новая runtime library не
 используются.
 

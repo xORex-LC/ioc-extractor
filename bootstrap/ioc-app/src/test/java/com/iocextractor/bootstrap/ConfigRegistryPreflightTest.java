@@ -209,14 +209,16 @@ class ConfigRegistryPreflightTest {
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), classify, source.sink(), source.pipeline(), source.ingestion(),
-                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(), source.observability());
+                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(),
+                source.lifecycle(), source.observability());
     }
 
     private IocProperties withSink(IocProperties source, IocProperties.Sink sink) {
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), sink, source.pipeline(), source.ingestion(),
-                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(), source.observability());
+                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(),
+                source.lifecycle(), source.observability());
     }
 
     @Configuration(proxyBeanMethods = false)

@@ -219,7 +219,8 @@ class ExportPlanCatalogTest {
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), source.sink(), source.pipeline(), source.ingestion(),
-                source.artifactIdentity(), export, source.sync(), source.maintenance(), source.observability());
+                source.artifactIdentity(), export, source.sync(), source.maintenance(),
+                source.lifecycle(), source.observability());
     }
 
     private IocProperties withSinkArtifact(IocProperties source, IocProperties.Sink.Artifact replacement) {
@@ -232,7 +233,8 @@ class ExportPlanCatalogTest {
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), sink, source.pipeline(), source.ingestion(),
-                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(), source.observability());
+                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(),
+                source.lifecycle(), source.observability());
     }
 
     private IocProperties withCsv(IocProperties source, IocProperties.Sink.Csv csv) {
@@ -240,7 +242,8 @@ class ExportPlanCatalogTest {
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), sink, source.pipeline(), source.ingestion(),
-                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(), source.observability());
+                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(),
+                source.lifecycle(), source.observability());
     }
 
     private IocProperties.Sink.Artifact copyArtifact(

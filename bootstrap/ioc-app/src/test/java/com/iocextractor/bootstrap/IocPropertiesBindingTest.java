@@ -30,7 +30,9 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -43,7 +45,11 @@ class IocPropertiesBindingTest {
             assertThat(context).hasSingleBean(IocProperties.class);
             assertThat(context).hasBean("configurationPropertiesValidator");
             IocProperties.Lifecycle lifecycle = context.getBean(IocProperties.class).lifecycle();
+            assertThat(lifecycle.validity().mode()).isEqualTo(LifecycleValidityMode.DISABLED);
+            assertThat(lifecycle.validity().fixedTtl()).isEqualTo(Duration.ofHours(12));
+            assertThat(lifecycle.validity().existingRecords()).isEqualTo(ExistingRecordsPolicy.REJECT);
             assertThat(lifecycle.historyRetention()).isEqualTo(Duration.ofDays(30));
+            assertThat(lifecycle.receiptRetention()).isEqualTo(Duration.ofDays(30));
             assertThat(lifecycle.reconcile().backstopInterval()).isEqualTo(Duration.ofSeconds(5));
             assertThat(lifecycle.reconcile().batchSize()).isEqualTo(1_000);
             assertThat(lifecycle.clock().maxBackwardSkew()).isEqualTo(Duration.ofSeconds(2));
@@ -55,6 +61,7 @@ class IocPropertiesBindingTest {
     void reportsLifecycleSafetyBoundsThroughSemanticPreflight() {
         contextRunner(
                 "ioc.lifecycle.history-retention=0s",
+                "ioc.lifecycle.receipt-retention=0s",
                 "ioc.lifecycle.reconcile.backstop-interval=-1s",
                 "ioc.lifecycle.clock.max-backward-skew=0s",
                 "ioc.lifecycle.clock.max-clamp-duration=-1s")
@@ -62,9 +69,30 @@ class IocPropertiesBindingTest {
                         .extracting(FieldError::getField)
                         .contains(
                                 "lifecycle.historyRetention",
+                                "lifecycle.receiptRetention",
                                 "lifecycle.reconcile.backstopInterval",
                                 "lifecycle.clock.maxBackwardSkew",
                                 "lifecycle.clock.maxClampDuration"));
+    }
+
+    @Test
+    void fixed_validity_rejects_a_non_positive_ttl() {
+        contextRunner(
+                "ioc.lifecycle.validity.mode=fixed",
+                "ioc.lifecycle.validity.fixed-ttl=0s")
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .extracting(FieldError::getField)
+                        .contains("lifecycle.validity.fixedTtl"));
+    }
+
+    @Test
+    void processing_fingerprint_excludes_lifecycle_timing_but_tracks_row_policy() {
+        String twelveHours = processingFingerprint("ioc.lifecycle.validity.fixed-ttl=12h");
+        String twentyFourHours = processingFingerprint("ioc.lifecycle.validity.fixed-ttl=24h");
+        String changedPipeline = processingFingerprint("ioc.pipeline.deduplicate=false");
+
+        assertThat(twentyFourHours).isEqualTo(twelveHours);
+        assertThat(changedPipeline).isNotEqualTo(twelveHours);
     }
 
     @Test
@@ -115,7 +143,7 @@ class IocPropertiesBindingTest {
                     source.engine(), source.runtime(), source.storage(), source.source(), source.refang(), patterns,
                     source.classify(), source.sink(), source.pipeline(), source.ingestion(),
                     source.artifactIdentity(), source.export(), source.sync(), source.maintenance(),
-                    source.observability());
+                    source.lifecycle(), source.observability());
 
             patterns.clear();
 
@@ -177,7 +205,9 @@ class IocPropertiesBindingTest {
                 "ioc.storage.service.type=JDBC",
                 "ioc.storage.dataframe.type=jdbc",
                 "ioc.export.trigger.type=quiet-period",
-                "ioc.ingestion.ledger.type=FILE")
+                "ioc.ingestion.ledger.type=FILE",
+                "ioc.lifecycle.validity.mode=FIXED",
+                "ioc.lifecycle.validity.existing-records=EXPIRE")
                 .run(context -> {
                     IocProperties props = context.getBean(IocProperties.class);
                     assertThat(props.engine()).isEqualTo(EngineType.RE2J);
@@ -191,6 +221,8 @@ class IocPropertiesBindingTest {
                     assertThat(props.export().trigger().type()).isEqualTo(ExportTriggerType.QUIET_PERIOD);
                     assertThat(ExportOutputMode.parse("Complete")).isEqualTo(ExportOutputMode.COMPLETE);
                     assertThat(props.ingestion().ledger().type()).isEqualTo(IngestionLedgerType.FILE);
+                    assertThat(props.lifecycle().validity().mode()).isEqualTo(LifecycleValidityMode.FIXED);
+                    assertThat(props.lifecycle().validity().existingRecords()).isEqualTo(ExistingRecordsPolicy.EXPIRE);
                     assertThat(RetentionActionType.parse("ARCHIVE")).isEqualTo(RetentionActionType.ARCHIVE);
                 });
     }
@@ -201,6 +233,19 @@ class IocPropertiesBindingTest {
                 .run(context -> assertThat(causeMessages(context.getStartupFailure()))
                         .contains("ioc.engine")
                         .contains("re2j, jdk"));
+    }
+
+    @Test
+    void rejectsInvalidLifecycleSelectorsWithSupportedValues() {
+        contextRunner("ioc.lifecycle.validity.mode=forever")
+                .run(context -> assertThat(causeMessages(context.getStartupFailure()))
+                        .contains("ioc.lifecycle.validity.mode")
+                        .contains("disabled, fixed"));
+
+        contextRunner("ioc.lifecycle.validity.existing-records=keep")
+                .run(context -> assertThat(causeMessages(context.getStartupFailure()))
+                        .contains("ioc.lifecycle.validity.existing-records")
+                        .contains("reject, expire"));
     }
 
     @Test
@@ -654,6 +699,15 @@ class IocPropertiesBindingTest {
                 .withPropertyValues(overrides);
     }
 
+    private String processingFingerprint(String... overrides) {
+        var fingerprint = new AtomicReference<String>();
+        contextRunner(overrides).run(context -> {
+            assertThat(context).hasNotFailed();
+            fingerprint.set(ProcessingPolicyFingerprint.from(context.getBean(IocProperties.class)));
+        });
+        return Objects.requireNonNull(fingerprint.get(), "processing fingerprint");
+    }
+
     private ApplicationContextRunner contextRunnerWithYamlOverlay(Path overlay) {
         return new ApplicationContextRunner()
                 .withInitializer(context -> addYaml(context, "overlay", new FileSystemResource(overlay), true))
@@ -687,7 +741,7 @@ class IocPropertiesBindingTest {
 
     private static List<FieldError> fieldErrors(Throwable failure) {
         BindValidationException validation = cause(failure, BindValidationException.class);
-        assertThat(validation).isNotNull();
+        assertThat(validation).as(causeMessages(failure)).isNotNull();
         return validation.getValidationErrors().getAllErrors().stream()
                 .filter(FieldError.class::isInstance)
                 .map(FieldError.class::cast)

@@ -116,6 +116,9 @@ class ConfigurationDocumentationContractTest {
         assertHint(metadata, "ioc.patterns.keys", indicatorTypes);
         assertHint(metadata, "ioc.export.trigger.type", selectorTokens(ExportTriggerType.values()));
         assertHint(metadata, "ioc.ingestion.ledger.type", selectorTokens(IngestionLedgerType.values()));
+        assertHint(metadata, "ioc.lifecycle.validity.mode", selectorTokens(LifecycleValidityMode.values()));
+        assertHint(metadata, "ioc.lifecycle.validity.existing-records",
+                selectorTokens(ExistingRecordsPolicy.values()));
         assertHint(metadata, "ioc.source.charset", Set.of("auto"));
         assertThat(hintBlock(metadata, "ioc.source.charset"))
                 .contains("handle-as", "java.nio.charset.Charset");

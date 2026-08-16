@@ -201,6 +201,37 @@ disabled and secrets remain environment placeholders.
 On upgrade, a changed packaged template is written beside the existing file as
 `application.yml.new` or `ioc-extractor.env.new`; it is never silently merged.
 
+### Two-step canonical validity activation
+
+An existing installation must not combine binary/schema rollout and destructive
+legacy-row activation in one unreviewed restart:
+
+1. Deploy the TTL-capable binary while keeping
+   `ioc.lifecycle.validity.mode: disabled` and
+   `existing-records: reject`. Wait for local health to become `UP`; this
+   compatibility start applies additive migrations without expiring business
+   rows.
+2. Stop intake and optional remote synchronization. Preserve one exact rollback
+   point containing the active immutable application release, the complete
+   operator configuration, `ioc-dataframe.db` and `ioc-service.db` (including
+   their SQLite side files when present). Do not copy a live database with an
+   ordinary filesystem copy; use the deployment backup transaction or a
+   SQLite-consistent backup procedure.
+3. Set `mode: fixed`, a positive `fixed-ttl`, and
+   `existing-records: expire`, then restart the same binary. Startup admission
+   archives and removes every pre-activation canonical row before intake or
+   export opens. Mutable CSV projections may legitimately become empty; this
+   activation does not create an insert-driven export revision.
+4. Wait for health `UP` and verify the active projections. New accepted source
+   observations then repopulate and confirm records under fixed validity.
+
+Activation is durable and one-way for these databases. A later `mode: disabled`
+fails startup with `LIFECYCLE.POLICY_MISMATCH`. Rollback after activation is not
+a config edit and not a partial database restore: stop the service and restore
+the matching pre-activation application release, configuration and both SQLite
+databases as a single recovery point. Files moved or remote side effects after
+that point require separate operational reconciliation.
+
 ## Systemd contract
 
 The rendered service:

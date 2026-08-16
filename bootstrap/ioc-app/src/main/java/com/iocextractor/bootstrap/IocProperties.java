@@ -52,26 +52,6 @@ public record IocProperties(
         lifecycle = lifecycle == null ? Lifecycle.defaults() : lifecycle;
     }
 
-    /** Compatibility constructor for callers created before lifecycle operations existed. */
-    public IocProperties(EngineType engine,
-                         Runtime runtime,
-                         Storage storage,
-                         Source source,
-                         Refang refang,
-                         Map<IndicatorType, String> patterns,
-                         Classify classify,
-                         Sink sink,
-                         Pipeline pipeline,
-                         Ingestion ingestion,
-                         ArtifactIdentity artifactIdentity,
-                         Export export,
-                         Sync sync,
-                         Maintenance maintenance,
-                         Observability observability) {
-        this(engine, runtime, storage, source, refang, patterns, classify, sink, pipeline,
-                ingestion, artifactIdentity, export, sync, maintenance, null, observability);
-    }
-
     private static <T> List<T> snapshotList(List<T> source) {
         return source == null ? null : Collections.unmodifiableList(new ArrayList<>(source));
     }
@@ -364,14 +344,23 @@ public record IocProperties(
     }
 
     /** Runtime safety and bounded maintenance settings for canonical lifecycle data. */
-    public record Lifecycle(@NotNull Duration historyRetention,
+    public record Lifecycle(@NotNull @Valid Validity validity,
+                            @NotNull Duration historyRetention,
+                            @NotNull Duration receiptRetention,
                             @NotNull @Valid Reconcile reconcile,
                             @NotNull @Valid ClockSafety clock) {
 
         private static Lifecycle defaults() {
-            return new Lifecycle(Duration.ofDays(30),
+            return new Lifecycle(new Validity(
+                    LifecycleValidityMode.DISABLED, Duration.ofHours(12), ExistingRecordsPolicy.REJECT),
+                    Duration.ofDays(30), Duration.ofDays(30),
                     new Reconcile(Duration.ofSeconds(5), 1_000),
                     new ClockSafety(Duration.ofSeconds(2), Duration.ofSeconds(30)));
+        }
+
+        public record Validity(@NotNull LifecycleValidityMode mode,
+                               Duration fixedTtl,
+                               @NotNull ExistingRecordsPolicy existingRecords) {
         }
 
         public record Reconcile(@NotNull Duration backstopInterval,

@@ -45,6 +45,7 @@ Generated from `DiagnosticCatalogs`.
 | `SYNC.LOCAL_SLICE_INVALID` | SYNC | ERROR | OPERATION | `sync.local-slice-invalid` | Local export slice {profile}/{sliceName} is invalid and was skipped: {reason} |
 | `LIFECYCLE.ADMISSION_FAILED` | LIFECYCLE | FATAL | OPERATION | `lifecycle.admission-failed` | Canonical lifecycle admission failed: {reason} |
 | `LIFECYCLE.CLOCK_UNSAFE` | LIFECYCLE | FATAL | OPERATION | `lifecycle.clock-unsafe` | System UTC clock cannot establish a safe lifecycle time: {reason} |
+| `LIFECYCLE.POLICY_MISMATCH` | LIFECYCLE | FATAL | OPERATION | `lifecycle.policy-mismatch` | Canonical lifecycle policy conflicts with durable activation state: {reason} |
 | `LIFECYCLE.RECONCILIATION_FAILED` | LIFECYCLE | ERROR | OPERATION | `lifecycle.reconciliation-failed` | Canonical expiration reconciliation failed: {reason} |
 | `LIFECYCLE.PROJECTION_FAILED` | LIFECYCLE | ERROR | OPERATION | `lifecycle.projection-failed` | Mutable artifact projection convergence failed: {reason} |
 | `LIFECYCLE.HISTORY_RETENTION_FAILED` | LIFECYCLE | ERROR | OPERATION | `lifecycle.history-retention-failed` | Lifecycle history retention failed: {reason} |
