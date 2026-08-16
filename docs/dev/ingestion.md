@@ -76,7 +76,10 @@ Daemon использует синхронный Spring Integration channel. О�
    durable run.** Оно ускоряет export, но periodic scheduler остаётся backstop.
 9. **Recovery предшествует intake.** Spring Integration flow имеет
    `autoStartup=false`; один startup coordinator последовательно восстанавливает
-   run ledger, затем source ledger и только после этого запускает flow. Его
+   run ledger, затем source ledger, выполняет common canonical lifecycle
+   admission и только после этого запускает flow. Admission валидирует safe
+   clock/control state, возобновляет activation, закрывает уже due rows и
+   доводит mutable projections. Его
    `ApplicationRunner` order равен `HIGHEST_PRECEDENCE`, поэтому будущий runner
    не сможет случайно опередить barrier.
 10. **Одинаковый `SourceKey` выполняется последовательно.** Ingest, recovery и
@@ -113,6 +116,13 @@ STARTED -> DB_COMMITTED -> PROJECTION_COMPLETED -> COMPLETED
 - orphan в `processing`, для которого нет ledger-записи, изолируется как
   failure, а не молча считается обработанным;
 - завершённые `SOURCE_ARCHIVED` и `FAILED` не запускаются заново.
+
+После run/source recovery тот же coordinator вызывает lifecycle admission.
+Ошибка safe clock, control/reconciliation или projection convergence оставляет
+intake остановленным и переводит startup lifecycle в failed. Recoverable
+runtime lag после успешного admission может отображаться как `DEGRADED`, пока
+active-read predicate остаётся доказуемым; это не отменяет periodic lifecycle
+backstop.
 
 Это at-least-once orchestration с идемпотентными durable шагами, а не обещание
 распределённого exactly-once.

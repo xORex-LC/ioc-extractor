@@ -27,9 +27,11 @@ concurrency, Spring Integration file support.
 ## Инварианты
 
 - `iocIngestionFlow` не стартует автоматически. `IngestionStartupCoordinator`
-  сначала восстанавливает run ledger, затем source ledger и только после этого
-  открывает intake; любая ошибка оставляет flow остановленным. Coordinator имеет
-  `ApplicationRunner` order `HIGHEST_PRECEDENCE`.
+  сначала восстанавливает run ledger, затем source ledger, выполняет common
+  canonical lifecycle admission и только после этого открывает intake; любая
+  ошибка оставляет flow остановленным. Coordinator имеет `ApplicationRunner`
+  order `HIGHEST_PRECEDENCE`. Lifecycle policy/SQL остаются за application/JDBC;
+  этот driving adapter знает только admission port.
 - Все application entry points для одного content `SourceKey` используют общий
   synchronous keyed guard. File ledger отдельно сериализует read/decide/replace
   внутри одного adapter instance; сервисы над общими namespace/ledger обязаны

@@ -16,6 +16,11 @@ Generated from `EventAction` and `LogField`.
 | `source_read` | source | Source document text was read. |
 | `source_ingest` | source | Source ingestion reached a terminal handled outcome. |
 | `ingest_recover` | source | Daemon startup ingestion recovery progressed or failed. |
+| `lifecycle_admission` | lifecycle | Canonical lifecycle admission completed or failed. |
+| `lifecycle_reconcile` | lifecycle | Canonical expiration reconciliation completed or failed. |
+| `lifecycle_projection` | lifecycle | Mutable lifecycle projection convergence completed or failed. |
+| `lifecycle_retention` | lifecycle | Bounded lifecycle history retention completed or failed. |
+| `lifecycle_clock` | lifecycle | Lifecycle clock confidence changed or became unsafe. |
 | `artifact_project` | sink | CSV projection was regenerated from canonical storage. |
 | `retention_sweep` | maintenance | Retention sweep evaluated configured targets. |
 | `schema_migrate` | storage | Database schema migration progressed or failed. |
@@ -67,6 +72,13 @@ Generated from `EventAction` and `LogField`.
 | `ioc.ingest.disposition` | ioc | `string` | Stable terminal disposition of a source ingestion attempt. |
 | `ioc.ingest.recovered_runs` | ioc | `long` | Number of incomplete ingest runs examined during startup recovery. |
 | `ioc.ingest.recovered_sources` | ioc | `long` | Number of incomplete source records handled during startup recovery. |
+| `ioc.lifecycle.state` | ioc | `string` | Persisted canonical lifecycle activation state. |
+| `ioc.lifecycle.cycle.id` | ioc | `long` | Durable expiration reconciliation cycle identifier. |
+| `ioc.lifecycle.expired` | ioc | `long` | Number of canonical lifecycles expired in an aggregate operation. |
+| `ioc.lifecycle.projections` | ioc | `long` | Number of mutable artifact projections converged in an aggregate operation. |
+| `ioc.lifecycle.clock.status` | ioc | `string` | Safe lifecycle clock confidence: SAFE, CLAMPED, or UNSAFE. |
+| `ioc.lifecycle.clock.skew_ms` | ioc | `long` | Observed backward UTC clock skew in milliseconds. |
+| `ioc.lifecycle.due` | ioc | `long` | Aggregate number of physically present canonical rows already due. |
 | `ioc.artifact.name` | ioc | `string` | Configured artifact name. |
 | `ioc.rows` | ioc | `long` | Number of rows in the operation. |
 | `ioc.db.role` | ioc | `string` | Logical database role. |

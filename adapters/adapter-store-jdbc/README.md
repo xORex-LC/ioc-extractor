@@ -71,9 +71,12 @@ runtime JDBC drivers.
   closed. The compatibility writer is serialized with activation and is refused
   as soon as activation starts.
 - `JdbcExpiredArtifactStore` provides the indexed nearest-deadline and bounded
-  archive/delete primitive needed by the lifecycle TCK. P3 does not compose a
-  scheduler, startup reconciliation, retention cleanup, health or lifecycle
-  events; those remain P4 concerns.
+  archive/delete primitive used by P4 reconciliation. `JdbcLifecycleClock`
+  owns the durable nondecreasing UTC high-water and clamp/unsafe policy;
+  `JdbcLifecycleReconciliationStore` journals recoverable cycles;
+  `JdbcLifecycleHistoryStore` performs indexed bounded retention; and
+  `JdbcLifecycleStatusReader` returns aggregate read-only health facts without
+  IOC/source identities. Bootstrap owns admission and schedulers.
 - `JdbcCanonicalArtifactRepository` writes rows with canonical `row_key` and
   `ON CONFLICT(row_key) DO NOTHING`, preserving explicit legacy ids when present.
   It is a commit-only boundary: routing and row mapping finish before this adapter

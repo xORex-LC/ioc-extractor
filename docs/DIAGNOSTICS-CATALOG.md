@@ -43,6 +43,11 @@ Generated from `DiagnosticCatalogs`.
 | `SYNC.TRANSPORT_TRANSIENT` | SYNC | WARN | OPERATION | `sync.transport-transient` | Transient transport failure on sync endpoint {endpoint}: {reason} |
 | `SYNC.PUBLISH_VERIFY_FAILED` | SYNC | ERROR | OPERATION | `sync.publish-verify-failed` | Published slice {sliceId} for target {targetId} failed verification: {reason} |
 | `SYNC.LOCAL_SLICE_INVALID` | SYNC | ERROR | OPERATION | `sync.local-slice-invalid` | Local export slice {profile}/{sliceName} is invalid and was skipped: {reason} |
+| `LIFECYCLE.ADMISSION_FAILED` | LIFECYCLE | FATAL | OPERATION | `lifecycle.admission-failed` | Canonical lifecycle admission failed: {reason} |
+| `LIFECYCLE.CLOCK_UNSAFE` | LIFECYCLE | FATAL | OPERATION | `lifecycle.clock-unsafe` | System UTC clock cannot establish a safe lifecycle time: {reason} |
+| `LIFECYCLE.RECONCILIATION_FAILED` | LIFECYCLE | ERROR | OPERATION | `lifecycle.reconciliation-failed` | Canonical expiration reconciliation failed: {reason} |
+| `LIFECYCLE.PROJECTION_FAILED` | LIFECYCLE | ERROR | OPERATION | `lifecycle.projection-failed` | Mutable artifact projection convergence failed: {reason} |
+| `LIFECYCLE.HISTORY_RETENTION_FAILED` | LIFECYCLE | ERROR | OPERATION | `lifecycle.history-retention-failed` | Lifecycle history retention failed: {reason} |
 | `PIPELINE.STAGE_FAILED` | PIPELINE | ERROR | RUN | `pipeline.stage-failed` | Pipeline stage {stage} failed: {reason} |
 | `PIPELINE.DIAGNOSTICS_SUPPRESSED` | PIPELINE | WARN | RUN | `pipeline.diagnostics-suppressed` | Suppressed {suppressedCount} diagnostics after reaching the run budget of {limit} |
 | `PIPELINE.ITEM_SKIPPED` | PIPELINE | WARN | ELEMENT | `pipeline.item-skipped` | Pipeline item {item} was skipped at stage {stage}: {reason} |

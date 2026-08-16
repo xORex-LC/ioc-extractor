@@ -71,6 +71,23 @@ Composition root выбирает typed `PipelineFailurePolicy`, diagnostic budg
 non-throwing diagnostics bridge. Default application config — `fail-fast`; production
 daemon template явно задаёт `collect-and-continue` и budget 10 000.
 
+## Canonical lifecycle runtime
+
+P4 собирает framework-free lifecycle use cases с SQLite adapters через common
+`CanonicalDataAdmissionState`. Stateful oneshot extract/export вызывают
+admission defensively; daemon export, deadline и mutable-projection schedulers
+остаются инертны, пока ingestion startup coordinator не завершит run/source
+recovery и admission. Deadline и projection workers владеют отдельными
+single-thread `ScheduledExecutorService`, coalesce-ят lossy events и опираются
+на durable nearest deadline/generation плюс `5s` backstop.
+
+`LifecycleHealthIndicator` только читает aggregate durable state и отображает
+safe `UP`, recoverable `DEGRADED` или fail-closed `DOWN`. Typed `ioc.lifecycle`
+P4 settings ограничивают batch/backstop/history и clock rollback, но production
+preset остаётся `DISABLED_COMPATIBLE` до explicit P5 activation. Spring
+`@Scheduled`, ShedLock, Spring Batch, новый module и новая runtime library не
+используются.
+
 ## Зависимости
 
 **Зависит от:** selected platform/core/adapters modules, Spring Boot and its

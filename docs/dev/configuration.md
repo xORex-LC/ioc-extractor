@@ -67,6 +67,25 @@ eagerly собирает необходимые migrations, recovery и schedule
 work. Конкретные adapters связываются только в composition root (`AppConfig`,
 `SyncConfig`, `EventCoordinationConfig`, config-preflight configuration).
 
+### Lifecycle runtime safety
+
+P4 вводит только operational envelope, не activation policy:
+
+- `ioc.lifecycle.history-retention` — positive срок хранения закрытых lifecycle
+  snapshots, default `30d`;
+- `ioc.lifecycle.reconcile.backstop-interval` — positive максимальный idle
+  interval между correctness passes, default `5s`;
+- `ioc.lifecycle.reconcile.batch-size` — positive bound одной SQLite
+  archive/delete либо retention transaction, default `1000`;
+- `ioc.lifecycle.clock.max-backward-skew` и `max-clamp-duration` — positive
+  system UTC safety limits, defaults `2s` и `30s`.
+
+Эти keys присутствуют и в packaged production template, но не включают fixed
+TTL. До P5 durable control остаётся `DISABLED_COMPATIBLE`; `validity.mode`,
+fixed duration и destructive upgrade activation пока не являются допустимыми
+configuration keys. Нулевое или отрицательное duration/value отклоняется
+collect-all preflight и никогда не интерпретируется как команда очистки.
+
 ## Неочевидные инварианты
 
 1. **Unknown keys fail on every channel.** Нельзя добавлять «временно

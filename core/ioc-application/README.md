@@ -6,7 +6,9 @@ Application layer: use-case ports, IOC ETL payloads/stages, extraction
 orchestration и storage-neutral Artifact Emission contracts, model,
 formation saga/change detection/forward recovery. Модель canonical record
 validity находится в `application.artifact.lifecycle`; её client-shaped driven
-ports остаются framework-free и не активируются до JDBC-slices.
+ports остаются framework-free. P4 application services координируют common
+admission, bounded expiry, independent history retention и durable mutable
+projection convergence; scheduling, SQL и health не проникают в этот слой.
 
 Extraction возвращает first-class completion/diagnostic outcome. Pure domain
 decisions материализуются один раз; application stages используют их
@@ -33,6 +35,13 @@ Artifact Emission разделяет orchestration на три узких ком
 revision/hash policy, `ExportRunRecoveryService` продвигает crash checkpoints
 только из ledger + manifest/filesystem evidence. Ни один из них не зависит от
 JDBC, CSV/JSON, path API, Spring или SLF4J.
+
+Canonical lifecycle следует той же границе. `LifecycleReconciliationService`
+держит один cycle `asOf` и coalesce-ит lossy projection hints по artifact;
+`ArtifactProjectionConvergenceService` подтверждает только наблюдённое durable
+generation; `LifecycleAdmissionService` сериализует idempotent pre-stateful-work
+barrier. Events ускоряют работу, но deadline/projection state и periodic
+reconcile остаются authority.
 
 ## Зависимости
 

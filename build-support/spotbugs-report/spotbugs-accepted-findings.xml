@@ -20,6 +20,7 @@
     <review-trigger id="spring-binding-copy-validation-change">Review when null-preserving defensive copies, unmodifiable accessors, or collect-all binding validation semantics change.</review-trigger>
     <review-trigger id="ingestion-cleanup-propagation-change">Review when ingestion cleanup, failed-state accounting, or exact typed primary-failure propagation changes.</review-trigger>
     <review-trigger id="keyed-accounting-compute-change">Review when admission or release accounting mutates users outside same-key ConcurrentHashMap.compute.</review-trigger>
+    <review-trigger id="lifecycle-failure-contract-change">Review when lifecycle admission, reconciliation, projection convergence, or bootstrap observation stops preserving fail-closed failure propagation.</review-trigger>
     <finding id="SB04-089" module="adapters/adapter-cli-picocli" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="3715419b138a600afca4c34bc44a6f39" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-A" review="cli-exception-boundary-change">
         <class name="com.iocextractor.adapter.in.cli.ExportCommand" />
         <method name="call" signature="()Ljava/lang/Integer;" />
@@ -67,7 +68,7 @@
     <finding id="I4-SB-04" module="adapters/adapter-ingest" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="d56f19992d2df7d7a5419935e72e36b4" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="I4-SB-04" review="ingestion-startup-failure-contract-change">
         <class name="com.iocextractor.adapter.in.ingest.IngestionStartupCoordinator" />
         <method name="run" signature="(Lorg/springframework/boot/ApplicationArguments;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/in/ingest/IngestionStartupCoordinator.java" startLine="76" bytecode="202" />
+        <anchor sourcePath="com/iocextractor/adapter/in/ingest/IngestionStartupCoordinator.java" startLine="97" bytecode="212" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.adapter.in.ingest.IngestionStartupCoordinator" />
@@ -197,10 +198,10 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-SQL-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="e274df3d1b166b5eb71b898c80fec79f" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-B/DATA-TTL-01-P3" review="sql-schema-map-binding-change">
+    <finding id="SB04-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="d879ca8bba3060328d53b1fea55bb87d" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-B/DATA-TTL-01-P4" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
-        <method name="load" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/util/List;)Lcom/iocextractor/application/artifact/CanonicalArtifact;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalArtifactRepository.java" startLine="75" bytecode="105" />
+        <method name="load" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/util/List;Lcom/iocextractor/application/artifact/lifecycle/LifecycleActivationState;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;)Lcom/iocextractor/application/artifact/CanonicalArtifact;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalArtifactRepository.java" startLine="101" bytecode="104" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
@@ -427,6 +428,105 @@
             <Method name="copyHistorySources" />
         </suppression>
         <rationale>Reviewed false positive: history provenance table suffixes are applied to a validated artifact and revalidated on quoting; source and history row identities are bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P4-SB-001" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="6eb4c2f73666207727be7c1d13eeb622" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P4-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleHistoryStore" />
+        <method name="deleteBatch" signature="(Ljava/sql/Connection;Ljava/lang/String;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;I)I" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleHistoryStore.java" startLine="76" bytecode="56" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleHistoryStore" />
+            <Method name="deleteBatch" />
+        </suppression>
+        <rationale>Reviewed false positive: the history table derives from the validated immutable schema catalog and is revalidated on quoting; retention deadline and batch limit are bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P4-SB-002" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="32503dba94da33cbad2951f3cb73d9ac" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P4-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleHistoryStore" />
+        <method name="hasEligible" signature="(Ljava/sql/Connection;Ljava/lang/String;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;)Z" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleHistoryStore.java" startLine="88" bytecode="26" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleHistoryStore" />
+            <Method name="hasEligible" />
+        </suppression>
+        <rationale>Reviewed false positive: the history table derives from the validated immutable schema catalog and is quoted; the retention boundary is bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P4-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="3667c485efe71ee5a7707d3d3165d84a" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P4-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleStatusReader" />
+        <method name="count" signature="(Ljava/sql/Connection;Ljava/lang/String;)J" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleStatusReader.java" startLine="143" bytecode="16" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleStatusReader" />
+            <Method name="count" />
+        </suppression>
+        <rationale>Reviewed false positive: aggregate status reads only validated active and derived history tables and revalidates every identifier on quoting.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P4-SB-004" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="3f234f976dd2af4018b8673e5660d867" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P4-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleStatusReader" />
+        <method name="countDue" signature="(Ljava/sql/Connection;Ljava/lang/String;J)J" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleStatusReader.java" startLine="114" bytecode="28" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleStatusReader" />
+            <Method name="countDue" />
+        </suppression>
+        <rationale>Reviewed false positive: the artifact is selected from the validated immutable schema catalog and quoted; the effective-time cutoff is bound and the query-plan contract requires the lifecycle deadline index.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P4-SB-005" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="2076e4ab086d9eab65942acb66a74503" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P4-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleStatusReader" />
+        <method name="minimum" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/Long;)Ljava/util/Optional;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleStatusReader.java" startLine="130" bytecode="54" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleStatusReader" />
+            <Method name="minimum" />
+        </suppression>
+        <rationale>Reviewed false positive: the artifact comes from the validated immutable schema catalog and identifiers are quoted; an optional due boundary is bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P4-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="ff994348437ec8f05945a1daa1411847" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P4-FAILURE-CONTRACT" review="lifecycle-failure-contract-change">
+        <class name="com.iocextractor.bootstrap.AppConfig" />
+        <method name="lambda$prepareLifecycleAdmissionUseCase$7" signature="(Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionService;Lcom/iocextractor/bootstrap/LifecycleRuntimeObserver;)Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionResult;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="649" bytecode="19" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.bootstrap.AppConfig" />
+            <Method name="lambda$prepareLifecycleAdmissionUseCase$7" />
+        </suppression>
+        <rationale>Reviewed policy signal: bootstrap reports admission failure and deliberately rethrows the exact runtime failure so startup and command admission remain fail-closed.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P4-SB-007" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="a4671c0c8959d51cfacdf4d3f12a5e8" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P4-FAILURE-CONTRACT" review="lifecycle-failure-contract-change">
+        <class name="com.iocextractor.application.artifact.lifecycle.ArtifactProjectionConvergenceService" />
+        <method name="convergePending" signature="()Lcom/iocextractor/application/artifact/lifecycle/ArtifactProjectionConvergenceResult;" />
+        <anchor sourcePath="com/iocextractor/application/artifact/lifecycle/ArtifactProjectionConvergenceService.java" startLine="61" bytecode="189" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.application.artifact.lifecycle.ArtifactProjectionConvergenceService" />
+            <Method name="convergePending" />
+        </suppression>
+        <rationale>Reviewed policy signal: projection work records durable failure state and preserves the exact runtime failure for scheduler diagnostics and reconcile retry.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P4-SB-008" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="1209c16458804247a9f773bffe3aa10b" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P4-FAILURE-CONTRACT" review="lifecycle-failure-contract-change">
+        <class name="com.iocextractor.application.artifact.lifecycle.LifecycleAdmissionService" />
+        <method name="prepare" signature="()Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionResult;" />
+        <anchor sourcePath="com/iocextractor/application/artifact/lifecycle/LifecycleAdmissionService.java" startLine="69" bytecode="203" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.application.artifact.lifecycle.LifecycleAdmissionService" />
+            <Method name="prepare" />
+        </suppression>
+        <rationale>Reviewed policy signal: failed activation, reconciliation, or admission-open callbacks must keep admission closed and propagate the exact runtime failure for a safe retry.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P4-SB-009" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="37fd414ae1f4a6be0fe948eae4b4228c" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P4-FAILURE-CONTRACT" review="lifecycle-failure-contract-change">
+        <class name="com.iocextractor.application.artifact.lifecycle.LifecycleReconciliationService" />
+        <method name="reconcile" signature="()Lcom/iocextractor/application/artifact/lifecycle/LifecycleReconciliationResult;" />
+        <anchor sourcePath="com/iocextractor/application/artifact/lifecycle/LifecycleReconciliationService.java" startLine="91" bytecode="261" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.application.artifact.lifecycle.LifecycleReconciliationService" />
+            <Method name="reconcile" />
+        </suppression>
+        <rationale>Reviewed policy signal: a failed reconcile cycle is durably marked failed and the original runtime failure is preserved for the scheduler and health boundary.</rationale>
     </finding>
     <finding id="SB04-117" module="adapters/adapter-store-jdbc" type="VA_FORMAT_STRING_USES_NEWLINE" hash="ee711a38a17a6f9028777973df6aa83e" occurrence="0" priority="2" rank="20" category="BAD_PRACTICE" disposition="false-positive" owner="R030-BUILD" evidence="C2-MIX-G/DATA-TTL-01-P3" review="sql-newline-output-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader" />

@@ -30,7 +30,7 @@ surface и итоговое evidence закрываются только P6.
 | `P1` | Framework-free application contracts and TCK | none | `complete` |
 | `P2` | Additive durable SQLite foundation | disabled behavior only | `complete` |
 | `P3` | Atomic lifecycle-aware write/read path | production preset unchanged | `complete` |
-| `P4` | Expiry, recovery, scheduling and health | production preset unchanged | `planned` |
+| `P4` | Expiry, recovery, scheduling and health | production preset unchanged | `complete` |
 | `P5` | Duplicate receipt and explicit upgrade activation UX | opt-in existing installs only | `planned` |
 | `P6` | Fresh preset, docs and release evidence | complete capability | `planned` |
 
@@ -150,7 +150,8 @@ projection policy stays outside the repository.
 **Status:** completed on 2026-08-16. The lifecycle-aware path and conditional
 active reads are implemented and verified, but remain outside production
 composition while the persisted state is `DISABLED_COMPATIBLE`. P4 runtime
-reconciliation/scheduling and P5 activation/intake wiring are not included.
+reconciliation/scheduling is delivered separately; P5 activation and duplicate
+receipt integration are not included.
 Evidence is recorded in [evidence.md](evidence.md#p3--lifecycle-aware-canonical-transaction-and-reads).
 
 ## P4 — expiry, recovery and operations
@@ -184,6 +185,14 @@ admission, health and diagnostics. CSV remains a projection adapter.
 - `DEGRADED` keeps intake open only while logical filtering is provable;
 - health is read-only and never exposes IOC/source identifiers;
 - no manual mutating lifecycle CLI exists.
+
+**Status:** completed on 2026-08-16. Runtime reconciliation, durable mutable
+projection convergence, safe clock, common admission, daemon scheduling,
+aggregate health/diagnostics and bounded history retention are implemented.
+The packaged and classpath presets deliberately remain
+`DISABLED_COMPATIBLE`; fixed validity, upgrade activation and duplicate receipt
+reuse remain P5. Evidence is recorded in
+[evidence.md](evidence.md#p4--expiry-recovery-scheduling-and-health).
 
 ## P5 — duplicate receipt and upgrade activation UX
 

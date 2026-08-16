@@ -74,6 +74,20 @@ Listener вызывает только `DaemonExportScheduler.nudge()`; schedule
 актуальные revisions и решает, нужен ли export. Periodic export poll закрывает
 restart, duplicate-only ingest и потерянный hint.
 
+### Canonical lifecycle → deadline/projection convergence
+
+После lifecycle-aware canonical commit `CanonicalDeadlineScheduleChanged`
+ускоряет пересчёт ближайшего aggregate deadline, а
+`MutableArtifactProjectionRequired` ускоряет полную mutable CSV projection.
+Expiry cycle публикует projection hint не более одного раза на затронутый
+artifact. Оба event-а lossy: scheduler всегда перечитывает durable deadline или
+projection generation, а `5s` periodic backstop закрывает потерю, duplicate и
+restart.
+
+Lifecycle не публикует immutable-export hint. Expiry/renewal не двигают
+insert-driven `artifact_revision`; следовательно, событие не может обойти
+принятое правило «экспорт только после новых business rows».
+
 ## Инварианты
 
 1. Событие публикуется после commit факта, не до него.
@@ -113,8 +127,8 @@ broker, redelivery и DLQ реализуются внешним adapter за с�
 
 - Event contracts: `platform/platform-events/`.
 - Admission primitives: `platform/platform-concurrency/`.
-- Application events: packages `application.sync`, `application.export` и
-  `application.ingest`.
+- Application events: packages `application.sync`, `application.export`,
+  `application.ingest` и `application.artifact.lifecycle`.
 - Spring bridge/listeners/schedulers: `bootstrap/ioc-app`.
 - Boundary tests: `ArchitectureTest` и [BOUNDARIES.md](../BOUNDARIES.md).
 

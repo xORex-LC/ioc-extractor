@@ -54,9 +54,10 @@ prepared rows
    колонок должны завершить startup failure до частичной мутации.
 5. **ID-space независим по artifact.** Compatibility writer пока использует
    schema-aware `max(id)+1`. Dataframe format v4 уже хранит dormant durable
-   per-artifact allocator и global lifecycle allocator; P3 сделает их
-   canonical authority. Atomic reservations monotonic по стратегии, не gapless
-   и не возвращаются после failed commit либо удаления active/history rows.
+   per-artifact allocator и global lifecycle allocator; lifecycle-aware writer
+   использует их после explicit activation. Atomic reservations monotonic по
+   стратегии, не gapless и не возвращаются после failed commit либо удаления
+   active/history rows.
 6. **Revision отражает изменение public content.** Duplicate-only observation
    не двигает `artifact_revision` и не продлевает export quiet period.
 7. **Service и dataframe lifecycle раздельны.** Unrelated lightweight CLI
@@ -74,7 +75,7 @@ Health проверяет открытие, schema version, необходимы
 probe. Health сообщает состояние storage, но не заменяет transactional
 guarantees и recovery ledgers.
 
-### Lifecycle-aware storage path (dataframe v4; runtime dormant)
+### Lifecycle-aware storage path (dataframe v4; activation deferred)
 
 V4 размещает все lifecycle facts рядом с business rows именно в dataframe DB,
 не в service DB. Статическая migration создаёт one-way activation/clock state,
@@ -91,10 +92,10 @@ configured artifact reconciler additively создаёт:
 - typed `<artifact>_receipt_rows` без service-owned public ID.
 
 Upgrade сохраняет существующие rows и оставляет lifecycle columns `NULL` в
-состоянии `DISABLED_COMPATIBLE`. V4 и P3-классы сами по себе не включают TTL:
-production composition до activation slices использует compatibility writer.
-Он берёт SQLite write ownership в состоянии `DISABLED_COMPATIBLE` и перестаёт
-принимать записи сразу после начала activation.
+состоянии `DISABLED_COMPATIBLE`. V4 и runtime P4 сами по себе не включают TTL:
+production preset до P5 использует compatibility writer. Он берёт SQLite write
+ownership в состоянии `DISABLED_COMPATIBLE` и перестаёт принимать записи сразу
+после начала activation.
 
 Lifecycle-aware JDBC writer атомарно выполняет insert, renewal либо
 archive/delete + recreate, обновляет compact provenance, observation marker,
@@ -110,8 +111,25 @@ artifact markers и typed row totals; marker обязателен и для zero
 load, а immutable multi-artifact snapshot использует один общий `asOf` и одну
 SQLite read snapshot как для coverage, так и для rows. В `ACTIVATING` reads
 fail-closed. Переход в `ACTIVE` по-прежнему защищён transactional CAS и
-set-based проверкой полной ordered metadata. Scheduler, startup reconciliation,
-retention cleanup, clock high-water, health и runtime wiring принадлежат P4/P5.
+set-based проверкой полной ordered metadata.
+
+P4 runtime поверх этих facts реализует:
+
+- durable non-decreasing UTC high-water в `canonical_lifecycle_control`; small
+  rollback clamp-ится, material/prolonged rollback fail-closed;
+- journaled reconciliation cycle и indexed bounded archive/delete с одним
+  неизменным `cycleAsOf`;
+- независимый bounded history retention по
+  `(closed_at_epoch_ms, history_id)`;
+- durable required/projected generation и retryable projection failure state;
+- read-only aggregate status без IOC/source identities.
+
+Nearest deadline и mutable projection schedulers живут в bootstrap, а SQL и
+transaction boundaries — в этом adapter. Expiry увеличивает только mutable
+projection generation: insert-driven `artifact_revision` и immutable export
+trigger не меняются. Незавершённый reconciliation cycle при следующем admission
+помечается failed, после чего due rows безопасно перечитываются из canonical
+truth; частично закрытые records не воскресают.
 
 ## Отказы и восстановление
 
@@ -120,6 +138,9 @@ retention cleanup, clock high-water, health и runtime wiring принадлеж
 | Schema/identity drift | startup/preflight failure до business write | исправить config или оформить явную миграцию/epoch |
 | Artifact transaction failure | текущая transaction rollback; run fails | повтор invocation безопасен по `row_key` |
 | Crash после DB commit до projection | canonical truth уже сохранена | daemon `ingest_run=DB_COMMITTED` запускает reprojection |
+| Crash в expiry drain | committed batches остаются history, незавершённый cycle остаётся `STARTED` | следующий admission помечает cycle interrupted и продолжает indexed reconcile |
+| Mutable projection/ack failure | required generation остаётся больше projected | отдельный projection backstop повторяет полную atomic CSV replacement |
+| System UTC rollback | small skew clamp-ится; material/prolonged skew отклоняет safe time | исправить clock; readiness отражает `DEGRADED`/`DOWN`, durable high-water не уменьшается |
 | CSV потерян или повреждён | business data не потеряна | полная idempotent projection из dataframe |
 | Service ledger недоступен | coordination operation не притворяется успешной | восстановить service DB/permissions и повторить recovery |
 

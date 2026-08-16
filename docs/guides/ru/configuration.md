@@ -240,6 +240,22 @@ filesystem, чтобы claims использовали atomic move. Concurrency 
 | `ioc.ingestion.ledger.path` | путь | `./var/ledger` | Filesystem ledger при type `file`. |
 | `ioc.ingestion.concurrency` | integer, только `1` | `1` | Parallel ingestion в 0.3.0 не поддерживается. Startup отклоняет любое другое значение, а не молча игнорирует его. |
 
+## Безопасность runtime canonical lifecycle
+
+Эти P4-параметры ограничивают очистку, convergence и обработку отката системных
+часов. Они не включают fixed TTL: поставляемый preset остаётся
+`DISABLED_COMPATIBLE` до отдельного P5 activation workflow. Ноль нельзя
+использовать как команду очистки; все durations и batch size ниже должны быть
+положительными.
+
+| Параметр | Тип / значения | Встроенный default | Рекомендация |
+|---|---|---|---|
+| `ioc.lifecycle.history-retention` | positive duration | `30d` | Срок хранения закрытой full-row lifecycle history; cleanup выполняется независимо и bounded batches. |
+| `ioc.lifecycle.reconcile.backstop-interval` | positive duration | `5s` | Correctness backstop для потерянных deadline/projection hints и restart. Для V1 expiry-latency оставляйте не больше `5s`. |
+| `ioc.lifecycle.reconcile.batch-size` | positive integer | `1000` | Максимум rows одной expiry или history-retention transaction; меньшее значение сокращает удержание writer, но требует больше cycles. |
+| `ioc.lifecycle.clock.max-backward-skew` | positive duration | `2s` | Максимальный откат system UTC, который можно clamp-ить к durable high-water с состоянием `DEGRADED`. |
+| `ioc.lifecycle.clock.max-clamp-duration` | positive duration | `30s` | Максимальная непрерывная длительность clamp до unsafe lifecycle time и health `DOWN`. |
+
 ## Maintenance retention
 
 Leaf-file retention применяется к `done`, `failed` и другим configured dirs.

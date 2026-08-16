@@ -25,6 +25,10 @@ profile validation + revision/plan pre-gate
 Jackson adapter кодирует manifest; bootstrap собирает CLI, daemon cadence,
 recovery, health и retention.
 
+Stateful export проходит common canonical-data admission до pre-gate и snapshot.
+Daemon export scheduler до открытия этого barrier не выполняет recovery и не
+планирует cadence; после admission он сохраняет прежний insert-driven trigger.
+
 ## Инварианты
 
 1. **Profile — неделимая ordered единица.** В v1 поддерживается только полный
@@ -77,6 +81,11 @@ DB-backed active-run constraint и operation lease не позволяют дв�
 CLI запускает named profile вручную. Daemon поддерживает interval и
 quiet-period/max-cap policy; ingest event только вызывает coalesced `nudge()`, а
 periodic cadence остаётся backstop.
+
+Lifecycle expiry отдельно восстанавливает mutable `*_generated.csv`, но не
+вызывает `DaemonExportScheduler.nudge()`. Поэтому истечение само по себе не
+создаёт immutable slice; только следующий разрешённый new-data export зафиксирует
+актуальное active membership.
 
 Retention считает каждый final slice одной единицей и применяет age/count per
 profile. Guard проверяется непосредственно перед delete. При активном remote

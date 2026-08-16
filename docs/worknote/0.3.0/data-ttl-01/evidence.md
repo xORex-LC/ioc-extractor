@@ -228,3 +228,102 @@ quoting; row, receipt и time values остаются bound parameters. Восе
 baseline identities обновлены после изменения сигнатур/bytecode. Итоговый
 baseline proposal: `78 observed`, `0 new`, `0 stale`; широких class/package
 suppression не добавлено.
+
+## P4 — expiry, recovery, scheduling and health
+
+**Статус:** complete, runtime собран, production validity остаётся disabled.
+
+Application slice добавляет отдельные driving ports для admission,
+reconciliation, mutable projection convergence и history retention. Durable
+SQLite state остаётся единственным correctness authority:
+
+- `LifecycleReconciliationService` фиксирует один `cycleAsOf`, восстанавливает
+  незавершённые cycle records, очищает due rows bounded batches и публикует не
+  более одного projection hint на затронутый artifact за цикл;
+- `ArtifactProjectionConvergenceService` читает durable generation, выполняет
+  полную mutable projection и подтверждает только наблюдённое generation.
+  Concurrent более новое требование остаётся pending;
+- `LifecycleHistoryRetentionService` независимо удаляет не более одного
+  indexed batch на artifact за проход; source-summary rows удаляются FK
+  cascade-ом;
+- post-commit `CanonicalDeadlineScheduleChanged` и
+  `MutableArtifactProjectionRequired` являются lossy latency hints. Ни expiry,
+  ни renewal не меняют insert-driven `artifact_revision` и не публикуют export
+  event.
+
+JDBC slice реализует durable UTC high-water и read-only inspection. Small
+rollback до `2s` clamp-ится к high-water и даёт `CLAMPED/DEGRADED`; skew больше
+`2s` или clamp дольше `30s` отклоняет stateful lifecycle time и даёт
+`UNSAFE/DOWN`. Canonical writer может брать effective time внутри уже открытой
+write transaction. Status reader возвращает только aggregate counts,
+deadlines, backlog, projection/cycle и clock state — без IOC, row key и source.
+
+Bootstrap собирает один common admission graph после schema/ingest recovery и
+до intake/export: clock/control validation → activation resume → due reconcile
+→ pending mutable projections → admitted. Stateful oneshot extract/export
+защищены тем же use case. Daemon export, deadline scheduler и projection worker
+до admission инертны. Deadline worker владеет своим single-thread
+`ScheduledExecutorService`, планирует ближайший durable deadline и сохраняет
+`5s` periodic backstop; projection worker использует отдельный executor, чтобы
+CSV convergence не ждала полного drain большого expiry backlog. Overlap
+coalesce-ится process-local guards; correctness сохраняют SQLite generations и
+следующий backstop.
+
+Stable diagnostics: `LIFECYCLE.ADMISSION_FAILED`, `CLOCK_UNSAFE`,
+`RECONCILIATION_FAILED`, `PROJECTION_FAILED` и `HISTORY_RETENTION_FAILED`.
+Actuator health сообщает `UP`, recoverable `DEGRADED` либо fail-closed `DOWN`
+и не выполняет mutation. Ручной mutating lifecycle CLI, `@Scheduled`, ShedLock,
+Spring Batch, новый Maven module и новая runtime dependency не добавлены.
+
+### Verification
+
+```text
+./mvnw -B -ntp \
+  -pl core/ioc-application,adapters/adapter-store-jdbc,adapters/adapter-ingest,bootstrap/ioc-app \
+  -am \
+  -Dtest=LifecycleRuntimeServicesTest,JdbcLifecycleRuntimeTest,\
+LifecycleDeadlineSchedulerTest,LifecycleHealthIndicatorTest,\
+DaemonExportSchedulerTest,IngestionStartupCoordinatorTest \
+  -Dsurefire.failIfNoSpecifiedTests=false test
+  BUILD SUCCESS
+  focused P4 contracts: 39 tests, 0 failures, 0 errors
+
+./mvnw -B -ntp \
+  -pl core/ioc-application,adapters/adapter-store-jdbc,adapters/adapter-ingest,bootstrap/ioc-app \
+  -am test
+  BUILD SUCCESS
+  affected reactor: 21 modules
+  ioc-application: 191 tests, 0 failures, 0 errors
+  ioc-adapter-store-jdbc: 117 tests, 0 failures, 0 errors
+  ioc-adapter-ingest: 42 tests, 0 failures, 0 errors
+  ioc-app: 246 tests, 0 failures, 0 errors
+
+./mvnw -B -ntp -pl adapters/adapter-store-jdbc -am \
+  -Dtest=JdbcLifecycleRuntimeTest,JdbcLifecycleStorageFoundationTest \
+  -Dsurefire.failIfNoSpecifiedTests=false test
+  BUILD SUCCESS
+  lifecycle JDBC/runtime and query-plan contracts: 18 tests, 0 failures, 0 errors
+
+make spotbugs-baseline-proposal
+  BUILD SUCCESS
+  accepted/observed: 87, new: 0, stale: 0
+```
+
+Fault evidence покрывает atomic archive/delete/generation, interrupted-cycle
+recovery, clock rollback/clamp, projection CAS/failure state, lost hints,
+deadline ≤`5s`, admission-before-intake/export и read-only aggregate health.
+Health due-count и cleanup query plans отдельно закреплены на
+`ix_*_lifecycle_due`, чтобы aggregate diagnostics не превращались в full scan.
+
+Пять новых P4 lifecycle SQL identities приняты как точечные reviewed false
+positives (`P4-SQL-TRUST`): artifact names поступают только из immutable
+validated schema catalog, identifiers повторно grammar-check/quote-ятся, а
+deadline и batch values bind-ятся. Четыре `THROWS_*` identities приняты как
+reviewed policy noise (`P4-FAILURE-CONTRACT`): admission, reconciliation,
+projection convergence и bootstrap observer обязаны сохранить точную runtime
+ошибку после durable failure accounting, чтобы fail-closed/retry semantics не
+ослабли. Широких class/package suppression не добавлено.
+
+Полный 100k same-deadline profile и packaged activation evidence остаются P6 и
+P5 соответственно; P4 не выдаёт synthetic unit load за measured release
+benchmark.

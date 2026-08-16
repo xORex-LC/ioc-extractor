@@ -240,6 +240,21 @@ baseline for SQLite and deterministic file handling.
 | `ioc.ingestion.ledger.path` | path | `./var/ledger` | Filesystem ledger location when type is `file`. |
 | `ioc.ingestion.concurrency` | integer, exactly `1` | `1` | Parallel ingestion is not supported in 0.3.0. Startup rejects any other value instead of silently ignoring it. |
 
+## Canonical lifecycle runtime safety
+
+These P4 controls bound cleanup, convergence and system-clock rollback. They do
+not enable fixed TTL: the shipped preset remains `DISABLED_COMPATIBLE` until the
+separate P5 activation workflow. Do not use zero as a cleanup command; all
+durations and the batch size below must be positive.
+
+| Property | Type / accepted values | Built-in default | Guidance |
+|---|---|---|---|
+| `ioc.lifecycle.history-retention` | positive duration | `30d` | Retention of closed full-row lifecycle history; cleanup is independent and bounded. |
+| `ioc.lifecycle.reconcile.backstop-interval` | positive duration | `5s` | Correctness backstop for lost deadline/projection hints and restart. Keep at or below `5s` for the V1 expiry-latency contract. |
+| `ioc.lifecycle.reconcile.batch-size` | positive integer | `1000` | Maximum rows in one expiry or history-retention transaction; smaller values reduce writer hold time but require more cycles. |
+| `ioc.lifecycle.clock.max-backward-skew` | positive duration | `2s` | Maximum system UTC rollback that may be clamped to the durable high-water and reported `DEGRADED`. |
+| `ioc.lifecycle.clock.max-clamp-duration` | positive duration | `30s` | Maximum continuous clamp window before lifecycle time becomes unsafe and health reports `DOWN`. |
+
 ## Maintenance retention
 
 Leaf-file retention applies to configured directories such as `done` and
