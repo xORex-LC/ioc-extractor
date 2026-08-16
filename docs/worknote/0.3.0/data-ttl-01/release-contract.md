@@ -162,7 +162,7 @@ duration запрещены. `ttl=0` никогда не является migrat
 
 - [x] Architecture project, ADR и этот contract прошли review и получили
   явное принятие.
-- [ ] I-20 contract закреплён тестами: expiry не продвигает
+- [x] I-20 contract закреплён тестами: expiry не продвигает
   `artifact_revision`, mutable projection всё равно сходится, а следующий
   new-row export исключает накопившиеся expired rows.
 - [x] I-21 vocabulary/framework disposition закреплён в ADR: `valid_until`
@@ -170,7 +170,7 @@ duration запрещены. `ttl=0` никогда не является migrat
   explicit lifecycle scheduling без нового framework.
 - [x] P0 characterization inventory подтверждает все current ID/read/projection/
   startup paths, которые должны измениться.
-- [ ] Exact configuration shape, clock rollback tolerance и reference
+- [x] Exact configuration shape, clock rollback tolerance и reference
   performance environment задокументированы до соответствующих slices.
 - [x] Для каждого P1–P6 указаны owner, affected paths, tests и rollback boundary.
 - [x] Получен отдельный implementation go-ahead; принятие интервью его не
@@ -179,15 +179,15 @@ duration запрещены. `ttl=0` никогда не является migrat
 ## Definition of Done
 
 - [ ] Все P0–P6 закрыты; capability не оставлена частично активируемой.
-- [ ] Deterministic lifecycle, SQLite race, migration/fault-injection, every-read
+- [x] Deterministic lifecycle, SQLite race, migration/fault-injection, every-read
   and both-runtime-mode tests проходят.
-- [ ] 100k simultaneous-expiry scenario доказывает exact logical exclusion,
+- [x] 100k simultaneous-expiry scenario доказывает exact logical exclusion,
   start within `5s`, bounded drain, no starvation и projection coalescing.
-- [ ] Reference-environment baseline и обоснованный drain regression threshold
+- [x] Reference-environment baseline и обоснованный drain regression threshold
   сохранены в bundle evidence.
 - [ ] Fresh install, two-step upgrade, one-way activation и consistent rollback
   проверены на packaged artifact и описаны оператору.
-- [ ] Public schemas/order и `time_first_seen`/`time_last_seen == NULL` сохранены.
+- [x] Public schemas/order и `time_first_seen`/`time_last_seen == NULL` сохранены.
 - [ ] Affected published docs, generated catalogs, module README, release notes,
   status matrix и compatibility/performance ledgers актуальны.
 - [ ] Targeted tests, documentation checks и fresh full-reactor `make verify`
@@ -202,7 +202,8 @@ build gates. До закрытия `R030-DATA` релиз 0.3.0 не готов.
 
 ## Current disposition
 
-`implementation`: architecture and ADR accepted on 2026-08-16; P0 is complete
-and P1 framework-free application contracts/TCK are implemented. TTL remains
-inactive until P2–P6 provide storage, integration, activation and release
-evidence.
+`implementation`: P0–P5 are complete. P6 has enabled the guarded fresh-install
+preset and completed documentation, repository packaging contracts and a
+rootless 100k lifecycle profile. The goal remains in progress until the
+privileged disposable-host systemd fresh/upgrade/rollback stand and final
+release-candidate gates are recorded.

@@ -123,7 +123,7 @@ Repository-local проверка не требует root:
 
 ```bash
 make lifecycle-smoke
-make lifecycle-load SIZE=100000
+make lifecycle-load
 ```
 
 Harness подаёт данные через обычный daemon ingestion, проверяет переход

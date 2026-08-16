@@ -32,7 +32,7 @@ surface и итоговое evidence закрываются только P6.
 | `P3` | Atomic lifecycle-aware write/read path | production preset unchanged | `complete` |
 | `P4` | Expiry, recovery, scheduling and health | production preset unchanged | `complete` |
 | `P5` | Duplicate receipt and explicit upgrade activation UX | opt-in existing installs only | `complete` |
-| `P6` | Fresh preset, docs and release evidence | complete capability | `planned` |
+| `P6` | Fresh preset, docs and release evidence | complete capability | `in_progress` |
 
 ## P0 — decision and characterization
 
@@ -252,6 +252,12 @@ recorded in [evidence.md](evidence.md#p5--duplicate-receipt-and-explicit-upgrade
 P6 may enable the fresh production preset only after P1–P5 evidence is green.
 The capability is not merge/release complete while any required crash/race,
 read-path, migration, packaged rollout or performance evidence is missing.
+
+**Status:** in progress on 2026-08-16. The fresh preset, published capability
+and operator documentation, repository packaging contracts and the rootless
+100k lifecycle profile are complete. A privileged disposable-host systemd
+fresh-install/two-step-upgrade/rollback stand and final release-candidate gates
+remain required; rootless evidence does not satisfy that packaged rollout gate.
 
 ## Required test matrix
 

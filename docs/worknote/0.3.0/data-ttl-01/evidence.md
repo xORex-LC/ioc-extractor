@@ -425,3 +425,70 @@ one-shot обязан сохранить первичную runtime ошибку
 
 Fresh-install `fixed/12h`, packaging smoke, 100k same-deadline performance
 profile и финальная release документация остаются P6.
+
+## P6 — release closure
+
+**Статус:** in progress; rootless gates complete, privileged packaged stand
+pending.
+
+Fresh production template теперь включает `fixed/12h` с безопасным для чистой
+БД `existing-records: reject`. Classpath и upgrade-compatible defaults остаются
+`disabled`, history и complete-receipt retention — `30d`. Packaging contracts
+закрепляют это различие и сохранение изменившегося operator config как
+`application.yml.new`; silent activation при upgrade отсутствует.
+
+Опубликованы English capability doc и operator guide с русской локализацией,
+обновлены architecture/module maps и affected module README. Operator contract
+явно описывает двухшаговую activation, destructive legacy expiry, допустимый
+empty active set, UTC clock prerequisite, aggregate health и rollback только
+согласованной тройкой configuration + обе SQLite DB. Отдельный curated
+[release-note input](release-note-input.md) не выдаётся за итоговые notes всего
+релиза и не содержит выдуманных artifact/tag/checksum значений.
+
+Rootless harness использует normal daemon ingestion, bootable fat JAR и
+production heap flags. Он проверяет active → typed history → retention purge,
+header-only mutable projections, unchanged insert-driven revisions, aggregate
+health, absence of an expiry-triggered immutable slice, exact active membership
+in the next new-row slice и public-ID non-reuse после нового подтверждения.
+`make lifecycle-load`
+на clean commit `8f99eb69f30e54e72aaa3bce75cac78fceebd961` провёл `100001`
+canonical rows и дал:
+
+- expiry start latency `885ms` при contract limit `5s`;
+- deadline spread `5365ms`, drain after latest deadline `5628ms`;
+- measured archive/drain throughput `9893.25 rows/s` при regression floor
+  `2500 rows/s`;
+- history retention drain `40597ms` при guardrail `180s`;
+- JVM high-water `582088 KiB` при guardrail `1048576 KiB`;
+- `103` minimum bounded expiry transactions и covering-index plans для всех
+  expiry/retention paths.
+
+Полный environment, rationale, calibration disposition и query-plan evidence
+сохранены в [P6 load profile](evidence/p6-load-profile.md). Raw report остаётся
+ignored runtime artifact под `.dev/`.
+
+### Verification выполнено
+
+```text
+make lifecycle-smoke
+  passed: 1501 canonical rows, expiry/history/retention/ID assertions
+
+make lifecycle-load
+  passed: 100001 canonical rows under packaged JVM profile
+
+tools/ci/packaging.sh
+  ShellCheck + packaging contracts + tools contracts: passed
+
+make docs
+  629 links, 0 errors
+```
+
+### Remaining release gate
+
+Repository contract tests и rootless daemon runtime не могут проверить real
+systemd ownership, privileged immutable activation, service stop/start и
+automatic rollback. Поэтому P6 и `R030-DATA` остаются `in-progress` до
+fresh-install → compatibility upgrade → explicit activation → rollback
+сценария на disposable systemd host, а также final fresh `make verify` на
+release-candidate HEAD. Недоступный privileged stand записан как pending, не
+как pass.

@@ -24,14 +24,15 @@ language: "ru"
 - DATA-TTL-01 принят как отдельный release-blocking scope change под MUST-goal
   `R030-DATA`;
 - architecture/ADR/contract приняты и implementation go-ahead получен
-  2026-08-16; P0 закрыт;
-- P1 framework-free lifecycle model, ports, unit tests и reusable TCK
-  реализованы и проверены;
-- P2 additive SQLite foundation реализован в dataframe DB: format v4,
-  per-artifact lifecycle/history/receipt schema, durable allocators,
-  activation/projection CAS и integration/query-plan/concurrency tests;
-- foundation остаётся `DISABLED_COMPATIBLE`, не подключена к старому canonical
-  runtime path и не включает TTL; следующий slice — P3 atomic write/read path.
+  2026-08-16; P0–P5 реализованы и проверены;
+- P6 включил fresh-install preset `fixed/12h`, опубликовал capability/operator
+  documentation и добавил rootless lifecycle smoke/load harness;
+- reference profile провёл 100001 canonical rows через active → typed history
+  → retention purge с production JVM heap profile, indexed plans и bounded
+  transactions;
+- P6 остаётся `in_progress`: реальный fresh/upgrade/rollback systemd stand на
+  disposable host требует привилегированного запуска и не заменяется
+  repository contract tests или rootless daemon harness.
 
 ## Навигация
 
@@ -42,7 +43,9 @@ language: "ru"
 | [architecture-project.md](architecture-project.md) | Целевая component/data/transaction/event architecture, module/library decision и risk model |
 | [implementation-plan.md](implementation-plan.md) | Порядок P0–P6, границы slices, gates и verification plan |
 | [evidence.md](evidence.md) | Выполненные slices, изменённые boundaries и воспроизводимые проверки |
-| [ADR-0020](../../../ADR/0020-canonical-record-expiration-lifecycle.md) | Принятое архитектурное решение; dormant storage foundation реализован, runtime activation ещё отсутствует |
+| [P6 load profile](evidence/p6-load-profile.md) | Reference environment, thresholds, measurements и query plans |
+| [release-note input](release-note-input.md) | Curated DATA-TTL-01 material для итоговых release notes 0.3.0 |
+| [ADR-0020](../../../ADR/0020-canonical-record-expiration-lifecycle.md) | Принятое архитектурное решение и lifecycle invariants |
 
 Будущее execution evidence добавляется только в этот bundle либо в явно
 указанный внешний release ledger. В общих `engineering-release.md` и

@@ -259,6 +259,28 @@ JDK и процедуру fresh workspace. Для extraction выполняют�
 должны иметь ту же measurement boundary. Любая regression или unavailable
 measurement получает явный disposition.
 
+## DATA-TTL-01 P6 lifecycle profile
+
+Targeted lifecycle evidence дополняет, но не заменяет BASE-RUNTIME-07. На clean
+commit `8f99eb69f30e54e72aaa3bce75cac78fceebd961` команда
+`make lifecycle-load` провела `100001` canonical artifact rows через daemon
+ingestion, expiry, typed history и retention purge с launcher-equivalent JVM
+flags `-Xms128m -Xmx512m -XX:+ExitOnOutOfMemoryError`.
+
+| Metric | Result | Regression guard |
+|---|---:|---:|
+| expiry start after earliest deadline | `885 ms` | `≤ 5000 ms` |
+| archive/drain throughput | `9893.25 rows/s` | `≥ 2500 rows/s` |
+| history retention drain | `40597 ms` | `≤ 180000 ms` |
+| maximum JVM high-water | `582088 KiB` | `≤ 1048576 KiB` |
+
+Все четыре artifact expiry и retention paths использовали covering indexes;
+minimum bounded expiry transaction count составил `103`. Floor `2500 rows/s`
+равен примерно четверти qualifying measurement и предназначен для обнаружения
+крупного algorithm/query-plan regression, а не для объявления production SLA.
+Полный environment, correctness assertions и calibration disposition:
+[P6 load profile](../data-ttl-01/evidence/p6-load-profile.md).
+
 ## Завершение
 
 - [x] Runtime JDK и host environment зафиксированы

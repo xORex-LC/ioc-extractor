@@ -124,7 +124,7 @@ Repository-local validation needs no root privileges:
 
 ```bash
 make lifecycle-smoke
-make lifecycle-load SIZE=100000
+make lifecycle-load
 ```
 
 The harness sends data through normal daemon ingestion, verifies active-to-history
