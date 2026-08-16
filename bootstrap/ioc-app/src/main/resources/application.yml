@@ -286,6 +286,19 @@ ioc:
       interval: 5m
       targets: []
 
+  # ---- Canonical record lifecycle runtime safety ---------------------------
+  # P4 keeps validity disabled in the production composition. These settings
+  # bound reconciliation, history cleanup and system-clock rollback handling;
+  # the validity mode and fixed TTL are activated separately in P5.
+  lifecycle:
+    history-retention: 30d
+    reconcile:
+      backstop-interval: 5s
+      batch-size: 1000
+    clock:
+      max-backward-skew: 2s
+      max-clamp-duration: 30s
+
   # ---- Daemon housekeeping: retention reapers --------------------------------
   #  interval/initial-delay schedule both the always-on immutable-slice reaper
   #  and, when enabled=true, the legacy leaf-file targets below. Their stores and

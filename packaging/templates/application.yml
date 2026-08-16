@@ -233,6 +233,17 @@ ioc:
       path: "./var/ledger"
     concurrency: 1             # required in 0.3.0; parallel ingestion is not supported
 
+  # Canonical TTL activation is delivered in P5. P4 only installs the dormant
+  # runtime safety envelope and leaves the existing production data behavior unchanged.
+  lifecycle:
+    history-retention: 30d
+    reconcile:
+      backstop-interval: 5s
+      batch-size: 1000
+    clock:
+      max-backward-skew: 2s
+      max-clamp-duration: 30s
+
   # ---- Leaf-file retention --------------------------------------------------
   maintenance:
     retention:

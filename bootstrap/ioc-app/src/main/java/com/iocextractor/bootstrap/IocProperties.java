@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
@@ -41,11 +42,34 @@ public record IocProperties(
         @NotNull @Valid Export export,
         @NotNull @Valid Sync sync,
         @Valid Maintenance maintenance,
+        @Valid Lifecycle lifecycle,
         @NotNull @Valid Observability observability) {
 
+    @ConstructorBinding
     public IocProperties {
         patterns = snapshotMap(patterns);
         pipeline = pipeline == null ? new Pipeline(true, PipelineFailurePolicy.FAIL_FAST, 10_000) : pipeline;
+        lifecycle = lifecycle == null ? Lifecycle.defaults() : lifecycle;
+    }
+
+    /** Compatibility constructor for callers created before lifecycle operations existed. */
+    public IocProperties(EngineType engine,
+                         Runtime runtime,
+                         Storage storage,
+                         Source source,
+                         Refang refang,
+                         Map<IndicatorType, String> patterns,
+                         Classify classify,
+                         Sink sink,
+                         Pipeline pipeline,
+                         Ingestion ingestion,
+                         ArtifactIdentity artifactIdentity,
+                         Export export,
+                         Sync sync,
+                         Maintenance maintenance,
+                         Observability observability) {
+        this(engine, runtime, storage, source, refang, patterns, classify, sink, pipeline,
+                ingestion, artifactIdentity, export, sync, maintenance, null, observability);
     }
 
     private static <T> List<T> snapshotList(List<T> source) {
@@ -336,6 +360,26 @@ public record IocProperties(
                     RetentionActionType action,
                     String archiveDir) {
             }
+        }
+    }
+
+    /** Runtime safety and bounded maintenance settings for canonical lifecycle data. */
+    public record Lifecycle(@NotNull Duration historyRetention,
+                            @NotNull @Valid Reconcile reconcile,
+                            @NotNull @Valid ClockSafety clock) {
+
+        private static Lifecycle defaults() {
+            return new Lifecycle(Duration.ofDays(30),
+                    new Reconcile(Duration.ofSeconds(5), 1_000),
+                    new ClockSafety(Duration.ofSeconds(2), Duration.ofSeconds(30)));
+        }
+
+        public record Reconcile(@NotNull Duration backstopInterval,
+                                @Positive int batchSize) {
+        }
+
+        public record ClockSafety(@NotNull Duration maxBackwardSkew,
+                                  @NotNull Duration maxClampDuration) {
         }
     }
 

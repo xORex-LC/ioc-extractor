@@ -23,6 +23,7 @@ import org.springframework.validation.FieldError;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -41,7 +42,29 @@ class IocPropertiesBindingTest {
         contextRunner().run(context -> {
             assertThat(context).hasSingleBean(IocProperties.class);
             assertThat(context).hasBean("configurationPropertiesValidator");
+            IocProperties.Lifecycle lifecycle = context.getBean(IocProperties.class).lifecycle();
+            assertThat(lifecycle.historyRetention()).isEqualTo(Duration.ofDays(30));
+            assertThat(lifecycle.reconcile().backstopInterval()).isEqualTo(Duration.ofSeconds(5));
+            assertThat(lifecycle.reconcile().batchSize()).isEqualTo(1_000);
+            assertThat(lifecycle.clock().maxBackwardSkew()).isEqualTo(Duration.ofSeconds(2));
+            assertThat(lifecycle.clock().maxClampDuration()).isEqualTo(Duration.ofSeconds(30));
         });
+    }
+
+    @Test
+    void reportsLifecycleSafetyBoundsThroughSemanticPreflight() {
+        contextRunner(
+                "ioc.lifecycle.history-retention=0s",
+                "ioc.lifecycle.reconcile.backstop-interval=-1s",
+                "ioc.lifecycle.clock.max-backward-skew=0s",
+                "ioc.lifecycle.clock.max-clamp-duration=-1s")
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .extracting(FieldError::getField)
+                        .contains(
+                                "lifecycle.historyRetention",
+                                "lifecycle.reconcile.backstopInterval",
+                                "lifecycle.clock.maxBackwardSkew",
+                                "lifecycle.clock.maxClampDuration"));
     }
 
     @Test

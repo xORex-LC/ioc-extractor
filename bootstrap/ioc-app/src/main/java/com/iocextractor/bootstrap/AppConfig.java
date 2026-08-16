@@ -18,8 +18,15 @@ import com.iocextractor.adapter.out.sink.csv.ValueProvider;
 import com.iocextractor.adapter.out.source.TikaSourceReader;
 import com.iocextractor.adapter.out.manifest.json.JacksonSliceManifestCodec;
 import com.iocextractor.adapter.out.store.jdbc.JdbcArtifactIdentityStore;
+import com.iocextractor.adapter.out.store.jdbc.JdbcArtifactProjectionWorkStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcArtifactRevisionReader;
 import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository;
+import com.iocextractor.adapter.out.store.jdbc.JdbcExpiredArtifactStore;
+import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleClock;
+import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleControlStore;
+import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleHistoryStore;
+import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleReconciliationStore;
+import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleStatusReader;
 import com.iocextractor.adapter.out.store.jdbc.JdbcIngestionLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcExportProgressStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcExportRunLedger;
@@ -46,6 +53,12 @@ import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.artifact.NoopArtifactProjection;
 import com.iocextractor.application.artifact.NoopRunLedger;
 import com.iocextractor.application.artifact.StoredArtifactIdentity;
+import com.iocextractor.application.artifact.lifecycle.ArtifactProjectionConvergenceService;
+import com.iocextractor.application.artifact.lifecycle.CanonicalDataAdmissionState;
+import com.iocextractor.application.artifact.lifecycle.LifecycleAdmissionService;
+import com.iocextractor.application.artifact.lifecycle.LifecycleClockPolicy;
+import com.iocextractor.application.artifact.lifecycle.LifecycleHistoryRetentionService;
+import com.iocextractor.application.artifact.lifecycle.LifecycleReconciliationService;
 import com.iocextractor.application.cadence.CadenceSource;
 import com.iocextractor.application.cadence.CadenceSources;
 import com.iocextractor.application.export.ExportChangeDetector;
@@ -58,6 +71,11 @@ import com.iocextractor.application.maintenance.RetentionAction;
 import com.iocextractor.application.maintenance.RetentionService;
 import com.iocextractor.application.maintenance.RetentionTarget;
 import com.iocextractor.application.port.in.maintenance.RunRetentionUseCase;
+import com.iocextractor.application.port.in.artifact.lifecycle.ConvergeArtifactProjectionsUseCase;
+import com.iocextractor.application.port.in.artifact.lifecycle.PrepareLifecycleAdmissionUseCase;
+import com.iocextractor.application.port.in.artifact.lifecycle.ReconcileExpiredRecordsUseCase;
+import com.iocextractor.application.port.in.artifact.lifecycle.ResumeLifecycleActivationUseCase;
+import com.iocextractor.application.port.in.artifact.lifecycle.RunLifecycleHistoryRetentionUseCase;
 import com.iocextractor.application.port.in.export.ExportArtifactsUseCase;
 import com.iocextractor.application.port.in.export.RecoverExportUseCase;
 import com.iocextractor.application.port.in.export.RunSliceRetentionUseCase;
@@ -72,6 +90,12 @@ import com.iocextractor.application.port.out.artifact.ArtifactIdBaseline;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityStore;
 import com.iocextractor.application.port.out.artifact.RunLedger;
+import com.iocextractor.application.port.out.artifact.lifecycle.ArtifactProjectionWorkStore;
+import com.iocextractor.application.port.out.artifact.lifecycle.ExpiredArtifactStore;
+import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleControlStore;
+import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleHistoryStore;
+import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleReconciliationStore;
+import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleStatusReader;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.port.out.ingest.SourcePreparerFactory;
@@ -316,11 +340,16 @@ public class AppConfig {
                                                  ArtifactIdBaseline artifactIdBaseline,
                                                  CsvArtifactProjection csvArtifactProjection,
                                                  PipelineDecisionTracer decisionTracer,
+                                                 PrepareLifecycleAdmissionUseCase lifecycleAdmission,
                                                  Clock clock,
                                                  IocProperties props) {
         List<ArtifactPreparer> preparers = artifactPreparers(
                 artifactDefinitions(props, artifactIdBaseline), null, clock, decisionTracer);
-        return factory.create(preparers, csvArtifactProjection);
+        ExtractIocsUseCase delegate = factory.create(preparers, csvArtifactProjection);
+        return command -> {
+            lifecycleAdmission.prepare();
+            return delegate.extract(command);
+        };
     }
 
     @Bean
@@ -481,6 +510,157 @@ public class AppConfig {
         return artifactIdentityStore.ensureAll(artifactIdentityDefinitions(props));
     }
 
+    // ---- canonical record lifecycle ---------------------------------------
+
+    @Bean
+    public JdbcLifecycleClock lifecycleClock(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            DataframeSchemaPlan dataframeSchemaReconciliation,
+            IocProperties props,
+            Clock clock) {
+        return new JdbcLifecycleClock(
+                dataframeStorageDataSource,
+                clock,
+                new LifecycleClockPolicy(
+                        props.lifecycle().clock().maxBackwardSkew(),
+                        props.lifecycle().clock().maxClampDuration()));
+    }
+
+    @Bean
+    public LifecycleControlStore lifecycleControlStore(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            DataframeSchemaPlan dataframeSchemaReconciliation,
+            IocProperties props) {
+        return new JdbcLifecycleControlStore(dataframeStorageDataSource, dataframeSchemas(props));
+    }
+
+    @Bean
+    public ExpiredArtifactStore expiredArtifactStore(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            DataframeSchemaPlan dataframeSchemaReconciliation,
+            IocProperties props) {
+        return new JdbcExpiredArtifactStore(dataframeStorageDataSource, dataframeSchemas(props));
+    }
+
+    @Bean
+    public ArtifactProjectionWorkStore artifactProjectionWorkStore(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            DataframeSchemaPlan dataframeSchemaReconciliation,
+            Clock clock) {
+        return new JdbcArtifactProjectionWorkStore(dataframeStorageDataSource, clock);
+    }
+
+    @Bean
+    public LifecycleReconciliationStore lifecycleReconciliationStore(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            DataframeSchemaPlan dataframeSchemaReconciliation) {
+        return new JdbcLifecycleReconciliationStore(dataframeStorageDataSource);
+    }
+
+    @Bean
+    public LifecycleHistoryStore lifecycleHistoryStore(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            DataframeSchemaPlan dataframeSchemaReconciliation,
+            IocProperties props) {
+        return new JdbcLifecycleHistoryStore(dataframeStorageDataSource, dataframeSchemas(props));
+    }
+
+    @Bean
+    public CanonicalDataAdmissionState canonicalDataAdmissionState() {
+        return new CanonicalDataAdmissionState();
+    }
+
+    @Bean
+    public LifecycleRuntimeObserver lifecycleRuntimeObserver(
+            DiagnosticSink diagnosticSink,
+            Clock clock) {
+        return new LifecycleRuntimeObserver(diagnosticSink, new DiagnosticFactory(clock));
+    }
+
+    @Bean
+    public ReconcileExpiredRecordsUseCase reconcileExpiredRecordsUseCase(
+            ExpiredArtifactStore expiredArtifactStore,
+            LifecycleReconciliationStore lifecycleReconciliationStore,
+            JdbcLifecycleClock lifecycleClock,
+            ControlEventPublisher controlEventPublisher,
+            IocProperties props) {
+        return new LifecycleReconciliationService(
+                dataframeArtifactNames(props),
+                expiredArtifactStore,
+                lifecycleReconciliationStore,
+                lifecycleClock,
+                controlEventPublisher,
+                props.lifecycle().reconcile().batchSize());
+    }
+
+    @Bean
+    public ConvergeArtifactProjectionsUseCase convergeArtifactProjectionsUseCase(
+            ArtifactProjectionWorkStore artifactProjectionWorkStore,
+            CsvArtifactProjection csvArtifactProjection,
+            IocProperties props) {
+        return new ArtifactProjectionConvergenceService(
+                dataframeArtifactNames(props), artifactProjectionWorkStore, csvArtifactProjection);
+    }
+
+    @Bean
+    public RunLifecycleHistoryRetentionUseCase runLifecycleHistoryRetentionUseCase(
+            LifecycleHistoryStore lifecycleHistoryStore,
+            JdbcLifecycleClock lifecycleClock,
+            IocProperties props) {
+        return new LifecycleHistoryRetentionService(
+                dataframeArtifactNames(props),
+                lifecycleHistoryStore,
+                lifecycleClock,
+                props.lifecycle().historyRetention(),
+                props.lifecycle().reconcile().batchSize());
+    }
+
+    @Bean
+    public ResumeLifecycleActivationUseCase resumeLifecycleActivationUseCase() {
+        return () -> {
+            throw new IocExtractorException(
+                    "Persisted lifecycle activation requires the P5 activation workflow");
+        };
+    }
+
+    @Bean
+    public PrepareLifecycleAdmissionUseCase prepareLifecycleAdmissionUseCase(
+            LifecycleControlStore lifecycleControlStore,
+            JdbcLifecycleClock lifecycleClock,
+            ResumeLifecycleActivationUseCase resumeLifecycleActivationUseCase,
+            ReconcileExpiredRecordsUseCase reconcileExpiredRecordsUseCase,
+            ConvergeArtifactProjectionsUseCase convergeArtifactProjectionsUseCase,
+            CanonicalDataAdmissionState canonicalDataAdmissionState,
+            LifecycleRuntimeObserver observer) {
+        LifecycleAdmissionService delegate = new LifecycleAdmissionService(
+                lifecycleControlStore,
+                lifecycleClock,
+                resumeLifecycleActivationUseCase,
+                reconcileExpiredRecordsUseCase,
+                convergeArtifactProjectionsUseCase,
+                canonicalDataAdmissionState);
+        return () -> {
+            try {
+                var result = delegate.prepare();
+                observer.admissionCompleted(result);
+                return result;
+            } catch (RuntimeException failure) {
+                observer.admissionFailed(failure);
+                throw failure;
+            }
+        };
+    }
+
+    @Bean
+    public LifecycleStatusReader lifecycleStatusReader(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            DataframeSchemaPlan dataframeSchemaReconciliation,
+            JdbcLifecycleClock lifecycleClock,
+            IocProperties props) {
+        return new JdbcLifecycleStatusReader(
+                dataframeStorageDataSource, dataframeSchemas(props), lifecycleClock);
+    }
+
     @Bean
     @Primary
     public JdbcCanonicalArtifactRepository jdbcCanonicalArtifactRepository(
@@ -490,13 +670,15 @@ public class AppConfig {
             List<StoredArtifactIdentity> artifactIdentityValidation,
             ArtifactIdentityResolver artifactIdentityResolver,
             IocProperties props,
-            Clock clock) {
+            Clock clock,
+            JdbcLifecycleClock lifecycleClock) {
         Objects.requireNonNull(artifactIdentityValidation, "artifactIdentityValidation");
         return new JdbcCanonicalArtifactRepository(
                 dataframeStorageDataSource,
                 dataframeSchemas(props),
                 artifactIdentityResolver,
-                clock);
+                clock,
+                lifecycleClock);
     }
 
     @Bean
@@ -529,11 +711,13 @@ public class AppConfig {
             DataframeSchemaPlan dataframeSchemaReconciliation,
             IocProperties props,
             DiagnosticSink diagnosticSink,
-            Clock clock) {
+            Clock clock,
+            JdbcLifecycleClock lifecycleClock) {
         return new JdbcSnapshotSliceReader(
                 dataframeStorageDataSource,
                 dataframeSchemas(props),
                 clock,
+                lifecycleClock,
                 diagnosticSink,
                 new DiagnosticFactory(clock));
     }
@@ -610,12 +794,17 @@ public class AppConfig {
             ExportOperationGuard exportOperationGuard,
             ExportObserver exportObserver,
             ControlEventPublisher controlEventPublisher,
+            PrepareLifecycleAdmissionUseCase lifecycleAdmission,
             Clock clock) {
-        return new ExportService(
+        ExportArtifactsUseCase delegate = new ExportService(
                 plans.plans(), artifactRevisionReader, exportProgressStore, exportRunLedger,
                 snapshotSliceReader, artifactSliceWriter,
                 exportRunRecoveryService, exportOperationGuard, new ExportChangeDetector(),
                 exportObserver, controlEventPublisher, clock, () -> java.util.UUID.randomUUID().toString());
+        return command -> {
+            lifecycleAdmission.prepare();
+            return delegate.export(command);
+        };
     }
 
     @Bean
@@ -642,6 +831,7 @@ public class AppConfig {
             ExportProgressStore exportProgressStore,
             RecoverExportUseCase recoverExportUseCase,
             ExportArtifactsUseCase exportArtifactsUseCase,
+            CanonicalDataAdmissionState canonicalDataAdmissionState,
             IocProperties props,
             Clock clock) {
         IocProperties.Export.Trigger trigger = props.export().trigger();
@@ -653,7 +843,7 @@ public class AppConfig {
         return new DaemonExportScheduler(
                 catalog.plans(), cadences, artifactRevisionReader, exportProgressStore,
                 recoverExportUseCase, exportArtifactsUseCase, cadencePollInterval(trigger),
-                exportNudgePolicy(trigger));
+                exportNudgePolicy(trigger), canonicalDataAdmissionState);
     }
 
     @Bean
@@ -664,6 +854,50 @@ public class AppConfig {
             ExportNudgeTrigger exportNudgeTrigger,
             ControlEventObserver observer) {
         return new CanonicalArtifactsChangedExportListener(exportNudgeTrigger, observer);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
+    public LifecycleDeadlineScheduler lifecycleDeadlineScheduler(
+            CanonicalDataAdmissionState canonicalDataAdmissionState,
+            ExpiredArtifactStore expiredArtifactStore,
+            ReconcileExpiredRecordsUseCase reconcileExpiredRecordsUseCase,
+            RunLifecycleHistoryRetentionUseCase runLifecycleHistoryRetentionUseCase,
+            IocProperties props,
+            Clock clock,
+            LifecycleRuntimeObserver observer) {
+        return new LifecycleDeadlineScheduler(
+                canonicalDataAdmissionState,
+                expiredArtifactStore,
+                reconcileExpiredRecordsUseCase,
+                runLifecycleHistoryRetentionUseCase,
+                props.lifecycle().reconcile().backstopInterval(),
+                clock,
+                observer);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
+    public LifecycleProjectionScheduler lifecycleProjectionScheduler(
+            CanonicalDataAdmissionState canonicalDataAdmissionState,
+            ConvergeArtifactProjectionsUseCase convergeArtifactProjectionsUseCase,
+            IocProperties props,
+            LifecycleRuntimeObserver observer) {
+        return new LifecycleProjectionScheduler(
+                canonicalDataAdmissionState,
+                convergeArtifactProjectionsUseCase,
+                props.lifecycle().reconcile().backstopInterval(),
+                observer);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
+    public LifecycleControlEventListener lifecycleControlEventListener(
+            LifecycleDeadlineScheduler lifecycleDeadlineScheduler,
+            LifecycleProjectionScheduler lifecycleProjectionScheduler,
+            ControlEventObserver observer) {
+        return new LifecycleControlEventListener(
+                lifecycleDeadlineScheduler, lifecycleProjectionScheduler, observer);
     }
 
     @Bean
@@ -805,6 +1039,18 @@ public class AppConfig {
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             @Qualifier("dataframeFormatSchemaMigration") SchemaMigrationResult dataframeFormatSchemaMigration) {
         return new JdbcStorageHealthIndicator(new JdbcStorageHealthProbe(dataframeStorageDataSource, "dataframe"));
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
+    public LifecycleHealthIndicator lifecycleHealthIndicator(
+            LifecycleStatusReader lifecycleStatusReader,
+            CanonicalDataAdmissionState canonicalDataAdmissionState,
+            IocProperties props) {
+        return new LifecycleHealthIndicator(
+                lifecycleStatusReader,
+                canonicalDataAdmissionState,
+                props.lifecycle().reconcile().backstopInterval());
     }
 
     @Bean
@@ -990,6 +1236,10 @@ public class AppConfig {
                                 .map(column -> new DataframeColumn(column.name(), column.type()))
                                 .toList()))
                 .toList();
+    }
+
+    private List<String> dataframeArtifactNames(IocProperties props) {
+        return dataframeSchemas(props).stream().map(DataframeArtifactSchema::artifactName).toList();
     }
 
     private List<ArtifactIdentityDefinition> artifactIdentityDefinitions(IocProperties props) {

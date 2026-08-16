@@ -1,5 +1,9 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.application.artifact.lifecycle.CanonicalDataAdmissionState;
+import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
+import com.iocextractor.application.artifact.lifecycle.LifecycleActivationState;
+import com.iocextractor.application.artifact.lifecycle.LifecycleAdmissionResult;
 import com.iocextractor.application.cadence.CadenceSource;
 import com.iocextractor.application.cadence.IntervalCadenceSource;
 import com.iocextractor.application.cadence.QuietPeriodCadenceSource;
@@ -67,6 +71,41 @@ class DaemonExportSchedulerTest {
             scheduler.stop();
         }
         assertThat(scheduler.isRunning()).isFalse();
+    }
+
+    @Test
+    void remainsInertUntilCommonCanonicalAdmissionOpens() {
+        List<String> calls = new ArrayList<>();
+        CanonicalDataAdmissionState admission = new CanonicalDataAdmissionState();
+        ManualExecutor executor = new ManualExecutor();
+        var scheduler = new DaemonExportScheduler(
+                List.of(plan("one")),
+                Map.of("one", alwaysDue()),
+                artifacts -> nullRevision(artifacts),
+                profile -> List.of(),
+                () -> {
+                    calls.add("recover");
+                    return 0;
+                },
+                command -> completed(command.profile()),
+                Duration.ofHours(1),
+                ExportNudgePolicy.disabled(),
+                admission,
+                () -> executor);
+
+        scheduler.start();
+        assertThat(calls).isEmpty();
+        assertThat(executor.fixedDelayTasks).isEmpty();
+
+        admission.admitted(new LifecycleAdmissionResult(
+                LifecycleActivationState.DISABLED_COMPATIBLE,
+                EffectiveTime.at(START), 0, 0));
+        try {
+            assertThat(calls).containsExactly("recover");
+            assertThat(executor.fixedDelayTasks).hasSize(1);
+        } finally {
+            scheduler.stop();
+        }
     }
 
     @Test

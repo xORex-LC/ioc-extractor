@@ -30,8 +30,30 @@ final class IocConfigPreflight implements Validator {
             return;
         }
         validateIngestion(props.ingestion(), errors);
+        validateLifecycle(props.lifecycle(), errors);
         validateArtifactIdentityReferences(props, errors);
         validateSync(props, errors);
+    }
+
+    private void validateLifecycle(IocProperties.Lifecycle lifecycle, Errors errors) {
+        if (lifecycle == null) {
+            return;
+        }
+        rejectIfNotPositive(errors, "lifecycle.historyRetention", lifecycle.historyRetention(),
+                "ioc.lifecycle.history-retention");
+        if (lifecycle.reconcile() != null) {
+            rejectIfNotPositive(errors, "lifecycle.reconcile.backstopInterval",
+                    lifecycle.reconcile().backstopInterval(),
+                    "ioc.lifecycle.reconcile.backstop-interval");
+        }
+        if (lifecycle.clock() != null) {
+            rejectIfNotPositive(errors, "lifecycle.clock.maxBackwardSkew",
+                    lifecycle.clock().maxBackwardSkew(),
+                    "ioc.lifecycle.clock.max-backward-skew");
+            rejectIfNotPositive(errors, "lifecycle.clock.maxClampDuration",
+                    lifecycle.clock().maxClampDuration(),
+                    "ioc.lifecycle.clock.max-clamp-duration");
+        }
     }
 
     private void validateIngestion(IocProperties.Ingestion ingestion, Errors errors) {
