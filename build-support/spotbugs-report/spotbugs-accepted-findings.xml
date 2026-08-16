@@ -178,7 +178,7 @@
     <finding id="SB04-001" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="ea7a806f5e37f11838a6bea1bf7172" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-A" review="sql-identifier-grammar-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler" />
         <method name="apply" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/DataframeSchemaPlan;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/DataframeSchemaReconciler.java" startLine="217" bytecode="70" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/DataframeSchemaReconciler.java" startLine="220" bytecode="69" />
         <suppression>
             <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler" />
@@ -189,7 +189,7 @@
     <finding id="SB04-002" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="9f2432cdb91df89209e35871fee4337a" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-A" review="sql-identifier-grammar-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler" />
         <method name="columns" signature="(Ljava/sql/Connection;Ljava/lang/String;)Ljava/util/Map;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/DataframeSchemaReconciler.java" startLine="239" bytecode="28" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/DataframeSchemaReconciler.java" startLine="242" bytecode="34" />
         <suppression>
             <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler" />

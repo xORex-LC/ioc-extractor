@@ -33,7 +33,7 @@ class DataframeSchemaReconcilerTest {
     }
 
     @Test
-    void creates_business_table_sources_table_and_last_seen_view() throws Exception {
+    void creates_active_sources_history_receipt_and_indexed_lifecycle_schema() throws Exception {
         DataframeSchemaPlan plan = reconciler().reconcile(List.of(schema(
                 "masks",
                 column("id"),
@@ -45,12 +45,35 @@ class DataframeSchemaReconcilerTest {
                 .containsExactly(
                         DataframeSchemaChange.Kind.CREATE_TABLE,
                         DataframeSchemaChange.Kind.CREATE_TABLE,
-                        DataframeSchemaChange.Kind.CREATE_VIEW);
+                        DataframeSchemaChange.Kind.CREATE_VIEW,
+                        DataframeSchemaChange.Kind.CREATE_INDEX,
+                        DataframeSchemaChange.Kind.CREATE_INDEX,
+                        DataframeSchemaChange.Kind.CREATE_TABLE,
+                        DataframeSchemaChange.Kind.CREATE_TABLE,
+                        DataframeSchemaChange.Kind.CREATE_INDEX,
+                        DataframeSchemaChange.Kind.CREATE_TABLE);
         assertThat(columnNames("masks"))
-                .containsExactly("id", "mask", "url_match", "row_key", "_created_at", "_first_source_key");
+                .containsExactly(
+                        "id", "mask", "url_match", "row_key", "_created_at", "_first_source_key",
+                        "_lifecycle_id", "_first_confirmed_at_epoch_ms",
+                        "_last_confirmed_at_epoch_ms", "_valid_until_epoch_ms");
         assertThat(columnNames("masks_sources"))
                 .containsExactly("row_id", "source_key", "first_seen_at", "last_seen_at", "occurrences");
+        assertThat(columnNames("masks_history"))
+                .containsExactly(
+                        "history_id", "former_row_id", "row_key", "_lifecycle_id",
+                        "_first_confirmed_at_epoch_ms", "_last_confirmed_at_epoch_ms",
+                        "_valid_until_epoch_ms", "closed_at_epoch_ms", "close_reason",
+                        "id", "mask", "url_match");
+        assertThat(columnNames("masks_history_sources"))
+                .containsExactly("history_id", "source_key", "first_seen_at", "last_seen_at", "occurrences");
+        assertThat(columnNames("masks_receipt_rows"))
+                .containsExactly("receipt_id", "ordinal", "row_key", "source_key", "observed_at_ms",
+                        "mask", "url_match");
         assertThat(viewExists("masks_last_seen")).isTrue();
+        assertThat(indexExists("ux_masks_lifecycle_id")).isTrue();
+        assertThat(indexExists("ix_masks_lifecycle_due")).isTrue();
+        assertThat(indexExists("ix_masks_history_retention")).isTrue();
     }
 
     @Test
@@ -63,8 +86,13 @@ class DataframeSchemaReconcilerTest {
 
         assertThat(plan.changes())
                 .extracting(change -> change.kind())
-                .containsExactly(DataframeSchemaChange.Kind.ADD_COLUMN);
+                .containsExactly(
+                        DataframeSchemaChange.Kind.ADD_COLUMN,
+                        DataframeSchemaChange.Kind.ADD_COLUMN,
+                        DataframeSchemaChange.Kind.ADD_COLUMN);
         assertThat(columnNames("masks")).contains("score");
+        assertThat(columnNames("masks_history")).contains("score");
+        assertThat(columnNames("masks_receipt_rows")).contains("score");
         assertThat(rowCount("masks")).isOne();
     }
 
@@ -100,6 +128,21 @@ class DataframeSchemaReconcilerTest {
     }
 
     @Test
+    void lifecycle_index_definition_drift_is_not_silently_accepted() throws Exception {
+        DataframeSchemaReconciler reconciler = reconciler();
+        reconciler.reconcile(List.of(schema("masks", column("mask"))));
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.createStatement()) {
+            statement.execute("DROP INDEX ix_masks_lifecycle_due");
+            statement.execute("CREATE INDEX ix_masks_lifecycle_due ON masks(row_key)");
+        }
+
+        assertThatThrownBy(() -> reconciler.reconcile(List.of(schema("masks", column("mask")))))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("Lifecycle index definition drift");
+    }
+
+    @Test
     void reserved_prefix_columns_are_excluded_from_destructive_drift() throws Exception {
         DataframeSchemaReconciler reconciler = reconciler();
         reconciler.reconcile(List.of(schema("masks", column("mask"))));
@@ -130,10 +173,16 @@ class DataframeSchemaReconcilerTest {
                 dataSource,
                 DataframeFormatMigrations.sqlite()).migrate();
 
-        assertThat(result.currentVersion()).isEqualTo(3);
+        assertThat(result.currentVersion()).isEqualTo(4);
         assertThat(tableExists("dataframe_schema_format")).isTrue();
         assertThat(tableExists("artifact_identity")).isTrue();
         assertThat(tableExists("artifact_revision")).isTrue();
+        assertThat(tableExists("canonical_lifecycle_control")).isTrue();
+        assertThat(tableExists("lifecycle_id_allocator")).isTrue();
+        assertThat(tableExists("artifact_id_allocator")).isTrue();
+        assertThat(tableExists("artifact_projection_state")).isTrue();
+        assertThat(tableExists("confirmation_receipt")).isTrue();
+        assertThat(tableExists("confirmation_receipt_artifact")).isTrue();
         try (Connection connection = dataSource.getConnection();
              var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT value FROM dataframe_schema_format WHERE name = 'format'")) {
@@ -156,9 +205,10 @@ class DataframeSchemaReconcilerTest {
         SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
 
         assertThat(result.previousVersion()).isEqualTo(2);
-        assertThat(result.currentVersion()).isEqualTo(3);
-        assertThat(result.appliedVersions()).containsExactly(3);
+        assertThat(result.currentVersion()).isEqualTo(4);
+        assertThat(result.appliedVersions()).containsExactly(3, 4);
         assertThat(tableExists("artifact_revision")).isTrue();
+        assertThat(tableExists("canonical_lifecycle_control")).isTrue();
         try (Connection connection = dataSource.getConnection();
              var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT epoch FROM artifact_identity WHERE artifact = 'masks'")) {
@@ -262,6 +312,10 @@ class DataframeSchemaReconcilerTest {
 
     private boolean viewExists(String name) throws SQLException {
         return objectExists("view", name);
+    }
+
+    private boolean indexExists(String name) throws SQLException {
+        return objectExists("index", name);
     }
 
     private boolean objectExists(String type, String name) throws SQLException {

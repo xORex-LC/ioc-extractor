@@ -44,6 +44,7 @@ public final class DataframeSchemaReconciler {
     private final DiagnosticSink diagnosticSink;
     private final DiagnosticFactory diagnosticFactory;
     private final String dbRole;
+    private final LifecycleArtifactSchemaPlanner lifecycleSchemaPlanner;
 
     public DataframeSchemaReconciler(DataSource dataSource) {
         this(dataSource, NoopDiagnosticSink.INSTANCE, new DiagnosticFactory(Clock.systemUTC()), "dataframe");
@@ -60,6 +61,7 @@ public final class DataframeSchemaReconciler {
             throw new IllegalArgumentException("dbRole is required");
         }
         this.dbRole = dbRole;
+        this.lifecycleSchemaPlanner = new LifecycleArtifactSchemaPlanner();
     }
 
     public DataframeSchemaPlan dryRun(List<DataframeArtifactSchema> schemas) {
@@ -135,6 +137,7 @@ public final class DataframeSchemaReconciler {
                     null,
                     createLastSeenViewSql(table)));
         }
+        lifecycleSchemaPlanner.plan(connection, schema, existing.isEmpty(), changes);
     }
 
     private void guardAgainstDestructiveDrift(DataframeArtifactSchema schema,
@@ -276,6 +279,10 @@ public final class DataframeSchemaReconciler {
         columns.add(quote("row_key") + " TEXT NOT NULL UNIQUE");
         columns.add(quote("_created_at") + " TEXT NOT NULL");
         columns.add(quote("_first_source_key") + " TEXT");
+        columns.add(quote("_lifecycle_id") + " INTEGER");
+        columns.add(quote("_first_confirmed_at_epoch_ms") + " INTEGER");
+        columns.add(quote("_last_confirmed_at_epoch_ms") + " INTEGER");
+        columns.add(quote("_valid_until_epoch_ms") + " INTEGER");
         return "CREATE TABLE " + quote(schema.artifactName()) + " (\n    "
                 + String.join(",\n    ", columns)
                 + "\n)";

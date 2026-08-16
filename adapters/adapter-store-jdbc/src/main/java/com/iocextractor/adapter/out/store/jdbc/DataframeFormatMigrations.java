@@ -15,6 +15,8 @@ public final class DataframeFormatMigrations {
     private static final String V1 = "com/iocextractor/adapter/out/store/jdbc/dataframe/v1__dataframe_format.sql";
     private static final String V2 = "com/iocextractor/adapter/out/store/jdbc/dataframe/v2__artifact_identity.sql";
     private static final String V3 = "com/iocextractor/adapter/out/store/jdbc/dataframe/v3__artifact_revision.sql";
+    private static final String V4 =
+            "com/iocextractor/adapter/out/store/jdbc/dataframe/v4__canonical_lifecycle_foundation.sql";
 
     private DataframeFormatMigrations() {
     }
@@ -23,7 +25,8 @@ public final class DataframeFormatMigrations {
         return List.of(
                 new SqliteSchemaMigration(1, "dataframe format", resource(V1)),
                 new SqliteSchemaMigration(2, "artifact identity", resource(V2)),
-                new SqliteSchemaMigration(3, "artifact revision", resource(V3)));
+                new SqliteSchemaMigration(3, "artifact revision", resource(V3)),
+                new SqliteSchemaMigration(4, "canonical lifecycle foundation", resource(V4)));
     }
 
     private static String resource(String name) {
