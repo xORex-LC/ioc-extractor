@@ -47,6 +47,7 @@ failure/recovery semantics и точки расширения, но не пер�
 | [dev/configuration.md](dev/configuration.md) | Strict `ioc.*` boundary, precedence, validation и registry preflight |
 | [dev/observability.md](dev/observability.md) | Diagnostics, failure policy, typed ECS logging, MDC и redaction |
 | [dev/build-quality.md](dev/build-quality.md) | Maven quality lifecycle, SpotBugs exact ratchet, CPD, coverage and dependency-analysis controls |
+| [dev/canonical-record-lifecycle.md](dev/canonical-record-lifecycle.md) | Fixed canonical validity, expiry/history reconciliation, active reads and recovery |
 
 > Генерируемые `DIAGNOSTICS-CATALOG.md` и `LOGGING-CATALOG.md` остаются
 > reference-артефактами в корне; их контракты объясняет `dev/observability.md`.

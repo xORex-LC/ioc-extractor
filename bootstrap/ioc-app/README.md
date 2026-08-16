@@ -86,8 +86,10 @@ safe `UP`, recoverable `DEGRADED` или fail-closed `DOWN`. Typed
 `ioc.lifecycle.validity` выбирает `disabled|fixed`, positive fixed TTL и explicit
 legacy policy; activation выполняется admission-ом до stateful work. Composition
 также вычисляет processing-policy fingerprint и подключает 30-day receipt fast
-path для daemon, а stateful oneshot пишет через тот же lifecycle writer. P5
-classpath и upgrade presets остаются `disabled`. Spring
+path для daemon, а stateful oneshot пишет через тот же lifecycle writer.
+Classpath default остаётся upgrade-compatible `disabled`, тогда как fresh
+production packaging template включает `fixed/12h`; существующий operator YAML
+при upgrade не перезаписывается. Spring
 `@Scheduled`, ShedLock, Spring Batch, новый module и новая runtime library не
 используются.
 

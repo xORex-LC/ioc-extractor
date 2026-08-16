@@ -8,8 +8,9 @@ formation saga/change detection/forward recovery. Модель canonical record
 validity находится в `application.artifact.lifecycle`; её client-shaped driven
 ports остаются framework-free. Lifecycle application services координируют common
 admission, bounded expiry, independent history retention и durable mutable
-projection convergence. P5 добавляет one-way legacy activation и bounded
-fingerprinted receipt replay; scheduling, SQL и health не проникают в этот слой.
+projection convergence. One-way legacy activation и bounded fingerprinted
+receipt replay также остаются application use cases; scheduling, SQL, packaging
+defaults и health не проникают в этот слой.
 
 Extraction возвращает first-class completion/diagnostic outcome. Pure domain
 decisions материализуются один раз; application stages используют их

@@ -177,6 +177,24 @@ publish начинается только после локального export
 В текущих эталонах `score`/`time_*`/`threat_type`/`description` всегда `NULL`
 (обогащение — опционально, на будущее).
 
+### Canonical record lifecycle
+
+Fixed TTL является свойством одной lifecycle canonical DB-записи, а не IOC type
+или source provenance. Успешная canonical transaction атомарно создаёт либо
+продлевает lifecycle с абсолютным UTC `valid_until`; подтверждение после
+deadline архивирует прежнюю lifecycle и создаёт новую с новым service-owned ID.
+Все active reads используют half-open predicate `valid_until > asOf`.
+
+Expiry обслуживается aggregate nearest-deadline scheduler и periodic reconcile:
+deadline index подаёт bounded SQLite batches, typed history хранится отдельно,
+а mutable CSV сходится через durable projection generation. Timer/job на каждую
+IOC отсутствует. Expiry не меняет insert-driven `artifact_revision`, поэтому сам
+по себе не формирует immutable export slice; следующий обычный new-row trigger
+читает уже актуальный active snapshot. Lifecycle SQL/history остаются в
+`adapter-store-jdbc`, storage-neutral policy/use cases — в `ioc-application`, а
+clock/config/scheduler/health — в bootstrap. Подробности:
+[dev/canonical-record-lifecycle.md](dev/canonical-record-lifecycle.md).
+
 **Кодировки I/O.** Вход декодируется по `ioc.source.charset` (`auto` = детект Tika/ICU;
 явное имя форсит text/HTML, docx/pdf — по дизайну нет); внутри — Unicode `String`.
 Выход всех CSV-проекций и export-срезов — в `ioc.sink.csv.charset`;

@@ -130,18 +130,18 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `platform-diagnostics-logging` | Bridge `DiagnosticSink` → LogEvent/SLF4J (`LoggingDiagnosticSink`); зависит на `platform-diagnostics` + `platform-observability` |
 | `platform-errors` | базовые ошибки/common-типы и трансляция; нижний слой для `DiagnosticException` |
 | `ioc-domain` | Refanger, IndicatorExtractor, SourceAttributor, MatchPolicy, модели, feature extraction |
-| `ioc-application` | Pipeline/ingest use cases; framework-free Artifact Emission и Remote Sync models, retry/cadence, formation/delivery sagas, ports и policies |
+| `ioc-application` | Pipeline/ingest use cases; framework-free Artifact Emission, Remote Sync и canonical lifecycle models/use cases, retry/cadence, sagas, ports и policies |
 | `ioc-application-tck` | Переиспользуемые JUnit contract tests application ports, исполняемые каждой реализацией |
 | `adapter-regex-re2j` | PatternEngine implementation (RE2J + JDK fallback) |
 | `adapter-source-tika` | SourceReader (Tika) |
 | `adapter-sink-csv` | Artifact mapping, canonical CSV projection, callback-streaming immutable slices, integrity verification, atomic local publish и directory-level slice retention |
 | `adapter-manifest-json-jackson` | Deterministic versioned JSON codec for immutable slice manifests |
-| `adapter-store-jdbc` | Service/dataframe SQLite: canonical/revision storage, schema-aware id baseline, strict snapshot reader, ingest/export/fetch/publish ledgers + progress, migrations и health |
+| `adapter-store-jdbc` | Service/dataframe SQLite: canonical/revision/lifecycle storage, typed history/receipts, strict active snapshot reader, ingest/export/fetch/publish ledgers + progress, migrations и health |
 | `adapter-transport-smb` | smbj boundary: lazy SMB2/3 sessions, streaming get и atomic slice publish за `FileTransport` |
 | `adapter-psl` | HostClassifier (PSL/Guava) |
 | `adapter-ingest` | Watch ingest: `IngestSourceUseCase`(in), `SourceLifecycle`, file `IngestionLedger`; SourceFeed adapter-local (Spring Integration); `FileSystemRetentionStore` (reaper IO) |
 | `adapter-cli-picocli` | входной CLI: `extract`, lazy `export`, `sync fetch|publish|all`, remote daemon `health` |
-| `ioc-app` (bootstrap) | composition root, lazy export/sync graphs, transport registry; fetch/export/publish/retention schedulers, conditional web и health |
+| `ioc-app` (bootstrap) | composition root, lazy export/sync graphs, transport registry; fetch/export/publish/retention/lifecycle schedulers, strict lifecycle config/clock, conditional web и health |
 | `build-quality` (build-support tooling) | Общий JDK-only fail-fast scope/report verifier и synthetic-reactor contract matrix; не является Maven reactor project |
 | `coverage-report` (build-support) | Непубликуемый Maven report-модуль: полный JaCoCo HTML/XML aggregate |
 | `spotbugs-report` (build-support) | Непубликуемый Maven report-модуль: полный SpotBugs XML/HTML aggregate и report-integrity gate для production bytecode reactor |
@@ -167,6 +167,13 @@ ports принадлежат `ioc-application`; технологические �
 JDBC, CSV/filesystem и Jackson adapters. ArchUnit отдельно запрещает JDBC/Spring
 во внутренних слоях, Jackson вне manifest adapter/bootstrap и JDBC-зависимость
 у callback slice writer.
+
+Canonical record lifecycle также не образует новый Maven-модуль или shared
+library: это application capability внутри текущего bounded context, а его
+SQLite и Spring runtime mechanics уже принадлежат существующим JDBC adapter и
+composition root. Выделение оправдано только при появлении второго реального
+consumer с независимым release/dependency lifecycle; текущая package/port
+граница обеспечивает extension без нового artifact graph.
 
 ## Поэтапный переход
 

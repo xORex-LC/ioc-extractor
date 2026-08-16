@@ -82,6 +82,10 @@ runtime JDBC drivers.
   batches with compact provenance and projection work without changing public
   artifact revision. `JdbcConfirmationReceiptStore` loads only complete current
   receipts and bounds receipt/terminal-observation retention.
+- History removal is independent from expiration and is ordered by
+  `(closed_at_epoch_ms, history_id)`. Foreign-key cascade removes compact source
+  summaries, while lifecycle/public-ID allocators remain monotonic after both
+  active and history rows are gone.
 - `JdbcCanonicalArtifactRepository` writes rows with canonical `row_key` and
   `ON CONFLICT(row_key) DO NOTHING`, preserving explicit legacy ids when present.
   It is a commit-only boundary: routing and row mapping finish before this adapter
