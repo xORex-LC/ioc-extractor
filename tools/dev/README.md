@@ -81,10 +81,12 @@ SQLite в read-only режиме для assertions/query plans, сохраняе
 проверяет тот же state transition на 1k input rows.
 
 `lifecycle-load` закрепляет измеримый regression envelope, а не hardware-neutral
-benchmark: не менее 100k canonical rows, deadline wave не шире 30s, начало
+benchmark: input fixture маршрутизируется как минимум в 100k canonical rows,
+deadline wave не шире 30s, начало
 expiry не позже 5s, drain не медленнее 2500 rows/s, retention не дольше 180s и
-JVM `VmHWM` не выше systemd `MemoryMax=1GiB`. Throughput floor составляет менее
-половины исходного WSL2 baseline и оставляет запас для host noise, но обнаружит
+JVM `VmHWM` не выше systemd `MemoryMax=1GiB`. Harness запускает тот же
+`-Xms128m/-Xmx512m` memory profile, что packaged daemon. Throughput floor
+составляет менее половины исходного WSL2 baseline и оставляет запас для host noise, но обнаружит
 регрессию порядка 2x. Новый reference host/JDK/SQLite или изменение batching
 требуют осознанного rebaseline с сохранённым report, а не ослабления assertion
 после случайного red run.

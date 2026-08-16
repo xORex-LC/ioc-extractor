@@ -194,6 +194,9 @@ start_runtime() { # history-retention
     --port "${PORT}" \
     --jar "${JAR}" \
     --health-attempts "${TIMEOUT}" \
+    --jvm-arg -Xms128m \
+    --jvm-arg -Xmx512m \
+    --jvm-arg -XX:+ExitOnOutOfMemoryError \
     --set ioc.lifecycle.validity.mode=fixed \
     --set "ioc.lifecycle.validity.fixed-ttl=${TTL}" \
     --set ioc.lifecycle.validity.existing-records=expire \

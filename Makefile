@@ -186,7 +186,7 @@ lifecycle-smoke: package ## Exercise expiry, history retention and ID non-reuse;
 		[[ -z "$(JAR)" ]] || args+=(--jar "$(JAR)"); \
 		tools/dev/lifecycle-smoke.sh "$${args[@]}"
 
-lifecycle-load: SIZE=100000
+lifecycle-load: SIZE=66667
 lifecycle-load: package ## Run the 100k lifecycle reference profile; override SIZE/TTL/TIMEOUT via script
 	@args=(--size "$(SIZE)" --ttl 2m --timeout 1200 --port "$(LIFECYCLE_PORT)" \
 		--workspace .dev/lifecycle-load-$(SIZE) --min-canonical-rows 100000 \

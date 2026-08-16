@@ -144,6 +144,12 @@ done
 "${REPO_ROOT}/tools/dev/doctor.sh" core >/dev/null
 "${REPO_ROOT}/tools/dev/bootstrap.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/runtime.sh" --help >/dev/null
+if UNSAFE_JVM_OUTPUT="$("${REPO_ROOT}/tools/dev/runtime.sh" \
+    --jvm-arg -jar status 2>&1)"; then
+  fail "runtime accepted an unsafe JVM argument"
+fi
+grep -Fq 'unsupported --jvm-arg' <<< "${UNSAFE_JVM_OUTPUT}" \
+  || fail "runtime did not reject an unsafe JVM argument at validation"
 "${REPO_ROOT}/tools/dev/smoke.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/lifecycle-smoke.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/submit.sh" --help >/dev/null

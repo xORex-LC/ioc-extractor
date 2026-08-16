@@ -11,6 +11,7 @@ JAR=""
 HEALTH_ATTEMPTS="30"
 HEALTH_INTERVAL="1"
 JAVA_PROPERTIES=()
+JVM_OPTIONS=()
 
 usage() {
   cat <<'EOF'
@@ -23,6 +24,7 @@ Options:
   --health-attempts N       Startup attempts (default: 30)
   --health-interval N       Seconds between attempts (default: 1)
   --set KEY=VALUE           Additional JVM system property (repeatable)
+  --jvm-arg ARG             Safe JVM memory/runtime option (repeatable)
 EOF
 }
 
@@ -34,6 +36,7 @@ while [[ $# -gt 0 ]]; do
     --health-attempts) HEALTH_ATTEMPTS="${2:?}"; shift 2 ;;
     --health-interval) HEALTH_INTERVAL="${2:?}"; shift 2 ;;
     --set) JAVA_PROPERTIES+=("${2:?}"); shift 2 ;;
+    --jvm-arg) JVM_OPTIONS+=("${2:?}"); shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) break ;;
   esac
@@ -51,6 +54,11 @@ done
 for property in "${JAVA_PROPERTIES[@]}"; do
   [[ "${property}" =~ ^[A-Za-z0-9_.-]+=[^[:cntrl:]]*$ ]] \
     || dev_die "invalid --set property: ${property}"
+done
+for option in "${JVM_OPTIONS[@]}"; do
+  [[ "${option}" =~ ^-X(ms|mx)[1-9][0-9]*[kKmMgG]$ \
+      || "${option}" =~ ^-XX:[+-][A-Za-z][A-Za-z0-9]*$ ]] \
+    || dev_die "unsupported --jvm-arg; use --set for system properties: ${option}"
 done
 
 RUN_DIR="${WORKSPACE}/run"
@@ -132,7 +140,7 @@ case "${COMMAND}" in
       # Spring Boot treats ambient DEBUG/TRACE as framework switches. Developer
       # verbosity must be explicit through --set, not inherited accidentally.
       unset DEBUG TRACE
-      nohup java "${JVM_ARGS[@]}" -jar "${DEV_APP_JAR}" \
+      nohup java "${JVM_OPTIONS[@]}" "${JVM_ARGS[@]}" -jar "${DEV_APP_JAR}" \
         > "${CONSOLE_LOG}" 2>&1 &
       printf '%s\n' "$!" > "${PID_FILE}"
     )
