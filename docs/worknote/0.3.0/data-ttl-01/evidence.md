@@ -144,3 +144,87 @@ fresh/additive schema, public-column propagation, index drift, activation
 invariants и concurrent CAS, ascending/descending allocator restart,
 concurrent range uniqueness, outer rollback non-reuse, projection CAS,
 state/FK constraints и `EXPLAIN QUERY PLAN` для deadline/retention paths.
+
+## P3 — lifecycle-aware canonical transaction and reads
+
+**Статус:** complete, capability dormant in production composition.
+
+Application command теперь несёт раздельные `observationId`, `sourceKey` и
+bounded `ConfirmationReceiptContext`. Receipt identity, processing-policy
+fingerprint, expected artifact count и positive retention валидируются без
+framework dependencies; reusable lifecycle TCK подключён к real SQLite через
+`JdbcCanonicalRecordLifecycleContractTest`.
+
+`JdbcCanonicalLifecycleWriter` реализует одну artifact-scoped canonical
+transaction:
+
+- до mutation проверяет durable `(observationId, artifact)` marker и на replay
+  возвращает прежний результат без повторного clock sample/renewal;
+- резервирует worst-case public/lifecycle ID ranges отдельными committed
+  transactions, поэтому rollback оставляет gaps и ID не возвращаются;
+- после SQLite write ownership ровно один раз получает effective UTC `asOf`;
+- для каждого `row_key` выполняет insert, active renewal либо atomic typed
+  history/source-summary copy + delete + new lifecycle/public row;
+- fail-closed проверяет persisted lifecycle completeness и порядок
+  `firstConfirmed <= lastConfirmed < validUntil`;
+- обновляет provenance и observation marker вместе с business rows;
+- меняет artifact revision и required projection generation только при новом
+  public membership; renewal сохраняет обе величины;
+- stage-ит typed prepared rows без service-owned IDs и публикует receipt
+  `COMPLETE` только после exact marker/row-count validation. Zero-row artifact
+  представлен отдельным marker и считается полноценным подтверждением.
+
+Confirmation и expiry получают общий SQLite write-serialization boundary.
+Детерминированные tests с latches доказывают оба порядка гонки: winner
+confirmation не теряется при последующем expiry, а winner expiry закрывает
+старую lifecycle до создания новой. Реальные sleeps не используются.
+
+Read boundaries работают следующим образом:
+
+- `JdbcActiveArtifactReader` требует explicit `asOf` и возвращает только
+  `_valid_until_epoch_ms > asOf`;
+- `JdbcCanonicalArtifactRepository.load` сохраняет disabled compatibility, но
+  в `ACTIVE` тем же предикатом фильтрует mutable CSV projection; legacy writer
+  сериализован с activation и запрещён начиная с `ACTIVATING`;
+- `JdbcSnapshotSliceReader` в одной WAL transaction использует общий clock
+  sample для metadata timestamp, active coverage и всех artifact row cursors;
+  `ACTIVATING` fail-closed;
+- public header/order и `time_first_seen`/`time_last_seen == NULL` не меняются.
+
+`JdbcExpiredArtifactStore` в P3 реализует минимальный indexed bounded
+archive/delete contract, необходимый TCK и race tests. Он не подключён к runtime:
+scheduler, startup admission/reconciliation, projection convergence, retention,
+clock high-water, health/diagnostics и post-commit latency events остаются P4.
+Pipeline/ingestion activation, duplicate fast path и configuration остаются P5;
+production preset по-прежнему `DISABLED_COMPATIBLE`.
+
+### Verification
+
+```text
+./mvnw -B -ntp -pl adapters/adapter-store-jdbc -am \
+  -Dtest=LifecycleContractModelsTest,JdbcCanonicalLifecycleWriterTest,\
+JdbcCanonicalRecordLifecycleContractTest -Dsurefire.failIfNoSpecifiedTests=false test
+  BUILD SUCCESS
+  focused lifecycle: 19 tests, 0 failures, 0 errors
+
+./mvnw -B -ntp -pl adapters/adapter-store-jdbc -am test
+  BUILD SUCCESS
+  ioc-application: 185 tests, 0 failures, 0 errors
+  ioc-adapter-store-jdbc: 112 tests, 0 failures, 0 errors
+
+make verify
+  BUILD SUCCESS
+  full reactor: 25 projects, 25 SUCCESS
+  ioc-application: 185 tests, 0 failures, 0 errors
+  ioc-adapter-store-jdbc: 112 tests, 0 failures, 0 errors
+  ioc-app: 239 tests, 0 failures, 0 errors
+  aggregate SpotBugs baseline: 78 accepted, 0 visible
+```
+
+Тринадцать новых P3 SpotBugs identities для lifecycle SQL приняты только как
+точечные reviewed false positives. Artifact/table/column names происходят из
+immutable schema catalog, проходят `DataframeColumn.requireSqlIdentifier` и
+quoting; row, receipt и time values остаются bound parameters. Восемь прежних
+baseline identities обновлены после изменения сигнатур/bytecode. Итоговый
+baseline proposal: `78 observed`, `0 new`, `0 stale`; широких class/package
+suppression не добавлено.

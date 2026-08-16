@@ -33,7 +33,9 @@ recovery, health и retention.
    CSV format входят в hashes/fingerprints; runtime timestamp/run id не меняют
    смысл plan.
 3. **Snapshot согласован.** Rows, revisions и coverage читаются из одной WAL
-   read transaction. Concurrent ingest попадает только в следующий export.
+   read transaction. При active lifecycle один captured `asOf` применяется к
+   coverage и строкам всех artifacts; `valid_until == asOf` уже исключается.
+   Concurrent ingest попадает только в следующий export.
 4. **Публикация локального slice атомарна.** Incomplete staging не считается
    completed; `_SUCCESS`, manifest и exact membership проверяются перед выдачей
    slice потребителю.
@@ -44,6 +46,9 @@ recovery, health и retention.
    Byte-identical candidate получает `SKIPPED` без нового published slice.
 7. **Event не является commit.** `SliceCompleted` появляется только после
    durable `COMPLETED`; потерянный event добирает publish reconcile.
+8. **Expiry не создаёт slice.** Истечение или renewal не меняют insert-driven
+   artifact revision и не запускают lifecycle-specific export event. Следующий
+   разрешённый export читает только active membership на своём общем `asOf`.
 
 ## Durable state и recovery
 

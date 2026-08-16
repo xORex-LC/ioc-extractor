@@ -74,7 +74,7 @@ Health проверяет открытие, schema version, необходимы
 probe. Health сообщает состояние storage, но не заменяет transactional
 guarantees и recovery ledgers.
 
-### Dormant lifecycle foundation (dataframe v4)
+### Lifecycle-aware storage path (dataframe v4; runtime dormant)
 
 V4 размещает все lifecycle facts рядом с business rows именно в dataframe DB,
 не в service DB. Статическая migration создаёт one-way activation/clock state,
@@ -91,11 +91,27 @@ configured artifact reconciler additively создаёт:
 - typed `<artifact>_receipt_rows` без service-owned public ID.
 
 Upgrade сохраняет существующие rows и оставляет lifecycle columns `NULL` в
-состоянии `DISABLED_COMPATIBLE`. Старые writer/read/projection/export paths пока
-не фильтруют эти поля, поэтому v4 сама по себе не включает TTL. Переход в
-`ACTIVE` защищён одной transactional CAS и set-based проверкой: legacy либо
-partial metadata не допускаются. Runtime write/read activation принадлежит P3,
-а expiry/scheduling/health — следующим slices ADR-0020.
+состоянии `DISABLED_COMPATIBLE`. V4 и P3-классы сами по себе не включают TTL:
+production composition до activation slices использует compatibility writer.
+Он берёт SQLite write ownership в состоянии `DISABLED_COMPATIBLE` и перестаёт
+принимать записи сразу после начала activation.
+
+Lifecycle-aware JDBC writer атомарно выполняет insert, renewal либо
+archive/delete + recreate, обновляет compact provenance, observation marker,
+insert-driven revision, projection generation и typed receipt. Один effective
+UTC `asOf` читается только после получения write ownership. Public и lifecycle
+ID резервируются отдельными committed transactions до canonical write, поэтому
+ошибка создаёт допустимые gaps, но не позволяет переиспользовать ID. Complete
+receipt публикуется в той же canonical transaction только после проверки всех
+artifact markers и typed row totals; marker обязателен и для zero-row artifact.
+
+В `ACTIVE` все service-local dataframe reads используют точный предикат
+`_valid_until_epoch_ms > asOf`. Mutable projection получает один clock sample на
+load, а immutable multi-artifact snapshot использует один общий `asOf` и одну
+SQLite read snapshot как для coverage, так и для rows. В `ACTIVATING` reads
+fail-closed. Переход в `ACTIVE` по-прежнему защищён transactional CAS и
+set-based проверкой полной ordered metadata. Scheduler, startup reconciliation,
+retention cleanup, clock high-water, health и runtime wiring принадлежат P4/P5.
 
 ## Отказы и восстановление
 

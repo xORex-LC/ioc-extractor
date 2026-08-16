@@ -29,7 +29,7 @@ surface и итоговое evidence закрываются только P6.
 | `P0` | Decision, scope contract и characterization | none | `complete` |
 | `P1` | Framework-free application contracts and TCK | none | `complete` |
 | `P2` | Additive durable SQLite foundation | disabled behavior only | `complete` |
-| `P3` | Atomic lifecycle-aware write/read path | production preset unchanged | `planned` |
+| `P3` | Atomic lifecycle-aware write/read path | production preset unchanged | `complete` |
 | `P4` | Expiry, recovery, scheduling and health | production preset unchanged | `planned` |
 | `P5` | Duplicate receipt and explicit upgrade activation UX | opt-in existing installs only | `planned` |
 | `P6` | Fresh preset, docs and release evidence | complete capability | `planned` |
@@ -146,6 +146,12 @@ projection policy stays outside the repository.
   complete receipt;
 - recovery of the same observation after commit does not renew it a second time;
 - existing public schemas and `time_* == NULL` are byte/order compatible.
+
+**Status:** completed on 2026-08-16. The lifecycle-aware path and conditional
+active reads are implemented and verified, but remain outside production
+composition while the persisted state is `DISABLED_COMPATIBLE`. P4 runtime
+reconciliation/scheduling and P5 activation/intake wiring are not included.
+Evidence is recorded in [evidence.md](evidence.md#p3--lifecycle-aware-canonical-transaction-and-reads).
 
 ## P4 — expiry, recovery and operations
 
