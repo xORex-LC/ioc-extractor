@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
+import com.iocextractor.application.artifact.lifecycle.LifecycleId;
 import com.iocextractor.common.IocExtractorException;
 
 import java.sql.Connection;
@@ -48,6 +49,52 @@ final class JdbcLifecycleArchive {
             statement.setLong(1, rowId);
             if (statement.executeUpdate() != 1) {
                 throw new IocExtractorException("Due lifecycle disappeared before deletion");
+            }
+        }
+    }
+
+    void archiveLegacyAndDelete(Connection connection,
+                                DataframeArtifactSchema schema,
+                                long rowId,
+                                LifecycleId lifecycleId,
+                                EffectiveTime closedAt) throws SQLException {
+        long closedAtMs = closedAt.value().toEpochMilli();
+        long confirmedAtMs = Math.subtractExact(closedAtMs, 1L);
+        List<String> historyColumns = new ArrayList<>(List.of(
+                "former_row_id", "row_key", "_lifecycle_id",
+                "_first_confirmed_at_epoch_ms", "_last_confirmed_at_epoch_ms",
+                "_valid_until_epoch_ms", "closed_at_epoch_ms", "close_reason"));
+        historyColumns.addAll(publicHeader(schema));
+
+        List<String> selected = new ArrayList<>(List.of(
+                quote("id"), quote("row_key"), "?", "?", "?", "?", "?", "?"));
+        selected.addAll(publicHeader(schema).stream().map(this::quote).toList());
+        String sql = "INSERT INTO " + quote(schema.artifactName() + "_history") + " ("
+                + joinedQuoted(historyColumns) + ") SELECT " + String.join(", ", selected)
+                + " FROM " + quote(schema.artifactName()) + " WHERE " + quote("id") + " = ?"
+                + " AND " + quote("_lifecycle_id") + " IS NULL"
+                + " AND " + quote("_first_confirmed_at_epoch_ms") + " IS NULL"
+                + " AND " + quote("_last_confirmed_at_epoch_ms") + " IS NULL"
+                + " AND " + quote("_valid_until_epoch_ms") + " IS NULL";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, lifecycleId.value());
+            statement.setLong(2, confirmedAtMs);
+            statement.setLong(3, confirmedAtMs);
+            statement.setLong(4, closedAtMs);
+            statement.setLong(5, closedAtMs);
+            statement.setString(6, "LEGACY_ACTIVATION");
+            statement.setLong(7, rowId);
+            if (statement.executeUpdate() != 1) {
+                throw new IocExtractorException("Legacy lifecycle disappeared during activation archival");
+            }
+        }
+        long historyId = lastInsertId(connection);
+        copyHistorySources(connection, schema.artifactName(), rowId, historyId);
+        try (PreparedStatement statement = connection.prepareStatement(
+                "DELETE FROM " + quote(schema.artifactName()) + " WHERE " + quote("id") + " = ?")) {
+            statement.setLong(1, rowId);
+            if (statement.executeUpdate() != 1) {
+                throw new IocExtractorException("Legacy lifecycle disappeared before activation deletion");
             }
         }
     }

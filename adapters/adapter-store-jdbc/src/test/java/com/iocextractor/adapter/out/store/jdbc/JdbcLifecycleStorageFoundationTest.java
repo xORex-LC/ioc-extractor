@@ -459,6 +459,92 @@ class JdbcLifecycleStorageFoundationTest {
     }
 
     @Test
+    void legacy_activation_resumes_in_batches_and_preserves_revision_and_provenance() throws Exception {
+        initializeArtifact("legacy-activation.db", 1, 1);
+        execute("""
+                INSERT INTO artifact_revision(artifact, revision, changed_at)
+                VALUES ('masks', 9, '2026-08-15T00:00:00Z')
+                """);
+        for (int id = 1; id <= 3; id++) {
+            execute("""
+                    INSERT INTO masks(id, mask, row_key, _created_at, _first_source_key)
+                    VALUES (%1$d, 'legacy-%1$d.example', 'legacy-%1$d',
+                            '2026-08-15T00:00:00Z', 'feed-a')
+                    """.formatted(id));
+            execute("""
+                    INSERT INTO masks_sources(
+                        row_id, source_key, first_seen_at, last_seen_at, occurrences)
+                    VALUES (%d, 'feed-a', '2026-08-15T00:00:00Z',
+                            '2026-08-15T01:00:00Z', 2)
+                    """.formatted(id));
+        }
+        var control = new JdbcLifecycleControlStore(dataSource, List.of(masksSchema()));
+        LifecycleControlState disabled = control.load();
+        assertThat(control.compareAndSet(
+                disabled, disabled.beginActivation("record-validity:fixed:v1"))).isTrue();
+
+        var firstProcess = new JdbcLifecycleActivationStore(
+                dataSource, List.of(masksSchema()), CLOCK);
+        var firstBatch = firstProcess.expireLegacyBatch(
+                "masks", EffectiveTime.at(NOW), 2);
+
+        assertThat(firstBatch.expired()).isEqualTo(2);
+        assertThat(firstBatch.moreLegacyRows()).isTrue();
+        assertThat(queryLong("SELECT COUNT(*) FROM masks")).isOne();
+
+        var restartedProcess = new JdbcLifecycleActivationStore(
+                dataSource, List.of(masksSchema()), CLOCK);
+        var finalBatch = restartedProcess.expireLegacyBatch(
+                "masks", EffectiveTime.at(NOW), 2);
+
+        assertThat(finalBatch.expired()).isOne();
+        assertThat(finalBatch.moreLegacyRows()).isFalse();
+        assertThat(restartedProcess.expireLegacyBatch(
+                "masks", EffectiveTime.at(NOW), 2).expired()).isZero();
+        assertThat(queryLong("SELECT COUNT(*) FROM masks")).isZero();
+        assertThat(queryLong("""
+                SELECT COUNT(*) FROM masks_history
+                WHERE close_reason = 'LEGACY_ACTIVATION'
+                  AND _first_confirmed_at_epoch_ms < _valid_until_epoch_ms
+                  AND _last_confirmed_at_epoch_ms < _valid_until_epoch_ms
+                """)).isEqualTo(3);
+        assertThat(queryLong("SELECT COUNT(*) FROM masks_history_sources")).isEqualTo(3);
+        assertThat(queryLong("SELECT revision FROM artifact_revision WHERE artifact = 'masks'"))
+                .isEqualTo(9);
+        assertThat(queryLong("""
+                SELECT required_generation FROM artifact_projection_state
+                WHERE artifact = 'masks'
+                """)).isOne();
+        assertThat(queryLong("""
+                SELECT expired_count FROM lifecycle_activation_progress
+                WHERE artifact = 'masks' AND completed = 1
+                """)).isEqualTo(3);
+    }
+
+    @Test
+    void resumed_activation_rejects_partially_populated_lifecycle_metadata() throws Exception {
+        initializeArtifact("invalid-activation.db", 1, 1);
+        execute("""
+                INSERT INTO masks(
+                    id, mask, row_key, _created_at, _lifecycle_id,
+                    _first_confirmed_at_epoch_ms, _last_confirmed_at_epoch_ms,
+                    _valid_until_epoch_ms)
+                VALUES (1, 'partial.example', 'partial', '2026-08-16T00:00:00Z',
+                        1, 10, NULL, 30)
+                """);
+        var control = new JdbcLifecycleControlStore(dataSource, List.of(masksSchema()));
+        LifecycleControlState disabled = control.load();
+        assertThat(control.compareAndSet(
+                disabled, disabled.beginActivation("record-validity:fixed:v1"))).isTrue();
+
+        assertThatThrownBy(() -> new JdbcLifecycleActivationStore(
+                dataSource, List.of(masksSchema()), CLOCK).expireLegacyBatch(
+                "masks", EffectiveTime.at(NOW), 10))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("partially populated");
+    }
+
+    @Test
     void lifecycle_cleanup_queries_use_deadline_and_retention_indexes() throws Exception {
         initializeArtifact("query-plan.db", 1, 1);
 

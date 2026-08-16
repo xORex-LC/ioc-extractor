@@ -212,7 +212,8 @@ class JdbcArtifactRepositoriesTest {
     }
 
     @Test
-    void canonical_load_filters_exact_deadline_when_active_and_legacy_writer_fails_closed() throws Exception {
+    void canonical_load_supports_activation_projection_then_filters_deadline_and_legacy_writer_fails_closed()
+            throws Exception {
         var schema = schema("masks", "id", "mask");
         var repository = canonicalRepository(List.of(schema), List.of(
                 new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1)));
@@ -236,9 +237,7 @@ class JdbcArtifactRepositoriesTest {
         var activating = control.load().beginActivation("fixed-test-v1");
         assertThat(control.compareAndSet(control.load(), activating)).isTrue();
 
-        assertThatThrownBy(() -> repository.load("masks"))
-                .isInstanceOf(IocExtractorException.class)
-                .hasMessageContaining("activation is incomplete");
+        assertThat(repository.load("masks").rows()).isEmpty();
 
         assertThat(control.compareAndSet(
                 activating, activating.completeActivation(EffectiveTime.at(CLOCK.instant())))).isTrue();

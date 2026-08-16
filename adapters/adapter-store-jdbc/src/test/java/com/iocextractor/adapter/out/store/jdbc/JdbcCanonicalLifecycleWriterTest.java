@@ -119,6 +119,50 @@ class JdbcCanonicalLifecycleWriterTest {
     }
 
     @Test
+    void complete_receipt_is_typed_policy_scoped_and_removed_with_terminal_observation() throws Exception {
+        JdbcCanonicalLifecycleWriter writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        ConfirmationReceiptContext receipt = receipt("receipt-replayable", 2);
+        writer.confirm(command(
+                "observation-replayable", "masks", receipt, row("mask-a", "a.example")));
+        writer.confirm(command(
+                "observation-replayable", "hashes", receipt, row("hash-a", "AABB")));
+        var store = new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30));
+
+        var snapshot = store.findComplete(
+                "source-key", "policy-v1", EffectiveTime.at(START)).orElseThrow();
+
+        assertThat(snapshot.artifacts()).extracting(artifact -> artifact.artifactName())
+                .containsExactly("hashes", "masks");
+        assertThat(snapshot.artifacts()).allSatisfy(artifact -> {
+            assertThat(artifact.header())
+                    .containsExactly("id", "value", "source", "time_first_seen", "time_last_seen");
+            assertThat(artifact.records()).singleElement().satisfies(record -> {
+                assertThat(record.preparedRow().template().value("id")).isNull();
+                assertThat(record.preparedRow().template().value("source")).isEqualTo("feed-name");
+                assertThat(record.preparedRow().template().value("time_first_seen")).isNull();
+            });
+        });
+        assertThat(store.findComplete(
+                "source-key", "policy-v2", EffectiveTime.at(START))).isEmpty();
+
+        store.markTerminal(
+                new ObservationId("observation-replayable"),
+                EffectiveTime.at(START),
+                Duration.ofDays(30));
+        var purged = store.purgeExpired(EffectiveTime.at(START.plus(Duration.ofDays(31))), 10);
+
+        assertThat(purged.purged()).isOne();
+        assertThat(purged.moreEligible()).isFalse();
+        assertThat(queryLong("SELECT COUNT(*) FROM confirmation_receipt")).isZero();
+        assertThat(queryLong("SELECT COUNT(*) FROM canonical_observation")).isZero();
+
+        store.markTerminal(
+                new ObservationId("attempt-without-canonical-commit"),
+                EffectiveTime.at(START),
+                Duration.ofDays(30));
+    }
+
+    @Test
     void failed_canonical_transaction_rolls_back_confirmation_and_receipt_but_burns_reserved_ids()
             throws Exception {
         execute("""

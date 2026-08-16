@@ -49,8 +49,7 @@ runtime JDBC drivers.
   lifecycle columns, typed history/source-summary and receipt-row tables,
   deadline/retention indexes, activation/clock state, durable allocators,
   observation markers and mutable-projection generations. Existing databases
-  remain `DISABLED_COMPATIBLE`; the production composition remains on the
-  compatibility path until the explicit activation slices.
+  remain `DISABLED_COMPATIBLE` until explicit fixed-validity activation.
 - `JdbcLifecycleControlStore` uses one-way CAS and refuses `ACTIVE` until one
   set-based invariant scan proves that every configured active row has complete,
   ordered lifecycle metadata. Lifecycle/public ID ranges are reserved by atomic
@@ -67,9 +66,11 @@ runtime JDBC drivers.
   explicit caller-owned `asOf`. `JdbcCanonicalArtifactRepository.load` applies
   the same predicate for mutable CSV projection when state is `ACTIVE`, while
   `JdbcSnapshotSliceReader` shares one captured `asOf` between coverage and all
-  artifact row cursors in one SQLite read snapshot. `ACTIVATING` reads fail
-  closed. The compatibility writer is serialized with activation and is refused
-  as soon as activation starts.
+  artifact row cursors in one SQLite read snapshot. `ACTIVATING` external reads
+  fail closed; the internal mutable projection load remains active-filtered so
+  activation can atomically install an empty projection before `ACTIVE`. The
+  compatibility writer is serialized with activation and is refused as soon as
+  activation starts.
 - `JdbcExpiredArtifactStore` provides the indexed nearest-deadline and bounded
   archive/delete primitive used by P4 reconciliation. `JdbcLifecycleClock`
   owns the durable nondecreasing UTC high-water and clamp/unsafe policy;
@@ -77,6 +78,10 @@ runtime JDBC drivers.
   `JdbcLifecycleHistoryStore` performs indexed bounded retention; and
   `JdbcLifecycleStatusReader` returns aggregate read-only health facts without
   IOC/source identities. Bootstrap owns admission and schedulers.
+- `JdbcLifecycleActivationStore` archives legacy rows in resumable keyset
+  batches with compact provenance and projection work without changing public
+  artifact revision. `JdbcConfirmationReceiptStore` loads only complete current
+  receipts and bounds receipt/terminal-observation retention.
 - `JdbcCanonicalArtifactRepository` writes rows with canonical `row_key` and
   `ON CONFLICT(row_key) DO NOTHING`, preserving explicit legacy ids when present.
   It is a commit-only boundary: routing and row mapping finish before this adapter
@@ -91,10 +96,10 @@ runtime JDBC drivers.
   Startup recovery treats `DB_COMMITTED` as recoverable by replaying the derived
   CSV projection from dataframe truth; failures before that checkpoint are marked
   `FAILED`.
-- `JdbcIngestionLedger` uses conditional expected-state transitions. Claim is
+- `JdbcIngestionLedger` schema v8 keys conditional expected-state transitions by
+  `observation_id`; `source_key` is indexed but non-unique. Claim is
   insert-if-absent; archive updates only `CLAIMED`; failure is one conditional
-  SQLite upsert. Same-target retries are idempotent and an opposite terminal
-  transition cannot overwrite the first winner.
+  SQLite upsert. Legacy source-key rows migrate to `legacy:<source_key>`.
 - `JdbcExportRunLedger` stores immutable-slice formation checkpoints in
   `export_run`. A partial unique index enforces one global active run; all state
   changes use expected-status CAS. `COMPLETED`/`SKIPPED` and `export_progress`

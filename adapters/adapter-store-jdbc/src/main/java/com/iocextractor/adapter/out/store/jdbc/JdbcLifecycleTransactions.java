@@ -32,6 +32,19 @@ final class JdbcLifecycleTransactions {
         observer.observe(JdbcLifecycleTransactionObserver.Phase.AFTER_WRITE_OWNERSHIP, operation, artifact);
     }
 
+    static void acquireActivatingWriteOwnership(Connection connection, String artifact) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                UPDATE canonical_lifecycle_control
+                SET version = version
+                WHERE singleton_id = 1
+                  AND state = 'ACTIVATING'
+                """)) {
+            if (statement.executeUpdate() != 1) {
+                throw new IocExtractorException("Canonical lifecycle is not activating: " + artifact);
+            }
+        }
+    }
+
     static LifecycleActivationState readActivationState(Connection connection) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT state

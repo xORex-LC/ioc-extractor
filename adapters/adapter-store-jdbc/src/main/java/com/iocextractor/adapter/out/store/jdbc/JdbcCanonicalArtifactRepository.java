@@ -67,10 +67,7 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
         List<String> header = header(schema);
         try (Connection connection = dataSource.getConnection()) {
             LifecycleActivationState state = JdbcLifecycleTransactions.readActivationState(connection);
-            if (state == LifecycleActivationState.ACTIVATING) {
-                throw new IocExtractorException("Canonical lifecycle activation is incomplete");
-            }
-            EffectiveTime asOf = state == LifecycleActivationState.ACTIVE
+            EffectiveTime asOf = state != LifecycleActivationState.DISABLED_COMPATIBLE
                     ? Objects.requireNonNull(activeTimeSource.now(), "lifecycle effective time")
                     : null;
             return load(connection, artifactName, header, state, asOf);
@@ -92,14 +89,14 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
             if (state != expectedState) {
                 throw new IocExtractorException("Canonical lifecycle state changed while opening a read");
             }
-            String activePredicate = state == LifecycleActivationState.ACTIVE
+            String activePredicate = state != LifecycleActivationState.DISABLED_COMPATIBLE
                     ? " WHERE " + quote("_valid_until_epoch_ms") + " > ?"
                     : "";
             String sql = "SELECT " + joinedQuoted(header) + " FROM " + quote(artifactName)
                     + activePredicate + " ORDER BY " + quote("id");
             List<ArtifactRow> rows = new ArrayList<>();
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                if (state == LifecycleActivationState.ACTIVE) {
+                if (state != LifecycleActivationState.DISABLED_COMPATIBLE) {
                     statement.setLong(1, Objects.requireNonNull(asOf, "asOf").value().toEpochMilli());
                 }
                 try (ResultSet resultSet = statement.executeQuery()) {

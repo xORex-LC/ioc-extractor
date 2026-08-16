@@ -18,6 +18,7 @@ public final class ServiceSchemaMigrations {
     private static final String V5 = "com/iocextractor/adapter/out/store/jdbc/service/v5__export_state.sql";
     private static final String V6 = "com/iocextractor/adapter/out/store/jdbc/service/v6__sync_ledgers.sql";
     private static final String V7 = "com/iocextractor/adapter/out/store/jdbc/service/v7__publish_reconcile_index.sql";
+    private static final String V8 = "com/iocextractor/adapter/out/store/jdbc/service/v8__ingestion_observation_identity.sql";
 
     private ServiceSchemaMigrations() {
     }
@@ -30,7 +31,8 @@ public final class ServiceSchemaMigrations {
                 new SqliteSchemaMigration(4, "ingest run ledger", resource(V4)),
                 new SqliteSchemaMigration(5, "export state", resource(V5)),
                 new SqliteSchemaMigration(6, "sync ledgers", resource(V6)),
-                new SqliteSchemaMigration(7, "publish reconcile index", resource(V7)));
+                new SqliteSchemaMigration(7, "publish reconcile index", resource(V7)),
+                new SqliteSchemaMigration(8, "ingestion observation identity", resource(V8)));
     }
 
     private static String resource(String name) {
