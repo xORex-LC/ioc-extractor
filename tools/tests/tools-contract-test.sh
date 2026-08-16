@@ -127,6 +127,7 @@ for script in \
     tools/dev/doctor.sh \
     tools/dev/fixture.sh \
     tools/dev/logs.sh \
+    tools/dev/lifecycle-smoke.sh \
     tools/dev/release-notes-context.sh \
     tools/dev/database.sh \
     tools/dev/runtime.sh \
@@ -144,6 +145,7 @@ done
 "${REPO_ROOT}/tools/dev/bootstrap.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/runtime.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/smoke.sh" --help >/dev/null
+"${REPO_ROOT}/tools/dev/lifecycle-smoke.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/submit.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/database.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/release-notes-context.sh" --help >/dev/null
@@ -181,6 +183,8 @@ make --no-print-directory -s -C "${REPO_ROOT}" help \
   | grep -q 'context' || fail "Make help lost the cold-start context command"
 make --no-print-directory -s -C "${REPO_ROOT}" help \
   | grep -q 'release-notes-context' || fail "Make help lost the release-notes context command"
+make --no-print-directory -s -C "${REPO_ROOT}" help \
+  | grep -q 'lifecycle-load' || fail "Make help lost the lifecycle load command"
 if grep -REq '^[[:space:]]*(run:[[:space:]]*)?make([[:space:]]|$)' \
     "${REPO_ROOT}/.github/workflows"; then
   fail "GitHub workflow depends on the developer-facing Make facade"

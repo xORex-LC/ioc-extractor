@@ -13,6 +13,7 @@ WORKSPACE ?= .dev/runtime
 ONESHOT_WORKSPACE ?= .dev/oneshot
 PORT ?= 18081
 SMOKE_PORT ?= 18082
+LIFECYCLE_PORT ?= 18083
 JAR ?=
 MODULE ?=
 TEST ?=
@@ -44,6 +45,7 @@ GITHUB ?= 0
 	context \
 	run stop runtime-up runtime-down runtime-status runtime-reset submit \
 	fixture fixture-1k fixture-5k fixture-100k smoke smoke-cli smoke-oneshot smoke-daemon \
+	lifecycle-smoke lifecycle-load \
 	db logs logs-errors release-notes-context \
 	lint-shell docs security-update security-scan security-report \
 	ci-build ci-packaging ci-docs ci pre-push
@@ -178,6 +180,20 @@ smoke-oneshot: smoke ## Check extraction, storage and immutable export
 
 smoke-daemon: SMOKE=daemon
 smoke-daemon: smoke ## Check daemon ingest and actuator health
+
+lifecycle-smoke: package ## Exercise expiry, history retention and ID non-reuse; SIZE=1000
+	@args=(--size "$(SIZE)" --port "$(LIFECYCLE_PORT)"); \
+		[[ -z "$(JAR)" ]] || args+=(--jar "$(JAR)"); \
+		tools/dev/lifecycle-smoke.sh "$${args[@]}"
+
+lifecycle-load: SIZE=100000
+lifecycle-load: package ## Run the 100k lifecycle reference profile; override SIZE/TTL/TIMEOUT via script
+	@args=(--size "$(SIZE)" --ttl 2m --timeout 1200 --port "$(LIFECYCLE_PORT)" \
+		--workspace .dev/lifecycle-load-$(SIZE) --min-canonical-rows 100000 \
+		--max-deadline-spread-ms 30000 --min-expiry-rows-per-second 2500 \
+		--max-retention-seconds 180 --max-rss-kib 1048576); \
+		[[ -z "$(JAR)" ]] || args+=(--jar "$(JAR)"); \
+		tools/dev/lifecycle-smoke.sh "$${args[@]}"
 
 db: ## Inspect SQLite read-only; DB=service|dataframe DB_COMMAND=shell|schema|tables
 	@tools/dev/database.sh --workspace "$(WORKSPACE)" --db "$(DB)" "$(DB_COMMAND)"
