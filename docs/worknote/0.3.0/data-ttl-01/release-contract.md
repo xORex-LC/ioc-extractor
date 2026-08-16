@@ -190,7 +190,7 @@ duration запрещены. `ttl=0` никогда не является migrat
 - [x] Public schemas/order и `time_first_seen`/`time_last_seen == NULL` сохранены.
 - [ ] Affected published docs, generated catalogs, module README, release notes,
   status matrix и compatibility/performance ledgers актуальны.
-- [ ] Targeted tests, documentation checks и fresh full-reactor `make verify`
+- [x] Targeted tests, documentation checks и fresh full-reactor `make verify`
   проходят на финальном `HEAD`.
 
 ## Dependencies
@@ -205,5 +205,5 @@ build gates. До закрытия `R030-DATA` релиз 0.3.0 не готов.
 `implementation`: P0–P5 are complete. P6 has enabled the guarded fresh-install
 preset and completed documentation, repository packaging contracts and a
 rootless 100k lifecycle profile. The goal remains in progress until the
-privileged disposable-host systemd fresh/upgrade/rollback stand and final
-release-candidate gates are recorded.
+privileged disposable-host systemd fresh/upgrade/rollback stand is recorded;
+the local release-candidate gates are complete.

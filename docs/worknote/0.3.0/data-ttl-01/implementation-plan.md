@@ -256,8 +256,9 @@ read-path, migration, packaged rollout or performance evidence is missing.
 **Status:** in progress on 2026-08-16. The fresh preset, published capability
 and operator documentation, repository packaging contracts and the rootless
 100k lifecycle profile are complete. A privileged disposable-host systemd
-fresh-install/two-step-upgrade/rollback stand and final release-candidate gates
-remain required; rootless evidence does not satisfy that packaged rollout gate.
+fresh-install/two-step-upgrade/rollback stand remains required; local
+release-candidate gates are complete, but rootless evidence does not satisfy
+that packaged rollout gate.
 
 ## Required test matrix
 
