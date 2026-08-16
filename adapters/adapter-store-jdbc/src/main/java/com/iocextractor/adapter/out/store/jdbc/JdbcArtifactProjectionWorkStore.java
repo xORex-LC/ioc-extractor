@@ -73,6 +73,33 @@ public final class JdbcArtifactProjectionWorkStore implements ArtifactProjection
         }
     }
 
+    @Override
+    public boolean recordFailure(String artifactName,
+                                 ProjectionGeneration expectedGeneration,
+                                 String failureCode) {
+        String artifact = DataframeColumn.requireSqlIdentifier(artifactName, "artifact name");
+        Objects.requireNonNull(expectedGeneration, "expectedGeneration");
+        if (failureCode == null || failureCode.isBlank()) {
+            throw new IllegalArgumentException("failureCode must not be blank");
+        }
+        try {
+            return jdbc.sql("""
+                            UPDATE artifact_projection_state
+                            SET last_error_code = :failureCode
+                            WHERE artifact = :artifact
+                              AND required_generation = :expected
+                              AND projected_generation < required_generation
+                            """)
+                    .param("failureCode", failureCode)
+                    .param("artifact", artifact)
+                    .param("expected", expectedGeneration.value())
+                    .update() == 1;
+        } catch (RuntimeException e) {
+            throw new IocExtractorException(
+                    "Failed to record projection failure for artifact: " + artifact, e);
+        }
+    }
+
     private ArtifactProjectionState zeroState(String artifact) {
         var zero = new ProjectionGeneration(0);
         return new ArtifactProjectionState(artifact, zero, zero);

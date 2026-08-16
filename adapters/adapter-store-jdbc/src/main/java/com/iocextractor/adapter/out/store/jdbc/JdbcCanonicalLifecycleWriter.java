@@ -43,7 +43,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
     private final JdbcLifecycleIdAllocator lifecycleIdAllocator;
     private final JdbcLifecycleArchive lifecycleArchive;
     private final JdbcConfirmationReceiptWriter receiptWriter;
-    private final LifecycleTimeSource timeSource;
+    private final ConnectionTimeSource timeSource;
     private final RecordValidityPolicy validityPolicy;
     private final JdbcLifecycleTransactionObserver transactionObserver;
 
@@ -58,6 +58,18 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                 allocatorClock, JdbcLifecycleTransactionObserver.NOOP);
     }
 
+    /** Creates a writer that advances clock high-water in the canonical transaction. */
+    public JdbcCanonicalLifecycleWriter(DataSource dataSource,
+                                        List<DataframeArtifactSchema> schemas,
+                                        List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
+                                        JdbcLifecycleClock timeSource,
+                                        RecordValidityPolicy validityPolicy,
+                                        java.time.Clock allocatorClock) {
+        this(dataSource, schemas, publicIdDefinitions,
+                (ConnectionTimeSource) Objects.requireNonNull(timeSource, "timeSource")::now,
+                validityPolicy, allocatorClock, JdbcLifecycleTransactionObserver.NOOP);
+    }
+
     JdbcCanonicalLifecycleWriter(DataSource dataSource,
                                  List<DataframeArtifactSchema> schemas,
                                  List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
@@ -65,6 +77,18 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                  RecordValidityPolicy validityPolicy,
                                  java.time.Clock allocatorClock,
                                  JdbcLifecycleTransactionObserver transactionObserver) {
+        this(dataSource, schemas, publicIdDefinitions,
+                (ConnectionTimeSource) ignored -> Objects.requireNonNull(timeSource, "timeSource").now(),
+                validityPolicy, allocatorClock, transactionObserver);
+    }
+
+    private JdbcCanonicalLifecycleWriter(DataSource dataSource,
+                                         List<DataframeArtifactSchema> schemas,
+                                         List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
+                                         ConnectionTimeSource timeSource,
+                                         RecordValidityPolicy validityPolicy,
+                                         java.time.Clock allocatorClock,
+                                         JdbcLifecycleTransactionObserver transactionObserver) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
         this.timeSource = Objects.requireNonNull(timeSource, "timeSource");
@@ -116,7 +140,8 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                 return raced.orElseThrow();
             }
 
-            EffectiveTime asOf = Objects.requireNonNull(timeSource.now(), "lifecycle effective time");
+            EffectiveTime asOf = Objects.requireNonNull(
+                    timeSource.now(connection), "lifecycle effective time");
             ValidityDecision validity = validityPolicy.decide(asOf).requireValidAt(asOf);
             ensureObservation(connection, confirmation, asOf);
 
@@ -554,6 +579,11 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
 
     private long epochMillis(EffectiveTime time) {
         return time.value().toEpochMilli();
+    }
+
+    @FunctionalInterface
+    private interface ConnectionTimeSource {
+        EffectiveTime now(Connection connection) throws SQLException;
     }
 
     private String placeholders(int count) {

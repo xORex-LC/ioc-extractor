@@ -4,6 +4,8 @@ import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.artifact.lifecycle.LifecycleActivationState;
+import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
+import com.iocextractor.application.artifact.lifecycle.LifecycleTimeSource;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.common.IocExtractorException;
@@ -33,6 +35,7 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
     private final Map<String, DataframeArtifactSchema> schemas;
     private final ArtifactIdentityResolver identityResolver;
     private final Clock clock;
+    private final LifecycleTimeSource activeTimeSource;
 
     public JdbcCanonicalArtifactRepository(DataSource dataSource,
                                            List<DataframeArtifactSchema> schemas,
@@ -42,6 +45,20 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
         this.schemas = schemasByName(schemas);
         this.identityResolver = Objects.requireNonNull(identityResolver, "identityResolver");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.activeTimeSource = () -> EffectiveTime.at(clock.instant());
+    }
+
+    /** Creates a repository whose active reads use the safe lifecycle clock. */
+    public JdbcCanonicalArtifactRepository(DataSource dataSource,
+                                           List<DataframeArtifactSchema> schemas,
+                                           ArtifactIdentityResolver identityResolver,
+                                           Clock clock,
+                                           LifecycleTimeSource activeTimeSource) {
+        this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
+        this.schemas = schemasByName(schemas);
+        this.identityResolver = Objects.requireNonNull(identityResolver, "identityResolver");
+        this.clock = Objects.requireNonNull(clock, "clock");
+        this.activeTimeSource = Objects.requireNonNull(activeTimeSource, "activeTimeSource");
     }
 
     @Override
@@ -49,7 +66,14 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
         DataframeArtifactSchema schema = schema(artifactName);
         List<String> header = header(schema);
         try (Connection connection = dataSource.getConnection()) {
-            return load(connection, artifactName, header);
+            LifecycleActivationState state = JdbcLifecycleTransactions.readActivationState(connection);
+            if (state == LifecycleActivationState.ACTIVATING) {
+                throw new IocExtractorException("Canonical lifecycle activation is incomplete");
+            }
+            EffectiveTime asOf = state == LifecycleActivationState.ACTIVE
+                    ? Objects.requireNonNull(activeTimeSource.now(), "lifecycle effective time")
+                    : null;
+            return load(connection, artifactName, header, state, asOf);
         } catch (SQLException e) {
             throw new IocExtractorException("Failed to load JDBC artifact: " + artifactName, e);
         }
@@ -57,14 +81,16 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
 
     private CanonicalArtifact load(Connection connection,
                                    String artifactName,
-                                   List<String> header) throws SQLException {
+                                   List<String> header,
+                                   LifecycleActivationState expectedState,
+                                   EffectiveTime asOf) throws SQLException {
         boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
         Exception failure = null;
         try {
             LifecycleActivationState state = JdbcLifecycleTransactions.readActivationState(connection);
-            if (state == LifecycleActivationState.ACTIVATING) {
-                throw new IocExtractorException("Canonical lifecycle activation is incomplete");
+            if (state != expectedState) {
+                throw new IocExtractorException("Canonical lifecycle state changed while opening a read");
             }
             String activePredicate = state == LifecycleActivationState.ACTIVE
                     ? " WHERE " + quote("_valid_until_epoch_ms") + " > ?"
@@ -74,7 +100,7 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
             List<ArtifactRow> rows = new ArrayList<>();
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 if (state == LifecycleActivationState.ACTIVE) {
-                    statement.setLong(1, clock.millis());
+                    statement.setLong(1, Objects.requireNonNull(asOf, "asOf").value().toEpochMilli());
                 }
                 try (ResultSet resultSet = statement.executeQuery()) {
                     while (resultSet.next()) {

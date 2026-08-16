@@ -2,6 +2,8 @@ package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.lifecycle.LifecycleActivationState;
+import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
+import com.iocextractor.application.artifact.lifecycle.LifecycleTimeSource;
 import com.iocextractor.application.export.ArtifactCoverage;
 import com.iocextractor.application.export.ExportArtifactSpec;
 import com.iocextractor.application.export.ExportPlan;
@@ -47,13 +49,15 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
     private final DataSource dataSource;
     private final Map<String, DataframeArtifactSchema> schemas;
     private final Clock clock;
+    private final LifecycleTimeSource activeTimeSource;
     private final DiagnosticSink diagnosticSink;
     private final DiagnosticFactory diagnosticFactory;
 
     public JdbcSnapshotSliceReader(DataSource dataSource,
                                    List<DataframeArtifactSchema> schemas,
                                    Clock clock) {
-        this(dataSource, schemas, clock, NoopDiagnosticSink.INSTANCE, new DiagnosticFactory(clock));
+        this(dataSource, schemas, clock, () -> EffectiveTime.at(clock.instant()),
+                NoopDiagnosticSink.INSTANCE, new DiagnosticFactory(clock));
     }
 
     public JdbcSnapshotSliceReader(DataSource dataSource,
@@ -61,9 +65,21 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                                    Clock clock,
                                    DiagnosticSink diagnosticSink,
                                    DiagnosticFactory diagnosticFactory) {
+        this(dataSource, schemas, clock, () -> EffectiveTime.at(clock.instant()),
+                diagnosticSink, diagnosticFactory);
+    }
+
+    /** Creates a snapshot reader whose active boundary uses the safe lifecycle clock. */
+    public JdbcSnapshotSliceReader(DataSource dataSource,
+                                   List<DataframeArtifactSchema> schemas,
+                                   Clock clock,
+                                   LifecycleTimeSource activeTimeSource,
+                                   DiagnosticSink diagnosticSink,
+                                   DiagnosticFactory diagnosticFactory) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.activeTimeSource = Objects.requireNonNull(activeTimeSource, "activeTimeSource");
         this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
         this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
     }
@@ -79,8 +95,16 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
         Objects.requireNonNull(consumer, "consumer");
         ExportPlan plan = request.plan();
         validatePlan(plan);
+        LifecycleActivationState expectedState = readActivationState(plan.profile().name());
+        if (expectedState == LifecycleActivationState.ACTIVATING) {
+            throw snapshotFailure(plan.profile().name(),
+                    new SQLException("Canonical lifecycle activation is incomplete"));
+        }
+        Instant asOf = expectedState == LifecycleActivationState.ACTIVE
+                ? activeTimeSource.now().value()
+                : clock.instant();
         try (Connection connection = dataSource.getConnection()) {
-            return stream(connection, plan, consumer);
+            return stream(connection, plan, consumer, expectedState, asOf);
         } catch (SQLException e) {
             throw snapshotFailure(plan.profile().name(), e);
         }
@@ -88,16 +112,17 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
 
     private SnapshotMetadata stream(Connection connection,
                                     ExportPlan plan,
-                                    SnapshotRowConsumer consumer) throws SQLException {
+                                    SnapshotRowConsumer consumer,
+                                    LifecycleActivationState expectedState,
+                                    Instant asOf) throws SQLException {
         boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
         Exception failure = null;
         try {
             LifecycleActivationState lifecycleState = JdbcLifecycleTransactions.readActivationState(connection);
-            if (lifecycleState == LifecycleActivationState.ACTIVATING) {
-                throw new SQLException("Canonical lifecycle activation is incomplete");
+            if (lifecycleState != expectedState) {
+                throw new SQLException("Canonical lifecycle state changed while opening an export snapshot");
             }
-            Instant asOf = clock.instant();
             List<SnapshotArtifactMetadata> artifacts = readMetadata(connection, plan, lifecycleState, asOf);
             SnapshotMetadata metadata = new SnapshotMetadata(
                     plan.profile().name(), plan.planHash(), asOf, artifacts);
@@ -116,6 +141,14 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
             throw e;
         } finally {
             restoreAutoCommit(connection, previousAutoCommit, failure);
+        }
+    }
+
+    private LifecycleActivationState readActivationState(String profile) {
+        try (Connection connection = dataSource.getConnection()) {
+            return JdbcLifecycleTransactions.readActivationState(connection);
+        } catch (SQLException e) {
+            throw snapshotFailure(profile, e);
         }
     }
 

@@ -472,6 +472,12 @@ class JdbcLifecycleStorageFoundationTest {
                 """)).contains("ix_masks_lifecycle_due");
         assertThat(queryPlan("""
                 EXPLAIN QUERY PLAN
+                SELECT COUNT(*)
+                FROM masks
+                WHERE _valid_until_epoch_ms <= 1000
+                """)).contains("ix_masks_lifecycle_due");
+        assertThat(queryPlan("""
+                EXPLAIN QUERY PLAN
                 SELECT history_id
                 FROM masks_history
                 WHERE closed_at_epoch_ms <= 1000
