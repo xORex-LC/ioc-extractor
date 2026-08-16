@@ -11,6 +11,7 @@ TTL="15s"
 HISTORY_RETENTION="30m"
 PURGE_RETENTION="1s"
 BACKSTOP="1s"
+EXPORT_QUIET_PERIOD="5s"
 BATCH_SIZE="1000"
 TIMEOUT="300"
 MAX_RSS_KIB="1048576"
@@ -45,6 +46,7 @@ Options:
   --history-retention DUR    Retention during expiry observation (default: 30m)
   --purge-retention DUR      Retention after restart (default: 1s)
   --backstop DURATION        Reconcile correctness backstop (default: 1s)
+  --export-quiet-period DUR  New-data export quiet period (default: 5s)
   --batch-size N             Rows per SQLite lifecycle transaction (default: 1000)
   --timeout SECONDS          Timeout for each eventual-state wait (default: 300)
   --max-rss-kib N            Maximum JVM VmHWM (default: 1048576, systemd 1 GiB)
@@ -73,6 +75,7 @@ while [[ $# -gt 0 ]]; do
     --history-retention) HISTORY_RETENTION="${2:?}"; shift 2 ;;
     --purge-retention) PURGE_RETENTION="${2:?}"; shift 2 ;;
     --backstop) BACKSTOP="${2:?}"; shift 2 ;;
+    --export-quiet-period) EXPORT_QUIET_PERIOD="${2:?}"; shift 2 ;;
     --batch-size) BATCH_SIZE="${2:?}"; shift 2 ;;
     --timeout) TIMEOUT="${2:?}"; shift 2 ;;
     --max-rss-kib) MAX_RSS_KIB="${2:?}"; shift 2 ;;
@@ -187,6 +190,42 @@ wait_for_done() { # source-name
   dev_die "daemon did not archive ${name} within ${TIMEOUT}s"
 }
 
+completed_slice_count() {
+  local profile_dir="${WORKSPACE}/var/export/reputation-lists"
+  [[ -d "${profile_dir}" ]] || { printf '0\n'; return; }
+  find "${profile_dir}" -mindepth 2 -maxdepth 2 -type f -name _SUCCESS -print \
+    | wc -l | tr -d ' '
+}
+
+wait_for_slice_count() { # expected
+  local expected="$1" deadline=$((SECONDS + TIMEOUT)) actual=""
+  while (( SECONDS < deadline )); do
+    actual="$(completed_slice_count)"
+    [[ "${actual}" -eq "${expected}" ]] && return 0
+    sleep 1
+  done
+  dev_die "reputation-lists has ${actual:-0} completed slices, expected ${expected}"
+}
+
+latest_slice_dir() {
+  local profile_dir="${WORKSPACE}/var/export/reputation-lists"
+  find "${profile_dir}" -mindepth 2 -maxdepth 2 -type f -name _SUCCESS \
+    -printf '%T@ %h\n' | sort -n | tail -1 | cut -d' ' -f2-
+}
+
+wait_for_latest_export_rows() { # expected
+  local expected="$1" deadline=$((SECONDS + TIMEOUT)) slice="" actual=""
+  while (( SECONDS < deadline )); do
+    slice="$(latest_slice_dir 2>/dev/null || true)"
+    if [[ -n "${slice}" && -f "${slice}/manifest.json" ]]; then
+      actual="$(jq '[.artifacts[].rows] | add // 0' "${slice}/manifest.json")"
+      [[ "${actual}" -eq "${expected}" ]] && return 0
+    fi
+    sleep 1
+  done
+  dev_die "latest reputation-lists slice has ${actual:-no} rows, expected ${expected}"
+}
+
 start_runtime() { # history-retention
   local retention="$1"
   "${SCRIPT_DIR}/runtime.sh" \
@@ -204,6 +243,10 @@ start_runtime() { # history-retention
     --set ioc.lifecycle.receipt-retention=30m \
     --set "ioc.lifecycle.reconcile.backstop-interval=${BACKSTOP}" \
     --set "ioc.lifecycle.reconcile.batch-size=${BATCH_SIZE}" \
+    --set ioc.export.trigger.type=quiet-period \
+    --set "ioc.export.trigger.interval=${EXPORT_QUIET_PERIOD}" \
+    --set "ioc.export.trigger.quiet-period=${EXPORT_QUIET_PERIOD}" \
+    --set ioc.export.trigger.max-cap=1h \
     --set ioc.ingestion.detect.use-watch-service=false \
     --set ioc.ingestion.detect.reconcile-interval=1s \
     --set ioc.ingestion.stability.quiet-period=1s \
@@ -238,6 +281,10 @@ wait_for_done "initial.html"
 INGEST_COMPLETED_MS="$(now_ms)"
 INGEST_ELAPSED_MS=$((INGEST_COMPLETED_MS - INGEST_STARTED_MS))
 wait_for_health_up
+INITIAL_EXPORTED_ROWS="$(sql 'SELECT (SELECT COUNT(*) FROM masks)
+  + (SELECT COUNT(*) FROM ip_list) + (SELECT COUNT(*) FROM hashes);' | tail -1)"
+wait_for_latest_export_rows "${INITIAL_EXPORTED_ROWS}"
+SLICES_BEFORE_EXPIRY="$(completed_slice_count)"
 
 TOTAL_ACTIVE=0
 for artifact in "${ARTIFACTS[@]}"; do
@@ -328,6 +375,8 @@ sql 'SELECT artifact || "=" || revision FROM artifact_revision ORDER BY artifact
   > "${WORKSPACE}/revision-after-expiry.txt"
 cmp -s "${WORKSPACE}/revision-before-expiry.txt" "${WORKSPACE}/revision-after-expiry.txt" \
   || dev_die "expiry changed insert-driven artifact revision"
+[[ "$(completed_slice_count)" -eq "${SLICES_BEFORE_EXPIRY}" ]] \
+  || dev_die "expiry created an immutable export slice"
 
 for artifact in "${ARTIFACTS[@]}"; do
   [[ "$(sql "SELECT COUNT(*) FROM ${artifact}_history
@@ -388,6 +437,14 @@ for artifact in "${ID_ARTIFACTS[@]}"; do
   (( NEW_MIN_ID > FORMER_MAX_IDS["${artifact}"] )) \
     || dev_die "${artifact} reused a public ID after history deletion"
 done
+EXPECTED_EXPORTED_ROWS="$(sql 'SELECT (SELECT COUNT(*) FROM masks)
+  + (SELECT COUNT(*) FROM ip_list) + (SELECT COUNT(*) FROM hashes);' | tail -1)"
+wait_for_latest_export_rows "${EXPECTED_EXPORTED_ROWS}"
+wait_for_slice_count "$((SLICES_BEFORE_EXPIRY + 1))"
+LATEST_SLICE="$(latest_slice_dir)"
+ACTUAL_EXPORTED_ROWS="$(jq '[.artifacts[].rows] | add // 0' "${LATEST_SLICE}/manifest.json")"
+[[ "${ACTUAL_EXPORTED_ROWS}" -eq "${EXPECTED_EXPORTED_ROWS}" ]] \
+  || dev_die "new-row export contains ${ACTUAL_EXPORTED_ROWS} rows, expected ${EXPECTED_EXPORTED_ROWS} active rows"
 wait_for_health_up
 RSS_FINAL_KIB="$(high_water_rss_kib)"
 
@@ -426,7 +483,8 @@ OBSERVED_MAX_RSS_KIB="${RSS_AFTER_INGEST_KIB}"
   printf -- '- fixed TTL / deadline spread: `%s / %sms`\n' "${TTL}" "${DEADLINE_SPREAD_MS}"
   printf -- '- history retention phases: `%s`, then `%s`\n' \
     "${HISTORY_RETENTION}" "${PURGE_RETENTION}"
-  printf -- '- backstop / batch size: `%s / %s`\n\n' "${BACKSTOP}" "${BATCH_SIZE}"
+  printf -- '- backstop / batch size: `%s / %s`\n' "${BACKSTOP}" "${BATCH_SIZE}"
+  printf -- '- new-data export quiet period: `%s`\n\n' "${EXPORT_QUIET_PERIOD}"
   printf '## Measurements\n\n'
   printf -- '- ingest-to-done: `%sms`\n' "${INGEST_ELAPSED_MS}"
   printf -- '- expiry start latency from earliest deadline: `%sms`\n' "${EXPIRY_START_LATENCY_MS}"
@@ -446,6 +504,7 @@ OBSERVED_MAX_RSS_KIB="${RSS_AFTER_INGEST_KIB}"
     '- every active row moved to typed `EXPIRED` history with a source summary;' \
     '- mutable projections converged to header-only output;' \
     '- expiry left `artifact_revision` unchanged;' \
+    '- expiry created no immutable slice; later new rows exported exact active membership;' \
     '- short retention removed history and source summaries without changing active rows or allocators;' \
     '- a later accepted source allocated public IDs above every former ID.'
   printf '\n## Query plans\n\n```text\n'

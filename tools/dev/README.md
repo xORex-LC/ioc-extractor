@@ -19,7 +19,7 @@
 | `submit.sh … SOURCE` | Атомарно подать fixture/source в inbox developer daemon |
 | `database.sh … shell|schema|tables` | Read-only inspection service/dataframe SQLite |
 | `smoke.sh [cli|oneshot|daemon|all]` | Проверить public CLI, canonical storage/export и daemon ingest/health |
-| `lifecycle-smoke.sh …` | Через daemon проверить active→history expiry, bounded retention, projection convergence, query plans и ID non-reuse |
+| `lifecycle-smoke.sh …` | Через daemon проверить active→history expiry, bounded retention, projection/export convergence, query plans и ID non-reuse |
 | `logs.sh …` | Читать и фильтровать ECS JSON по level/event/run/diagnostic |
 | `release-notes-context.sh …` | Собрать read-only Git/PR inventory для ручной подготовки release notes |
 
@@ -78,7 +78,9 @@ Lifecycle smoke также использует только public daemon inges
 SQLite в read-only режиме для assertions/query plans, сохраняет report под
 `.dev/` и никогда не вставляет business rows напрямую. Для reference load
 профиля используйте `make lifecycle-load`; короткий `make lifecycle-smoke`
-проверяет тот же state transition на 1k input rows.
+проверяет тот же state transition на 1k input rows. Harness также закрепляет
+export contract: expiry не создаёт immutable slice, а последующие новые public
+rows создают slice с точным active membership.
 
 `lifecycle-load` закрепляет измеримый regression envelope, а не hardware-neutral
 benchmark: input fixture маршрутизируется как минимум в 100k canonical rows,

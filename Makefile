@@ -190,6 +190,7 @@ lifecycle-load: SIZE=66667
 lifecycle-load: package ## Run the 100k lifecycle reference profile; override SIZE/TTL/TIMEOUT via script
 	@args=(--size "$(SIZE)" --ttl 2m --timeout 1200 --port "$(LIFECYCLE_PORT)" \
 		--workspace .dev/lifecycle-load-$(SIZE) --min-canonical-rows 100000 \
+		--export-quiet-period 30s \
 		--max-deadline-spread-ms 30000 --min-expiry-rows-per-second 2500 \
 		--max-retention-seconds 180 --max-rss-kib 1048576); \
 		[[ -z "$(JAR)" ]] || args+=(--jar "$(JAR)"); \
