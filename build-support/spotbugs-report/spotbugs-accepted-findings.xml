@@ -454,7 +454,7 @@
     <finding id="DATA-TTL-P4-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="3667c485efe71ee5a7707d3d3165d84a" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P4-SQL-TRUST" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleStatusReader" />
         <method name="count" signature="(Ljava/sql/Connection;Ljava/lang/String;)J" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleStatusReader.java" startLine="143" bytecode="16" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleStatusReader.java" startLine="143" bytecode="11" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleStatusReader" />
@@ -465,7 +465,7 @@
     <finding id="DATA-TTL-P4-SB-004" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="3f234f976dd2af4018b8673e5660d867" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P4-SQL-TRUST" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleStatusReader" />
         <method name="countDue" signature="(Ljava/sql/Connection;Ljava/lang/String;J)J" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleStatusReader.java" startLine="114" bytecode="28" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleStatusReader.java" startLine="114" bytecode="22" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleStatusReader" />
@@ -476,7 +476,7 @@
     <finding id="DATA-TTL-P4-SB-005" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="2076e4ab086d9eab65942acb66a74503" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P4-SQL-TRUST" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleStatusReader" />
         <method name="minimum" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/Long;)Ljava/util/Optional;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleStatusReader.java" startLine="130" bytecode="54" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleStatusReader.java" startLine="130" bytecode="48" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleStatusReader" />
@@ -484,14 +484,80 @@
         </suppression>
         <rationale>Reviewed false positive: the artifact comes from the validated immutable schema catalog and identifiers are quoted; an optional due boundary is bound.</rationale>
     </finding>
-    <finding id="DATA-TTL-P4-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="ff994348437ec8f05945a1daa1411847" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P4-FAILURE-CONTRACT" review="lifecycle-failure-contract-change">
+    <finding id="DATA-TTL-P5-SB-001" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="b20bff5512a661790e6aeb8503aabcf8" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P5-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcConfirmationReceiptStore" />
+        <method name="loadRows" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/DataframeArtifactSchema;Lcom/iocextractor/application/artifact/lifecycle/ConfirmationReceiptId;)Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcConfirmationReceiptStore.java" startLine="223" bytecode="98" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcConfirmationReceiptStore" />
+            <Method name="loadRows" />
+        </suppression>
+        <rationale>Reviewed false positive: receipt table and projected columns come only from the validated immutable schema catalog and are quoted; receipt identity is bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P5-SB-002" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="f622435ff518b04bf0dfb531f23317f5" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P5-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleActivationStore" />
+        <method name="hasLegacyRowsAfter" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/Long;)Z" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleActivationStore.java" startLine="216" bytecode="43" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleActivationStore" />
+            <Method name="hasLegacyRowsAfter" />
+        </suppression>
+        <rationale>Reviewed false positive: activation scans only validated catalog-owned artifact tables and quotes every identifier; the resume cursor is bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P5-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="f509089d4473b0b23f40e1665795aaba" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P5-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleActivationStore" />
+        <method name="nextBatchSize" signature="(Lcom/iocextractor/adapter/out/store/jdbc/DataframeArtifactSchema;I)I" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleActivationStore.java" startLine="96" bytecode="52" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleActivationStore" />
+            <Method name="nextBatchSize" />
+        </suppression>
+        <rationale>Reviewed false positive: the bounded activation count targets a table selected from the validated immutable schema catalog; the batch bound is validated separately.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P5-SB-004" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="6b82c795b130aa66d4283c15054c6a81" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P5-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleActivationStore" />
+        <method name="selectLegacyRows" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/Long;I)Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleActivationStore.java" startLine="193" bytecode="75" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleActivationStore" />
+            <Method name="selectLegacyRows" />
+        </suppression>
+        <rationale>Reviewed false positive: the keyset activation query uses only validated and quoted catalog identifiers; cursor and batch values are bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P5-SB-005" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="4aa32e1cee7f5c18ef04f75a9f216c12" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P5-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleArchive" />
+        <method name="archiveLegacyAndDelete" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/DataframeArtifactSchema;JLcom/iocextractor/application/artifact/lifecycle/LifecycleId;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleArchive.java" startLine="79" bytecode="203" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleArchive" />
+            <Method name="archiveLegacyAndDelete" />
+        </suppression>
+        <rationale>Reviewed false positive: legacy archive tables and columns derive solely from the validated schema catalog and are quoted; lifecycle identity and activation time are bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P5-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="1f893dd6d628cf5ff5f8c6441d665d9f" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P5-FAILURE-CONTRACT" review="ingestion-cleanup-propagation-change">
         <class name="com.iocextractor.bootstrap.AppConfig" />
-        <method name="lambda$prepareLifecycleAdmissionUseCase$7" signature="(Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionService;Lcom/iocextractor/bootstrap/LifecycleRuntimeObserver;)Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionResult;" />
-        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="649" bytecode="19" />
+        <method name="lambda$extractIocsUseCase$3" signature="(Lcom/iocextractor/application/port/in/artifact/lifecycle/PrepareLifecycleAdmissionUseCase;Lcom/iocextractor/bootstrap/IocProperties;Lcom/iocextractor/application/port/in/ExtractIocsUseCase;Lcom/iocextractor/bootstrap/ProcessingPolicyIdentity;Ljava/util/List;Lcom/iocextractor/application/port/out/artifact/lifecycle/CanonicalObservationStore;Lcom/iocextractor/adapter/out/store/jdbc/JdbcLifecycleClock;Lcom/iocextractor/application/port/in/ExtractionCommand;)Lcom/iocextractor/application/port/in/ExtractionResult;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="406" bytecode="218" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.bootstrap.AppConfig" />
-            <Method name="lambda$prepareLifecycleAdmissionUseCase$7" />
+            <Method name="lambda$extractIocsUseCase$3" />
+        </suppression>
+        <rationale>Reviewed policy signal: stateful one-shot extraction marks the observation terminal on every outcome while preserving the exact primary runtime failure and attaching cleanup failure as suppressed.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P4-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="18582dcd25ecfcd4422f61c636c10ab6" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P4-FAILURE-CONTRACT" review="lifecycle-failure-contract-change">
+        <class name="com.iocextractor.bootstrap.AppConfig" />
+        <method name="lambda$prepareLifecycleAdmissionUseCase$6" signature="(Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionService;Lcom/iocextractor/bootstrap/LifecycleRuntimeObserver;)Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionResult;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="773" bytecode="19" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.bootstrap.AppConfig" />
+            <Method name="lambda$prepareLifecycleAdmissionUseCase$6" />
         </suppression>
         <rationale>Reviewed policy signal: bootstrap reports admission failure and deliberately rethrows the exact runtime failure so startup and command admission remain fail-closed.</rationale>
     </finding>
@@ -509,7 +575,7 @@
     <finding id="DATA-TTL-P4-SB-008" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="1209c16458804247a9f773bffe3aa10b" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P4-FAILURE-CONTRACT" review="lifecycle-failure-contract-change">
         <class name="com.iocextractor.application.artifact.lifecycle.LifecycleAdmissionService" />
         <method name="prepare" signature="()Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionResult;" />
-        <anchor sourcePath="com/iocextractor/application/artifact/lifecycle/LifecycleAdmissionService.java" startLine="69" bytecode="203" />
+        <anchor sourcePath="com/iocextractor/application/artifact/lifecycle/LifecycleAdmissionService.java" startLine="63" bytecode="163" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.application.artifact.lifecycle.LifecycleAdmissionService" />
@@ -861,7 +927,7 @@
     <finding id="FUP-SB-01" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="26ca8efc8ada84b88a4e9f1f98d7847d" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="FUP-SB-01" review="ingestion-cleanup-propagation-change">
         <class name="com.iocextractor.application.ingest.IngestionService" />
         <method name="ingestGuarded" signature="(Lcom/iocextractor/application/port/in/ingest/IngestSourceCommand;)Lcom/iocextractor/application/port/in/ingest/IngestSourceResult;" />
-        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="164" bytecode="178" />
+        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="186" bytecode="179" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.application.ingest.IngestionService" />
@@ -872,7 +938,7 @@
     <finding id="SB04-096" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="7a89ba4685786a19ea93a39df38a53f1" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B/HARDEN-01" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.application.ingest.IngestionService" />
         <method name="processClaimed" signature="(Lcom/iocextractor/application/ingest/SourceUnit;)Lcom/iocextractor/application/port/in/ingest/IngestSourceResult;" />
-        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="358" bytecode="256" />
+        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="436" bytecode="404" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.application.ingest.IngestionService" />
@@ -883,7 +949,7 @@
     <finding id="SB04-097" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="1073f127fb3e9ae67c97ccba01a43fa" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-D" review="recovery-diagnostic-contract-change">
         <class name="com.iocextractor.application.ingest.IngestionService" />
         <method name="recoverIncomplete" signature="()Ljava/util/List;" />
-        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="182" bytecode="101" />
+        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="204" bytecode="95" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.application.ingest.IngestionService" />
@@ -913,9 +979,9 @@
         </suppression>
         <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-B.</rationale>
     </finding>
-    <finding id="I4-SB-02" module="platform/platform-concurrency" type="VO_VOLATILE_INCREMENT" hash="98bdb7da1779ed395d6afafcc61a1efc" occurrence="0" priority="2" rank="14" category="MT_CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="I4/D-025" review="keyed-accounting-compute-change">
+    <finding id="I4-SB-02" module="platform/platform-concurrency" type="VO_VOLATILE_INCREMENT" hash="5845659a1c7ed4aec897e08be5c8be7b" occurrence="0" priority="2" rank="14" category="MT_CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="I4/D-025" review="keyed-accounting-compute-change">
         <class name="com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard" />
-        <method name="lambda$execute$0" signature="(Lcom/iocextractor/platform/concurrent/WorkKey;Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;)Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;" />
+        <method name="lambda$0" signature="(Lcom/iocextractor/platform/concurrent/WorkKey;Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;)Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;" />
         <anchor sourcePath="com/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard.java" startLine="22" bytecode="23" />
         <suppression>
             <Bug pattern="VO_VOLATILE_INCREMENT" />
@@ -924,9 +990,9 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under I4/D-025 in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="I4-SB-03" module="platform/platform-concurrency" type="VO_VOLATILE_INCREMENT" hash="5be9bd8ac3053df6cc1937618450c297" occurrence="0" priority="2" rank="14" category="MT_CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="I4/D-025" review="keyed-accounting-compute-change">
+    <finding id="I4-SB-03" module="platform/platform-concurrency" type="VO_VOLATILE_INCREMENT" hash="48f259f3ad4cd22ec8067afa01f08ca" occurrence="0" priority="2" rank="14" category="MT_CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="I4/D-025" review="keyed-accounting-compute-change">
         <class name="com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard" />
-        <method name="lambda$release$1" signature="(Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;Lcom/iocextractor/platform/concurrent/WorkKey;Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;)Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;" />
+        <method name="lambda$1" signature="(Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;Lcom/iocextractor/platform/concurrent/WorkKey;Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;)Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;" />
         <anchor sourcePath="com/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard.java" startLine="47" bytecode="22" />
         <suppression>
             <Bug pattern="VO_VOLATILE_INCREMENT" />
