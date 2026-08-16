@@ -44,14 +44,26 @@ runtime JDBC drivers.
   missing tables/columns are created, order changes are ignored, and
   drop/rename/type drift fails before mutation. Internal `_`-prefixed columns are
   excluded from config drift checks.
+- Dataframe format v4 and `LifecycleArtifactSchemaPlanner` install the dormant
+  canonical-record lifecycle foundation in the dataframe DB: nullable internal
+  lifecycle columns, typed history/source-summary and receipt-row tables,
+  deadline/retention indexes, activation/clock state, durable allocators,
+  observation markers and mutable-projection generations. Existing databases
+  remain `DISABLED_COMPATIBLE`; this slice does not change canonical reads,
+  writes, CSV/export membership or runtime scheduling.
+- `JdbcLifecycleControlStore` uses one-way CAS and refuses `ACTIVE` until one
+  set-based invariant scan proves that every configured active row has complete,
+  ordered lifecycle metadata. Lifecycle/public ID ranges are reserved by atomic
+  SQLite `UPDATE ... RETURNING`; allocator state survives active/history cleanup.
 - `JdbcCanonicalArtifactRepository` writes rows with canonical `row_key` and
   `ON CONFLICT(row_key) DO NOTHING`, preserving explicit legacy ids when present.
   It is a commit-only boundary: routing and row mapping finish before this adapter
   is called, so rejected fail-fast runs perform no storage write.
   It returns the actual inserted-row count and advances `artifact_revision` once
   per mutating write in the same transaction. `JdbcArtifactRevisionReader`
-  provides change detection without scanning business rows. `JdbcArtifactIdBaseline`
-  serves schema-aware `maxId` reads for application-side id generation.
+  provides change detection without scanning business rows. The compatibility
+  writer still uses `JdbcArtifactIdBaseline` until P3 replaces it with the dormant
+  durable public-ID allocator; v4 alone is not a runtime activation.
 - `JdbcRunLedger` stores durable per-file ingest checkpoints in `ingest_run`.
   Startup recovery treats `DB_COMMITTED` as recoverable by replaying the derived
   CSV projection from dataframe truth; failures before that checkpoint are marked

@@ -296,8 +296,11 @@ equivalent to:
 
 ```text
 canonical_lifecycle_control
-  singleton_id, state, mode, activated_at_ms,
+  singleton_id, version, state, activated_at_ms,
   safe_time_high_water_ms, clamp_started_at_ms, policy_fingerprint
+
+lifecycle_activation_progress
+  artifact, after_row_id, expired_count, completed, updated_at_ms
 
 lifecycle_id_allocator
   singleton_id, next_value, updated_at_ms
@@ -310,11 +313,12 @@ artifact_projection_state
   requested_at_ms, projected_at_ms, last_error_code
 
 canonical_observation
-  observation_id, source_key, state, started_at_ms, terminal_at_ms
+  observation_id, source_key, state, started_at_ms, terminal_at_ms,
+  purge_after_ms
 
 canonical_observation_commit
   observation_id, artifact, committed_at_ms, effective_as_of_ms,
-  inserted, renewed, restarted, projection_generation
+  inserted, renewed, restarted, artifact_revision, projection_generation
 
 lifecycle_reconcile_cycle
   cycle_id, cycle_as_of_ms, state, started_at_ms, completed_at_ms,
@@ -323,11 +327,15 @@ lifecycle_reconcile_cycle
 confirmation_receipt
   receipt_id, source_key, processing_policy_fingerprint,
   state, expected_artifacts, row_count, completed_at_ms, purge_after_ms
+
+confirmation_receipt_artifact
+  receipt_id, artifact, row_count, staged_at_ms
 ```
 
-Names are provisional, but the ownership and invariants are not. Every technical
-instant used in range predicates is stored as UTC epoch milliseconds. Application
-values remain `Instant`; conversion is isolated in the JDBC adapter.
+P2 fixes these physical names as dataframe format v4; their ownership and
+invariants remain independent of the storage spelling. Every technical instant
+used in range predicates is stored as UTC epoch milliseconds. Application values
+remain `Instant`; conversion is isolated in the JDBC adapter.
 
 Per-artifact commit markers belong to an observation header. Markers for a
 non-terminal observation are never age-reaped: an offline daemon may recover the
@@ -384,6 +392,9 @@ prepared business-row templates **without service-owned IDs**, plus receipt,
 ordinal, row key and provenance fields. Typed tables avoid opaque JSON, a new
 codec dependency and EAV row explosion. A receipt becomes readable only after
 all expected artifact templates are staged and its header is marked complete.
+The normalized `confirmation_receipt_artifact` marker represents every staged
+artifact, including a valid zero-row artifact; the receipt writer verifies marker
+count and row-count totals in the same transaction that publishes `COMPLETE`.
 
 ### 7.4 Stable ID allocation
 

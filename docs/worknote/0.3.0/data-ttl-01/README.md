@@ -27,8 +27,11 @@ language: "ru"
   2026-08-16; P0 закрыт;
 - P1 framework-free lifecycle model, ports, unit tests и reusable TCK
   реализованы и проверены;
-- SQLite migrations, pipeline integration и runtime activation ещё не
-  начинались; следующий slice — P2.
+- P2 additive SQLite foundation реализован в dataframe DB: format v4,
+  per-artifact lifecycle/history/receipt schema, durable allocators,
+  activation/projection CAS и integration/query-plan/concurrency tests;
+- foundation остаётся `DISABLED_COMPATIBLE`, не подключена к старому canonical
+  runtime path и не включает TTL; следующий slice — P3 atomic write/read path.
 
 ## Навигация
 
@@ -39,7 +42,7 @@ language: "ru"
 | [architecture-project.md](architecture-project.md) | Целевая component/data/transaction/event architecture, module/library decision и risk model |
 | [implementation-plan.md](implementation-plan.md) | Порядок P0–P6, границы slices, gates и verification plan |
 | [evidence.md](evidence.md) | Выполненные slices, изменённые boundaries и воспроизводимые проверки |
-| [ADR-0020](../../../ADR/0020-canonical-record-expiration-lifecycle.md) | Принятое архитектурное решение; storage/runtime slices ещё не реализованы |
+| [ADR-0020](../../../ADR/0020-canonical-record-expiration-lifecycle.md) | Принятое архитектурное решение; dormant storage foundation реализован, runtime activation ещё отсутствует |
 
 Будущее execution evidence добавляется только в этот bundle либо в явно
 указанный внешний release ledger. В общих `engineering-release.md` и

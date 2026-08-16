@@ -28,7 +28,7 @@ surface и итоговое evidence закрываются только P6.
 |---|---|---|---|
 | `P0` | Decision, scope contract и characterization | none | `complete` |
 | `P1` | Framework-free application contracts and TCK | none | `complete` |
-| `P2` | Additive durable SQLite foundation | disabled behavior only | `planned` |
+| `P2` | Additive durable SQLite foundation | disabled behavior only | `complete` |
 | `P3` | Atomic lifecycle-aware write/read path | production preset unchanged | `planned` |
 | `P4` | Expiry, recovery, scheduling and health | production preset unchanged | `planned` |
 | `P5` | Duplicate receipt and explicit upgrade activation UX | opt-in existing installs only | `planned` |
@@ -111,6 +111,10 @@ observable-compatible while mode is `disabled`.
 - lifecycle/history schema remains inside JDBC adapter and preserves configured
   public column order/types;
 - no active row is exposed to enabled state with partial lifecycle metadata.
+
+**Status:** completed on 2026-08-16. The foundation remains dormant and the
+existing canonical runtime path is unchanged. Evidence is recorded in
+[evidence.md](evidence.md#p2--durable-storage-foundation).
 
 ## P3 — lifecycle-aware canonical transaction and reads
 

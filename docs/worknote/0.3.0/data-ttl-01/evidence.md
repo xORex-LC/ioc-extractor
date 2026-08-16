@@ -69,3 +69,78 @@ make verify
 
 Reusable TCK компилируется в `ioc-application-tck`; его JDBC subclass и real
 SQLite execution становятся обязательным evidence P2/P3.
+
+## P2 — durable storage foundation
+
+**Статус:** complete, capability dormant.
+
+В dataframe format v4 добавлены artifact-independent lifecycle structures:
+
+- one-way `canonical_lifecycle_control` с optimistic version, clock high-water
+  полями и resumable activation progress;
+- global lifecycle и per-artifact public-ID allocators, независимые от очистки
+  active/history rows;
+- required/projected generation state, durable observation commits,
+  reconciliation cycles и normalized receipt headers/artifact markers;
+- retention/status indexes и database constraints для допустимых state shapes.
+
+`DataframeSchemaReconciler` additively создаёт для каждого configured artifact
+nullable lifecycle metadata, unique lifecycle identity, deadline index, typed
+ordered history/source-summary mirrors и typed receipt rows без service-owned
+`id`. Новые configured business columns распространяются на active, history и
+receipt schema; incompatible type/index drift отклоняется до mutation.
+
+JDBC foundation реализует:
+
+- one-way activation CAS с SQLite write ownership и set-based invariant scan
+  всех configured active tables перед публикацией `ACTIVE`;
+- atomic `UPDATE ... RETURNING` reservations для global lifecycle и независимых
+  public ID spaces; reservations выполняются отдельной committed transaction и
+  не возвращаются после rollback вызывающей canonical transaction;
+- direction/identity-epoch validation и upgrade seed по active **и** history;
+- projection acknowledgement CAS по observed required generation.
+
+Receipt marker schema намеренно нормализована: отдельная marker row существует
+и для artifact с нулём prepared rows. Проверка marker count/row totals и
+публикация `COMPLETE` одной transaction принадлежат P3 writer rules; P2 не
+создаёт второй, преждевременный runtime path.
+
+### Compatibility and boundaries
+
+- upgrade fixture без lifecycle metadata сохраняет business rows и открывается
+  как `DISABLED_COMPATIBLE`; lifecycle columns остаются `NULL`;
+- legacy `JdbcCanonicalArtifactRepository`, canonical reads, mutable CSV,
+  immutable export, pipeline, bootstrap configuration и service DB не изменены;
+- новые JDBC classes не зарегистрированы Spring beans, поэтому schema v4 сама
+  по себе не активирует TTL;
+- canonical lifecycle TCK subclass остаётся за P3: P2 ещё не реализует
+  lifecycle-aware `CanonicalArtifactWriter`/read behavior, которое этот TCK
+  обязан проверять;
+- новый Maven module, scheduler, event type или external library не добавлены.
+
+### Verification
+
+```text
+./mvnw -B -ntp -pl adapters/adapter-store-jdbc -am \
+  -Dtest=DataframeSchemaReconcilerTest,JdbcLifecycleStorageFoundationTest \
+  -Dsurefire.failIfNoSpecifiedTests=false test
+  BUILD SUCCESS
+  adapter focused: 25 tests, 0 failures, 0 errors
+
+./mvnw -B -ntp -pl adapters/adapter-store-jdbc -am test
+  BUILD SUCCESS
+  adapter full: 97 tests, 0 failures, 0 errors
+
+make verify
+  BUILD SUCCESS
+  full reactor: 25 projects, 25 SUCCESS
+  ioc-adapter-store-jdbc: 97 tests, 0 failures, 0 errors
+  ioc-app: 239 tests, 0 failures, 0 errors
+  aggregate SpotBugs baseline: 65 accepted, 0 visible
+```
+
+Real SQLite evidence покрывает v3→v4 upgrade, disabled compatibility,
+fresh/additive schema, public-column propagation, index drift, activation
+invariants и concurrent CAS, ascending/descending allocator restart,
+concurrent range uniqueness, outer rollback non-reuse, projection CAS,
+state/FK constraints и `EXPLAIN QUERY PLAN` для deadline/retention paths.

@@ -9,9 +9,10 @@ stable identity, schema evolution и транзакционные checkpoints. �
 ```text
 ioc-dataframe.db                    ioc-service.db
 business rows                      ingestion / ingest_run
-<artifact>_sources                 artifact identity
-artifact_revision                  export run/progress
-                                   remote fetch/publish ledgers
+<artifact>_sources                 export run/progress
+artifact identity/revision         remote fetch/publish ledgers
+lifecycle/history/receipts
+ID allocators/projection work
 ```
 
 `dataframe` — источник истины для IOC-артефактов. `*_generated.csv` является
@@ -51,9 +52,11 @@ prepared rows
 4. **Schema reconciliation только additive.** Missing table/column можно
    создать; drop, rename, reorder-sensitive type drift и конфликт внутренних
    колонок должны завершить startup failure до частичной мутации.
-5. **ID-space независим по artifact.** `id.start:auto` использует schema-aware
-   `max(id)+1`; reservation thread-safe, unique и monotonic по стратегии, но не
-   gapless. Failed commit не возвращает диапазон.
+5. **ID-space независим по artifact.** Compatibility writer пока использует
+   schema-aware `max(id)+1`. Dataframe format v4 уже хранит dormant durable
+   per-artifact allocator и global lifecycle allocator; P3 сделает их
+   canonical authority. Atomic reservations monotonic по стратегии, не gapless
+   и не возвращаются после failed commit либо удаления active/history rows.
 6. **Revision отражает изменение public content.** Duplicate-only observation
    не двигает `artifact_revision` и не продлевает export quiet period.
 7. **Service и dataframe lifecycle раздельны.** Unrelated lightweight CLI
@@ -70,6 +73,29 @@ ordered column definitions и declared storage types. Internal columns имею�
 Health проверяет открытие, schema version, необходимые PRAGMA и integrity
 probe. Health сообщает состояние storage, но не заменяет transactional
 guarantees и recovery ledgers.
+
+### Dormant lifecycle foundation (dataframe v4)
+
+V4 размещает все lifecycle facts рядом с business rows именно в dataframe DB,
+не в service DB. Статическая migration создаёт one-way activation/clock state,
+resumable activation progress, durable ID allocators, projection generations,
+observation/reconcile markers и normalized complete-receipt headers. Для каждого
+configured artifact reconciler additively создаёт:
+
+- nullable internal `_lifecycle_id`, first/last-confirmed epoch-ms и
+  `_valid_until_epoch_ms` в active table;
+- unique lifecycle identity и range index
+  `(_valid_until_epoch_ms, _lifecycle_id)`;
+- typed ordered `<artifact>_history` и compact
+  `<artifact>_history_sources` с retention index;
+- typed `<artifact>_receipt_rows` без service-owned public ID.
+
+Upgrade сохраняет существующие rows и оставляет lifecycle columns `NULL` в
+состоянии `DISABLED_COMPATIBLE`. Старые writer/read/projection/export paths пока
+не фильтруют эти поля, поэтому v4 сама по себе не включает TTL. Переход в
+`ACTIVE` защищён одной transactional CAS и set-based проверкой: legacy либо
+partial metadata не допускаются. Runtime write/read activation принадлежит P3,
+а expiry/scheduling/health — следующим slices ADR-0020.
 
 ## Отказы и восстановление
 
@@ -118,3 +144,5 @@ SQL helper или pool implementation detail сюда переносить не 
 - [artifact-export.md](artifact-export.md) — consistent read snapshot.
 - [ADR-0015](../ADR/0015-retire-legacy-csv-lookup-storage.md) — отказ от legacy
   CSV storage/lookup mode.
+- [ADR-0020](../ADR/0020-canonical-record-expiration-lifecycle.md) — lifecycle
+  semantics, history, identity and activation boundaries.
