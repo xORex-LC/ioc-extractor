@@ -22,9 +22,9 @@ systemd unit on a disposable host.
 
 | Field | Value |
 |---|---|
-| Source commit | `8f99eb69f30e54e72aaa3bce75cac78fceebd961` |
+| Source commit | `b5bdd1a10802b9f5b7158d2e39ed9d34c2d98537` |
 | Worktree at run start | clean |
-| JAR SHA-256 | `625aa231268c8abe6b0974ed0a9ba83c9c42688978c2f3155b529ebac06ce0ee` |
+| JAR SHA-256 | `84c5a76957c8cf5ee1d0f615fe5155162718d8c41631ab085430e9a7e8fbc299` |
 | Host | Linux `6.6.87.2-microsoft-standard-WSL2`, x86_64 |
 | Runtime | OpenJDK `21.0.11` |
 | SQLite | `3.45.1` |
@@ -48,17 +48,17 @@ because network indicators also populate `address_blacklist`.
 | Metric | Measured | Guardrail | Result |
 |---|---:|---:|---|
 | Canonical active rows | 100001 | at least 100000 | pass |
-| Deadline spread | 5365 ms | at most 30000 ms | pass |
-| Expiry start after earliest deadline | 885 ms | at most 5000 ms | pass |
-| Drain after latest deadline | 5628 ms | measured | pass |
-| Archive/drain throughput | 9893.25 rows/s | at least 2500 rows/s | pass |
-| History-retention restart-to-drain | 40597 ms | at most 180000 ms | pass |
-| Maximum observed JVM high-water | 582088 KiB | at most 1048576 KiB | pass |
+| Deadline spread | 5306 ms | at most 30000 ms | pass |
+| Expiry start after earliest deadline | 1001 ms | at most 5000 ms | pass |
+| Drain after latest deadline | 4799 ms | measured | pass |
+| Archive/drain throughput | 10984.29 rows/s | at least 2500 rows/s | pass |
+| History-retention restart-to-drain | 40602 ms | at most 180000 ms | pass |
+| Maximum observed JVM high-water | 571144 KiB | at most 1048576 KiB | pass |
 | Reconcile cycles containing expired rows | 4 | eventual drain | pass |
 | Minimum bounded expiry transactions | 103 | bounded batches | pass |
 
 The 2500 rows/s regression floor is deliberately conservative: it is about
-25% of this qualifying run and below the slower diagnostic calibration observed
+23% of this qualifying run and below the slower diagnostic calibration observed
 while the harness was being aligned with the packaged JVM. It catches a major
 algorithmic or query-plan regression without presenting one WSL2 run as a
 production capacity promise. The 180-second retention limit is likewise a

@@ -451,15 +451,15 @@ header-only mutable projections, unchanged insert-driven revisions, aggregate
 health, absence of an expiry-triggered immutable slice, exact active membership
 in the next new-row slice и public-ID non-reuse после нового подтверждения.
 `make lifecycle-load`
-на clean commit `8f99eb69f30e54e72aaa3bce75cac78fceebd961` провёл `100001`
+на clean commit `b5bdd1a10802b9f5b7158d2e39ed9d34c2d98537` провёл `100001`
 canonical rows и дал:
 
-- expiry start latency `885ms` при contract limit `5s`;
-- deadline spread `5365ms`, drain after latest deadline `5628ms`;
-- measured archive/drain throughput `9893.25 rows/s` при regression floor
+- expiry start latency `1001ms` при contract limit `5s`;
+- deadline spread `5306ms`, drain after latest deadline `4799ms`;
+- measured archive/drain throughput `10984.29 rows/s` при regression floor
   `2500 rows/s`;
-- history retention drain `40597ms` при guardrail `180s`;
-- JVM high-water `582088 KiB` при guardrail `1048576 KiB`;
+- history retention drain `40602ms` при guardrail `180s`;
+- JVM high-water `571144 KiB` при guardrail `1048576 KiB`;
 - `103` minimum bounded expiry transactions и covering-index plans для всех
   expiry/retention paths.
 
@@ -479,8 +479,11 @@ make lifecycle-load
 tools/ci/packaging.sh
   ShellCheck + packaging contracts + tools contracts: passed
 
+Focused lifecycle/JDBC/config/ingest/export tests
+  55 tests, 0 failures, 0 errors
+
 make docs
-  629 links, 0 errors
+  641 links, 0 errors
 ```
 
 ### Remaining release gate

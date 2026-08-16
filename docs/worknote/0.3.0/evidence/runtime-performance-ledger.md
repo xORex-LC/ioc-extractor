@@ -262,17 +262,17 @@ measurement получает явный disposition.
 ## DATA-TTL-01 P6 lifecycle profile
 
 Targeted lifecycle evidence дополняет, но не заменяет BASE-RUNTIME-07. На clean
-commit `8f99eb69f30e54e72aaa3bce75cac78fceebd961` команда
+commit `b5bdd1a10802b9f5b7158d2e39ed9d34c2d98537` команда
 `make lifecycle-load` провела `100001` canonical artifact rows через daemon
 ingestion, expiry, typed history и retention purge с launcher-equivalent JVM
 flags `-Xms128m -Xmx512m -XX:+ExitOnOutOfMemoryError`.
 
 | Metric | Result | Regression guard |
 |---|---:|---:|
-| expiry start after earliest deadline | `885 ms` | `≤ 5000 ms` |
-| archive/drain throughput | `9893.25 rows/s` | `≥ 2500 rows/s` |
-| history retention drain | `40597 ms` | `≤ 180000 ms` |
-| maximum JVM high-water | `582088 KiB` | `≤ 1048576 KiB` |
+| expiry start after earliest deadline | `1001 ms` | `≤ 5000 ms` |
+| archive/drain throughput | `10984.29 rows/s` | `≥ 2500 rows/s` |
+| history retention drain | `40602 ms` | `≤ 180000 ms` |
+| maximum JVM high-water | `571144 KiB` | `≤ 1048576 KiB` |
 
 Все четыре artifact expiry и retention paths использовали covering indexes;
 minimum bounded expiry transaction count составил `103`. Floor `2500 rows/s`
