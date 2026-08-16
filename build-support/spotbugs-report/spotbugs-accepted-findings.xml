@@ -178,7 +178,7 @@
     <finding id="SB04-001" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="ea7a806f5e37f11838a6bea1bf7172" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-A" review="sql-identifier-grammar-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler" />
         <method name="apply" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/DataframeSchemaPlan;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/DataframeSchemaReconciler.java" startLine="220" bytecode="69" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/DataframeSchemaReconciler.java" startLine="220" bytecode="70" />
         <suppression>
             <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler" />
@@ -189,7 +189,7 @@
     <finding id="SB04-002" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="9f2432cdb91df89209e35871fee4337a" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-A" review="sql-identifier-grammar-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler" />
         <method name="columns" signature="(Ljava/sql/Connection;Ljava/lang/String;)Ljava/util/Map;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/DataframeSchemaReconciler.java" startLine="242" bytecode="34" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/DataframeSchemaReconciler.java" startLine="242" bytecode="28" />
         <suppression>
             <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler" />
@@ -197,12 +197,12 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-SQL-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-003" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="860e2d254168fa78d62286f2c40d2eba" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-B" review="sql-schema-map-binding-change">
+    <finding id="SB04-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="e274df3d1b166b5eb71b898c80fec79f" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-B/DATA-TTL-01-P3" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
-        <method name="load" signature="(Ljava/lang/String;)Lcom/iocextractor/application/artifact/CanonicalArtifact;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalArtifactRepository.java" startLine="55" bytecode="59" />
+        <method name="load" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/util/List;)Lcom/iocextractor/application/artifact/CanonicalArtifact;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalArtifactRepository.java" startLine="75" bytecode="105" />
         <suppression>
-            <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" />
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
             <Method name="load" />
         </suppression>
@@ -233,7 +233,7 @@
     <finding id="SB04-008" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="c1634a6606e4b8ffcd844dc5cadd39a" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-B" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
         <method name="insertRow" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/DataframeArtifactSchema;Lcom/iocextractor/application/artifact/ArtifactRow;)Z" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalArtifactRepository.java" startLine="130" bytecode="299" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalArtifactRepository.java" startLine="175" bytecode="303" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
@@ -244,7 +244,7 @@
     <finding id="SB04-009" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="a8ebdedecdc1b07861e6b1a9e6d51a39" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-B" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
         <method name="rowId" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Long;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalArtifactRepository.java" startLine="192" bytecode="27" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalArtifactRepository.java" startLine="237" bytecode="28" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
@@ -263,10 +263,10 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-SQL-B in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-011" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="77d1f87f81c0fa25955364263c9f2245" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-F" review="export-query-shape-contract-change">
+    <finding id="SB04-011" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="11e1e653998564a613a582da7d2779ee" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-F/DATA-TTL-01-P3" review="export-query-shape-contract-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader" />
-        <method name="readCoverage" signature="(Ljava/sql/Connection;Ljava/lang/String;)Lcom/iocextractor/application/export/ArtifactCoverage;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcSnapshotSliceReader.java" startLine="164" bytecode="21" />
+        <method name="readCoverage" signature="(Ljava/sql/Connection;Ljava/lang/String;Lcom/iocextractor/application/artifact/lifecycle/LifecycleActivationState;Ljava/time/Instant;)Lcom/iocextractor/application/export/ArtifactCoverage;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcSnapshotSliceReader.java" startLine="178" bytecode="55" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader" />
@@ -274,10 +274,10 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-SQL-F in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-012" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="1f92ddc320c2bdead783e609b79d14e8" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-F" review="export-query-shape-contract-change">
+    <finding id="SB04-012" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="97bcc541d1036fa9ae42e247030812e8" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="R030-BUILD" evidence="C1-SQL-F/DATA-TTL-01-P3" review="export-query-shape-contract-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader" />
-        <method name="streamRows" signature="(Ljava/sql/Connection;Lcom/iocextractor/application/export/SnapshotArtifactMetadata;Lcom/iocextractor/application/port/out/export/SnapshotRowConsumer;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcSnapshotSliceReader.java" startLine="202" bytecode="63" />
+        <method name="streamRows" signature="(Ljava/sql/Connection;Lcom/iocextractor/application/export/SnapshotArtifactMetadata;Lcom/iocextractor/application/artifact/lifecycle/LifecycleActivationState;Ljava/time/Instant;Lcom/iocextractor/application/port/out/export/SnapshotRowConsumer;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcSnapshotSliceReader.java" startLine="224" bytecode="88" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader" />
@@ -285,10 +285,153 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-SQL-F in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-117" module="adapters/adapter-store-jdbc" type="VA_FORMAT_STRING_USES_NEWLINE" hash="e5faaaaecb31abb88cbaaffef4e60c2a" occurrence="0" priority="2" rank="20" category="BAD_PRACTICE" disposition="false-positive" owner="R030-BUILD" evidence="C2-MIX-G" review="sql-newline-output-boundary-change">
+    <finding id="DATA-TTL-P3-SB-001" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="9998cdad3dab4afa72d77d162ed3894f" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcActiveArtifactReader" />
+        <method name="readRecords" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/DataframeArtifactSchema;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;)Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcActiveArtifactReader.java" startLine="91" bytecode="102" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcActiveArtifactReader" />
+            <Method name="readRecords" />
+        </suppression>
+        <rationale>Reviewed false positive: the artifact and projected columns come from the validated immutable schema catalog, every identifier is grammar-checked and quoted, and the effective time is bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P3-SB-002" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="7febf3fc2c747f35dda358a26f4e8a7e" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalLifecycleWriter" />
+        <method name="findStored" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/DataframeArtifactSchema;Ljava/lang/String;)Ljava/util/Optional;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalLifecycleWriter.java" startLine="299" bytecode="60" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalLifecycleWriter" />
+            <Method name="findStored" />
+        </suppression>
+        <rationale>Reviewed false positive: the table comes from the validated immutable schema catalog, identifiers are grammar-checked and quoted, and row identity is bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P3-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="717d57eb53ceaa422bddf7026929f0c4" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalLifecycleWriter" />
+        <method name="insertActive" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/DataframeArtifactSchema;Ljava/lang/String;Lcom/iocextractor/application/artifact/lifecycle/CanonicalRecordConfirmation;Ljava/lang/Long;Lcom/iocextractor/application/artifact/lifecycle/LifecycleId;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;Lcom/iocextractor/application/artifact/lifecycle/ValidityDecision;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalLifecycleWriter.java" startLine="369" bytecode="347" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalLifecycleWriter" />
+            <Method name="insertActive" />
+        </suppression>
+        <rationale>Reviewed false positive: table and columns are validated schema members and quoted; all canonical row and lifecycle values are bound parameters.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P3-SB-004" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="477e779a47ff4164de05f45498f54294" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalLifecycleWriter" />
+        <method name="renewActive" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/DataframeArtifactSchema;Ljava/lang/String;Lcom/iocextractor/adapter/out/store/jdbc/JdbcCanonicalLifecycleWriter$StoredLifecycle;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;Lcom/iocextractor/application/artifact/lifecycle/ValidityDecision;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalLifecycleWriter.java" startLine="387" bytecode="46" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalLifecycleWriter" />
+            <Method name="renewActive" />
+        </suppression>
+        <rationale>Reviewed false positive: the table is schema-catalog owned and quoted; deadline, lifecycle identity and effective time remain bound parameters.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P3-SB-005" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="bea9814f76e4f6000dbf1cdeed6cf5f5" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalLifecycleWriter" />
+        <method name="requireRowId" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;)J" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalLifecycleWriter.java" startLine="501" bytecode="25" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalLifecycleWriter" />
+            <Method name="requireRowId" />
+        </suppression>
+        <rationale>Reviewed false positive: the table name originates in the validated schema catalog and is quoted; row_key is bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P3-SB-006" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="7808d4ebb1d726f5315ee8a2ee8660b6" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalLifecycleWriter" />
+        <method name="upsertSource" signature="(Ljava/sql/Connection;Ljava/lang/String;JLjava/lang/String;Ljava/lang/String;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalLifecycleWriter.java" startLine="409" bytecode="84" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalLifecycleWriter" />
+            <Method name="upsertSource" />
+        </suppression>
+        <rationale>Reviewed false positive: the provenance table suffix is applied to a validated artifact identifier and revalidated on quoting; provenance values are bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P3-SB-007" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="a1a94d296f48c65198ca4c896b9c6d92" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcConfirmationReceiptWriter" />
+        <method name="countTypedRows" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;)J" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcConfirmationReceiptWriter.java" startLine="201" bytecode="22" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcConfirmationReceiptWriter" />
+            <Method name="countTypedRows" />
+        </suppression>
+        <rationale>Reviewed false positive: only known schema-catalog artifacts select typed receipt tables, the derived identifier is revalidated and quoted, and receipt identity is bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P3-SB-008" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="c2ffcd405353e20d77290b3fc2701761" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcConfirmationReceiptWriter" />
+        <method name="stageRowsAndMarker" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/DataframeArtifactSchema;Lcom/iocextractor/application/artifact/lifecycle/CanonicalArtifactConfirmation;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcConfirmationReceiptWriter.java" startLine="48" bytecode="111" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcConfirmationReceiptWriter" />
+            <Method name="stageRowsAndMarker" />
+        </suppression>
+        <rationale>Reviewed false positive: typed receipt tables and columns derive from the validated schema catalog and are quoted; all receipt content is bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P3-SB-009" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="f206db689dff545e80c90ca15a9051e6" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExpiredArtifactStore" />
+        <method name="hasDueRows" signature="(Ljava/sql/Connection;Ljava/lang/String;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;)Z" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExpiredArtifactStore.java" startLine="156" bytecode="21" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExpiredArtifactStore" />
+            <Method name="hasDueRows" />
+        </suppression>
+        <rationale>Reviewed false positive: artifact lookup is restricted to the validated schema catalog and quoted; the expiry boundary is bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P3-SB-010" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="b07f4ebce5e268f4ae767cb98ec7f792" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExpiredArtifactStore" />
+        <method name="nearestDeadline" signature="(Ljava/sql/Connection;Ljava/lang/String;)Ljava/util/Optional;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExpiredArtifactStore.java" startLine="122" bytecode="17" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExpiredArtifactStore" />
+            <Method name="nearestDeadline" />
+        </suppression>
+        <rationale>Reviewed false positive: the lifecycle deadline query iterates only validated schema-catalog artifact names and quotes the table and metadata column.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P3-SB-011" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="21dd192547e2a697ec00af2bac397239" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExpiredArtifactStore" />
+        <method name="selectDueRows" signature="(Ljava/sql/Connection;Ljava/lang/String;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;I)Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExpiredArtifactStore.java" startLine="140" bytecode="41" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExpiredArtifactStore" />
+            <Method name="selectDueRows" />
+        </suppression>
+        <rationale>Reviewed false positive: table and lifecycle columns are catalog-owned, validated and quoted; deadline and batch limit are bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P3-SB-012" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="99b2c03ae3b6d9b19de8df6da198b41f" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleArchive" />
+        <method name="archiveAndDelete" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/DataframeArtifactSchema;JLcom/iocextractor/application/artifact/lifecycle/EffectiveTime;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleArchive.java" startLine="36" bytecode="177" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleArchive" />
+            <Method name="archiveAndDelete" />
+        </suppression>
+        <rationale>Reviewed false positive: archive tables and projected columns derive solely from the validated schema catalog and are quoted; closure metadata and row identity are bound.</rationale>
+    </finding>
+    <finding id="DATA-TTL-P3-SB-013" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="71ffc5230d1d72f148546d24762dbca4" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleArchive" />
+        <method name="copyHistorySources" signature="(Ljava/sql/Connection;Ljava/lang/String;JJ)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcLifecycleArchive.java" startLine="63" bytecode="68" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleArchive" />
+            <Method name="copyHistorySources" />
+        </suppression>
+        <rationale>Reviewed false positive: history provenance table suffixes are applied to a validated artifact and revalidated on quoting; source and history row identities are bound.</rationale>
+    </finding>
+    <finding id="SB04-117" module="adapters/adapter-store-jdbc" type="VA_FORMAT_STRING_USES_NEWLINE" hash="ee711a38a17a6f9028777973df6aa83e" occurrence="0" priority="2" rank="20" category="BAD_PRACTICE" disposition="false-positive" owner="R030-BUILD" evidence="C2-MIX-G/DATA-TTL-01-P3" review="sql-newline-output-boundary-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader" />
-        <method name="readCoverage" signature="(Ljava/sql/Connection;Ljava/lang/String;)Lcom/iocextractor/application/export/ArtifactCoverage;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcSnapshotSliceReader.java" startLine="163" bytecode="15" />
+        <method name="readCoverage" signature="(Ljava/sql/Connection;Ljava/lang/String;Lcom/iocextractor/application/artifact/lifecycle/LifecycleActivationState;Ljava/time/Instant;)Lcom/iocextractor/application/export/ArtifactCoverage;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcSnapshotSliceReader.java" startLine="177" bytecode="47" />
         <suppression>
             <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader" />

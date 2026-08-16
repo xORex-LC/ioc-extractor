@@ -3,6 +3,7 @@ package com.iocextractor.adapter.out.store.jdbc;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
+import com.iocextractor.application.artifact.lifecycle.LifecycleActivationState;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.common.IocExtractorException;
@@ -12,7 +13,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -48,22 +48,52 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
     public CanonicalArtifact load(String artifactName) {
         DataframeArtifactSchema schema = schema(artifactName);
         List<String> header = header(schema);
-        String sql = "SELECT " + joinedQuoted(header) + " FROM " + quote(artifactName) + " ORDER BY "
-                + quote("id");
-        try (Connection connection = dataSource.getConnection();
-             Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery(sql)) {
-            List<ArtifactRow> rows = new ArrayList<>();
-            while (resultSet.next()) {
-                Map<String, String> values = new LinkedHashMap<>();
-                for (String column : header) {
-                    values.put(column, resultSet.getString(column));
-                }
-                rows.add(ArtifactRow.ordered(values));
-            }
-            return new CanonicalArtifact(artifactName, header, rows);
+        try (Connection connection = dataSource.getConnection()) {
+            return load(connection, artifactName, header);
         } catch (SQLException e) {
             throw new IocExtractorException("Failed to load JDBC artifact: " + artifactName, e);
+        }
+    }
+
+    private CanonicalArtifact load(Connection connection,
+                                   String artifactName,
+                                   List<String> header) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        Exception failure = null;
+        try {
+            LifecycleActivationState state = JdbcLifecycleTransactions.readActivationState(connection);
+            if (state == LifecycleActivationState.ACTIVATING) {
+                throw new IocExtractorException("Canonical lifecycle activation is incomplete");
+            }
+            String activePredicate = state == LifecycleActivationState.ACTIVE
+                    ? " WHERE " + quote("_valid_until_epoch_ms") + " > ?"
+                    : "";
+            String sql = "SELECT " + joinedQuoted(header) + " FROM " + quote(artifactName)
+                    + activePredicate + " ORDER BY " + quote("id");
+            List<ArtifactRow> rows = new ArrayList<>();
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                if (state == LifecycleActivationState.ACTIVE) {
+                    statement.setLong(1, clock.millis());
+                }
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        Map<String, String> values = new LinkedHashMap<>();
+                        for (String column : header) {
+                            values.put(column, resultSet.getString(column));
+                        }
+                        rows.add(ArtifactRow.ordered(values));
+                    }
+                }
+            }
+            connection.commit();
+            return new CanonicalArtifact(artifactName, header, rows);
+        } catch (SQLException | RuntimeException e) {
+            failure = e;
+            JdbcLifecycleTransactions.rollback(connection, e);
+            throw e;
+        } finally {
+            JdbcLifecycleTransactions.restoreAutoCommit(connection, previousAutoCommit, failure);
         }
     }
 
@@ -74,6 +104,7 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             try {
+                acquireCompatibilityWriteOwnership(connection);
                 int inserted = 0;
                 for (ArtifactRow row : artifact.rows()) {
                     if (insertRow(connection, schema, row)) {
@@ -93,6 +124,20 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
             }
         } catch (SQLException e) {
             throw new IocExtractorException("Failed to write JDBC artifact: " + artifactName, e);
+        }
+    }
+
+    private void acquireCompatibilityWriteOwnership(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                UPDATE canonical_lifecycle_control
+                SET version = version
+                WHERE singleton_id = 1
+                  AND state = 'DISABLED_COMPATIBLE'
+                """)) {
+            if (statement.executeUpdate() != 1) {
+                throw new IocExtractorException(
+                        "Legacy canonical writer is disabled after lifecycle activation starts");
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.artifact.ArtifactRow;
+import com.iocextractor.application.artifact.lifecycle.LifecycleActivationState;
 import com.iocextractor.application.export.ArtifactCoverage;
 import com.iocextractor.application.export.ExportArtifactSpec;
 import com.iocextractor.application.export.ExportPlan;
@@ -92,13 +93,18 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
         connection.setAutoCommit(false);
         Exception failure = null;
         try {
-            List<SnapshotArtifactMetadata> artifacts = readMetadata(connection, plan);
+            LifecycleActivationState lifecycleState = JdbcLifecycleTransactions.readActivationState(connection);
+            if (lifecycleState == LifecycleActivationState.ACTIVATING) {
+                throw new SQLException("Canonical lifecycle activation is incomplete");
+            }
+            Instant asOf = clock.instant();
+            List<SnapshotArtifactMetadata> artifacts = readMetadata(connection, plan, lifecycleState, asOf);
             SnapshotMetadata metadata = new SnapshotMetadata(
-                    plan.profile().name(), plan.planHash(), clock.instant(), artifacts);
+                    plan.profile().name(), plan.planHash(), asOf, artifacts);
             consumer.begin(metadata);
             for (SnapshotArtifactMetadata artifact : artifacts) {
                 consumer.beginArtifact(artifact);
-                streamRows(connection, artifact, consumer);
+                streamRows(connection, artifact, lifecycleState, asOf, consumer);
                 consumer.endArtifact();
             }
             consumer.end();
@@ -115,7 +121,9 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
 
     /** Reads all coverage before callbacks so the first SELECT fixes the SQLite WAL snapshot. */
     private List<SnapshotArtifactMetadata> readMetadata(Connection connection,
-                                                        ExportPlan plan) throws SQLException {
+                                                        ExportPlan plan,
+                                                        LifecycleActivationState lifecycleState,
+                                                        Instant asOf) throws SQLException {
         List<SnapshotArtifactMetadata> metadata = new ArrayList<>(plan.artifacts().size());
         for (ExportArtifactSpec artifact : plan.artifacts()) {
             StoredIdentity identity = readIdentity(connection, artifact.artifactName());
@@ -128,7 +136,7 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                     artifact.artifactName(),
                     artifact.fileName(),
                     artifact.columns(),
-                    readCoverage(connection, artifact.artifactName()),
+                    readCoverage(connection, artifact.artifactName(), lifecycleState, asOf),
                     identity.epoch(),
                     identity.hash(),
                     artifact.schemaHash()));
@@ -153,16 +161,26 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
         }
     }
 
-    private ArtifactCoverage readCoverage(Connection connection, String artifactName) throws SQLException {
+    private ArtifactCoverage readCoverage(Connection connection,
+                                          String artifactName,
+                                          LifecycleActivationState lifecycleState,
+                                          Instant asOf) throws SQLException {
+        String activePredicate = lifecycleState == LifecycleActivationState.ACTIVE
+                ? " WHERE " + quote("_valid_until_epoch_ms") + " > ?"
+                : "";
         String sql = """
                 SELECT COALESCE(r.revision, 0) AS revision,
                        r.changed_at,
-                       (SELECT COALESCE(MAX(id), 0) FROM %s) AS upper_id
+                       (SELECT COALESCE(MAX(id), 0) FROM %s%s) AS upper_id
                 FROM (SELECT 1) seed
                 LEFT JOIN artifact_revision r ON r.artifact = ?
-                """.formatted(quote(artifactName));
+                """.formatted(quote(artifactName), activePredicate);
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, artifactName);
+            int parameter = 1;
+            if (lifecycleState == LifecycleActivationState.ACTIVE) {
+                statement.setLong(parameter++, asOf.toEpochMilli());
+            }
+            statement.setString(parameter, artifactName);
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     throw new SQLException("Coverage query returned no row for " + artifactName);
@@ -193,20 +211,28 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
 
     private void streamRows(Connection connection,
                             SnapshotArtifactMetadata artifact,
+                            LifecycleActivationState lifecycleState,
+                            Instant asOf,
                             SnapshotRowConsumer consumer) throws SQLException {
         String columns = artifact.columns().stream()
                 .map(this::quote)
                 .collect(Collectors.joining(", "));
         String sql = "SELECT " + columns + " FROM " + quote(artifact.artifactName())
+                + (lifecycleState == LifecycleActivationState.ACTIVE
+                ? " WHERE " + quote("_valid_until_epoch_ms") + " > ?" : "")
                 + " ORDER BY " + quote("id");
-        try (PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet resultSet = statement.executeQuery()) {
-            while (resultSet.next()) {
-                Map<String, String> values = new LinkedHashMap<>();
-                for (String column : artifact.columns()) {
-                    values.put(column, resultSet.getString(column));
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            if (lifecycleState == LifecycleActivationState.ACTIVE) {
+                statement.setLong(1, asOf.toEpochMilli());
+            }
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    Map<String, String> values = new LinkedHashMap<>();
+                    for (String column : artifact.columns()) {
+                        values.put(column, resultSet.getString(column));
+                    }
+                    consumer.row(ArtifactRow.ordered(values));
                 }
-                consumer.row(ArtifactRow.ordered(values));
             }
         }
     }

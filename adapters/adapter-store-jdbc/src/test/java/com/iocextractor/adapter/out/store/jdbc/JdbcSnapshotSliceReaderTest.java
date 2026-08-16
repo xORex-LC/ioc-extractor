@@ -4,6 +4,7 @@ import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
+import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.export.ExportArtifactSpec;
 import com.iocextractor.application.export.ExportFormat;
 import com.iocextractor.application.export.ExportMode;
@@ -190,6 +191,58 @@ class JdbcSnapshotSliceReaderTest {
         assertThat(diagnostics.diagnostics())
                 .extracting(diagnostic -> diagnostic.code())
                 .containsExactly(ExportDiagnosticCodes.SNAPSHOT_READ_FAILED);
+    }
+
+    @Test
+    void active_snapshot_uses_one_as_of_for_rows_and_coverage_across_artifacts() throws Exception {
+        Fixture fixture = fixture();
+        fixture.write("masks",
+                row("id", "1", "mask", "active.example"),
+                row("id", "2", "mask", "due.example"));
+        fixture.write("hashes", row("id", "3", "hash", "AAAA"));
+        lifecycle("masks", 1, 1, NOW.plusSeconds(1));
+        lifecycle("masks", 2, 2, NOW);
+        lifecycle("hashes", 3, 3, NOW.plusSeconds(1));
+        var control = new JdbcLifecycleControlStore(dataSource, fixture.schemas());
+        var activating = control.load().beginActivation("fixed-test-v1");
+        assertThat(control.compareAndSet(control.load(), activating)).isTrue();
+
+        assertThatThrownBy(() -> fixture.reader().stream(
+                new SnapshotRequest(fixture.plan()), new NoopConsumer()))
+                .isInstanceOf(DiagnosticException.class)
+                .hasMessageContaining(ExportDiagnosticCodes.SNAPSHOT_READ_FAILED.id())
+                .hasRootCauseMessage("Canonical lifecycle activation is incomplete");
+
+        assertThat(control.compareAndSet(
+                activating, activating.completeActivation(EffectiveTime.at(NOW)))).isTrue();
+        RecordingConsumer consumer = new RecordingConsumer();
+
+        SnapshotMetadata result = fixture.reader().stream(new SnapshotRequest(fixture.plan()), consumer);
+
+        assertThat(result.capturedAt()).isEqualTo(NOW);
+        assertThat(consumer.rowsByArtifact.get("masks")).containsExactly("1");
+        assertThat(consumer.rowsByArtifact.get("hashes")).containsExactly("3");
+        assertThat(result.artifacts())
+                .extracting(metadata -> metadata.coverage().upperId())
+                .containsExactly(1L, 3L);
+        assertThat(result.artifacts())
+                .extracting(metadata -> metadata.coverage().revision())
+                .containsExactly(1L, 1L);
+    }
+
+    private void lifecycle(String artifact, long rowId, long lifecycleId, Instant validUntil)
+            throws Exception {
+        try (var connection = dataSource.getConnection();
+             var statement = connection.prepareStatement("UPDATE " + artifact + " SET "
+                     + "_lifecycle_id = ?, _first_confirmed_at_epoch_ms = ?, "
+                     + "_last_confirmed_at_epoch_ms = ?, _valid_until_epoch_ms = ? WHERE id = ?")) {
+            statement.setLong(1, lifecycleId);
+            statement.setLong(2, NOW.minusSeconds(1).toEpochMilli());
+            statement.setLong(3, NOW.minusSeconds(1).toEpochMilli());
+            statement.setLong(4, validUntil.toEpochMilli());
+            statement.setLong(5, rowId);
+            statement.executeUpdate();
+        }
     }
 
     private Fixture fixture() {
