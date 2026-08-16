@@ -233,11 +233,11 @@ ioc:
       path: "./var/ledger"
     concurrency: 1             # required in 0.3.0; parallel ingestion is not supported
 
-  # Upgrade-compatible P5 preset. P6 changes only the fresh-install template;
-  # existing installations must use the documented two-step cutover.
+  # Fresh-install preset. Upgrade preserves the existing operator-owned YAML
+  # and requires the documented two-step cutover before fixed validity starts.
   lifecycle:
     validity:
-      mode: disabled
+      mode: fixed
       fixed-ttl: 12h
       existing-records: reject
     history-retention: 30d

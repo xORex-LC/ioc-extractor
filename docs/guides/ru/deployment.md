@@ -56,6 +56,12 @@ Installer создаёт account `ioc`, устанавливает pinned Temuri
 размещает immutable release, launcher и systemd unit, затем требует `UP` от local
 storage health components.
 
+Fresh production configuration включает canonical record validity с TTL `12h`.
+Перед изменением policy прочитайте
+[гайд по lifecycle canonical-записей](canonical-record-lifecycle.md). При
+upgrade этот fresh preset не объединяется с существующей operator configuration
+автоматически.
+
 Для offline host перенесите доверенный Temurin 21 tarball:
 
 ```bash
@@ -208,6 +214,11 @@ sudo packaging/install.sh \
 installer создаёт `application.yml.new` или `ioc-extractor.env.new`. Сравните
 файлы, перенесите новые supported properties, сохранив site-specific paths,
 policies и secrets, и удалите `.new` после успешной проверки.
+
+При upgrade на TTL-capable binary оставьте lifecycle mode disabled для первого
+compatibility startup. Последующий cutover на fixed validity destructive для
+legacy active membership и выполняется по отдельной
+[процедуре canonical lifecycle](canonical-record-lifecycle.md#обновление-существующей-установки).
 
 ```bash
 sudo diff -u /opt/ioc-extractor/etc/application.yml \

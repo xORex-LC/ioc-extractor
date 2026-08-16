@@ -26,6 +26,12 @@ assert_accepted_prefix() {
     || fail "prefix normalization changed an already canonical path"
 }
 
+assert_contains() { # file literal description
+  local file="$1" literal="$2" description="$3"
+  grep -Fq -- "${literal}" "${file}" \
+    || fail "${description}: missing '${literal}' in ${file}"
+}
+
 TEMP_ROOT="$(mktemp -d)"
 mkdir -p "${PACKAGING_DIR}/target"
 LINK_TEST_ROOT="$(mktemp -d "${PACKAGING_DIR}/target/packaging-contract.XXXXXX")"
@@ -56,6 +62,33 @@ assert_rejected_prefix "${LINK_TEST_ROOT}/linked/ioc-extractor"
 SAFE_PREFIX="${TEMP_ROOT}/ioc-extractor"
 mkdir -p "${SAFE_PREFIX}/etc"
 ioc_write_marker "${SAFE_PREFIX}" "ioc-extractor" "ioc-test"
+
+FRESH_CONFIG="${PACKAGING_DIR}/templates/application.yml"
+CLASSPATH_CONFIG="${PACKAGING_DIR}/../bootstrap/ioc-app/src/main/resources/application.yml"
+FRESH_LIFECYCLE="$(sed -n '/^  lifecycle:/,/^  maintenance:/p' "${FRESH_CONFIG}")"
+CLASSPATH_LIFECYCLE="$(sed -n '/^  lifecycle:/,/^  maintenance:/p' "${CLASSPATH_CONFIG}")"
+grep -Fq 'mode: fixed' <<< "${FRESH_LIFECYCLE}" \
+  || fail "fresh-install lifecycle preset is not fixed"
+grep -Fq 'fixed-ttl: 12h' <<< "${FRESH_LIFECYCLE}" \
+  || fail "fresh-install lifecycle preset is not fixed at 12h"
+grep -Fq 'existing-records: reject' <<< "${FRESH_LIFECYCLE}" \
+  || fail "fresh-install lifecycle preset can destructively expire unexpected rows"
+grep -Fq 'history-retention: 30d' <<< "${FRESH_LIFECYCLE}" \
+  || fail "fresh-install history retention is not 30d"
+grep -Fq 'receipt-retention: 30d' <<< "${FRESH_LIFECYCLE}" \
+  || fail "fresh-install receipt retention is not 30d"
+grep -Fq 'mode: disabled' <<< "${CLASSPATH_LIFECYCLE}" \
+  || fail "upgrade-compatible classpath lifecycle default is not disabled"
+
+# Existing configuration is operator-owned: both privileged deployment paths
+# must stage a changed template as .new rather than overwrite it implicitly.
+# shellcheck disable=SC2016 # deployment-script variables are matched literally
+assert_contains "${PACKAGING_DIR}/install.sh" 'install -m 0640 "${src}" "${dst}.new"' \
+  "installer lost upgrade configuration preservation"
+# shellcheck disable=SC2016 # deployment-script variables are matched literally
+assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
+  'install -o root -g "${RUN_GROUP}" -m 0640 "${template}" "${installed}.new"' \
+  "local deployment lost upgrade configuration preservation"
 ioc_is_valid_marker "${SAFE_PREFIX}" "ioc-extractor" "ioc-test" \
   || fail "new installation marker did not validate"
 if ioc_is_valid_marker "${SAFE_PREFIX}" "ioc-extractor" "another-user"; then

@@ -57,6 +57,11 @@ SHA-256 before staged extraction, deploys an immutable release, installs the
 launcher and systemd unit, then requires all local storage health components to
 become `UP`.
 
+The fresh production configuration enables canonical record validity at `12h`.
+Review the [canonical record lifecycle guide](canonical-record-lifecycle.md)
+before changing that policy. This fresh preset is not silently merged into an
+existing operator configuration during upgrade.
+
 For an offline host, transfer a trusted Temurin 21 tarball with the application:
 
 ```bash
@@ -210,6 +215,11 @@ changed it writes `application.yml.new` or `ioc-extractor.env.new` beside it.
 Compare the files; merge new supported properties into the operator copy; keep
 site-specific paths, policies and secrets; then remove the `.new` file after
 successful validation.
+
+For a TTL-capable upgrade, keep lifecycle mode disabled for the first
+compatibility start. The later fixed-validity cutover is destructive to legacy
+active membership and follows the separate
+[canonical lifecycle procedure](canonical-record-lifecycle.md#upgrade-an-existing-installation).
 
 ```bash
 sudo diff -u /opt/ioc-extractor/etc/application.yml \

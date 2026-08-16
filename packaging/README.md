@@ -35,6 +35,7 @@ best effort and must be validated by the operator.
 - [Deployment, upgrade and rollback](../docs/guides/deployment.md)
 - [Complete configuration reference](../docs/guides/configuration.md)
 - [Daemon operations](../docs/guides/daemon-operations.md)
+- [Canonical record lifecycle](../docs/guides/canonical-record-lifecycle.md)
 - [Remote storage synchronization](../docs/guides/remote-storage-sync.md)
 
 The guides are canonical procedures. This README documents only the scripts,
@@ -196,7 +197,10 @@ packaged defaults < external YAML < environment < system properties < CLI
 
 Unknown `ioc.*` keys from any channel fail startup. The full template deliberately
 shows every supported section and complete list element shapes. Remote sync stays
-disabled and secrets remain environment placeholders.
+disabled and secrets remain environment placeholders. For a clean prefix the
+template enables canonical fixed validity at `12h`, with `30d` history and
+receipt retention; `existing-records: reject` prevents an unexpected destructive
+activation if the supposedly fresh dataframe DB is not empty.
 
 On upgrade, a changed packaged template is written beside the existing file as
 `application.yml.new` or `ioc-extractor.env.new`; it is never silently merged.
