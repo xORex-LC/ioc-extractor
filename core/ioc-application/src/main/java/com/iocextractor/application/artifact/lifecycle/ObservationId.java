@@ -19,4 +19,13 @@ public record ObservationId(String value) {
             throw new IllegalArgumentException("Observation id must not be blank");
         }
     }
+
+    /**
+     * Returns the deterministic compatibility identity used by pre-P5 callers
+     * that only have a content key. New deliveries must use a generated id.
+     */
+    public static ObservationId legacy(String sourceKey) {
+        Objects.requireNonNull(sourceKey, "sourceKey");
+        return new ObservationId("legacy:" + sourceKey);
+    }
 }

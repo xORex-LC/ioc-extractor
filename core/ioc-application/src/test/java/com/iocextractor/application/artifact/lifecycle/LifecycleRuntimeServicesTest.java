@@ -4,7 +4,9 @@ import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
 import com.iocextractor.application.port.out.artifact.lifecycle.ArtifactProjectionWorkStore;
+import com.iocextractor.application.port.out.artifact.lifecycle.ConfirmationReceiptStore;
 import com.iocextractor.application.port.out.artifact.lifecycle.ExpiredArtifactStore;
+import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleActivationStore;
 import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleControlStore;
 import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleReconciliationStore;
 import com.iocextractor.platform.events.ControlEvent;
@@ -16,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -113,15 +116,14 @@ class LifecycleRuntimeServicesTest {
         LifecycleControlStore control = new FixedControlStore(active);
         AtomicBoolean reconciled = new AtomicBoolean();
         AtomicBoolean projected = new AtomicBoolean();
+        AtomicInteger activationChecks = new AtomicInteger();
         CanonicalDataAdmissionState admission = new CanonicalDataAdmissionState();
         AtomicBoolean callback = new AtomicBoolean();
         admission.whenAdmitted(() -> callback.set(true));
         var service = new LifecycleAdmissionService(
                 control,
                 () -> AS_OF,
-                () -> {
-                    throw new AssertionError("active state must not resume activation");
-                },
+                activationChecks::incrementAndGet,
                 () -> {
                     reconciled.set(true);
                     return new LifecycleReconciliationResult(
@@ -140,6 +142,7 @@ class LifecycleRuntimeServicesTest {
         assertThat(result.expired()).isEqualTo(2);
         assertThat(result.projectionsConverged()).isOne();
         assertThat(projected).isTrue();
+        assertThat(activationChecks).hasValue(1);
         assertThat(callback).isTrue();
         assertThat(admission.snapshot().phase()).isEqualTo(CanonicalDataAdmissionState.Phase.ADMITTED);
         assertThat(service.prepare()).isSameAs(result);
@@ -194,7 +197,7 @@ class LifecycleRuntimeServicesTest {
         LifecycleAdmissionResult result = service.prepare();
 
         assertThat(result.activationState()).isEqualTo(LifecycleActivationState.DISABLED_COMPATIBLE);
-        assertThat(activeCalls).hasValue(0);
+        assertThat(activeCalls).hasValue(1);
         assertThat(admission.snapshot().phase()).isEqualTo(CanonicalDataAdmissionState.Phase.ADMITTED);
     }
 
@@ -225,6 +228,139 @@ class LifecycleRuntimeServicesTest {
                     throw new IllegalStateException("event adapter unavailable");
                 });
         assertThat(resilient.confirm(null)).isEqualTo(inserted);
+    }
+
+    @Test
+    void activation_is_one_way_and_resumes_after_projection_failure() {
+        MutableControlStore control = new MutableControlStore(LifecycleControlState.disabledCompatible());
+        AtomicInteger batches = new AtomicInteger();
+        LifecycleActivationStore activation = new LifecycleActivationStore() {
+            @Override
+            public boolean hasLegacyRecords() {
+                return true;
+            }
+
+            @Override
+            public LifecycleActivationBatchResult expireLegacyBatch(
+                    String artifactName, EffectiveTime activationAsOf, int batchSize) {
+                assertThat(artifactName).isEqualTo("masks");
+                assertThat(activationAsOf).isEqualTo(AS_OF);
+                assertThat(batchSize).isEqualTo(2);
+                return batches.getAndIncrement() == 0
+                        ? new LifecycleActivationBatchResult("masks", 2, true)
+                        : new LifecycleActivationBatchResult("masks", 1, false);
+            }
+        };
+        AtomicInteger projections = new AtomicInteger();
+        var service = new LifecycleActivationService(
+                List.of("masks"), control, activation,
+                () -> {
+                    if (projections.getAndIncrement() == 0) {
+                        throw new IllegalStateException("projection unavailable");
+                    }
+                    return new ArtifactProjectionConvergenceResult(1, 0, List.of("masks"));
+                },
+                () -> AS_OF,
+                new LifecycleActivationPolicy(
+                        true, "record-validity:fixed:v1", ExistingRecordsActivationPolicy.EXPIRE),
+                2);
+
+        assertThatThrownBy(service::resume)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("projection unavailable");
+        assertThat(control.load().activationState()).isEqualTo(LifecycleActivationState.ACTIVATING);
+
+        service.resume();
+
+        assertThat(control.load().activationState()).isEqualTo(LifecycleActivationState.ACTIVE);
+        assertThat(batches).hasValue(3);
+        assertThatThrownBy(() -> new LifecycleActivationService(
+                List.of("masks"), control, activation,
+                () -> new ArtifactProjectionConvergenceResult(0, 0, List.of()),
+                () -> AS_OF,
+                LifecycleActivationPolicy.disabled(),
+                2).resume())
+                .isInstanceOf(LifecyclePolicyMismatchException.class)
+                .hasMessageContaining("cannot be disabled");
+    }
+
+    @Test
+    void activation_requires_the_explicit_legacy_expiry_policy() {
+        var service = new LifecycleActivationService(
+                List.of("masks"),
+                new MutableControlStore(LifecycleControlState.disabledCompatible()),
+                new LifecycleActivationStore() {
+                    @Override
+                    public boolean hasLegacyRecords() {
+                        return true;
+                    }
+
+                    @Override
+                    public LifecycleActivationBatchResult expireLegacyBatch(
+                            String artifactName, EffectiveTime activationAsOf, int batchSize) {
+                        throw new AssertionError("activation must stop before mutation");
+                    }
+                },
+                () -> new ArtifactProjectionConvergenceResult(0, 0, List.of()),
+                () -> AS_OF,
+                new LifecycleActivationPolicy(
+                        true, "record-validity:fixed:v1", ExistingRecordsActivationPolicy.REJECT),
+                10);
+
+        assertThatThrownBy(service::resume)
+                .isInstanceOf(LifecyclePolicyMismatchException.class)
+                .hasMessageContaining("existing-records=expire");
+    }
+
+    @Test
+    void complete_current_policy_receipt_replays_with_a_new_observation() {
+        var priorReceipt = new ConfirmationReceiptSnapshot(
+                new ConfirmationReceiptId("receipt-prior"),
+                "source-a",
+                "policy-a",
+                List.of(new ConfirmationReceiptArtifact("masks", List.of("mask"), List.of())));
+        ConfirmationReceiptStore receipts = new ConfirmationReceiptStore() {
+            @Override
+            public Optional<ConfirmationReceiptSnapshot> findComplete(
+                    String sourceKey, String processingPolicyFingerprint, EffectiveTime asOf) {
+                assertThat(sourceKey).isEqualTo("source-a");
+                assertThat(processingPolicyFingerprint).isEqualTo("policy-a");
+                assertThat(asOf).isEqualTo(AS_OF);
+                return Optional.of(priorReceipt);
+            }
+
+            @Override
+            public PurgeResult purgeExpired(EffectiveTime asOf, int batchSize) {
+                throw new UnsupportedOperationException();
+            }
+        };
+        List<CanonicalArtifactConfirmation> confirmations = new ArrayList<>();
+        ObservationId currentObservation = new ObservationId("observation-current");
+        var result = new ConfirmationReceiptReplayService(
+                receipts,
+                confirmation -> {
+                    confirmations.add(confirmation);
+                    return new LifecycleWriteResult(
+                            currentObservation, confirmation.artifactName(), AS_OF,
+                            0, 0, 0, 7, new ProjectionGeneration(0), false);
+                },
+                () -> AS_OF).replay(new ConfirmationReceiptReplayCommand(
+                        new LifecycleWriteContext(
+                                currentObservation,
+                                "source-a",
+                                new ConfirmationReceiptContext(
+                                        new ConfirmationReceiptId("receipt-current"),
+                                        "policy-a",
+                                        1,
+                                        java.time.Duration.ofDays(30)))));
+
+        assertThat(result).isPresent();
+        assertThat(result.orElseThrow().insertedPerArtifact()).isEqualTo(Map.of("masks", 0));
+        assertThat(confirmations).singleElement().satisfies(confirmation -> {
+            assertThat(confirmation.observationId()).isEqualTo(currentObservation);
+            assertThat(confirmation.receipt().id().value()).isEqualTo("receipt-current");
+            assertThat(confirmation.records()).isEmpty();
+        });
     }
 
     private ExpiryBatchResult batch(String artifact, int expired, boolean more, long generation) {
@@ -284,6 +420,29 @@ class LifecycleRuntimeServicesTest {
         @Override
         public boolean compareAndSet(LifecycleControlState expected, LifecycleControlState update) {
             throw new UnsupportedOperationException();
+        }
+    }
+
+    private static final class MutableControlStore implements LifecycleControlStore {
+
+        private LifecycleControlState state;
+
+        private MutableControlStore(LifecycleControlState state) {
+            this.state = state;
+        }
+
+        @Override
+        public LifecycleControlState load() {
+            return state;
+        }
+
+        @Override
+        public boolean compareAndSet(LifecycleControlState expected, LifecycleControlState update) {
+            if (!state.equals(expected)) {
+                return false;
+            }
+            state = update;
+            return true;
         }
     }
 }

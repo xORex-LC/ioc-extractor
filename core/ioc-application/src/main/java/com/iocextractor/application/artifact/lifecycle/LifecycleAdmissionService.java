@@ -45,14 +45,8 @@ public final class LifecycleAdmissionService implements PrepareLifecycleAdmissio
         admissionState.preparing();
         try {
             EffectiveTime effectiveTime = timeSource.now();
+            activationRecovery.resume();
             LifecycleControlState lifecycle = control.load();
-            if (lifecycle.activationState() == LifecycleActivationState.ACTIVATING) {
-                activationRecovery.resume();
-                lifecycle = control.load();
-                if (lifecycle.activationState() != LifecycleActivationState.ACTIVE) {
-                    throw new IllegalStateException("Lifecycle activation recovery did not reach ACTIVE");
-                }
-            }
 
             int expired = 0;
             int projected = 0;

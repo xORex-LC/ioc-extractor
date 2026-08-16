@@ -14,6 +14,9 @@ public final class PipelineMetaAttributes {
     /** Observability mode value, such as {@code oneshot} or {@code daemon}. */
     public static final String MODE = "ioc.mode";
 
+    /** Optional {@code LifecycleWriteContext} used by the canonical write stage. */
+    public static final String LIFECYCLE_WRITE_CONTEXT = "ioc.lifecycle.write_context";
+
     private PipelineMetaAttributes() {
     }
 }
