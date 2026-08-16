@@ -327,3 +327,101 @@ projection convergence и bootstrap observer обязаны сохранить �
 Полный 100k same-deadline profile и packaged activation evidence остаются P6 и
 P5 соответственно; P4 не выдаёт synthetic unit load за measured release
 benchmark.
+
+## P5 — duplicate receipt and explicit upgrade activation
+
+**Статус:** complete, opt-in upgrade path implemented; production presets stay
+disabled until P6.
+
+Content identity больше не является identity попытки обработки. Новая delivery
+получает отдельный durable `ObservationId`, а `sourceKey` остаётся стабильным
+content identity. Повторное исполнение одной observation идемпотентно, но
+идентичный документ, доставленный позднее, создаёт новую observation и снова
+подтверждает актуальные записи. Service DB migration v8 переносит прежние
+ingestion rows в observation-keyed ledger без потери recovery state; старый
+`sourceKey` больше не блокирует новую доставку того же content.
+
+Complete confirmation receipt хранит prepared business snapshot по artifact,
+source identity и processing-policy fingerprint. Для новой observation с тем же
+content и текущим fingerprint `IngestionService` воспроизводит canonical
+confirmation из receipt без parse/refang/classify, но проходит тот же atomic
+writer и projection/run-ledger lifecycle. Missing, incomplete, expired или
+policy-stale receipt автоматически возвращает обработку в обычный ETL. Receipt
+и terminal observation markers имеют независимый bounded retention, default
+`30d`; TTL duration намеренно не входит в processing fingerprint, поэтому её
+prospective изменение не инвалидирует бизнес snapshot.
+
+Upgrade activation реализована отдельным application service и JDBC port:
+
+- `disabled` допустим только в `DISABLED_COMPATIBLE`; после начала activation
+  обратный переход запрещён;
+- `fixed` требует strictly-positive TTL, совпадение persisted policy
+  fingerprint и явный `existing-records: expire` для legacy rows;
+- activation CAS-ом переходит в `ACTIVATING`, keyset batches переносит legacy
+  business snapshot и compact provenance в history, удаляет active rows и
+  фиксирует activation-cycle/projection work без изменения insert-driven
+  `artifact_revision`;
+- restart продолжает сохранённый artifact/cursor, а `ACTIVE` публикуется только
+  после полного удаления legacy rows и convergence всех required mutable
+  projections. Пустой active dataset является корректным результатом;
+- archive не проигрывается автоматически. Возврат актуальности происходит
+  только через новое подтверждение и создаёт новую lifecycle/public identity.
+
+Configuration boundary использует закрытые selectors
+`ioc.lifecycle.validity.mode=disabled|fixed` и
+`existing-records=reject|expire`; неизвестные значения и non-positive fixed TTL
+отклоняются до runtime composition. Добавлен стабильный
+`LIFECYCLE.POLICY_MISMATCH`. Один common admission применяется к daemon intake,
+stateful one-shot extraction и export. File archive names теперь включают
+observation identity и сохраняют распознавание legacy names, поэтому две
+одинаковые доставки не конфликтуют физически.
+
+Operator contract закрепляет двухшаговый upgrade: сначала совместимый запуск в
+`disabled` и backup точной конфигурации вместе с dataframe/service SQLite, затем
+явный `fixed + expire` cutover. Rollback после начала activation возможен только
+восстановлением этой согласованной тройки; переключение обратно в `disabled` не
+является rollback.
+
+### Verification
+
+```text
+Focused application/JDBC/ingest/bootstrap tests
+  receipt replay and ETL fallback
+  observation migration/recovery and identical-content redelivery
+  interrupt/resume activation, history/provenance, empty-active result
+  projection-before-ACTIVE and one-way policy enforcement
+  strict lifecycle configuration and processing fingerprint
+  daemon archive identity compatibility
+  passed
+
+make spotbugs-baseline-proposal
+  BUILD SUCCESS
+  accepted/observed: 93, new: 0, stale: 0
+
+make verify
+  BUILD SUCCESS (02:10 wall clock)
+  full reactor: 25 projects, 25 SUCCESS
+  ioc-application: 197 tests, 0 failures, 0 errors
+  ioc-adapter-store-jdbc: 122 tests, 0 failures, 0 errors
+  ioc-adapter-ingest: 46 tests, 0 failures, 0 errors
+  ioc-app: 250 tests, 0 failures, 0 errors
+  aggregate SpotBugs baseline: 93 accepted, 0 visible
+
+git diff --check
+  passed
+
+make docs
+  608 links, 0 errors
+```
+
+SpotBugs первоначально выявил два действительных `DLS_DEAD_LOCAL_STORE`; оба
+исправлены удалением перезаписываемого lifecycle read и корректной
+definite-assignment локальной переменной. Пять новых SQL identities приняты
+только как точечные `P5-SQL-TRUST` false positives: имена таблиц/колонок идут из
+immutable validated schema catalog и quote/revalidate-ятся, а runtime values
+bind-ятся. Один `THROWS_*` identity принят как `P5-FAILURE-CONTRACT`: stateful
+one-shot обязан сохранить первичную runtime ошибку, пометив observation terminal
+и добавив cleanup failure как suppressed. Широких suppressions нет.
+
+Fresh-install `fixed/12h`, packaging smoke, 100k same-deadline performance
+profile и финальная release документация остаются P6.

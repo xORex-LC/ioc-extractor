@@ -242,14 +242,19 @@ baseline for SQLite and deterministic file handling.
 
 ## Canonical lifecycle runtime safety
 
-These P4 controls bound cleanup, convergence and system-clock rollback. They do
-not enable fixed TTL: the shipped preset remains `DISABLED_COMPATIBLE` until the
-separate P5 activation workflow. Do not use zero as a cleanup command; all
-durations and the batch size below must be positive.
+These controls select record validity, bound cleanup and convergence, and guard
+against system-clock rollback. The classpath and upgrade presets remain
+`disabled`; switching an existing database to `fixed` is a one-way operation.
+Do not use zero as a cleanup command: durations and the batch size below must be
+positive.
 
 | Property | Type / accepted values | Built-in default | Guidance |
 |---|---|---|---|
+| `ioc.lifecycle.validity.mode` | `disabled`, `fixed` | `disabled` | `disabled` preserves compatibility before activation. `fixed` enables durable validity and cannot later be disabled for the same database. |
+| `ioc.lifecycle.validity.fixed-ttl` | positive duration | `12h` | Validity granted by each successful canonical confirmation. It is required and positive in `fixed` mode; `0` is rejected. |
+| `ioc.lifecycle.validity.existing-records` | `reject`, `expire` | `reject` | Keep `reject` for the compatibility start. Explicitly select `expire` only for the activation restart; it archives and removes every legacy row and may leave all active projections empty. |
 | `ioc.lifecycle.history-retention` | positive duration | `30d` | Retention of closed full-row lifecycle history; cleanup is independent and bounded. |
+| `ioc.lifecycle.receipt-retention` | positive duration | `30d` | Retention of complete prepared-row confirmation receipts. Missing, stale or policy-mismatched receipts cause ordinary ETL, never rejection. |
 | `ioc.lifecycle.reconcile.backstop-interval` | positive duration | `5s` | Correctness backstop for lost deadline/projection hints and restart. Keep at or below `5s` for the V1 expiry-latency contract. |
 | `ioc.lifecycle.reconcile.batch-size` | positive integer | `1000` | Maximum rows in one expiry or history-retention transaction; smaller values reduce writer hold time but require more cycles. |
 | `ioc.lifecycle.clock.max-backward-skew` | positive duration | `2s` | Maximum system UTC rollback that may be clamped to the durable high-water and reported `DEGRADED`. |

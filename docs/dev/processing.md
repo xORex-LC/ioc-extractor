@@ -48,11 +48,16 @@ Tika, RE2/J, Guava PSL и Commons CSV изолированы адаптерам�
    отказ provider/transform становится `SINK.ROW_MAPPING_FAILED`; неожиданный
    exception остаётся run failure. Rejected run не резервирует id и не пишет
    canonical rows.
-8. **Post-commit projection advisory.** Успешный canonical commit необратим для
+8. **Persistence выбирается явным command context.** До activation pipeline
+   использует compatibility repository. В `fixed` mode driving boundary
+   передаёт `LifecycleWriteContext`; `WriteArtifactsStage` вычисляет row keys из
+   уже подготовленных templates и вызывает lifecycle writer с observation и
+   receipt facts. Domain/stages не читают config и не знают JDBC.
+9. **Post-commit projection advisory.** Успешный canonical commit необратим для
    текущего pipeline run. Lossy mutable projection может добавить
    `SINK.CHARSET_UNMAPPABLE` и повысить completion до warnings, но не запускает
    повторную failure-policy rejection.
-9. **Dry-run не выполняет side effects.** Pipeline проходит read/decision/
+10. **Dry-run не выполняет side effects.** Pipeline проходит read/decision/
    preparation, но пропускает canonical commit и projection.
 
 ## Декларативный artifact mapping

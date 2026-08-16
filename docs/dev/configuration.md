@@ -67,12 +67,19 @@ eagerly собирает необходимые migrations, recovery и schedule
 work. Конкретные adapters связываются только в composition root (`AppConfig`,
 `SyncConfig`, `EventCoordinationConfig`, config-preflight configuration).
 
-### Lifecycle runtime safety
+### Lifecycle validity and runtime safety
 
-P4 вводит только operational envelope, не activation policy:
+P5 добавляет явную one-way activation policy поверх operational envelope:
 
-- `ioc.lifecycle.history-retention` — positive срок хранения закрытых lifecycle
-  snapshots, default `30d`;
+- `ioc.lifecycle.validity.mode` — closed selector `disabled|fixed`; classpath и
+  upgrade template используют `disabled`;
+- `ioc.lifecycle.validity.fixed-ttl` — positive duration (default `12h`),
+  обязательный в `fixed` mode;
+- `ioc.lifecycle.validity.existing-records` — `reject|expire`; только явно
+  выбранный `expire` разрешает destructive archival legacy rows;
+- `ioc.lifecycle.history-retention` и `receipt-retention` — positive сроки
+  хранения history snapshots и complete confirmation receipts, оба default
+  `30d`;
 - `ioc.lifecycle.reconcile.backstop-interval` — positive максимальный idle
   interval между correctness passes, default `5s`;
 - `ioc.lifecycle.reconcile.batch-size` — positive bound одной SQLite
@@ -80,11 +87,10 @@ P4 вводит только operational envelope, не activation policy:
 - `ioc.lifecycle.clock.max-backward-skew` и `max-clamp-duration` — positive
   system UTC safety limits, defaults `2s` и `30s`.
 
-Эти keys присутствуют и в packaged production template, но не включают fixed
-TTL. До P5 durable control остаётся `DISABLED_COMPATIBLE`; `validity.mode`,
-fixed duration и destructive upgrade activation пока не являются допустимыми
-configuration keys. Нулевое или отрицательное duration/value отклоняется
-collect-all preflight и никогда не интерпретируется как команда очистки.
+После начала activation durable DB state не допускает возврат в `disabled` и
+выдаёт stable `LIFECYCLE.POLICY_MISMATCH`. Нулевое или отрицательное
+duration/value отклоняется collect-all preflight и никогда не интерпретируется
+как команда очистки.
 
 ## Неочевидные инварианты
 

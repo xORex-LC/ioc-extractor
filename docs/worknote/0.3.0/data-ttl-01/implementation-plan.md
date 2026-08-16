@@ -31,7 +31,7 @@ surface и итоговое evidence закрываются только P6.
 | `P2` | Additive durable SQLite foundation | disabled behavior only | `complete` |
 | `P3` | Atomic lifecycle-aware write/read path | production preset unchanged | `complete` |
 | `P4` | Expiry, recovery, scheduling and health | production preset unchanged | `complete` |
-| `P5` | Duplicate receipt and explicit upgrade activation UX | opt-in existing installs only | `planned` |
+| `P5` | Duplicate receipt and explicit upgrade activation UX | opt-in existing installs only | `complete` |
 | `P6` | Fresh preset, docs and release evidence | complete capability | `planned` |
 
 ## P0 — decision and characterization
@@ -223,6 +223,14 @@ reuse remain P5. Evidence is recorded in
 - startup rejects fixed-without-positive-TTL and disabled-after-activation with
   stable diagnostics;
 - exact config + both SQLite DB form the documented rollback point.
+
+**Status:** completed on 2026-08-16. Content identity and durable observation
+identity are separated, complete current-policy receipts provide an
+ETL-skipping confirmation path, and legacy activation is explicit, resumable
+and one-way. Daemon and stateful one-shot/export use common lifecycle
+admission. Classpath and packaged presets deliberately remain `disabled`; the
+fresh-install `fixed/12h` cutover and release evidence remain P6. Evidence is
+recorded in [evidence.md](evidence.md#p5--duplicate-receipt-and-explicit-upgrade-activation).
 
 ## P6 — release closure
 

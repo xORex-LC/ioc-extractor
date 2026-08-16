@@ -242,15 +242,19 @@ filesystem, чтобы claims использовали atomic move. Concurrency 
 
 ## Безопасность runtime canonical lifecycle
 
-Эти P4-параметры ограничивают очистку, convergence и обработку отката системных
-часов. Они не включают fixed TTL: поставляемый preset остаётся
-`DISABLED_COMPATIBLE` до отдельного P5 activation workflow. Ноль нельзя
-использовать как команду очистки; все durations и batch size ниже должны быть
-положительными.
+Эти параметры выбирают record validity, ограничивают cleanup/convergence и
+защищают от отката системных часов. Classpath и upgrade preset остаются
+`disabled`; переход существующей БД в `fixed` является one-way операцией. Ноль
+нельзя использовать как команду очистки: durations и batch size ниже должны
+быть положительными.
 
 | Параметр | Тип / значения | Встроенный default | Рекомендация |
 |---|---|---|---|
+| `ioc.lifecycle.validity.mode` | `disabled`, `fixed` | `disabled` | `disabled` сохраняет compatibility до activation. `fixed` включает durable validity; затем отключить её для той же БД нельзя. |
+| `ioc.lifecycle.validity.fixed-ttl` | positive duration | `12h` | Validity после каждого успешного canonical confirmation. В режиме `fixed` значение обязательно и положительно; `0` отклоняется. |
+| `ioc.lifecycle.validity.existing-records` | `reject`, `expire` | `reject` | Для compatibility-start оставьте `reject`. `expire` задавайте только перед activation restart: все legacy rows архивируются и удаляются, active projections могут стать пустыми. |
 | `ioc.lifecycle.history-retention` | positive duration | `30d` | Срок хранения закрытой full-row lifecycle history; cleanup выполняется независимо и bounded batches. |
+| `ioc.lifecycle.receipt-retention` | positive duration | `30d` | Срок хранения complete prepared-row receipts. Отсутствующий, устаревший или policy-mismatched receipt приводит к обычному ETL, а не к отказу. |
 | `ioc.lifecycle.reconcile.backstop-interval` | positive duration | `5s` | Correctness backstop для потерянных deadline/projection hints и restart. Для V1 expiry-latency оставляйте не больше `5s`. |
 | `ioc.lifecycle.reconcile.batch-size` | positive integer | `1000` | Максимум rows одной expiry или history-retention transaction; меньшее значение сокращает удержание writer, но требует больше cycles. |
 | `ioc.lifecycle.clock.max-backward-skew` | positive duration | `2s` | Максимальный откат system UTC, который можно clamp-ить к durable high-water с состоянием `DEGRADED`. |
