@@ -927,7 +927,7 @@
     <finding id="FUP-SB-01" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="26ca8efc8ada84b88a4e9f1f98d7847d" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="FUP-SB-01" review="ingestion-cleanup-propagation-change">
         <class name="com.iocextractor.application.ingest.IngestionService" />
         <method name="ingestGuarded" signature="(Lcom/iocextractor/application/port/in/ingest/IngestSourceCommand;)Lcom/iocextractor/application/port/in/ingest/IngestSourceResult;" />
-        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="186" bytecode="179" />
+        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="186" bytecode="182" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.application.ingest.IngestionService" />
@@ -949,7 +949,7 @@
     <finding id="SB04-097" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="1073f127fb3e9ae67c97ccba01a43fa" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-D" review="recovery-diagnostic-contract-change">
         <class name="com.iocextractor.application.ingest.IngestionService" />
         <method name="recoverIncomplete" signature="()Ljava/util/List;" />
-        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="204" bytecode="95" />
+        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="204" bytecode="101" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.application.ingest.IngestionService" />
@@ -979,9 +979,9 @@
         </suppression>
         <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-B.</rationale>
     </finding>
-    <finding id="I4-SB-02" module="platform/platform-concurrency" type="VO_VOLATILE_INCREMENT" hash="5845659a1c7ed4aec897e08be5c8be7b" occurrence="0" priority="2" rank="14" category="MT_CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="I4/D-025" review="keyed-accounting-compute-change">
+    <finding id="I4-SB-02" module="platform/platform-concurrency" type="VO_VOLATILE_INCREMENT" hash="98bdb7da1779ed395d6afafcc61a1efc" occurrence="0" priority="2" rank="14" category="MT_CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="I4/D-025" review="keyed-accounting-compute-change">
         <class name="com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard" />
-        <method name="lambda$0" signature="(Lcom/iocextractor/platform/concurrent/WorkKey;Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;)Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;" />
+        <method name="lambda$execute$0" signature="(Lcom/iocextractor/platform/concurrent/WorkKey;Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;)Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;" />
         <anchor sourcePath="com/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard.java" startLine="22" bytecode="23" />
         <suppression>
             <Bug pattern="VO_VOLATILE_INCREMENT" />
@@ -990,9 +990,9 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under I4/D-025 in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="I4-SB-03" module="platform/platform-concurrency" type="VO_VOLATILE_INCREMENT" hash="48f259f3ad4cd22ec8067afa01f08ca" occurrence="0" priority="2" rank="14" category="MT_CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="I4/D-025" review="keyed-accounting-compute-change">
+    <finding id="I4-SB-03" module="platform/platform-concurrency" type="VO_VOLATILE_INCREMENT" hash="5be9bd8ac3053df6cc1937618450c297" occurrence="0" priority="2" rank="14" category="MT_CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="I4/D-025" review="keyed-accounting-compute-change">
         <class name="com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard" />
-        <method name="lambda$1" signature="(Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;Lcom/iocextractor/platform/concurrent/WorkKey;Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;)Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;" />
+        <method name="lambda$release$1" signature="(Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;Lcom/iocextractor/platform/concurrent/WorkKey;Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;)Lcom/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard$KeyState;" />
         <anchor sourcePath="com/iocextractor/platform/concurrent/SynchronousKeyedExecutionGuard.java" startLine="47" bytecode="22" />
         <suppression>
             <Bug pattern="VO_VOLATILE_INCREMENT" />
