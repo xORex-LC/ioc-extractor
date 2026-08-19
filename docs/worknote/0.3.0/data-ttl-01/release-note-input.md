@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 release-note input"
 version: "0.3.0"
-status: "Draft — P7 pending"
+status: "Draft — P7 packaged qualification pending"
 document_type: "Release-note input"
 source_of_truth: false
 language: "en"
@@ -31,11 +31,12 @@ artifact checksum or whole-release verification claim.
 - Expiry does not advance the insert-driven artifact revision and does not
   create an immutable export slice. The next new-row-driven export contains
   only records active at its snapshot time.
-- For artifacts with an external `id`, the final 0.3.0 behavior must preserve
+- For artifacts with an external `id`, 0.3.0 preserves
   each surviving record's stable export slot, release slots of records absent
   from the active set, and assign the smallest free slots to new lifecycles.
   Slots are not canonical identities and existing rows are never renumbered to
-  close gaps. This item remains pending P7 implementation and evidence.
+  close gaps. Automated P7 migration, race, 100k and immutable-slice evidence
+  passes; packaged qualification remains pending.
 - Public CSV/export columns remain unchanged. `time_first_seen` and
   `time_last_seen` remain `NULL`; internal `valid_until` is not exported.
 
@@ -55,9 +56,9 @@ databases together; switching the YAML back to `disabled` is rejected.
 
 The P6 candidate stand exercised the compatibility start, explicit activation,
 activation rollback, complete release rollback and a clean fresh installation.
-Its monotonic exported-ID result is current-behavior characterization; the P7
-slot migration and packaged assertions must be completed before these notes are
-release-ready.
+Its monotonic exported-ID result remains historical characterization. The P7
+slot migration is implemented and covered by automated replacement evidence;
+packaged slot assertions must still pass before these notes are release-ready.
 
 ## Known operational boundary
 
@@ -74,3 +75,4 @@ release-ready.
 - [capability documentation](../../../dev/canonical-record-lifecycle.md)
 - [P6 packaged execution evidence](evidence.md#privileged-packaged-systemd-stand-2026-08-1819)
 - [P6 load evidence](evidence/p6-load-profile.md)
+- [P7 automated evidence](evidence.md#automated-evidence)

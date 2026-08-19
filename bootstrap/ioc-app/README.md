@@ -23,7 +23,8 @@ adapters.
 resolved application plans. На этой границе проверяются уникальность profiles,
 ссылки только на enabled sink artifacts, наличие identity policy, file-name
 коллизии и единственный поддержанный v1 mode `complete`. `planHash` включает
-CSV format, ordered schema, identity и весь active mapping артефакта.
+CSV format, ordered schema, identity, весь active mapping артефакта и reusable
+export-slot policy для artifacts с внешней `id`.
 
 Service datasource/migrations скрыты за `LazyServiceStorage`, который не
 реализует `DataSource` и поэтому не активируется type-discovery механизмами
@@ -32,6 +33,8 @@ Spring/Actuator. Export use cases зарегистрированы как lazy b
 `health` не открывают service SQLite. Первый фактический
 `ioc export` связывает `JdbcArtifactRevisionReader`, `JdbcSnapshotSliceReader`,
 `JdbcExportRunLedger`/progress store, `CsvArtifactSliceWriter` и Jackson codec.
+`JdbcSnapshotSliceReader` внутренне reconcile-ит same-dataframe-DB slot registry;
+отдельного Spring bean/module или service-DB authority для него нет.
 
 `EarlyCliLauncher` завершает root/subcommand help, `-V`/`--version`, `health` и
 синтаксические ошибки до `SpringApplication.run()`, поэтому эти пути вообще не

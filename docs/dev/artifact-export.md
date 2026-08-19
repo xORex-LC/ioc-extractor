@@ -10,6 +10,7 @@ delivery начинается только после локального durab
 profile validation + revision/plan pre-gate
   -> cross-process operation lease
   -> export_run STARTED
+  -> reconcile stable export slots at canonical generation G
   -> one consistent dataframe snapshot
   -> stream CSV + manifest into .staging
   -> durable _SUCCESS
@@ -53,6 +54,42 @@ Daemon export scheduler до открытия этого barrier не выпол
 8. **Expiry не создаёт slice.** Истечение или renewal не меняют insert-driven
    artifact revision и не запускают lifecycle-specific export event. Следующий
    разрешённый export читает только active membership на своём общем `asOf`.
+9. **Внешний `id` — export slot.** Для artifact с колонкой `id` active survivor
+   сохраняет свой slot между slices. Reconciliation освобождает slots исчезнувших
+   lifecycle, назначает новым lifecycle минимальные положительные holes, а при
+   их отсутствии продвигает durable high-water. Canonical row id и
+   `_lifecycle_id` не публикуются как этот slot и никогда не переиспользуются.
+
+## Stable reusable export slots
+
+`SnapshotSliceReader` остаётся application output port для всей операции
+consistent snapshot. Его JDBC-реализация при `ACTIVE` lifecycle выполняет
+короткую write transaction в той же dataframe DB:
+
+1. захватывает SQLite write ownership и тем самым сериализуется с
+   confirmation/expiry;
+2. при первом export seed-ит `(profile, artifact, lifecycle_id) -> slot` из
+   текущего canonical `id`, сохраняя upgrade mapping;
+3. set-based освобождает assignments, отсутствующие в active set, сопоставляет
+   минимальные free slots новым lifecycle и выдаёт остаток из `next_slot`;
+4. фиксирует `artifact_projection_state.required_generation` как
+   `source_generation` registry.
+
+После commit reader открывает отдельную read transaction и до первого callback
+проверяет generation и полноту assignments. Изменение canonical generation в
+этом окне приводит к bounded retry; mixed mapping не попадает в staging.
+Streaming query выдаёт `export_slot AS id` в порядке slot и использует
+covering assignment index вместе с unique lifecycle index. Артефакты без
+внешней `id` обходят registry и сохраняют прежний путь.
+Manifest coverage `upperId` для такого artifact равен максимальному active
+slot; это coverage fact complete-slice, а не high-water и не canonical ID.
+
+Registry принадлежит export capability, но физически хранится рядом с canonical
+rows в `ioc-dataframe.db`: это позволяет избежать неатомарной координации двух
+SQLite-файлов. Expiry/history/provenance path не зависит от registry, а старые
+immutable slices уже материализуют своё историческое соответствие. Поэтому один
+slot может относиться к разным lifecycle в разных slices; диагностический ключ
+должен включать slice, profile и artifact.
 
 ## Durable state и recovery
 

@@ -220,6 +220,10 @@ For a TTL-capable upgrade, keep lifecycle mode disabled for the first
 compatibility start. The later fixed-validity cutover is destructive to legacy
 active membership and follows the separate
 [canonical lifecycle procedure](canonical-record-lifecycle.md#upgrade-an-existing-installation).
+The same additive dataframe migration installs the export-slot registry. Its
+first active export seeds current external IDs without renumbering survivors;
+rollback therefore still requires the matching binary/configuration and both
+database backups rather than a partial schema downgrade.
 
 ```bash
 sudo diff -u /opt/ioc-extractor/etc/application.yml \

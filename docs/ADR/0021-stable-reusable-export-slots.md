@@ -2,7 +2,8 @@
 
 ## Status
 
-**Proposed on 2026-08-19. Implementation and release evidence are pending.**
+**Accepted on 2026-08-19. Implemented in the P7 candidate; packaged release
+qualification remains pending.**
 
 This ADR narrowly supersedes section 4, "Public and source-owned identity", of
 [ADR-0020](0020-canonical-record-expiration-lifecycle.md). ADR-0020 remains in
@@ -149,8 +150,10 @@ itself does not require an artifact-identity epoch bump.
 No new Maven module, standalone Java library, control event, per-record timer,
 or scheduler framework is introduced.
 
-- `core/ioc-application` owns the export-slot port and reconciliation use-case
-  contract without JDBC or Spring types.
+- `core/ioc-application` owns the existing `SnapshotSliceReader` contract and
+  the slot-policy fingerprint without JDBC or Spring types; a second port or
+  export use case is not introduced because slot resolution is an atomic part
+  of opening that snapshot.
 - `adapter-store-jdbc` owns the SQLite schema, migration, allocation and
   consistent-snapshot implementation.
 - `adapter-sink-csv` continues to serialize the configured external `id`

@@ -221,7 +221,7 @@ consumer, либо принять явное release-level решение об u
 ## DATA-TTL-01 candidate delta
 
 DATA-TTL-01 является принятым observable scope change относительно baseline.
-Текущее candidate состояние имеет dataframe schema v4 и service schema v8.
+Текущее candidate состояние имеет dataframe schema v5 и service schema v8.
 Миграции additive, но включение validity для существующей dataframe DB является
 явной one-way activation, а не automatic upgrade side effect.
 
@@ -231,7 +231,7 @@ DATA-TTL-01 является принятым observable scope change относ
 | Durable state | Dataframe DB хранит lifecycle/history/receipt/control state; service DB получает observation-oriented ingest ledger migration; rollback после activation требует matching pre-activation config и обе DB |
 | Mutable CSV | Column order/types сохраняются; expired rows исключаются, `time_first_seen`/`time_last_seen` остаются `NULL`, `valid_until` не публикуется |
 | Immutable export | Expiry не меняет insert-driven revision и не создаёт slice; следующий new-row export читает только active membership |
-| Internal и export identities | Internal row/lifecycle identities не переиспользуются. Внешний `id` трактуется как `(profile, artifact)` export slot: survivors сохраняют mapping, vanished rows освобождают slots при eligible export, новые lifecycle получают минимальные holes без compaction; source-owned ID остаётся business field. P7 pending |
+| Internal и export identities | Internal row/lifecycle identities не переиспользуются. Внешний `id` реализован как `(profile, artifact)` export slot: survivors сохраняют mapping, vanished rows освобождают slots при eligible export, новые lifecycle получают минимальные holes без compaction; source-owned ID остаётся business field. Automated P7 evidence complete, packaged qualification pending |
 | Health | Добавлен aggregate lifecycle component без IOC/source identifiers; clock failure может перевести readiness в `DEGRADED`/`DOWN` |
 
 Operator migration и rollback опубликованы в

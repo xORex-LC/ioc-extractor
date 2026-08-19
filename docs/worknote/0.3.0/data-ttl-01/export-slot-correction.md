@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 — stable reusable export slots"
 version: "0.3.0"
-status: "Accepted design; implementation pending"
+status: "P7 implemented; release qualification pending"
 document_type: "Worknote design correction"
 source_of_truth: false
 language: "ru"
@@ -12,7 +12,7 @@ language: "ru"
 Этот документ фиксирует переоткрытое после P6 требование к полю `id` в
 export-slice. Долгоживущее архитектурное решение вынесено в
 [ADR-0021](../../../ADR/0021-stable-reusable-export-slots.md). Здесь находится
-детальный проект будущего P7; описанное поведение ещё не реализовано.
+детальный проект и текущее implementation evidence P7.
 
 ## 1. Исправленный бизнес-контракт
 
@@ -78,7 +78,7 @@ export `id` от canonical primary key. Переписывать TTL/history/pro
 
 | Boundary | Ответственность P7 |
 |---|---|
-| `core/ioc-application`, `application.export` | Узкий порт registry/reconcile, value types namespace/slot, orchestration и failure contract |
+| `core/ioc-application`, `application.export` | Existing `SnapshotSliceReader` contract, slot-policy fingerprint и failure contract; отдельный registry port не нужен |
 | `adapter-store-jdbc` | SQLite migration, registry, set-based allocator, consistent active snapshot и collision checks |
 | `adapter-sink-csv` | Сериализация уже разрешённого `export_slot` во внешнюю колонку `id` |
 | `bootstrap/ioc-app` | Composition root и existing configuration wiring |
@@ -242,6 +242,9 @@ canonical IDs, не поддерживается.
   release rollback;
 - после реализации обновлены published capability/storage/export/operator docs.
 
-До получения этого evidence DATA-TTL-01 снова имеет статус `in-progress`, а
-P6 evidence остаётся доказательством TTL lifecycle и характеристикой прежней
-ID-модели, но не подтверждением исправленного export-slot контракта.
+Automated implementation evidence получен 2026-08-19: migration/rollback,
+survivor/hole/high-water/restart/generation/concurrency cases, два 100k
+reconciliation snapshot и три immutable CSV slices прошли. До повторного
+packaged fresh/upgrade/rollback стенда и fresh full-reactor gate DATA-TTL-01
+остаётся `in-progress`. P6 evidence сохраняется как доказательство TTL lifecycle
+и характеристика прежней ID-модели.

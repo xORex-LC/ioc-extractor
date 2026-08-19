@@ -12,7 +12,9 @@ lifetime. A repeated accepted observation renews that active lifecycle. If no
 confirmation arrives before the deadline, the record is removed from active
 SQLite membership, copied to bounded history and removed from mutable CSV
 projections. An observation after expiry creates a new lifecycle and a new
-service-owned public ID.
+non-reusable canonical row ID. The `id` exposed by an immutable export is a
+separate reusable export slot: surviving active rows keep their slot, while a
+slot released by an expired lifecycle may later be assigned to a new lifecycle.
 
 The active set may legitimately be empty. Every source document is treated as
 an incomplete observation batch: records omitted from the latest document keep
@@ -94,7 +96,13 @@ only after UTC is trustworthy. Do not edit lifecycle timestamps or control rows.
 Expiration and retention are separate. Expiration stops active use immediately;
 history retention later removes audit snapshots in indexed bounded batches.
 Receipt retention only controls the ETL-skipping confirmation cache. Deleting
-history never resets lifecycle or public-ID allocators.
+history never resets lifecycle or canonical-ID allocators.
+
+Export slots follow a different rule. Expiration and history retention do not
+renumber survivors. At the next otherwise eligible export, vanished lifecycles
+release their slots and new lifecycles take the smallest free positive slots;
+the remaining slots come from a durable high-water mark. Gaps are valid until
+new rows consume them, and completed historical slices are never rewritten.
 
 The defaults are designed for tens of thousands to roughly one hundred thousand
 active rows:
@@ -128,10 +136,11 @@ make lifecycle-load
 ```
 
 The harness sends data through normal daemon ingestion, verifies active-to-history
-movement, bounded retention, projection convergence and non-reused IDs, and
-writes its environment/query-plan/throughput report under `.dev/`. A final
-release candidate still needs the packaging fresh-install/upgrade/rollback test
-on a disposable systemd host.
+movement, bounded retention, projection convergence and non-reused internal
+identities, and writes its environment/query-plan/throughput report under
+`.dev/`. Focused export tests separately verify stable/reusable slots and
+immutable historical mappings. A final release candidate still needs the
+packaging fresh-install/upgrade/rollback test on a disposable systemd host.
 
 See also the [deployment guide](deployment.md),
 [configuration reference](configuration.md) and

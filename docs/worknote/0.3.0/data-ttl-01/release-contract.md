@@ -159,7 +159,7 @@ duration запрещены. `ttl=0` никогда не является migrat
 
 | Surface | Responsibility |
 |---|---|
-| `core/ioc-application` | `RecordValidityPolicy`, lifecycle values/use cases and export-slot port/reconciliation contract |
+| `core/ioc-application` | `RecordValidityPolicy`, lifecycle values/use cases, existing `SnapshotSliceReader` export-slot contract and policy fingerprint |
 | `core/ioc-application-tck` | Reusable lifecycle/repository contracts |
 | `adapters/adapter-store-jdbc` | SQLite lifecycle schema plus same-dataframe-DB export-slot registry, migration, set-based allocation and consistent snapshot |
 | `adapters/adapter-sink-csv` | Active-only projection; external `id` is supplied from resolved export slot |
@@ -193,13 +193,13 @@ duration запрещены. `ttl=0` никогда не является migrat
 ## Definition of Done
 
 - [x] P0–P6 lifecycle scope закрыт и сохранён как evidence.
-- [ ] P7 реализован; external `id` больше не читается как canonical primary key,
+- [x] P7 реализован; external `id` больше не читается как canonical primary key,
   а export-slot capability не связан с TTL/history/provenance identity.
-- [ ] Survivor stability, smallest-hole reuse, no compaction, deterministic
+- [x] Survivor stability, smallest-hole reuse, no compaction, deterministic
   multi-hole allocation, restart и ingest×export race tests проходят.
-- [ ] Upgrade seeding сохраняет текущие active mappings и fail-closed отклоняет
+- [x] Upgrade seeding сохраняет текущие active mappings и fail-closed отклоняет
   duplicates, non-positive slots и ambiguous namespace.
-- [ ] Новый 100k profile доказывает set-based allocation без N+1/full JVM
+- [x] Новый 100k profile доказывает set-based allocation без N+1/full JVM
   materialization; query plans и thresholds сохранены.
 - [ ] Packaged fresh/upgrade/activation/rollback stand повторён с reusable-slot
   assertions.
@@ -212,7 +212,7 @@ duration запрещены. `ttl=0` никогда не является migrat
 - [x] Fresh install, two-step upgrade, one-way activation и consistent rollback
   проверены на packaged artifact и описаны оператору.
 - [x] Public schemas/order и `time_first_seen`/`time_last_seen == NULL` сохранены.
-- [ ] Affected published docs, generated catalogs, module README, release notes,
+- [x] Affected published docs, generated catalogs, module README, release notes,
   status matrix и compatibility/performance ledgers актуальны.
 - [ ] Targeted tests, documentation checks и fresh full-reactor `make verify`
   проходят на финальном `HEAD`.
@@ -226,8 +226,8 @@ build gates. До закрытия `R030-DATA` релиз 0.3.0 не готов.
 
 ## Current disposition
 
-`in-progress`: P0–P6 remain valid evidence for TTL lifecycle, activation,
-expiry/retention and current runtime behavior. I-22/ADR-0021 revealed that the
-implemented monotonic exported-ID behavior does not meet the consumer slot
-contract. P7 implementation, compatibility/performance evidence, published
-documentation refresh and final verification remain release blockers.
+`in-progress`: P0–P6 remain valid lifecycle evidence. P7 code, migration,
+automated compatibility/race/100k evidence and published documentation are
+complete; the full working-tree reactor gate is green. Repeated packaged
+fresh/upgrade/rollback assertions and a freshness gate on the final committed
+HEAD remain release blockers.

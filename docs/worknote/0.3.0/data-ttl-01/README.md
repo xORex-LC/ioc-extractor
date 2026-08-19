@@ -37,9 +37,10 @@ language: "ru"
 - I-22 переоткрыл внешний `id`: это stable sparse reusable `export_slot`, а не
   canonical identity. P6 сохранил силу для TTL lifecycle, но прежний
   ID-non-reuse результат является characterization текущей реализации;
-- P7 должен сохранить slots surviving rows, освобождать expired slots только
-  при eligible export и выдавать новым lifecycle минимальные holes без
-  compaction. До P7 implementation/evidence `R030-DATA` снова `in-progress`.
+- P7 реализует slots surviving rows, освобождает expired slots только при
+  eligible export и выдаёт новым lifecycle минимальные holes без compaction.
+  Automated tests, immutable-slice proof и 100k regression прошли; до packaged
+  qualification/final gate `R030-DATA` остаётся `in-progress`.
 
 ## Навигация
 
@@ -54,7 +55,7 @@ language: "ru"
 | [P6 load profile](evidence/p6-load-profile.md) | Reference environment, thresholds, measurements и query plans |
 | [release-note input](release-note-input.md) | Curated DATA-TTL-01 material для итоговых release notes 0.3.0 |
 | [ADR-0020](../../../ADR/0020-canonical-record-expiration-lifecycle.md) | Принятое архитектурное решение и lifecycle invariants |
-| [ADR-0021](../../../ADR/0021-stable-reusable-export-slots.md) | Proposed correction: внешний `id` как stable sparse reusable export slot |
+| [ADR-0021](../../../ADR/0021-stable-reusable-export-slots.md) | Принятое решение: внешний `id` как stable sparse reusable export slot |
 
 Будущее execution evidence добавляется только в этот bundle либо в явно
 указанный внешний release ledger. В общих `engineering-release.md` и

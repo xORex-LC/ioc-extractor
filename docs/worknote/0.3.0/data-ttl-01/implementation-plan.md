@@ -37,7 +37,7 @@ surface и исходное lifecycle evidence были закрыты P6. По�
 | `P4` | Expiry, recovery, scheduling and health | production preset unchanged | `complete` |
 | `P5` | Duplicate receipt and explicit upgrade activation UX | opt-in existing installs only | `complete` |
 | `P6` | Fresh preset, docs and release evidence | complete capability | `complete` |
-| `P7` | Stable sparse reusable export slots | corrected export contract | `in_progress` |
+| `P7` | Stable sparse reusable export slots | corrected export contract | `implementation_complete`; qualification pending |
 
 ## P0 — decision and characterization
 
@@ -321,8 +321,8 @@ semantics stay unchanged.
 - `make docs`, targeted tests and fresh full-reactor verification pass on final
   `HEAD`.
 
-**Status:** design/contract documented on 2026-08-19; implementation and
-evidence pending. Detailed design:
+**Status:** implementation and automated evidence complete on 2026-08-19;
+packaged qualification and final fresh reactor gate pending. Detailed design:
 [export-slot-correction.md](export-slot-correction.md).
 
 ## Required test matrix

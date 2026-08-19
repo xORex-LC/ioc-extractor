@@ -219,6 +219,10 @@ policies и secrets, и удалите `.new` после успешной про
 compatibility startup. Последующий cutover на fixed validity destructive для
 legacy active membership и выполняется по отдельной
 [процедуре canonical lifecycle](canonical-record-lifecycle.md#обновление-существующей-установки).
+Та же additive dataframe migration устанавливает export-slot registry. Первый
+active export seed-ит текущие внешние IDs без перенумерации survivors; rollback
+поэтому по-прежнему требует matching binary/configuration и backup обеих БД, а
+не частичного schema downgrade.
 
 ```bash
 sudo diff -u /opt/ioc-extractor/etc/application.yml \

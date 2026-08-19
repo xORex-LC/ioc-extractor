@@ -11,7 +11,10 @@
 Повторное принятое наблюдение продлевает активный lifecycle. Если до deadline не
 поступило нового подтверждения, запись удаляется из active membership в SQLite,
 копируется в bounded history и исчезает из mutable CSV-проекций. Наблюдение
-после expiry создаёт новый lifecycle и новый service-owned public ID.
+после expiry создаёт новый lifecycle и новый непереиспользуемый canonical row
+ID. Поле `id` в immutable export отделено от него: это reusable export slot.
+Surviving active rows сохраняют slot, а slot expired lifecycle позднее может
+быть назначен новой lifecycle.
 
 Active set может быть пустым — это нормальное состояние. Каждый source document
 считается неполной пачкой наблюдений: отсутствующие в новом документе записи не
@@ -93,7 +96,13 @@ lifecycle timestamps или control rows вручную.
 Expiration и retention независимы. Expiration немедленно прекращает активное
 использование; history retention позднее удаляет audit snapshots индексированными
 bounded batches. Receipt retention управляет только кэшем ETL-skipping
-confirmation. Удаление history не сбрасывает lifecycle/public-ID allocators.
+confirmation. Удаление history не сбрасывает lifecycle/canonical-ID allocators.
+
+У export slots другое правило. Expiration и history retention не
+перенумеровывают survivors. При следующем и без того допустимом export vanished
+lifecycle освобождают slots, новые lifecycle получают минимальные свободные
+положительные slots, а остаток выдаётся из durable high-water. Gaps допустимы до
+прихода новых rows; завершённые исторические slices никогда не переписываются.
 
 Defaults рассчитаны на десятки тысяч и порядок ста тысяч active rows:
 
@@ -127,9 +136,10 @@ make lifecycle-load
 ```
 
 Harness подаёт данные через обычный daemon ingestion, проверяет переход
-active-to-history, bounded retention, projection convergence и отсутствие ID
-reuse, а environment/query-plan/throughput report сохраняет под `.dev/`.
-Финальный release candidate всё равно требует packaging
+active-to-history, bounded retention, projection convergence и отсутствие reuse
+внутренних identities, а environment/query-plan/throughput report сохраняет под
+`.dev/`. Отдельные focused export tests проверяют stable/reusable slots и
+неизменяемость исторических slices. Финальный release candidate всё равно требует packaging
 fresh-install/upgrade/rollback проверки на disposable systemd host.
 
 См. также [deployment guide](deployment.md),

@@ -17,7 +17,7 @@ adapters за портами `application.port.out.export`.
 | Файл / группа | Назначение |
 |---|---|
 | `ExportProfile`, `ExportMode` | Именованный, упорядоченный и неделимый набор артефактов; v1 исполняет только `COMPLETE` |
-| `ExportFormat`, `ExportArtifactSpec`, `ExportPlan` | Полностью resolved-контракт публичных bytes; `planHash` покрывает format, schema, identity и active mapping |
+| `ExportFormat`, `ExportArtifactSpec`, `ExportPlan` | Полностью resolved-контракт публичных bytes; `planHash` покрывает format, schema, identity, active mapping и reusable-slot policy для artifacts с `id` |
 | `ArtifactSchemaFingerprint` | SHA-256 ordered public columns + normalized declared types (`schema:v1`) |
 | `SnapshotRequest`, `SnapshotMetadata`, `SnapshotArtifactMetadata`, `ArtifactCoverage` | Запрос и факты, захваченные в одном consistent read snapshot |
 | `SliceManifest`, `SliceArtifactManifest` | Versioned integrity root всего среза и checksums/coverage его файлов |
@@ -42,7 +42,9 @@ adapters за портами `application.port.out.export`.
 - `identityHash`, `schemaHash`, file checksum, manifest checksum и `planHash` —
   lower-case SHA-256; identity epoch положителен.
 - `ArtifactCoverage` сохраняет `(revision, changedAt, upperId)` из того же
-  snapshot, что и rows. Recovery не подменяет его новым чтением БД.
+  snapshot, что и rows. Для slotted active artifact `upperId` означает
+  максимальный active export slot, а не canonical row ID. Recovery не подменяет
+  coverage новым чтением БД.
 - State machine: `STARTED -> STAGED -> AVAILABLE -> COMPLETED`; из
   `STARTED` допустим `SKIPPED`, из active states — `FAILED`.
   `COMPLETED`, `SKIPPED`, `FAILED` terminal; states от `STAGED` требуют manifest hash.
@@ -53,6 +55,10 @@ adapters за портами `application.port.out.export`.
   terminal status, но `lastSha256/lastSliceId` остаются от опубликованного среза.
 - `SliceCompleted` публикуется только после durable `COMPLETED`; normal export и
   forward recovery эмитят один и тот же факт. `SKIPPED` не создаёт delivery event.
+- Для artifacts с внешней `id` output-port `SnapshotSliceReader` обязан до
+  callback разрешить stable reusable slot mapping в namespace
+  `(profile, artifact)`. Application не знает SQL/registry schema; для него это
+  часть consistent snapshot contract. Артефакты без `id` не участвуют в policy.
 
 ## Formation saga
 

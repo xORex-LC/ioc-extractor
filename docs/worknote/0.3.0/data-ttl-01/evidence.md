@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 — execution evidence"
 version: "0.3.0"
-status: "In progress — P7 pending"
+status: "In progress — P7 packaged qualification pending"
 document_type: "Implementation evidence"
 source_of_truth: false
 language: "ru"
@@ -580,7 +580,8 @@ packaged assertions для reusable export slots. Общие 0.3.0 release goals
 
 ## P7 — reusable export-slot correction
 
-**Статус:** implementation/evidence pending.
+**Статус:** implementation и automated evidence complete; packaged
+qualification/final gate pending.
 
 Требуемое replacement evidence определено в
 [export-slot-correction.md](export-slot-correction.md#10-p7-acceptance-evidence)
@@ -588,3 +589,39 @@ packaged assertions для reusable export slots. Общие 0.3.0 release goals
 P7 не должен удалять или переписывать измеренные P6 факты; он добавляет новый
 run, который доказывает survivor stability, smallest-hole reuse, no compaction,
 generation-safe snapshot, migration seeding и bounded 100k allocation.
+
+### Реализованный contour (2026-08-20)
+
+- dataframe format повышен `v4 -> v5`; additive migration создаёт
+  `export_slot_assignment`, `export_slot_free` и `export_slot_state` в
+  dataframe DB, не затрагивая service schema v8;
+- `SnapshotSliceReader` остался единственным application output port.
+  `JdbcSnapshotSliceReader` при `ACTIVE` сначала захватывает SQLite write
+  ownership, затем вызывает package-private `JdbcExportSlotRegistry` и только
+  после commit открывает generation-checked read snapshot;
+- первичная инициализация seed-ит текущие positive canonical IDs, materialize-ит
+  holes ниже seed high-water и fail-closed откатывает весь namespace при
+  invalid seed/policy drift;
+- дальнейший allocator set-based освобождает vanished assignments, ordinal-но
+  сопоставляет ordered free slots и новые lifecycle, а остаток выдаёт из
+  durable `next_slot` без `MAX(active.id)+1`;
+- active projection выбирает `slot AS id` и сортирует по slot; compatibility
+  mode и artifacts без внешней `id` остаются на прежнем пути;
+- slot policy `stable-sparse-reusable-v1` включён в `ExportPlan.planHash` только
+  для планов, содержащих slotted artifact.
+
+### Automated evidence
+
+| Проверка | Результат |
+|---|---|
+| `./mvnw -B -ntp -pl adapters/adapter-store-jdbc -am test` | adapter suite `132` tests, `0` failures/errors; focused `JdbcSnapshotSliceReaderTest + DataframeSchemaReconcilerTest` составляют `29` tests и включают `v4 -> v5`, seed rollback, policy drift, restart, generation guard, concurrent readers и slot matrix |
+| `JdbcSnapshotSliceReaderTest#reconciles_and_streams_a_100k_slot_reuse_wave_with_indexed_queries` | `100000` active seed, затем `50000` expired + `50000` new при `50000` survivors; оба snapshots streaming, slots `1..100000`, test time `2.580s`, каждый measured reconciliation `<30s` |
+| SQLite `EXPLAIN QUERY PLAN` assertions в том же тесте | projection использует covering `ix_export_slot_assignment_slot` + `ux_masks_lifecycle_id`; release membership использует те же indexes; free order использует PK autoindex; temp B-tree для `ORDER BY slot` отсутствует |
+| `./mvnw -B -ntp -pl bootstrap/ioc-app -am -Dtest=ReusableExportSlotIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test` | `1` Spring integration test, `0` failures/errors; три physical CSV slices доказали `A=1,B=2,C=3 -> D=1,C=3 -> D=1,E=2,C=3`, первый slice byte-immutable |
+| `make verify` | все `25` reactor modules `SUCCESS`; adapter-store-jdbc `132` tests, bootstrap `251` tests, aggregate SpotBugs `99 accepted / 0 visible` |
+| `make spotbugs-baseline-proposal` после triage | `99 observed / 99 accepted / 0 new / 0 stale`; шесть `VA_FORMAT_STRING_USES_NEWLINE` устранены из production code, семь новых registry SQL identities и две изменившиеся snapshot identities приняты точечно как validated/quoted identifier boundaries с bound business values |
+
+До release acceptance остаются: повторный packaged fresh-install/upgrade/rollback
+стенд на P7 candidate, фиксация commit/runtime metadata и повторный freshness
+gate на финальном закоммиченном HEAD. Поэтому прежний P6 packaged result не
+переименован в P7 pass.

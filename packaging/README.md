@@ -232,6 +232,12 @@ legacy-row activation in one unreviewed restart:
 4. Wait for health `UP` and verify the active projections. New accepted source
    observations then repopulate and confirm records under fixed validity.
 
+The additive dataframe migration also installs the reusable export-slot
+registry. Its first eligible active export seeds the existing external IDs;
+later exports preserve survivor slots and reuse the smallest holes. No separate
+service-DB migration or operator command is required, but the registry is part
+of the dataframe backup/rollback boundary.
+
 Activation is durable and one-way for these databases. A later `mode: disabled`
 fails startup with `LIFECYCLE.POLICY_MISMATCH`. Rollback after activation is not
 a config edit and not a partial database restore: stop the service and restore

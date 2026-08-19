@@ -23,7 +23,7 @@ types to bootstrap; domain/application do not import this package.
 | `LifecycleArtifactSchemaPlanner` | Additive lifecycle columns, typed history/source-summary/receipt mirrors и deadline/retention indexes per artifact |
 | `JdbcExportRunLedger`, `JdbcExportProgressStore` | Formation-saga CAS/single-flight, terminal progress и latest-run health read model |
 | `JdbcRemoteFetchLedger`, `JdbcPublishLedger` | Durable sync fetch idempotency и per-target publish saga state |
-| `JdbcSnapshotSliceReader` | Strict multi-artifact read snapshot и callback-streaming public rows |
+| `JdbcSnapshotSliceReader`, `JdbcExportSlotRegistry` | Stable reusable slot reconciliation, generation-safe multi-artifact snapshot и callback-streaming public rows |
 | `*Schema*` | SQLite `user_version` runner, migration support and dataframe reconciler |
 | `Dataframe*` | Table-per-artifact desired schema, additive plan and reconciliation |
 `JdbcCanonicalArtifactRepository` reports actual public-row inserts and advances
@@ -40,6 +40,12 @@ Config-driven reconciliation добавляет к каждой active table nul
 только для compatibility/activation migration; публикация `ACTIVE` защищена
 aggregate invariant scan. P2 не подключает эти классы в bootstrap и не меняет
 старый canonical repository path.
+
+Dataframe migration v5 создаёт `export_slot_assignment`, `export_slot_free` и
+`export_slot_state` в той же DB. Assignment PK/unique index защищают обе стороны
+mapping, free-table PK обслуживает smallest-hole order, а state хранит policy
+version, `next_slot` и canonical generation. Registry включается только для
+`ACTIVE` artifacts с внешней колонкой `id`.
 
 `JdbcExportRunLedger` опирается на partial unique-index активных
 `STARTED|STAGED|AVAILABLE` rows: single-flight остаётся общим для
@@ -59,9 +65,11 @@ terminal для delivery-aware retention. Для actuator health есть агр
 полный ordered `findAll` остаётся только явным ops API. Reconcile lookup поддерживает
 индекс `(profile,slice_name)` и не обходит CAS transitions.
 
-`JdbcSnapshotSliceReader` владеет одним connection/read transaction от
-первого coverage SELECT до завершающего callback. Все artifact coverage
-читаются до `begin`; затем public rows идут по одной в `ORDER BY id`.
+`JdbcSnapshotSliceReader` сначала получает SQLite write ownership и атомарно
+reconcile-ит slots с active membership, затем владеет отдельным connection/read
+transaction от первого generation/coverage SELECT до завершающего callback.
+Все artifact coverage читаются до `begin`; slotted public rows идут по одной в
+`ORDER BY export_slot`, который сериализуется во внешнюю колонку `id`.
 Пакет не собирает `CanonicalArtifact`: heap зависит от ширины строки и
 числа artifacts, но не от числа rows. Consumer exception откатывает read-tx,
 закрывает cursor/connection и выходит без подмены exception type.

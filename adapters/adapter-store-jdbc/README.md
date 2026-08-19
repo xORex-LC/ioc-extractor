@@ -50,6 +50,11 @@ runtime JDBC drivers.
   deadline/retention indexes, activation/clock state, durable allocators,
   observation markers and mutable-projection generations. Existing databases
   remain `DISABLED_COMPATIBLE` until explicit fixed-validity activation.
+- Dataframe format v5 adds the export-owned reusable-slot registry beside
+  canonical truth. `JdbcExportSlotRegistry` seeds the current active mapping,
+  preserves survivors, releases vanished lifecycles and assigns smallest holes
+  set-wise before using its durable high-water. The composite primary/unique
+  keys enforce both directions of ownership without a redundant free-slot index.
 - `JdbcLifecycleControlStore` uses one-way CAS and refuses `ACTIVE` until one
   set-based invariant scan proves that every configured active row has complete,
   ordered lifecycle metadata. Lifecycle/public ID ranges are reserved by atomic
@@ -109,6 +114,8 @@ runtime JDBC drivers.
   changes use expected-status CAS. `COMPLETED`/`SKIPPED` and `export_progress`
   are committed atomically, while an active row survives process crash and blocks
   new work until recovery.
-- `JdbcSnapshotSliceReader` streams a whole export profile from one explicit
-  SQLite read transaction. Coverage/identity metadata and all `ORDER BY id`
-  cursors observe the same WAL snapshot; rows cross the port one at a time.
+- `JdbcSnapshotSliceReader` first reconciles reusable slots in a short SQLite
+  writer transaction serialized with lifecycle writes, then streams a whole
+  export profile from one explicit read transaction. Generation, coverage and
+  identity metadata are validated before callbacks; slot-enabled artifacts use
+  `export_slot AS id` in slot order while rows still cross the port one at a time.

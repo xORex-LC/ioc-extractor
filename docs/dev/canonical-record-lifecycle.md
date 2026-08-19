@@ -53,9 +53,10 @@ service database continues to hold ingestion/export/sync coordination only.
 3. **Confirmation is commit-owned.** Parsing or preparation alone cannot renew
    validity. One write-owned effective UTC value decides renewal versus
    close-and-recreate.
-4. **Expired identity is never reused.** Reappearance creates a new lifecycle
-   and service-owned public ID. Durable allocators survive active and history
-   deletion.
+4. **Canonical identity is never reused.** Reappearance creates a new lifecycle
+   and canonical row ID. Durable internal allocators survive active and history
+   deletion. Immutable export `id` is a separate reusable slot governed by
+   [ADR-0021](../ADR/0021-stable-reusable-export-slots.md).
 5. **Expiry is not an insert.** It does not advance `artifact_revision` or cause
    an immutable export by itself. The next new-row-driven export observes the
    current active membership.
@@ -89,8 +90,8 @@ business fields requires a separate versioned consumer contract.
 
 - Decision: [ADR-0020](../ADR/0020-canonical-record-expiration-lifecycle.md).
 - Application contracts: `core/ioc-application/.../artifact/lifecycle`.
-- SQLite schema and SQL: `adapter-store-jdbc` dataframe migration v4 and
-  lifecycle adapter tests.
+- SQLite schema and SQL: `adapter-store-jdbc` dataframe migration v4 for
+  lifecycle, v5 for export slots, and adapter tests.
 - Production assembly/defaults: `AppConfig`, `IocProperties` and the classpath
   `application.yml` in `bootstrap/ioc-app`.
 - Operator behavior: [canonical record lifecycle guide](../guides/canonical-record-lifecycle.md).

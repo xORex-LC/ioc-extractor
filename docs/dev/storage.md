@@ -13,6 +13,7 @@ business rows                      ingestion / ingest_run
 artifact identity/revision         remote fetch/publish ledgers
 lifecycle/history/receipts
 ID allocators/projection work
+export-slot registry
 ```
 
 `dataframe` — источник истины для IOC-артефактов. `*_generated.csv` является
@@ -52,12 +53,12 @@ prepared rows
 4. **Schema reconciliation только additive.** Missing table/column можно
    создать; drop, rename, reorder-sensitive type drift и конфликт внутренних
    колонок должны завершить startup failure до частичной мутации.
-5. **ID-space независим по artifact.** Compatibility writer пока использует
-   schema-aware `max(id)+1`. Dataframe format v4 уже хранит dormant durable
-   per-artifact allocator и global lifecycle allocator; lifecycle-aware writer
-   использует их после explicit activation. Atomic reservations monotonic по
-   стратегии, не gapless и не возвращаются после failed commit либо удаления
-   active/history rows.
+5. **Canonical и export identity разделены.** Compatibility writer использует
+   schema-aware `max(id)+1`. Lifecycle-aware writer резервирует monotonic
+   per-artifact canonical row ID и global lifecycle ID; они не gapless и не
+   возвращаются после failed commit либо удаления active/history rows. Внешняя
+   колонка export `id` после activation берётся из отдельного reusable registry
+   с namespace `(profile, artifact)` и не является foreign key canonical data.
 6. **Revision отражает изменение public content.** Duplicate-only observation
    не двигает `artifact_revision` и не продлевает export quiet period.
 7. **Service и dataframe lifecycle раздельны.** Unrelated lightweight CLI
@@ -139,6 +140,25 @@ projection generation: insert-driven `artifact_revision` и immutable export
 trigger не меняются. Незавершённый reconciliation cycle при следующем admission
 помечается failed, после чего due rows безопасно перечитываются из canonical
 truth; частично закрытые records не воскресают.
+
+### Export-slot storage path (dataframe v5)
+
+V5 additively создаёт в dataframe DB три export-owned структуры:
+
+- `export_slot_assignment` с unique ownership как lifecycle→slot, так и
+  slot→lifecycle внутри `(profile, artifact)`;
+- `export_slot_free`, чей primary key одновременно является ordered index для
+  smallest-free lookup;
+- `export_slot_state` с policy version, durable `next_slot`, canonical
+  `source_generation` и временем последнего reconciliation.
+
+Registry не хранится в service DB: reconciliation active membership и slot
+state выполняется одной SQLite write transaction. После неё read snapshot
+сверяет generation до выдачи строк. Первое обращение seed-ит active lifecycle
+из текущих canonical IDs; положительные holes ниже seed high-water становятся
+free. Дальнейший high-water продвигается только durable `next_slot`, а не
+пересчитывается через `MAX(active id)`. Артефакты без public `id` не создают
+namespace rows.
 
 ## Отказы и восстановление
 
