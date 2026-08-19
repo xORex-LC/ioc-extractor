@@ -37,7 +37,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Streams all artifacts of one resolved export plan from a single SQLite read snapshot.
+ * Reconciles export-owned slot state and streams all artifacts of one resolved
+ * export plan from a single SQLite read snapshot.
  *
  * <p>The reader owns the connection, transaction and every cursor for the full
  * synchronous callback sequence. It buffers only per-artifact metadata; public
@@ -46,12 +47,15 @@ import java.util.stream.Collectors;
  */
 public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
 
+    private static final int MAX_SLOT_SNAPSHOT_ATTEMPTS = 3;
+
     private final DataSource dataSource;
     private final Map<String, DataframeArtifactSchema> schemas;
     private final Clock clock;
     private final LifecycleTimeSource activeTimeSource;
     private final DiagnosticSink diagnosticSink;
     private final DiagnosticFactory diagnosticFactory;
+    private final JdbcExportSlotRegistry exportSlots;
 
     public JdbcSnapshotSliceReader(DataSource dataSource,
                                    List<DataframeArtifactSchema> schemas,
@@ -82,6 +86,7 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
         this.activeTimeSource = Objects.requireNonNull(activeTimeSource, "activeTimeSource");
         this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
         this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
+        this.exportSlots = new JdbcExportSlotRegistry();
     }
 
     /**
@@ -103,10 +108,57 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
         Instant asOf = expectedState == LifecycleActivationState.ACTIVE
                 ? activeTimeSource.now().value()
                 : clock.instant();
-        try (Connection connection = dataSource.getConnection()) {
-            return stream(connection, plan, consumer, expectedState, asOf);
+        try {
+            if (expectedState == LifecycleActivationState.ACTIVE) {
+                return streamActive(plan, consumer, expectedState, asOf);
+            }
+            try (Connection connection = dataSource.getConnection()) {
+                return stream(connection, plan, consumer, expectedState, asOf);
+            }
         } catch (SQLException e) {
             throw snapshotFailure(plan.profile().name(), e);
+        }
+    }
+
+    private SnapshotMetadata streamActive(ExportPlan plan,
+                                          SnapshotRowConsumer consumer,
+                                          LifecycleActivationState expectedState,
+                                          Instant asOf) throws SQLException {
+        JdbcExportSlotRegistry.SnapshotChangedException lastRace = null;
+        for (int attempt = 1; attempt <= MAX_SLOT_SNAPSHOT_ATTEMPTS; attempt++) {
+            reconcileExportSlots(plan, expectedState, asOf);
+            try (Connection connection = dataSource.getConnection()) {
+                return stream(connection, plan, consumer, expectedState, asOf);
+            } catch (JdbcExportSlotRegistry.SnapshotChangedException changed) {
+                lastRace = changed;
+            }
+        }
+        throw new SQLException("Canonical data kept changing while opening export-slot snapshot", lastRace);
+    }
+
+    private void reconcileExportSlots(ExportPlan plan,
+                                      LifecycleActivationState expectedState,
+                                      Instant asOf) throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            Exception failure = null;
+            try {
+                JdbcLifecycleTransactions.acquireActiveWriteOwnership(connection);
+                LifecycleActivationState currentState = JdbcLifecycleTransactions.readActivationState(connection);
+                if (currentState != expectedState) {
+                    throw new SQLException(
+                            "Canonical lifecycle state changed while reconciling export slots");
+                }
+                exportSlots.reconcile(connection, plan, asOf);
+                connection.commit();
+            } catch (SQLException | RuntimeException e) {
+                failure = e;
+                rollback(connection, e);
+                throw e;
+            } finally {
+                restoreAutoCommit(connection, previousAutoCommit, failure);
+            }
         }
     }
 
@@ -129,7 +181,8 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
             consumer.begin(metadata);
             for (SnapshotArtifactMetadata artifact : artifacts) {
                 consumer.beginArtifact(artifact);
-                streamRows(connection, artifact, lifecycleState, asOf, consumer);
+                streamRows(
+                        connection, plan.profile().name(), artifact, lifecycleState, asOf, consumer);
                 consumer.endArtifact();
             }
             consumer.end();
@@ -159,6 +212,10 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                                                         Instant asOf) throws SQLException {
         List<SnapshotArtifactMetadata> metadata = new ArrayList<>(plan.artifacts().size());
         for (ExportArtifactSpec artifact : plan.artifacts()) {
+            if (lifecycleState == LifecycleActivationState.ACTIVE && exportSlots.appliesTo(artifact)) {
+                exportSlots.requireCurrentSnapshot(
+                        connection, plan.profile().name(), artifact.artifactName(), asOf);
+            }
             StoredIdentity identity = readIdentity(connection, artifact.artifactName());
             if (identity.epoch() != artifact.identityEpoch()
                     || !Objects.equals(identity.hash(), artifact.identityHash())) {
@@ -169,7 +226,8 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                     artifact.artifactName(),
                     artifact.fileName(),
                     artifact.columns(),
-                    readCoverage(connection, artifact.artifactName(), lifecycleState, asOf),
+                    readCoverage(
+                            connection, plan.profile().name(), artifact, lifecycleState, asOf),
                     identity.epoch(),
                     identity.hash(),
                     artifact.schemaHash()));
@@ -195,25 +253,23 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
     }
 
     private ArtifactCoverage readCoverage(Connection connection,
-                                          String artifactName,
+                                          String profile,
+                                          ExportArtifactSpec artifact,
                                           LifecycleActivationState lifecycleState,
                                           Instant asOf) throws SQLException {
-        String activePredicate = lifecycleState == LifecycleActivationState.ACTIVE
-                ? " WHERE " + quote("_valid_until_epoch_ms") + " > ?"
-                : "";
+        String artifactName = artifact.artifactName();
+        long upperId = lifecycleState == LifecycleActivationState.ACTIVE
+                && exportSlots.appliesTo(artifact)
+                ? exportSlots.upperSlot(connection, profile, artifactName, asOf)
+                : readCanonicalUpperId(connection, artifactName, lifecycleState, asOf);
         String sql = """
                 SELECT COALESCE(r.revision, 0) AS revision,
-                       r.changed_at,
-                       (SELECT COALESCE(MAX(id), 0) FROM %s%s) AS upper_id
+                       r.changed_at
                 FROM (SELECT 1) seed
                 LEFT JOIN artifact_revision r ON r.artifact = ?
-                """.formatted(quote(artifactName), activePredicate);
+                """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            int parameter = 1;
-            if (lifecycleState == LifecycleActivationState.ACTIVE) {
-                statement.setLong(parameter++, asOf.toEpochMilli());
-            }
-            statement.setString(parameter, artifactName);
+            statement.setString(1, artifactName);
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     throw new SQLException("Coverage query returned no row for " + artifactName);
@@ -222,7 +278,27 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                         artifactName,
                         resultSet.getLong("revision"),
                         resultSet.getString("changed_at"),
-                        resultSet.getLong("upper_id"));
+                        upperId);
+            }
+        }
+    }
+
+    private long readCanonicalUpperId(Connection connection,
+                                      String artifactName,
+                                      LifecycleActivationState lifecycleState,
+                                      Instant asOf) throws SQLException {
+        String sql = "SELECT COALESCE(MAX(" + quote("id") + "), 0) FROM " + quote(artifactName)
+                + (lifecycleState == LifecycleActivationState.ACTIVE
+                ? " WHERE " + quote("_valid_until_epoch_ms") + " > ?" : "");
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            if (lifecycleState == LifecycleActivationState.ACTIVE) {
+                statement.setLong(1, asOf.toEpochMilli());
+            }
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    throw new SQLException("Coverage query returned no row for " + artifactName);
+                }
+                return resultSet.getLong(1);
             }
         }
     }
@@ -243,20 +319,35 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
     }
 
     private void streamRows(Connection connection,
+                            String profile,
                             SnapshotArtifactMetadata artifact,
                             LifecycleActivationState lifecycleState,
                             Instant asOf,
                             SnapshotRowConsumer consumer) throws SQLException {
+        boolean slotted = lifecycleState == LifecycleActivationState.ACTIVE
+                && artifact.columns().contains("id");
         String columns = artifact.columns().stream()
-                .map(this::quote)
+                .map(column -> slotted && "id".equals(column)
+                        ? "a." + quote("slot") + " AS " + quote("id")
+                        : "t." + quote(column) + " AS " + quote(column))
                 .collect(Collectors.joining(", "));
-        String sql = "SELECT " + columns + " FROM " + quote(artifact.artifactName())
+        String sql = "SELECT " + columns + " FROM " + quote(artifact.artifactName()) + " t"
+                + (slotted
+                ? " JOIN export_slot_assignment a"
+                + " ON a.profile = ? AND a.artifact = ?"
+                + " AND a.lifecycle_id = t." + quote("_lifecycle_id")
+                : "")
                 + (lifecycleState == LifecycleActivationState.ACTIVE
-                ? " WHERE " + quote("_valid_until_epoch_ms") + " > ?" : "")
-                + " ORDER BY " + quote("id");
+                ? " WHERE t." + quote("_valid_until_epoch_ms") + " > ?" : "")
+                + " ORDER BY " + (slotted ? "a." + quote("slot") : "t." + quote("id"));
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            int parameter = 1;
+            if (slotted) {
+                statement.setString(parameter++, profile);
+                statement.setString(parameter++, artifact.artifactName());
+            }
             if (lifecycleState == LifecycleActivationState.ACTIVE) {
-                statement.setLong(1, asOf.toEpochMilli());
+                statement.setLong(parameter, asOf.toEpochMilli());
             }
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {

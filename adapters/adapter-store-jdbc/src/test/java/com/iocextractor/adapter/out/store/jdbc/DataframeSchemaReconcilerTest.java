@@ -173,7 +173,7 @@ class DataframeSchemaReconcilerTest {
                 dataSource,
                 DataframeFormatMigrations.sqlite()).migrate();
 
-        assertThat(result.currentVersion()).isEqualTo(4);
+        assertThat(result.currentVersion()).isEqualTo(5);
         assertThat(tableExists("dataframe_schema_format")).isTrue();
         assertThat(tableExists("artifact_identity")).isTrue();
         assertThat(tableExists("artifact_revision")).isTrue();
@@ -183,6 +183,10 @@ class DataframeSchemaReconcilerTest {
         assertThat(tableExists("artifact_projection_state")).isTrue();
         assertThat(tableExists("confirmation_receipt")).isTrue();
         assertThat(tableExists("confirmation_receipt_artifact")).isTrue();
+        assertThat(tableExists("export_slot_assignment")).isTrue();
+        assertThat(tableExists("export_slot_free")).isTrue();
+        assertThat(tableExists("export_slot_state")).isTrue();
+        assertThat(indexExists("ix_export_slot_assignment_slot")).isTrue();
         try (Connection connection = dataSource.getConnection();
              var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT value FROM dataframe_schema_format WHERE name = 'format'")) {
@@ -205,8 +209,8 @@ class DataframeSchemaReconcilerTest {
         SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
 
         assertThat(result.previousVersion()).isEqualTo(2);
-        assertThat(result.currentVersion()).isEqualTo(4);
-        assertThat(result.appliedVersions()).containsExactly(3, 4);
+        assertThat(result.currentVersion()).isEqualTo(5);
+        assertThat(result.appliedVersions()).containsExactly(3, 4, 5);
         assertThat(tableExists("artifact_revision")).isTrue();
         assertThat(tableExists("canonical_lifecycle_control")).isTrue();
         try (Connection connection = dataSource.getConnection();
@@ -215,6 +219,23 @@ class DataframeSchemaReconcilerTest {
             assertThat(resultSet.next()).isTrue();
             assertThat(resultSet.getInt(1)).isOne();
         }
+    }
+
+    @Test
+    void format_migration_upgrades_v4_database_with_empty_export_slot_registry() throws Exception {
+        dataSource = dataSource("format-v4.db");
+        List<SqliteSchemaMigration> migrations = DataframeFormatMigrations.sqlite();
+        new SqliteUserVersionSchemaMigrator(dataSource, migrations.subList(0, 4)).migrate();
+
+        SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
+
+        assertThat(result.previousVersion()).isEqualTo(4);
+        assertThat(result.currentVersion()).isEqualTo(5);
+        assertThat(result.appliedVersions()).containsExactly(5);
+        assertThat(tableExists("export_slot_assignment")).isTrue();
+        assertThat(tableExists("export_slot_free")).isTrue();
+        assertThat(tableExists("export_slot_state")).isTrue();
+        assertThat(rowCount("export_slot_state")).isZero();
     }
 
     @Test

@@ -18,6 +18,11 @@ public record ExportPlan(int manifestVersion,
                          ExportFormat format,
                          List<ExportArtifactSpec> artifacts) {
 
+    private static final String EXTERNAL_ID_COLUMN = "id";
+
+    /** Version of the external-id mapping included in ID-bearing export plan fingerprints. */
+    public static final String EXPORT_SLOT_POLICY_VERSION = "stable-sparse-reusable-v1";
+
     public ExportPlan {
         if (manifestVersion < 1) {
             throw new IllegalArgumentException("Manifest version must be positive");
@@ -45,6 +50,9 @@ public record ExportPlan(int manifestVersion,
             add(digest, format.delimiter());
             add(digest, format.quote());
             add(digest, format.nullLiteral());
+            if (artifacts.stream().anyMatch(artifact -> artifact.columns().contains(EXTERNAL_ID_COLUMN))) {
+                add(digest, EXPORT_SLOT_POLICY_VERSION);
+            }
             for (ExportArtifactSpec artifact : artifacts) {
                 add(digest, artifact.artifactName());
                 add(digest, artifact.fileName());

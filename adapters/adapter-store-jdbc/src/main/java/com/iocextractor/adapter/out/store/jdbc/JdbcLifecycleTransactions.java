@@ -19,6 +19,12 @@ final class JdbcLifecycleTransactions {
                                             JdbcLifecycleTransactionObserver.Operation operation,
                                             JdbcLifecycleTransactionObserver observer) throws SQLException {
         observer.observe(JdbcLifecycleTransactionObserver.Phase.BEFORE_WRITE_OWNERSHIP, operation, artifact);
+        acquireActiveWriteOwnership(connection);
+        observer.observe(JdbcLifecycleTransactionObserver.Phase.AFTER_WRITE_OWNERSHIP, operation, artifact);
+    }
+
+    /** Serializes an internal active-state write transaction before it reads canonical membership. */
+    static void acquireActiveWriteOwnership(Connection connection) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 UPDATE canonical_lifecycle_control
                 SET version = version
@@ -29,7 +35,6 @@ final class JdbcLifecycleTransactions {
                 throw new IocExtractorException("Canonical lifecycle is not active");
             }
         }
-        observer.observe(JdbcLifecycleTransactionObserver.Phase.AFTER_WRITE_OWNERSHIP, operation, artifact);
     }
 
     static void acquireActivatingWriteOwnership(Connection connection, String artifact) throws SQLException {
