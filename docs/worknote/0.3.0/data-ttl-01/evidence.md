@@ -1,13 +1,19 @@
 ---
 title: "DATA-TTL-01 — execution evidence"
 version: "0.3.0"
-status: "In progress"
+status: "In progress — P7 pending"
 document_type: "Implementation evidence"
 source_of_truth: false
 language: "ru"
 ---
 
 # DATA-TTL-01 — execution evidence
+
+> **Evidence correction (2026-08-19).** P0–P6 remain valid evidence for the
+> implemented TTL lifecycle. Their monotonic public-ID assertions characterize
+> the current implementation but do not satisfy the subsequently clarified
+> reusable export-slot contract in I-22/ADR-0021. DATA-TTL-01 is reopened until
+> P7 implementation and replacement compatibility/performance evidence exist.
 
 ## P0 — architecture acceptance
 
@@ -35,7 +41,7 @@ reference performance threshold — уточняются в owning slices до �
   `ArtifactProjectionWorkStore`;
 - reusable `CanonicalRecordLifecycleContractTest` для one-`asOf`, active/due,
   renewal, observation replay, due→new lifecycle, bounded expiry, revision,
-  projection generation и ID non-reuse;
+  projection generation и internal lifecycle ID non-reuse;
 - unit tests для fixed policy, lifecycle boundary/renewal, activation и result
   invariants.
 
@@ -365,7 +371,8 @@ Upgrade activation реализована отдельным application service
   после полного удаления legacy rows и convergence всех required mutable
   projections. Пустой active dataset является корректным результатом;
 - archive не проигрывается автоматически. Возврат актуальности происходит
-  только через новое подтверждение и создаёт новую lifecycle/public identity.
+  только через новое подтверждение и создаёт новую internal lifecycle identity;
+  внешнее slot-поведение переоткрыто в P7.
 
 Configuration boundary использует закрытые selectors
 `ioc.lifecycle.validity.mode=disabled|fixed` и
@@ -428,8 +435,7 @@ profile и финальная release документация остаются 
 
 ## P6 — release closure
 
-**Статус:** in progress; rootless gates complete, privileged packaged stand
-pending.
+**Статус:** complete; rootless и privileged packaged gates выполнены.
 
 Fresh production template теперь включает `fixed/12h` с безопасным для чистой
 БД `existing-records: reject`. Classpath и upgrade-compatible defaults остаются
@@ -449,7 +455,9 @@ Rootless harness использует normal daemon ingestion, bootable fat JAR 
 production heap flags. Он проверяет active → typed history → retention purge,
 header-only mutable projections, unchanged insert-driven revisions, aggregate
 health, absence of an expiry-triggered immutable slice, exact active membership
-in the next new-row slice и public-ID non-reuse после нового подтверждения.
+in the next new-row slice и monotonic public-ID behavior после нового
+подтверждения. Последнее является characterization прежней модели, а не pass
+для исправленного reusable export-slot requirement.
 `make lifecycle-load`
 на clean commit `b5bdd1a10802b9f5b7158d2e39ed9d34c2d98537` провёл `100001`
 canonical rows и дал:
@@ -467,6 +475,55 @@ canonical rows и дал:
 сохранены в [P6 load profile](evidence/p6-load-profile.md). Raw report остаётся
 ignored runtime artifact под `.dev/`.
 
+### Privileged packaged systemd stand (2026-08-18/19)
+
+Проверка выполнена на disposable systemd stand под Ubuntu 24.04.3 LTS с JDK 21.
+Это best-effort дистрибутив согласно deployment contract: installer выдал
+ожидаемое предупреждение, что официальные platform baselines — Debian 11/12.
+Stand закрывает DATA-TTL-01 packaged lifecycle gate; отдельная Debian-specific
+квалификация всего release остаётся ответственностью `R030-REL`.
+
+Проверялся bootable JAR с commit `e089ae6a3fe8592eb896878398b04088021f238f`
+и SHA-256
+`5e89ccd90f9146d36d4327c428119e097a68478702864e424ce85a21b15621d2`.
+Все операции проходили через production layout `/srv/ioc-extractor`, реальный
+systemd unit и dedicated account `ioc` с `/usr/sbin/nologin`; immutable JAR
+остался `root:ioc:0644`, operator config — `root:ioc:0640`, обе DB —
+`ioc:ioc:0640`.
+
+| Checkpoint | Наблюдаемый результат |
+|---|---|
+| Official v0.2.0 baseline | Dataframe/service schema `3/7`, `246` active rows, revision `1` для всех artifacts; четыре mutable projections сохранены как byte-exact baseline |
+| Compatibility upgrade | Schema `4/8`, lifecycle `DISABLED_COMPATIBLE`; `246` rows, max public IDs, revisions, operator config SHA-256 `1a4b8941a8167440f7fef44d2de0481a55719fa2f50ffefb4c9be4740c6be81e` и все projection hashes не изменились; новый template появился отдельно |
+| Explicit activation | Stand-only `fixed/2m`, `existing-records: expire`, history `4m`, receipts `5m`: active `246 → 0`, typed history `0 → 246`, все причины `LEGACY_ACTIVATION`, projections стали header-only, control state стал `ACTIVE` |
+| Fresh confirmation and expiry | Normal daemon ingestion создал `5` active rows с lifecycle IDs `247..251`; все deadline deltas ровно `120000ms`; expiry закрыл строки с `EXPIRED` за `0..3ms` после границы и не изменил insert-driven artifact revisions |
+| Reappearance | Тот же content под новой source identity прошёл receipt fast path как новое наблюдение: lifecycle IDs `252..256`, текущая реализация выдала monotonic public IDs `masks 45→46`, `ip_list 22→23`, `hashes 117→118`; address rows также получили новые internal IDs `68/69` вместо `66/67`. Это characterization, которую P7 должен заменить slot-reuse assertions |
+| Independent retention | Первый и второй receipt были удалены по собственным `5m` deadlines, legacy и обычная history — по собственным `4m` deadlines; итоговые active/history/receipt counts стали `0/0/0` |
+| Export rule I-20 | Expiry не создал immutable slice. Обычный delayed new-row export сработал только из-за insert-driven revision и, поскольку к snapshot rows уже истекли, создал header-only current-membership slices |
+| Activation rollback | Consistent pre-activation snapshot восстановил schema `4/8`, lifecycle `DISABLED_COMPATIBLE`, `246` active/`0` history и исходные projection hashes |
+| Release rollback | Matching v0.2 binary/config/two-DB backup восстановил schema `3/7`, `246` active rows и byte-exact v0.2 projections; service снова прошёл health gate |
+| Fresh installation | После purge installer создал чистый layout со schema `4/8`, `ACTIVE`, production `fixed/12h` + `existing-records: reject`; initial active set был пуст, health — `UP` |
+
+Activation rollback point сохранён под
+`/var/tmp/ioc-extractor-p6-pre-activation-20260819T141023Z`, состояние после
+activation — под
+`/var/tmp/ioc-extractor-p6-activated-state-20260819T142134Z`, а полный v0.2
+recovery archive перед итоговой fresh installation — под
+`/var/tmp/ioc-extractor-p6-before-fresh-20260819T142653Z`.
+
+После fresh installation normal daemon fixture создал `5` rows (`masks=1`,
+`ip_list=1`, `address_blacklist=2`, `hashes=1`) с lifecycle IDs `1..5` и точным
+TTL delta `43200000ms`. Все применимые public `time_first_seen` и
+`time_last_seen` остались `NULL`. Service restart сохранил exact
+`first_confirmed/last_confirmed/valid_until` tuples; после restart aggregate
+health показал schemas `4/8`, lifecycle `ACTIVE`, clock `SAFE`, due/history/
+projection backlog `0/0/0` и общий status `UP`.
+
+Итоговое состояние стенда намеренно не откатано: active symlink указывает на
+`releases/e089ae6a3fe8-p6-fresh`, последняя версия работает с `fixed/12h`, а
+пять test records остаются active до ближайшего deadline
+`2026-08-20T02:27:29.545Z`.
+
 ### Verification выполнено
 
 ```text
@@ -478,6 +535,10 @@ make lifecycle-load
 
 tools/ci/packaging.sh
   ShellCheck + packaging contracts + tools contracts: passed
+
+Privileged packaged systemd stand
+  passed: v0.2.0 compatibility upgrade, activation, expiry/retention,
+  activation rollback, release rollback, fresh install and restart
 
 Focused lifecycle/JDBC/config/ingest/export tests
   55 tests, 0 failures, 0 errors
@@ -505,12 +566,25 @@ stale`: IDE/JDT успел перезаписать часть Maven `target/cla
 подтвердил стабильный результат `93 accepted / 0 visible`; немедленное повторное
 сравнение дало `0 new / 0 stale`.
 
-### Remaining release gate
+### Packaged stand closure
 
-Repository contract tests и rootless daemon runtime не могут проверить real
-systemd ownership, privileged immutable activation, service stop/start и
-automatic rollback. Поэтому P6 и `R030-DATA` остаются `in-progress` до
-fresh-install → compatibility upgrade → explicit activation → rollback
-сценария на disposable systemd host. Локальные release gates, включая fresh
-full-reactor `make verify`, закрыты; недоступный privileged stand записан как
-pending, не как pass.
+Real systemd ownership, privileged immutable activation, service stop/start,
+explicit activation rollback и matching binary/config/two-DB release rollback
+проверены на disposable stand. Fresh installation затем повторена из пустого
+layout и оставлена работающей на текущем release. Вместе с repository gates и
+100k profile закрыли исходный P6 lifecycle scope. Они больше не закрывают
+`R030-DATA` целиком: P7 должен повторить затронутые compatibility, performance и
+packaged assertions для reusable export slots. Общие 0.3.0 release goals и
+официальная Debian 11/12 platform qualification продолжают отслеживаться
+отдельно.
+
+## P7 — reusable export-slot correction
+
+**Статус:** implementation/evidence pending.
+
+Требуемое replacement evidence определено в
+[export-slot-correction.md](export-slot-correction.md#10-p7-acceptance-evidence)
+и [implementation plan](implementation-plan.md#p7--stable-reusable-export-slots).
+P7 не должен удалять или переписывать измеренные P6 факты; он добавляет новый
+run, который доказывает survivor stability, smallest-hole reuse, no compaction,
+generation-safe snapshot, migration seeding и bounded 100k allocation.

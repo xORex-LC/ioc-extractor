@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 release-note input"
 version: "0.3.0"
-status: "Curated input"
+status: "Draft — P7 pending"
 document_type: "Release-note input"
 source_of_truth: false
 language: "en"
@@ -17,7 +17,7 @@ artifact checksum or whole-release verification claim.
 
 - Canonical IOC records can use a fixed validity period. Successful canonical
   confirmation renews an active record; an observation after expiry creates a
-  new lifecycle and a new service-owned public ID.
+  new lifecycle with a new internal lifecycle identity.
 - Expired rows leave active SQLite membership and mutable CSV projections, move
   to typed bounded history, and are later removed by independent retention.
 - Aggregate lifecycle health reports activation, clock safety, due/history
@@ -31,6 +31,11 @@ artifact checksum or whole-release verification claim.
 - Expiry does not advance the insert-driven artifact revision and does not
   create an immutable export slice. The next new-row-driven export contains
   only records active at its snapshot time.
+- For artifacts with an external `id`, the final 0.3.0 behavior must preserve
+  each surviving record's stable export slot, release slots of records absent
+  from the active set, and assign the smallest free slots to new lifecycles.
+  Slots are not canonical identities and existing rows are never renumbered to
+  close gaps. This item remains pending P7 implementation and evidence.
 - Public CSV/export columns remain unchanged. `time_first_seen` and
   `time_last_seen` remain `NULL`; internal `valid_until` is not exported.
 
@@ -48,6 +53,12 @@ Activation is one-way for that dataframe database. After it starts, rollback
 requires restoring the pre-activation binary, configuration and both SQLite
 databases together; switching the YAML back to `disabled` is rejected.
 
+The P6 candidate stand exercised the compatibility start, explicit activation,
+activation rollback, complete release rollback and a clean fresh installation.
+Its monotonic exported-ID result is current-behavior characterization; the P7
+slot migration and packaged assertions must be completed before these notes are
+release-ready.
+
 ## Known operational boundary
 
 - Expiry updates mutable projections but does not push an empty immutable slice
@@ -57,6 +68,9 @@ databases together; switching the YAML back to `disabled` is rejected.
 ## Technical references
 
 - [ADR-0020](../../../ADR/0020-canonical-record-expiration-lifecycle.md)
+- [ADR-0021](../../../ADR/0021-stable-reusable-export-slots.md)
+- [export-slot correction](export-slot-correction.md)
 - [operator guide](../../../guides/canonical-record-lifecycle.md)
 - [capability documentation](../../../dev/canonical-record-lifecycle.md)
+- [P6 packaged execution evidence](evidence.md#privileged-packaged-systemd-stand-2026-08-1819)
 - [P6 load evidence](evidence/p6-load-profile.md)

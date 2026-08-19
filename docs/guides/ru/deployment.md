@@ -8,8 +8,8 @@ installer baselines — Debian 11 и 12. Другие systemd-дистрибут
 
 | Способ | Назначение | Гарантии |
 |---|---|---|
-| `packaging/install.sh` | Новый host/prefix или контролируемое обновление внутри marked layout 0.2.x | Host provisioning, verified JDK, safe marked layout, immutable activation, сохранение config и local storage health gate |
-| `packaging/deploy-local.sh` | Повторные deploy 0.2.x из локального checkout на Debian/WSL test host | Clean `verify`, build identity, DB backup, atomic activation, health gate и automatic rollback |
+| `packaging/install.sh` | Новый host/prefix или контролируемое обновление внутри marked layout, введённого в 0.2.0 | Host provisioning, verified JDK, safe marked layout, immutable activation, сохранение config и local storage health gate |
+| `packaging/deploy-local.sh` | Повторные deploy 0.2.0+ из локального checkout на Debian/WSL test host | Clean `verify`, build identity, DB backup, atomic activation, health gate и automatic rollback |
 
 Если поздний шаг установки завершится ошибкой, `install.sh` возвращает предыдущие
 release/unit и перезапускает ранее активный service, но не создаёт и не
@@ -183,7 +183,7 @@ sudo systemctl start ioc-extractor
 Input, принятые только после cutover на 0.2.0, отсутствуют в старом prefix.
 Сохраните их и явно согласуйте/повторно подайте при rollback.
 
-## Upgrade внутри 0.2.x через `install.sh`
+## Upgrade внутри marked layout через `install.sh`
 
 1. Проверьте новый jar/checksum на trusted build host.
 2. Остановите подачу inputs или откройте maintenance window.
@@ -202,7 +202,7 @@ sudo packaging/install.sh \
   --prefix /opt/ioc-extractor \
   --jar /tmp/ioc-extractor-new.jar \
   --checksum /tmp/ioc-extractor-new.jar.sha256 \
-  --release-id v0.2.0
+  --release-id v0.3.0
 ```
 
 Для нестандартного actuator port передайте также `--server-port PORT`. Installer

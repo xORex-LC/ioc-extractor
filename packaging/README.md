@@ -68,10 +68,11 @@ Release files are root-owned and immutable. The service account owns writable
 runtime state. `etc/`, `var/` and `dataframe/` stay outside release directories
 so activation never replaces operator data.
 
-This is the 0.2.x layout. The 0.1.0 single-directory layout
-(`lib/ioc-app-0.1.0.jar`) is intentionally not adopted in place: 0.2.0 uses a
-fresh side-by-side prefix and rebuilds SQLite truth by re-ingesting reviewed
-original sources. The old prefix remains the cross-version rollback point.
+This marked layout was introduced in 0.2.0 and is retained by the 0.3.x line.
+The 0.1.0 single-directory layout (`lib/ioc-app-0.1.0.jar`) is intentionally not
+adopted in place: 0.2.0 uses a fresh side-by-side prefix and rebuilds SQLite
+truth by re-ingesting reviewed original sources. The old prefix remains the
+cross-version rollback point.
 
 ## `install.sh`
 
@@ -109,11 +110,12 @@ Reconcile `*.new` files as described in the deployment guide.
 The installer does not provide the database backup and automatic rollback
 transaction of `deploy-local.sh`.
 
-Upgrades within a marked 0.2.x layout may reuse the prefix. Transition from
-0.1.0 to 0.2.0 is filesystem-side-by-side: preserve the old prefix and unit,
-install into a clean prefix, configure from the 0.2.0 template and re-ingest
-trusted source documents. Generated 0.1.0 CSV projections are not a supported
-SQLite import path.
+Upgrades within the marked layout introduced in 0.2.0 may reuse the prefix,
+subject to the release-specific database/configuration procedure. Transition
+from 0.1.0 to 0.2.0 is filesystem-side-by-side: preserve the old prefix and
+unit, install into a clean prefix, configure from the 0.2.0 template and
+re-ingest trusted source documents. Generated 0.1.0 CSV projections are not a
+supported SQLite import path.
 
 ## `deploy-local.sh`
 
@@ -131,8 +133,9 @@ published under the wrong commit identity. `--port` is rendered into the daemon
 unit as the high-precedence `--server.port` override and is also used by the
 health gate.
 
-The script bootstraps a clean prefix or upgrades an existing marked 0.2.x
-layout. It is not a migration command for the 0.1.0 single-directory layout.
+The script bootstraps a clean prefix or upgrades an existing marked layout from
+0.2.0 or later. It is not a migration command for the 0.1.0 single-directory
+layout.
 
 The privileged phase:
 

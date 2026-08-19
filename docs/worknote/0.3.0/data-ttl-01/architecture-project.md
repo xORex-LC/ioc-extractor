@@ -1,13 +1,22 @@
 ---
 title: "DATA-TTL-01 — architecture project"
 version: "0.3.0"
-status: "Accepted for implementation"
+status: "Reopened for P7 export-slot correction"
 document_type: "Architecture project"
 source_of_truth: false
 language: "en"
 ---
 
 # DATA-TTL-01 — architecture project
+
+> **2026-08-19 correction.** P0–P6 implemented the lifecycle architecture, but
+> the downstream meaning of the exported `id` was clarified after P6. Sections
+> that describe that value as a never-reused service identity are historical
+> and superseded by [ADR-0021](../../../ADR/0021-stable-reusable-export-slots.md)
+> and the detailed [export-slot correction](export-slot-correction.md).
+> Canonical/internal lifecycle IDs remain non-reusable; the external `id` is a
+> stable sparse reusable `export_slot`. P7 implementation and evidence are
+> pending.
 
 ## 1. Executive decision
 
@@ -33,6 +42,9 @@ The recommended V1 shape is:
   state plus startup/periodic reconciliation remains the correctness authority;
 - expiry does **not** advance the existing insert-driven `artifact_revision`
   and does not create an immutable export slice by itself;
+- an eligible export reconciles a durable `(profile, artifact)` slot registry:
+  surviving active rows keep their slots, expired slots become reusable, and
+  new lifecycles take the smallest free slots without compaction;
 - no new Maven module, third-party scheduler or separately published Java
   library is justified for V1.
 
@@ -41,8 +53,9 @@ artifacts are ordinary JARs, while only `bootstrap/ioc-app` assembles the
 executable fat JAR. A new module would therefore be an additional architectural
 boundary, not a prerequisite for internal reuse.
 
-This design was accepted for implementation on 2026-08-16. Parameters that do
-not alter the business semantics remain owned by their implementation slices.
+The lifecycle design was accepted for implementation on 2026-08-16 and
+completed through P6. The export identity correction was accepted on
+2026-08-19 and reopens the project for P7.
 
 ### 1.1 Lifecycle vocabulary and reference-derived constraints
 
@@ -76,7 +89,7 @@ Detailed evidence and tool/library disposition are recorded in
 
 This project is based on:
 
-- accepted interview outcomes I-01 through I-21 in [discovery.md](discovery.md);
+- accepted interview outcomes I-01 through I-22 in [discovery.md](discovery.md);
 - the release outcome and exclusions in [release-contract.md](release-contract.md);
 - the current implementation of canonical writes, mutable projection,
   immutable export, ingestion recovery, SQLite schema reconciliation and daemon
@@ -90,7 +103,8 @@ firewall or other downstream target lifecycle protocols.
 
 - fixed configurable TTL for every accepted canonical artifact row lifecycle;
 - exact active reads, renewal, expiry, history and reappearance;
-- public/internal/source identity separation and non-reuse;
+- canonical/internal/source identity separation from stable sparse reusable
+  export slots;
 - mutable dataframe convergence after expiry;
 - preservation of the accepted immutable export trigger behavior;
 - daemon and stateful oneshot admission;
@@ -121,8 +135,8 @@ firewall or other downstream target lifecycle protocols.
 | `BR-03` | Absence from a later document is not revocation | No snapshot-diff deletion and no source withdrawal logic in V1 |
 | `BR-04` | Every accepted observation renews a still-active row | V1 writes `lastConfirmedAt` and `validUntil = asOf + fixedTtl`; no near-deadline threshold optimization |
 | `BR-05` | At the exact deadline the row is inactive | Every active read applies a half-open `validUntil > asOf` predicate |
-| `BR-06` | Observation after expiry is a new record lifecycle | Old state is archived; a new lifecycle and new service-owned ID are allocated |
-| `BR-07` | Service IDs are never reused; source IDs are separate | Durable allocators survive deletion/restart; source IDs remain namespaced provenance |
+| `BR-06` | Observation after expiry is a new record lifecycle | Old state is archived and a new non-reusable internal lifecycle identity is allocated |
+| `BR-07` | External `id` is a stable sparse reusable export slot | Survivors keep their slots; expired slots are released at eligible export; new lifecycles consume the smallest holes; source IDs remain namespaced provenance |
 | `BR-08` | Fresh production installs use fixed `12h` | Packaging explicitly overrides the compatibility default |
 | `BR-09` | Existing installs opt in destructively | Persisted `ACTIVATING -> ACTIVE` state and named `existing-records: expire` policy |
 | `BR-10` | Duration changes are prospective | Stored absolute deadlines are not recomputed until a later accepted observation |
@@ -136,6 +150,7 @@ firewall or other downstream target lifecycle protocols.
 | `BR-18` | All 100,000 rows may expire together | Indexed discovery, keyset batches, bounded transactions and coalesced projection |
 | `BR-19` | Repeated identical content is a new observation | Source content identity is separated from delivery/observation identity |
 | `BR-20` | No-ETL duplicates are bounded | Complete fingerprinted prepared-row receipts expire after `30d`; fallback is ordinary ETL |
+| `BR-21` | Export slots must not become canonical identity | The registry is export-owned; TTL, history, dedup and provenance do not depend on it |
 
 ## 4. Current architecture and gaps
 
@@ -160,7 +175,7 @@ TTL subsystem:
 | Current behavior | TTL failure if unchanged |
 |---|---|
 | `load()` and snapshot export read every physical row | Due rows leak until cleanup finishes |
-| Public IDs restart from active `MAX(id)+1` | Deleting the highest row can reuse its public ID after restart |
+| Export reads canonical `id` directly | The output cannot preserve survivors while reusing the smallest expired slot independently of storage identity |
 | `ArtifactWritePlan` reserves IDs in process memory | Reservation is not authoritative across restart/processes |
 | Each row currently calls `clock.instant()` independently | One transaction can contain inconsistent confirmation times |
 | `artifact_revision` changes only on insert | It cannot also represent expiry-driven mutable projection work without changing export semantics |
@@ -371,13 +386,14 @@ activating. `ACTIVE` publication is conditional on an invariant scan proving no
 active row has partial lifecycle metadata.
 
 Use `_lifecycle_id`, rather than public `id`, as the uniform keyset tiebreaker.
-Some artifacts do not expose a public ID, public ID strategies are independent,
+Some artifacts do not expose an external slot, slot strategies are independent,
 and lifecycle identity must remain stable across all artifact schemas.
 
 For each artifact, create a typed `<artifact>_history` table that mirrors the
 ordered public business columns and stores:
 
-- a history primary key and the former storage/public identity;
+- a history primary key, former technical row identity and, where applicable,
+  the export slot observed for audit;
 - `row_key` and `_lifecycle_id`;
 - first/last confirmation and expiration instants;
 - `closed_at` and a stable close reason;
@@ -388,7 +404,7 @@ and occurrence counts. An index on `(closed_at_epoch_ms, history_id)` supports
 bounded retention. History never participates in active row matching.
 
 For no-ETL replay, create typed `<artifact>_receipt_rows` tables containing
-prepared business-row templates **without service-owned IDs**, plus receipt,
+prepared business-row templates **without technical IDs or export slots**, plus receipt,
 ordinal, row key and provenance fields. Typed tables avoid opaque JSON, a new
 codec dependency and EAV row explosion. A receipt becomes readable only after
 all expected artifact templates are staged and its header is marked complete.
@@ -396,25 +412,34 @@ The normalized `confirmation_receipt_artifact` marker represents every staged
 artifact, including a valid zero-row artifact; the receipt writer verifies marker
 count and row-count totals in the same transaction that publishes `COMPLETE`.
 
-### 7.4 Stable ID allocation
+### 7.4 Canonical identity and export-slot allocation
 
-The process-local `ArtifactIdSequence` and active `MAX(id)+1` baseline cannot be
-the authority once rows are deleted. Replace them with durable reservation:
+Canonical technical/lifecycle identity remains durable and non-reusable. The
+P1–P3 allocator may continue to reserve ranges independently of active-row
+deletion:
 
-1. the application passes prepared rows with deferred service-ID slots;
+1. the application passes prepared rows with deferred technical IDs;
 2. the JDBC writer first checks whether `(observationId, artifact)` was already
    committed;
-3. if not, it durably reserves worst-case public and lifecycle ranges;
+3. if not, it durably reserves worst-case technical and lifecycle ranges;
 4. the canonical transaction materializes only the IDs it needs;
 5. unused or failed reserved values remain gaps and are never returned.
 
 Allocator state records direction and identity epoch; incompatible strategy
-drift fails startup. Upgrade seeding must account for every existing public ID
-and the configured direction/start, not only `MAX(id)` after activation.
+drift fails startup. This identity allocator is not exposed as the export
+position after P7.
+
+The external artifact `id` is resolved separately from the export-owned durable
+registry described in [ADR-0021](../../../ADR/0021-stable-reusable-export-slots.md).
+At eligible export, the registry preserves surviving `(lifecycle, slot)`
+assignments, releases assignments absent from the active generation and maps
+the smallest free slots to new lifecycle IDs. It uses same-dataframe-DB
+transactions, uniqueness constraints and durable high-water state; it never
+derives authority from `MAX(active.id)` or dense row numbering.
 
 Source-provided IDs remain optional namespaced provenance. A future
 `(sourceNamespace, sourceRecordId)` relation can be added without changing the
-service/lifecycle allocators or existing public output contracts.
+technical/lifecycle allocator or export-slot ownership.
 
 ## 8. Core flows
 
@@ -771,7 +796,10 @@ strict SQL identifier validation; data stays parameterized.
 | Risk | Severity | Control and required evidence |
 |---|---|---|
 | Due row leaks before delete | Critical | Active predicate on every read; delayed-cleanup tests |
-| Public ID reused after deletion/restart | Critical | Durable direction-aware allocator; highest-ID expiry/restart tests |
+| Survivor export slot is renumbered after another row expires | Critical | Durable sparse registry; no-compaction and restart tests |
+| A new lifecycle does not receive the smallest free slot | High | Indexed free-slot state, deterministic batch allocation and multi-hole tests |
+| Export slot becomes canonical/lifecycle identity | Critical | Export-owned port and schema; architecture boundary tests and no TTL/history dependency |
+| Registry and active snapshot use different generations | Critical | Same-DB reconciliation, generation validation, consistent snapshot and ingest×export race tests |
 | Crash retry extends TTL twice | High | Durable observation ID and per-artifact commit marker; fault injection at commit/ledger boundary |
 | Terminal source ledger suppresses future confirmation | High | Separate content and observation identity; receipt or ETL path on every new delivery |
 | Expiry accidentally creates immutable export | High | Separate revision/generation stores and event types; I-20 trigger tests |
@@ -789,7 +817,7 @@ strict SQL identifier validation; data stays parameterized.
 
 ## 16. Implementation decomposition
 
-The existing P0–P6 sequence remains appropriate with these refinements:
+P0–P6 remain completed lifecycle work. The corrected contract adds P7:
 
 1. **P0 — characterization and design acceptance**
    - accept this architecture before accepting ADR-0020;
@@ -816,6 +844,14 @@ The existing P0–P6 sequence remains appropriate with these refinements:
 7. **P6 — release closure**
    - fresh package `fixed/12h`, two-step upgrade/rollback docs, generated
      catalogs, 100k evidence and fresh full-reactor verification.
+8. **P7 — stable reusable export slots**
+   - add an application export-slot port and same-dataframe-DB JDBC registry;
+   - seed current active mappings without renumbering, reconcile smallest free
+     slots set-based, and project `export_slot AS id`;
+   - preserve expiry's no-export rule and existing immutable-slice saga;
+   - repeat compatibility, race, 100k and packaged activation/rollback evidence;
+   - update published storage/export/operator documentation only when runtime
+     behavior exists.
 
 No intermediate slice may enable fixed TTL in the production template. Dormant
 schema is acceptable; a partially admitted lifecycle is not.
@@ -835,12 +871,16 @@ schema is acceptable; a partially admitted lifecycle is not.
 ### 17.2 Real SQLite integration
 
 - migration from a 0.2.0 fixture and fresh schema;
-- ID reservation, gaps and restart after maximum-row expiry;
+- canonical/lifecycle identity non-reuse independent of export slots;
+- sparse export-slot seeding, survivor stability, smallest-hole reuse,
+  deterministic multi-row allocation, gaps and restart recovery;
 - active predicate in repository load and immutable multi-artifact snapshot;
 - confirmation/expiry concurrency in both transaction orders;
 - crash points around history copy, delete, observation marker, projection
   replace/ack and activation progress;
 - incomplete/mismatched receipt fallback;
+- generation change between slot reconciliation and active snapshot;
+- immutable old and new slices reusing the same slot for different lifecycles;
 - query-plan assertions for due/retention/status paths.
 
 ### 17.3 Runtime/package evidence
@@ -895,7 +935,10 @@ characterization.
 - cleanup timing as the active/inactive boundary;
 - `ttl=0` as a migration command;
 - recalculation of stored deadlines after config edits;
-- active `MAX(id)+1` as permanent ID authority;
+- active `MAX(id)+1` as canonical identity or export-slot authority;
+- dense `ROW_NUMBER()` export compaction;
+- a never-reused monotonic exported ID;
+- release of export slots directly in the expiry transaction;
 - per-row Java timers;
 - expiry-driven `artifact_revision` or immutable export;
 - in-memory events as work authority;
@@ -911,7 +954,8 @@ characterization.
 
 ## 20. Review outcome
 
-Architecture review and the implementation go-ahead on 2026-08-16 confirmed:
+Architecture review and the implementation go-ahead on 2026-08-16 confirmed
+the lifecycle work:
 
 1. this component/data/transaction model;
 2. the separate revision versus projection-generation semantics;
@@ -920,5 +964,6 @@ Architecture review and the implementation go-ahead on 2026-08-16 confirmed:
 5. the no-new-module decision and future extraction criteria;
 6. the remaining implementation parameters or the P0 evidence used to fix them.
 
-P1 implements the framework-free language and contracts. Database, pipeline,
-configuration and runtime activation remain assigned to P2–P6.
+P1–P6 implemented and verified that lifecycle scope. I-22 and ADR-0021
+supersede only the exported-ID part of the model. P7 remains required before
+DATA-TTL-01 can return to `verified`.

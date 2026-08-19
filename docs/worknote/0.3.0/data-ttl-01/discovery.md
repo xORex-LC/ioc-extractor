@@ -2138,7 +2138,59 @@ provenance summary как входные facts, но lifecycle и сохранё
 
 **Статус:** external review завершён; vocabulary и framework disposition
 приняты как уточнение I-01..I-20 и внесены в architecture/ADR/implementation
-documents. Production implementation по-прежнему требует отдельного go-ahead.
+documents.
+
+### I-22 — переоткрытие внешнего `id` как reusable export slot
+
+**Причина переоткрытия.** После завершения P6 заказчик уточнил downstream
+contract поля `id` в export-slice. В I-03/I-03A мы обсуждали это поле как
+долгоживущую service-owned identity и на таком основании приняли запрет reuse.
+Это была неверная интерпретация назначения поля. Историю прежнего решения не
+удаляем, но настоящий раздел supersede'ит I-03/I-03A и все их следствия только
+для внешней export-колонки `id`.
+
+**Исправленная формулировка.** Внешний `id` — чистое поле export projection. На
+стороне приложения оно называется `export_slot` и не используется как
+canonical primary key, lifecycle identity, dedup key или provenance identity.
+
+Требуемая последовательность:
+
+```text
+slice S1: A=1, B=2, C=3
+A и B истекли
+slice S2 после допустимого new-data trigger: D=1, C=3
+slice S3 после следующей новой записи: D=1, E=2, C=3
+```
+
+`C` сохраняет слот `3`, пока остаётся active. Никакой dense renumbering после
+expiry нет. Новая lifecycle занимает минимальный свободный положительный слот;
+gaps допустимы, пока их не заполнят новые records. Старый immutable slice не
+изменяется, поэтому один slot может означать разные lifecycle в разных slices.
+
+**Что не меняется.** Internal row ID и `_lifecycle_id` не переиспользуются.
+Reappearance после expiry всё ещё является новой lifecycle. Source-owned ID
+остаётся namespaced business/provenance field. Expiry по-прежнему не создаёт
+immutable slice; slot reconciliation выполняется только внутри export, который
+уже разрешён поступлением новых canonical data.
+
+**Архитектурная рекомендация.** Export capability получает отдельный durable
+registry в dataframe DB, scoped по `(profile, artifact)`. Reconciliation:
+
+1. освобождает assignments отсутствующих active lifecycle;
+2. сохраняет surviving assignments без изменений;
+3. выдаёт новым lifecycle минимальные свободные slots;
+4. при отсутствии holes использует durable high-water state;
+5. проверяет единую canonical generation перед публикацией snapshot.
+
+Registry не переносится в service DB, чтобы не создавать cross-DB consistency
+gap с canonical active set. TTL/history path не знает об export slots. Новый
+Maven module, библиотека, event или per-record job не нужны. Точный проект,
+migration и acceptance matrix находятся в
+[export-slot-correction.md](export-slot-correction.md); архитектурная поправка —
+в [ADR-0021](../../../ADR/0021-stable-reusable-export-slots.md).
+
+**Статус:** business rule принят; DATA-TTL-01 переоткрыт для P7, реализация и
+evidence отсутствуют.
 
 ## 5. Emerging model
 
@@ -2160,11 +2212,14 @@ bounded expiry processing, deadline-aware scheduler и startup recovery contract
 приняты. Component/schema decomposition, bounded duplicate receipt и осознанный
 fresh-install TTL `12h` подтверждены в I-18. I-20 фиксирует, что expiry меняет
 canonical membership и mutable projection, но не инициирует immutable export;
-следующий automatic slice появляется только после добавления новых public rows.
+следующий automatic slice появляется только после добавления новых canonical
+rows. I-22 отделяет внешний `id` от canonical identity: surviving lifecycle
+сохраняют stable sparse `export_slot`, а slots ушедших lifecycle доступны новым
+records только при следующем eligible export.
 
 ## 6. Следующий этап
 
-1. Дать architecture project, draft ADR, release contract и implementation plan
-   на review.
-2. После отдельного implementation go-ahead выполнить P1–P6 без частичной
-   production activation.
+1. Сохранить P0–P6 evidence как доказательство TTL lifecycle и характеристику
+   прежней ID-модели.
+2. Выполнить P7 из [implementation-plan.md](implementation-plan.md): отделить
+   reusable export slots, обновить published docs и повторить release evidence.

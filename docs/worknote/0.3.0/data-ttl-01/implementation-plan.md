@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 — implementation plan"
 version: "0.3.0"
-status: "Implementation"
+status: "Implementation — P7 in progress"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "ru"
@@ -15,12 +15,16 @@ language: "ru"
 implementation-active только один slice. P2–P5 могут добавлять dormant schema и
 code на feature branch, но ни один промежуточный результат не включает TTL в
 fresh production template и не считается releaseable capability. Activation
-surface и итоговое evidence закрываются только P6.
+surface и исходное lifecycle evidence были закрыты P6. После уточнения I-22
+проект переоткрыт: P7 исправляет только export-slot contract и повторяет
+затронутое release evidence.
 
 Отдельный go-ahead после review [architecture project](architecture-project.md),
 [ADR-0020](../../../ADR/0020-canonical-record-expiration-lifecycle.md) и
 [release contract](release-contract.md) получен 2026-08-16. Он разрешает
 последовательное выполнение P1–P6, но не частичную production activation.
+Отдельно принятое I-22 и Proposed
+[ADR-0021](../../../ADR/0021-stable-reusable-export-slots.md) добавляют P7.
 
 ## Slice map
 
@@ -32,7 +36,8 @@ surface и итоговое evidence закрываются только P6.
 | `P3` | Atomic lifecycle-aware write/read path | production preset unchanged | `complete` |
 | `P4` | Expiry, recovery, scheduling and health | production preset unchanged | `complete` |
 | `P5` | Duplicate receipt and explicit upgrade activation UX | opt-in existing installs only | `complete` |
-| `P6` | Fresh preset, docs and release evidence | complete capability | `in_progress` |
+| `P6` | Fresh preset, docs and release evidence | complete capability | `complete` |
+| `P7` | Stable sparse reusable export slots | corrected export contract | `in_progress` |
 
 ## P0 — decision and characterization
 
@@ -253,24 +258,85 @@ P6 may enable the fresh production preset only after P1–P5 evidence is green.
 The capability is not merge/release complete while any required crash/race,
 read-path, migration, packaged rollout or performance evidence is missing.
 
-**Status:** in progress on 2026-08-16. The fresh preset, published capability
-and operator documentation, repository packaging contracts and the rootless
-100k lifecycle profile are complete. A privileged disposable-host systemd
-fresh-install/two-step-upgrade/rollback stand remains required; local
-release-candidate gates are complete, but rootless evidence does not satisfy
-that packaged rollout gate.
+**Status:** completed on 2026-08-19. In addition to the fresh preset, published
+documentation, packaging contracts and rootless 100k profile, a privileged
+systemd stand verified a v0.2.0 compatibility upgrade, explicit destructive
+activation, fixed-TTL expiry, duplicate reappearance with new IDs, independent
+history/receipt retention, activation rollback, release rollback and a clean
+fresh installation. The verified current release remains installed and healthy
+with the production `fixed/12h` preset. Evidence is recorded in
+[evidence.md](evidence.md#privileged-packaged-systemd-stand-2026-08-1819).
+
+P6 public-ID results are retained as characterization of the current
+implementation, not as acceptance of the corrected I-22 contract.
+
+## P7 — stable reusable export slots
+
+### Scope
+
+`core/ioc-application` export contracts, `adapter-store-jdbc` dataframe schema
+and snapshot implementation, `adapter-sink-csv` mapping, bootstrap wiring and
+affected tests/docs. TTL policy, expiry/history, provenance and source-owned ID
+semantics stay unchanged.
+
+### Deliverables
+
+- replace the external-ID interpretation with an export-owned `export_slot`
+  value; canonical primary key and `_lifecycle_id` stay internal/non-reusable;
+- add a same-dataframe-DB registry scoped by `(profile, artifact)` with unique
+  lifecycle→slot and slot→lifecycle ownership, free-slot index and durable
+  high-water/generation state;
+- seed current active lifecycles from their current exported IDs without
+  renumbering; fail closed on ambiguous/colliding/invalid seeds;
+- reconcile at eligible export only: release vanished assignments, preserve
+  survivors, allocate smallest holes to new lifecycles and high-water ranges to
+  the remainder;
+- project resolved `export_slot AS id` and order by slot where the existing
+  artifact contract requires it; artifacts without external `id` are unchanged;
+- detect canonical generation changes before slice publication and use the
+  existing retry/saga path instead of publishing a mixed mapping;
+- include slot policy/version in export plan/schema fingerprint without
+  changing canonical artifact identity epoch solely for this correction;
+- update published docs and repeat focused, 100k and packaged evidence.
+
+### Performance and architecture constraints
+
+- no per-row SQL allocation, `MAX(active.id)+1`, dense `ROW_NUMBER()`
+  compaction or full active-set JVM materialization;
+- bounded set-based/staged operations with query-plan evidence;
+- no export-slot dependency from lifecycle/expiry/history/provenance paths;
+- no new Maven module, Java library, event, scheduler or service-DB authority.
+
+### Exit gate
+
+- `A=1,B=2,C=3`; after `A/B` expiry and arrival of `D`, output is `D=1,C=3`;
+  after arrival of `E`, output is `D=1,E=2,C=3`;
+- survivors never renumber, gaps remain until consumed, and simultaneous new
+  rows receive deterministic ascending available slots;
+- old immutable slices retain their original mappings while later slices may
+  reuse the same slot for another lifecycle;
+- restart/failure/race and migration tests pass, including artifacts without
+  `id` and source-ID separation;
+- new 100k and packaged fresh/upgrade/rollback evidence is recorded;
+- `make docs`, targeted tests and fresh full-reactor verification pass on final
+  `HEAD`.
+
+**Status:** design/contract documented on 2026-08-19; implementation and
+evidence pending. Detailed design:
+[export-slot-correction.md](export-slot-correction.md).
 
 ## Required test matrix
 
 | Area | Mandatory evidence |
 |---|---|
-| Lifecycle semantics | boundary, renewal, prospective policy change, expiry→new ID, public `time_*` unchanged |
-| Transaction/race | SQLite confirmation×expiry ordering, rollback, ID non-reuse, no lost observation |
+| Lifecycle semantics | boundary, renewal, prospective policy change, expiry→new internal lifecycle ID, public `time_*` unchanged |
+| Export slots | survivor stability, smallest-hole reuse, gaps/no compaction, deterministic batches, immutable historical mappings |
+| Transaction/race | SQLite confirmation×expiry ordering, rollback, internal ID non-reuse, slot generation consistency, no lost observation |
 | Migration/recovery | 0.2.0 fixture, activation fault injection, restart, projection convergence |
 | Read surfaces | canonical load, mutable dataframe, immutable slice with active-only one-`asOf` behavior |
 | Export trigger | expiry leaves `artifact_revision` unchanged; next new-row trigger exports current active membership |
 | Runtime/config | daemon, stateful oneshot/export, defaults, one-way transition, clock rollback states |
-| Load | 100k same deadline, start ≤5s, bounded batches/memory/transactions, no starvation, eventual drain |
+| Load | 100k same deadline plus slot release/reassignment, start ≤5s, bounded batches/memory/transactions, no starvation, eventual drain |
 
 ## Risk controls
 
@@ -282,7 +348,8 @@ that packaged rollout gate.
 - No `@Scheduled`, ShedLock or Spring Batch without the measured scale or
   deployment condition that justifies another runtime subsystem.
 - No second write after canonical commit to attach lifecycle metadata.
-- No `MAX(id)+1` reuse after expired-row deletion.
+- No `MAX(active.id)+1` as canonical or export-slot authority.
+- No dense renumbering or coupling of `export_slot` to canonical/lifecycle ID.
 - No in-memory event as expiry/projection correctness authority.
 - No use of public `time_first_seen`/`time_last_seen` as technical timestamps.
 - No release claim from aggregate coverage or happy path alone.

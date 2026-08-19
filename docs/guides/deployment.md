@@ -8,8 +8,8 @@ systemd distributions are best effort and require operator validation.
 
 | Path | Use it for | Guarantees |
 |---|---|---|
-| `packaging/install.sh` | A fresh host/prefix or a controlled upgrade within the 0.2.x marked layout | Host provisioning, verified JDK, safe marked layout, immutable activation, config preservation and local storage health gate |
-| `packaging/deploy-local.sh` | Repeated 0.2.x deployments from a local checkout to a Debian/WSL test host | Clean `verify`, build identity, DB backup, atomic activation, health gate and automatic rollback |
+| `packaging/install.sh` | A fresh host/prefix or a controlled upgrade within the marked layout introduced in 0.2.0 | Host provisioning, verified JDK, safe marked layout, immutable activation, config preservation and local storage health gate |
+| `packaging/deploy-local.sh` | Repeated 0.2.0+ deployments from a local checkout to a Debian/WSL test host | Clean `verify`, build identity, DB backup, atomic activation, health gate and automatic rollback |
 
 `install.sh` restores the previous release/unit and restarts a previously active
 service when a later install step fails, but it does not create or restore a DB
@@ -183,7 +183,7 @@ sudo systemctl start ioc-extractor
 Inputs accepted only after the 0.2.0 cutover are not present in the old prefix.
 Preserve them and explicitly reconcile/resubmit them if rollback is required.
 
-## Upgrade within 0.2.x with `install.sh`
+## Upgrade within the marked layout with `install.sh`
 
 1. Verify the new jar and checksum on a trusted build host.
 2. Stop input submission or otherwise establish an ingestion maintenance window.
@@ -202,7 +202,7 @@ sudo packaging/install.sh \
   --prefix /opt/ioc-extractor \
   --jar /tmp/ioc-extractor-new.jar \
   --checksum /tmp/ioc-extractor-new.jar.sha256 \
-  --release-id v0.2.0
+  --release-id v0.3.0
 ```
 
 If the host uses a non-default actuator port, also pass `--server-port PORT`.

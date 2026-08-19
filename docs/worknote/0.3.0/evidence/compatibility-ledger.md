@@ -159,9 +159,12 @@ transaction/recovery semantics и supported migration/rollback являются 
 операционным контрактом.
 
 Изменение `key-columns`, `key-mode`, identity formula или epoch не является
-обычным YAML refactoring. Public IDs monotonic, но не gapless; failed reserved
-range не переиспользуется. Keep-first dedup не разрешает повторной строке менять
-public row/id, сохраняя новый provenance отдельно.
+обычным YAML refactoring. В baseline v0.2/P6 exported IDs monotonic, но не
+gapless; failed reserved range не переиспользуется. I-22 переоткрывает только
+эту внешнюю projection-семантику для P7: internal/lifecycle identities остаются
+non-reusable, а внешний `id` становится отдельным reusable `export_slot`.
+Keep-first dedup по-прежнему не разрешает повторной active строке менять
+business row, сохраняя новый provenance отдельно.
 
 ### Export manifest v1
 
@@ -205,7 +208,7 @@ consumer, либо принять явное release-level решение об u
 | Transition | Baseline disposition |
 |---|---|
 | `v0.1.0 → v0.2.0` | In-place upgrade не поддержан; clean side-by-side prefix, old prefix остаётся rollback point |
-| `v0.2.0 → current 0.3.0 baseline` | Выбранные contract implementation paths пока совпадают с `v0.2.0`; это не заменяет final RC upgrade admission |
+| `v0.2.0 → current 0.3.0 candidate` | Packaged stand подтвердил compatibility start со schema `4/8`, неизменными 246 active rows/config/projections, explicit TTL activation и matching-state rollback; final RC всё равно повторяет admission после последующих changes |
 | `v0.2.0 → v0.3.0 final` | Должен быть явно declared supported/unsupported после всех changes и проверен на representative durable state |
 | Binary rollback после DB migration | Предыдущий symlink недостаточен; требуется matching pre-upgrade snapshot обеих SQLite DB |
 | Config rollback | Previous binary получает matching previous config; `*.new` не merge-ится автоматически |
@@ -228,14 +231,23 @@ DATA-TTL-01 является принятым observable scope change относ
 | Durable state | Dataframe DB хранит lifecycle/history/receipt/control state; service DB получает observation-oriented ingest ledger migration; rollback после activation требует matching pre-activation config и обе DB |
 | Mutable CSV | Column order/types сохраняются; expired rows исключаются, `time_first_seen`/`time_last_seen` остаются `NULL`, `valid_until` не публикуется |
 | Immutable export | Expiry не меняет insert-driven revision и не создаёт slice; следующий new-row export читает только active membership |
-| Public IDs | Expired identity не переиспользуется; reappearance получает новый service ID, а source-owned ID остаётся business field |
+| Internal и export identities | Internal row/lifecycle identities не переиспользуются. Внешний `id` трактуется как `(profile, artifact)` export slot: survivors сохраняют mapping, vanished rows освобождают slots при eligible export, новые lifecycle получают минимальные holes без compaction; source-owned ID остаётся business field. P7 pending |
 | Health | Добавлен aggregate lifecycle component без IOC/source identifiers; clock failure может перевести readiness в `DEGRADED`/`DOWN` |
 
 Operator migration и rollback опубликованы в
 [canonical lifecycle guide](../../../guides/canonical-record-lifecycle.md), а
 curated observable changes подготовлены в
-[release-note input](../data-ttl-01/release-note-input.md). Final
-`v0.2.0 → v0.3.0` admission остаётся открытым до privileged packaged stand.
+[release-note input](../data-ttl-01/release-note-input.md). P6 privileged stand
+на commit `e089ae6a3fe8592eb896878398b04088021f238f` подтвердил candidate
+`v0.2.0 → v0.3.0` admission: compatibility start сохранил `246` active rows и
+byte-exact projections, activation архивировал их с `LEGACY_ACTIVATION`, а
+consistent activation rollback и полный release rollback восстановили
+соответственно compatible schema `4/8` и исходное v0.2 schema `3/7` состояния.
+Отдельная fresh installation завершилась healthy `ACTIVE` состоянием с
+production `fixed/12h`. Final `R030-REL` admission повторяет этот сценарий, если
+release candidate изменится после зафиксированного commit. Эти результаты не
+проверяли исправленный reusable-slot contract: после P7 обязательны upgrade
+seeding, survivor/no-compaction, smallest-hole и rollback assertions.
 
 ## Missing evidence и handoff
 
@@ -244,8 +256,6 @@ curated observable changes подготовлены в
 | Именованные automation, artifact и log consumers не зарегистрированы | Нельзя доказать consumer acceptance только repository tests | `R030-DOC`/`R030-REL`: consumer/owner и representative contract fixture либо explicit unsupported disposition |
 | Standalone published-library consumer отсутствует | Нельзя заявить external Maven compatibility | `R030-LIB` + `R030-TEST`: admitted coordinates, flattened POM и out-of-reactor consumer test |
 | Live SMB fixture отсутствует | Два `SmbChangeNotifyContractTest` cases недоступны; live endpoint contract не подтверждён | `R030-TEST`/`R030-REL`: provisioned fixture либо explicit external-evidence disposition |
-| `v0.2.0 → v0.3.0` upgrade/rollback stand ещё не выполнен | Source-version admission не закрыт | `R030-REL`: release-candidate jar, representative two-DB state, activation, health и rollback evidence |
-| Deployment docs всё ещё называют layout/upgrade scope `0.2.x` | 0.3 operator path ещё не опубликован | `R030-DOC`/`R030-REL`: обновить после final compatibility decision и проверить packaging docs/tests |
 | Representative real consumer payload/query corpus отсутствует | Wire/schema regression может пройти только producer-side tests | `R030-TEST`: exact golden payload/query/CSV/manifest consumer contracts для принятых surfaces |
 
 ## Gate conclusion
@@ -256,6 +266,8 @@ contract: CLI, config, durable state, CSV/export, diagnostics/logging, health и
 deployment. Эти surfaces должны участвовать в каждом module-wave
 non-regression review.
 
-Final compatibility `v0.2.0 → v0.3.0` намеренно не объявлена заранее. Baseline
-фиксирует released source, текущую неизменность выбранных implementation paths,
-upgrade/rollback obligations и недостающее RC/external-consumer evidence.
+P6 stand подтвердил TTL lifecycle compatibility `v0.2.0 → v0.3.0` для
+зафиксированного commit и representative two-DB state. После I-22 он не является
+полным candidate admission: P7 изменит dataframe migration/export mapping и
+требует повторного stand. Это evidence также не закрывает отдельное
+external-consumer evidence.

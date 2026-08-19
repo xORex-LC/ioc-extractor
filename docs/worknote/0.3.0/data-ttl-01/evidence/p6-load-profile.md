@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 P6 lifecycle load profile"
 version: "0.3.0"
-status: "Measured"
+status: "Measured — export-slot correction pending"
 document_type: "Performance evidence"
 source_of_truth: false
 language: "en"
@@ -9,12 +9,18 @@ language: "en"
 
 # DATA-TTL-01 P6 lifecycle load profile
 
+> **2026-08-19 interpretation note.** Measurements in this document remain
+> valid for lifecycle expiry, retention, heap and query plans. The public-ID
+> non-reuse assertion characterizes the P6 implementation; it is not acceptance
+> evidence for the later I-22 requirement. P7 needs a separate 100k export-slot
+> profile covering survivor stability and smallest-hole reuse.
+
 ## Evidence boundary
 
 This profile exercises the bootable fat JAR through the normal daemon ingestion
 boundary. It does not insert fixture rows directly into SQLite. The same
 workspace is restarted for history retention and then receives new input to
-verify public-ID non-reuse.
+characterize the then-current monotonic public-ID behavior.
 
 The run is rootless application evidence. It does not replace the required
 fresh-install, two-step upgrade and rollback exercise under the packaged
@@ -72,7 +78,8 @@ release regression guard, not a retention SLA.
 - expiry created no immutable export slice, while later accepted new rows
   created the next slice with exact active membership;
 - retention removed history and source summaries while preserving allocators;
-- later accepted input allocated public IDs above every former ID;
+- later accepted input allocated public IDs above every former ID under the P6
+  implementation; P7 deliberately replaces this export behavior;
 - lifecycle health returned `UP` after admission, expiry, retention and
   reappearance;
 - the active and history sets were exact after every phase.
