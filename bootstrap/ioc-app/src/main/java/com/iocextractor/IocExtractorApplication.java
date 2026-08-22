@@ -1,6 +1,7 @@
 package com.iocextractor;
 
 import com.iocextractor.adapter.in.cli.EarlyCliLauncher;
+import com.iocextractor.bootstrap.IocYamlSyntaxCheck;
 import com.iocextractor.bootstrap.RuntimeMode;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -19,6 +20,15 @@ import java.util.OptionalInt;
 public class IocExtractorApplication {
 
     public static void main(String[] args) {
+        OptionalInt syntaxCheckExit = IocYamlSyntaxCheck.executeIfRequested(
+                args,
+                new PrintWriter(System.out, true),
+                new PrintWriter(System.err, true));
+        if (syntaxCheckExit.isPresent()) {
+            System.exit(syntaxCheckExit.getAsInt());
+            return;
+        }
+
         OptionalInt earlyExit = new EarlyCliLauncher(
                 new PrintWriter(System.out, true),
                 new PrintWriter(System.err, true))
