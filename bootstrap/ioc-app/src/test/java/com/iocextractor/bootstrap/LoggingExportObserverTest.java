@@ -66,7 +66,8 @@ class LoggingExportObserverTest {
         assertThat(eventFields(appender.list.get(1)))
                 .containsEntry(LogField.IOC_EXPORT_REVISION.key(), 7L);
         assertThat(eventFields(appender.list.getLast()))
-                .containsEntry(LogField.EVENT_OUTCOME.key(), EventOutcome.FAILURE.value());
+                .containsEntry(LogField.EVENT_OUTCOME.key(), EventOutcome.FAILURE.value())
+                .containsEntry(LogField.IOC_COMPLETION_STATUS.key(), ExportRunStatus.FAILED.name());
     }
 
     private StagedSlice staged() {
