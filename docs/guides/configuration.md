@@ -270,8 +270,9 @@ positive.
 | `ioc.lifecycle.validity.fixed-ttl` | positive duration | `12h` | Validity granted by each successful canonical confirmation. It is required and positive in `fixed` mode; `0` is rejected. |
 | `ioc.lifecycle.validity.existing-records` | `reject`, `expire` | `reject` | Keep `reject` for the compatibility start. Explicitly select `expire` only for the activation restart; it archives and removes every legacy row and may leave all active projections empty. |
 | `ioc.lifecycle.history-retention` | positive duration | `30d` | Retention of closed full-row lifecycle history; cleanup is independent and bounded. |
+| `ioc.lifecycle.history-cleanup-interval` | positive duration | `1h` | Cadence for independent history/receipt cleanup discovery. Each transaction stays bounded; an existing backlog continues immediately in bounded follow-up tasks. |
 | `ioc.lifecycle.receipt-retention` | positive duration | `30d` | Retention of complete prepared-row confirmation receipts. Missing, stale or policy-mismatched receipts cause ordinary ETL, never rejection. |
-| `ioc.lifecycle.reconcile.backstop-interval` | positive duration | `5s` | Correctness backstop for lost deadline/projection hints and restart. Keep at or below `5s` for the V1 expiry-latency contract. |
+| `ioc.lifecycle.reconcile.backstop-interval` | positive duration | `5s` | Read-only nearest-deadline and projection correctness backstop for lost hints and restart. An empty deadline refresh does not create a reconcile cycle. Keep at or below `5s` for the V1 expiry-latency contract. |
 | `ioc.lifecycle.reconcile.batch-size` | positive integer | `1000` | Maximum rows in one expiry or history-retention transaction; smaller values reduce writer hold time but require more cycles. |
 | `ioc.lifecycle.clock.max-backward-skew` | positive duration | `2s` | Maximum system UTC rollback that may be clamped to the durable high-water and reported `DEGRADED`. |
 | `ioc.lifecycle.clock.max-clamp-duration` | positive duration | `30s` | Maximum continuous clamp window before lifecycle time becomes unsafe and health reports `DOWN`. |

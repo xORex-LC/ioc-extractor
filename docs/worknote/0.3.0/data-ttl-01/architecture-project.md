@@ -353,6 +353,13 @@ invariants remain independent of the storage spelling. Every technical instant
 used in range predicates is stored as UTC epoch milliseconds. Application values
 remain `Instant`; conversion is isolated in the JDBC adapter.
 
+P9 corrects the operational cycle representation through additive dataframe
+format v6 and [ADR-0023](../../../ADR/0023-bounded-lifecycle-reconciliation-runtime.md).
+The v4 `lifecycle_reconcile_cycle` journal is retained but frozen. New real
+cycles update one `lifecycle_reconcile_state` row with a monotonic sequence;
+empty five-second deadline refreshes do not create a cycle. History retention
+is scheduled independently from expiration.
+
 Per-artifact commit markers belong to an observation header. Markers for a
 non-terminal observation are never age-reaped: an offline daemon may recover the
 same claimed delivery much later. After the ingest attempt is durably terminal,

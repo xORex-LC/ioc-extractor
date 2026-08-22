@@ -79,7 +79,7 @@ runtime JDBC drivers.
 - `JdbcExpiredArtifactStore` provides the indexed nearest-deadline and bounded
   archive/delete primitive used by P4 reconciliation. `JdbcLifecycleClock`
   owns the durable nondecreasing UTC high-water and clamp/unsafe policy;
-  `JdbcLifecycleReconciliationStore` journals recoverable cycles;
+  `JdbcLifecycleReconciliationStore` updates one recoverable cycle checkpoint;
   `JdbcLifecycleHistoryStore` performs indexed bounded retention; and
   `JdbcLifecycleStatusReader` returns aggregate read-only health facts without
   IOC/source identities. Bootstrap owns admission and schedulers.

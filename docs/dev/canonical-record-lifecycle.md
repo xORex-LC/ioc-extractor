@@ -14,18 +14,21 @@ accepted observation
   -> one canonical SQLite transaction inserts, renews or closes-and-recreates
   -> active-only mutable projection
 
-nearest deadline hint OR periodic backstop
+nearest deadline hint OR 5s periodic deadline refresh
+  -> one aggregate nearest-deadline timer
+  -> only a due deadline starts reconciliation
   -> indexed bounded archive/delete batches
   -> durable projection generation
   -> active-only mutable projection convergence
 
-independent retention pass
+independent hourly retention scheduler
   -> indexed bounded history/receipt deletion
 ```
 
-The event/timer path only reduces latency. SQLite deadlines, projection
-generations and reconciliation cycles are the correctness authority after lost
-events or process restarts.
+The event path only reduces latency. SQLite deadlines, projection generations
+and the latest reconciliation checkpoint are the correctness authority after
+lost events or process restarts. An idle deadline refresh is read-only and does
+not create a reconciliation cycle.
 
 ## Boundaries
 
@@ -70,9 +73,9 @@ service database continues to hold ingestion/export/sync coordination only.
 
 | Situation | Behavior | Correctness source |
 |---|---|---|
-| Crash during expiry | Interrupted cycle is failed on admission and due rows are reconciled again | active row plus reconcile journal |
+| Crash during expiry | Interrupted checkpoint is failed on admission and due rows are reconciled again | active row plus reconcile state |
 | Projection failure after archive | Active reads already exclude the row; durable generation remains pending until projection converges | dataframe DB generation state |
-| Lost deadline/event hint | Nearest-deadline lookup and periodic backstop rediscover work | indexed absolute deadline |
+| Lost deadline/event hint | Nearest-deadline lookup and five-second refresh rediscover work without an idle write | indexed absolute deadline |
 | Small UTC rollback | Effective time clamps to the durable high-water; health is `DEGRADED` | lifecycle clock control |
 | Material or prolonged rollback | Stateful admission/readiness fails closed with `DOWN` | lifecycle clock policy |
 | Upgrade with legacy rows | Compatibility start is non-destructive; explicit resumable activation archives legacy rows before intake/export | activation state and progress |
@@ -88,10 +91,12 @@ business fields requires a separate versioned consumer contract.
 
 ## Sources of truth
 
-- Decision: [ADR-0020](../ADR/0020-canonical-record-expiration-lifecycle.md).
+- Decisions: [ADR-0020](../ADR/0020-canonical-record-expiration-lifecycle.md)
+  and [ADR-0023](../ADR/0023-bounded-lifecycle-reconciliation-runtime.md).
 - Application contracts: `core/ioc-application/.../artifact/lifecycle`.
 - SQLite schema and SQL: `adapter-store-jdbc` dataframe migration v4 for
-  lifecycle, v5 for export slots, and adapter tests.
+  lifecycle, v5 for export slots, v6 for the bounded reconcile checkpoint, and
+  adapter tests.
 - Production assembly/defaults: `AppConfig`, `IocProperties` and the classpath
   `application.yml` in `bootstrap/ioc-app`.
 - Operator behavior: [canonical record lifecycle guide](../guides/canonical-record-lifecycle.md).

@@ -271,8 +271,9 @@ filesystem, чтобы claims использовали atomic move. Concurrency 
 | `ioc.lifecycle.validity.fixed-ttl` | positive duration | `12h` | Validity после каждого успешного canonical confirmation. В режиме `fixed` значение обязательно и положительно; `0` отклоняется. |
 | `ioc.lifecycle.validity.existing-records` | `reject`, `expire` | `reject` | Для compatibility-start оставьте `reject`. `expire` задавайте только перед activation restart: все legacy rows архивируются и удаляются, active projections могут стать пустыми. |
 | `ioc.lifecycle.history-retention` | positive duration | `30d` | Срок хранения закрытой full-row lifecycle history; cleanup выполняется независимо и bounded batches. |
+| `ioc.lifecycle.history-cleanup-interval` | positive duration | `1h` | Частота independent history/receipt cleanup discovery. Каждая transaction bounded; существующий backlog продолжается немедленными bounded follow-up tasks. |
 | `ioc.lifecycle.receipt-retention` | positive duration | `30d` | Срок хранения complete prepared-row receipts. Отсутствующий, устаревший или policy-mismatched receipt приводит к обычному ETL, а не к отказу. |
-| `ioc.lifecycle.reconcile.backstop-interval` | positive duration | `5s` | Correctness backstop для потерянных deadline/projection hints и restart. Для V1 expiry-latency оставляйте не больше `5s`. |
+| `ioc.lifecycle.reconcile.backstop-interval` | positive duration | `5s` | Read-only nearest-deadline и projection correctness backstop для потерянных hints и restart. Пустой deadline refresh не создаёт reconcile cycle. Для V1 expiry-latency оставляйте не больше `5s`. |
 | `ioc.lifecycle.reconcile.batch-size` | positive integer | `1000` | Максимум rows одной expiry или history-retention transaction; меньшее значение сокращает удержание writer, но требует больше cycles. |
 | `ioc.lifecycle.clock.max-backward-skew` | positive duration | `2s` | Максимальный откат system UTC, который можно clamp-ить к durable high-water с состоянием `DEGRADED`. |
 | `ioc.lifecycle.clock.max-clamp-duration` | positive duration | `30s` | Максимальная непрерывная длительность clamp до unsafe lifecycle time и health `DOWN`. |

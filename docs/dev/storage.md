@@ -127,19 +127,24 @@ P4 runtime поверх этих facts реализует:
 
 - durable non-decreasing UTC high-water в `canonical_lifecycle_control`; small
   rollback clamp-ится, material/prolonged rollback fail-closed;
-- journaled reconciliation cycle и indexed bounded archive/delete с одним
-  неизменным `cycleAsOf`;
+- constant-cardinality reconciliation checkpoint и indexed bounded
+  archive/delete с одним неизменным `cycleAsOf`; five-second backstop сначала
+  только перечитывает nearest deadline и не пишет idle cycles;
 - независимый bounded history retention по
   `(closed_at_epoch_ms, history_id)`;
 - durable required/projected generation и retryable projection failure state;
 - read-only aggregate status без IOC/source identities.
 
-Nearest deadline и mutable projection schedulers живут в bootstrap, а SQL и
-transaction boundaries — в этом adapter. Expiry увеличивает только mutable
+Nearest deadline, history retention и mutable projection schedulers живут в
+bootstrap, а SQL и transaction boundaries — в этом adapter. Expiry увеличивает только mutable
 projection generation: insert-driven `artifact_revision` и immutable export
-trigger не меняются. Незавершённый reconciliation cycle при следующем admission
+trigger не меняются. Незавершённый reconciliation checkpoint при следующем admission
 помечается failed, после чего due rows безопасно перечитываются из canonical
 truth; частично закрытые records не воскресают.
+
+Dataframe v6 мигрирует последний v4 journal row в singleton
+`lifecycle_reconcile_state`. Старый `lifecycle_reconcile_cycle` сохраняется
+read-only для upgrade/rollback evidence, но больше не растёт.
 
 ### Export-slot storage path (dataframe v5)
 

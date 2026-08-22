@@ -108,7 +108,13 @@ Defaults рассчитаны на десятки тысяч и порядок �
 
 - `backstop-interval: 5s` повторяет correctness-проверку при потере deadline hint;
 - `batch-size: 1000` ограничивает одну SQLite writer transaction;
+- `history-cleanup-interval: 1h` задаёт частоту independent cleanup discovery;
+  существующий backlog продолжается immediate bounded follow-up tasks;
 - history и receipt retention равны `30d`.
+
+Пустой backstop tick только перечитывает indexed nearest deadline: он не
+запускает reconcile cycle и не пишет heartbeat row. Material reconciliation и
+cleanup outcomes остаются видны в logs и aggregate health.
 
 Перед изменением batch size используйте aggregate health и query-plan/load
 evidence. Не создавайте job на каждую запись и не используйте размер SQLite-файла

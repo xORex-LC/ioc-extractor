@@ -95,8 +95,12 @@ P5 добавляет явную one-way activation policy поверх operatio
 - `ioc.lifecycle.history-retention` и `receipt-retention` — positive сроки
   хранения history snapshots и complete confirmation receipts, оба default
   `30d`;
+- `ioc.lifecycle.history-cleanup-interval` — positive cadence independent
+  retention discovery, default `1h`; backlog продолжается bounded follow-up
+  tasks без ожидания следующего часа;
 - `ioc.lifecycle.reconcile.backstop-interval` — positive максимальный idle
-  interval между correctness passes, default `5s`;
+  interval между read-only nearest-deadline/projection correctness checks,
+  default `5s`;
 - `ioc.lifecycle.reconcile.batch-size` — positive bound одной SQLite
   archive/delete либо retention transaction, default `1000`;
 - `ioc.lifecycle.clock.max-backward-skew` и `max-clamp-duration` — positive

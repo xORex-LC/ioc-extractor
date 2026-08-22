@@ -625,3 +625,40 @@ generation-safe snapshot, migration seeding и bounded 100k allocation.
 стенд на P7 candidate, фиксация commit/runtime metadata и повторный freshness
 gate на финальном закоммиченном HEAD. Поэтому прежний P6 packaged result не
 переименован в P7 pass.
+
+## P9 — bounded idle lifecycle runtime
+
+**Статус:** implementation и automated working-tree evidence complete;
+packaged qualification/final committed-HEAD gate pending.
+
+### Реализованный contour (2026-08-23)
+
+- periodic backstop теперь выполняет только indexed nearest-deadline refresh;
+  reconcile начинается по наступившему deadline, а не на каждом пятесекундном
+  тике;
+- dataframe format повышен `v5 -> v6`; последний legacy cycle переносится в
+  singleton `lifecycle_reconcile_state`, после чего
+  `lifecycle_reconcile_cycle` остаётся неизменяемым migration evidence;
+- retention отделён от expiry в admission-gated scheduler с default cadence
+  `1h` и немедленным следующим bounded pass при наличии backlog;
+- успешные пустые reconcile/projection checks не логируются на INFO; ошибки и
+  материальные изменения сохраняют прежнюю диагностику и observability;
+- stop-race закрыт: уже поставленный в очередь retention follow-up после
+  остановки lifecycle не выполняет очистку.
+
+### Automated evidence
+
+| Проверка | Результат |
+|---|---|
+| Focused JDBC migration/runtime tests | `34` tests, `0` failures/errors; проверены `v5 -> v6`, перенос последнего legacy cycle, singleton cardinality и отсутствие новых legacy rows |
+| Focused scheduler/config/observer tests | `60` tests, затем отдельный stop-race run `2` tests; `0` failures/errors |
+| Empty/runtime recovery regression | `10000` backstop refreshes дают `0` reconciliations; lost event восстанавливается backstop, due hints не запускают overlapping execution |
+| `make lifecycle-smoke SIZE=100` | `151` canonical rows; expiry start latency `873ms`, drain `850ms`, retention drain `5329ms`, schema `v6`, checkpoint rows `1`, legacy rows `0` |
+| Smoke structured logs | только material lifecycle outcomes: `151` expired, `151` retained и ненулевые projection passes; periodic no-op reconcile/projection INFO отсутствуют |
+| SQLite query plans | expiry и retention используют covering lifecycle indexes для всех четырёх artifacts |
+| Final `make verify` after production/test changes | все `25` modules `SUCCESS`; adapter-store-jdbc `133` tests; `99 accepted / 0 visible` |
+
+Smoke report: `.dev/lifecycle-smoke/lifecycle-report.md` (ignored generated
+evidence, воспроизводится командой выше). Итоговый `make verify` должен быть
+запущен после всех правок и затем повторён на закоммиченном `HEAD`, поскольку
+verification freshness привязана к commit identity.

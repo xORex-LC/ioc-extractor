@@ -185,10 +185,12 @@ Fixed TTL является свойством одной lifecycle canonical DB-
 deadline архивирует прежнюю lifecycle и создаёт новую с новым service-owned ID.
 Все active reads используют half-open predicate `valid_until > asOf`.
 
-Expiry обслуживается aggregate nearest-deadline scheduler и periodic reconcile:
-deadline index подаёт bounded SQLite batches, typed history хранится отдельно,
-а mutable CSV сходится через durable projection generation. Timer/job на каждую
-IOC отсутствует. Expiry не меняет insert-driven `artifact_revision`, поэтому сам
+Expiry обслуживается aggregate nearest-deadline scheduler: event hint и
+five-second read-only backstop обновляют один timer из deadline index, а только
+due timer запускает bounded SQLite batches. Последний реальный reconcile
+хранится в constant-cardinality checkpoint; typed history удаляется independent
+hourly scheduler-ом, а mutable CSV сходится через durable projection generation.
+Timer/job на каждую IOC отсутствует. Expiry не меняет insert-driven `artifact_revision`, поэтому сам
 по себе не формирует immutable export slice; следующий обычный new-row trigger
 читает уже актуальный active snapshot. Lifecycle SQL/history остаются в
 `adapter-store-jdbc`, storage-neutral policy/use cases — в `ioc-application`, а

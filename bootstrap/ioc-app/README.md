@@ -80,11 +80,15 @@ daemon template явно задаёт `collect-and-continue` и budget 10 000.
 
 Bootstrap собирает framework-free lifecycle use cases с SQLite adapters через common
 `CanonicalDataAdmissionState`. Stateful oneshot extract/export вызывают
-admission defensively; daemon export, deadline и mutable-projection schedulers
+admission defensively; daemon export, deadline, history-retention и
+mutable-projection schedulers
 остаются инертны, пока ingestion startup coordinator не завершит run/source
-recovery и admission. Deadline и projection workers владеют отдельными
-single-thread `ScheduledExecutorService`, coalesce-ят lossy events и опираются
-на durable nearest deadline/generation плюс `5s` backstop.
+recovery и admission. Три lifecycle workers владеют отдельными single-thread
+`ScheduledExecutorService`. Deadline worker coalesce-ит lossy events и каждые
+`5s` read-only обновляет aggregate timer из durable nearest deadline; лишь due
+timer запускает reconciliation. Projection сохраняет `5s` generation backstop,
+а independent history worker по умолчанию запускается раз в `1h` и немедленно
+продолжает bounded backlog.
 
 `LifecycleHealthIndicator` только читает aggregate durable state и отображает
 safe `UP`, recoverable `DEGRADED` или fail-closed `DOWN`. Typed

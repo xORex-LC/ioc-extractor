@@ -158,11 +158,14 @@ Canonical lifecycle имеет отдельную stable category `LIFECYCLE` д
 retention. Успешные операции публикуют aggregate ECS actions
 `lifecycle_admission`, `lifecycle_reconcile`, `lifecycle_projection` и
 `lifecycle_retention`; per-record IOC/source values в них отсутствуют.
+Успешный reconcile пишется на INFO только при `expired > 0`, а projection —
+только при выполненной или всё ещё pending работе. Пустые five-second checks
+остаются silent; failures всегда сохраняют diagnostic и ERROR.
 
 Daemon Actuator `lifecycle` health является read-only view durable state. Он
 показывает admission/activation, safe-clock state/skew/clamp age, due/history
 counts, nearest deadline, backlog age, pending projection count и последний
-reconcile cycle. Recoverable clamp или convergence lag даёт `DEGRADED`; unsafe
+reconcile checkpoint. Recoverable clamp или convergence lag даёт `DEGRADED`; unsafe
 clock либо failed admission даёт `DOWN`. Health не запускает reconcile, не
 двигает clock high-water и не возвращает IOC, row key или source identity.
 

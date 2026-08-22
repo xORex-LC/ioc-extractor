@@ -109,7 +109,13 @@ active rows:
 
 - `backstop-interval: 5s` is the correctness retry when a deadline hint is lost;
 - `batch-size: 1000` bounds each SQLite writer transaction;
+- `history-cleanup-interval: 1h` controls independent cleanup discovery; an
+  existing backlog continues through immediate bounded follow-up tasks;
 - history and receipt retention are `30d`.
+
+An empty backstop tick only refreshes the indexed nearest deadline. It does not
+start a reconcile cycle or write a heartbeat row. Material reconciliation and
+cleanup outcomes remain visible in logs and aggregate health.
 
 Use aggregate health and query-plan/load evidence before changing batch size.
 Do not create a job per record and do not use SQLite file size as proof of
