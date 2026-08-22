@@ -3,7 +3,7 @@ package com.iocextractor.application.port.out.artifact.lifecycle;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.LifecycleReconcileCycleId;
 
-/** Driven port for durable aggregate reconciliation-cycle evidence. */
+/** Driven port for the durable latest aggregate reconciliation checkpoint. */
 public interface LifecycleReconciliationStore {
 
     /** Marks any process-abandoned started cycles as failed. */

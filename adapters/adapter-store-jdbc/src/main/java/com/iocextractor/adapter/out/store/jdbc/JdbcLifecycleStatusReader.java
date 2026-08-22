@@ -161,14 +161,19 @@ public final class JdbcLifecycleStatusReader implements LifecycleStatusReader {
     private LatestCycle readLatestCycle(Connection connection) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT state, started_at_ms, completed_at_ms, expired_count, failure_code
-                FROM lifecycle_reconcile_cycle
-                ORDER BY cycle_id DESC LIMIT 1
+                FROM lifecycle_reconcile_state
+                WHERE singleton_id = 1
                 """); ResultSet resultSet = statement.executeQuery()) {
             if (!resultSet.next()) {
+                throw new IocExtractorException("Lifecycle reconciliation state row is missing");
+            }
+            LifecycleReconcileCycleState state = LifecycleReconcileCycleState.valueOf(
+                    resultSet.getString("state"));
+            if (state == LifecycleReconcileCycleState.NEVER_RUN) {
                 return LatestCycle.neverRun();
             }
             return new LatestCycle(
-                    LifecycleReconcileCycleState.valueOf(resultSet.getString("state")),
+                    state,
                     Optional.of(Instant.ofEpochMilli(resultSet.getLong("started_at_ms"))),
                     optionalInstant(resultSet, "completed_at_ms"),
                     resultSet.getLong("expired_count"),

@@ -10,10 +10,9 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.Objects;
 
-/** SQLite journal for recoverable aggregate expiration reconciliation cycles. */
+/** Constant-cardinality SQLite checkpoint for recoverable expiration reconciliation. */
 public final class JdbcLifecycleReconciliationStore implements LifecycleReconciliationStore {
 
     private final DataSource dataSource;
@@ -26,9 +25,9 @@ public final class JdbcLifecycleReconciliationStore implements LifecycleReconcil
     public int failInterrupted(EffectiveTime recoveredAt, String failureCode) {
         requireFailureCode(failureCode);
         String sql = """
-                UPDATE lifecycle_reconcile_cycle
+                UPDATE lifecycle_reconcile_state
                 SET state = 'FAILED', completed_at_ms = ?, failure_code = ?
-                WHERE state = 'STARTED'
+                WHERE singleton_id = 1 AND state = 'STARTED'
                 """;
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -42,24 +41,34 @@ public final class JdbcLifecycleReconciliationStore implements LifecycleReconcil
 
     @Override
     public LifecycleReconcileCycleId start(EffectiveTime cycleAsOf) {
-        String sql = """
-                INSERT INTO lifecycle_reconcile_cycle(
-                    cycle_as_of_ms, state, started_at_ms)
-                VALUES (?, 'STARTED', ?)
-                """;
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            long time = epochMillis(cycleAsOf);
-            statement.setLong(1, time);
-            statement.setLong(2, time);
-            if (statement.executeUpdate() != 1) {
-                throw new IocExtractorException("Lifecycle reconciliation cycle was not created");
-            }
-            try (ResultSet keys = statement.getGeneratedKeys()) {
-                if (!keys.next()) {
-                    throw new IocExtractorException("Lifecycle reconciliation cycle ID was not returned");
+        try (Connection connection = dataSource.getConnection()) {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                long time = epochMillis(cycleAsOf);
+                int updated = update(connection, """
+                        UPDATE lifecycle_reconcile_state
+                        SET cycle_sequence = cycle_sequence + 1,
+                            cycle_as_of_ms = ?, state = 'STARTED', started_at_ms = ?,
+                            completed_at_ms = NULL, expired_count = 0,
+                            affected_artifact_count = 0, failure_code = NULL
+                        WHERE singleton_id = 1 AND state <> 'STARTED'
+                        """, statement -> {
+                    statement.setLong(1, time);
+                    statement.setLong(2, time);
+                });
+                if (updated != 1) {
+                    throw new IocExtractorException(
+                            "Lifecycle reconciliation state is already STARTED");
                 }
-                return new LifecycleReconcileCycleId(keys.getLong(1));
+                LifecycleReconcileCycleId cycleId = readCycleId(connection);
+                connection.commit();
+                return cycleId;
+            } catch (SQLException | RuntimeException failure) {
+                rollback(connection, failure);
+                throw failure;
+            } finally {
+                connection.setAutoCommit(previousAutoCommit);
             }
         } catch (SQLException | RuntimeException e) {
             throw failure("start lifecycle reconciliation", e);
@@ -72,9 +81,9 @@ public final class JdbcLifecycleReconciliationStore implements LifecycleReconcil
             throw new IllegalArgumentException("expired batch count must be positive");
         }
         updateStarted("""
-                UPDATE lifecycle_reconcile_cycle
+                UPDATE lifecycle_reconcile_state
                 SET expired_count = expired_count + ?
-                WHERE cycle_id = ? AND state = 'STARTED'
+                WHERE singleton_id = 1 AND cycle_sequence = ? AND state = 'STARTED'
                 """, statement -> {
             statement.setInt(1, expired);
             statement.setLong(2, requireCycle(cycleId));
@@ -90,10 +99,10 @@ public final class JdbcLifecycleReconciliationStore implements LifecycleReconcil
             throw new IllegalArgumentException("terminal lifecycle counters must not be negative");
         }
         updateStarted("""
-                UPDATE lifecycle_reconcile_cycle
+                UPDATE lifecycle_reconcile_state
                 SET state = 'COMPLETED', completed_at_ms = ?, expired_count = ?,
                     affected_artifact_count = ?, failure_code = NULL
-                WHERE cycle_id = ? AND state = 'STARTED'
+                WHERE singleton_id = 1 AND cycle_sequence = ? AND state = 'STARTED'
                 """, statement -> {
             statement.setLong(1, epochMillis(completedAt));
             statement.setInt(2, expired);
@@ -108,9 +117,9 @@ public final class JdbcLifecycleReconciliationStore implements LifecycleReconcil
                      String failureCode) {
         requireFailureCode(failureCode);
         updateStarted("""
-                UPDATE lifecycle_reconcile_cycle
+                UPDATE lifecycle_reconcile_state
                 SET state = 'FAILED', completed_at_ms = ?, failure_code = ?
-                WHERE cycle_id = ? AND state = 'STARTED'
+                WHERE singleton_id = 1 AND cycle_sequence = ? AND state = 'STARTED'
                 """, statement -> {
             statement.setLong(1, epochMillis(failedAt));
             statement.setString(2, failureCode);
@@ -128,6 +137,34 @@ public final class JdbcLifecycleReconciliationStore implements LifecycleReconcil
             }
         } catch (SQLException | RuntimeException e) {
             throw failure(action, e);
+        }
+    }
+
+    private int update(Connection connection, String sql, StatementBinder binder) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            binder.bind(statement);
+            return statement.executeUpdate();
+        }
+    }
+
+    private LifecycleReconcileCycleId readCycleId(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT cycle_sequence
+                FROM lifecycle_reconcile_state
+                WHERE singleton_id = 1
+                """); ResultSet resultSet = statement.executeQuery()) {
+            if (!resultSet.next()) {
+                throw new IocExtractorException("Lifecycle reconciliation state row is missing");
+            }
+            return new LifecycleReconcileCycleId(resultSet.getLong(1));
+        }
+    }
+
+    private void rollback(Connection connection, Exception failure) {
+        try {
+            connection.rollback();
+        } catch (SQLException rollbackFailure) {
+            failure.addSuppressed(rollbackFailure);
         }
     }
 

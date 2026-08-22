@@ -106,7 +106,7 @@ class JdbcLifecycleRuntimeTest {
     }
 
     @Test
-    void reconciliation_journal_recovers_interrupted_cycle_and_keeps_exact_terminal_counts() throws Exception {
+    void reconciliation_checkpoint_recovers_interrupted_cycle_and_keeps_constant_cardinality() throws Exception {
         initialize("cycles.db");
         var store = new JdbcLifecycleReconciliationStore(dataSource);
         var interrupted = store.start(EffectiveTime.at(NOW));
@@ -114,18 +114,23 @@ class JdbcLifecycleRuntimeTest {
 
         assertThat(store.failInterrupted(EffectiveTime.at(NOW.plusSeconds(1)),
                 "LIFECYCLE.RECONCILIATION_INTERRUPTED")).isOne();
-        assertThat(queryString("SELECT state FROM lifecycle_reconcile_cycle WHERE cycle_id = 1"))
+        assertThat(queryString("SELECT state FROM lifecycle_reconcile_state WHERE singleton_id = 1"))
                 .isEqualTo("FAILED");
 
         var completed = store.start(EffectiveTime.at(NOW.plusSeconds(2)));
         store.recordBatch(completed, 7);
         store.complete(completed, EffectiveTime.at(NOW.plusSeconds(3)), 7, 1);
-        assertThat(queryString("SELECT state FROM lifecycle_reconcile_cycle WHERE cycle_id = 2"))
+        assertThat(completed.value()).isEqualTo(2);
+        assertThat(queryString("SELECT state FROM lifecycle_reconcile_state WHERE singleton_id = 1"))
                 .isEqualTo("COMPLETED");
-        assertThat(queryLong("SELECT expired_count FROM lifecycle_reconcile_cycle WHERE cycle_id = 2"))
+        assertThat(queryLong("SELECT expired_count FROM lifecycle_reconcile_state WHERE singleton_id = 1"))
                 .isEqualTo(7);
-        assertThat(queryLong("SELECT affected_artifact_count FROM lifecycle_reconcile_cycle WHERE cycle_id = 2"))
+        assertThat(queryLong("""
+                SELECT affected_artifact_count FROM lifecycle_reconcile_state WHERE singleton_id = 1
+                """))
                 .isOne();
+        assertThat(queryLong("SELECT COUNT(*) FROM lifecycle_reconcile_state")).isOne();
+        assertThat(queryLong("SELECT COUNT(*) FROM lifecycle_reconcile_cycle")).isZero();
     }
 
     @Test

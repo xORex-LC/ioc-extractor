@@ -173,7 +173,7 @@ class DataframeSchemaReconcilerTest {
                 dataSource,
                 DataframeFormatMigrations.sqlite()).migrate();
 
-        assertThat(result.currentVersion()).isEqualTo(5);
+        assertThat(result.currentVersion()).isEqualTo(6);
         assertThat(tableExists("dataframe_schema_format")).isTrue();
         assertThat(tableExists("artifact_identity")).isTrue();
         assertThat(tableExists("artifact_revision")).isTrue();
@@ -186,6 +186,7 @@ class DataframeSchemaReconcilerTest {
         assertThat(tableExists("export_slot_assignment")).isTrue();
         assertThat(tableExists("export_slot_free")).isTrue();
         assertThat(tableExists("export_slot_state")).isTrue();
+        assertThat(tableExists("lifecycle_reconcile_state")).isTrue();
         assertThat(indexExists("ix_export_slot_assignment_slot")).isTrue();
         try (Connection connection = dataSource.getConnection();
              var statement = connection.createStatement();
@@ -209,8 +210,8 @@ class DataframeSchemaReconcilerTest {
         SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
 
         assertThat(result.previousVersion()).isEqualTo(2);
-        assertThat(result.currentVersion()).isEqualTo(5);
-        assertThat(result.appliedVersions()).containsExactly(3, 4, 5);
+        assertThat(result.currentVersion()).isEqualTo(6);
+        assertThat(result.appliedVersions()).containsExactly(3, 4, 5, 6);
         assertThat(tableExists("artifact_revision")).isTrue();
         assertThat(tableExists("canonical_lifecycle_control")).isTrue();
         try (Connection connection = dataSource.getConnection();
@@ -230,12 +231,45 @@ class DataframeSchemaReconcilerTest {
         SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
 
         assertThat(result.previousVersion()).isEqualTo(4);
-        assertThat(result.currentVersion()).isEqualTo(5);
-        assertThat(result.appliedVersions()).containsExactly(5);
+        assertThat(result.currentVersion()).isEqualTo(6);
+        assertThat(result.appliedVersions()).containsExactly(5, 6);
         assertThat(tableExists("export_slot_assignment")).isTrue();
         assertThat(tableExists("export_slot_free")).isTrue();
         assertThat(tableExists("export_slot_state")).isTrue();
         assertThat(rowCount("export_slot_state")).isZero();
+        assertThat(queryString("""
+                SELECT state FROM lifecycle_reconcile_state WHERE singleton_id = 1
+                """)).isEqualTo("NEVER_RUN");
+    }
+
+    @Test
+    void format_migration_upgrades_v5_with_latest_legacy_cycle_checkpoint() throws Exception {
+        dataSource = dataSource("format-v5.db");
+        List<SqliteSchemaMigration> migrations = DataframeFormatMigrations.sqlite();
+        new SqliteUserVersionSchemaMigrator(dataSource, migrations.subList(0, 5)).migrate();
+        execute("""
+                INSERT INTO lifecycle_reconcile_cycle(
+                    cycle_as_of_ms, state, started_at_ms, completed_at_ms,
+                    expired_count, affected_artifact_count)
+                VALUES (100, 'COMPLETED', 100, 110, 2, 1),
+                       (200, 'COMPLETED', 200, 210, 7, 3)
+                """);
+
+        SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
+
+        assertThat(result.previousVersion()).isEqualTo(5);
+        assertThat(result.currentVersion()).isEqualTo(6);
+        assertThat(result.appliedVersions()).containsExactly(6);
+        assertThat(queryString("""
+                SELECT state FROM lifecycle_reconcile_state WHERE singleton_id = 1
+                """)).isEqualTo("COMPLETED");
+        assertThat(queryLong("""
+                SELECT cycle_sequence FROM lifecycle_reconcile_state WHERE singleton_id = 1
+                """)).isEqualTo(2);
+        assertThat(queryLong("""
+                SELECT expired_count FROM lifecycle_reconcile_state WHERE singleton_id = 1
+                """)).isEqualTo(7);
+        assertThat(rowCount("lifecycle_reconcile_cycle")).isEqualTo(2);
     }
 
     @Test
@@ -315,6 +349,31 @@ class DataframeSchemaReconcilerTest {
             statement.setString(2, "row:" + mask);
             statement.setString(3, "2026-06-24T00:00:00Z");
             statement.executeUpdate();
+        }
+    }
+
+    private void execute(String sql) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.createStatement()) {
+            statement.execute(sql);
+        }
+    }
+
+    private String queryString(String sql) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.createStatement();
+             var resultSet = statement.executeQuery(sql)) {
+            assertThat(resultSet.next()).isTrue();
+            return resultSet.getString(1);
+        }
+    }
+
+    private long queryLong(String sql) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.createStatement();
+             var resultSet = statement.executeQuery(sql)) {
+            assertThat(resultSet.next()).isTrue();
+            return resultSet.getLong(1);
         }
     }
 
