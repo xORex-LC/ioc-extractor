@@ -28,17 +28,21 @@ class ExportChangeDetectorTest {
     }
 
     @Test
-    void postHashIsAuthoritativeAndSkippedProgressPreservesPublishedSlice() {
-        SliceManifest candidate = ExportFixtures.manifest("run-new", 9, CONTENT);
+    void candidateIsRedundantOnlyWhenContentPlanAndCoveredRevisionAreUnchanged() {
+        SliceManifest unchanged = ExportFixtures.manifest("run-unchanged", 4, CONTENT);
+        SliceManifest newLifecycle = ExportFixtures.manifest("run-new", 9, CONTENT);
         ExportProgress previous = ExportFixtures.progress(4, CONTENT, "slice-old", plan.planHash());
 
-        assertThat(detector.sameContent(candidate, List.of(previous))).isTrue();
-        assertThat(detector.sameContent(candidate, List.of(
+        assertThat(detector.isRedundant(unchanged, List.of(previous))).isTrue();
+        assertThat(detector.isRedundant(newLifecycle, List.of(previous))).isFalse();
+        assertThat(detector.isRedundant(unchanged, List.of(
                 ExportFixtures.progress(4, OLD_CONTENT, "slice-old", plan.planHash())))).isFalse();
-        assertThat(detector.skippedProgress(candidate, List.of(previous), NOW))
+        assertThat(detector.isRedundant(unchanged, List.of(
+                ExportFixtures.progress(4, CONTENT, "slice-old", "f".repeat(64))))).isFalse();
+        assertThat(detector.skippedProgress(unchanged, List.of(previous), NOW))
                 .singleElement()
                 .satisfies(progress -> {
-                    assertThat(progress.lastRevision()).isEqualTo(9);
+                    assertThat(progress.lastRevision()).isEqualTo(4);
                     assertThat(progress.lastSha256()).isEqualTo(CONTENT);
                     assertThat(progress.lastSliceId()).isEqualTo("slice-old");
                 });

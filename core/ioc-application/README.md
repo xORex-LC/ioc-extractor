@@ -39,7 +39,9 @@ Artifact Emission разделяет orchestration на три узких ком
 `ExportService` координирует новый run, `ExportChangeDetector` содержит чистую
 revision/hash policy, `ExportRunRecoveryService` продвигает crash checkpoints
 только из ledger + manifest/filesystem evidence. Ни один из них не зависит от
-JDBC, CSV/JSON, path API, Spring или SLF4J.
+JDBC, CSV/JSON, path API, Spring или SLF4J. Candidate считается избыточным только
+при совпадении plan, public hashes и manifest coverage revisions: новая covered
+revision сохраняет delivery significance даже для byte-identical projection.
 
 Canonical lifecycle следует той же границе. `LifecycleReconciliationService`
 держит один cycle `asOf` и coalesce-ит lossy projection hints по artifact;

@@ -127,10 +127,19 @@ class ReusableExportSlotIntegrationTest {
         changeActiveSet(asOf, List.of(), List.of("e.example"));
         var afterSecondReuse = service.export(new ExportArtifactsCommand("slot-reputation"));
         assertThat(afterSecondReuse.status()).isEqualTo(ExportRunStatus.COMPLETED);
-        assertThat(readIdByMask(sliceCsv(afterSecondReuse.sliceName()))).containsExactly(
+        Path beforeReappearance = sliceCsv(afterSecondReuse.sliceName());
+        assertThat(readIdByMask(beforeReappearance)).containsExactly(
                 Map.entry("d.example", "1"),
                 Map.entry("e.example", "2"),
                 Map.entry("c.example", "3"));
+
+        reincarnateWithSameProjection(asOf);
+        var afterIdenticalReappearance = service.export(
+                new ExportArtifactsCommand("slot-reputation"));
+        assertThat(afterIdenticalReappearance.status()).isEqualTo(ExportRunStatus.COMPLETED);
+        assertThat(afterIdenticalReappearance.sliceName()).isNotEqualTo(afterSecondReuse.sliceName());
+        assertThat(Files.readString(sliceCsv(afterIdenticalReappearance.sliceName())))
+                .isEqualTo(Files.readString(beforeReappearance));
 
         assertThat(Files.readString(baselineCsv)).isEqualTo(immutableBaseline);
     }
@@ -209,26 +218,51 @@ class ReusableExportSlotIntegrationTest {
                 }
                 activation.executeBatch();
             }
-            try (var revision = connection.prepareStatement("""
-                    UPDATE artifact_revision
-                    SET revision = revision + 1, changed_at = ?
-                    WHERE artifact = 'masks'
-                    """)) {
-                revision.setString(1, clock.instant().toString());
-                assertThat(revision.executeUpdate()).isOne();
-            }
-            try (var generation = connection.prepareStatement("""
-                    INSERT INTO artifact_projection_state(
-                        artifact, required_generation, projected_generation, requested_at_ms)
-                    VALUES ('masks', 1, 0, ?)
-                    ON CONFLICT(artifact) DO UPDATE SET
-                        required_generation = artifact_projection_state.required_generation + 1,
-                        requested_at_ms = excluded.requested_at_ms
-                    """)) {
-                generation.setLong(1, clock.instant().toEpochMilli());
-                assertThat(generation.executeUpdate()).isOne();
-            }
+            advanceExportSignals(connection);
             connection.commit();
+        }
+    }
+
+    private void reincarnateWithSameProjection(Instant asOf) throws Exception {
+        try (var connection = dataframe.getConnection()) {
+            connection.setAutoCommit(false);
+            try (var reincarnate = connection.prepareStatement("""
+                    UPDATE masks
+                    SET _lifecycle_id = CASE mask
+                            WHEN 'd.example' THEN 5001
+                            WHEN 'e.example' THEN 5002
+                            WHEN 'c.example' THEN 5003
+                        END,
+                        _valid_until_epoch_ms = ?
+                    WHERE mask IN ('c.example', 'd.example', 'e.example')
+                    """)) {
+                reincarnate.setLong(1, asOf.plusSeconds(3_600).toEpochMilli());
+                assertThat(reincarnate.executeUpdate()).isEqualTo(3);
+            }
+            advanceExportSignals(connection);
+            connection.commit();
+        }
+    }
+
+    private void advanceExportSignals(java.sql.Connection connection) throws Exception {
+        try (var revision = connection.prepareStatement("""
+                UPDATE artifact_revision
+                SET revision = revision + 1, changed_at = ?
+                WHERE artifact = 'masks'
+                """)) {
+            revision.setString(1, clock.instant().toString());
+            assertThat(revision.executeUpdate()).isOne();
+        }
+        try (var generation = connection.prepareStatement("""
+                INSERT INTO artifact_projection_state(
+                    artifact, required_generation, projected_generation, requested_at_ms)
+                VALUES ('masks', 1, 0, ?)
+                ON CONFLICT(artifact) DO UPDATE SET
+                    required_generation = artifact_projection_state.required_generation + 1,
+                    requested_at_ms = excluded.requested_at_ms
+                """)) {
+            generation.setLong(1, clock.instant().toEpochMilli());
+            assertThat(generation.executeUpdate()).isOne();
         }
     }
 
