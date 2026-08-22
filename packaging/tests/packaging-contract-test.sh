@@ -156,9 +156,33 @@ grep -Fq 's|@SERVER_PORT_ARG@|--server.port=${PORT}|g' \
 if grep -q '@[A-Z_][A-Z_]*@' "${RENDERED_UNIT}"; then
   fail "rendered unit still contains an unresolved placeholder"
 fi
+assert_contains "${RENDERED_UNIT}" 'ExecCondition=' \
+  "systemd unit lost the non-restarting YAML condition"
+assert_contains "${RENDERED_UNIT}" '--ioc.validate-yaml=./etc/application.yml' \
+  "systemd unit lost pre-start YAML validation"
+if grep -q '^ExecStartPre=.*--ioc.validate-yaml=' "${RENDERED_UNIT}"; then
+  fail "YAML validation in ExecStartPre can still trigger Restart=on-failure"
+fi
+assert_contains "${RENDERED_UNIT}" 'RestartPreventExitStatus=78' \
+  "systemd unit can restart-loop on deterministic YAML errors"
 if command -v systemd-analyze >/dev/null 2>&1; then
   systemd-analyze verify "${RENDERED_UNIT}"
 fi
+
+RENDERED_CONFIG_TOOL="${TEMP_ROOT}/ioc-config"
+sed -e "s|@PREFIX@|${RENDER_PREFIX}|g" \
+    -e 's|@JAVA_BIN@|/usr/bin/java|g' \
+    -e "s|@GROUP@|$(id -gn)|g" \
+    -e 's|@SERVER_PORT@|19091|g' \
+    "${PACKAGING_DIR}/templates/ioc-config" > "${RENDERED_CONFIG_TOOL}"
+if grep -q '@[A-Z_][A-Z_]*@' "${RENDERED_CONFIG_TOOL}"; then
+  fail "rendered config tool still contains an unresolved placeholder"
+fi
+assert_contains "${RENDERED_CONFIG_TOOL}" 'edit a separate candidate' \
+  "config tool permits unsafe live-file apply"
+assert_contains "${RENDERED_CONFIG_TOOL}" 'atomic_restore' \
+  "config tool lost failed-activation rollback"
+bash -n "${RENDERED_CONFIG_TOOL}"
 
 bash -n \
   "${PACKAGING_DIR}/install-layout.sh" \
@@ -166,6 +190,7 @@ bash -n \
   "${PACKAGING_DIR}/deploy-local.sh" \
   "${PACKAGING_DIR}/deploy-local-root.sh" \
   "${PACKAGING_DIR}/uninstall.sh" \
-  "${PACKAGING_DIR}/templates/ioc"
+  "${PACKAGING_DIR}/templates/ioc" \
+  "${PACKAGING_DIR}/templates/ioc-config"
 
 printf '[packaging-contract] PASS\n'

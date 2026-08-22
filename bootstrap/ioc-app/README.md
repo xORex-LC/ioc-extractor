@@ -36,8 +36,10 @@ Spring/Actuator. Export use cases зарегистрированы как lazy b
 `JdbcSnapshotSliceReader` внутренне reconcile-ит same-dataframe-DB slot registry;
 отдельного Spring bean/module или service-DB authority для него нет.
 
-`EarlyCliLauncher` завершает root/subcommand help, `-V`/`--version`, `health` и
-синтаксические ошибки до `SpringApplication.run()`, поэтому эти пути вообще не
+`IocYamlSyntaxCheck` первым обслуживает internal packaged `ExecCondition`
+validation;
+`EarlyCliLauncher` затем завершает root/subcommand help, `-V`/`--version`,
+`health` и CLI syntax errors до `SpringApplication.run()`. Эти пути вообще не
 создают Spring context. Оставшийся oneshot context использует
 `spring.main.lazy-initialization=true`: validation-only ветки не создают
 dataframe datasource, миграции или тяжёлые use cases.

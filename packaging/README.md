@@ -28,6 +28,7 @@ best effort and must be validated by the operator.
 | `templates/ioc-extractor.env` | JVM options and secret environment placeholders. |
 | `templates/ioc-extractor.service` | Hardened systemd unit template. |
 | `templates/ioc` | Installed host launcher for CLI and health operations. |
+| `templates/ioc-config` | Root-only candidate check/apply helper with atomic replacement, health gate and config rollback. |
 | `tests/` | Temporary-directory packaging contract checks; no host provisioning. |
 
 ## Operator documentation
@@ -51,7 +52,9 @@ The installer creates one self-contained prefix:
 ├── releases/<release-id>/       # immutable application releases
 │   └── ioc-app.jar
 ├── current -> releases/<id>     # atomically switched active release
-├── bin/ioc                      # host launcher
+├── bin/
+│   ├── ioc                     # isolated application CLI launcher
+│   └── ioc-config              # atomic operator-YAML check/apply helper
 ├── etc/
 │   ├── application.yml          # operator-owned override
 │   └── ioc-extractor.env        # JVM settings and secrets
@@ -208,6 +211,14 @@ activation if the supposedly fresh dataframe DB is not empty.
 On upgrade, a changed packaged template is written beside the existing file as
 `application.yml.new` or `ioc-extractor.env.new`; it is never silently merged.
 
+Do not edit the installed YAML in place. Copy it to a separate candidate, edit
+that file, then run `sudo <prefix>/bin/ioc-config apply <candidate.yml>`. The
+helper performs a side-effect-free YAML syntax check, validates the exact staged
+bytes again, atomically replaces the live file and waits for application health.
+If typed or semantic startup fails, it preserves the rejected candidate and
+restores the previous configuration. `check [candidate.yml]` runs only the
+syntax phase and does not open SQLite or initialize transports.
+
 ### Two-step canonical validity activation
 
 An existing installation must not combine binary/schema rollout and destructive
@@ -253,6 +264,9 @@ The rendered service:
 - sets the prefix as `WorkingDirectory`;
 - forces daemon mode and the servlet health surface on the command line;
 - loads `etc/application.yml` and `etc/ioc-extractor.env`;
+- syntax-checks YAML in `ExecCondition`; invalid syntax skips activation without
+  entering `Restart=on-failure`, so a deterministic parse error cannot create a
+  restart storm;
 - binds actuator to loopback by default;
 - permits writes only to declared state directories;
 - applies filesystem, privilege, capability, syscall and resource hardening;

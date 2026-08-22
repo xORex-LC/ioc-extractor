@@ -42,7 +42,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ "${EUID}" -eq 0 ]] || die "privileged activation must run as root"
-for command in awk chmod chown cmp curl find flock getent grep id install journalctl ln \
+for command in awk chmod chown cmp cp curl date find flock getent grep id install journalctl ln \
     mkdir mktemp mv readlink realpath rm sed sha256sum sleep sort stat systemctl tar; do
   command -v "${command}" >/dev/null 2>&1 || die "required command not found: ${command}"
 done
@@ -192,6 +192,14 @@ sed -e "s|@PREFIX@|${PREFIX}|g" \
     "${SCRIPT_DIR}/templates/ioc" > "${PREFIX}/bin/ioc.tmp"
 install -o root -g "${RUN_GROUP}" -m 0750 "${PREFIX}/bin/ioc.tmp" "${PREFIX}/bin/ioc"
 rm -f "${PREFIX}/bin/ioc.tmp"
+sed -e "s|@PREFIX@|${PREFIX}|g" \
+    -e "s|@JAVA_BIN@|${JAVA_BIN}|g" \
+    -e "s|@GROUP@|${RUN_GROUP}|g" \
+    -e "s|@SERVER_PORT@|${PORT}|g" \
+    "${SCRIPT_DIR}/templates/ioc-config" > "${PREFIX}/bin/ioc-config.tmp"
+install -o root -g "${RUN_GROUP}" -m 0750 \
+  "${PREFIX}/bin/ioc-config.tmp" "${PREFIX}/bin/ioc-config"
+rm -f "${PREFIX}/bin/ioc-config.tmp"
 PREVIOUS_TARGET="$(readlink "${PREFIX}/current")"
 ioc_is_release_target "${PREVIOUS_TARGET}" \
   || die "current symlink points outside releases: ${PREVIOUS_TARGET}"
