@@ -313,7 +313,8 @@ fi
 
 sql 'SELECT artifact || "=" || revision FROM artifact_revision ORDER BY artifact;' \
   > "${WORKSPACE}/revision-before-expiry.txt"
-BASE_CYCLE_ID="$(sql 'SELECT COALESCE(MAX(cycle_id), 0) FROM lifecycle_reconcile_cycle;' | tail -1)"
+BASE_CYCLE_SEQUENCE="$(sql 'SELECT cycle_sequence FROM lifecycle_reconcile_state
+  WHERE singleton_id = 1;' | tail -1)"
 RSS_AFTER_INGEST_KIB="$(high_water_rss_kib)"
 
 : > "${QUERY_PLANS}"
@@ -355,6 +356,13 @@ done
 [[ "$(history_total)" -eq "${TOTAL_ACTIVE}" ]] \
   || dev_die "history count does not match the pre-expiry active set"
 [[ "$(pending_projections)" -eq 0 ]] || dev_die "mutable projections did not converge"
+EXPIRY_CYCLE_SEQUENCE="$(sql 'SELECT cycle_sequence FROM lifecycle_reconcile_state
+  WHERE singleton_id = 1;' | tail -1)"
+EXPIRED_CYCLES=$((EXPIRY_CYCLE_SEQUENCE - BASE_CYCLE_SEQUENCE))
+LATEST_EXPIRED_ACCOUNTED="$(sql 'SELECT expired_count FROM lifecycle_reconcile_state
+  WHERE singleton_id = 1;' | tail -1)"
+(( EXPIRED_CYCLES > 0 && LATEST_EXPIRED_ACCOUNTED > 0 )) \
+  || dev_die "bounded reconcile checkpoint did not record material expiry"
 FIRST_HISTORY_MS="${FIRST_HISTORY_MS:-$(now_ms)}"
 EXPIRY_DRAINED_MS="$(now_ms)"
 EXPIRY_START_LATENCY_MS=$((FIRST_HISTORY_MS - MIN_DEADLINE_MS))
@@ -448,12 +456,6 @@ ACTUAL_EXPORTED_ROWS="$(jq '[.artifacts[].rows] | add // 0' "${LATEST_SLICE}/man
 wait_for_health_up
 RSS_FINAL_KIB="$(high_water_rss_kib)"
 
-EXPIRED_CYCLES="$(sql "SELECT COUNT(*) FROM lifecycle_reconcile_cycle
-  WHERE cycle_id > ${BASE_CYCLE_ID} AND expired_count > 0;" | tail -1)"
-EXPIRED_ACCOUNTED="$(sql "SELECT COALESCE(SUM(expired_count), 0) FROM lifecycle_reconcile_cycle
-  WHERE cycle_id > ${BASE_CYCLE_ID};" | tail -1)"
-[[ "${EXPIRED_ACCOUNTED}" -eq "${TOTAL_ACTIVE}" ]] \
-  || dev_die "reconcile journal expired ${EXPIRED_ACCOUNTED}, expected ${TOTAL_ACTIVE}"
 EXPECTED_EXPIRY_BATCHES=0
 for artifact in "${ARTIFACTS[@]}"; do
   count="${ACTIVE_COUNTS[${artifact}]}"
@@ -490,7 +492,8 @@ OBSERVED_MAX_RSS_KIB="${RSS_AFTER_INGEST_KIB}"
   printf -- '- expiry start latency from earliest deadline: `%sms`\n' "${EXPIRY_START_LATENCY_MS}"
   printf -- '- drain latency after latest deadline: `%sms`\n' "${EXPIRY_DRAIN_LATENCY_MS}"
   printf -- '- measured archive/drain throughput: `%s rows/s`\n' "${EXPIRY_ROWS_PER_SECOND}"
-  printf -- '- reconcile cycles with expired rows: `%s`\n' "${EXPIRED_CYCLES}"
+  printf -- '- material reconcile sequence delta: `%s`\n' "${EXPIRED_CYCLES}"
+  printf -- '- latest reconcile expired rows: `%s`\n' "${LATEST_EXPIRED_ACCOUNTED}"
   printf -- '- minimum bounded expiry transactions: `%s`\n' "${EXPECTED_EXPIRY_BATCHES}"
   printf -- '- history-retention restart-to-drain: `%sms`\n' "${RETENTION_ELAPSED_MS}"
   printf -- '- maximum observed JVM VmHWM: `%s KiB` (limit `%s KiB`)\n' \
