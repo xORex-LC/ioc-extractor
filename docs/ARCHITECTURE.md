@@ -228,6 +228,9 @@ canonical SQLite (one WAL read tx) ──▶ CSV files ──▶ manifest.json �
 - `artifact_revision` увеличивается в транзакции фактической canonical-вставки.
   Snapshot metadata (`revision`, `changed_at`, `upper_id`) читается в той же
   read transaction, что и строки. Concurrent commit попадает в следующий срез.
+  Byte-identical candidate с более новой covered revision всё равно становится
+  новым completed slice: новая lifecycle является новой delivery occurrence, а
+  content hash не заменяет revision/business-occurrence identity.
 - Writer не материализует rows: JDBC callback-stream идёт прямо в CSV digest.
   `_SUCCESS` содержит SHA-256 точных bytes manifest; manifest содержит hashes и
   coverage всех data files. Final становится видимым одним atomic directory move.

@@ -48,7 +48,9 @@ Daemon export scheduler до открытия этого barrier не выпол
    публикации: lossy bytes нарушили бы checksum/manifest contract.
 6. **Change detection двухступенчатый.** Revisions + `planHash` дают дешёвый
    pre-gate; окончательное решение принимает content hash созданного candidate.
-   Byte-identical candidate получает `SKIPPED` без нового published slice.
+   `SKIPPED` допустим только при совпадении plan, bytes **и manifest coverage
+   revisions** с durable progress. Более новая revision означает новую public
+   lifecycle и создаёт новый published slice даже при byte-identical CSV.
 7. **Event не является commit.** `SliceCompleted` появляется только после
    durable `COMPLETED`; потерянный event добирает publish reconcile.
 8. **Expiry не создаёт slice.** Истечение или renewal не меняют insert-driven
@@ -104,7 +106,8 @@ Recovery является forward-only и не перечитывает mutable 
 Она принимает решения только по `export_run`, staging/final filesystem evidence
 и manifest coverage:
 
-- valid staging можно довести до `STAGED` или удалить как byte-identical;
+- valid staging можно довести до `STAGED` или удалить только при совпадении
+  plan, bytes и coverage revisions с durable progress;
 - `STAGED` можно атомарно опубликовать;
 - `AVAILABLE` можно завершить с progress из уже сохранённого manifest;
 - missing/corrupt/conflicting evidence получает typed failure, а не тихую
@@ -122,7 +125,9 @@ periodic cadence остаётся backstop.
 Lifecycle expiry отдельно восстанавливает mutable `*_generated.csv`, но не
 вызывает `DaemonExportScheduler.nudge()`. Поэтому истечение само по себе не
 создаёт immutable slice; только следующий разрешённый new-data export зафиксирует
-актуальное active membership.
+актуальное active membership. Если new-data commit создал новую lifecycle после
+TTL и продвинул `artifact_revision`, такой export завершается новым slice и
+delivery даже тогда, когда его CSV bytes совпали с историческим slice.
 
 Retention считает каждый final slice одной единицей и применяет age/count per
 profile. Guard проверяется непосредственно перед delete. При активном remote

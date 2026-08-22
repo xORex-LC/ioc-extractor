@@ -151,6 +151,7 @@ firewall or other downstream target lifecycle protocols.
 | `BR-19` | Repeated identical content is a new observation | Source content identity is separated from delivery/observation identity |
 | `BR-20` | No-ETL duplicates are bounded | Complete fingerprinted prepared-row receipts expire after `30d`; fallback is ordinary ETL |
 | `BR-21` | Export slots must not become canonical identity | The registry is export-owned; TTL, history, dedup and provenance do not depend on it |
+| `BR-22` | A lifecycle returning after TTL must be delivered again even when its exported bytes equal an older slice | Post-materialization skip requires equal plan, hashes and covered revisions; a higher insert-driven revision completes a new slice and emits the existing delivery hint |
 
 ## 4. Current architecture and gaps
 

@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 — implementation plan"
 version: "0.3.0"
-status: "Implementation — P7 in progress"
+status: "Implementation — P8 qualification pending"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "ru"
@@ -38,6 +38,7 @@ surface и исходное lifecycle evidence были закрыты P6. По�
 | `P5` | Duplicate receipt and explicit upgrade activation UX | opt-in existing installs only | `complete` |
 | `P6` | Fresh preset, docs and release evidence | complete capability | `complete` |
 | `P7` | Stable sparse reusable export slots | corrected export contract | `implementation_complete`; qualification pending |
+| `P8` | Revision-significant identical export delivery | corrected post-hash contract | `implementation_complete`; qualification pending |
 
 ## P0 — decision and characterization
 
@@ -324,6 +325,38 @@ semantics stay unchanged.
 **Status:** implementation and automated evidence complete on 2026-08-19;
 packaged qualification and final fresh reactor gate pending. Detailed design:
 [export-slot-correction.md](export-slot-correction.md).
+
+## P8 — revision-significant identical export delivery
+
+### Scope
+
+The pure export change detector, forward formation, crash recovery, terminal
+observability and affected architecture/capability documentation. Canonical TTL,
+revision writes, export-slot allocation and publish-ledger authority remain
+unchanged.
+
+### Deliverables
+
+- treat a candidate as redundant only when profile artifacts, `plan_hash`,
+  public hashes and manifest coverage revisions equal durable progress;
+- complete and emit the existing `SliceCompleted` fact when public bytes match
+  but at least one covered insert-driven revision advanced;
+- use the same policy during recovery without rereading canonical storage;
+- expose the terminal export status in structured logs;
+- add ADR-0022 and regression tests for forward, recovery and the still-valid
+  equal-revision `SKIPPED` case.
+
+### Exit gate
+
+- a lifecycle returning after TTL produces a new immutable slice and publish
+  opportunity even if its export slots and CSV bytes equal an older slice;
+- expiry, renewal and active confirmation still do not create export work;
+- forward execution and recovery produce the same terminal decision;
+- focused tests, documentation gate, full reactor verification and packaged
+  stand evidence pass.
+
+**Status:** implementation and focused automated evidence complete on
+2026-08-22; packaged stand evidence and final fresh reactor gate pending.
 
 ## Required test matrix
 

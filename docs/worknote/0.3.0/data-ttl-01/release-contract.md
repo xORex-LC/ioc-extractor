@@ -90,7 +90,10 @@ work item — `DATA-TTL-01`; он выполняется по
    Source IDs остаются отдельными namespaced provenance identities.
 7. `artifact_revision` сохраняет текущую insert-driven семантику: её двигает
    commit хотя бы одной новой canonical active row. Expiry, renewal и duplicate
-   confirmation revision не меняют и новый immutable slice не создают.
+   confirmation revision не меняют и новый immutable slice не создают. Если
+   reappearance после expiry продвинул revision, новый slice и delivery
+   обязательны даже при полном совпадении его CSV bytes с историческим slice;
+   post-hash `SKIPPED` требует также равенства covered revisions.
 8. Expiry записывает отдельный durable lifecycle projection-work/cycle state для
    mutable dataframe и recovery; export scheduler этот state не использует.
 9. Ошибка projection/export после canonical expiry не возвращает record в
