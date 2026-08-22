@@ -295,6 +295,7 @@ ioc:
       fixed-ttl: 12h
       existing-records: reject
     history-retention: 30d
+    history-cleanup-interval: 1h
     receipt-retention: 30d
     reconcile:
       backstop-interval: 5s

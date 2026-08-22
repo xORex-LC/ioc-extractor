@@ -3,7 +3,6 @@ package com.iocextractor.bootstrap;
 import com.iocextractor.application.artifact.lifecycle.CanonicalDataAdmissionState;
 import com.iocextractor.application.artifact.lifecycle.LifecycleDeadline;
 import com.iocextractor.application.port.in.artifact.lifecycle.ReconcileExpiredRecordsUseCase;
-import com.iocextractor.application.port.in.artifact.lifecycle.RunLifecycleHistoryRetentionUseCase;
 import com.iocextractor.application.port.out.artifact.lifecycle.ExpiredArtifactStore;
 import org.springframework.context.SmartLifecycle;
 
@@ -27,7 +26,6 @@ public final class LifecycleDeadlineScheduler implements SmartLifecycle {
     private final CanonicalDataAdmissionState admission;
     private final ExpiredArtifactStore expiredArtifacts;
     private final ReconcileExpiredRecordsUseCase reconciliation;
-    private final RunLifecycleHistoryRetentionUseCase historyRetention;
     private final Duration backstopInterval;
     private final Clock clock;
     private final LifecycleRuntimeObserver observer;
@@ -41,18 +39,16 @@ public final class LifecycleDeadlineScheduler implements SmartLifecycle {
     public LifecycleDeadlineScheduler(CanonicalDataAdmissionState admission,
                                       ExpiredArtifactStore expiredArtifacts,
                                       ReconcileExpiredRecordsUseCase reconciliation,
-                                      RunLifecycleHistoryRetentionUseCase historyRetention,
                                       Duration backstopInterval,
                                       Clock clock,
                                       LifecycleRuntimeObserver observer) {
-        this(admission, expiredArtifacts, reconciliation, historyRetention,
+        this(admission, expiredArtifacts, reconciliation,
                 backstopInterval, clock, observer, LifecycleDeadlineScheduler::newExecutor);
     }
 
     LifecycleDeadlineScheduler(CanonicalDataAdmissionState admission,
                                ExpiredArtifactStore expiredArtifacts,
                                ReconcileExpiredRecordsUseCase reconciliation,
-                               RunLifecycleHistoryRetentionUseCase historyRetention,
                                Duration backstopInterval,
                                Clock clock,
                                LifecycleRuntimeObserver observer,
@@ -60,7 +56,6 @@ public final class LifecycleDeadlineScheduler implements SmartLifecycle {
         this.admission = Objects.requireNonNull(admission, "admission");
         this.expiredArtifacts = Objects.requireNonNull(expiredArtifacts, "expiredArtifacts");
         this.reconciliation = Objects.requireNonNull(reconciliation, "reconciliation");
-        this.historyRetention = Objects.requireNonNull(historyRetention, "historyRetention");
         this.backstopInterval = requirePositive(backstopInterval);
         this.clock = Objects.requireNonNull(clock, "clock");
         this.observer = Objects.requireNonNull(observer, "observer");
@@ -81,23 +76,22 @@ public final class LifecycleDeadlineScheduler implements SmartLifecycle {
         scheduleNearestDeadline();
     }
 
-    /** Runs one idempotent reconciliation/retention attempt without overlap. */
+    /** Runs one idempotent due-record reconciliation attempt without overlap. */
     public void runOnce() {
         if (!reconciling.compareAndSet(false, true)) {
             return;
         }
+        boolean completed = false;
         try {
             observer.reconciliationCompleted(reconciliation.reconcile());
+            completed = true;
         } catch (RuntimeException failure) {
             observer.reconciliationFailed(failure);
-        }
-        try {
-            observer.retentionCompleted(historyRetention.run());
-        } catch (RuntimeException failure) {
-            observer.retentionFailed(failure);
         } finally {
             reconciling.set(false);
-            scheduleNearestDeadline();
+            if (completed) {
+                scheduleNearestDeadline();
+            }
         }
     }
 
@@ -110,7 +104,7 @@ public final class LifecycleDeadlineScheduler implements SmartLifecycle {
             return;
         }
         executor = Objects.requireNonNull(executorFactory.get(), "executor");
-        executor.scheduleWithFixedDelay(this::runOnce,
+        executor.scheduleWithFixedDelay(this::scheduleNearestDeadline,
                 backstopInterval.toMillis(), backstopInterval.toMillis(), TimeUnit.MILLISECONDS);
         scheduleNearestDeadline();
     }

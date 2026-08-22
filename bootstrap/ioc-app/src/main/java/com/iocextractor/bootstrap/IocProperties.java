@@ -346,6 +346,7 @@ public record IocProperties(
     /** Runtime safety and bounded maintenance settings for canonical lifecycle data. */
     public record Lifecycle(@NotNull @Valid Validity validity,
                             @NotNull Duration historyRetention,
+                            @NotNull Duration historyCleanupInterval,
                             @NotNull Duration receiptRetention,
                             @NotNull @Valid Reconcile reconcile,
                             @NotNull @Valid ClockSafety clock) {
@@ -353,7 +354,7 @@ public record IocProperties(
         private static Lifecycle defaults() {
             return new Lifecycle(new Validity(
                     LifecycleValidityMode.DISABLED, Duration.ofHours(12), ExistingRecordsPolicy.REJECT),
-                    Duration.ofDays(30), Duration.ofDays(30),
+                    Duration.ofDays(30), Duration.ofHours(1), Duration.ofDays(30),
                     new Reconcile(Duration.ofSeconds(5), 1_000),
                     new ClockSafety(Duration.ofSeconds(2), Duration.ofSeconds(30)));
         }

@@ -986,7 +986,6 @@ public class AppConfig {
             CanonicalDataAdmissionState canonicalDataAdmissionState,
             ExpiredArtifactStore expiredArtifactStore,
             ReconcileExpiredRecordsUseCase reconcileExpiredRecordsUseCase,
-            RunLifecycleHistoryRetentionUseCase runLifecycleHistoryRetentionUseCase,
             IocProperties props,
             Clock clock,
             LifecycleRuntimeObserver observer) {
@@ -994,9 +993,22 @@ public class AppConfig {
                 canonicalDataAdmissionState,
                 expiredArtifactStore,
                 reconcileExpiredRecordsUseCase,
-                runLifecycleHistoryRetentionUseCase,
                 props.lifecycle().reconcile().backstopInterval(),
                 clock,
+                observer);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
+    public LifecycleHistoryRetentionScheduler lifecycleHistoryRetentionScheduler(
+            CanonicalDataAdmissionState canonicalDataAdmissionState,
+            RunLifecycleHistoryRetentionUseCase runLifecycleHistoryRetentionUseCase,
+            IocProperties props,
+            LifecycleRuntimeObserver observer) {
+        return new LifecycleHistoryRetentionScheduler(
+                canonicalDataAdmissionState,
+                runLifecycleHistoryRetentionUseCase,
+                props.lifecycle().historyCleanupInterval(),
                 observer);
     }
 

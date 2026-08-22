@@ -49,6 +49,7 @@ class IocPropertiesBindingTest {
             assertThat(lifecycle.validity().fixedTtl()).isEqualTo(Duration.ofHours(12));
             assertThat(lifecycle.validity().existingRecords()).isEqualTo(ExistingRecordsPolicy.REJECT);
             assertThat(lifecycle.historyRetention()).isEqualTo(Duration.ofDays(30));
+            assertThat(lifecycle.historyCleanupInterval()).isEqualTo(Duration.ofHours(1));
             assertThat(lifecycle.receiptRetention()).isEqualTo(Duration.ofDays(30));
             assertThat(lifecycle.reconcile().backstopInterval()).isEqualTo(Duration.ofSeconds(5));
             assertThat(lifecycle.reconcile().batchSize()).isEqualTo(1_000);
@@ -61,6 +62,7 @@ class IocPropertiesBindingTest {
     void reportsLifecycleSafetyBoundsThroughSemanticPreflight() {
         contextRunner(
                 "ioc.lifecycle.history-retention=0s",
+                "ioc.lifecycle.history-cleanup-interval=0s",
                 "ioc.lifecycle.receipt-retention=0s",
                 "ioc.lifecycle.reconcile.backstop-interval=-1s",
                 "ioc.lifecycle.clock.max-backward-skew=0s",
@@ -69,6 +71,7 @@ class IocPropertiesBindingTest {
                         .extracting(FieldError::getField)
                         .contains(
                                 "lifecycle.historyRetention",
+                                "lifecycle.historyCleanupInterval",
                                 "lifecycle.receiptRetention",
                                 "lifecycle.reconcile.backstopInterval",
                                 "lifecycle.clock.maxBackwardSkew",

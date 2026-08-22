@@ -41,6 +41,8 @@ final class IocConfigPreflight implements Validator {
         }
         rejectIfNotPositive(errors, "lifecycle.historyRetention", lifecycle.historyRetention(),
                 "ioc.lifecycle.history-retention");
+        rejectIfNotPositive(errors, "lifecycle.historyCleanupInterval", lifecycle.historyCleanupInterval(),
+                "ioc.lifecycle.history-cleanup-interval");
         rejectIfNotPositive(errors, "lifecycle.receiptRetention", lifecycle.receiptRetention(),
                 "ioc.lifecycle.receipt-retention");
         if (lifecycle.validity() != null

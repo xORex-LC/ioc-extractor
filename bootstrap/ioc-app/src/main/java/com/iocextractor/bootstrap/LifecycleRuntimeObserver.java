@@ -57,6 +57,9 @@ public final class LifecycleRuntimeObserver {
     }
 
     public void reconciliationCompleted(LifecycleReconciliationResult result) {
+        if (!result.changedMembership()) {
+            return;
+        }
         LogEvents.info(log)
                 .action(EventAction.LIFECYCLE_RECONCILE)
                 .outcome(EventOutcome.SUCCESS)
@@ -85,6 +88,9 @@ public final class LifecycleRuntimeObserver {
     }
 
     public void projectionCompleted(ArtifactProjectionConvergenceResult result) {
+        if (result.projected() == 0 && result.stillPending() == 0) {
+            return;
+        }
         LogEvents.info(log)
                 .action(EventAction.LIFECYCLE_PROJECTION)
                 .outcome(EventOutcome.SUCCESS)
