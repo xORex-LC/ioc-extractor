@@ -22,7 +22,24 @@ environment, system property либо командной строке остан
 не должен ошибочно считать, что настройка безопасности или доставки применена,
 когда приложение молча её проигнорировало.
 
-После изменения установленного YAML или environment-файла перезапустите сервис.
+Не редактируйте установленный YAML на месте. Подготовьте отдельный candidate и
+примените его штатным helper:
+
+```bash
+sudo cp <prefix>/etc/application.yml ./application.candidate.yml
+sudo chown "$(id -u):$(id -g)" ./application.candidate.yml
+${EDITOR:-vi} ./application.candidate.yml
+sudo <prefix>/bin/ioc-config check ./application.candidate.yml
+sudo <prefix>/bin/ioc-config apply ./application.candidate.yml
+```
+
+`check` выполняет side-effect-free проверку синтаксиса. `apply` повторно
+проверяет точные staged bytes, атомарно заменяет live-файл, перезапускает сервис
+и ожидает health. Если typed или semantic startup не проходит, предыдущий YAML
+восстанавливается, а отклонённый candidate сохраняется для диагностики.
+Синтаксическая ошибка получает `CONFIG.YAML_INVALID` со строкой и столбцом, но
+без вывода содержимого строки.
+
 Секреты передавайте через placeholders вида `${SMB_PASSWORD}` и не записывайте
 их непосредственно в YAML.
 

@@ -27,6 +27,7 @@ packaged application.yml
 
 ```text
 Environment prepared
+  -> YAML syntax parse / CONFIG.YAML_INVALID
   -> unknown-key shape preflight (all property sources)
   -> @ConfigurationProperties binding/conversion/JSR-380
   -> collect-all semantic config validation
@@ -39,6 +40,10 @@ Environment prepared
 Границы разделены намеренно:
 
 - Spring binder владеет shape, conversion и bean validation;
+- `IocYamlSyntaxCheck` предоставляет side-effect-free синтаксическую проверку
+  candidate-файла до Spring startup, SQLite и transport initialization;
+- `IocYamlConfigurationFailureAnalyzer` переводит ранний SnakeYAML failure в
+  value-free `CONFIG.YAML_INVALID` с line/column без вывода самой строки;
 - `IocUnknownConfigurationPreflight` проверяет неизвестные keys по reflection
   shape typed model, включая YAML overlay, CLI, system properties и env;
 - `IocConfigPreflight` собирает межсекционные инварианты: artifact identity,
@@ -51,6 +56,16 @@ Environment prepared
 
 Validation constructors не должны бросать на operator mistakes: иначе binder
 остановится на первой ошибке и скроет collect-all report.
+
+Для packaged systemd deployment unit запускает syntax check через
+`ExecCondition`. При exit code `78` systemd пропускает activation и не входит в
+`Restart=on-failure`, поэтому детерминированная YAML-ошибка не создаёт restart
+storm. `RestartPreventExitStatus=78` остаётся дополнительной защитой для main
+process. Операторский
+`bin/ioc-config apply` принимает отдельный candidate, повторно проверяет staged
+copy, атомарно заменяет live YAML и восстанавливает previous config, если
+обычный typed/semantic startup не достигает `UP`. Прямое редактирование live
+файла остаётся технически возможным, но не является поддерживаемым workflow.
 
 ## Runtime modes и lazy boundary
 
@@ -125,7 +140,8 @@ duration/value отклоняется collect-all preflight и никогда н
   production template и `ConfigurationDocumentationContractTest`.
 - Strict boundary: `IocEnvironmentPropertyMatcher`,
   `IocUnknownConfigurationPreflight`, `IocConfigPreflight`,
-  `ConfigRegistryPreflight`, `IocConfigurationFailureAnalyzer`.
+  `ConfigRegistryPreflight`, `IocConfigurationFailureAnalyzer`,
+  `IocYamlConfigurationFailureAnalyzer`, `IocYamlSyntaxCheck`.
 - Lifecycle: `ConfigPreflightConfiguration`, `EarlyCliLauncher`,
   `DaemonWebEnvironmentPostProcessor`.
 - Contract tests: `IocPropertiesBindingTest`, unknown-key/preflight/analyzer/

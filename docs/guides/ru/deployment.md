@@ -85,7 +85,9 @@ Custom `--jdk-url` также требует `--jdk-sha256` и HTTPS. Default UR
 <prefix>/
 ├── current -> releases/<release-id>
 ├── releases/<release-id>/ioc-app.jar
-├── bin/ioc
+├── bin/
+│   ├── ioc
+│   └── ioc-config
 ├── etc/application.yml
 ├── etc/ioc-extractor.env
 ├── etc/ioc-extractor.installation
@@ -103,17 +105,24 @@ Custom `--jdk-url` также требует `--jdk-sha256` и HTTPS. Default UR
 
 ## Конфигурация и проверка
 
-Редактируйте `<prefix>/etc/application.yml` по
+Подготовьте отдельный YAML candidate по
 [справочнику конфигурации](configuration.md). Секреты помещайте в
-`<prefix>/etc/ioc-extractor.env`.
+`<prefix>/etc/ioc-extractor.env`. Не редактируйте live-файл на месте: проверка и
+замена должны быть одной контролируемой операцией.
 
 ```bash
-sudo systemctl restart ioc-extractor
+sudo /opt/ioc-extractor/bin/ioc-config check ./application.candidate.yml
+sudo /opt/ioc-extractor/bin/ioc-config apply ./application.candidate.yml
 sudo systemctl status ioc-extractor --no-pager
 sudo /opt/ioc-extractor/bin/ioc --version
 sudo /opt/ioc-extractor/bin/ioc health
 sudo journalctl -u ioc-extractor -n 100 --no-pager
 ```
+
+Helper проверяет точные staged bytes, атомарно заменяет установленный YAML и
+ожидает health. При startup failure предыдущий файл восстанавливается. Для
+прямого restart остаётся systemd `ExecCondition` syntax guard: exit `78`
+пропускает activation без детерминированного restart loop.
 
 Health endpoint по умолчанию доступен только на loopback. Healthy local service
 не означает, что optional SMB endpoints уже прошли authentication: sync

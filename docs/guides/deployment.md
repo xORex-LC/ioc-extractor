@@ -85,7 +85,9 @@ Use `--no-start` when configuration must be reviewed before first startup. Run
 <prefix>/
 ├── current -> releases/<release-id>
 ├── releases/<release-id>/ioc-app.jar
-├── bin/ioc
+├── bin/
+│   ├── ioc
+│   └── ioc-config
 ├── etc/application.yml
 ├── etc/ioc-extractor.env
 ├── etc/ioc-extractor.installation
@@ -103,17 +105,24 @@ it to another directory.
 
 ## Configure and validate
 
-Edit `<prefix>/etc/application.yml` using the
+Prepare a separate YAML candidate using the
 [configuration reference](configuration.md). Put secrets in
-`<prefix>/etc/ioc-extractor.env`, not in YAML.
+`<prefix>/etc/ioc-extractor.env`, not in YAML. Do not edit the live file in
+place: validation and replacement must be one controlled operation.
 
 ```bash
-sudo systemctl restart ioc-extractor
+sudo /opt/ioc-extractor/bin/ioc-config check ./application.candidate.yml
+sudo /opt/ioc-extractor/bin/ioc-config apply ./application.candidate.yml
 sudo systemctl status ioc-extractor --no-pager
 sudo /opt/ioc-extractor/bin/ioc --version
 sudo /opt/ioc-extractor/bin/ioc health
 sudo journalctl -u ioc-extractor -n 100 --no-pager
 ```
+
+The apply helper stages and syntax-checks the exact bytes, atomically replaces
+the installed YAML and waits for health. A startup failure restores the previous
+file. Direct restarts still have a systemd `ExecCondition` syntax guard; exit
+`78` skips activation without entering a deterministic restart loop.
 
 The health endpoint is loopback-only by default. A healthy local service does
 not imply that optional remote SMB endpoints have already authenticated: sync

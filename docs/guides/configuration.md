@@ -22,7 +22,23 @@ YAML, environment, a system property or the command line stops startup. This is
 intentional: an operator must never believe that a safety or delivery setting was
 applied when it was silently ignored.
 
-After changing the installed YAML or environment file, restart the service.
+Do not edit the installed YAML in place. Prepare a separate candidate and apply
+it through the installed helper:
+
+```bash
+sudo cp <prefix>/etc/application.yml ./application.candidate.yml
+sudo chown "$(id -u):$(id -g)" ./application.candidate.yml
+${EDITOR:-vi} ./application.candidate.yml
+sudo <prefix>/bin/ioc-config check ./application.candidate.yml
+sudo <prefix>/bin/ioc-config apply ./application.candidate.yml
+```
+
+`check` is a side-effect-free syntax check. `apply` validates the exact staged
+bytes again, replaces the live file atomically, restarts the service and waits
+for health. A typed or semantic startup failure restores the previous YAML and
+preserves the rejected candidate for diagnosis. Syntax failures use
+`CONFIG.YAML_INVALID` with line and column but never echo the source line.
+
 Secrets must be supplied through environment placeholders such as
 `${SMB_PASSWORD}` and must not be written directly into YAML.
 
