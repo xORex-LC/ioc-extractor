@@ -24,7 +24,10 @@ Expiry обновляет mutable-проекции `dataframe/*_generated.csv`, 
 только с заголовком при пустом active set. При этом он намеренно **не** создаёт
 immutable export slice и не увеличивает insert-driven export revision. Когда
 следующий принятый source добавит новые строки, обычный export сформирует срез,
-содержащий только записи, активные на общем snapshot time.
+содержащий только записи, активные на общем snapshot time. Если expired IOC
+вернутся как новые lifecycle, сервис завершит и передаст новый slice даже при
+совпадении CSV bytes с историческим: более новая covered revision означает
+новую значимую delivery occurrence.
 
 ## Новая установка
 

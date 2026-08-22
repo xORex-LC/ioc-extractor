@@ -57,14 +57,15 @@ runtime JDBC drivers.
   keys enforce both directions of ownership without a redundant free-slot index.
 - `JdbcLifecycleControlStore` uses one-way CAS and refuses `ACTIVE` until one
   set-based invariant scan proves that every configured active row has complete,
-  ordered lifecycle metadata. Lifecycle/public ID ranges are reserved by atomic
-  SQLite `UPDATE ... RETURNING`; allocator state survives active/history cleanup.
+  ordered lifecycle metadata. Lifecycle/canonical-row ID ranges are reserved by
+  atomic SQLite `UPDATE ... RETURNING`; allocator state survives active/history
+  cleanup.
 - `JdbcCanonicalLifecycleWriter` is the P3 transaction boundary for insert,
   active renewal, due-row archive/recreate, provenance, observation replay,
   insert-driven revision, projection generation and typed receipt staging. It
   samples one write-owned effective time after acquiring SQLite write ownership;
-  public and lifecycle ranges are committed beforehand, so rollback creates
-  gaps rather than reusable identities. `JdbcConfirmationReceiptWriter`
+  canonical-row and lifecycle ranges are committed beforehand, so rollback
+  creates gaps rather than reusable identities. `JdbcConfirmationReceiptWriter`
   publishes `COMPLETE` only after exact artifact-marker and typed-row counts,
   including a valid zero-row artifact.
 - `JdbcActiveArtifactReader` applies the half-open active predicate with an
@@ -84,13 +85,13 @@ runtime JDBC drivers.
   `JdbcLifecycleStatusReader` returns aggregate read-only health facts without
   IOC/source identities. Bootstrap owns admission and schedulers.
 - `JdbcLifecycleActivationStore` archives legacy rows in resumable keyset
-  batches with compact provenance and projection work without changing public
-  artifact revision. `JdbcConfirmationReceiptStore` loads only complete current
-  receipts and bounds receipt/terminal-observation retention.
+  batches with compact provenance and projection work without advancing the
+  insert-driven artifact revision. `JdbcConfirmationReceiptStore` loads only
+  complete current receipts and bounds receipt/terminal-observation retention.
 - History removal is independent from expiration and is ordered by
   `(closed_at_epoch_ms, history_id)`. Foreign-key cascade removes compact source
-  summaries, while lifecycle/public-ID allocators remain monotonic after both
-  active and history rows are gone.
+  summaries, while lifecycle/canonical-row ID allocators remain monotonic after
+  both active and history rows are gone.
 - `JdbcCanonicalArtifactRepository` writes rows with canonical `row_key` and
   `ON CONFLICT(row_key) DO NOTHING`, preserving explicit legacy ids when present.
   It is a commit-only boundary: routing and row mapping finish before this adapter
@@ -99,8 +100,9 @@ runtime JDBC drivers.
   per mutating write in the same transaction. `JdbcArtifactRevisionReader`
   provides change detection without scanning business rows. The compatibility
   writer still uses `JdbcArtifactIdBaseline` while production remains disabled;
-  the lifecycle writer owns the durable public-ID allocator after activation.
-  Schema v4 or the presence of P3 classes alone is not runtime activation.
+  the lifecycle writer owns the durable canonical-row ID allocator after
+  activation. Schema v4 or the presence of P3 classes alone is not runtime
+  activation.
 - `JdbcRunLedger` stores durable per-file ingest checkpoints in `ingest_run`.
   Startup recovery treats `DB_COMMITTED` as recoverable by replaying the derived
   CSV projection from dataframe truth; failures before that checkpoint are marked

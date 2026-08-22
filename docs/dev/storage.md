@@ -103,9 +103,10 @@ provenance в history с причиной `LEGACY_ACTIVATION`, удаляют ac
 Lifecycle-aware JDBC writer атомарно выполняет insert, renewal либо
 archive/delete + recreate, обновляет compact provenance, observation marker,
 insert-driven revision, projection generation и typed receipt. Один effective
-UTC `asOf` читается только после получения write ownership. Public и lifecycle
-ID резервируются отдельными committed transactions до canonical write, поэтому
-ошибка создаёт допустимые gaps, но не позволяет переиспользовать ID. Complete
+UTC `asOf` читается только после получения write ownership. Canonical-row и
+lifecycle ID резервируются отдельными committed transactions до canonical
+write, поэтому ошибка создаёт допустимые gaps, но не позволяет переиспользовать
+эти internal identities. Complete
 receipt публикуется в той же canonical transaction только после проверки всех
 artifact markers и typed row totals; marker обязателен и для zero-row artifact.
 Complete receipt читается только при точном совпадении source content key и

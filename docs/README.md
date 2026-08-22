@@ -39,7 +39,7 @@ failure/recovery semantics и точки расширения, но не пер�
 | Документ | О чём |
 |---|---|
 | [dev/processing.md](dev/processing.md) | Чтение, refang, extraction, attribution, classification, mapping и policy-gated commit |
-| [dev/storage.md](dev/storage.md) | Canonical SQLite, row identity/provenance, public ID и CSV-проекции |
+| [dev/storage.md](dev/storage.md) | Canonical SQLite, lifecycle/history, canonical identities, reusable export slots и CSV-проекции |
 | [dev/ingestion.md](dev/ingestion.md) | Daemon file lifecycle, durable ledgers, retry и recovery |
 | [dev/artifact-export.md](dev/artifact-export.md) | Consistent immutable export slices, manifest/marker и export saga |
 | [dev/sync.md](dev/sync.md) | Remote fetch/publish, transport boundary, ledgers и reconcile |

@@ -173,3 +173,7 @@ plan/hash contract, recovery evidence, cadence ownership или retention guard.
 - [sync.md](sync.md) — remote publish completed slices.
 - [event-coordination.md](event-coordination.md) — fast-path + reconcile.
 - [ADR-0012](../ADR/0012-streaming-dataframe-emission.md) — решение Artifact Emission.
+- [ADR-0021](../ADR/0021-stable-reusable-export-slots.md) — stable sparse
+  reusable external `id`.
+- [ADR-0022](../ADR/0022-revision-significant-identical-export.md) — новая
+  delivery occurrence при более новой covered revision и совпавших bytes.

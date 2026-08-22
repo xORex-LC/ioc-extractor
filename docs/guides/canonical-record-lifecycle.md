@@ -24,7 +24,10 @@ Expiry refreshes mutable `dataframe/*_generated.csv` projections, including
 header-only files when no active rows remain. It deliberately does **not** create
 an immutable export slice or advance the insert-driven export revision. A later
 accepted source that inserts new rows triggers the normal export path, and that
-slice contains only records active at its shared snapshot time.
+slice contains only records active at its shared snapshot time. If expired IOC
+values return as new lifecycles, the service completes and delivers a new slice
+even when its CSV bytes match an older slice; the newer covered revision makes
+the delivery occurrence significant.
 
 ## Fresh installation
 

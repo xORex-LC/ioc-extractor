@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 — architecture project"
 version: "0.3.0"
-status: "Reopened for P7 export-slot correction"
+status: "P1-P9 implemented — release qualification pending"
 document_type: "Architecture project"
 source_of_truth: false
 language: "en"
@@ -15,8 +15,10 @@ language: "en"
 > and superseded by [ADR-0021](../../../ADR/0021-stable-reusable-export-slots.md)
 > and the detailed [export-slot correction](export-slot-correction.md).
 > Canonical/internal lifecycle IDs remain non-reusable; the external `id` is a
-> stable sparse reusable `export_slot`. P7 implementation and evidence are
-> pending.
+> stable sparse reusable `export_slot`. P7 is implemented. ADR-0022 adds the
+> revision-significant identical-delivery rule, and ADR-0023 replaces the
+> append-only physical reconcile journal/coupled retention worker. P8/P9 are
+> implemented; packaged qualification and the final committed-HEAD gate remain.
 
 ## 1. Executive decision
 
@@ -55,7 +57,8 @@ boundary, not a prerequisite for internal reuse.
 
 The lifecycle design was accepted for implementation on 2026-08-16 and
 completed through P6. The export identity correction was accepted on
-2026-08-19 and reopens the project for P7.
+2026-08-19 and implemented as P7; P8/P9 subsequently closed identical-delivery
+and idle-runtime gaps without changing the original validity semantics.
 
 ### 1.1 Lifecycle vocabulary and reference-derived constraints
 
@@ -825,7 +828,7 @@ strict SQL identifier validation; data stays parameterized.
 
 ## 16. Implementation decomposition
 
-P0–P6 remain completed lifecycle work. The corrected contract adds P7:
+P0–P6 remain completed lifecycle work. Later accepted corrections add P7–P9:
 
 1. **P0 — characterization and design acceptance**
    - accept this architecture before accepting ADR-0020;
@@ -853,13 +856,25 @@ P0–P6 remain completed lifecycle work. The corrected contract adds P7:
    - fresh package `fixed/12h`, two-step upgrade/rollback docs, generated
      catalogs, 100k evidence and fresh full-reactor verification.
 8. **P7 — stable reusable export slots**
-   - add an application export-slot port and same-dataframe-DB JDBC registry;
+   - keep `SnapshotSliceReader` as the application output port and add a
+     same-dataframe-DB JDBC registry without a dedicated slot port;
    - seed current active mappings without renumbering, reconcile smallest free
      slots set-based, and project `export_slot AS id`;
    - preserve expiry's no-export rule and existing immutable-slice saga;
    - repeat compatibility, race, 100k and packaged activation/rollback evidence;
    - update published storage/export/operator documentation only when runtime
      behavior exists.
+9. **P8 — revision-significant identical delivery**
+   - require plan, bytes and manifest coverage revisions to match before a
+     candidate may become `SKIPPED`;
+   - complete and publish a new slice when accepted reappearance advanced a
+     covered revision, even if reusable slots reproduce historical bytes;
+   - keep expiry/renewal/active confirmation outside export triggering.
+10. **P9 — bounded idle lifecycle runtime**
+   - make the five-second backstop refresh only the indexed nearest deadline;
+   - replace post-v5 append-only cycles with one v6 reconciliation checkpoint;
+   - schedule history/receipt retention independently and silence successful
+     no-op lifecycle INFO events.
 
 No intermediate slice may enable fixed TTL in the production template. Dormant
 schema is acceptable; a partially admitted lifecycle is not.
@@ -972,6 +987,7 @@ the lifecycle work:
 5. the no-new-module decision and future extraction criteria;
 6. the remaining implementation parameters or the P0 evidence used to fix them.
 
-P1–P6 implemented and verified that lifecycle scope. I-22 and ADR-0021
-supersede only the exported-ID part of the model. P7 remains required before
-DATA-TTL-01 can return to `verified`.
+P1–P6 implemented and verified the original lifecycle scope. I-22/ADR-0021,
+ADR-0022 and ADR-0023 added the P7–P9 corrections, which are implemented with
+automated evidence. DATA-TTL-01 remains `in-progress` only until the affected
+packaged qualification and final committed-HEAD verification are repeated.

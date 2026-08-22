@@ -136,7 +136,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `adapter-source-tika` | SourceReader (Tika) |
 | `adapter-sink-csv` | Artifact mapping, canonical CSV projection, callback-streaming immutable slices, integrity verification, atomic local publish и directory-level slice retention |
 | `adapter-manifest-json-jackson` | Deterministic versioned JSON codec for immutable slice manifests |
-| `adapter-store-jdbc` | Service/dataframe SQLite: canonical/revision/lifecycle storage, typed history/receipts, strict active snapshot reader, ingest/export/fetch/publish ledgers + progress, migrations и health |
+| `adapter-store-jdbc` | Service/dataframe SQLite: canonical/revision/lifecycle storage, typed history/receipts, v5 reusable export-slot registry, v6 bounded reconcile checkpoint, strict active snapshot reader, ingest/export/fetch/publish ledgers + progress, migrations и health |
 | `adapter-transport-smb` | smbj boundary: lazy SMB2/3 sessions, streaming get и atomic slice publish за `FileTransport` |
 | `adapter-psl` | HostClassifier (PSL/Guava) |
 | `adapter-ingest` | Watch ingest: `IngestSourceUseCase`(in), `SourceLifecycle`, file `IngestionLedger`; SourceFeed adapter-local (Spring Integration); `FileSystemRetentionStore` (reaper IO) |

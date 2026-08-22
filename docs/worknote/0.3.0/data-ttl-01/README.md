@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 — рабочий комплект"
 version: "0.3.0"
-status: "Implementation reopened"
+status: "Implementation complete — release qualification pending"
 document_type: "Worknote bundle index"
 source_of_truth: false
 language: "ru"
@@ -37,10 +37,18 @@ language: "ru"
 - I-22 переоткрыл внешний `id`: это stable sparse reusable `export_slot`, а не
   canonical identity. P6 сохранил силу для TTL lifecycle, но прежний
   ID-non-reuse результат является characterization текущей реализации;
-- P7 реализует slots surviving rows, освобождает expired slots только при
-  eligible export и выдаёт новым lifecycle минимальные holes без compaction.
-  Automated tests, immutable-slice proof и 100k regression прошли; до packaged
-  qualification/final gate `R030-DATA` остаётся `in-progress`.
+- P7 реализовал stable sparse reusable export slots: surviving rows сохраняют
+  mapping, expired slots освобождаются только при eligible export, а новые
+  lifecycle получают минимальные holes без compaction;
+- P8 требует новую delivery occurrence после принятой reappearance lifecycle,
+  даже если CSV bytes и переиспользованные slots совпали с историческим slice;
+  active confirmation, renewal и expiry сами export не инициируют;
+- P9 заменил idle full reconciliation на read-only nearest-deadline refresh,
+  ограничил runtime state singleton checkpoint-ом dataframe v6, отделил hourly
+  history/receipt cleanup и убрал пустые lifecycle INFO;
+- P7–P9 implementation и automated evidence завершены. До packaged
+  qualification и fresh gate на final committed HEAD `R030-DATA` остаётся
+  `in-progress`.
 
 ## Навигация
 
@@ -50,12 +58,14 @@ language: "ru"
 | [release-contract.md](release-contract.md) | Scope, MUST outcome, DoR/DoD, compatibility и обязательное evidence |
 | [architecture-project.md](architecture-project.md) | Целевая component/data/transaction/event architecture, module/library decision и risk model |
 | [export-slot-correction.md](export-slot-correction.md) | Исправленный consumer contract, durable registry, reconciliation, migration и P7 acceptance matrix |
-| [implementation-plan.md](implementation-plan.md) | Порядок P0–P7, границы slices, gates и verification plan |
+| [implementation-plan.md](implementation-plan.md) | Порядок P0–P9, границы slices, gates и verification plan |
 | [evidence.md](evidence.md) | Выполненные slices, изменённые boundaries и воспроизводимые проверки |
 | [P6 load profile](evidence/p6-load-profile.md) | Reference environment, thresholds, measurements и query plans |
 | [release-note input](release-note-input.md) | Curated DATA-TTL-01 material для итоговых release notes 0.3.0 |
 | [ADR-0020](../../../ADR/0020-canonical-record-expiration-lifecycle.md) | Принятое архитектурное решение и lifecycle invariants |
 | [ADR-0021](../../../ADR/0021-stable-reusable-export-slots.md) | Принятое решение: внешний `id` как stable sparse reusable export slot |
+| [ADR-0022](../../../ADR/0022-revision-significant-identical-export.md) | Новая delivery occurrence при более новой covered revision, даже если bytes совпадают |
+| [ADR-0023](../../../ADR/0023-bounded-lifecycle-reconciliation-runtime.md) | Deadline-aware backstop, singleton reconcile checkpoint и independent retention cadence |
 
 Будущее execution evidence добавляется только в этот bundle либо в явно
 указанный внешний release ledger. В общих `engineering-release.md` и

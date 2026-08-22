@@ -221,18 +221,18 @@ consumer, либо принять явное release-level решение об u
 ## DATA-TTL-01 candidate delta
 
 DATA-TTL-01 является принятым observable scope change относительно baseline.
-Текущее candidate состояние имеет dataframe schema v5 и service schema v8.
+Текущее candidate состояние имеет dataframe schema v6 и service schema v8.
 Миграции additive, но включение validity для существующей dataframe DB является
 явной one-way activation, а не automatic upgrade side effect.
 
 | Surface | Candidate disposition |
 |---|---|
 | Configuration | Добавлен strict `ioc.lifecycle.*`; classpath/upgrade default `disabled`, fresh packaging template `fixed/12h`; изменившийся template сохраняется как `application.yml.new` |
-| Durable state | Dataframe DB хранит lifecycle/history/receipt/control state; service DB получает observation-oriented ingest ledger migration; rollback после activation требует matching pre-activation config и обе DB |
+| Durable state | Dataframe DB хранит lifecycle/history/receipt/control state, v5 export-slot registry и v6 singleton reconcile checkpoint; legacy `lifecycle_reconcile_cycle` после v6 заморожен. Service DB хранит observation-oriented ingest ledger; rollback после activation требует matching pre-activation config и обе DB |
 | Mutable CSV | Column order/types сохраняются; expired rows исключаются, `time_first_seen`/`time_last_seen` остаются `NULL`, `valid_until` не публикуется |
-| Immutable export | Expiry не меняет insert-driven revision и не создаёт slice; следующий new-row export читает только active membership |
+| Immutable export | Expiry не меняет insert-driven revision и не создаёт slice; следующий new-row export читает только active membership. Более новая covered revision создаёт новую delivery occurrence даже при byte-identical CSV; `SKIPPED` требует равенства plan/bytes/revisions |
 | Internal и export identities | Internal row/lifecycle identities не переиспользуются. Внешний `id` реализован как `(profile, artifact)` export slot: survivors сохраняют mapping, vanished rows освобождают slots при eligible export, новые lifecycle получают минимальные holes без compaction; source-owned ID остаётся business field. Automated P7 evidence complete, packaged qualification pending |
-| Health | Добавлен aggregate lifecycle component без IOC/source identifiers; clock failure может перевести readiness в `DEGRADED`/`DOWN` |
+| Health/observability | Aggregate lifecycle component не содержит IOC/source identifiers; clock failure может перевести readiness в `DEGRADED`/`DOWN`. Empty deadline refresh read-only, успешные no-op reconcile/projection checks не создают INFO |
 
 Operator migration и rollback опубликованы в
 [canonical lifecycle guide](../../../guides/canonical-record-lifecycle.md), а
@@ -246,8 +246,9 @@ consistent activation rollback и полный release rollback восстано
 Отдельная fresh installation завершилась healthy `ACTIVE` состоянием с
 production `fixed/12h`. Final `R030-REL` admission повторяет этот сценарий, если
 release candidate изменится после зафиксированного commit. Эти результаты не
-проверяли исправленный reusable-slot contract: после P7 обязательны upgrade
-seeding, survivor/no-compaction, smallest-hole и rollback assertions.
+проверяли итоговые P7–P9 corrections: обязательны packaged upgrade seeding,
+survivor/no-compaction, smallest-hole, byte-identical redelivery, bounded
+runtime-state и rollback assertions.
 
 ## Missing evidence и handoff
 
@@ -268,6 +269,6 @@ non-regression review.
 
 P6 stand подтвердил TTL lifecycle compatibility `v0.2.0 → v0.3.0` для
 зафиксированного commit и representative two-DB state. После I-22 он не является
-полным candidate admission: P7 изменит dataframe migration/export mapping и
-требует повторного stand. Это evidence также не закрывает отдельное
-external-consumer evidence.
+полным candidate admission: P7 изменил dataframe migration/export mapping, а
+P8/P9 уточнили delivery и runtime state, поэтому требуется повторный stand. Это
+evidence также не закрывает отдельное external-consumer evidence.

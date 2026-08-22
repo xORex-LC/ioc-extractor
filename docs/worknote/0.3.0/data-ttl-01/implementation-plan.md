@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 — implementation plan"
 version: "0.3.0"
-status: "Implementation — P8/P9 qualification pending"
+status: "Implementation complete — P7-P9 qualification pending"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "ru"
@@ -16,15 +16,19 @@ implementation-active только один slice. P2–P5 могут добав
 code на feature branch, но ни один промежуточный результат не включает TTL в
 fresh production template и не считается releaseable capability. Activation
 surface и исходное lifecycle evidence были закрыты P6. После уточнения I-22
-проект переоткрыт: P7 исправляет только export-slot contract и повторяет
-затронутое release evidence.
+проект был переоткрыт: P7 исправил export-slot contract, P8 — решение о
+byte-identical delivery occurrence, P9 — idle reconciliation runtime. Для
+P7–P9 остаются затронутое packaged evidence и финальный freshness gate.
 
 Отдельный go-ahead после review [architecture project](architecture-project.md),
 [ADR-0020](../../../ADR/0020-canonical-record-expiration-lifecycle.md) и
 [release contract](release-contract.md) получен 2026-08-16. Он разрешает
 последовательное выполнение P1–P6, но не частичную production activation.
-Отдельно принятое I-22 и Proposed
-[ADR-0021](../../../ADR/0021-stable-reusable-export-slots.md) добавляют P7.
+Принятые I-22 и
+[ADR-0021](../../../ADR/0021-stable-reusable-export-slots.md) добавили P7;
+[ADR-0022](../../../ADR/0022-revision-significant-identical-export.md) и
+[ADR-0023](../../../ADR/0023-bounded-lifecycle-reconciliation-runtime.md)
+зафиксировали последующие P8/P9 corrections.
 
 ## Slice map
 
@@ -40,42 +44,6 @@ surface и исходное lifecycle evidence были закрыты P6. По�
 | `P7` | Stable sparse reusable export slots | corrected export contract | `implementation_complete`; qualification pending |
 | `P8` | Revision-significant identical export delivery | corrected post-hash contract | `implementation_complete`; qualification pending |
 | `P9` | Deadline-aware idle runtime and bounded reconciliation checkpoint | lifecycle operational hardening | `implementation_complete`; qualification pending |
-
-## P9 — bounded idle lifecycle runtime
-
-### Scope
-
-Correct the physical reconciliation runtime introduced by P4 without changing
-TTL semantics, export triggers, active-read filtering or the five-second
-correctness bound. The accepted decision is
-[ADR-0023](../../../ADR/0023-bounded-lifecycle-reconciliation-runtime.md).
-
-### Deliverables
-
-- event/backstop paths refresh the durable nearest deadline and only a due
-  deadline starts reconciliation;
-- dataframe format v6 migrates the latest legacy cycle into a constant-size
-  `lifecycle_reconcile_state` checkpoint and freezes the old journal;
-- history cleanup uses an independent admission-gated scheduler with a `1h`
-  default cadence and immediate bounded follow-up while eligible rows remain;
-- empty reconciliation and projection checks do not produce INFO events;
-- configuration, health, migration, scheduling, concurrency and observability
-  regression tests plus operator/developer documentation are aligned.
-
-### Exit gate
-
-- 10,000 empty backstop refreshes cause no reconciliation and no durable cycle
-  sequence change;
-- a lost event remains recoverable within `5s` and a due deadline cannot run
-  overlapping reconciliation;
-- v5 upgrade keeps the last legacy result visible through health and all later
-  cycles update exactly one state row;
-- retention backlog is drained in bounded transactions independently of expiry;
-- focused tests, docs validation and `make verify` pass on the final `HEAD`.
-
-**Status:** implementation and automated working-tree evidence complete on
-2026-08-23; packaged stand qualification and a fresh gate on the eventual
-committed `HEAD` remain pending.
 
 ## P0 — decision and characterization
 
@@ -394,6 +362,42 @@ unchanged.
 
 **Status:** implementation and focused automated evidence complete on
 2026-08-22; packaged stand evidence and final fresh reactor gate pending.
+
+## P9 — bounded idle lifecycle runtime
+
+### Scope
+
+Correct the physical reconciliation runtime introduced by P4 without changing
+TTL semantics, export triggers, active-read filtering or the five-second
+correctness bound. The accepted decision is
+[ADR-0023](../../../ADR/0023-bounded-lifecycle-reconciliation-runtime.md).
+
+### Deliverables
+
+- event/backstop paths refresh the durable nearest deadline and only a due
+  deadline starts reconciliation;
+- dataframe format v6 migrates the latest legacy cycle into a constant-size
+  `lifecycle_reconcile_state` checkpoint and freezes the old journal;
+- history cleanup uses an independent admission-gated scheduler with a `1h`
+  default cadence and immediate bounded follow-up while eligible rows remain;
+- empty reconciliation and projection checks do not produce INFO events;
+- configuration, health, migration, scheduling, concurrency and observability
+  regression tests plus operator/developer documentation are aligned.
+
+### Exit gate
+
+- 10,000 empty backstop refreshes cause no reconciliation and no durable cycle
+  sequence change;
+- a lost event remains recoverable within `5s` and a due deadline cannot run
+  overlapping reconciliation;
+- v5 upgrade keeps the last legacy result visible through health and all later
+  cycles update exactly one state row;
+- retention backlog is drained in bounded transactions independently of expiry;
+- focused tests, docs validation and `make verify` pass on the final `HEAD`.
+
+**Status:** implementation and automated evidence complete on 2026-08-23;
+packaged stand qualification and a fresh gate on the final committed `HEAD`
+remain pending.
 
 ## Required test matrix
 

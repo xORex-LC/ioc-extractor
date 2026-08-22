@@ -199,6 +199,11 @@ expiry.
 
 ### I-03 — можно ли когда-либо переиспользовать public ID
 
+> **Supersession note (2026-08-19).** Этот фрагмент сохраняет исходный ответ
+> интервью. После уточнения I-22 запрет относится к canonical row/lifecycle
+> identities, но не к внешней колонке export `id`. Последняя является stable
+> sparse reusable `export_slot` по ADR-0021.
+
 **Вопрос.** Может ли public ID expired record быть выдан другой active record
 или новому lifecycle того же IOC?
 
@@ -266,7 +271,10 @@ Source references являются нормализованной one-to-many re
 а не одним nullable полем canonical row. Внешний ID хранится как opaque value:
 он может быть нечисловым и не участвует во внутреннем allocation.
 
-Service-owned `delivery_id` по-прежнему никогда не переиспользуется. Тот же
+Историческая рекомендация предполагала, что service-owned `delivery_id` никогда
+не переиспользуется. После I-22 это утверждение superseded для стандартной
+export-колонки `id`: её slots переиспользуются между lifecycle в разных slices.
+Тот же
 external ID может появиться в новом внутреннем lifecycle, если это допустимо
 контрактом источника; audit различает lifecycle по internal ID. Это осознанное
 повторение в чужом namespace, а не нарушение service allocator invariant.
@@ -1810,6 +1818,11 @@ release worknotes остаются только registration/status links; ав�
 
 ### I-20 — кто создаёт новый immutable export slice после expiry
 
+> **Reading note.** Подразделы до «Ответ заказчика» сохраняют обнаруженный gap и
+> отклонённые варианты. Финальный контракт ниже supersede'ит предварительное
+> утверждение, что expiry должен двигать `artifact_revision`: expiry не создаёт
+> immutable slice и не меняет insert-driven revision.
+
 **Вопрос заказчика.** Раньше новый export slice появлялся после поступления
 источника и canonical write. Что инициирует export, когда active membership
 меняется только из-за TTL и нового ingest run нет? Был ли этот переход явно
@@ -2189,8 +2202,8 @@ migration и acceptance matrix находятся в
 [export-slot-correction.md](export-slot-correction.md); архитектурная поправка —
 в [ADR-0021](../../../ADR/0021-stable-reusable-export-slots.md).
 
-**Статус:** business rule принят; DATA-TTL-01 переоткрыт для P7, реализация и
-evidence отсутствуют.
+**Статус:** business rule принят; P7 позднее реализован и покрыт automated
+evidence. P8 дополнил его правилом revision-significant byte-identical delivery.
 
 ## 5. Emerging model
 
@@ -2215,11 +2228,17 @@ canonical membership и mutable projection, но не инициирует immut
 следующий automatic slice появляется только после добавления новых canonical
 rows. I-22 отделяет внешний `id` от canonical identity: surviving lifecycle
 сохраняют stable sparse `export_slot`, а slots ушедших lifecycle доступны новым
-records только при следующем eligible export.
+records только при следующем eligible export. P8 требует новый completed slice
+для более новой covered revision даже при совпавших bytes. P9 сохраняет
+five-second correctness bound через read-only nearest-deadline refresh и
+singleton reconcile checkpoint вместо idle append-only cycles.
 
 ## 6. Следующий этап
 
-1. Сохранить P0–P6 evidence как доказательство TTL lifecycle и характеристику
-   прежней ID-модели.
-2. Выполнить P7 из [implementation-plan.md](implementation-plan.md): отделить
-   reusable export slots, обновить published docs и повторить release evidence.
+1. Сохранить P0–P6 evidence как доказательство TTL lifecycle и историческую
+   характеристику прежней ID-модели.
+2. Считать P7–P9 implementation/automated evidence завершёнными согласно
+   [implementation-plan.md](implementation-plan.md) и [evidence.md](evidence.md).
+3. До release acceptance повторить затронутый packaged
+   fresh/upgrade/activation/rollback stand и fresh verification на финальном
+   committed HEAD.

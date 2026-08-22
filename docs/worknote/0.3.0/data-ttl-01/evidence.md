@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 — execution evidence"
 version: "0.3.0"
-status: "In progress — P7 packaged qualification pending"
+status: "Implementation complete — P7-P9 qualification pending"
 document_type: "Implementation evidence"
 source_of_truth: false
 language: "ru"
@@ -12,8 +12,9 @@ language: "ru"
 > **Evidence correction (2026-08-19).** P0–P6 remain valid evidence for the
 > implemented TTL lifecycle. Their monotonic public-ID assertions characterize
 > the current implementation but do not satisfy the subsequently clarified
-> reusable export-slot contract in I-22/ADR-0021. DATA-TTL-01 is reopened until
-> P7 implementation and replacement compatibility/performance evidence exist.
+> reusable export-slot contract in I-22/ADR-0021. P7–P9 now provide replacement
+> slot, identical-delivery and bounded-runtime evidence. DATA-TTL-01 remains
+> open for affected packaged qualification and the final committed-HEAD gate.
 
 ## P0 — architecture acceptance
 
@@ -497,7 +498,7 @@ systemd unit и dedicated account `ioc` с `/usr/sbin/nologin`; immutable JAR
 | Compatibility upgrade | Schema `4/8`, lifecycle `DISABLED_COMPATIBLE`; `246` rows, max public IDs, revisions, operator config SHA-256 `1a4b8941a8167440f7fef44d2de0481a55719fa2f50ffefb4c9be4740c6be81e` и все projection hashes не изменились; новый template появился отдельно |
 | Explicit activation | Stand-only `fixed/2m`, `existing-records: expire`, history `4m`, receipts `5m`: active `246 → 0`, typed history `0 → 246`, все причины `LEGACY_ACTIVATION`, projections стали header-only, control state стал `ACTIVE` |
 | Fresh confirmation and expiry | Normal daemon ingestion создал `5` active rows с lifecycle IDs `247..251`; все deadline deltas ровно `120000ms`; expiry закрыл строки с `EXPIRED` за `0..3ms` после границы и не изменил insert-driven artifact revisions |
-| Reappearance | Тот же content под новой source identity прошёл receipt fast path как новое наблюдение: lifecycle IDs `252..256`, текущая реализация выдала monotonic public IDs `masks 45→46`, `ip_list 22→23`, `hashes 117→118`; address rows также получили новые internal IDs `68/69` вместо `66/67`. Это characterization, которую P7 должен заменить slot-reuse assertions |
+| Reappearance | Тот же content под новой source identity прошёл receipt fast path как новое наблюдение: lifecycle IDs `252..256`, P6 implementation выдала monotonic public IDs `masks 45→46`, `ip_list 22→23`, `hashes 117→118`; address rows также получили новые internal IDs `68/69` вместо `66/67`. Это сохранённая historical characterization; P7 automated evidence ниже заменяет её для текущего export-slot contract |
 | Independent retention | Первый и второй receipt были удалены по собственным `5m` deadlines, legacy и обычная history — по собственным `4m` deadlines; итоговые active/history/receipt counts стали `0/0/0` |
 | Export rule I-20 | Expiry не создал immutable slice. Обычный delayed new-row export сработал только из-за insert-driven revision и, поскольку к snapshot rows уже истекли, создал header-only current-membership slices |
 | Activation rollback | Consistent pre-activation snapshot восстановил schema `4/8`, lifecycle `DISABLED_COMPATIBLE`, `246` active/`0` history и исходные projection hashes |
@@ -573,8 +574,8 @@ explicit activation rollback и matching binary/config/two-DB release rollback
 проверены на disposable stand. Fresh installation затем повторена из пустого
 layout и оставлена работающей на текущем release. Вместе с repository gates и
 100k profile закрыли исходный P6 lifecycle scope. Они больше не закрывают
-`R030-DATA` целиком: P7 должен повторить затронутые compatibility, performance и
-packaged assertions для reusable export slots. Общие 0.3.0 release goals и
+`R030-DATA` целиком: P7–P9 должны повторить затронутые compatibility,
+performance и packaged assertions для итогового candidate. Общие 0.3.0 release goals и
 официальная Debian 11/12 platform qualification продолжают отслеживаться
 отдельно.
 
@@ -626,9 +627,38 @@ generation-safe snapshot, migration seeding и bounded 100k allocation.
 gate на финальном закоммиченном HEAD. Поэтому прежний P6 packaged result не
 переименован в P7 pass.
 
+## P8 — revision-significant identical export delivery
+
+**Статус:** implementation и automated evidence complete; packaged
+qualification/final gate pending.
+
+### Реализованный contour (2026-08-22)
+
+- `ExportChangeDetector` считает candidate redundant только при совпадении
+  plan, artifact bytes и manifest coverage revisions с durable progress;
+- forward formation и recovery используют одну policy: более новая covered
+  revision завершает новый slice, равная revision сохраняет законный `SKIPPED`;
+- terminal export log явно сообщает фактический `COMPLETED` или `SKIPPED`;
+- повторное появление IOC после expiry создаёт новую lifecycle/revision,
+  `SliceCompleted` и publish opportunity, даже если reusable slots восстановили
+  те же CSV bytes;
+- active confirmation, renewal и expiry по-прежнему не двигают insert-driven
+  revision и самостоятельно export не инициируют.
+
+### Automated evidence
+
+| Проверка | Результат |
+|---|---|
+| `ExportChangeDetectorTest` | равные plan/bytes/revisions допускают `SKIPPED`; более новая coverage revision требует candidate delivery |
+| `ExportServiceTest#identicalBytesFromNewLifecycleCompleteANewSliceAndEmitDeliveryEvent` | forward path завершает новый slice и публикует delivery event при byte-identical candidate с новой revision |
+| `ExportRunRecoveryServiceTest` | recovery принимает то же revision-significant решение без повторного чтения canonical storage |
+| `ReusableExportSlotIntegrationTest` | после expiry/reappearance четвёртый physical slice имеет исторически идентичные bytes/slots, но новый run завершается `COMPLETED` |
+| `LoggingExportObserverTest` | terminal structured event отражает фактический export status |
+| Subsequent full-reactor gates | P8 regressions входят в P9 final `make verify`; все `25` modules `SUCCESS`, SpotBugs `99 accepted / 0 visible` |
+
 ## P9 — bounded idle lifecycle runtime
 
-**Статус:** implementation и automated working-tree evidence complete;
+**Статус:** implementation и automated evidence complete;
 packaged qualification/final committed-HEAD gate pending.
 
 ### Реализованный contour (2026-08-23)

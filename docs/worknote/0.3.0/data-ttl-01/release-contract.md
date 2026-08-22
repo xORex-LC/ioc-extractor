@@ -3,7 +3,7 @@ title: "R030-DATA / DATA-TTL-01 — canonical record validity lifecycle"
 version: "0.3.0"
 goal_id: "R030-DATA"
 work_item_id: "DATA-TTL-01"
-status: "Implementation reopened"
+status: "Implementation complete — release qualification pending"
 document_type: "Release goal and work-item contract"
 source_of_truth: false
 language: "ru"
@@ -164,10 +164,10 @@ duration запрещены. `ttl=0` никогда не является migrat
 |---|---|
 | `core/ioc-application` | `RecordValidityPolicy`, lifecycle values/use cases, existing `SnapshotSliceReader` export-slot contract and policy fingerprint |
 | `core/ioc-application-tck` | Reusable lifecycle/repository contracts |
-| `adapters/adapter-store-jdbc` | SQLite lifecycle schema plus same-dataframe-DB export-slot registry, migration, set-based allocation and consistent snapshot |
+| `adapters/adapter-store-jdbc` | SQLite lifecycle schema v4, export-slot registry v5, singleton reconcile checkpoint v6, migrations, set-based allocation and consistent snapshot |
 | `adapters/adapter-sink-csv` | Active-only projection; external `id` is supplied from resolved export slot |
 | `adapters/adapter-ingest` | Complete receipt duplicate fast path and ETL fallback |
-| `bootstrap/ioc-app` | Typed config, startup/admission, scheduler, health, composition |
+| `bootstrap/ioc-app` | Typed config, startup/admission, separate deadline/projection/retention schedulers, health, composition |
 | `packaging` | Fresh preset, two-step upgrade and rollback procedure |
 | affected docs | ADR, capability docs, module README, operator guide, release notes |
 
@@ -184,12 +184,12 @@ duration запрещены. `ttl=0` никогда не является migrat
   является durable boundary, expiry не означает `revoked`, а V1 использует
   explicit lifecycle scheduling без нового framework.
 - [x] I-22 исправляет прежнюю интерпретацию public ID: принят stable sparse
-  reusable export-slot contract и Proposed ADR-0021.
+  reusable export-slot contract и ADR-0021.
 - [x] P0 characterization inventory подтверждает все current ID/read/projection/
   startup paths, которые должны измениться.
 - [x] Exact configuration shape, clock rollback tolerance и reference
   performance environment задокументированы до соответствующих slices.
-- [x] Для каждого P1–P7 указаны owner, affected paths, tests и rollback boundary.
+- [x] Для каждого P1–P9 указаны owner, affected paths, tests и rollback boundary.
 - [x] Получен отдельный implementation go-ahead; принятие интервью его не
   заменяет.
 
@@ -204,6 +204,12 @@ duration запрещены. `ttl=0` никогда не является migrat
   duplicates, non-positive slots и ambiguous namespace.
 - [x] Новый 100k profile доказывает set-based allocation без N+1/full JVM
   materialization; query plans и thresholds сохранены.
+- [x] P8 различает content equality и delivery occurrence: более новая covered
+  revision создаёт completed slice и `SliceCompleted` даже при byte-identical
+  CSV, а равные plan/bytes/revisions сохраняют законный `SKIPPED`.
+- [x] P9 сохраняет five-second correctness bound без idle full reconciliation:
+  empty backstop read-only, post-v5 cycle state constant-cardinality, retention
+  independent, успешные no-op reconcile/projection checks silent.
 - [ ] Packaged fresh/upgrade/activation/rollback stand повторён с reusable-slot
   assertions.
 - [x] Deterministic lifecycle, SQLite race, migration/fault-injection, every-read
@@ -229,8 +235,8 @@ build gates. До закрытия `R030-DATA` релиз 0.3.0 не готов.
 
 ## Current disposition
 
-`in-progress`: P0–P6 remain valid lifecycle evidence. P7 code, migration,
-automated compatibility/race/100k evidence and published documentation are
-complete; the full working-tree reactor gate is green. Repeated packaged
-fresh/upgrade/rollback assertions and a freshness gate on the final committed
-HEAD remain release blockers.
+`in-progress`: P0–P6 remain valid lifecycle evidence. P7–P9 code, migrations,
+automated compatibility/race/100k/runtime evidence and published documentation
+are complete. Repeated packaged fresh/upgrade/activation/rollback assertions
+for the resulting candidate and a freshness gate on the final committed HEAD
+remain release blockers.

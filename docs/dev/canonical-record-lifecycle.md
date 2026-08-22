@@ -91,8 +91,10 @@ business fields requires a separate versioned consumer contract.
 
 ## Sources of truth
 
-- Decisions: [ADR-0020](../ADR/0020-canonical-record-expiration-lifecycle.md)
-  and [ADR-0023](../ADR/0023-bounded-lifecycle-reconciliation-runtime.md).
+- Decisions: [ADR-0020](../ADR/0020-canonical-record-expiration-lifecycle.md),
+  [ADR-0021](../ADR/0021-stable-reusable-export-slots.md),
+  [ADR-0022](../ADR/0022-revision-significant-identical-export.md) and
+  [ADR-0023](../ADR/0023-bounded-lifecycle-reconciliation-runtime.md).
 - Application contracts: `core/ioc-application/.../artifact/lifecycle`.
 - SQLite schema and SQL: `adapter-store-jdbc` dataframe migration v4 for
   lifecycle, v5 for export slots, v6 for the bounded reconcile checkpoint, and

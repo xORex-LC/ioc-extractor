@@ -10,6 +10,17 @@ release 0.3.0. Until its storage, pipeline and runtime slices are implemented
 and activated, canonical records retain the behavior described by the existing
 storage and export documentation.
 
+> **Implementation note (2026-08-23).** The implementation-status sentences
+> above are historical: P1-P9 are implemented in the 0.3.0 candidate, while
+> packaged qualification and the final committed-HEAD gate remain pending.
+> [ADR-0021](0021-stable-reusable-export-slots.md) supersedes section 4 for the
+> external export `id`; [ADR-0022](0022-revision-significant-identical-export.md)
+> defines delivery of revision-significant byte-identical slices; and
+> [ADR-0023](0023-bounded-lifecycle-reconciliation-runtime.md) supersedes the
+> append-only physical cycle state and coupled retention scheduling. The
+> validity, active-read, activation, history and clock semantics below remain in
+> force.
+
 ## Context
 
 SQLite is the source of truth for canonical artifact rows. Mutable dataframe

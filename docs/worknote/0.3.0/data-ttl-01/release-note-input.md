@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 release-note input"
 version: "0.3.0"
-status: "Draft — P7 packaged qualification pending"
+status: "Draft — P7-P9 packaged qualification pending"
 document_type: "Release-note input"
 source_of_truth: false
 language: "en"
@@ -32,11 +32,19 @@ artifact checksum or whole-release verification claim.
   create an immutable export slice. The next new-row-driven export contains
   only records active at its snapshot time.
 - For artifacts with an external `id`, 0.3.0 preserves
-  each surviving record's stable export slot, release slots of records absent
-  from the active set, and assign the smallest free slots to new lifecycles.
+  each surviving record's stable export slot, releases slots of records absent
+  from the active set, and assigns the smallest free slots to new lifecycles.
   Slots are not canonical identities and existing rows are never renumbered to
   close gaps. Automated P7 migration, race, 100k and immutable-slice evidence
-  passes; packaged qualification remains pending.
+  has passed; packaged qualification remains pending.
+- A newly accepted lifecycle produces a new immutable slice and delivery when
+  its covered revision advanced, even if reusable slots make the resulting CSV
+  byte-identical to an older slice. Equal plan, bytes and covered revisions may
+  still be skipped.
+- The five-second lifecycle backstop now refreshes only the indexed nearest
+  deadline until work is due. Reconciliation keeps one bounded checkpoint,
+  history/receipt cleanup runs on an independent hourly cadence, and successful
+  no-op reconciliation/projection checks no longer emit INFO events.
 - Public CSV/export columns remain unchanged. `time_first_seen` and
   `time_last_seen` remain `NULL`; internal `valid_until` is not exported.
 
@@ -57,8 +65,9 @@ databases together; switching the YAML back to `disabled` is rejected.
 The P6 candidate stand exercised the compatibility start, explicit activation,
 activation rollback, complete release rollback and a clean fresh installation.
 Its monotonic exported-ID result remains historical characterization. The P7
-slot migration is implemented and covered by automated replacement evidence;
-packaged slot assertions must still pass before these notes are release-ready.
+slot migration and P8/P9 delivery/runtime corrections are implemented and
+covered by automated replacement evidence; affected packaged assertions and a
+fresh final gate must still pass before these notes are release-ready.
 
 ## Known operational boundary
 
@@ -70,9 +79,13 @@ packaged slot assertions must still pass before these notes are release-ready.
 
 - [ADR-0020](../../../ADR/0020-canonical-record-expiration-lifecycle.md)
 - [ADR-0021](../../../ADR/0021-stable-reusable-export-slots.md)
+- [ADR-0022](../../../ADR/0022-revision-significant-identical-export.md)
+- [ADR-0023](../../../ADR/0023-bounded-lifecycle-reconciliation-runtime.md)
 - [export-slot correction](export-slot-correction.md)
 - [operator guide](../../../guides/canonical-record-lifecycle.md)
 - [capability documentation](../../../dev/canonical-record-lifecycle.md)
 - [P6 packaged execution evidence](evidence.md#privileged-packaged-systemd-stand-2026-08-1819)
 - [P6 load evidence](evidence/p6-load-profile.md)
-- [P7 automated evidence](evidence.md#automated-evidence)
+- [P7 automated evidence](evidence.md#p7--reusable-export-slot-correction)
+- [P8 identical-delivery evidence](evidence.md#p8--revision-significant-identical-export-delivery)
+- [P9 bounded-runtime evidence](evidence.md#p9--bounded-idle-lifecycle-runtime)

@@ -245,4 +245,4 @@ Defer MUST-пункта нельзя скрывать обычным backlog mov
 
 | ID | Изменение и причина | Затронутые goals | Compatibility/evidence impact | Disposition |
 |---|---|---|---|---|
-| `DATA-TTL-01` | Срочный canonical record expiration lifecycle включён как новая business capability | новый MUST `R030-DATA`; gates `R030-TEST`, `R030-DOC`, `R030-REL` | SQLite/read/ID/projection semantics; explicit upgrade activation and rollback; crash/race/100k evidence; release critical path расширен | Принято 2026-08-15; подробности изолированы в [TTL bundle](data-ttl-01/README.md); implementation только после отдельного go-ahead |
+| `DATA-TTL-01` | Срочный canonical record expiration lifecycle включён как новая business capability | новый MUST `R030-DATA`; gates `R030-TEST`, `R030-DOC`, `R030-REL` | SQLite/read/ID/projection semantics; explicit upgrade activation and rollback; crash/race/100k evidence; release critical path расширен | Принято 2026-08-15, implementation go-ahead получен; P1–P9 реализованы, packaged qualification/final gate pending. Подробности изолированы в [TTL bundle](data-ttl-01/README.md) |

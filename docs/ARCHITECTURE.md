@@ -59,7 +59,7 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Adapter (out) | `adapter/out/regex` | `Re2jPatternEngine` (default), `JdkRegexPatternEngine` |
 | Adapter (out) | `adapter/out/source` | `TikaSourceReader` |
 | Adapter (out) | `adapter/out/sink/csv` | `CsvArtifactPreparer`, `RowMapper` + мапперы, `CsvArtifactProjection`, export slice writers |
-| Adapter (out) | `adapter/out/store/jdbc` | `JdbcCanonicalArtifactRepository`, `JdbcArtifactIdBaseline`, ledgers, migrations, health |
+| Adapter (out) | `adapter/out/store/jdbc` | Canonical/lifecycle/history repositories, reusable export-slot registry, ledgers, migrations, health |
 | Adapter (in) | `adapter/in/ingest` | Spring Integration file-poll daemon, filesystem lifecycle, file ledger |
 | Adapter (out) | `adapter/out/maintenance` | `FileSystemRetentionStore` (reaper IO; в модуле `adapter-ingest`) |
 | Adapter (out) | `adapter/out/transport/smb` | SMB2/3 `FileTransport` на smbj; session/reconnect/atomic publish внутри адаптера |
@@ -233,6 +233,11 @@ canonical SQLite (one WAL read tx) ──▶ CSV files ──▶ manifest.json �
   Byte-identical candidate с более новой covered revision всё равно становится
   новым completed slice: новая lifecycle является новой delivery occurrence, а
   content hash не заменяет revision/business-occurrence identity.
+- При active lifecycle внешний `id` slotted artifact читается из durable
+  `(profile, artifact)` registry: surviving lifecycle сохраняют slot, vanished
+  assignments освобождаются только при eligible export, новые lifecycle
+  получают минимальные positive holes без compaction. Canonical row ID и
+  `_lifecycle_id` в этот внешний slot не превращаются.
 - Writer не материализует rows: JDBC callback-stream идёт прямо в CSV digest.
   `_SUCCESS` содержит SHA-256 точных bytes manifest; manifest содержит hashes и
   coverage всех data files. Final становится видимым одним atomic directory move.
