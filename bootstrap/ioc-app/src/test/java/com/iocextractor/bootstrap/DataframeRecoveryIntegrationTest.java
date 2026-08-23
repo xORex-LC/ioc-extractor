@@ -19,12 +19,11 @@ import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.artifact.IngestRun;
 import com.iocextractor.application.artifact.IngestRunRecoveryService;
 import com.iocextractor.application.artifact.IngestRunStatus;
+import com.iocextractor.application.export.ExportFormat;
 import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.zaxxer.hikari.HikariDataSource;
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.QuoteMode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -89,12 +88,7 @@ class DataframeRecoveryIntegrationTest {
                 canonical,
                 Map.of("masks", HEADER),
                 Map.of("masks", projectionPath),
-                CSVFormat.DEFAULT.builder()
-                        .setDelimiter(';')
-                        .setNullString("NULL")
-                        .setQuoteMode(QuoteMode.ALL_NON_NULL)
-                        .build(),
-                StandardCharsets.UTF_8,
+                new ExportFormat("csv", StandardCharsets.UTF_8.name(), ";", "\"", "NULL"),
                 new DiagnosticFactory(CLOCK));
         RunLedger runLedger = new JdbcRunLedger(serviceDataSource, CLOCK);
 

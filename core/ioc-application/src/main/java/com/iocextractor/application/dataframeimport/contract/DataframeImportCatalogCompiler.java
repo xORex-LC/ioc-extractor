@@ -4,6 +4,7 @@ import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
 import com.iocextractor.application.dataframeimport.model.ImportCatalogFingerprint;
 import com.iocextractor.application.dataframeimport.model.ImportContractFingerprint;
 import com.iocextractor.application.dataframeimport.model.ImportContractId;
+import com.iocextractor.application.dataframeimport.model.DelimitedDialect;
 import com.iocextractor.application.dataframeimport.model.ImportFormulaPolicy;
 import com.iocextractor.application.dataframeimport.model.ImportMergePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportRoutingPolicy;
@@ -75,7 +76,7 @@ public final class DataframeImportCatalogCompiler {
                 .forEach(contract -> {
                     ImportContractId id = new ImportContractId(contract.id());
                     compiledContracts.put(id, new CompiledDataframeImportContract(
-                            id, contract.version(), contract,
+                            id, contract.version(), contract, compiledDialect(contract.dialect()),
                             new ImportContractFingerprint(sha256(contractDescriptor(contract)))));
                 });
         Map<ImportSourceId, DataframeImportCatalogDraft.Source> compiledSources = new LinkedHashMap<>();
@@ -91,6 +92,15 @@ public final class DataframeImportCatalogCompiler {
                 draft.enabled(), compiledSources, compiledAuthorities, compiledContracts,
                 new ImportCatalogFingerprint(sha256(descriptor)));
         return new DataframeImportCatalogCompilation(Optional.of(catalog), List.of());
+    }
+
+    private DelimitedDialect compiledDialect(DataframeImportCatalogDraft.Dialect dialect) {
+        return new DelimitedDialect(
+                dialect.delimiter().charAt(0),
+                dialect.quote().charAt(0),
+                dialect.recordSeparator(),
+                dialect.headerRequired(),
+                dialect.nullLiterals());
     }
 
     private Map<String, DataframeImportCatalogDraft.AuthorityProfile> authorities(

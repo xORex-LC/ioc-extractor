@@ -77,6 +77,7 @@ import com.iocextractor.application.artifact.lifecycle.LifecycleReconciliationSe
 import com.iocextractor.application.cadence.CadenceSource;
 import com.iocextractor.application.cadence.CadenceSources;
 import com.iocextractor.application.export.ExportChangeDetector;
+import com.iocextractor.application.export.ExportFormat;
 import com.iocextractor.application.export.ExportRunRecoveryService;
 import com.iocextractor.application.export.ExportService;
 import com.iocextractor.application.export.SliceRetentionService;
@@ -167,8 +168,6 @@ import com.iocextractor.platform.concurrent.SynchronousKeyedExecutionGuard;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import com.iocextractor.platform.events.ControlEventObserver;
 import com.zaxxer.hikari.HikariDataSource;
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.QuoteMode;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -813,8 +812,7 @@ public class AppConfig {
                 jdbcCanonicalArtifactRepository,
                 artifactHeaders(props),
                 canonicalArtifactPaths(props),
-                writeFormat(props.sink().csv()),
-                csvCharset(props),
+                projectionFormat(props),
                 new DiagnosticFactory(clock));
     }
 
@@ -1486,13 +1484,9 @@ public class AppConfig {
         }
     }
 
-    private CSVFormat writeFormat(IocProperties.Sink.Csv csv) {
-        return CSVFormat.Builder.create()
-                .setDelimiter(csv.delimiter().charAt(0))
-                .setQuote(csv.quote().charAt(0))
-                .setNullString(csv.nullLiteral())
-                .setQuoteMode(QuoteMode.ALL_NON_NULL)
-                .setRecordSeparator("\r\n")
-                .build();
+    private ExportFormat projectionFormat(IocProperties props) {
+        IocProperties.Sink.Csv csv = props.sink().csv();
+        return new ExportFormat("csv", csvCharset(props).name(),
+                csv.delimiter(), csv.quote(), csv.nullLiteral());
     }
 }

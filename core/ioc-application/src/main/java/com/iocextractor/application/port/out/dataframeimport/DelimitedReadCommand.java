@@ -1,6 +1,7 @@
 package com.iocextractor.application.port.out.dataframeimport;
 
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
+import com.iocextractor.application.dataframeimport.model.DelimitedDialect;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshotReference;
 
 import java.util.Objects;
@@ -9,7 +10,7 @@ import java.util.Objects;
 public record DelimitedReadCommand(
         ImportSnapshotReference snapshotReference,
         String charset,
-        DataframeImportCatalogDraft.Dialect dialect,
+        DelimitedDialect dialect,
         DataframeImportCatalogDraft.Recognition recognition) {
 
     /** Requires all parse-boundary values. */

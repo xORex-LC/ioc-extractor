@@ -10,6 +10,7 @@ closed policy vocabulary of managed dataframe import.
 | Files | Purpose |
 |---|---|
 | `ImportCell.java` | Preserves `ABSENT`, `NULL` and `VALUE` until merge |
+| `DelimitedDialect.java` | Validated parser-independent delimiter grammar pinned by a compiled contract |
 | `Import*Policy.java` | Closed merge, routing, duplicate, failure, formula and slot policies |
 | `Import*Mode.java` | Processing, transport, artifact-role and record-separator selectors |
 | `ImportPolicyToken.java` | Stable framework-free token contract |

@@ -8,6 +8,8 @@ import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.LifecycleTimeSource;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
+import com.iocextractor.application.port.out.artifact.CanonicalArtifactRowConsumer;
+import com.iocextractor.application.port.out.artifact.CanonicalArtifactStreamReader;
 import com.iocextractor.common.IocExtractorException;
 
 import javax.sql.DataSource;
@@ -29,7 +31,8 @@ import java.util.Objects;
  * single artifact revision bump. Duplicate-only writes may update provenance
  * but preserve the public revision and report zero inserted rows.
  */
-public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactRepository {
+public final class JdbcCanonicalArtifactRepository
+        implements CanonicalArtifactRepository, CanonicalArtifactStreamReader {
 
     private final DataSource dataSource;
     private final Map<String, DataframeArtifactSchema> schemas;
@@ -65,22 +68,33 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
     public CanonicalArtifact load(String artifactName) {
         DataframeArtifactSchema schema = schema(artifactName);
         List<String> header = header(schema);
+        List<ArtifactRow> rows = new ArrayList<>();
+        stream(artifactName, rows::add);
+        return new CanonicalArtifact(artifactName, header, rows);
+    }
+
+    @Override
+    public int stream(String artifactName, CanonicalArtifactRowConsumer consumer) {
+        Objects.requireNonNull(consumer, "consumer");
+        DataframeArtifactSchema schema = schema(artifactName);
+        List<String> header = header(schema);
         try (Connection connection = dataSource.getConnection()) {
             LifecycleActivationState state = JdbcLifecycleTransactions.readActivationState(connection);
             EffectiveTime asOf = state != LifecycleActivationState.DISABLED_COMPATIBLE
                     ? Objects.requireNonNull(activeTimeSource.now(), "lifecycle effective time")
                     : null;
-            return load(connection, artifactName, header, state, asOf);
+            return stream(connection, artifactName, header, state, asOf, consumer);
         } catch (SQLException e) {
-            throw new IocExtractorException("Failed to load JDBC artifact: " + artifactName, e);
+            throw new IocExtractorException("Failed to stream JDBC artifact: " + artifactName, e);
         }
     }
 
-    private CanonicalArtifact load(Connection connection,
-                                   String artifactName,
-                                   List<String> header,
-                                   LifecycleActivationState expectedState,
-                                   EffectiveTime asOf) throws SQLException {
+    private int stream(Connection connection,
+                       String artifactName,
+                       List<String> header,
+                       LifecycleActivationState expectedState,
+                       EffectiveTime asOf,
+                       CanonicalArtifactRowConsumer consumer) throws SQLException {
         boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
         Exception failure = null;
@@ -94,7 +108,7 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
                     : "";
             String sql = "SELECT " + joinedQuoted(header) + " FROM " + quote(artifactName)
                     + activePredicate + " ORDER BY " + quote("id");
-            List<ArtifactRow> rows = new ArrayList<>();
+            int rows = 0;
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 if (state != LifecycleActivationState.DISABLED_COMPATIBLE) {
                     statement.setLong(1, Objects.requireNonNull(asOf, "asOf").value().toEpochMilli());
@@ -105,12 +119,13 @@ public final class JdbcCanonicalArtifactRepository implements CanonicalArtifactR
                         for (String column : header) {
                             values.put(column, resultSet.getString(column));
                         }
-                        rows.add(ArtifactRow.ordered(values));
+                        consumer.accept(ArtifactRow.ordered(values));
+                        rows = Math.incrementExact(rows);
                     }
                 }
             }
             connection.commit();
-            return new CanonicalArtifact(artifactName, header, rows);
+            return rows;
         } catch (SQLException | RuntimeException e) {
             failure = e;
             JdbcLifecycleTransactions.rollback(connection, e);

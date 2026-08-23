@@ -1,10 +1,10 @@
 package com.iocextractor.adapter.out.sink.csv;
 
-import com.iocextractor.application.artifact.CanonicalArtifact;
-import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
+import com.iocextractor.application.export.ExportFormat;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
+import com.iocextractor.application.port.out.artifact.CanonicalArtifactStreamReader;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticContextKeys;
@@ -16,13 +16,13 @@ import com.iocextractor.observability.LogField;
 import com.iocextractor.observability.logging.LogEvents;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
+import org.apache.commons.csv.QuoteMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -41,7 +41,7 @@ public final class CsvArtifactProjection implements ArtifactProjection {
 
     private static final Logger log = LoggerFactory.getLogger(CsvArtifactProjection.class);
 
-    private final CanonicalArtifactRepository repository;
+    private final CanonicalArtifactStreamReader reader;
     private final Map<String, List<String>> headers;
     private final Map<String, Path> paths;
     private final CSVFormat format;
@@ -49,17 +49,16 @@ public final class CsvArtifactProjection implements ArtifactProjection {
     private final DiagnosticFactory diagnostics;
 
     /** Creates a canonical-to-CSV projection adapter with explicit output and diagnostic policies. */
-    public CsvArtifactProjection(CanonicalArtifactRepository repository,
+    public CsvArtifactProjection(CanonicalArtifactStreamReader reader,
                                  Map<String, List<String>> headers,
                                  Map<String, Path> paths,
-                                 CSVFormat format,
-                                 Charset charset,
+                                 ExportFormat exportFormat,
                                  DiagnosticFactory diagnostics) {
-        this.repository = Objects.requireNonNull(repository, "repository");
+        this.reader = Objects.requireNonNull(reader, "reader");
         this.headers = copyHeaders(Objects.requireNonNull(headers, "headers"));
         this.paths = Map.copyOf(Objects.requireNonNull(paths, "paths"));
-        this.format = Objects.requireNonNull(format, "format");
-        this.charset = charset == null ? StandardCharsets.UTF_8 : charset;
+        this.format = csvFormat(Objects.requireNonNull(exportFormat, "exportFormat"));
+        this.charset = charset(exportFormat);
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
     }
 
@@ -74,34 +73,39 @@ public final class CsvArtifactProjection implements ArtifactProjection {
         Objects.requireNonNull(request, "request");
         String artifactName = request.artifactName();
         List<String> header = requireHeader(artifactName);
-        CanonicalArtifact artifact = repository.load(artifactName);
         Path path = path(artifactName);
-        var encodingLoss = write(artifactName, path, header, artifact);
+        ProjectionWriteResult writeResult = write(artifactName, path, header);
+        var encodingLoss = writeResult.encodingLoss();
         List<Diagnostic> outcomeDiagnostics = encodingLoss.detected()
                 ? List.of(charsetDiagnostic(request, path, encodingLoss))
                 : List.of();
-        return new ArtifactProjectionResult(artifact.rows().size(), outcomeDiagnostics);
+        return new ArtifactProjectionResult(writeResult.rows(), outcomeDiagnostics);
     }
 
-    private CsvValueEncodingInspector.CsvEncodingLoss write(
-            String artifactName, Path path, List<String> header, CanonicalArtifact artifact) {
+    private ProjectionWriteResult write(String artifactName, Path path, List<String> header) {
+        Path temp = null;
         try {
             Path parent = path.getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            Path temp = tempPath(path);
+            temp = tempPath(path);
             var inspector = new CsvValueEncodingInspector(charset);
             inspector.inspectHeader(header);
             var writer = CsvIo.newWriter(temp, charset);
+            int rows;
             try (CSVPrinter printer = new CSVPrinter(writer, format)) {
                 printer.printRecord(header);
-                for (var row : artifact.rows()) {
+                rows = reader.stream(artifactName, row -> {
                     var values = new ArrayList<String>(header.size());
                     header.forEach(column -> values.add(row.value(column)));
                     inspector.inspectRow(values, format.getNullString());
-                    printer.printRecord(values);
-                }
+                    try {
+                        printer.printRecord(values);
+                    } catch (IOException failure) {
+                        throw new UncheckedIOException(failure);
+                    }
+                });
             }
             moveIntoPlace(temp, path);
             LogEvents.info(log)
@@ -109,13 +113,17 @@ public final class CsvArtifactProjection implements ArtifactProjection {
                     .outcome(EventOutcome.SUCCESS)
                     .field(LogField.IOC_ARTIFACT_NAME, artifactName)
                     .field(LogField.FILE_PATH, path)
-                    .field(LogField.IOC_ROWS, artifact.rows().size())
+                    .field(LogField.IOC_ROWS, rows)
                     .message("artifact projection written")
                     .log();
-            return inspector.loss();
-        } catch (IOException e) {
+            return new ProjectionWriteResult(rows, inspector.loss());
+        } catch (IOException | UncheckedIOException e) {
+            deleteIncomplete(temp, e);
             throw new IocExtractorException("Failed to write artifact projection '" + artifactName + "' to "
                     + path, e);
+        } catch (RuntimeException e) {
+            deleteIncomplete(temp, e);
+            throw e;
         }
     }
 
@@ -166,10 +174,44 @@ public final class CsvArtifactProjection implements ArtifactProjection {
     }
 
     private void moveIntoPlace(Path temp, Path target) throws IOException {
-        try {
-            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException ignored) {
-            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+        Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    private void deleteIncomplete(Path temp, Exception failure) {
+        if (temp == null) {
+            return;
         }
+        try {
+            Files.deleteIfExists(temp);
+        } catch (IOException cleanupFailure) {
+            failure.addSuppressed(cleanupFailure);
+        }
+    }
+
+    private CSVFormat csvFormat(ExportFormat exportFormat) {
+        if (!"csv".equalsIgnoreCase(exportFormat.type())) {
+            throw new IllegalArgumentException("Mutable CSV projection requires csv export format");
+        }
+        if (exportFormat.delimiter().length() != 1 || exportFormat.quote().length() != 1) {
+            throw new IllegalArgumentException("CSV delimiter and quote must each be one character");
+        }
+        return CSVFormat.Builder.create()
+                .setDelimiter(exportFormat.delimiter().charAt(0))
+                .setQuote(exportFormat.quote().charAt(0))
+                .setNullString(exportFormat.nullLiteral())
+                .setQuoteMode(QuoteMode.ALL_NON_NULL)
+                .setRecordSeparator("\r\n")
+                .build();
+    }
+
+    private Charset charset(ExportFormat exportFormat) {
+        try {
+            return Charset.forName(exportFormat.charset());
+        } catch (IllegalArgumentException failure) {
+            throw new IllegalArgumentException("Unsupported CSV projection charset: " + exportFormat.charset(), failure);
+        }
+    }
+
+    private record ProjectionWriteResult(int rows, CsvValueEncodingInspector.CsvEncodingLoss encodingLoss) {
     }
 }

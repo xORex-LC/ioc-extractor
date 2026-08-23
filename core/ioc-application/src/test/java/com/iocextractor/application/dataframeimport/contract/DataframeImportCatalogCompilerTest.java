@@ -33,7 +33,13 @@ class DataframeImportCatalogCompilerTest {
         DataframeImportCatalog catalog = compilation.catalogOrThrow();
         assertThat(catalog.fingerprint().value()).matches("[0-9a-f]{64}");
         assertThat(catalog.contracts().values()).singleElement()
-                .satisfies(contract -> assertThat(contract.fingerprint().value()).matches("[0-9a-f]{64}"));
+                .satisfies(contract -> {
+                    assertThat(contract.fingerprint().value()).matches("[0-9a-f]{64}");
+                    assertThat(contract.dialect().delimiter()).isEqualTo(';');
+                    assertThat(contract.dialect().quote()).isEqualTo('"');
+                    assertThat(contract.dialect().requiredHeader()).isTrue();
+                    assertThat(contract.dialect().nullLiterals()).containsExactly("NULL");
+                });
         assertThatThrownBy(() -> catalog.sources().clear()).isInstanceOf(UnsupportedOperationException.class);
     }
 

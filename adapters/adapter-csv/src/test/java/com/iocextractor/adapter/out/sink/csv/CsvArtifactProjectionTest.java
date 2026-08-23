@@ -2,16 +2,14 @@ package com.iocextractor.adapter.out.sink.csv;
 
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
-import com.iocextractor.application.artifact.CanonicalWriteResult;
+import com.iocextractor.application.export.ExportFormat;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
-import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
+import com.iocextractor.application.port.out.artifact.CanonicalArtifactStreamReader;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.DiagnosticImpact;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
 import com.iocextractor.diagnostics.codes.SinkDiagnosticCodes;
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.QuoteMode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -34,11 +32,7 @@ class CsvArtifactProjectionTest {
     private static final Charset CP1251 = Charset.forName("windows-1251");
     private static final DiagnosticFactory DIAGNOSTICS = new DiagnosticFactory(
             Clock.fixed(Instant.EPOCH, ZoneOffset.UTC));
-    private static final CSVFormat FORMAT = CSVFormat.DEFAULT.builder()
-            .setDelimiter(';')
-            .setNullString("NULL")
-            .setQuoteMode(QuoteMode.ALL_NON_NULL)
-            .build();
+    private static final ExportFormat FORMAT = new ExportFormat("csv", "UTF-8", ";", "\"", "NULL");
 
     @TempDir
     Path tempDir;
@@ -92,14 +86,13 @@ class CsvArtifactProjectionTest {
     void counts_an_unrepresentable_null_marker_as_one_data_value() {
         var header = List.of("id", "value");
         var artifact = new CanonicalArtifact("masks", header, List.of(row(header, "1", null)));
-        var format = FORMAT.builder().setNullString("NULL😀").build();
+        var format = new ExportFormat("csv", CP1251.name(), ";", "\"", "NULL😀");
         Path path = tempDir.resolve("masks.csv");
         var projection = new CsvArtifactProjection(
                 new SnapshotRepository(artifact),
                 Map.of("masks", header),
                 Map.of("masks", path),
                 format,
-                CP1251,
                 DIAGNOSTICS);
 
         var outcome = projection.project(new ArtifactProjectionCommand("run-3", "masks"));
@@ -138,13 +131,37 @@ class CsvArtifactProjectionTest {
                 .hasMessage("Artifact projection path must name a CSV file: /");
     }
 
+    @Test
+    void preserves_installed_projection_when_stream_fails() throws Exception {
+        var header = List.of("id", "value");
+        Path path = tempDir.resolve("masks.csv");
+        Files.writeString(path, "previous projection\n");
+        var failure = new IllegalStateException("cursor failed");
+        CanonicalArtifactStreamReader failingReader = (artifactName, consumer) -> {
+            consumer.accept(row(header, "1", "partial"));
+            throw failure;
+        };
+        var projection = new CsvArtifactProjection(
+                failingReader,
+                Map.of("masks", header),
+                Map.of("masks", path),
+                FORMAT,
+                DIAGNOSTICS);
+
+        assertThatThrownBy(() -> projection.project(new ArtifactProjectionCommand("run-failed", "masks")))
+                .isSameAs(failure);
+        assertThat(path).hasContent("previous projection\n");
+        try (var children = Files.list(tempDir)) {
+            assertThat(children).containsExactly(path);
+        }
+    }
+
     private CsvArtifactProjection projection(CanonicalArtifact artifact, Path path, Charset charset) {
         return new CsvArtifactProjection(
                 new SnapshotRepository(artifact),
                 Map.of(artifact.name(), artifact.header()),
                 Map.of(artifact.name(), path),
-                FORMAT,
-                charset,
+                new ExportFormat("csv", charset.name(), ";", "\"", "NULL"),
                 DIAGNOSTICS);
     }
 
@@ -156,17 +173,14 @@ class CsvArtifactProjectionTest {
         return ArtifactRow.ordered(byColumn);
     }
 
-    private record SnapshotRepository(CanonicalArtifact artifact) implements CanonicalArtifactRepository {
+    private record SnapshotRepository(CanonicalArtifact artifact) implements CanonicalArtifactStreamReader {
 
         @Override
-        public CanonicalArtifact load(String artifactName) {
+        public int stream(String artifactName,
+                          com.iocextractor.application.port.out.artifact.CanonicalArtifactRowConsumer consumer) {
             assertThat(artifactName).isEqualTo(artifact.name());
-            return artifact;
-        }
-
-        @Override
-        public CanonicalWriteResult write(String artifactName, CanonicalArtifact artifact) {
-            throw new UnsupportedOperationException();
+            artifact.rows().forEach(consumer::accept);
+            return artifact.rows().size();
         }
     }
 }
