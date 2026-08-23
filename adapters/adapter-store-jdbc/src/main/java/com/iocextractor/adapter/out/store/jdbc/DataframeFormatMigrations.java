@@ -23,6 +23,8 @@ public final class DataframeFormatMigrations {
             "com/iocextractor/adapter/out/store/jdbc/dataframe/v6__bounded_lifecycle_reconciliation_state.sql";
     private static final String V7 =
             "com/iocextractor/adapter/out/store/jdbc/dataframe/v7__canonical_match_aliases.sql";
+    private static final String V8 =
+            "com/iocextractor/adapter/out/store/jdbc/dataframe/v8__coalesced_export_slot_ranges.sql";
 
     private DataframeFormatMigrations() {
     }
@@ -35,7 +37,8 @@ public final class DataframeFormatMigrations {
                 new SqliteSchemaMigration(4, "canonical lifecycle foundation", resource(V4)),
                 new SqliteSchemaMigration(5, "stable reusable export slots", resource(V5)),
                 new SqliteSchemaMigration(6, "bounded lifecycle reconciliation state", resource(V6)),
-                new SqliteSchemaMigration(7, "canonical match aliases", resource(V7)));
+                new SqliteSchemaMigration(7, "canonical match aliases", resource(V7)),
+                new SqliteSchemaMigration(8, "coalesced export slot ranges", resource(V8)));
     }
 
     private static String resource(String name) {

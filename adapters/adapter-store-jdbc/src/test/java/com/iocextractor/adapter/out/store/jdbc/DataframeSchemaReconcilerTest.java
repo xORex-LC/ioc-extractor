@@ -173,7 +173,7 @@ class DataframeSchemaReconcilerTest {
                 dataSource,
                 DataframeFormatMigrations.sqlite()).migrate();
 
-        assertThat(result.currentVersion()).isEqualTo(7);
+        assertThat(result.currentVersion()).isEqualTo(8);
         assertThat(tableExists("dataframe_schema_format")).isTrue();
         assertThat(tableExists("artifact_identity")).isTrue();
         assertThat(tableExists("artifact_revision")).isTrue();
@@ -184,7 +184,8 @@ class DataframeSchemaReconcilerTest {
         assertThat(tableExists("confirmation_receipt")).isTrue();
         assertThat(tableExists("confirmation_receipt_artifact")).isTrue();
         assertThat(tableExists("export_slot_assignment")).isTrue();
-        assertThat(tableExists("export_slot_free")).isTrue();
+        assertThat(tableExists("export_slot_free_range")).isTrue();
+        assertThat(tableExists("export_slot_free")).isFalse();
         assertThat(tableExists("export_slot_state")).isTrue();
         assertThat(tableExists("lifecycle_reconcile_state")).isTrue();
         assertThat(tableExists("canonical_match_definition")).isTrue();
@@ -213,8 +214,8 @@ class DataframeSchemaReconcilerTest {
         SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
 
         assertThat(result.previousVersion()).isEqualTo(2);
-        assertThat(result.currentVersion()).isEqualTo(7);
-        assertThat(result.appliedVersions()).containsExactly(3, 4, 5, 6, 7);
+        assertThat(result.currentVersion()).isEqualTo(8);
+        assertThat(result.appliedVersions()).containsExactly(3, 4, 5, 6, 7, 8);
         assertThat(tableExists("artifact_revision")).isTrue();
         assertThat(tableExists("canonical_lifecycle_control")).isTrue();
         try (Connection connection = dataSource.getConnection();
@@ -234,10 +235,11 @@ class DataframeSchemaReconcilerTest {
         SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
 
         assertThat(result.previousVersion()).isEqualTo(4);
-        assertThat(result.currentVersion()).isEqualTo(7);
-        assertThat(result.appliedVersions()).containsExactly(5, 6, 7);
+        assertThat(result.currentVersion()).isEqualTo(8);
+        assertThat(result.appliedVersions()).containsExactly(5, 6, 7, 8);
         assertThat(tableExists("export_slot_assignment")).isTrue();
-        assertThat(tableExists("export_slot_free")).isTrue();
+        assertThat(tableExists("export_slot_free_range")).isTrue();
+        assertThat(tableExists("export_slot_free")).isFalse();
         assertThat(tableExists("export_slot_state")).isTrue();
         assertThat(rowCount("export_slot_state")).isZero();
         assertThat(queryString("""
@@ -261,8 +263,8 @@ class DataframeSchemaReconcilerTest {
         SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
 
         assertThat(result.previousVersion()).isEqualTo(5);
-        assertThat(result.currentVersion()).isEqualTo(7);
-        assertThat(result.appliedVersions()).containsExactly(6, 7);
+        assertThat(result.currentVersion()).isEqualTo(8);
+        assertThat(result.appliedVersions()).containsExactly(6, 7, 8);
         assertThat(queryString("""
                 SELECT state FROM lifecycle_reconcile_state WHERE singleton_id = 1
                 """)).isEqualTo("COMPLETED");
@@ -273,6 +275,60 @@ class DataframeSchemaReconcilerTest {
                 SELECT expired_count FROM lifecycle_reconcile_state WHERE singleton_id = 1
                 """)).isEqualTo(7);
         assertThat(rowCount("lifecycle_reconcile_cycle")).isEqualTo(2);
+    }
+
+    @Test
+    void format_migration_coalesces_legacy_free_slots_without_changing_assignments_or_state() throws Exception {
+        dataSource = dataSource("format-v7-slots.db");
+        List<SqliteSchemaMigration> migrations = DataframeFormatMigrations.sqlite();
+        new SqliteUserVersionSchemaMigrator(dataSource, migrations.subList(0, 7)).migrate();
+        execute("""
+                INSERT INTO export_slot_assignment(
+                    profile, artifact, lifecycle_id, slot, assigned_at_ms)
+                VALUES ('reputation', 'masks', 101, 3, 10),
+                       ('reputation', 'masks', 102, 10, 20)
+                """);
+        execute("""
+                INSERT INTO export_slot_state(
+                    profile, artifact, policy_version, next_slot,
+                    source_generation, updated_at_ms)
+                VALUES ('reputation', 'masks', 'stable-sparse-reusable-v1', 11, 7, 30)
+                """);
+        execute("""
+                INSERT INTO export_slot_free(profile, artifact, slot, released_at_ms)
+                VALUES ('reputation', 'masks', 1, 11),
+                       ('reputation', 'masks', 2, 12),
+                       ('reputation', 'masks', 4, 13),
+                       ('reputation', 'masks', 5, 14),
+                       ('reputation', 'masks', 7, 15)
+                """);
+
+        SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
+
+        assertThat(result.previousVersion()).isEqualTo(7);
+        assertThat(result.currentVersion()).isEqualTo(8);
+        assertThat(result.appliedVersions()).containsExactly(8);
+        assertThat(tableExists("export_slot_free")).isFalse();
+        assertThat(queryString("""
+                SELECT group_concat(range_start || '-' || range_end, ',')
+                FROM (
+                    SELECT range_start, range_end
+                    FROM export_slot_free_range
+                    WHERE profile = 'reputation' AND artifact = 'masks'
+                    ORDER BY range_start)
+                """)).isEqualTo("1-2,4-5,7-7");
+        assertThat(queryString("""
+                SELECT group_concat(lifecycle_id || ':' || slot, ',')
+                FROM (
+                    SELECT lifecycle_id, slot
+                    FROM export_slot_assignment
+                    ORDER BY lifecycle_id)
+                """)).isEqualTo("101:3,102:10");
+        assertThat(queryString("""
+                SELECT next_slot || ':' || source_generation
+                FROM export_slot_state
+                WHERE profile = 'reputation' AND artifact = 'masks'
+                """)).isEqualTo("11:7");
     }
 
     @Test

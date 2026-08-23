@@ -77,7 +77,7 @@ class DataframeStorageDaemonRuntimeModeTest {
                 .containsOnlyKeys("jdbcStorageHealthIndicator", "dataframeStorageHealthIndicator");
         assertThat(context.containsBean("ingestRunRecoveryService")).isTrue();
 
-        assertThat(userVersion()).isEqualTo(7);
+        assertThat(userVersion()).isEqualTo(8);
         assertThat(tableExists("masks")).isTrue();
         assertThat(tableExists("masks_sources")).isTrue();
         assertThat(tableExists("masks_history")).isTrue();
@@ -86,7 +86,7 @@ class DataframeStorageDaemonRuntimeModeTest {
         assertThat(tableExists("hashes")).isTrue();
         assertThat(tableExists("canonical_lifecycle_control")).isTrue();
         assertThat(tableExists("export_slot_assignment")).isTrue();
-        assertThat(tableExists("export_slot_free")).isTrue();
+        assertThat(tableExists("export_slot_free_range")).isTrue();
         assertThat(tableExists("export_slot_state")).isTrue();
         assertThat(lifecycleState()).isEqualTo("DISABLED_COMPATIBLE");
     }

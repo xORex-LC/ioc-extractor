@@ -432,7 +432,7 @@ class JdbcSnapshotSliceReaderTest {
                 .hasRootCauseMessage("Cannot seed positive export slots from active rows in masks");
         assertThat(queryLong("SELECT COUNT(*) FROM export_slot_state")).isZero();
         assertThat(queryLong("SELECT COUNT(*) FROM export_slot_assignment")).isZero();
-        assertThat(queryLong("SELECT COUNT(*) FROM export_slot_free")).isZero();
+        assertThat(queryLong("SELECT COUNT(*) FROM export_slot_free_range")).isZero();
     }
 
     @Test
@@ -518,7 +518,7 @@ class JdbcSnapshotSliceReaderTest {
         assertThat(slotForLifecycle("reputation", "masks", 250_000)).isEqualTo(50_000);
         assertThat(slotForLifecycle("reputation", "masks", 50_001)).isEqualTo(50_001);
         assertThat(queryLong("SELECT COUNT(*) FROM export_slot_assignment")).isEqualTo(100_000);
-        assertThat(queryLong("SELECT COUNT(*) FROM export_slot_free")).isZero();
+        assertThat(queryLong("SELECT COUNT(*) FROM export_slot_free_range")).isZero();
         assertThat(replacementMillis).isLessThan(30_000);
         assertIndexedSlotQueryPlans();
     }
@@ -651,13 +651,13 @@ class JdbcSnapshotSliceReaderTest {
                 .anyMatch(line -> line.contains("ux_masks_lifecycle_id"));
 
         List<String> freePlan = explain("""
-                SELECT slot
-                FROM export_slot_free
+                SELECT range_start
+                FROM export_slot_free_range
                 WHERE profile = 'reputation' AND artifact = 'masks'
-                ORDER BY slot
+                ORDER BY range_start
                 """);
         assertThat(freePlan)
-                .anyMatch(line -> line.contains("sqlite_autoindex_export_slot_free_1"))
+                .anyMatch(line -> line.contains("sqlite_autoindex_export_slot_free_range_1"))
                 .noneMatch(line -> line.contains("USE TEMP B-TREE FOR ORDER BY"));
     }
 
