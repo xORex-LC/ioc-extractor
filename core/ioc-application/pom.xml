@@ -41,20 +41,24 @@
 
     <build>
         <plugins>
-            <!-- Storage mechanism dependencies belong to adapters/bootstrap only. -->
+            <!-- Framework and integration mechanisms belong to adapters/bootstrap only. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-enforcer-plugin</artifactId>
                 <executions>
                     <execution>
-                        <id>ban-storage-mechanisms-in-application</id>
+                        <id>ban-framework-and-integration-mechanisms-in-application</id>
                         <goals>
                             <goal>enforce</goal>
                         </goals>
                         <configuration>
                             <rules>
                                 <bannedDependencies>
+                                    <searchTransitive>true</searchTransitive>
                                     <excludes>
+                                        <exclude>org.springframework:*</exclude>
+                                        <exclude>org.apache.commons:commons-csv</exclude>
+                                        <exclude>com.hierynomus:smbj</exclude>
                                         <exclude>org.springframework:spring-jdbc</exclude>
                                         <exclude>org.springframework:spring-tx</exclude>
                                         <exclude>com.zaxxer:HikariCP</exclude>

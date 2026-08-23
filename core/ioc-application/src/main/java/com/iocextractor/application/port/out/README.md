@@ -18,3 +18,4 @@ Driven-порты (выходные): контракты, которые при�
 | `export/` | Driven-порты snapshot streaming, slice writer, manifest, revision/progress и export-ledger |
 | `sync/` | Driven-порты remote file transport и будущих sync-ledgers |
 | `observability/` | Gated structured per-item decision trace boundary |
+| `dataframeimport/` | Driven-порты source lifecycle, CSV streaming, staging, ledger, canonical promotion и report |

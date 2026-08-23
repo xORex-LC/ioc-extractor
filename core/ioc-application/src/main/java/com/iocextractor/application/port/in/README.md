@@ -18,3 +18,4 @@ Driving-порты (входные): единственная точка вхо�
 | `ingest/` | Driving-порты whole-file daemon ingest |
 | `export/` | Driving-порты запуска immutable artifact slice и startup recovery |
 | `sync/` | Driving-порты remote fetch/publish синхронизации |
+| `dataframeimport/` | Driving-порты validation, admission, drain, recovery, status и replay импорта |

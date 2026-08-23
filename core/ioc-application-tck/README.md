@@ -37,5 +37,7 @@ runtime-кодом приложения.
 - `com.iocextractor.application.tck.lifecycle.CanonicalRecordLifecycleContractTest`
   — active/due boundary, renewal, observation replay, new-lifecycle, revision,
   bounded expiry и ID non-reuse contract.
+- `com.iocextractor.application.tck.dataframeimport.*` — контракты глобального
+  порядка delivery-ledger и идемпотентной атомарной canonical promotion.
 
 Новый порт → новый абстрактный `*ContractTest` здесь; адаптеры наследуют в своих тестах.

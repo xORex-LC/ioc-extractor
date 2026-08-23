@@ -19,6 +19,7 @@
 | `artifact/` | Storage-neutral artifact row identity, canonical artifact snapshots and run-ledger recovery model |
 | `ingest/` | Whole-file ingest use case, source state model and post-completion control facts |
 | `export/` | Artifact Emission model: resolved plan, snapshot/manifest, formation saga, progress и retention descriptors |
+| `dataframeimport/` | Framework-free contract compiler, delivery state и merge policy managed dataframe import |
 | `sync/` | Transport-neutral remote sync value objects, error taxonomy and retry policy |
 | `cadence/` | Framework-free interval/quiet-period scheduling policies с injected `Clock` |
 | `observability/` | Compact already-computed per-item decisions для outbound TRACE port |
