@@ -39,7 +39,7 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 ├── adapters/
 │   ├── adapter-regex-re2j         (PatternEngine → RE2J/JDK fallback)
 │   ├── adapter-source-tika        (SourceReader → Tika)
-│   ├── adapter-sink-csv           (ArtifactPreparer + CSV projection/export slices → commons-csv)
+│   ├── adapter-csv                (strict CSV parsing + ArtifactPreparer/projection/export → commons-csv)
 │   ├── adapter-manifest-json-jackson (SliceManifestCodec → Jackson)
 │   ├── adapter-store-jdbc         (service/dataframe storage → Spring JDBC + sqlite-jdbc)
 │   ├── adapter-transport-smb      (FileTransport → smbj)
@@ -57,7 +57,7 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 ```
 
 > ArtifactId имеют префикс `ioc-*`, например `ioc-platform-etl`,
-> `ioc-application`, `ioc-adapter-sink-csv`, `ioc-app`.
+> `ioc-application`, `ioc-adapter-csv`, `ioc-app`.
 
 ### Направление зависимостей между модулями
 
@@ -137,7 +137,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `ioc-application-tck` | Переиспользуемые JUnit contract tests application ports, включая import delivery ledger и canonical promotion, исполняемые каждой реализацией |
 | `adapter-regex-re2j` | PatternEngine implementation (RE2J + JDK fallback) |
 | `adapter-source-tika` | SourceReader (Tika) |
-| `adapter-sink-csv` | Artifact mapping, canonical CSV projection, callback-streaming immutable slices, integrity verification, atomic local publish и directory-level slice retention |
+| `adapter-csv` | Strict delimited-row parsing, artifact mapping, cursor-streamed canonical CSV projection, callback-streaming immutable slices, integrity verification, atomic local publish и directory-level slice retention |
 | `adapter-manifest-json-jackson` | Deterministic versioned JSON codec for immutable slice manifests |
 | `adapter-store-jdbc` | Service/dataframe SQLite: canonical/revision/lifecycle storage, typed history/receipts, v5 reusable export-slot registry, v6 bounded reconcile checkpoint, strict active snapshot reader, ingest/export/fetch/publish ledgers + progress, migrations и health |
 | `adapter-transport-smb` | smbj boundary: lazy SMB2/3 sessions, streaming get и atomic slice publish за `FileTransport` |

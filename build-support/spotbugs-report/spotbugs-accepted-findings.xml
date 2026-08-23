@@ -75,7 +75,7 @@
         </suppression>
         <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under I4-SB-04.</rationale>
     </finding>
-    <finding id="SB04-043" module="adapters/adapter-sink-csv" type="EI_EXPOSE_REP" hash="7517b4775548db7bcd7d6dd8b38e66fe" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="C2-REP-C" review="immutable-snapshot-construction-change">
+    <finding id="SB04-043" module="adapters/adapter-csv" type="EI_EXPOSE_REP" hash="7517b4775548db7bcd7d6dd8b38e66fe" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="C2-REP-C" review="immutable-snapshot-construction-change">
         <class name="com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper" />
         <method name="header" signature="()Ljava/util/List;" />
         <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/ConfigurableRowMapper.java" startLine="50" bytecode="4" />
@@ -87,7 +87,7 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C2-REP-C in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-024" module="adapters/adapter-sink-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="451e8f82803afe99904b550ed37331cc" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
+    <finding id="SB04-024" module="adapters/adapter-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="451e8f82803afe99904b550ed37331cc" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
         <class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog" />
         <method name="listCompleted" signature="(Ljava/lang/String;)Ljava/util/List;" />
         <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/FileSystemCompletedSliceCatalog.java" startLine="68" bytecode="162" />
@@ -98,7 +98,7 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-025" module="adapters/adapter-sink-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="b51ce9279deb56aa6c1cb2e9037a8da0" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
+    <finding id="SB04-025" module="adapters/adapter-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="b51ce9279deb56aa6c1cb2e9037a8da0" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
         <class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog" />
         <method name="listCompletedSliceNames" signature="(Ljava/lang/String;)Ljava/util/List;" />
         <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/FileSystemCompletedSliceCatalog.java" startLine="95" bytecode="140" />
@@ -109,7 +109,7 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-026" module="adapters/adapter-sink-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="373835ddfb1193e6005b2007fdf4ff6" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
+    <finding id="SB04-026" module="adapters/adapter-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="373835ddfb1193e6005b2007fdf4ff6" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
         <class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog" />
         <method name="verify" signature="(Ljava/lang/String;Ljava/nio/file/Path;)Lcom/iocextractor/application/sync/CompletedSlice;" />
         <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/FileSystemCompletedSliceCatalog.java" startLine="143" bytecode="56" />
@@ -120,7 +120,7 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-027" module="adapters/adapter-sink-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="2d668aa02540c8507a933a99a77fa7f6" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
+    <finding id="SB04-027" module="adapters/adapter-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="2d668aa02540c8507a933a99a77fa7f6" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
         <class name="com.iocextractor.adapter.out.sink.csv.FileSystemSliceRetentionStore" />
         <method name="listCompleted" signature="(Ljava/lang/String;)Ljava/util/List;" />
         <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/FileSystemSliceRetentionStore.java" startLine="58" bytecode="191" />
@@ -131,7 +131,7 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-028" module="adapters/adapter-sink-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="1c0765bc84d2240b96685d4e7dd36ec8" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
+    <finding id="SB04-028" module="adapters/adapter-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="1c0765bc84d2240b96685d4e7dd36ec8" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
         <class name="com.iocextractor.adapter.out.sink.csv.SliceTreeVerifier" />
         <method name="lambda$verifyExactMembers$0" signature="(Ljava/util/Set;Ljava/nio/file/Path;)V" />
         <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/SliceTreeVerifier.java" startLine="122" bytecode="7" />
@@ -142,7 +142,7 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-015" module="adapters/adapter-sink-csv" type="SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR" hash="22d5f5b6275533de4047b929a884dff6" occurrence="0" priority="2" rank="7" category="CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="C1-COR-A" review="artifact-filter-construction-contract-change">
+    <finding id="SB04-015" module="adapters/adapter-csv" type="SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR" hash="22d5f5b6275533de4047b929a884dff6" occurrence="0" priority="2" rank="7" category="CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="C1-COR-A" review="artifact-filter-construction-contract-change">
         <class name="com.iocextractor.adapter.out.sink.csv.ArtifactFilter" />
         <method name="&lt;init&gt;" signature="(Ljava/util/List;Ljava/util/List;)V" />
         <anchor />

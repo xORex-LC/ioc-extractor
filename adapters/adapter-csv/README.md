@@ -1,4 +1,4 @@
-# adapters/adapter-sink-csv
+# adapters/adapter-csv
 
 ## Назначение
 

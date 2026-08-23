@@ -77,7 +77,7 @@
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
-            <artifactId>ioc-adapter-sink-csv</artifactId>
+            <artifactId>ioc-adapter-csv</artifactId>
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
@@ -155,7 +155,7 @@
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-regex-re2j/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-psl/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-source-tika/src/main/java</compileSourceRoot>
-                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-sink-csv/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-csv/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-manifest-json-jackson/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-store-jdbc/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-transport-smb/src/main/java</compileSourceRoot>

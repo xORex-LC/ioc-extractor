@@ -11,9 +11,9 @@
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
-    <artifactId>ioc-adapter-sink-csv</artifactId>
-    <name>ioc-adapter-sink-csv</name>
-    <description>IocSink implementation and declarative CSV row mapping</description>
+    <artifactId>ioc-adapter-csv</artifactId>
+    <name>ioc-adapter-csv</name>
+    <description>Delimited CSV parsing, declarative row mapping and artifact projection</description>
 
     <dependencies>
         <dependency>

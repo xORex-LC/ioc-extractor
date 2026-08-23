@@ -41,7 +41,7 @@
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
-            <artifactId>ioc-adapter-sink-csv</artifactId>
+            <artifactId>ioc-adapter-csv</artifactId>
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>

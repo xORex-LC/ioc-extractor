@@ -61,7 +61,7 @@
         <module>adapters/adapter-regex-re2j</module>
         <module>adapters/adapter-psl</module>
         <module>adapters/adapter-source-tika</module>
-        <module>adapters/adapter-sink-csv</module>
+        <module>adapters/adapter-csv</module>
         <module>adapters/adapter-manifest-json-jackson</module>
         <module>adapters/adapter-store-jdbc</module>
         <module>adapters/adapter-transport-smb</module>
@@ -455,7 +455,7 @@
             </dependency>
             <dependency>
                 <groupId>com.iocextractor</groupId>
-                <artifactId>ioc-adapter-sink-csv</artifactId>
+                <artifactId>ioc-adapter-csv</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

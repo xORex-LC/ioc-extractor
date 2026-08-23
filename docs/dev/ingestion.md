@@ -44,7 +44,7 @@ Daemon использует синхронный Spring Integration channel. О�
 - `ioc-application` владеет orchestration, ingestion ledger и write→project
   run-saga.
 - `adapter-store-jdbc` реализует durable ledgers и canonical repository.
-- `adapter-sink-csv` готовит строки и строит CSV-проекцию из canonical truth.
+- `adapter-csv` готовит строки и строит CSV-проекцию из canonical truth.
 - bootstrap выбирает daemon wiring и запускает recovery/retention/schedulers.
 
 Инжест не владеет правилами извлечения, схемой хранения или export slices: он

@@ -43,7 +43,7 @@ language: "ru"
 | `adapters/adapter-regex-re2j` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `adapters/adapter-psl` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `adapters/adapter-source-tika` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `adapters/adapter-sink-csv` | `planned` | `planned` | `planned` | `planned` | `planned` |
+| `adapters/adapter-csv` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `adapters/adapter-manifest-json-jackson` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `adapters/adapter-store-jdbc` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `adapters/adapter-transport-smb` | `planned` | `planned` | `planned` | `planned` | `planned` |

@@ -13,7 +13,7 @@ core/ioc-application-tck	ioc-application-tck	excluded	Reusable test-contract JAR
 adapters/adapter-regex-re2j	ioc-adapter-regex-re2j	analyzed	Production runtime JAR
 adapters/adapter-psl	ioc-adapter-psl	analyzed	Production runtime JAR
 adapters/adapter-source-tika	ioc-adapter-source-tika	analyzed	Production runtime JAR
-adapters/adapter-sink-csv	ioc-adapter-sink-csv	analyzed	Production runtime JAR
+adapters/adapter-csv	ioc-adapter-csv	analyzed	Production runtime JAR
 adapters/adapter-manifest-json-jackson	ioc-adapter-manifest-json-jackson	analyzed	Production runtime JAR
 adapters/adapter-store-jdbc	ioc-adapter-store-jdbc	analyzed	Production runtime JAR
 adapters/adapter-transport-smb	ioc-adapter-transport-smb	analyzed	Production runtime JAR
