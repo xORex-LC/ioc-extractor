@@ -15,6 +15,9 @@ Actuator. Он работает только через ports из `application.
 | Файл | Назначение |
 |---|---|
 | `ArtifactRow.java` / `ArtifactRowKey.java` | Storage-neutral row model и stable identity value |
+| `CanonicalKeyDefinition` / `CanonicalArtifactKeyResolver` | Versioned record/match formulas and collision-check material |
+| `CanonicalMatch*` | Zero/one/multi active-match plan primitives, independent of JDBC |
+| `CanonicalRecordMutation*` | Public insert/update/clear/confirmation/no-op outcomes |
 | `CanonicalArtifact.java` | Storage-neutral snapshot для canonical artifact |
 | `CanonicalWriteResult.java` | Фактические public inserts и canonical revision после атомарной записи |
 | `CanonicalArtifactsChanged.java` | Use-case-neutral post-commit control fact для export fast path |

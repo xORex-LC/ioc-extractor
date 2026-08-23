@@ -13,6 +13,7 @@ Driven-порты для canonical artifact storage, artifact identity, CSV proj
 | `CanonicalArtifactRepository.java` | Чтение/запись canonical artifacts; write возвращает actual inserts и revision |
 | `ArtifactIdentityResolver.java` | Artifact-specific row key extraction |
 | `ArtifactIdentityStore.java` | Guardrail-хранилище identity formula hash + epoch |
+| `CanonicalMatchPlanner.java` | Set-based active-only zero/one/multiple alias matching |
 | `ArtifactProjection.java` | Projection-порт для производных артефактов |
 | `ArtifactProjectionCommand.java` | Обязательные run/artifact identity одной projection operation |
 | `ArtifactProjectionResult.java` | Immutable row count + advisory diagnostics успешно установленной проекции |
