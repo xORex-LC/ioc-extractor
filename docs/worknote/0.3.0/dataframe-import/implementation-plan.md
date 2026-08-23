@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — implementation plan"
 version: "0.3.0"
-status: "Approved; P0-P1 implemented"
+status: "Approved; P0-P2 implemented"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "en"
@@ -87,6 +87,11 @@ Gate:
   except deliberate names/contracts.
 
 ### P2 — canonical identity and mutation kernel
+
+Status: **implemented and committed with focused compatibility verification**.
+See [p2-evidence.md](p2-evidence.md). The final committed-HEAD reactor gate is
+run after the documentation commit and reported by repository verification
+evidence rather than embedded into this pre-gate note.
 
 Deliver:
 

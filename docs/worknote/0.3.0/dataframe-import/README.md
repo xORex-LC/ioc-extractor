@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — рабочий комплект"
 version: "0.3.0"
-status: "Architecture approved; P0-P1 implemented"
+status: "Architecture approved; P0-P2 implemented"
 document_type: "Worknote bundle index"
 source_of_truth: false
 language: "ru"
@@ -20,9 +20,10 @@ operator guides или release contract.
 
 ## Текущий статус
 
-- P0 contract/boundary baseline и P1 integration-family preparation
-  реализованы 2026-08-23; исполняющий intake/promotion runtime начинается с
-  P2+;
+- P0 contract/boundary baseline, P1 integration-family preparation и P2
+  canonical identity/mutation foundation реализованы 2026-08-23;
+  исполняющая delivery infrastructure начинается с P4, local intake — с P5,
+  а canonical promotion — с P6;
 - discovery interview завершено 2026-08-23: все I-01..I-41 имеют статус
   `DECIDED`;
 - архитектурный проект, release contract, data/persistence/operations contracts,
@@ -131,7 +132,8 @@ operator guides или release contract.
   применяет business-field merge с явным mismatch report; source contract может
   выбрать strict `reject-mismatch`, автоматическая renumber policy запрещена;
 - известных незакрытых business choices не осталось; formal scope, architecture
-  project и P0-P1 baseline завершены, следующий implementation slice — P2;
+  project и P0-P2 foundation завершены, следующий ещё не авторизованный
+  implementation slice — P3;
 - принятый ADR-0015 не редактируется: если новый import contract будет принят,
   потребуется отдельный superseding ADR.
 
@@ -149,6 +151,7 @@ operator guides или release contract.
 | [verification-matrix.md](verification-matrix.md) | Traceability I-01..I-41, tests, qualification и performance evidence |
 | [p0-evidence.md](p0-evidence.md) | Проверяемые границы, команды и результат реализации P0 |
 | [p1-evidence.md](p1-evidence.md) | Preparatory refactors, focused gates and compatibility evidence for P1 |
+| [p2-evidence.md](p2-evidence.md) | Versioned identity, alias migration, mutation-kernel and focused gate evidence for P2 |
 
 ## Правила работы
 

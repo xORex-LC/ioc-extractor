@@ -107,7 +107,7 @@ ioc:
         artifacts:
           - name: address_blacklist
             role: primary
-            record-key: address-first-non-empty-row-v1
+            record-key: address-row-v2
             match-keys: [ forbidden-url-v1, forbidden-ip-v1 ]
             columns:
               - { target: forbidden_url, source: forbidden_url }

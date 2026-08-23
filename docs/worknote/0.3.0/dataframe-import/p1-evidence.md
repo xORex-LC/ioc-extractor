@@ -60,6 +60,11 @@ not a fresh release gate.
 | watch concurrency | existing re-arm, retry, lease, close and timeout tests pass with the narrow target contract |
 | dependency direction | no new library or sibling-adapter dependency; application remains free of Commons CSV, JDBC, Spring and SMBJ |
 
+`P1-SQL-TRUST`: the cursor-stream query accepts identifiers only from the
+immutable validated dataframe schema and revalidates them at quoting; lifecycle
+values remain prepared-statement parameters. The reviewed SpotBugs identity for
+this boundary was recorded when the P1-P2 aggregate analyzer gate was prepared.
+
 ## 4. Compatibility result
 
 Ordinary document ingest still classifies exactly once per retained IOC and

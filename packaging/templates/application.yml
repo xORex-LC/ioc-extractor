@@ -209,14 +209,15 @@ ioc:
 
   # ---- Managed dataframe import --------------------------------------------
   # Disabled baseline. Enabling requires explicit source, authority and
-  # versioned contract definitions; P0 does not activate an intake worker.
+  # versioned contract definitions; the P0-P2 foundation does not activate an
+  # intake worker.
   dataframe-import:
     enabled: false
     sources: []
     authority-profiles: []
     contracts: []
     # Complete schema illustration for a future enabled runtime. Keep these
-    # entries commented while P0 supplies only catalog compilation.
+    # entries commented until a later slice supplies executable intake.
     # sources:
     #   - id: trusted-local
     #     transport: local

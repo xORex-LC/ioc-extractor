@@ -61,6 +61,12 @@ runtime JDBC drivers.
   identity state; a collision aborts the whole backfill. Compound v2 record
   keys for `address_blacklist` and `hashes` preserve public/canonical/lifecycle
   IDs, revisions and export-slot ownership.
+- `JdbcCanonicalMatchPlanner` resolves batch key material by digest and exact
+  canonical equality against active rows only. `JdbcCanonicalMutationEngine`
+  is the connection-scoped insert/renew/restart/update/clear/no-op kernel shared
+  by the ordinary lifecycle writer and later import promotion; the caller still
+  owns the surrounding transaction, ID reservations, revision aggregation and
+  receipt publication.
 - `JdbcLifecycleControlStore` uses one-way CAS and refuses `ACTIVE` until one
   set-based invariant scan proves that every configured active row has complete,
   ordered lifecycle metadata. Lifecycle/canonical-row ID ranges are reserved by
@@ -75,7 +81,7 @@ runtime JDBC drivers.
   publishes `COMPLETE` only after exact artifact-marker and typed-row counts,
   including a valid zero-row artifact.
 - `JdbcActiveArtifactReader` applies the half-open active predicate with an
-  explicit caller-owned `asOf`. `JdbcCanonicalArtifactRepository.load` applies
+  explicit caller-owned `asOf`. `JdbcCanonicalArtifactRepository.stream` applies
   the same predicate for mutable CSV projection when state is `ACTIVE`, while
   `JdbcSnapshotSliceReader` shares one captured `asOf` between coverage and all
   artifact row cursors in one SQLite read snapshot. `ACTIVATING` external reads

@@ -29,11 +29,13 @@ Xerial SQLite, SQL, migrations и transaction mechanics принадлежат
 ```text
 prepared rows
   -> materialize deferred ids
-  -> resolve row_key
+  -> resolve versioned record key and usable match aliases
   -> one artifact transaction
-       public rows: INSERT ... ON CONFLICT(row_key) DO NOTHING
+       active match: zero / exact-one / multi at one effective asOf
+       public rows: insert, renew, restart or policy-owned mutation
+       aliases:     maintain canonical_match_alias with the lifecycle
        provenance:  upsert <artifact>_sources
-       revision:    bump only when public rows inserted
+       revision:    bump only for revision-significant public change
   -> full mutable projection from canonical table
 ```
 
@@ -47,9 +49,12 @@ prepared rows
    одинаково; удаление CSV не удаляет business data.
 2. **Keep-first отделён от provenance.** Повторный `row_key` не меняет public
    row/id, но новый source сохраняется в `<artifact>_sources`.
-3. **Identity задаётся public output values.** `key-columns`, `key-mode` и epoch
-   формируют deterministic identity hash. Несовместимый drift отклоняется до
-   записи, а не молча создаёт другое значение `row_key`.
+3. **Identity задаётся public output values.** Versioned record key определяет
+   immutable `row_key`, а named match keys дают альтернативные active-only
+   aliases. `key-columns`, `key-mode`, definition name и epoch компилируются до
+   startup storage admission. Несовместимый drift или migration collision
+   отклоняется до business write, а не молча создаёт другое значение
+   `row_key`.
 4. **Schema reconciliation только additive.** Missing table/column можно
    создать; drop, rename, reorder-sensitive type drift и конфликт внутренних
    колонок должны завершить startup failure до частичной мутации.
@@ -153,6 +158,39 @@ keeps constant row-memory, preserves the previously installed projection on a
 cursor/encoding/write failure, and uses the same active snapshot boundary as
 other lifecycle-aware reads.
 
+### Versioned identity and active matching (dataframe v7)
+
+V7 additively создаёт `canonical_match_definition` и
+`canonical_match_alias`, а в `artifact_identity` сохраняет имя и fingerprint
+record-key definition. Match lookup индексируется по
+`(artifact, definition_id, key_hash, key_canonical)` и всегда проверяет как
+SHA-256 digest, так и canonical material. Active candidate дополнительно обязан
+иметь тот же lifecycle ID в canonical table и
+`_valid_until_epoch_ms > asOf`; history не участвует.
+
+`JdbcArtifactIdentityStore` выполняет epoch migration одной transaction для
+всех pending artifacts. Сначала он рассчитывает новые record keys и aliases в
+TEMP shadow tables с unique collision preflight. Только после успешной полной
+стадии durable rows получают временные reserved keys, затем окончательные keys,
+definitions и aliases. Ошибка любого artifact откатывает весь migration и не
+разрешает создать writer через startup identity-validation dependency.
+
+Default configuration переводит `address_blacklist` и `hashes` с
+first-non-empty на compound v2 record keys. Миграция меняет только internal
+`row_key`/alias metadata: public columns, canonical/lifecycle IDs, revisions и
+export-slot ownership сохраняются. Named match definitions остаются
+альтернативными ключами поиска; совпадение нескольких active lifecycles
+является конфликтом и не склеивает records автоматически.
+
+`JdbcCanonicalMatchPlanner` принимает batch requests, помещает key material в
+connection-local TEMP table и одним set-based join возвращает zero/exact-one/
+multi plan в исходном порядке. `JdbcCanonicalMutationEngine` использует этот
+же connection-scoped механизм для ordinary lifecycle writer и будущей import
+promotion. Insert/restart/renew/archive поддерживают aliases атомарно; public
+mutation отдельно сообщает update, clear, no-op или TTL confirmation. Изменение
+record key, включая очистку всех его значений, не допускается in-place и должно
+создать новую canonical record.
+
 ### Export-slot storage path (dataframe v5)
 
 V5 additively создаёт в dataframe DB три export-owned структуры:
@@ -203,7 +241,8 @@ namespace rows.
 - JDBC implementation: `adapter-store-jdbc` и его migration resources.
 - Runtime schema/config: `IocProperties`, `application.yml`,
   `DataframeSchemaReconciler`.
-- Identity: `ArtifactIdentityDefinition`, `ArtifactIdentityResolver`,
+- Identity/matching: `ArtifactIdentityDefinition`,
+  `CanonicalArtifactKeyResolver`, `CanonicalMatchPlanner`,
   `ArtifactIdentityStore` contract tests.
 - Canonical/provenance behavior: `JdbcCanonicalArtifactRepositoryTest` и
   dataframe recovery integration tests.
@@ -224,3 +263,5 @@ SQL helper или pool implementation detail сюда переносить не 
   CSV storage/lookup mode.
 - [ADR-0020](../ADR/0020-canonical-record-expiration-lifecycle.md) — lifecycle
   semantics, history, identity and activation boundaries.
+- [ADR-0024](../ADR/0024-managed-dataframe-import.md) — managed import delivery,
+  active-only matching and shared canonical mutation decision.

@@ -221,14 +221,16 @@ consumer, либо принять явное release-level решение об u
 ## DATA-TTL-01 candidate delta
 
 DATA-TTL-01 является принятым observable scope change относительно baseline.
-Текущее candidate состояние имеет dataframe schema v6 и service schema v8.
-Миграции additive, но включение validity для существующей dataframe DB является
-явной one-way activation, а не automatic upgrade side effect.
+Его lifecycle foundation завершает dataframe schema v6 и service schema v8;
+текущее repository candidate состояние имеет dataframe schema v7 после
+DATA-IMPORT-01 P2. Миграции additive, но включение validity для существующей
+dataframe DB является явной one-way activation, а не automatic upgrade side
+effect.
 
 | Surface | Candidate disposition |
 |---|---|
 | Configuration | Добавлен strict `ioc.lifecycle.*`; classpath/upgrade default `disabled`, fresh packaging template `fixed/12h`; изменившийся template сохраняется как `application.yml.new` |
-| Durable state | Dataframe DB хранит lifecycle/history/receipt/control state, v5 export-slot registry и v6 singleton reconcile checkpoint; legacy `lifecycle_reconcile_cycle` после v6 заморожен. Service DB хранит observation-oriented ingest ledger; rollback после activation требует matching pre-activation config и обе DB |
+| Durable state | Dataframe DB хранит lifecycle/history/receipt/control state, v5 export-slot registry, v6 singleton reconcile checkpoint и v7 versioned canonical match definitions/active aliases; legacy `lifecycle_reconcile_cycle` после v6 заморожен. Service DB хранит observation-oriented ingest ledger; rollback после activation требует matching pre-activation config и обе DB |
 | Mutable CSV | Column order/types сохраняются; expired rows исключаются, `time_first_seen`/`time_last_seen` остаются `NULL`, `valid_until` не публикуется |
 | Immutable export | Expiry не меняет insert-driven revision и не создаёт slice; следующий new-row export читает только active membership. Более новая covered revision создаёт новую delivery occurrence даже при byte-identical CSV; `SKIPPED` требует равенства plan/bytes/revisions |
 | Internal и export identities | Internal row/lifecycle identities не переиспользуются. Внешний `id` реализован как `(profile, artifact)` export slot: survivors сохраняют mapping, vanished rows освобождают slots при eligible export, новые lifecycle получают минимальные holes без compaction; source-owned ID остаётся business field. Automated P7 evidence complete, packaged qualification pending |

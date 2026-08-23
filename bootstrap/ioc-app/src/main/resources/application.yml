@@ -255,9 +255,9 @@ ioc:
           - { name: hash-sha256-v1, key-columns: [ hash_sha256 ] }
 
   # ---- Managed dataframe import --------------------------------------------
-  # P0 reserves and validates the strict contract namespace. No intake or
-  # adapter is activated while disabled; enabling requires complete source,
-  # authority and contract definitions.
+  # The strict contract catalog remains disabled. P1/P2 integration and
+  # canonical-storage foundations do not activate intake; enabling the later
+  # runtime requires complete source, authority and contract definitions.
   dataframe-import:
     enabled: false
     sources: []
