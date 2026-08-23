@@ -32,6 +32,11 @@ public final class CanonicalArtifactKeyResolver {
         return definition == null ? Optional.empty() : materialOf(definition.recordKey(), row);
     }
 
+    /** Returns whether the artifact is governed by the versioned key catalog. */
+    public boolean containsArtifact(String artifactName) {
+        return definitions.containsKey(artifactName);
+    }
+
     /** Resolves every usable alternative active-record match key in configured order. */
     public List<CanonicalKeyMaterial> matchKeysOf(String artifactName, ArtifactRow row) {
         ArtifactIdentityDefinition definition = definitions.get(artifactName);

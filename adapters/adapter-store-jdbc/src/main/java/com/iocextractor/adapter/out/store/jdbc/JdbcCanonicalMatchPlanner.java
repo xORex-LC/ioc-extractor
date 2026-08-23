@@ -75,12 +75,12 @@ public final class JdbcCanonicalMatchPlanner implements CanonicalMatchPlanner {
                  AND a.definition_id = r.definition_id
                  AND a.key_hash = r.key_hash
                  AND a.key_canonical = r.key_canonical
-                JOIN %s c
+                JOIN ${artifact} c
                   ON c.id = a.canonical_row_id
                  AND c._lifecycle_id = a.lifecycle_id
                 WHERE c._valid_until_epoch_ms > ?
                 ORDER BY r.request_order, a.canonical_row_id, a.lifecycle_id
-                """.formatted(quote(schema.artifactName()));
+                """.replace("${artifact}", quote(schema.artifactName()));
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, schema.artifactName());
             statement.setLong(2, asOf.value().toEpochMilli());

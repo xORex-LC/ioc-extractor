@@ -640,7 +640,8 @@ public class AppConfig {
                 artifactIdAllocatorDefinitions(props, artifactIdBaseline),
                 lifecycleClock,
                 new FixedRecordValidityPolicy(props.lifecycle().validity().fixedTtl()),
-                clock);
+                clock,
+                artifactIdentityDefinitions(props));
         return new EventPublishingCanonicalArtifactWriter(writer, controlEventPublisher);
     }
 

@@ -91,6 +91,24 @@ public abstract class CanonicalRecordLifecycleContractTest {
     }
 
     @Test
+    void alternate_supplied_row_key_with_same_match_alias_renews_instead_of_duplicating() {
+        var timeSource = new AdjustableTimeSource(START);
+        LifecycleFixture fixture = fixture(timeSource);
+        fixture.writer().confirm(command("observation-alias-first", row("producer-key-a", "shared.example")));
+
+        timeSource.set(START.plus(Duration.ofMinutes(10)));
+        LifecycleWriteResult result = fixture.writer().confirm(
+                command("observation-alias-second", row("producer-key-b", "shared.example")));
+
+        assertThat(result.created()).isZero();
+        assertThat(result.renewed()).isOne();
+        assertThat(result.restarted()).isZero();
+        assertThat(fixture.reader().loadActive(
+                ARTIFACT, EffectiveTime.at(START.plus(Duration.ofMinutes(10)))).records())
+                .hasSize(1);
+    }
+
+    @Test
     void exact_deadline_is_inactive_and_reconfirmation_creates_new_identities() {
         var timeSource = new AdjustableTimeSource(START);
         LifecycleFixture fixture = fixture(timeSource);

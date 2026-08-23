@@ -44,12 +44,24 @@ final class JdbcLifecycleArchive {
         }
         long historyId = lastInsertId(connection);
         copyHistorySources(connection, schema.artifactName(), rowId, historyId);
+        deleteMatchAliases(connection, schema.artifactName(), rowId);
         try (PreparedStatement statement = connection.prepareStatement(
                 "DELETE FROM " + quote(schema.artifactName()) + " WHERE " + quote("id") + " = ?")) {
             statement.setLong(1, rowId);
             if (statement.executeUpdate() != 1) {
                 throw new IocExtractorException("Due lifecycle disappeared before deletion");
             }
+        }
+    }
+
+    private void deleteMatchAliases(Connection connection, String artifact, long rowId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                DELETE FROM canonical_match_alias
+                WHERE artifact = ? AND canonical_row_id = ?
+                """)) {
+            statement.setString(1, artifact);
+            statement.setLong(2, rowId);
+            statement.executeUpdate();
         }
     }
 

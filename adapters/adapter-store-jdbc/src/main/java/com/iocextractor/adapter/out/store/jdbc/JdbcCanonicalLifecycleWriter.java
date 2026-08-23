@@ -1,7 +1,8 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.artifact.ArtifactIdReservation;
-import com.iocextractor.application.artifact.ArtifactRow;
+import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
+import com.iocextractor.application.artifact.CanonicalRecordMutationKind;
 import com.iocextractor.application.artifact.lifecycle.CanonicalArtifactConfirmation;
 import com.iocextractor.application.artifact.lifecycle.CanonicalRecordConfirmation;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
@@ -19,13 +20,11 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
  * SQLite canonical confirmation transaction for active record lifecycles.
@@ -41,7 +40,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
     private final Map<String, DataframeArtifactSchema> schemas;
     private final Map<String, JdbcArtifactIdAllocator> publicIdAllocators;
     private final JdbcLifecycleIdAllocator lifecycleIdAllocator;
-    private final JdbcLifecycleArchive lifecycleArchive;
+    private final JdbcCanonicalMutationEngine mutationEngine;
     private final JdbcConfirmationReceiptWriter receiptWriter;
     private final ConnectionTimeSource timeSource;
     private final RecordValidityPolicy validityPolicy;
@@ -54,8 +53,23 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                         LifecycleTimeSource timeSource,
                                         RecordValidityPolicy validityPolicy,
                                         java.time.Clock allocatorClock) {
-        this(dataSource, schemas, publicIdDefinitions, timeSource, validityPolicy,
-                allocatorClock, JdbcLifecycleTransactionObserver.NOOP);
+        this(dataSource, schemas, publicIdDefinitions,
+                (ConnectionTimeSource) ignored -> Objects.requireNonNull(timeSource, "timeSource").now(),
+                validityPolicy, allocatorClock, JdbcLifecycleTransactionObserver.NOOP, List.of());
+    }
+
+    /** Creates a testable writer with an explicit lifecycle time source and key catalog. */
+    public JdbcCanonicalLifecycleWriter(DataSource dataSource,
+                                        List<DataframeArtifactSchema> schemas,
+                                        List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
+                                        LifecycleTimeSource timeSource,
+                                        RecordValidityPolicy validityPolicy,
+                                        java.time.Clock allocatorClock,
+                                        List<ArtifactIdentityDefinition> identityDefinitions) {
+        this(dataSource, schemas, publicIdDefinitions,
+                (ConnectionTimeSource) ignored -> Objects.requireNonNull(timeSource, "timeSource").now(),
+                validityPolicy, allocatorClock, JdbcLifecycleTransactionObserver.NOOP,
+                identityDefinitions);
     }
 
     /** Creates a writer that advances clock high-water in the canonical transaction. */
@@ -67,7 +81,21 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                         java.time.Clock allocatorClock) {
         this(dataSource, schemas, publicIdDefinitions,
                 (ConnectionTimeSource) Objects.requireNonNull(timeSource, "timeSource")::now,
-                validityPolicy, allocatorClock, JdbcLifecycleTransactionObserver.NOOP);
+                validityPolicy, allocatorClock, JdbcLifecycleTransactionObserver.NOOP, List.of());
+    }
+
+    /** Creates a writer backed by the shared versioned match and mutation kernel. */
+    public JdbcCanonicalLifecycleWriter(DataSource dataSource,
+                                        List<DataframeArtifactSchema> schemas,
+                                        List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
+                                        JdbcLifecycleClock timeSource,
+                                        RecordValidityPolicy validityPolicy,
+                                        java.time.Clock allocatorClock,
+                                        List<ArtifactIdentityDefinition> identityDefinitions) {
+        this(dataSource, schemas, publicIdDefinitions,
+                (ConnectionTimeSource) Objects.requireNonNull(timeSource, "timeSource")::now,
+                validityPolicy, allocatorClock, JdbcLifecycleTransactionObserver.NOOP,
+                identityDefinitions);
     }
 
     JdbcCanonicalLifecycleWriter(DataSource dataSource,
@@ -79,7 +107,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                  JdbcLifecycleTransactionObserver transactionObserver) {
         this(dataSource, schemas, publicIdDefinitions,
                 (ConnectionTimeSource) ignored -> Objects.requireNonNull(timeSource, "timeSource").now(),
-                validityPolicy, allocatorClock, transactionObserver);
+                validityPolicy, allocatorClock, transactionObserver, List.of());
     }
 
     private JdbcCanonicalLifecycleWriter(DataSource dataSource,
@@ -88,7 +116,8 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                          ConnectionTimeSource timeSource,
                                          RecordValidityPolicy validityPolicy,
                                          java.time.Clock allocatorClock,
-                                         JdbcLifecycleTransactionObserver transactionObserver) {
+                                         JdbcLifecycleTransactionObserver transactionObserver,
+                                         List<ArtifactIdentityDefinition> identityDefinitions) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
         this.timeSource = Objects.requireNonNull(timeSource, "timeSource");
@@ -96,7 +125,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
         this.transactionObserver = Objects.requireNonNull(transactionObserver, "transactionObserver");
         Objects.requireNonNull(allocatorClock, "allocatorClock");
         this.lifecycleIdAllocator = new JdbcLifecycleIdAllocator(dataSource, allocatorClock);
-        this.lifecycleArchive = new JdbcLifecycleArchive();
+        this.mutationEngine = new JdbcCanonicalMutationEngine(dataSource, schemas, identityDefinitions);
         this.receiptWriter = new JdbcConfirmationReceiptWriter(this.schemas);
         this.publicIdAllocators = initializePublicIdAllocators(publicIdDefinitions, allocatorClock);
     }
@@ -151,25 +180,23 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
             int publicOffset = 0;
             int lifecycleOffset = 0;
             for (CanonicalRecordConfirmation record : confirmation.records()) {
-                Optional<StoredLifecycle> stored = findStored(connection, schema, record.rowKey().value());
-                if (stored.isEmpty()) {
-                    insertActive(connection, schema, confirmation.sourceKey(), record,
-                            ids.publicId(publicOffset, record), ids.lifecycleIds().idAt(lifecycleOffset),
-                            asOf, validity);
+                var outcome = mutationEngine.confirm(
+                        connection, schema, confirmation.sourceKey(), record,
+                        ids.publicId(publicOffset, record), ids.lifecycleIds().idAt(lifecycleOffset),
+                        asOf, validity);
+                if (outcome.kind() == CanonicalRecordMutationKind.INSERTED) {
                     publicOffset += publicIdIncrement(record);
                     lifecycleOffset++;
                     created++;
-                } else if (stored.orElseThrow().validUntilEpochMs() > epochMillis(asOf)) {
-                    renewActive(connection, schema, confirmation.sourceKey(), stored.orElseThrow(), asOf, validity);
+                } else if (outcome.kind() == CanonicalRecordMutationKind.TTL_CONFIRMED) {
                     renewed++;
-                } else {
-                    lifecycleArchive.archiveAndDelete(connection, schema, stored.orElseThrow().rowId(), asOf);
-                    insertActive(connection, schema, confirmation.sourceKey(), record,
-                            ids.publicId(publicOffset, record), ids.lifecycleIds().idAt(lifecycleOffset),
-                            asOf, validity);
+                } else if (outcome.kind() == CanonicalRecordMutationKind.RESTARTED) {
                     publicOffset += publicIdIncrement(record);
                     lifecycleOffset++;
                     restarted++;
+                } else {
+                    throw new IocExtractorException("Unexpected ordinary-ingest mutation outcome: "
+                            + outcome.kind());
                 }
             }
 
@@ -313,133 +340,6 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
         }
     }
 
-    private Optional<StoredLifecycle> findStored(Connection connection,
-                                                 DataframeArtifactSchema schema,
-                                                 String rowKey) throws SQLException {
-        String sql = "SELECT " + quote("id") + ", " + quote("_lifecycle_id") + ", "
-                + quote("_first_confirmed_at_epoch_ms") + ", "
-                + quote("_last_confirmed_at_epoch_ms") + ", "
-                + quote("_valid_until_epoch_ms") + " FROM " + quote(schema.artifactName())
-                + " WHERE " + quote("row_key") + " = ?";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, rowKey);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (!resultSet.next()) {
-                    return Optional.empty();
-                }
-                long lifecycleId = resultSet.getLong("_lifecycle_id");
-                if (resultSet.wasNull()) {
-                    throw new IocExtractorException(
-                            "Active lifecycle row is missing required metadata: " + schema.artifactName());
-                }
-                long firstConfirmed = resultSet.getLong("_first_confirmed_at_epoch_ms");
-                if (resultSet.wasNull()) {
-                    throw new IocExtractorException(
-                            "Active lifecycle row is missing required metadata: " + schema.artifactName());
-                }
-                long lastConfirmed = resultSet.getLong("_last_confirmed_at_epoch_ms");
-                if (resultSet.wasNull()) {
-                    throw new IocExtractorException(
-                            "Active lifecycle row is missing required metadata: " + schema.artifactName());
-                }
-                long validUntil = resultSet.getLong("_valid_until_epoch_ms");
-                if (resultSet.wasNull()) {
-                    throw new IocExtractorException(
-                            "Active lifecycle row is missing required metadata: " + schema.artifactName());
-                }
-                if (lifecycleId <= 0 || firstConfirmed > lastConfirmed || lastConfirmed >= validUntil) {
-                    throw new IocExtractorException(
-                            "Active lifecycle row has invalid ordered metadata: " + schema.artifactName());
-                }
-                return Optional.of(new StoredLifecycle(
-                        resultSet.getLong("id"), lifecycleId, validUntil));
-            }
-        }
-    }
-
-    private void insertActive(Connection connection,
-                              DataframeArtifactSchema schema,
-                              String sourceKey,
-                              CanonicalRecordConfirmation confirmation,
-                              Long publicId,
-                              com.iocextractor.application.artifact.lifecycle.LifecycleId lifecycleId,
-                              EffectiveTime asOf,
-                              ValidityDecision validity) throws SQLException {
-        ArtifactRow row = confirmation.preparedRow().idColumn().isPresent()
-                ? confirmation.preparedRow().materialize(publicId)
-                : confirmation.preparedRow().template();
-        List<String> columns = new ArrayList<>();
-        List<Object> values = new ArrayList<>();
-        for (DataframeColumn column : schema.columns()) {
-            columns.add(column.name());
-            values.add(row.value(column.name()));
-        }
-        columns.add("row_key");
-        values.add(confirmation.rowKey().value());
-        columns.add("_created_at");
-        values.add(asOf.value().toString());
-        columns.add("_first_source_key");
-        values.add(sourceKey);
-        columns.add("_lifecycle_id");
-        values.add(lifecycleId.value());
-        columns.add("_first_confirmed_at_epoch_ms");
-        values.add(epochMillis(asOf));
-        columns.add("_last_confirmed_at_epoch_ms");
-        values.add(epochMillis(asOf));
-        columns.add("_valid_until_epoch_ms");
-        values.add(validity.deadline().validUntil().toEpochMilli());
-
-        String sql = "INSERT INTO " + quote(schema.artifactName()) + " (" + joinedQuoted(columns)
-                + ") VALUES (" + placeholders(columns.size()) + ")";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            bind(statement, values);
-            statement.executeUpdate();
-        }
-        long rowId = requireRowId(connection, schema.artifactName(), confirmation.rowKey().value());
-        upsertSource(connection, schema.artifactName(), rowId, sourceKey, asOf.value().toString());
-    }
-
-    private void renewActive(Connection connection,
-                             DataframeArtifactSchema schema,
-                             String sourceKey,
-                             StoredLifecycle stored,
-                             EffectiveTime asOf,
-                             ValidityDecision validity) throws SQLException {
-        String sql = "UPDATE " + quote(schema.artifactName()) + " SET "
-                + quote("_last_confirmed_at_epoch_ms") + " = ?, "
-                + quote("_valid_until_epoch_ms") + " = ? WHERE " + quote("id") + " = ? AND "
-                + quote("_valid_until_epoch_ms") + " > ?";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, epochMillis(asOf));
-            statement.setLong(2, validity.deadline().validUntil().toEpochMilli());
-            statement.setLong(3, stored.rowId());
-            statement.setLong(4, epochMillis(asOf));
-            if (statement.executeUpdate() != 1) {
-                throw new IocExtractorException("Active lifecycle changed during confirmation");
-            }
-        }
-        upsertSource(connection, schema.artifactName(), stored.rowId(), sourceKey, asOf.value().toString());
-    }
-
-    private void upsertSource(Connection connection,
-                              String artifact,
-                              long rowId,
-                              String sourceKey,
-                              String observedAt) throws SQLException {
-        String sql = "INSERT INTO " + quote(artifact + "_sources") + " ("
-                + joinedQuoted(List.of("row_id", "source_key", "first_seen_at", "last_seen_at", "occurrences"))
-                + ") VALUES (?, ?, ?, ?, 1) ON CONFLICT(" + quote("row_id") + ", " + quote("source_key")
-                + ") DO UPDATE SET " + quote("last_seen_at") + " = excluded." + quote("last_seen_at")
-                + ", " + quote("occurrences") + " = " + quote("occurrences") + " + 1";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, rowId);
-            statement.setString(2, sourceKey);
-            statement.setString(3, observedAt);
-            statement.setString(4, observedAt);
-            statement.executeUpdate();
-        }
-    }
-
     private void insertCommitMarker(Connection connection,
                                     CanonicalArtifactConfirmation confirmation,
                                     EffectiveTime asOf,
@@ -522,20 +422,6 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
         }
     }
 
-    private long requireRowId(Connection connection, String artifact, String rowKey) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT " + quote("id") + " FROM " + quote(artifact)
-                        + " WHERE " + quote("row_key") + " = ?")) {
-            statement.setString(1, rowKey);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (!resultSet.next()) {
-                    throw new IocExtractorException("Inserted lifecycle row is not readable");
-                }
-                return resultSet.getLong(1);
-            }
-        }
-    }
-
     private Map<String, JdbcArtifactIdAllocator> initializePublicIdAllocators(
             List<ArtifactIdAllocatorDefinition> definitions,
             java.time.Clock allocatorClock) {
@@ -584,29 +470,6 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
     @FunctionalInterface
     private interface ConnectionTimeSource {
         EffectiveTime now(Connection connection) throws SQLException;
-    }
-
-    private String placeholders(int count) {
-        return java.util.stream.IntStream.range(0, count).mapToObj(ignored -> "?")
-                .collect(Collectors.joining(", "));
-    }
-
-    private String joinedQuoted(List<String> identifiers) {
-        return identifiers.stream().map(this::quote).collect(Collectors.joining(", "));
-    }
-
-    private String quote(String identifier) {
-        return "\"" + DataframeColumn.requireSqlIdentifier(identifier, "identifier") + "\"";
-    }
-
-    private void bind(PreparedStatement statement, List<Object> values) throws SQLException {
-        statement.clearParameters();
-        for (int index = 0; index < values.size(); index++) {
-            statement.setObject(index + 1, values.get(index));
-        }
-    }
-
-    private record StoredLifecycle(long rowId, long lifecycleId, long validUntilEpochMs) {
     }
 
     private record ReservedIds(ArtifactIdReservation publicIds, LifecycleIdReservation lifecycleIds) {

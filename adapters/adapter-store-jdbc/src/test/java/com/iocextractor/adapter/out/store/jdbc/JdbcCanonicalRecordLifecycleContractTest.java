@@ -1,6 +1,9 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
+import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
+import com.iocextractor.application.artifact.CanonicalKeyDefinition;
+import com.iocextractor.application.artifact.CanonicalKeyMode;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.LifecycleTimeSource;
 import com.iocextractor.application.artifact.lifecycle.RecordValidityPolicy;
@@ -42,6 +45,14 @@ class JdbcCanonicalRecordLifecycleContractTest extends CanonicalRecordLifecycleC
         List<DataframeArtifactSchema> schemas = List.of(schema);
         new SqliteUserVersionSchemaMigrator(dataSource, DataframeFormatMigrations.sqlite()).migrate();
         new DataframeSchemaReconciler(dataSource).reconcile(schemas);
+        var identityDefinition = new ArtifactIdentityDefinition(
+                ARTIFACT,
+                new CanonicalKeyDefinition("mask-row-v1", CanonicalKeyMode.COMPOSITE, List.of("value")),
+                List.of(new CanonicalKeyDefinition(
+                        "mask-value-v1", CanonicalKeyMode.COMPOSITE, List.of("value"))),
+                1);
+        new JdbcArtifactIdentityStore(dataSource, Clock.fixed(START, ZoneOffset.UTC))
+                .ensure(identityDefinition);
         activate(dataSource, schemas);
 
         Clock allocatorClock = Clock.fixed(START, ZoneOffset.UTC);
@@ -52,7 +63,8 @@ class JdbcCanonicalRecordLifecycleContractTest extends CanonicalRecordLifecycleC
                         ARTIFACT, ArtifactIdStrategy.ASCENDING, 1, 1)),
                 timeSource,
                 policy,
-                allocatorClock);
+                allocatorClock,
+                List.of(identityDefinition));
         return new LifecycleFixture(
                 writer,
                 new JdbcActiveArtifactReader(dataSource, schemas),
