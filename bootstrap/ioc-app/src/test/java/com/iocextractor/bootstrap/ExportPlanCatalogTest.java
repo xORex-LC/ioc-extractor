@@ -219,7 +219,7 @@ class ExportPlanCatalogTest {
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), source.sink(), source.pipeline(), source.ingestion(),
-                source.artifactIdentity(), export, source.sync(), source.maintenance(),
+                source.artifactIdentity(), source.dataframeImport(), export, source.sync(), source.maintenance(),
                 source.lifecycle(), source.observability());
     }
 
@@ -233,7 +233,7 @@ class ExportPlanCatalogTest {
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), sink, source.pipeline(), source.ingestion(),
-                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(),
+                source.artifactIdentity(), source.dataframeImport(), source.export(), source.sync(), source.maintenance(),
                 source.lifecycle(), source.observability());
     }
 
@@ -242,7 +242,7 @@ class ExportPlanCatalogTest {
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), sink, source.pipeline(), source.ingestion(),
-                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(),
+                source.artifactIdentity(), source.dataframeImport(), source.export(), source.sync(), source.maintenance(),
                 source.lifecycle(), source.observability());
     }
 

@@ -1,5 +1,7 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogCompilation;
+import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogCompiler;
 import org.springframework.validation.Errors;
 import org.springframework.validation.Validator;
 
@@ -33,6 +35,18 @@ final class IocConfigPreflight implements Validator {
         validateLifecycle(props.lifecycle(), errors);
         validateArtifactIdentityReferences(props, errors);
         validateSync(props, errors);
+        validateDataframeImport(props, errors);
+    }
+
+    private void validateDataframeImport(IocProperties props, Errors errors) {
+        DataframeImportCatalogCompilation compilation = new DataframeImportCatalogCompiler().compile(
+                DataframeImportPropertyMapper.draft(props.dataframeImport()),
+                DataframeImportPropertyMapper.environment(props));
+        compilation.violations().forEach(violation -> reject(
+                errors,
+                "dataframeImport",
+                null,
+                "ioc.dataframe-import.%s: %s".formatted(violation.path(), violation.message())));
     }
 
     private void validateLifecycle(IocProperties.Lifecycle lifecycle, Errors errors) {
@@ -223,8 +237,49 @@ final class IocConfigPreflight implements Validator {
                 }
             }
             validateIdentityKeyColumns(artifact, i, sinkArtifact, errors);
+            validateIdentityMatchKeys(artifact, i, sinkArtifact, errors);
         }
         return identityNames;
+    }
+
+    private void validateIdentityMatchKeys(IocProperties.ArtifactIdentity.Artifact artifact,
+                                           int identityIndex,
+                                           SinkArtifactRef sinkArtifact,
+                                           Errors errors) {
+        if (artifact.matchKeys() == null) {
+            return;
+        }
+        Set<String> names = new HashSet<>();
+        for (int matchIndex = 0; matchIndex < artifact.matchKeys().size(); matchIndex++) {
+            IocProperties.ArtifactIdentity.Artifact.MatchKey matchKey = artifact.matchKeys().get(matchIndex);
+            String path = "artifactIdentity.artifacts[%d].matchKeys[%d]".formatted(identityIndex, matchIndex);
+            String configKey = "ioc.artifact-identity.artifacts[%d].match-keys[%d]"
+                    .formatted(identityIndex, matchIndex);
+            if (matchKey == null) {
+                reject(errors, path, null, "%s is invalid; configure a match-key object".formatted(configKey));
+                continue;
+            }
+            rejectDuplicate(errors, names, matchKey.name(), path + ".name", configKey + ".name", "match key");
+            if (matchKey.keyColumns() == null || matchKey.keyColumns().isEmpty()) {
+                reject(errors, path + ".keyColumns", matchKey.keyColumns(),
+                        "%s.key-columns must contain at least one artifact column".formatted(configKey));
+                continue;
+            }
+            Set<String> columns = new HashSet<>();
+            for (int columnIndex = 0; columnIndex < matchKey.keyColumns().size(); columnIndex++) {
+                String column = matchKey.keyColumns().get(columnIndex);
+                String field = path + ".keyColumns[%d]".formatted(columnIndex);
+                String columnKey = configKey + ".key-columns[%d]".formatted(columnIndex);
+                if (!hasText(column)) {
+                    reject(errors, field, column, "%s is blank; reference an artifact column".formatted(columnKey));
+                } else if (!columns.add(column)) {
+                    reject(errors, field, column, "%s duplicates a column in the same match key".formatted(columnKey));
+                } else if (sinkArtifact != null && !sinkArtifact.columnNames().contains(column)) {
+                    reject(errors, field, column,
+                            "%s is unknown for the referenced artifact".formatted(columnKey));
+                }
+            }
+        }
     }
 
     private void validateIdentityKeyColumns(IocProperties.ArtifactIdentity.Artifact artifact,

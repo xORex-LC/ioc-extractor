@@ -183,10 +183,90 @@ ioc:
   artifact-identity:
     artifacts:
       # epoch: 2              # optional controlled identity migration
-      - { name: masks, key-columns: [ mask ] }
-      - { name: ip_list, key-columns: [ ip ] }
-      - { name: address_blacklist, key-columns: [ forbidden_url, forbidden_ip ], key-mode: first-non-empty }
-      - { name: hashes, key-columns: [ hash_md5, hash_sha1, hash_sha256 ], key-mode: first-non-empty }
+      - name: masks
+        key-columns: [ mask ]
+        record-key: mask-row-v1
+        match-keys: [ { name: mask-v1, key-columns: [ mask ] } ]
+      - name: ip_list
+        key-columns: [ ip ]
+        record-key: ip-row-v1
+        match-keys: [ { name: ip-v1, key-columns: [ ip ] } ]
+      - name: address_blacklist
+        key-columns: [ forbidden_url, forbidden_ip ]
+        key-mode: first-non-empty
+        record-key: address-first-non-empty-row-v1
+        match-keys:
+          - { name: forbidden-url-v1, key-columns: [ forbidden_url ] }
+          - { name: forbidden-ip-v1, key-columns: [ forbidden_ip ] }
+      - name: hashes
+        key-columns: [ hash_md5, hash_sha1, hash_sha256 ]
+        key-mode: first-non-empty
+        record-key: hash-first-non-empty-row-v1
+        match-keys:
+          - { name: hash-md5-v1, key-columns: [ hash_md5 ] }
+          - { name: hash-sha1-v1, key-columns: [ hash_sha1 ] }
+          - { name: hash-sha256-v1, key-columns: [ hash_sha256 ] }
+
+  # ---- Managed dataframe import --------------------------------------------
+  # Disabled baseline. Enabling requires explicit source, authority and
+  # versioned contract definitions; P0 does not activate an intake worker.
+  dataframe-import:
+    enabled: false
+    sources: []
+    authority-profiles: []
+    contracts: []
+    # Complete schema illustration for a future enabled runtime. Keep these
+    # entries commented while P0 supplies only catalog compilation.
+    # sources:
+    #   - id: trusted-local
+    #     transport: local
+    #     location: ./var/import/inbox
+    #     endpoint:
+    #     contracts: [ ip-list-v1 ]
+    #     authority: standard-feed
+    # authority-profiles:
+    #   - id: standard-feed
+    #     artifacts: [ ip_list ]
+    #     maximum-merge-policy: fill-missing
+    #     allow-related-routing: false
+    #     allow-machine-only-formula-preserve: false
+    # contracts:
+    #   - id: ip-list-v1
+    #     version: 1
+    #     charset: UTF-8
+    #     dialect:
+    #       delimiter: ";"
+    #       quote: '"'
+    #       record-separator: crlf-or-lf
+    #       header-required: true
+    #       null-literals: [ NULL ]
+    #     recognition:
+    #       required-columns: [ ip ]
+    #       optional-columns: [ score ]
+    #       ignored-columns: []
+    #       aliases: {}
+    #     mode: as-is
+    #     routing: target-only
+    #     row-failure-policy: accept-valid
+    #     duplicate-policy: coalesce
+    #     renew-unchanged: true
+    #     formula-policy: reject
+    #     merge-default: fill-missing
+    #     artifacts:
+    #       - name: ip_list
+    #         role: primary
+    #         record-key: ip-row-v1
+    #         match-keys: [ ip-v1 ]
+    #         merge-default:
+    #         columns:
+    #           - target: ip
+    #             source: ip
+    #             transforms: []
+    #             merge-policy:
+    #     requested-slot:
+    #       source-column: id
+    #       profile: reputation-lists
+    #       existing-record-policy: preserve-existing
 
   # ---- Immutable export -----------------------------------------------------
   export:

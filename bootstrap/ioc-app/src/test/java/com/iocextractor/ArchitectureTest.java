@@ -49,6 +49,19 @@ class ArchitectureTest {
                     "org.slf4j..", "ch.qos.logback..");
 
     @ArchTest
+    static final ArchRule dataframe_import_core_is_framework_and_integration_free = noClasses()
+            .that().resideInAnyPackage(
+                    "..application.dataframeimport..",
+                    "..application.port.in.dataframeimport..",
+                    "..application.port.out.dataframeimport..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                    "..adapter..", "..bootstrap..", "..application.pipeline.stage..",
+                    "org.springframework..", "org.apache.commons.csv..",
+                    "java.sql..", "javax.sql..", "org.sqlite..",
+                    "com.hierynomus..")
+            .allowEmptyShould(true);
+
+    @ArchTest
     static final ArchRule diagnostics_core_is_framework_and_adapter_free = noClasses()
             .that().resideInAPackage("com.iocextractor.diagnostics..")
             .should().dependOnClassesThat().resideInAnyPackage(

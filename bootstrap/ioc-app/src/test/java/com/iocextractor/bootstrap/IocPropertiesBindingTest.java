@@ -1,5 +1,7 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalog;
+import com.iocextractor.application.dataframeimport.model.ImportProcessingMode;
 import com.iocextractor.domain.model.IndicatorType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -55,7 +57,57 @@ class IocPropertiesBindingTest {
             assertThat(lifecycle.reconcile().batchSize()).isEqualTo(1_000);
             assertThat(lifecycle.clock().maxBackwardSkew()).isEqualTo(Duration.ofSeconds(2));
             assertThat(lifecycle.clock().maxClampDuration()).isEqualTo(Duration.ofSeconds(30));
+            assertThat(context.getBean(IocProperties.class).dataframeImport().enabled()).isFalse();
+            assertThat(context).doesNotHaveBean(DataframeImportCatalog.class);
         });
+    }
+
+    @Test
+    void bindsAndCompilesAnEnabledDataframeImportCatalog() {
+        contextRunner(validDataframeImport())
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    IocProperties.DataframeImport properties = context.getBean(IocProperties.class).dataframeImport();
+                    assertThat(properties.contracts()).singleElement()
+                            .satisfies(contract -> assertThat(contract.mode()).isEqualTo(ImportProcessingMode.AS_IS));
+                    IocProperties.DataframeImport.Contract contract = properties.contracts().getFirst();
+                    IocProperties.DataframeImport.Artifact artifact = contract.artifacts().getFirst();
+                    assertUnmodifiable(properties.sources());
+                    assertUnmodifiable(properties.sources().getFirst().contracts());
+                    assertUnmodifiable(properties.authorityProfiles());
+                    assertUnmodifiable(properties.authorityProfiles().getFirst().artifacts());
+                    assertUnmodifiable(properties.contracts());
+                    assertUnmodifiable(contract.dialect().nullLiterals());
+                    assertUnmodifiable(contract.recognition().requiredColumns());
+                    assertUnmodifiable(contract.recognition().optionalColumns());
+                    assertUnmodifiable(contract.recognition().ignoredColumns());
+                    assertUnmodifiable(contract.recognition().aliases());
+                    assertUnmodifiable(contract.artifacts());
+                    assertUnmodifiable(artifact.matchKeys());
+                    assertUnmodifiable(artifact.columns());
+                    assertUnmodifiable(artifact.columns().getFirst().transforms());
+                    assertThat(context).hasSingleBean(DataframeImportCatalog.class);
+                    assertThat(context.getBean(DataframeImportCatalog.class).fingerprint().value())
+                            .matches("[0-9a-f]{64}");
+                });
+    }
+
+    @Test
+    void reportsAllMissingEnabledDataframeImportSectionsTogether() {
+        contextRunner("ioc.dataframe-import.enabled=true")
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .filteredOn(error -> "dataframeImport".equals(error.getField()))
+                        .extracting(FieldError::getDefaultMessage)
+                        .anySatisfy(message -> assertThat(message).contains("sources"))
+                        .anySatisfy(message -> assertThat(message).contains("authority-profiles"))
+                        .anySatisfy(message -> assertThat(message).contains("contracts")));
+    }
+
+    @Test
+    void rejectsUnknownDataframeImportContractKey() {
+        contextRunner("ioc.dataframe-import.contracts[0].merge-mode=replace")
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
+                        .containsExactly("ioc.dataframe-import.contracts[0].merge-mode"));
     }
 
     @Test
@@ -145,7 +197,7 @@ class IocPropertiesBindingTest {
             IocProperties snapshot = new IocProperties(
                     source.engine(), source.runtime(), source.storage(), source.source(), source.refang(), patterns,
                     source.classify(), source.sink(), source.pipeline(), source.ingestion(),
-                    source.artifactIdentity(), source.export(), source.sync(), source.maintenance(),
+                    source.artifactIdentity(), source.dataframeImport(), source.export(), source.sync(), source.maintenance(),
                     source.lifecycle(), source.observability());
 
             patterns.clear();
@@ -856,6 +908,41 @@ class IocPropertiesBindingTest {
                 identity(0, "custom_list", "value"));
     }
 
+    private static String[] validDataframeImport() {
+        return new String[] {
+                "ioc.dataframe-import.enabled=true",
+                "ioc.dataframe-import.sources[0].id=local",
+                "ioc.dataframe-import.sources[0].transport=local",
+                "ioc.dataframe-import.sources[0].location=./var/import",
+                "ioc.dataframe-import.sources[0].contracts[0]=ip-list-v1",
+                "ioc.dataframe-import.sources[0].authority=standard",
+                "ioc.dataframe-import.authority-profiles[0].id=standard",
+                "ioc.dataframe-import.authority-profiles[0].artifacts[0]=ip_list",
+                "ioc.dataframe-import.authority-profiles[0].maximum-merge-policy=fill-missing",
+                "ioc.dataframe-import.contracts[0].id=ip-list-v1",
+                "ioc.dataframe-import.contracts[0].version=1",
+                "ioc.dataframe-import.contracts[0].charset=UTF-8",
+                "ioc.dataframe-import.contracts[0].dialect.delimiter=;",
+                "ioc.dataframe-import.contracts[0].dialect.quote=\"",
+                "ioc.dataframe-import.contracts[0].dialect.record-separator=crlf-or-lf",
+                "ioc.dataframe-import.contracts[0].dialect.header-required=true",
+                "ioc.dataframe-import.contracts[0].mode=as-is",
+                "ioc.dataframe-import.contracts[0].routing=target-only",
+                "ioc.dataframe-import.contracts[0].row-failure-policy=accept-valid",
+                "ioc.dataframe-import.contracts[0].duplicate-policy=coalesce",
+                "ioc.dataframe-import.contracts[0].renew-unchanged=true",
+                "ioc.dataframe-import.contracts[0].formula-policy=reject",
+                "ioc.dataframe-import.contracts[0].merge-default=fill-missing",
+                "ioc.dataframe-import.contracts[0].recognition.required-columns[0]=ip",
+                "ioc.dataframe-import.contracts[0].artifacts[0].name=ip_list",
+                "ioc.dataframe-import.contracts[0].artifacts[0].role=primary",
+                "ioc.dataframe-import.contracts[0].artifacts[0].record-key=ip-row-v1",
+                "ioc.dataframe-import.contracts[0].artifacts[0].match-keys[0]=ip-v1",
+                "ioc.dataframe-import.contracts[0].artifacts[0].columns[0].target=ip",
+                "ioc.dataframe-import.contracts[0].artifacts[0].columns[0].source=ip"
+        };
+    }
+
     private static String[] concat(String[]... groups) {
         List<String> values = new ArrayList<>();
         for (String[] group : groups) {
@@ -866,7 +953,7 @@ class IocPropertiesBindingTest {
 
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties(IocProperties.class)
-    @Import(ConfigPreflightConfiguration.class)
+    @Import({ ConfigPreflightConfiguration.class, DataframeImportConfiguration.class })
     static class TestConfig {
     }
 

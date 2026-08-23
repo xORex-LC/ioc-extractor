@@ -230,14 +230,39 @@ ioc:
     artifacts:
       - name: masks
         key-columns: [ mask ]
+        record-key: mask-row-v1
+        match-keys:
+          - { name: mask-v1, key-columns: [ mask ] }
       - name: ip_list
         key-columns: [ ip ]
+        record-key: ip-row-v1
+        match-keys:
+          - { name: ip-v1, key-columns: [ ip ] }
       - name: address_blacklist
         key-columns: [ forbidden_url, forbidden_ip ]
         key-mode: first-non-empty
+        record-key: address-first-non-empty-row-v1
+        match-keys:
+          - { name: forbidden-url-v1, key-columns: [ forbidden_url ] }
+          - { name: forbidden-ip-v1, key-columns: [ forbidden_ip ] }
       - name: hashes
         key-columns: [ hash_md5, hash_sha1, hash_sha256 ]
         key-mode: first-non-empty
+        record-key: hash-first-non-empty-row-v1
+        match-keys:
+          - { name: hash-md5-v1, key-columns: [ hash_md5 ] }
+          - { name: hash-sha1-v1, key-columns: [ hash_sha1 ] }
+          - { name: hash-sha256-v1, key-columns: [ hash_sha256 ] }
+
+  # ---- Managed dataframe import --------------------------------------------
+  # P0 reserves and validates the strict contract namespace. No intake or
+  # adapter is activated while disabled; enabling requires complete source,
+  # authority and contract definitions.
+  dataframe-import:
+    enabled: false
+    sources: []
+    authority-profiles: []
+    contracts: []
 
   # ---- Immutable artifact emission ------------------------------------------
   # Profiles are indivisible ordered sets. C8 exposes manual `ioc export`; the

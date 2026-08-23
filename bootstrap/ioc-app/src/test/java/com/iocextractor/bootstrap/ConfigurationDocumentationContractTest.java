@@ -1,5 +1,16 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
+import com.iocextractor.application.dataframeimport.model.ImportDuplicatePolicy;
+import com.iocextractor.application.dataframeimport.model.ImportExistingSlotPolicy;
+import com.iocextractor.application.dataframeimport.model.ImportFormulaPolicy;
+import com.iocextractor.application.dataframeimport.model.ImportMergePolicy;
+import com.iocextractor.application.dataframeimport.model.ImportPolicyToken;
+import com.iocextractor.application.dataframeimport.model.ImportProcessingMode;
+import com.iocextractor.application.dataframeimport.model.ImportRecordSeparator;
+import com.iocextractor.application.dataframeimport.model.ImportRoutingPolicy;
+import com.iocextractor.application.dataframeimport.model.ImportRowFailurePolicy;
+import com.iocextractor.application.dataframeimport.model.ImportSourceTransport;
 import com.iocextractor.adapter.out.store.jdbc.SqliteTuningPreset;
 import com.iocextractor.domain.classify.FeaturePredicates;
 import com.iocextractor.domain.model.IndicatorType;
@@ -119,6 +130,26 @@ class ConfigurationDocumentationContractTest {
         assertHint(metadata, "ioc.lifecycle.validity.mode", selectorTokens(LifecycleValidityMode.values()));
         assertHint(metadata, "ioc.lifecycle.validity.existing-records",
                 selectorTokens(ExistingRecordsPolicy.values()));
+        assertHint(metadata, "ioc.dataframe-import.sources[].transport",
+                importTokens(ImportSourceTransport.values()));
+        assertHint(metadata, "ioc.dataframe-import.authority-profiles[].maximum-merge-policy",
+                importTokens(ImportMergePolicy.values()));
+        assertHint(metadata, "ioc.dataframe-import.contracts[].mode",
+                importTokens(ImportProcessingMode.values()));
+        assertHint(metadata, "ioc.dataframe-import.contracts[].routing",
+                importTokens(ImportRoutingPolicy.values()));
+        assertHint(metadata, "ioc.dataframe-import.contracts[].row-failure-policy",
+                importTokens(ImportRowFailurePolicy.values()));
+        assertHint(metadata, "ioc.dataframe-import.contracts[].duplicate-policy",
+                importTokens(ImportDuplicatePolicy.values()));
+        assertHint(metadata, "ioc.dataframe-import.contracts[].formula-policy",
+                importTokens(ImportFormulaPolicy.values()));
+        assertHint(metadata, "ioc.dataframe-import.contracts[].dialect.record-separator",
+                importTokens(ImportRecordSeparator.values()));
+        assertHint(metadata, "ioc.dataframe-import.contracts[].artifacts[].role",
+                importTokens(ImportArtifactRole.values()));
+        assertHint(metadata, "ioc.dataframe-import.contracts[].requested-slot.existing-record-policy",
+                importTokens(ImportExistingSlotPolicy.values()));
         assertHint(metadata, "ioc.source.charset", Set.of("auto"));
         assertThat(hintBlock(metadata, "ioc.source.charset"))
                 .contains("handle-as", "java.nio.charset.Charset");
@@ -140,6 +171,16 @@ class ConfigurationDocumentationContractTest {
         addSelectorTokens(values, ExportOutputMode.values());
         addSelectorTokens(values, SyncTransport.values());
         addSelectorTokens(values, RetentionActionType.values());
+        addImportTokens(values, ImportSourceTransport.values());
+        addImportTokens(values, ImportMergePolicy.values());
+        addImportTokens(values, ImportProcessingMode.values());
+        addImportTokens(values, ImportRoutingPolicy.values());
+        addImportTokens(values, ImportRowFailurePolicy.values());
+        addImportTokens(values, ImportDuplicatePolicy.values());
+        addImportTokens(values, ImportFormulaPolicy.values());
+        addImportTokens(values, ImportRecordSeparator.values());
+        addImportTokens(values, ImportArtifactRole.values());
+        addImportTokens(values, ImportExistingSlotPolicy.values());
 
         String english = read(reactorRoot().resolve("docs/guides/configuration.md"));
         String russian = read(reactorRoot().resolve("docs/guides/ru/configuration.md"));
@@ -226,6 +267,16 @@ class ConfigurationDocumentationContractTest {
 
     private static void addSelectorTokens(Set<String> target, ConfigSelector[] selectors) {
         target.addAll(selectorTokens(selectors));
+    }
+
+    private static Set<String> importTokens(ImportPolicyToken[] selectors) {
+        Set<String> result = new LinkedHashSet<>();
+        Arrays.stream(selectors).map(ImportPolicyToken::token).forEach(result::add);
+        return result;
+    }
+
+    private static void addImportTokens(Set<String> target, ImportPolicyToken[] selectors) {
+        target.addAll(importTokens(selectors));
     }
 
     private static void assertHint(String metadata, String name, Collection<String> expectedValues) {

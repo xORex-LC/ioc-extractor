@@ -1,5 +1,15 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
+import com.iocextractor.application.dataframeimport.model.ImportDuplicatePolicy;
+import com.iocextractor.application.dataframeimport.model.ImportExistingSlotPolicy;
+import com.iocextractor.application.dataframeimport.model.ImportFormulaPolicy;
+import com.iocextractor.application.dataframeimport.model.ImportMergePolicy;
+import com.iocextractor.application.dataframeimport.model.ImportProcessingMode;
+import com.iocextractor.application.dataframeimport.model.ImportRecordSeparator;
+import com.iocextractor.application.dataframeimport.model.ImportRoutingPolicy;
+import com.iocextractor.application.dataframeimport.model.ImportRowFailurePolicy;
+import com.iocextractor.application.dataframeimport.model.ImportSourceTransport;
 import com.iocextractor.domain.model.IndicatorType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -39,6 +49,7 @@ public record IocProperties(
         @NotNull @Valid Pipeline pipeline,
         @NotNull @Valid Ingestion ingestion,
         @NotNull @Valid ArtifactIdentity artifactIdentity,
+        @NotNull @Valid DataframeImport dataframeImport,
         @NotNull @Valid Export export,
         @NotNull @Valid Sync sync,
         @Valid Maintenance maintenance,
@@ -50,6 +61,7 @@ public record IocProperties(
         patterns = snapshotMap(patterns);
         pipeline = pipeline == null ? new Pipeline(true, PipelineFailurePolicy.FAIL_FAST, 10_000) : pipeline;
         lifecycle = lifecycle == null ? Lifecycle.defaults() : lifecycle;
+        dataframeImport = dataframeImport == null ? DataframeImport.disabled() : dataframeImport;
     }
 
     private static <T> List<T> snapshotList(List<T> source) {
@@ -58,6 +70,14 @@ public record IocProperties(
 
     private static <K, V> Map<K, V> snapshotMap(Map<K, V> source) {
         return source == null ? null : Collections.unmodifiableMap(new LinkedHashMap<>(source));
+    }
+
+    private static <T> List<T> readOnly(List<T> source) {
+        return source == null ? null : Collections.unmodifiableList(source);
+    }
+
+    private static <K, V> Map<K, V> readOnly(Map<K, V> source) {
+        return source == null ? null : Collections.unmodifiableMap(source);
     }
 
     public record Runtime(@NotNull RuntimeMode mode) {
@@ -188,11 +208,239 @@ public record IocProperties(
                 @NotBlank String name,
                 @NotEmpty List<String> keyColumns,
                 ArtifactKeyMode keyMode,
-                @Positive Integer epoch) {
+                @Positive Integer epoch,
+                String recordKey,
+                @Valid List<MatchKey> matchKeys) {
 
             public Artifact {
                 keyColumns = snapshotList(keyColumns);
+                matchKeys = snapshotList(matchKeys);
             }
+
+            /** Returns the immutable match-key snapshot. */
+            @Override
+            public List<MatchKey> matchKeys() {
+                return readOnly(matchKeys);
+            }
+
+            /** Named active-record matching alternative used independently from row identity. */
+            public record MatchKey(@NotBlank String name, @NotEmpty List<String> keyColumns) {
+
+                public MatchKey {
+                    keyColumns = snapshotList(keyColumns);
+                }
+
+                /** Returns the immutable key-column snapshot. */
+                @Override
+                public List<String> keyColumns() {
+                    return readOnly(keyColumns);
+                }
+            }
+        }
+    }
+
+    /** Declarative managed dataframe-import catalog. Runtime intake is disabled by default. */
+    public record DataframeImport(
+            boolean enabled,
+            @NotNull @Valid List<SourceDefinition> sources,
+            @NotNull @Valid List<AuthorityProfile> authorityProfiles,
+            @NotNull @Valid List<Contract> contracts) {
+
+        public DataframeImport {
+            sources = snapshotList(sources);
+            authorityProfiles = snapshotList(authorityProfiles);
+            contracts = snapshotList(contracts);
+        }
+
+        /** Returns the immutable source snapshot. */
+        @Override
+        public List<SourceDefinition> sources() {
+            return readOnly(sources);
+        }
+
+        /** Returns the immutable authority-profile snapshot. */
+        @Override
+        public List<AuthorityProfile> authorityProfiles() {
+            return readOnly(authorityProfiles);
+        }
+
+        /** Returns the immutable contract snapshot. */
+        @Override
+        public List<Contract> contracts() {
+            return readOnly(contracts);
+        }
+
+        private static DataframeImport disabled() {
+            return new DataframeImport(false, List.of(), List.of(), List.of());
+        }
+
+        /** One local or SMB import source and its contract/authority allowlist. */
+        public record SourceDefinition(String id,
+                                       ImportSourceTransport transport,
+                                       String location,
+                                       String endpoint,
+                                       List<String> contracts,
+                                       String authority) {
+
+            public SourceDefinition {
+                contracts = snapshotList(contracts);
+            }
+
+            /** Returns the immutable contract allowlist. */
+            @Override
+            public List<String> contracts() {
+                return readOnly(contracts);
+            }
+        }
+
+        /** Maximum mutation authority granted to one source trust boundary. */
+        public record AuthorityProfile(String id,
+                                       List<String> artifacts,
+                                       ImportMergePolicy maximumMergePolicy,
+                                       boolean allowRelatedRouting,
+                                       boolean allowMachineOnlyFormulaPreserve) {
+
+            public AuthorityProfile {
+                artifacts = snapshotList(artifacts);
+            }
+
+            /** Returns the immutable artifact allowlist. */
+            @Override
+            public List<String> artifacts() {
+                return readOnly(artifacts);
+            }
+        }
+
+        /** Versioned structural recognition, mapping and policy contract. */
+        public record Contract(String id,
+                               int version,
+                               String charset,
+                               @Valid Dialect dialect,
+                               @Valid Recognition recognition,
+                               ImportProcessingMode mode,
+                               ImportRoutingPolicy routing,
+                               ImportRowFailurePolicy rowFailurePolicy,
+                               ImportDuplicatePolicy duplicatePolicy,
+                               boolean renewUnchanged,
+                               ImportFormulaPolicy formulaPolicy,
+                               ImportMergePolicy mergeDefault,
+                               @Valid List<Artifact> artifacts,
+                               @Valid RequestedSlot requestedSlot) {
+
+            public Contract {
+                artifacts = snapshotList(artifacts);
+            }
+
+            /** Returns the immutable artifact-mapping snapshot. */
+            @Override
+            public List<Artifact> artifacts() {
+                return readOnly(artifacts);
+            }
+        }
+
+        /** Strict library-neutral CSV dialect. */
+        public record Dialect(String delimiter,
+                              String quote,
+                              ImportRecordSeparator recordSeparator,
+                              boolean headerRequired,
+                              List<String> nullLiterals) {
+
+            public Dialect {
+                nullLiterals = nullLiterals == null ? List.of() : snapshotList(nullLiterals);
+            }
+
+            /** Returns the immutable null-literal snapshot. */
+            @Override
+            public List<String> nullLiterals() {
+                return readOnly(nullLiterals);
+            }
+        }
+
+        /** Exact structural recognition signature independent of file name and column order. */
+        public record Recognition(List<String> requiredColumns,
+                                  List<String> optionalColumns,
+                                  List<String> ignoredColumns,
+                                  Map<String, String> aliases) {
+
+            public Recognition {
+                requiredColumns = snapshotList(requiredColumns);
+                optionalColumns = optionalColumns == null ? List.of() : snapshotList(optionalColumns);
+                ignoredColumns = ignoredColumns == null ? List.of() : snapshotList(ignoredColumns);
+                aliases = aliases == null ? Map.of() : snapshotMap(aliases);
+            }
+
+            /** Returns the immutable required-column snapshot. */
+            @Override
+            public List<String> requiredColumns() {
+                return readOnly(requiredColumns);
+            }
+
+            /** Returns the immutable optional-column snapshot. */
+            @Override
+            public List<String> optionalColumns() {
+                return readOnly(optionalColumns);
+            }
+
+            /** Returns the immutable ignored-column snapshot. */
+            @Override
+            public List<String> ignoredColumns() {
+                return readOnly(ignoredColumns);
+            }
+
+            /** Returns the immutable alias snapshot. */
+            @Override
+            public Map<String, String> aliases() {
+                return readOnly(aliases);
+            }
+        }
+
+        /** Primary or related artifact mapping. */
+        public record Artifact(String name,
+                               ImportArtifactRole role,
+                               String recordKey,
+                               List<String> matchKeys,
+                               ImportMergePolicy mergeDefault,
+                               @Valid List<Column> columns) {
+
+            public Artifact {
+                matchKeys = snapshotList(matchKeys);
+                columns = snapshotList(columns);
+            }
+
+            /** Returns the immutable match-key snapshot. */
+            @Override
+            public List<String> matchKeys() {
+                return readOnly(matchKeys);
+            }
+
+            /** Returns the immutable column-mapping snapshot. */
+            @Override
+            public List<Column> columns() {
+                return readOnly(columns);
+            }
+        }
+
+        /** One target-column mapping and ordered transform chain. */
+        public record Column(String target,
+                             String source,
+                             List<String> transforms,
+                             ImportMergePolicy mergePolicy) {
+
+            public Column {
+                transforms = transforms == null ? List.of() : snapshotList(transforms);
+            }
+
+            /** Returns the immutable ordered transform snapshot. */
+            @Override
+            public List<String> transforms() {
+                return readOnly(transforms);
+            }
+        }
+
+        /** Optional requested external export-slot mapping. */
+        public record RequestedSlot(String sourceColumn,
+                                    String profile,
+                                    ImportExistingSlotPolicy existingRecordPolicy) {
         }
     }
 

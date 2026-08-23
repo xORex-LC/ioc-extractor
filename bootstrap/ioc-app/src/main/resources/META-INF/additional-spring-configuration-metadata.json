@@ -97,6 +97,50 @@
         { "value": "reject", "description": "Refuse activation while legacy canonical rows exist." },
         { "value": "expire", "description": "Archive and remove all legacy canonical rows during activation." }
       ]
+    },
+    {
+      "name": "ioc.dataframe-import.sources[].transport",
+      "values": [ { "value": "local" }, { "value": "smb" } ]
+    },
+    {
+      "name": "ioc.dataframe-import.authority-profiles[].maximum-merge-policy",
+      "values": [
+        { "value": "keep-existing" }, { "value": "fill-missing" },
+        { "value": "replace-non-null" }, { "value": "authoritative" },
+        { "value": "reject-conflict" }
+      ]
+    },
+    {
+      "name": "ioc.dataframe-import.contracts[].mode",
+      "values": [ { "value": "as-is" }, { "value": "processed" } ]
+    },
+    {
+      "name": "ioc.dataframe-import.contracts[].routing",
+      "values": [ { "value": "target-only" }, { "value": "related-artifacts" } ]
+    },
+    {
+      "name": "ioc.dataframe-import.contracts[].row-failure-policy",
+      "values": [ { "value": "accept-valid" }, { "value": "reject-delivery" } ]
+    },
+    {
+      "name": "ioc.dataframe-import.contracts[].duplicate-policy",
+      "values": [ { "value": "coalesce" }, { "value": "keep-first" } ]
+    },
+    {
+      "name": "ioc.dataframe-import.contracts[].formula-policy",
+      "values": [ { "value": "reject" }, { "value": "machine-only-preserve" } ]
+    },
+    {
+      "name": "ioc.dataframe-import.contracts[].dialect.record-separator",
+      "values": [ { "value": "crlf-or-lf" }, { "value": "lf" }, { "value": "crlf" } ]
+    },
+    {
+      "name": "ioc.dataframe-import.contracts[].artifacts[].role",
+      "values": [ { "value": "primary" }, { "value": "related" } ]
+    },
+    {
+      "name": "ioc.dataframe-import.contracts[].requested-slot.existing-record-policy",
+      "values": [ { "value": "preserve-existing" }, { "value": "reject-mismatch" } ]
     }
   ]
 }

@@ -83,7 +83,7 @@ class SyncPropertiesTest {
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), source.sink(), source.pipeline(), source.ingestion(),
-                source.artifactIdentity(), source.export(), sync, source.maintenance(),
+                source.artifactIdentity(), source.dataframeImport(), source.export(), sync, source.maintenance(),
                 source.lifecycle(), source.observability());
     }
 }
