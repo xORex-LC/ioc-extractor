@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — implementation plan"
 version: "0.3.0"
-status: "Approved; P0-P2 implemented"
+status: "Approved; P0-P3 implemented, P4 authorized"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "en"
@@ -111,6 +111,10 @@ Gate:
 - collision fixture fails before mutation and prevents readiness.
 
 ### P3 — sparse preferred export slots
+
+Status: **implemented and committed with focused compatibility verification**.
+See [p3-evidence.md](p3-evidence.md). The final committed-HEAD reactor gate is
+scheduled after P4 so it covers the complete authorized implementation span.
 
 Deliver:
 

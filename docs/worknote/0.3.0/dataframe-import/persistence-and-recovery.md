@@ -273,7 +273,7 @@ later delivery receives another ID and may renew TTL.
 
 ### 5.3 Slot free ranges
 
-Replace enumerated `export_slot_free` rows with:
+Dataframe schema v8 replaces enumerated `export_slot_free` rows with:
 
 ```sql
 export_slot_free_range(
@@ -286,7 +286,7 @@ export_slot_free_range(
 )
 ```
 
-The migration coalesces existing adjacent free rows into ranges without
+The implemented migration coalesces existing adjacent free rows into ranges without
 changing assignments or `next_slot`. Operations split/merge ranges in the same
 transaction. A request for slot `1_000_000_000` creates at most one preceding
 range, not one billion rows.

@@ -41,11 +41,14 @@ Config-driven reconciliation добавляет к каждой active table nul
 aggregate invariant scan. P2 не подключает эти классы в bootstrap и не меняет
 старый canonical repository path.
 
-Dataframe migration v5 создаёт `export_slot_assignment`, `export_slot_free` и
-`export_slot_state` в той же DB. Assignment PK/unique index защищают обе стороны
-mapping, free-table PK обслуживает smallest-hole order, а state хранит policy
-version, `next_slot` и canonical generation. Registry включается только для
-`ACTIVE` artifacts с внешней колонкой `id`.
+Dataframe migration v5 создаёт `export_slot_assignment`, legacy
+`export_slot_free` и `export_slot_state` в той же DB. Migration v8 coalesce-ит
+per-hole rows в `export_slot_free_range`, сохраняя assignments и state.
+Assignment PK/unique index защищают обе стороны mapping; range PK и end-index
+обслуживают smallest-hole, exact preferred и bounded sparse lookup. Registry
+split/merge-ит ranges и разрешает occupied request/survivor mismatch внутри
+caller-owned canonical transaction. Он включается только для `ACTIVE` artifacts
+с внешней колонкой `id`.
 
 `JdbcExportRunLedger` опирается на partial unique-index активных
 `STARTED|STAGED|AVAILABLE` rows: single-flight остаётся общим для

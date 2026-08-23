@@ -51,10 +51,13 @@ runtime JDBC drivers.
   observation markers and mutable-projection generations. Existing databases
   remain `DISABLED_COMPATIBLE` until explicit fixed-validity activation.
 - Dataframe format v5 adds the export-owned reusable-slot registry beside
-  canonical truth. `JdbcExportSlotRegistry` seeds the current active mapping,
-  preserves survivors, releases vanished lifecycles and assigns smallest holes
-  set-wise before using its durable high-water. The composite primary/unique
-  keys enforce both directions of ownership without a redundant free-slot index.
+  canonical truth. Format v8 replaces the legacy row-per-hole free table with
+  coalesced ranges while preserving assignments and state. The connection-scoped
+  `JdbcExportSlotRegistry` seeds the current active mapping, preserves survivors,
+  releases vanished lifecycles, splits/merges ranges and resolves exact preferred
+  slots or occupied fallback before using its durable high-water. Duplicate
+  request groups and strict survivor mismatches fail before registry mutation;
+  the caller owns the surrounding canonical transaction.
 - Dataframe format v7 adds immutable named match-definition metadata and
   collision-safe active-lifecycle aliases. `JdbcArtifactIdentityStore` stages
   all pending record keys and aliases before one transaction changes durable

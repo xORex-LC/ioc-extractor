@@ -191,16 +191,23 @@ mutation отдельно сообщает update, clear, no-op или TTL confi
 record key, включая очистку всех его значений, не допускается in-place и должно
 создать новую canonical record.
 
-### Export-slot storage path (dataframe v5)
+### Export-slot storage path (dataframe v5 and v8)
 
-V5 additively создаёт в dataframe DB три export-owned структуры:
+V5 additively создал в dataframe DB три export-owned структуры:
 
 - `export_slot_assignment` с unique ownership как lifecycle→slot, так и
   slot→lifecycle внутри `(profile, artifact)`;
-- `export_slot_free`, чей primary key одновременно является ordered index для
-  smallest-free lookup;
+- legacy `export_slot_free`, чей primary key одновременно являлся ordered index
+  для smallest-free lookup;
 - `export_slot_state` с policy version, durable `next_slot`, canonical
   `source_generation` и временем последнего reconciliation.
+
+V8 атомарно преобразует legacy per-hole rows в coalesced
+`export_slot_free_range(profile, artifact, range_start, range_end)`, не меняя
+assignments и `export_slot_state`. Split/merge ranges, exact preferred request,
+occupied fallback и survivor mismatch policy выполняются connection-scoped в
+той же owning canonical transaction. Стоимость sparse request зависит от числа
+затронутых ranges, а не от числовой величины slot.
 
 Registry не хранится в service DB: reconciliation active membership и slot
 state выполняется одной SQLite write transaction. После неё read snapshot

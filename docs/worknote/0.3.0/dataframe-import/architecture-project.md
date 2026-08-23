@@ -493,7 +493,7 @@ Architecture approval explicitly accepts these non-trivial changes:
 4. replace per-slot free rows with coalesced free ranges;
 5. migrate mutable projection to bounded cursor streaming;
 6. introduce strict local/SMB ownership lifecycle and a shared startup barrier;
-7. add service schema v9 and dataframe schema v7 under the ownership described
+7. add service schema v9 and dataframe schemas v7-v8 under the ownership described
    in [persistence-and-recovery.md](persistence-and-recovery.md).
 
 Implementation sequencing and rollback boundaries are defined in
