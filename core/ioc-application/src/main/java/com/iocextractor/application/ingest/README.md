@@ -19,7 +19,6 @@ SQLite/JDBC, CSV projection implementation или logging. Все внешние
 | `IngestionRecord`, `IngestionStatus` | Durable source-ledger read model и terminal/active statuses |
 | `SourceKey`, `SourceUnit`, `ArchivedSourceUnit` | Stable source identity и перемещение файла между lifecycle зонами |
 | `SourcePreparers` | Per-source preparer bundle и список затронутых artifact names |
-| `CanonicalArtifactsChanged` | Control event после durable completed ingest-run |
 
 ## Инварианты
 
@@ -33,7 +32,9 @@ SQLite/JDBC, CSV projection implementation или logging. Все внешние
 - Успешная projection может вернуть advisory diagnostics: use case доставляет
   каждую occurrence один раз, объединяет её с extraction summary и пересчитывает
   completion до terminal driving result.
-- `CanonicalArtifactsChanged` публикуется только после `runLedger.markCompleted`
+- artifact-level `CanonicalArtifactsChanged` публикуется только после
+  `runLedger.markCompleted`; контракт события живёт в `application.artifact`,
+  поэтому тот же post-commit fact может публиковать dataframe import
   и source archive. Событие несёт `runId` и artifact names, но не revision:
   consumers делают claim-check и читают durable revision сами.
 - Failure `ControlEventPublisher` не влияет на итог ingest. Событие является

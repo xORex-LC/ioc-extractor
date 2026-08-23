@@ -1,5 +1,7 @@
 package com.iocextractor.application.ingest;
 
+import com.iocextractor.application.artifact.CanonicalArtifactsChanged;
+
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
 import com.iocextractor.application.port.in.ingest.IngestionRejectionResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceResult;
@@ -752,8 +754,8 @@ class IngestionServiceTest {
                                         List<String> artifactNames) {
         assertThat(events.events()).singleElement()
                 .isInstanceOfSatisfying(CanonicalArtifactsChanged.class, event -> {
-                    assertThat(event.runId()).isEqualTo(runId);
-                    assertThat(event.artifactNames()).containsExactlyElementsOf(artifactNames);
+                    assertThat(event.operationId()).isEqualTo(runId);
+                    assertThat(event.affectedArtifacts()).containsExactlyElementsOf(artifactNames);
                     assertThat(event.metadata().eventId()).isEqualTo("canonical-artifacts-changed:" + runId);
                     assertThat(event.metadata().eventType()).isEqualTo(CanonicalArtifactsChanged.EVENT_TYPE);
                     assertThat(event.metadata().eventVersion()).isEqualTo(CanonicalArtifactsChanged.EVENT_VERSION);

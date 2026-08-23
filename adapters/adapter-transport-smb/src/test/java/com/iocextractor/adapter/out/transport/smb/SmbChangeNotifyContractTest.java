@@ -2,7 +2,7 @@ package com.iocextractor.adapter.out.transport.smb;
 
 import com.iocextractor.application.port.out.sync.RemoteChangeSignalHandler;
 import com.iocextractor.application.port.out.sync.RemoteChangeWatch;
-import com.iocextractor.application.sync.RemoteFetchSource;
+import com.iocextractor.application.sync.RemoteWatchTarget;
 import com.iocextractor.application.sync.RetryPolicy;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -29,7 +29,7 @@ class SmbChangeNotifyContractTest {
     void watcherSignalsWhenFileIsCreatedOnLiveShare() throws Exception {
         SmbEndpointSettings settings = settings();
         String remotePath = require("ioc.smb.remotePath");
-        RemoteFetchSource source = new RemoteFetchSource("contract", settings.name(), remotePath, List.of("*"), List.of());
+        RemoteWatchTarget source = new RemoteWatchTarget("contract", settings.name(), remotePath);
         RecordingHandler handler = new RecordingHandler();
         SmbChangeNotifyWatcher watcher = new SmbChangeNotifyWatcher(
                 List.of(settings),
@@ -58,7 +58,7 @@ class SmbChangeNotifyContractTest {
     void watcherSurvivesIdleLongerThanRequestTimeoutBeforeSignal() throws Exception {
         SmbEndpointSettings settings = settings(Duration.ofSeconds(2));
         String remotePath = require("ioc.smb.remotePath");
-        RemoteFetchSource source = new RemoteFetchSource("contract", settings.name(), remotePath, List.of("*"), List.of());
+        RemoteWatchTarget source = new RemoteWatchTarget("contract", settings.name(), remotePath);
         RecordingHandler handler = new RecordingHandler();
         SmbChangeNotifyWatcher watcher = new SmbChangeNotifyWatcher(
                 List.of(settings),

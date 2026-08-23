@@ -1,6 +1,6 @@
 package com.iocextractor.application.port.out.sync;
 
-import com.iocextractor.application.sync.RemoteFetchSource;
+import com.iocextractor.application.sync.RemoteWatchTarget;
 
 /**
  * Optional push capability for transports that can report remote directory changes.
@@ -11,6 +11,6 @@ import com.iocextractor.application.sync.RemoteFetchSource;
  */
 public interface RemoteChangeSignalSource {
 
-    /** Starts watching one configured fetch source. */
-    RemoteChangeWatch watch(RemoteFetchSource source, RemoteChangeSignalHandler handler);
+    /** Starts watching one transport-neutral remote directory target. */
+    RemoteChangeWatch watch(RemoteWatchTarget target, RemoteChangeSignalHandler handler);
 }

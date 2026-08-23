@@ -11,6 +11,7 @@ import com.iocextractor.application.sync.RemoteFetchRecord;
 import com.iocextractor.application.sync.RemoteFetchStatus;
 import com.iocextractor.application.sync.RemoteFetchInFlightRegistry;
 import com.iocextractor.application.sync.RemoteFetchSource;
+import com.iocextractor.application.sync.RemoteWatchTarget;
 import com.iocextractor.application.sync.RemoteObject;
 import com.iocextractor.application.sync.RemoteObjectIdentity;
 import com.iocextractor.application.sync.RemoteSourceMonitor;
@@ -58,7 +59,7 @@ class RemoteChangeWatchLifecycleTest {
             waitUntil(() -> transport.listCalls.get() == 1);
             lifecycle.stop();
 
-            assertThat(signals.source).isEqualTo(source);
+            assertThat(signals.target).isEqualTo(RemoteWatchTarget.from(source));
             assertThat(signals.closed).isTrue();
         }
     }
@@ -117,13 +118,13 @@ class RemoteChangeWatchLifecycleTest {
     }
 
     private static final class FakeSignalSource implements RemoteChangeSignalSource {
-        private RemoteFetchSource source;
+        private RemoteWatchTarget target;
         private RemoteChangeSignalHandler handler;
         private boolean closed;
 
         @Override
-        public RemoteChangeWatch watch(RemoteFetchSource source, RemoteChangeSignalHandler handler) {
-            this.source = source;
+        public RemoteChangeWatch watch(RemoteWatchTarget target, RemoteChangeSignalHandler handler) {
+            this.target = target;
             this.handler = handler;
             return () -> closed = true;
         }

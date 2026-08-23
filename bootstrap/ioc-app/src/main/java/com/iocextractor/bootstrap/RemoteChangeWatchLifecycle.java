@@ -4,6 +4,7 @@ import com.iocextractor.application.port.out.sync.RemoteChangeSignalHandler;
 import com.iocextractor.application.port.out.sync.RemoteChangeSignalSource;
 import com.iocextractor.application.port.out.sync.RemoteChangeWatch;
 import com.iocextractor.application.sync.RemoteFetchSource;
+import com.iocextractor.application.sync.RemoteWatchTarget;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
@@ -46,7 +47,7 @@ final class RemoteChangeWatchLifecycle implements SmartLifecycle {
                                 "change-notify is enabled for source '" + source.sourceId()
                                         + "', but endpoint '" + source.endpoint()
                                         + "' does not expose remote change signals"));
-                watches.put(source.sourceId(), signalSource.watch(source, new Handler(source)));
+                watches.put(source.sourceId(), signalSource.watch(RemoteWatchTarget.from(source), new Handler(source)));
             }
         } catch (RuntimeException failure) {
             closeStartedWatches();

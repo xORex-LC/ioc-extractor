@@ -11,7 +11,7 @@ adapter-модулях.
 | Файл | Ответственность |
 |---|---|
 | `FileTransport` | Stateless remote file operations и atomic publish intent |
-| `RemoteChangeSignalSource` | Optional push capability: transport-specific doorbell for source re-detection |
+| `RemoteChangeSignalSource` | Optional push capability over narrow transport-neutral `RemoteWatchTarget` |
 | `RemoteChangeWatch` / `RemoteChangeSignalHandler` | Lifecycle handle and callback sink for optional remote change watches |
 | `RemoteFetchLedger` | Durable idempotency ledger для read-only fetch |
 | `PublishLedger` | Durable per-slice/per-target publish saga ledger |
@@ -24,6 +24,8 @@ adapter-модулях.
 - `publishAtomically` — единственная write-side операция с multi-file инвариантом.
 - `RemoteChangeSignalSource` не расширяет `FileTransport`: push-сигнал есть не
   у каждого транспорта и остаётся optional capability.
+- Watch adapter получает только `sourceId`, endpoint и remote path; fetch
+  include/exclude policy не пересекает transport boundary.
 - `RemoteChangeSignalHandler.signal()` — doorbell без payload. Adapter не
   передаёт file facts; application после сигнала запускает обычный detection.
 - `delete` существует только как seam для opt-in remote retention/cleanup, не для fetch claim.

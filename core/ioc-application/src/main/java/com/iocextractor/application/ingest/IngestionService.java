@@ -1,5 +1,6 @@
 package com.iocextractor.application.ingest;
 
+import com.iocextractor.application.artifact.CanonicalArtifactsChanged;
 import com.iocextractor.application.port.in.ExtractionCommand;
 import com.iocextractor.application.port.in.ExtractionResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;

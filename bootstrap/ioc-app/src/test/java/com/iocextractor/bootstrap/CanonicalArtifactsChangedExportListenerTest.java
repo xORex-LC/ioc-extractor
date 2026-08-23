@@ -1,6 +1,6 @@
 package com.iocextractor.bootstrap;
 
-import com.iocextractor.application.ingest.CanonicalArtifactsChanged;
+import com.iocextractor.application.artifact.CanonicalArtifactsChanged;
 import com.iocextractor.observability.LogField;
 import com.iocextractor.platform.events.ControlEvent;
 import com.iocextractor.platform.events.ControlEventObserver;
@@ -33,7 +33,6 @@ class CanonicalArtifactsChangedExportListenerTest {
         assertThat(observer.failures).isEmpty();
         assertThat(trigger.mdcSnapshots).singleElement()
                 .satisfies(mdc -> assertThat(mdc)
-                        .containsEntry(LogField.IOC_RUN_ID.key(), "run-1")
                         .containsEntry(LogField.IOC_EVENT_ID.key(), "canonical-artifacts-changed:run-1")
                         .containsEntry(LogField.IOC_EVENT_TYPE.key(), CanonicalArtifactsChanged.EVENT_TYPE)
                         .containsEntry(LogField.IOC_EVENT_CORRELATION_ID.key(), "run-1")

@@ -6,7 +6,7 @@ import com.iocextractor.application.port.out.sync.RemoteChangeSignalSource;
 import com.iocextractor.application.port.out.sync.RemoteChangeWatch;
 import com.iocextractor.application.sync.PublishAtomicallyRequest;
 import com.iocextractor.application.sync.PublishReceipt;
-import com.iocextractor.application.sync.RemoteFetchSource;
+import com.iocextractor.application.sync.RemoteWatchTarget;
 import com.iocextractor.application.sync.RemoteObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -119,7 +119,7 @@ class TransportRegistryTest {
     private static final class FakeSignalSource implements RemoteChangeSignalSource {
 
         @Override
-        public RemoteChangeWatch watch(RemoteFetchSource source, RemoteChangeSignalHandler handler) {
+        public RemoteChangeWatch watch(RemoteWatchTarget target, RemoteChangeSignalHandler handler) {
             return () -> { };
         }
     }

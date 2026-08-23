@@ -34,7 +34,7 @@ Composition root и конфигурация. Единственное мест�
 | `SpringControlEventPublisher.java` | Адаптер `ControlEventPublisher` → Spring `ApplicationEventPublisher` |
 | `LoggingControlEventObserver.java` | `ControlEventObserver` → ECS actions/fields через observability helpers |
 | `SliceCompletedPublishListener.java` | Bootstrap listener: `SliceCompleted` → keyed publish command hand-off |
-| `CanonicalArtifactsChangedExportListener.java` | Bootstrap listener: `CanonicalArtifactsChanged` → lightweight export scheduler nudge |
+| `CanonicalArtifactsChangedExportListener.java` | Bootstrap listener: artifact-level `CanonicalArtifactsChanged` → lightweight export scheduler nudge |
 | `ConditionalOnServiceStorage.java` | Условие регистрации lazy service-storage graph независимо от runtime mode |
 | `LazyServiceStorage.java` | Не-`DataSource` holder: открывает, мигрирует и закрывает service SQLite по первому явному запросу |
 | `DaemonExportScheduler.java` | Recovery-before-start, cadence polling, sequential profiles и overlap guard |

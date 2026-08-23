@@ -2,7 +2,7 @@ package com.iocextractor.adapter.out.transport.smb;
 
 import com.iocextractor.application.port.out.sync.RemoteChangeSignalHandler;
 import com.iocextractor.application.port.out.sync.RemoteChangeWatch;
-import com.iocextractor.application.sync.RemoteFetchSource;
+import com.iocextractor.application.sync.RemoteWatchTarget;
 import com.iocextractor.application.sync.RetryPolicy;
 import org.junit.jupiter.api.Test;
 
@@ -217,8 +217,8 @@ class SmbChangeNotifyWatcherTest {
                 Duration.ofMinutes(5));
     }
 
-    private static RemoteFetchSource source() {
-        return new RemoteFetchSource("incoming", "primary", "/send", List.of("*"), List.of());
+    private static RemoteWatchTarget source() {
+        return new RemoteWatchTarget("incoming", "primary", "/send");
     }
 
     private static FakeSession waitForSession(FakeSessionFactory factory, int index) {

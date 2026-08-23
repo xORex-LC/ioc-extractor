@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -42,5 +43,14 @@ class SyncValueObjectsTest {
                 Duration.ofSeconds(1), false))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("maxBackoff");
+    }
+
+    @Test
+    void watchTargetCarriesOnlyTransportLocationFromFetchSource() {
+        var source = new RemoteFetchSource(
+                "incoming", "primary", "/send", List.of("*.csv"), List.of("*.part"));
+
+        assertThat(RemoteWatchTarget.from(source))
+                .isEqualTo(new RemoteWatchTarget("incoming", "primary", "/send"));
     }
 }

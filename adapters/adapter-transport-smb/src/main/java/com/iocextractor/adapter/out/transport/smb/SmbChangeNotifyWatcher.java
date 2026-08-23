@@ -3,7 +3,7 @@ package com.iocextractor.adapter.out.transport.smb;
 import com.iocextractor.application.port.out.sync.RemoteChangeSignalHandler;
 import com.iocextractor.application.port.out.sync.RemoteChangeSignalSource;
 import com.iocextractor.application.port.out.sync.RemoteChangeWatch;
-import com.iocextractor.application.sync.RemoteFetchSource;
+import com.iocextractor.application.sync.RemoteWatchTarget;
 import com.iocextractor.application.sync.RetryPolicy;
 
 import java.time.Duration;
@@ -62,14 +62,14 @@ public final class SmbChangeNotifyWatcher implements RemoteChangeSignalSource {
     }
 
     @Override
-    public RemoteChangeWatch watch(RemoteFetchSource source, RemoteChangeSignalHandler handler) {
-        Objects.requireNonNull(source, "source");
+    public RemoteChangeWatch watch(RemoteWatchTarget target, RemoteChangeSignalHandler handler) {
+        Objects.requireNonNull(target, "target");
         Objects.requireNonNull(handler, "handler");
-        SmbEndpointSettings endpoint = endpoints.get(source.endpoint());
+        SmbEndpointSettings endpoint = endpoints.get(target.endpoint());
         if (endpoint == null) {
-            throw new IllegalArgumentException("unknown SMB endpoint: " + source.endpoint());
+            throw new IllegalArgumentException("unknown SMB endpoint: " + target.endpoint());
         }
-        WatchWorker worker = new WatchWorker(endpoint, source, handler);
+        WatchWorker worker = new WatchWorker(endpoint, target, handler);
         worker.start();
         return worker;
     }
@@ -84,7 +84,7 @@ public final class SmbChangeNotifyWatcher implements RemoteChangeSignalSource {
 
     private final class WatchWorker implements RemoteChangeWatch, Runnable {
         private final SmbEndpointSettings endpoint;
-        private final RemoteFetchSource source;
+        private final RemoteWatchTarget target;
         private final RemoteChangeSignalHandler handler;
         private final Thread thread;
         private volatile boolean closed;
@@ -92,12 +92,12 @@ public final class SmbChangeNotifyWatcher implements RemoteChangeSignalSource {
         private volatile SmbChangeNotifyPending currentPending;
 
         private WatchWorker(SmbEndpointSettings endpoint,
-                            RemoteFetchSource source,
+                            RemoteWatchTarget target,
                             RemoteChangeSignalHandler handler) {
             this.endpoint = endpoint;
-            this.source = source;
+            this.target = target;
             this.handler = handler;
-            this.thread = new Thread(this, "ioc-smb-watch-" + source.sourceId());
+            this.thread = new Thread(this, "ioc-smb-watch-" + target.sourceId());
             this.thread.setDaemon(true);
         }
 
@@ -124,7 +124,7 @@ public final class SmbChangeNotifyWatcher implements RemoteChangeSignalSource {
         }
 
         private void runSession() {
-            try (SmbChangeNotifySession session = sessionFactory.open(endpoint, source.remotePath())) {
+            try (SmbChangeNotifySession session = sessionFactory.open(endpoint, target.remotePath())) {
                 currentSession = session;
                 handler.established();
                 long sessionDeadline = System.nanoTime() + maxSessionAge.toNanos();
@@ -209,7 +209,7 @@ public final class SmbChangeNotifyWatcher implements RemoteChangeSignalSource {
                 throw new IllegalStateException("Interrupted while closing SMB change notify watch", interrupted);
             }
             if (thread.isAlive()) {
-                throw new IllegalStateException("Timed out while closing SMB change notify watch for " + source.sourceId());
+                throw new IllegalStateException("Timed out while closing SMB change notify watch for " + target.sourceId());
             }
         }
     }

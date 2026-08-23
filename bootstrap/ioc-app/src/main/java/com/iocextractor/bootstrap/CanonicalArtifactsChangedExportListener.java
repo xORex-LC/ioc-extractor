@@ -1,6 +1,6 @@
 package com.iocextractor.bootstrap;
 
-import com.iocextractor.application.ingest.CanonicalArtifactsChanged;
+import com.iocextractor.application.artifact.CanonicalArtifactsChanged;
 import com.iocextractor.observability.LogField;
 import com.iocextractor.observability.MdcScope;
 import com.iocextractor.platform.events.ControlEventObserver;
@@ -8,7 +8,7 @@ import org.springframework.context.event.EventListener;
 
 import java.util.Objects;
 
-/** Spring listener that turns canonical-ingest change facts into export scheduler nudges. */
+/** Spring listener that turns canonical artifact change facts into export scheduler nudges. */
 public final class CanonicalArtifactsChangedExportListener {
 
     private static final String HANDLER = "CanonicalArtifactsChangedExportListener";
@@ -32,7 +32,6 @@ public final class CanonicalArtifactsChangedExportListener {
 
     private MdcScope mdc(CanonicalArtifactsChanged event) {
         return MdcScope.open()
-                .put(LogField.IOC_RUN_ID, event.runId())
                 .put(LogField.IOC_EVENT_ID, event.metadata().eventId())
                 .put(LogField.IOC_EVENT_TYPE, event.metadata().eventType())
                 .put(LogField.IOC_EVENT_CORRELATION_ID, event.metadata().correlationId())
