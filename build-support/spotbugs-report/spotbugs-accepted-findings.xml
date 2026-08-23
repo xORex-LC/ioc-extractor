@@ -10,6 +10,7 @@
     <review-trigger id="sqlite-pragma-policy-change">Review when tuning presets cease to be closed adapter-owned values or a PRAGMA token becomes operator supplied.</review-trigger>
     <review-trigger id="migration-source-version-contract-change">Review when migration SQL becomes external or runtime supplied, or user_version stops being a validated positive integer.</review-trigger>
     <review-trigger id="export-query-shape-contract-change">Review when export artifacts or columns bypass schema membership, identifier validation, quoting, or bound values.</review-trigger>
+    <review-trigger id="sparse-preferred-slot-query-shape-change">Review when preferred-slot allocation accepts runtime SQL identifiers, bypasses identifier validation or value binding, or changes adapter-owned scratch-table shapes.</review-trigger>
     <review-trigger id="cleanup-ownership-accounting-change">Review when cleanup becomes asynchronous or resource ownership, accounting, or primary-failure propagation changes.</review-trigger>
     <review-trigger id="event-listener-failure-contract-change">Review when event listeners or their keyed executor adopt retry, swallow, or exception translation semantics.</review-trigger>
     <review-trigger id="recovery-diagnostic-contract-change">Review when recovery diagnostic taxonomy, wrapping, or already-diagnosed failure propagation changes.</review-trigger>
@@ -441,32 +442,10 @@
         </suppression>
         <rationale>Reviewed analyzer false positive: construction validates and deduplicates every candidate, then stores a List.copyOf result; callers cannot mutate the record-owned candidate list.</rationale>
     </finding>
-    <finding id="DATA-TTL-P7-SB-001" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="aab69c14096518bc4da91fc29574cafd" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P7-SQL-TRUST" review="export-query-shape-contract-change">
-        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
-        <method name="assignFreeSlots" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;Ljava/time/Instant;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="304" bytecode="37" />
-        <suppression>
-            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
-            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
-            <Method name="assignFreeSlots" />
-        </suppression>
-        <rationale>Reviewed false positive: the artifact identifier is validated and quoted; profile, lifecycle cutoff and assignment values are bound.</rationale>
-    </finding>
-    <finding id="DATA-TTL-P7-SB-002" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="31e665a715655ad7c19edbb92e458c29" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P7-SQL-TRUST" review="export-query-shape-contract-change">
-        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
-        <method name="assignHighWaterSlots" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;Ljava/time/Instant;)I" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="342" bytecode="37" />
-        <suppression>
-            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
-            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
-            <Method name="assignHighWaterSlots" />
-        </suppression>
-        <rationale>Reviewed false positive: the artifact identifier is validated and quoted; profile, lifecycle cutoff and assignment values are bound.</rationale>
-    </finding>
-    <finding id="DATA-TTL-P7-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="355782df4a07f496740324ba980404f6" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P7-SQL-TRUST" review="export-query-shape-contract-change">
+    <finding id="DATA-TTL-P7-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="355782df4a07f496740324ba980404f6" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P7-SQL-TRUST" review="sparse-preferred-slot-query-shape-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="releaseVanishedAssignments" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;Ljava/time/Instant;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="256" bytecode="35" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="314" bytecode="33" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
@@ -485,10 +464,10 @@
         </suppression>
         <rationale>Reviewed false positive: the artifact identifier is validated and quoted; profile and lifecycle cutoff values are bound.</rationale>
     </finding>
-    <finding id="DATA-TTL-P7-SB-005" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="28f0374bb762bb997ff6b26236812087" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P7-SQL-TRUST" review="export-query-shape-contract-change">
+    <finding id="DATA-TTL-P7-SB-005" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="28f0374bb762bb997ff6b26236812087" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P7-SQL-TRUST" review="sparse-preferred-slot-query-shape-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="requireSeedableRows" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/time/Instant;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="172" bytecode="34" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="242" bytecode="43" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
@@ -496,10 +475,10 @@
         </suppression>
         <rationale>Reviewed false positive: the artifact identifier is validated and quoted; the lifecycle cutoff is bound.</rationale>
     </finding>
-    <finding id="DATA-TTL-P7-SB-006" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="25d85867ecba53d0379f314ab3628ab6" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P7-SQL-TRUST" review="export-query-shape-contract-change">
+    <finding id="DATA-TTL-P7-SB-006" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="25d85867ecba53d0379f314ab3628ab6" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P7-SQL-TRUST" review="sparse-preferred-slot-query-shape-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
         <method name="seedActiveAssignments" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="151" bytecode="54" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="219" bytecode="65" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
@@ -517,6 +496,83 @@
             <Method name="upperSlot" />
         </suppression>
         <rationale>Reviewed false positive: the artifact identifier is validated and quoted; profile and lifecycle cutoff values are bound.</rationale>
+    </finding>
+    <finding id="DATA-IMPORT-P3-SB-001" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="e6850ce7bbed94d1323b58cb271d8bc8" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-IMPORT-01" evidence="P3-SQL-TRUST" review="sparse-preferred-slot-query-shape-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
+        <method name="assignFromRanges" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="504" bytecode="17" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
+            <Method name="assignFromRanges" />
+        </suppression>
+        <rationale>Reviewed false positive: the generated identifier is one adapter-owned temporary table constant; profile, artifact, timestamp and range values are bound.</rationale>
+    </finding>
+    <finding id="DATA-IMPORT-P3-SB-002" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="6b44dbd2d1058993859d375f3fe84082" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-IMPORT-01" evidence="P3-SQL-TRUST" review="sparse-preferred-slot-query-shape-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
+        <method name="mergeReleasedRanges" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="380" bytecode="89" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
+            <Method name="mergeReleasedRanges" />
+        </suppression>
+        <rationale>Reviewed false positive: both generated identifiers are adapter-owned temporary table constants; profile and artifact values are bound.</rationale>
+    </finding>
+    <finding id="DATA-IMPORT-P3-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="d731024eb72783477e95d3878951918c" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-IMPORT-01" evidence="P3-SQL-TRUST" review="sparse-preferred-slot-query-shape-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
+        <method name="populatePendingLifecycles" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/String;Ljava/time/Instant;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="444" bytecode="109" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
+            <Method name="populatePendingLifecycles" />
+        </suppression>
+        <rationale>Reviewed false positive: the artifact identifier is grammar-validated and quoted, the scratch identifier is an adapter-owned constant, and all values are bound.</rationale>
+    </finding>
+    <finding id="DATA-IMPORT-P3-SB-004" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="eb612f9473fce6837f1a1ca254b4974e" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-IMPORT-01" evidence="P3-SQL-TRUST" review="sparse-preferred-slot-query-shape-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
+        <method name="requireActiveLifecycle" signature="(Ljava/sql/Connection;Ljava/lang/String;JLjava/time/Instant;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExportSlotRegistry.java" startLine="959" bytecode="24" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExportSlotRegistry" />
+            <Method name="requireActiveLifecycle" />
+        </suppression>
+        <rationale>Reviewed false positive: the artifact identifier is grammar-validated and quoted; lifecycle and cutoff values are bound.</rationale>
+    </finding>
+    <finding id="DATA-IMPORT-P4-SB-001" module="adapters/adapter-store-jdbc" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="bfb464447f097d23a613833ea1c0dfd" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P4-FAILURE-BOUNDARY" review="cleanup-ownership-accounting-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcImportWorkspaceWriter" />
+        <method name="append" signature="(Lcom/iocextractor/application/dataframeimport/model/ImportLogicalRow;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcImportWorkspaceWriter.java" startLine="114" bytecode="155" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcImportWorkspaceWriter" />
+            <Method name="append" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal: the driven workspace port is intentionally unchecked, and abort preserves the primary mapping or storage failure while attaching rollback and close failures as suppressed evidence.</rationale>
+    </finding>
+    <finding id="DATA-IMPORT-P4-SB-002" module="adapters/adapter-store-jdbc" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="6a74f2f8ba0fa52193fb305f08d8b2c1" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P4-FAILURE-BOUNDARY" review="cleanup-ownership-accounting-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcImportWorkspaceWriter" />
+        <method name="reject" signature="(Lcom/iocextractor/application/dataframeimport/model/ImportRejectedLogicalRow;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcImportWorkspaceWriter.java" startLine="131" bytecode="127" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcImportWorkspaceWriter" />
+            <Method name="reject" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal: the driven workspace port is intentionally unchecked, and abort preserves the primary row-error or storage failure while attaching rollback and close failures as suppressed evidence.</rationale>
+    </finding>
+    <finding id="DATA-IMPORT-P4-SB-003" module="adapters/adapter-store-jdbc" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="482b21fa7d5a1e5dbe962cbbc9b9719a" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P4-FAILURE-BOUNDARY" review="cleanup-ownership-accounting-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcImportWorkspaceWriter" />
+        <method name="seal" signature="()Lcom/iocextractor/application/dataframeimport/model/ImportStage;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcImportWorkspaceWriter.java" startLine="160" bytecode="145" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcImportWorkspaceWriter" />
+            <Method name="seal" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal: sealing is an unchecked atomic adapter boundary, and abort preserves its primary integrity or storage failure while attaching rollback and close failures as suppressed evidence.</rationale>
     </finding>
     <finding id="DATA-TTL-P3-SB-001" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="9998cdad3dab4afa72d77d162ed3894f" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcActiveArtifactReader" />

@@ -405,7 +405,7 @@ final class JdbcExportSlotRegistry {
                                        String artifact,
                                        Instant asOf) throws SQLException {
         populatePendingLifecycles(connection, profile, artifact, asOf);
-        long pending = scratchCount(connection, PENDING_LIFECYCLE);
+        long pending = pendingLifecycleCount(connection);
         if (pending == 0) {
             return;
         }
@@ -1145,9 +1145,10 @@ final class JdbcExportSlotRegistry {
         }
     }
 
-    private long scratchCount(Connection connection, String table) throws SQLException {
+    private long pendingLifecycleCount(Connection connection) throws SQLException {
         try (Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery("SELECT COUNT(*) FROM " + table)) {
+             ResultSet resultSet = statement.executeQuery(
+                     "SELECT COUNT(*) FROM " + PENDING_LIFECYCLE)) {
             if (!resultSet.next()) {
                 throw new SQLException("Export-slot scratch count returned no row");
             }
