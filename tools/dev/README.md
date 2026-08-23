@@ -19,6 +19,7 @@
 | `submit.sh … SOURCE` | Атомарно подать fixture/source в inbox developer daemon |
 | `database.sh … shell|schema|tables` | Read-only inspection service/dataframe SQLite |
 | `smoke.sh [cli|oneshot|daemon|all]` | Проверить public CLI, canonical storage/export и daemon ingest/health |
+| `lifecycle-smoke.sh …` | Через daemon проверить active→history expiry, bounded retention, projection/export convergence, query plans и ID non-reuse |
 | `logs.sh …` | Читать и фильтровать ECS JSON по level/event/run/diagnostic |
 | `release-notes-context.sh …` | Собрать read-only Git/PR inventory для ручной подготовки release notes |
 
@@ -39,6 +40,7 @@ tools/dev/database.sh --db dataframe schema
 tools/dev/logs.sh --workspace .dev/runtime errors
 tools/dev/runtime.sh down
 tools/dev/smoke.sh all
+tools/dev/lifecycle-smoke.sh --size 1000
 tools/dev/release-notes-context.sh --previous-tag v0.1.0 --target HEAD
 ```
 
@@ -71,3 +73,22 @@ remote sync и никогда не использует systemd/sudo.
 Daemon smoke намеренно использует polling backstop (`use-watch-service=false`),
 чтобы проверять переносимый correctness path независимо от WSL/filesystem watch
 семантики. Обычный `runtime.sh up` не меняет application default.
+
+Lifecycle smoke также использует только public daemon ingestion. Он читает
+SQLite в read-only режиме для assertions/query plans, сохраняет report под
+`.dev/` и никогда не вставляет business rows напрямую. Для reference load
+профиля используйте `make lifecycle-load`; короткий `make lifecycle-smoke`
+проверяет тот же state transition на 1k input rows. Harness также закрепляет
+export contract: expiry не создаёт immutable slice, а последующие новые public
+rows создают slice с точным active membership.
+
+`lifecycle-load` закрепляет измеримый regression envelope, а не hardware-neutral
+benchmark: input fixture маршрутизируется как минимум в 100k canonical rows,
+deadline wave не шире 30s, начало
+expiry не позже 5s, drain не медленнее 2500 rows/s, retention не дольше 180s и
+JVM `VmHWM` не выше systemd `MemoryMax=1GiB`. Harness запускает тот же
+`-Xms128m/-Xmx512m` memory profile, что packaged daemon. Throughput floor
+составляет менее половины исходного WSL2 baseline и оставляет запас для host noise, но обнаружит
+регрессию порядка 2x. Новый reference host/JDK/SQLite или изменение batching
+требуют осознанного rebaseline с сохранённым report, а не ослабления assertion
+после случайного red run.

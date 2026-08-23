@@ -22,7 +22,24 @@ environment, system property либо командной строке остан
 не должен ошибочно считать, что настройка безопасности или доставки применена,
 когда приложение молча её проигнорировало.
 
-После изменения установленного YAML или environment-файла перезапустите сервис.
+Не редактируйте установленный YAML на месте. Подготовьте отдельный candidate и
+примените его штатным helper:
+
+```bash
+sudo cp <prefix>/etc/application.yml ./application.candidate.yml
+sudo chown "$(id -u):$(id -g)" ./application.candidate.yml
+${EDITOR:-vi} ./application.candidate.yml
+sudo <prefix>/bin/ioc-config check ./application.candidate.yml
+sudo <prefix>/bin/ioc-config apply ./application.candidate.yml
+```
+
+`check` выполняет side-effect-free проверку синтаксиса. `apply` повторно
+проверяет точные staged bytes, атомарно заменяет live-файл, перезапускает сервис
+и ожидает health. Если typed или semantic startup не проходит, предыдущий YAML
+восстанавливается, а отклонённый candidate сохраняется для диагностики.
+Синтаксическая ошибка получает `CONFIG.YAML_INVALID` со строкой и столбцом, но
+без вывода содержимого строки.
+
 Секреты передавайте через placeholders вида `${SMB_PASSWORD}` и не записывайте
 их непосредственно в YAML.
 
@@ -239,6 +256,27 @@ filesystem, чтобы claims использовали atomic move. Concurrency 
 | `ioc.ingestion.ledger.type` | `file`, `jdbc` | `file` | `jdbc` для durable run-ledger integration; следуйте deployment baseline. |
 | `ioc.ingestion.ledger.path` | путь | `./var/ledger` | Filesystem ledger при type `file`. |
 | `ioc.ingestion.concurrency` | integer, только `1` | `1` | Parallel ingestion в 0.3.0 не поддерживается. Startup отклоняет любое другое значение, а не молча игнорирует его. |
+
+## Безопасность runtime canonical lifecycle
+
+Эти параметры выбирают record validity, ограничивают cleanup/convergence и
+защищают от отката системных часов. Classpath и upgrade preset остаются
+`disabled`; переход существующей БД в `fixed` является one-way операцией. Ноль
+нельзя использовать как команду очистки: durations и batch size ниже должны
+быть положительными.
+
+| Параметр | Тип / значения | Встроенный default | Рекомендация |
+|---|---|---|---|
+| `ioc.lifecycle.validity.mode` | `disabled`, `fixed` | `disabled` | `disabled` сохраняет compatibility до activation. `fixed` включает durable validity; затем отключить её для той же БД нельзя. |
+| `ioc.lifecycle.validity.fixed-ttl` | positive duration | `12h` | Validity после каждого успешного canonical confirmation. В режиме `fixed` значение обязательно и положительно; `0` отклоняется. |
+| `ioc.lifecycle.validity.existing-records` | `reject`, `expire` | `reject` | Для compatibility-start оставьте `reject`. `expire` задавайте только перед activation restart: все legacy rows архивируются и удаляются, active projections могут стать пустыми. |
+| `ioc.lifecycle.history-retention` | positive duration | `30d` | Срок хранения закрытой full-row lifecycle history; cleanup выполняется независимо и bounded batches. |
+| `ioc.lifecycle.history-cleanup-interval` | positive duration | `1h` | Частота independent history/receipt cleanup discovery. Каждая transaction bounded; существующий backlog продолжается немедленными bounded follow-up tasks. |
+| `ioc.lifecycle.receipt-retention` | positive duration | `30d` | Срок хранения complete prepared-row receipts. Отсутствующий, устаревший или policy-mismatched receipt приводит к обычному ETL, а не к отказу. |
+| `ioc.lifecycle.reconcile.backstop-interval` | positive duration | `5s` | Read-only nearest-deadline и projection correctness backstop для потерянных hints и restart. Пустой deadline refresh не создаёт reconcile cycle. Для V1 expiry-latency оставляйте не больше `5s`. |
+| `ioc.lifecycle.reconcile.batch-size` | positive integer | `1000` | Максимум rows одной expiry или history-retention transaction; меньшее значение сокращает удержание writer, но требует больше cycles. |
+| `ioc.lifecycle.clock.max-backward-skew` | positive duration | `2s` | Максимальный откат system UTC, который можно clamp-ить к durable high-water с состоянием `DEGRADED`. |
+| `ioc.lifecycle.clock.max-clamp-duration` | positive duration | `30s` | Максимальная непрерывная длительность clamp до unsafe lifecycle time и health `DOWN`. |
 
 ## Maintenance retention
 

@@ -34,5 +34,8 @@ runtime-кодом приложения.
   `findIncomplete`, require-existing, `markFailed` create-or-preserve).
 - `com.iocextractor.application.tck.export.ExportRunLedgerContractTest` — контракт
   export formation ledger: CAS/replay, global single-flight и атомарный terminal progress.
+- `com.iocextractor.application.tck.lifecycle.CanonicalRecordLifecycleContractTest`
+  — active/due boundary, renewal, observation replay, new-lifecycle, revision,
+  bounded expiry и ID non-reuse contract.
 
 Новый порт → новый абстрактный `*ContractTest` здесь; адаптеры наследуют в своих тестах.

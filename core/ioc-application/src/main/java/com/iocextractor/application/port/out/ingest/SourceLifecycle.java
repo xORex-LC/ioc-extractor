@@ -3,6 +3,7 @@ package com.iocextractor.application.port.out.ingest;
 import com.iocextractor.application.ingest.ArchivedSourceUnit;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.SourceUnit;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
 
 import java.nio.file.Path;
 import java.time.Instant;
@@ -13,7 +14,11 @@ import java.util.List;
  */
 public interface SourceLifecycle {
 
-    SourceUnit claim(Path source, SourceKey key, Instant detectedAt);
+    SourceUnit claim(Path source, ObservationId observationId, SourceKey key, Instant detectedAt);
+
+    default SourceUnit claim(Path source, SourceKey key, Instant detectedAt) {
+        return claim(source, ObservationId.legacy(key.value()), key, detectedAt);
+    }
 
     Path archive(SourceUnit unit);
 

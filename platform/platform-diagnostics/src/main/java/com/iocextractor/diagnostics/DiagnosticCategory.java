@@ -13,5 +13,6 @@ public enum DiagnosticCategory {
     STORAGE,
     EXPORT,
     SYNC,
+    LIFECYCLE,
     PIPELINE
 }

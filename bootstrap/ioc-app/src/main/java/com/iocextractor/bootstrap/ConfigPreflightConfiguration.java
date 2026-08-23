@@ -160,6 +160,28 @@ class ConfigPreflightConfiguration {
 
     @Bean
     @ConfigurationPropertiesBinding
+    static Converter<String, LifecycleValidityMode> lifecycleValidityModeConverter() {
+        return new Converter<String, LifecycleValidityMode>() {
+            @Override
+            public LifecycleValidityMode convert(String source) {
+                return LifecycleValidityMode.parse(source);
+            }
+        };
+    }
+
+    @Bean
+    @ConfigurationPropertiesBinding
+    static Converter<String, ExistingRecordsPolicy> existingRecordsPolicyConverter() {
+        return new Converter<String, ExistingRecordsPolicy>() {
+            @Override
+            public ExistingRecordsPolicy convert(String source) {
+                return ExistingRecordsPolicy.parse(source);
+            }
+        };
+    }
+
+    @Bean
+    @ConfigurationPropertiesBinding
     static Converter<String, IdStart> idStartConverter() {
         return new Converter<String, IdStart>() {
             @Override

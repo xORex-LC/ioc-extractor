@@ -27,6 +27,7 @@ packaged application.yml
 
 ```text
 Environment prepared
+  -> YAML syntax parse / CONFIG.YAML_INVALID
   -> unknown-key shape preflight (all property sources)
   -> @ConfigurationProperties binding/conversion/JSR-380
   -> collect-all semantic config validation
@@ -39,6 +40,10 @@ Environment prepared
 Границы разделены намеренно:
 
 - Spring binder владеет shape, conversion и bean validation;
+- `IocYamlSyntaxCheck` предоставляет side-effect-free синтаксическую проверку
+  candidate-файла до Spring startup, SQLite и transport initialization;
+- `IocYamlConfigurationFailureAnalyzer` переводит ранний SnakeYAML failure в
+  value-free `CONFIG.YAML_INVALID` с line/column без вывода самой строки;
 - `IocUnknownConfigurationPreflight` проверяет неизвестные keys по reflection
   shape typed model, включая YAML overlay, CLI, system properties и env;
 - `IocConfigPreflight` собирает межсекционные инварианты: artifact identity,
@@ -51,6 +56,16 @@ Environment prepared
 
 Validation constructors не должны бросать на operator mistakes: иначе binder
 остановится на первой ошибке и скроет collect-all report.
+
+Для packaged systemd deployment unit запускает syntax check через
+`ExecCondition`. При exit code `78` systemd пропускает activation и не входит в
+`Restart=on-failure`, поэтому детерминированная YAML-ошибка не создаёт restart
+storm. `RestartPreventExitStatus=78` остаётся дополнительной защитой для main
+process. Операторский
+`bin/ioc-config apply` принимает отдельный candidate, повторно проверяет staged
+copy, атомарно заменяет live YAML и восстанавливает previous config, если
+обычный typed/semantic startup не достигает `UP`. Прямое редактирование live
+файла остаётся технически возможным, но не является поддерживаемым workflow.
 
 ## Runtime modes и lazy boundary
 
@@ -66,6 +81,35 @@ Validation constructors не должны бросать на operator mistakes:
 eagerly собирает необходимые migrations, recovery и schedulers до operational
 work. Конкретные adapters связываются только в composition root (`AppConfig`,
 `SyncConfig`, `EventCoordinationConfig`, config-preflight configuration).
+
+### Lifecycle validity and runtime safety
+
+P5 добавляет явную one-way activation policy поверх operational envelope:
+
+- `ioc.lifecycle.validity.mode` — closed selector `disabled|fixed`; classpath и
+  upgrade template используют `disabled`;
+- `ioc.lifecycle.validity.fixed-ttl` — positive duration (default `12h`),
+  обязательный в `fixed` mode;
+- `ioc.lifecycle.validity.existing-records` — `reject|expire`; только явно
+  выбранный `expire` разрешает destructive archival legacy rows;
+- `ioc.lifecycle.history-retention` и `receipt-retention` — positive сроки
+  хранения history snapshots и complete confirmation receipts, оба default
+  `30d`;
+- `ioc.lifecycle.history-cleanup-interval` — positive cadence independent
+  retention discovery, default `1h`; backlog продолжается bounded follow-up
+  tasks без ожидания следующего часа;
+- `ioc.lifecycle.reconcile.backstop-interval` — positive максимальный idle
+  interval между read-only nearest-deadline/projection correctness checks,
+  default `5s`;
+- `ioc.lifecycle.reconcile.batch-size` — positive bound одной SQLite
+  archive/delete либо retention transaction, default `1000`;
+- `ioc.lifecycle.clock.max-backward-skew` и `max-clamp-duration` — positive
+  system UTC safety limits, defaults `2s` и `30s`.
+
+После начала activation durable DB state не допускает возврат в `disabled` и
+выдаёт stable `LIFECYCLE.POLICY_MISMATCH`. Нулевое или отрицательное
+duration/value отклоняется collect-all preflight и никогда не интерпретируется
+как команда очистки.
 
 ## Неочевидные инварианты
 
@@ -100,7 +144,8 @@ work. Конкретные adapters связываются только в compo
   production template и `ConfigurationDocumentationContractTest`.
 - Strict boundary: `IocEnvironmentPropertyMatcher`,
   `IocUnknownConfigurationPreflight`, `IocConfigPreflight`,
-  `ConfigRegistryPreflight`, `IocConfigurationFailureAnalyzer`.
+  `ConfigRegistryPreflight`, `IocConfigurationFailureAnalyzer`,
+  `IocYamlConfigurationFailureAnalyzer`, `IocYamlSyntaxCheck`.
 - Lifecycle: `ConfigPreflightConfiguration`, `EarlyCliLauncher`,
   `DaemonWebEnvironmentPostProcessor`.
 - Contract tests: `IocPropertiesBindingTest`, unknown-key/preflight/analyzer/

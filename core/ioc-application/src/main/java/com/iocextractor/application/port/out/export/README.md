@@ -16,7 +16,7 @@ state transitions принадлежат use case.
 
 | Файл | Назначение |
 |---|---|
-| `SnapshotSliceReader` | Открывает один strict multi-artifact read snapshot и потоково отдаёт metadata/rows |
+| `SnapshotSliceReader` | До callback разрешает export-owned mapping, затем открывает strict multi-artifact read snapshot и потоково отдаёт metadata/rows |
 | `SnapshotRowConsumer` | Синхронный callback protocol `begin -> artifact* -> end` без JDBC-типов |
 | `ArtifactSliceWriter` | Формирует deterministic bytes, staging manifest, inspection/recovery и atomic visibility |
 | `SliceManifestCodec` | Единственная serialization boundary versioned manifest |
@@ -31,9 +31,10 @@ state transitions принадлежат use case.
 
 ## Протоколы и владение ресурсами
 
-- Reader владеет connection, read transaction и cursor на всём callback
-  sequence. Consumer вызывается синхронно, не удерживает rows и не
-  запускает asynchronous callbacks.
+- Reader атомарно разрешает необходимое durable projection state до callback,
+  затем владеет connection, read transaction и cursor на всём callback
+  sequence. Consumer вызывается синхронно, не удерживает rows и не запускает
+  asynchronous callbacks.
 - Callback order для каждого artifact строг: metadata перед строками,
   artifacts и rows в порядке resolved plan.
 - Writer владеет staging/final filesystem protocol и integrity validation, но

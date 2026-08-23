@@ -27,9 +27,11 @@ concurrency, Spring Integration file support.
 ## Инварианты
 
 - `iocIngestionFlow` не стартует автоматически. `IngestionStartupCoordinator`
-  сначала восстанавливает run ledger, затем source ledger и только после этого
-  открывает intake; любая ошибка оставляет flow остановленным. Coordinator имеет
-  `ApplicationRunner` order `HIGHEST_PRECEDENCE`.
+  сначала восстанавливает run ledger, затем source ledger, выполняет common
+  canonical lifecycle admission и только после этого открывает intake; любая
+  ошибка оставляет flow остановленным. Coordinator имеет `ApplicationRunner`
+  order `HIGHEST_PRECEDENCE`. Lifecycle policy/SQL остаются за application/JDBC;
+  этот driving adapter знает только admission port.
 - Все application entry points для одного content `SourceKey` используют общий
   synchronous keyed guard. File ledger отдельно сериализует read/decide/replace
   внутри одного adapter instance; сервисы над общими namespace/ledger обязаны
@@ -37,6 +39,11 @@ concurrency, Spring Integration file support.
   маскирует primary work failure: secondary failure становится suppressed.
 - Source-ledger terminal transitions монотонны: same-target retry идемпотентен,
   opposite-target transition конфликтует и не переписывает победителя.
+- Каждая принятая file delivery получает новый UUID `ObservationId`; один и тот
+  же id сохраняется через handler retry и terminal reject. Processing filename
+  и ledger key включают observation identity, поэтому одинаковые bytes из двух
+  доставок не перезаписывают друг друга. Старые content-keyed ledger/files
+  читаются как `legacy:<sourceKey>` для recovery.
 
 - `FileSourceMessageHandler` владеет final retry boundary: после исчерпания
   попыток он выполняет reject/dead-letter transition, если use case ещё
@@ -48,7 +55,7 @@ concurrency, Spring Integration file support.
   pre-claim quarantine остаётся отдельным ING-13.
 - После структурно завершённой extraction handler публикует terminal
   `source_ingest` с durable run id, completion и отдельными severity counts.
-  `COMPLETED_WITH_ERRORS` имеет `event.outcome=failure`; duplicate skip не
+  `COMPLETED_WITH_ERRORS` имеет `event.outcome=failure`; no-ETL receipt replay не
   получает вымышленный extraction completion и помечается
   `ioc.ingest.disposition=duplicate`.
 - `IngestionStartupObserver` публикует одну операцию `ingest_recover`: start и

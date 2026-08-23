@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.in.ingest;
 
 import com.iocextractor.application.ingest.IngestionRecord;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.SourceUnit;
@@ -24,7 +25,7 @@ import java.util.Optional;
 import java.util.Properties;
 
 /**
- * File-backed ingestion ledger. Each source key is represented by one
+ * File-backed ingestion ledger. Each durable delivery observation is represented by one
  * properties file. Expected-state transitions are serialized per key within
  * this adapter instance and each resulting file replacement is atomic.
  * Cross-process ownership is outside the supported deployment contract.
@@ -41,8 +42,11 @@ public final class FileIngestionLedger implements IngestionLedger {
     }
 
     @Override
-    public Optional<IngestionRecord> find(SourceKey key) {
-        Path path = pathFor(key);
+    public Optional<IngestionRecord> find(ObservationId observationId) {
+        Path path = pathFor(observationId);
+        if (!Files.exists(path) && observationId.value().startsWith("legacy:")) {
+            path = ledgerDir.resolve(observationId.value().substring("legacy:".length()) + ".properties");
+        }
         if (!Files.exists(path)) {
             return Optional.empty();
         }
@@ -51,14 +55,14 @@ public final class FileIngestionLedger implements IngestionLedger {
 
     @Override
     public IngestionLedgerTransition markClaimed(SourceUnit unit) {
-        return transitions.execute(workKey(unit.key()), () -> {
-            Optional<IngestionRecord> current = find(unit.key());
+        return transitions.execute(workKey(unit.observationId()), () -> {
+            Optional<IngestionRecord> current = find(unit.observationId());
             if (current.isPresent()) {
                 return current.orElseThrow().status() == IngestionStatus.CLAIMED
                         ? IngestionLedgerTransition.ALREADY_APPLIED
                         : IngestionLedgerTransition.CONFLICT;
             }
-            write(new IngestionRecord(unit.key(), IngestionStatus.CLAIMED,
+            write(new IngestionRecord(unit.observationId(), unit.key(), IngestionStatus.CLAIMED,
                     unit.originalPath(), unit.processingPath(), null,
                     unit.detectedAt(), Instant.now(clock), null));
             return IngestionLedgerTransition.APPLIED;
@@ -66,9 +70,9 @@ public final class FileIngestionLedger implements IngestionLedger {
     }
 
     @Override
-    public IngestionLedgerTransition markSourceArchived(SourceKey key, Path archivedPath) {
-        return transitions.execute(workKey(key), () -> {
-            Optional<IngestionRecord> current = find(key);
+    public IngestionLedgerTransition markSourceArchived(ObservationId observationId, Path archivedPath) {
+        return transitions.execute(workKey(observationId), () -> {
+            Optional<IngestionRecord> current = find(observationId);
             if (current.isEmpty()) {
                 return IngestionLedgerTransition.MISSING;
             }
@@ -79,7 +83,7 @@ public final class FileIngestionLedger implements IngestionLedger {
             if (record.status() != IngestionStatus.CLAIMED) {
                 return IngestionLedgerTransition.CONFLICT;
             }
-            write(new IngestionRecord(key, IngestionStatus.SOURCE_ARCHIVED,
+            write(new IngestionRecord(observationId, record.key(), IngestionStatus.SOURCE_ARCHIVED,
                     record.originalPath(), record.processingPath(), archivedPath,
                     record.detectedAt(), Instant.now(clock), record.reason()));
             return IngestionLedgerTransition.APPLIED;
@@ -87,9 +91,11 @@ public final class FileIngestionLedger implements IngestionLedger {
     }
 
     @Override
-    public IngestionLedgerTransition markFailed(SourceKey key, String reason) {
-        return transitions.execute(workKey(key), () -> {
-            Optional<IngestionRecord> current = find(key);
+    public IngestionLedgerTransition markFailed(ObservationId observationId,
+                                                SourceKey key,
+                                                String reason) {
+        return transitions.execute(workKey(observationId), () -> {
+            Optional<IngestionRecord> current = find(observationId);
             if (current.isPresent() && current.orElseThrow().status() == IngestionStatus.FAILED) {
                 return IngestionLedgerTransition.ALREADY_APPLIED;
             }
@@ -98,9 +104,10 @@ public final class FileIngestionLedger implements IngestionLedger {
                 return IngestionLedgerTransition.CONFLICT;
             }
             Instant now = Instant.now(clock);
-            IngestionRecord record = current.orElse(new IngestionRecord(key, IngestionStatus.FAILED,
+            IngestionRecord record = current.orElse(new IngestionRecord(
+                    observationId, key, IngestionStatus.FAILED,
                     Path.of("unknown"), Path.of("unknown"), null, now, now, reason));
-            write(new IngestionRecord(key, IngestionStatus.FAILED,
+            write(new IngestionRecord(observationId, record.key(), IngestionStatus.FAILED,
                     record.originalPath(), record.processingPath(), record.archivedPath(),
                     record.detectedAt(), now, reason));
             return IngestionLedgerTransition.APPLIED;
@@ -134,6 +141,7 @@ public final class FileIngestionLedger implements IngestionLedger {
             props.load(reader);
             SourceKey key = new SourceKey(props.getProperty("key"));
             return new IngestionRecord(
+                    observationId(props, key),
                     key,
                     status(props.getProperty("status")),
                     Path.of(props.getProperty("originalPath")),
@@ -151,6 +159,7 @@ public final class FileIngestionLedger implements IngestionLedger {
         try {
             Files.createDirectories(ledgerDir);
             Properties props = new Properties();
+            props.setProperty("observationId", record.observationId().value());
             props.setProperty("key", record.key().value());
             props.setProperty("status", record.status().name());
             props.setProperty("originalPath", record.originalPath().toString());
@@ -160,8 +169,8 @@ public final class FileIngestionLedger implements IngestionLedger {
             props.setProperty("updatedAt", record.updatedAt() == null ? "" : record.updatedAt().toString());
             props.setProperty("reason", record.reason() == null ? "" : record.reason());
 
-            Path target = pathFor(record.key());
-            Path temp = Files.createTempFile(ledgerDir, record.key().value(), ".tmp");
+            Path target = pathFor(record.observationId());
+            Path temp = Files.createTempFile(ledgerDir, fileToken(record.observationId()), ".tmp");
             try (Writer writer = Files.newBufferedWriter(temp)) {
                 props.store(writer, "ioc ingestion ledger");
             }
@@ -171,16 +180,35 @@ public final class FileIngestionLedger implements IngestionLedger {
                 Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException e) {
-            throw new IocExtractorException("Failed to write ingestion ledger record: " + record.key().value(), e);
+            throw new IocExtractorException(
+                    "Failed to write ingestion ledger record: " + record.observationId().value(), e);
         }
     }
 
-    private Path pathFor(SourceKey key) {
-        return ledgerDir.resolve(key.value() + ".properties");
+    private Path pathFor(ObservationId observationId) {
+        return ledgerDir.resolve(fileToken(observationId) + ".properties");
     }
 
-    private WorkKey workKey(SourceKey key) {
-        return WorkKey.of(key.value());
+    private WorkKey workKey(ObservationId observationId) {
+        return WorkKey.of(observationId.value());
+    }
+
+    private String fileToken(ObservationId observationId) {
+        return java.util.HexFormat.of().formatHex(digest(observationId.value()));
+    }
+
+    private byte[] digest(String value) {
+        try {
+            return java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 is unavailable", impossible);
+        }
+    }
+
+    private ObservationId observationId(Properties properties, SourceKey key) {
+        String value = blankToNull(properties.getProperty("observationId"));
+        return value == null ? ObservationId.legacy(key.value()) : new ObservationId(value);
     }
 
     private Path optionalPath(String value) {

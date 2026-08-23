@@ -1,5 +1,6 @@
 package com.iocextractor.application.port.in.ingest;
 
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.SourceKey;
 
 /**
@@ -17,4 +18,15 @@ public interface RejectIngestionUseCase {
      * @return whether this call created the durable rejection
      */
     IngestionRejectionResult reject(SourceKey key, String reason);
+
+    /**
+     * Rejects one durable delivery attempt without conflating it with another
+     * delivery of the same content. Legacy implementations retain their
+     * content-key behavior through the default adapter.
+     */
+    default IngestionRejectionResult reject(ObservationId observationId,
+                                            SourceKey key,
+                                            String reason) {
+        return reject(key, reason);
+    }
 }

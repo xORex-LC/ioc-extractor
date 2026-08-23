@@ -1,5 +1,9 @@
 package com.iocextractor.adapter.in.ingest;
 
+import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
+import com.iocextractor.application.artifact.lifecycle.LifecycleActivationState;
+import com.iocextractor.application.artifact.lifecycle.LifecycleAdmissionResult;
+import com.iocextractor.application.port.in.artifact.lifecycle.PrepareLifecycleAdmissionUseCase;
 import com.iocextractor.application.port.in.ingest.RecoverIngestionUseCase;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -23,6 +27,7 @@ public final class IngestionStartupCoordinator implements ApplicationRunner, Ord
     private final Lifecycle intakeFlow;
     private final IngestionLifecycleState lifecycleState;
     private final IngestionStartupObserver observer;
+    private final PrepareLifecycleAdmissionUseCase lifecycleAdmission;
     private final Clock clock;
 
     public IngestionStartupCoordinator(IntSupplier recoverIngestRuns,
@@ -31,11 +36,26 @@ public final class IngestionStartupCoordinator implements ApplicationRunner, Ord
                                        IngestionLifecycleState lifecycleState,
                                        IngestionStartupObserver observer,
                                        Clock clock) {
+        this(recoverIngestRuns, recoverSources, intakeFlow, lifecycleState, observer,
+                () -> new LifecycleAdmissionResult(
+                        LifecycleActivationState.DISABLED_COMPATIBLE,
+                        EffectiveTime.at(Instant.EPOCH), 0, 0),
+                clock);
+    }
+
+    public IngestionStartupCoordinator(IntSupplier recoverIngestRuns,
+                                       RecoverIngestionUseCase recoverSources,
+                                       Lifecycle intakeFlow,
+                                       IngestionLifecycleState lifecycleState,
+                                       IngestionStartupObserver observer,
+                                       PrepareLifecycleAdmissionUseCase lifecycleAdmission,
+                                       Clock clock) {
         this.recoverIngestRuns = Objects.requireNonNull(recoverIngestRuns, "recoverIngestRuns");
         this.recoverSources = Objects.requireNonNull(recoverSources, "recoverSources");
         this.intakeFlow = Objects.requireNonNull(intakeFlow, "intakeFlow");
         this.lifecycleState = Objects.requireNonNull(lifecycleState, "lifecycleState");
         this.observer = Objects.requireNonNull(observer, "observer");
+        this.lifecycleAdmission = Objects.requireNonNull(lifecycleAdmission, "lifecycleAdmission");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -56,6 +76,7 @@ public final class IngestionStartupCoordinator implements ApplicationRunner, Ord
             }
             int recoveredRuns = recoverIngestRuns.getAsInt();
             int recoveredSources = recoverSources.recoverIncomplete().size();
+            lifecycleAdmission.prepare();
             intakeFlow.start();
             if (!intakeFlow.isRunning()) {
                 throw new IllegalStateException("Ingestion intake did not start after successful recovery");

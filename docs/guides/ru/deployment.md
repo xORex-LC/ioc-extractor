@@ -8,8 +8,8 @@ installer baselines — Debian 11 и 12. Другие systemd-дистрибут
 
 | Способ | Назначение | Гарантии |
 |---|---|---|
-| `packaging/install.sh` | Новый host/prefix или контролируемое обновление внутри marked layout 0.2.x | Host provisioning, verified JDK, safe marked layout, immutable activation, сохранение config и local storage health gate |
-| `packaging/deploy-local.sh` | Повторные deploy 0.2.x из локального checkout на Debian/WSL test host | Clean `verify`, build identity, DB backup, atomic activation, health gate и automatic rollback |
+| `packaging/install.sh` | Новый host/prefix или контролируемое обновление внутри marked layout, введённого в 0.2.0 | Host provisioning, verified JDK, safe marked layout, immutable activation, сохранение config и local storage health gate |
+| `packaging/deploy-local.sh` | Повторные deploy 0.2.0+ из локального checkout на Debian/WSL test host | Clean `verify`, build identity, DB backup, atomic activation, health gate и automatic rollback |
 
 Если поздний шаг установки завершится ошибкой, `install.sh` возвращает предыдущие
 release/unit и перезапускает ранее активный service, но не создаёт и не
@@ -56,6 +56,12 @@ Installer создаёт account `ioc`, устанавливает pinned Temuri
 размещает immutable release, launcher и systemd unit, затем требует `UP` от local
 storage health components.
 
+Fresh production configuration включает canonical record validity с TTL `12h`.
+Перед изменением policy прочитайте
+[гайд по lifecycle canonical-записей](canonical-record-lifecycle.md). При
+upgrade этот fresh preset не объединяется с существующей operator configuration
+автоматически.
+
 Для offline host перенесите доверенный Temurin 21 tarball:
 
 ```bash
@@ -79,7 +85,9 @@ Custom `--jdk-url` также требует `--jdk-sha256` и HTTPS. Default UR
 <prefix>/
 ├── current -> releases/<release-id>
 ├── releases/<release-id>/ioc-app.jar
-├── bin/ioc
+├── bin/
+│   ├── ioc
+│   └── ioc-config
 ├── etc/application.yml
 ├── etc/ioc-extractor.env
 ├── etc/ioc-extractor.installation
@@ -97,17 +105,24 @@ Custom `--jdk-url` также требует `--jdk-sha256` и HTTPS. Default UR
 
 ## Конфигурация и проверка
 
-Редактируйте `<prefix>/etc/application.yml` по
+Подготовьте отдельный YAML candidate по
 [справочнику конфигурации](configuration.md). Секреты помещайте в
-`<prefix>/etc/ioc-extractor.env`.
+`<prefix>/etc/ioc-extractor.env`. Не редактируйте live-файл на месте: проверка и
+замена должны быть одной контролируемой операцией.
 
 ```bash
-sudo systemctl restart ioc-extractor
+sudo /opt/ioc-extractor/bin/ioc-config check ./application.candidate.yml
+sudo /opt/ioc-extractor/bin/ioc-config apply ./application.candidate.yml
 sudo systemctl status ioc-extractor --no-pager
 sudo /opt/ioc-extractor/bin/ioc --version
 sudo /opt/ioc-extractor/bin/ioc health
 sudo journalctl -u ioc-extractor -n 100 --no-pager
 ```
+
+Helper проверяет точные staged bytes, атомарно заменяет установленный YAML и
+ожидает health. При startup failure предыдущий файл восстанавливается. Для
+прямого restart остаётся systemd `ExecCondition` syntax guard: exit `78`
+пропускает activation без детерминированного restart loop.
 
 Health endpoint по умолчанию доступен только на loopback. Healthy local service
 не означает, что optional SMB endpoints уже прошли authentication: sync
@@ -177,7 +192,7 @@ sudo systemctl start ioc-extractor
 Input, принятые только после cutover на 0.2.0, отсутствуют в старом prefix.
 Сохраните их и явно согласуйте/повторно подайте при rollback.
 
-## Upgrade внутри 0.2.x через `install.sh`
+## Upgrade внутри marked layout через `install.sh`
 
 1. Проверьте новый jar/checksum на trusted build host.
 2. Остановите подачу inputs или откройте maintenance window.
@@ -196,7 +211,7 @@ sudo packaging/install.sh \
   --prefix /opt/ioc-extractor \
   --jar /tmp/ioc-extractor-new.jar \
   --checksum /tmp/ioc-extractor-new.jar.sha256 \
-  --release-id v0.2.0
+  --release-id v0.3.0
 ```
 
 Для нестандартного actuator port передайте также `--server-port PORT`. Installer
@@ -208,6 +223,15 @@ sudo packaging/install.sh \
 installer создаёт `application.yml.new` или `ioc-extractor.env.new`. Сравните
 файлы, перенесите новые supported properties, сохранив site-specific paths,
 policies и secrets, и удалите `.new` после успешной проверки.
+
+При upgrade на TTL-capable binary оставьте lifecycle mode disabled для первого
+compatibility startup. Последующий cutover на fixed validity destructive для
+legacy active membership и выполняется по отдельной
+[процедуре canonical lifecycle](canonical-record-lifecycle.md#обновление-существующей-установки).
+Та же additive dataframe migration устанавливает export-slot registry. Первый
+active export seed-ит текущие внешние IDs без перенумерации survivors; rollback
+поэтому по-прежнему требует matching binary/configuration и backup обеих БД, а
+не частичного schema downgrade.
 
 ```bash
 sudo diff -u /opt/ioc-extractor/etc/application.yml \

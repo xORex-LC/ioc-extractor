@@ -1,6 +1,8 @@
 package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.cadence.CadenceSource;
+import com.iocextractor.application.artifact.lifecycle.CanonicalDataAdmissionState;
+import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.export.ExportPlan;
 import com.iocextractor.application.export.ExportProgress;
 import com.iocextractor.application.port.in.export.ExportArtifactsCommand;
@@ -32,9 +34,10 @@ import java.util.function.Supplier;
 /**
  * Daemon lifecycle boundary that samples durable cadence facts and invokes profiles sequentially.
  *
- * <p>Recovery is synchronous in {@link #start()}, before the first scheduled poll. One executor
- * and an explicit overlap guard ensure this process never starts two formation attempts at once;
- * the service-database single-flight remains authoritative across processes.
+ * <p>Recovery runs synchronously when the common canonical-data admission gate opens, before the
+ * first scheduled poll. One executor and an explicit overlap guard ensure this process never
+ * starts two formation attempts at once; the service-database single-flight remains authoritative
+ * across processes.
  */
 public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeTrigger {
 
@@ -53,6 +56,7 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
     private final Duration pollInterval;
     private final ExportNudgePolicy nudgePolicy;
     private final Supplier<ScheduledExecutorService> executorFactory;
+    private final CanonicalDataAdmissionState admission;
     private final AtomicBoolean running = new AtomicBoolean();
     private final AtomicBoolean nudgeScheduled = new AtomicBoolean();
 
@@ -81,7 +85,23 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
                                  Duration pollInterval,
                                  ExportNudgePolicy nudgePolicy) {
         this(plans, cadences, revisionReader, progressStore, recovery, exporter,
-                pollInterval, nudgePolicy, DaemonExportScheduler::newExecutor);
+                pollInterval, nudgePolicy,
+                CanonicalDataAdmissionState.admittedCompatible(EffectiveTime.at(Instant.EPOCH)),
+                DaemonExportScheduler::newExecutor);
+    }
+
+    /** Creates an export scheduler that remains inert until canonical admission. */
+    public DaemonExportScheduler(List<ExportPlan> plans,
+                                 Map<String, CadenceSource> cadences,
+                                 ArtifactRevisionReader revisionReader,
+                                 ExportProgressStore progressStore,
+                                 RecoverExportUseCase recovery,
+                                 ExportArtifactsUseCase exporter,
+                                 Duration pollInterval,
+                                 ExportNudgePolicy nudgePolicy,
+                                 CanonicalDataAdmissionState admission) {
+        this(plans, cadences, revisionReader, progressStore, recovery, exporter,
+                pollInterval, nudgePolicy, admission, DaemonExportScheduler::newExecutor);
     }
 
     DaemonExportScheduler(List<ExportPlan> plans,
@@ -93,6 +113,22 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
                           Duration pollInterval,
                           ExportNudgePolicy nudgePolicy,
                           Supplier<ScheduledExecutorService> executorFactory) {
+        this(plans, cadences, revisionReader, progressStore, recovery, exporter,
+                pollInterval, nudgePolicy,
+                CanonicalDataAdmissionState.admittedCompatible(EffectiveTime.at(Instant.EPOCH)),
+                executorFactory);
+    }
+
+    DaemonExportScheduler(List<ExportPlan> plans,
+                          Map<String, CadenceSource> cadences,
+                          ArtifactRevisionReader revisionReader,
+                          ExportProgressStore progressStore,
+                          RecoverExportUseCase recovery,
+                          ExportArtifactsUseCase exporter,
+                          Duration pollInterval,
+                          ExportNudgePolicy nudgePolicy,
+                          CanonicalDataAdmissionState admission,
+                          Supplier<ScheduledExecutorService> executorFactory) {
         this.plans = List.copyOf(Objects.requireNonNull(plans, "plans"));
         this.cadences = Map.copyOf(new LinkedHashMap<>(Objects.requireNonNull(cadences, "cadences")));
         this.revisionReader = Objects.requireNonNull(revisionReader, "revisionReader");
@@ -102,6 +138,7 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
         this.pollInterval = requirePositive(pollInterval);
         this.nudgePolicy = Objects.requireNonNull(nudgePolicy, "nudgePolicy");
         this.executorFactory = Objects.requireNonNull(executorFactory, "executorFactory");
+        this.admission = Objects.requireNonNull(admission, "admission");
         List<String> profiles = this.plans.stream().map(plan -> plan.profile().name()).toList();
         if (!this.cadences.keySet().containsAll(profiles) || this.cadences.size() != profiles.size()) {
             throw new IllegalArgumentException("Cadence sources must match configured export profiles");
@@ -113,10 +150,17 @@ public final class DaemonExportScheduler implements SmartLifecycle, ExportNudgeT
         if (active) {
             return;
         }
-        recovery.recoverIncomplete();
         nudgeScheduled.set(false);
-        executor = Objects.requireNonNull(executorFactory.get(), "executor");
         active = true;
+        admission.whenAdmitted(this::openAfterAdmission);
+    }
+
+    private synchronized void openAfterAdmission() {
+        if (!active || executor != null) {
+            return;
+        }
+        recovery.recoverIncomplete();
+        executor = Objects.requireNonNull(executorFactory.get(), "executor");
         executor.scheduleWithFixedDelay(
                 this::runOnce, pollInterval.toMillis(), pollInterval.toMillis(), TimeUnit.MILLISECONDS);
         nudge();

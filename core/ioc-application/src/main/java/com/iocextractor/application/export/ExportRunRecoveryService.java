@@ -130,7 +130,7 @@ public final class ExportRunRecoveryService implements RecoverExportUseCase {
     /** Repeats the post-hash decision lost by a crash after complete staging. */
     private ExportRun recoverStartedCandidate(ExportRun run, SliceInspection inspection) {
         List<ExportProgress> previous = progressStore.findByProfile(run.profile());
-        if (changeDetector.sameContent(inspection.manifest(), previous)) {
+        if (changeDetector.isRedundant(inspection.manifest(), previous)) {
             sliceWriter.discardStaging(run);
             List<ExportProgress> skipped = changeDetector.skippedProgress(
                     inspection.manifest(), previous, clock.instant());

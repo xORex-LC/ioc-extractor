@@ -6,7 +6,8 @@
 #  under it (e.g. ./var/inbox -> <prefix>/var/inbox).
 #
 #  This file only OVERRIDES the packaged defaults (in the jar). Everything not
-#  set here keeps its built-in value. Edit and `systemctl restart ioc-extractor`.
+#  set here keeps its built-in value. Edit a separate candidate and apply it with
+#  `sudo <prefix>/bin/ioc-config apply <candidate.yml>`; do not edit this live file.
 # ============================================================================
 spring:
   profiles:
@@ -232,6 +233,23 @@ ioc:
       type: file
       path: "./var/ledger"
     concurrency: 1             # required in 0.3.0; parallel ingestion is not supported
+
+  # Fresh-install preset. Upgrade preserves the existing operator-owned YAML
+  # and requires the documented two-step cutover before fixed validity starts.
+  lifecycle:
+    validity:
+      mode: fixed
+      fixed-ttl: 12h
+      existing-records: reject
+    history-retention: 30d
+    history-cleanup-interval: 1h
+    receipt-retention: 30d
+    reconcile:
+      backstop-interval: 5s
+      batch-size: 1000
+    clock:
+      max-backward-skew: 2s
+      max-clamp-duration: 30s
 
   # ---- Leaf-file retention --------------------------------------------------
   maintenance:

@@ -1,5 +1,6 @@
 package com.iocextractor.application.tck.ingest;
 
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.SourceUnit;
@@ -177,6 +178,30 @@ public abstract class IngestionLedgerContractTest {
         assertThat(ledger.find(unit.key())).get()
                 .extracting(record -> record.status())
                 .isIn(IngestionStatus.SOURCE_ARCHIVED, IngestionStatus.FAILED);
+    }
+
+    @Test
+    void observation_identity_allows_repeated_delivery_of_the_same_content() {
+        IngestionLedger ledger = createLedger(FIXED_CLOCK);
+        SourceKey content = key("same-content");
+        SourceUnit first = new SourceUnit(
+                new ObservationId("delivery-1"), content,
+                path("inbox/first.html"), path("processing/first.html"), DETECTED_AT);
+        SourceUnit second = new SourceUnit(
+                new ObservationId("delivery-2"), content,
+                path("inbox/second.html"), path("processing/second.html"), DETECTED_AT.plusSeconds(1));
+
+        assertThat(ledger.markClaimed(first)).isEqualTo(IngestionLedgerTransition.APPLIED);
+        assertThat(ledger.markSourceArchived(first.observationId(), path("done/first.html")))
+                .isEqualTo(IngestionLedgerTransition.APPLIED);
+        assertThat(ledger.markClaimed(second)).isEqualTo(IngestionLedgerTransition.APPLIED);
+
+        assertThat(ledger.find(first.observationId())).get()
+                .extracting(record -> record.status())
+                .isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
+        assertThat(ledger.find(second.observationId())).get()
+                .extracting(record -> record.status())
+                .isEqualTo(IngestionStatus.CLAIMED);
     }
 
     private static void await(CountDownLatch latch) {

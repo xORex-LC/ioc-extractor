@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.in.ingest;
 
 import com.iocextractor.application.ingest.IngestionStatus;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.pipeline.CompletionStatus;
 import com.iocextractor.application.port.in.ExtractionResult;
@@ -32,6 +33,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * Handles one file message from Spring Integration and delegates the business
@@ -69,11 +71,12 @@ public final class FileSourceMessageHandler {
 
     public void handle(File file) {
         Path source = file.toPath();
+        ObservationId observationId = new ObservationId(UUID.randomUUID().toString());
         SourceKey key;
         try {
             key = hashWithRetries(source);
         } catch (HashingExhaustedException exhausted) {
-            rejectUnreadable(source, exhausted.failure());
+            rejectUnreadable(source, observationId, exhausted.failure());
             return;
         }
         RuntimeException last = null;
@@ -81,7 +84,7 @@ public final class FileSourceMessageHandler {
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 IngestSourceResult result = useCase.ingest(
-                        new IngestSourceCommand(source, key, Instant.now(clock)));
+                        new IngestSourceCommand(source, observationId, key, Instant.now(clock)));
                 if (result.status() == IngestionStatus.FAILED) {
                     if (last == null) {
                         return;
@@ -101,7 +104,8 @@ public final class FileSourceMessageHandler {
         RuntimeException terminal = last;
         if (!alreadyRejected) {
             try {
-                rejectUseCase.reject(key, last == null ? "source ingestion failed" : last.getMessage());
+                rejectUseCase.reject(
+                        observationId, key, last == null ? "source ingestion failed" : last.getMessage());
             } catch (RuntimeException rejectionFailure) {
                 if (last != null) {
                     rejectionFailure.addSuppressed(last);
@@ -128,7 +132,9 @@ public final class FileSourceMessageHandler {
         throw new HashingExhaustedException(Objects.requireNonNull(last, "hashing failure"));
     }
 
-    private void rejectUnreadable(Path source, RuntimeException hashingFailure) {
+    private void rejectUnreadable(Path source,
+                                  ObservationId observationId,
+                                  RuntimeException hashingFailure) {
         SourceKey fallbackKey = hasher.fingerprint(source);
         Diagnostic diagnostic = diagnostics.create(IngestDiagnosticCodes.SOURCE_UNREADABLE)
                 .with("source", source)
@@ -137,7 +143,7 @@ public final class FileSourceMessageHandler {
                 .build();
         IngestionRejectionResult rejection;
         try {
-            rejection = rejectUseCase.reject(fallbackKey, reason(hashingFailure));
+            rejection = rejectUseCase.reject(observationId, fallbackKey, reason(hashingFailure));
         } catch (RuntimeException rejectionFailure) {
             emitIngestDiagnostic(rejectionFailure);
             throw new IocExtractorException("Failed to reject unreadable source: " + source, rejectionFailure);
@@ -170,7 +176,9 @@ public final class FileSourceMessageHandler {
                     .field(LogField.IOC_SOURCE_CONTENT_HASH, key.value())
                     .field(LogField.IOC_INGEST_DISPOSITION,
                             result.duplicate() ? "duplicate" : "handled_without_extraction")
-                    .message(result.duplicate() ? "source duplicate skipped" : "source handled without extraction")
+                    .message(result.duplicate()
+                            ? "source confirmation receipt replayed"
+                            : "source handled without extraction")
                     .log();
             return;
         }

@@ -23,6 +23,8 @@ import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
+import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
+import com.iocextractor.application.port.out.artifact.lifecycle.CanonicalArtifactWriter;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.domain.attribute.SourceAttributor;
 import com.iocextractor.domain.classify.MatchPolicy;
@@ -69,11 +71,35 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                 FailurePolicy failurePolicy,
                                 int maxDiagnosticsPerRun,
                                 PipelineDecisionTracer decisionTracer) {
+        this(reader, refanger, extractor, attributor, matchPolicy, preparers, repository,
+                null, null, projection, deduplicate, observabilityMode, observer,
+                diagnosticSink, failurePolicy, maxDiagnosticsPerRun, decisionTracer);
+    }
+
+    /** Creates the production extraction use case with optional lifecycle-aware persistence. */
+    public IocExtractionService(SourceReader reader,
+                                Refanger refanger,
+                                IndicatorExtractor extractor,
+                                SourceAttributor attributor,
+                                MatchPolicy matchPolicy,
+                                List<ArtifactPreparer> preparers,
+                                CanonicalArtifactRepository repository,
+                                CanonicalArtifactWriter lifecycleWriter,
+                                ArtifactIdentityResolver identityResolver,
+                                ArtifactProjection projection,
+                                boolean deduplicate,
+                                String observabilityMode,
+                                PipelineObserver observer,
+                                DiagnosticSink diagnosticSink,
+                                FailurePolicy failurePolicy,
+                                int maxDiagnosticsPerRun,
+                                PipelineDecisionTracer decisionTracer) {
         this(
                 new PipelineRunner(failurePolicy, observer, diagnosticSink,
                         new DiagnosticFactory(Clock.systemUTC()), maxDiagnosticsPerRun),
                 pipeline(reader, refanger, extractor, attributor, matchPolicy, preparers,
-                        repository, projection, deduplicate, Clock.systemUTC(), decisionTracer),
+                        repository, lifecycleWriter, identityResolver, projection,
+                        deduplicate, Clock.systemUTC(), decisionTracer),
                 Clock.systemUTC(),
                 observabilityMode);
     }
@@ -104,6 +130,10 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                 .withAttribute(PipelineMetaAttributes.SOURCE_PATH, normalizedSource)
                 .withAttribute(PipelineMetaAttributes.DRY_RUN, command.dryRun())
                 .withAttribute(PipelineMetaAttributes.MODE, observabilityMode);
+        if (command.lifecycleWriteContext() != null) {
+            meta = meta.withAttribute(
+                    PipelineMetaAttributes.LIFECYCLE_WRITE_CONTEXT, command.lifecycleWriteContext());
+        }
         var pipelineResult = runner.runWithOutcome(Envelope.of(command, meta), pipeline);
         var output = pipelineResult.envelope();
         var summary = output.payload();
@@ -126,6 +156,8 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                                                               MatchPolicy matchPolicy,
                                                                               List<ArtifactPreparer> preparers,
                                                                               CanonicalArtifactRepository repository,
+                                                                              CanonicalArtifactWriter lifecycleWriter,
+                                                                              ArtifactIdentityResolver identityResolver,
                                                                               ArtifactProjection projection,
                                                                               boolean deduplicate,
                                                                               Clock clock,
@@ -139,6 +171,7 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                 .then(new DeduplicateIndicatorsStage(deduplicate, diagnostics, decisionTracer))
                 .then(new ClassifyIndicatorsStage(matchPolicy, diagnostics, decisionTracer))
                 .then(new PrepareArtifactsStage(preparers))
-                .then(new WriteArtifactsStage(repository, projection, diagnostics));
+                .then(new WriteArtifactsStage(
+                        repository, lifecycleWriter, identityResolver, projection, diagnostics));
     }
 }

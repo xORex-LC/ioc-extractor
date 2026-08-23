@@ -83,6 +83,20 @@
     {
       "name": "ioc.ingestion.ledger.type",
       "values": [ { "value": "file" }, { "value": "jdbc" } ]
+    },
+    {
+      "name": "ioc.lifecycle.validity.mode",
+      "values": [
+        { "value": "disabled", "description": "Preserve compatibility until explicit activation." },
+        { "value": "fixed", "description": "Apply the configured fixed validity duration." }
+      ]
+    },
+    {
+      "name": "ioc.lifecycle.validity.existing-records",
+      "values": [
+        { "value": "reject", "description": "Refuse activation while legacy canonical rows exist." },
+        { "value": "expire", "description": "Archive and remove all legacy canonical rows during activation." }
+      ]
     }
   ]
 }

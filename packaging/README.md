@@ -28,6 +28,7 @@ best effort and must be validated by the operator.
 | `templates/ioc-extractor.env` | JVM options and secret environment placeholders. |
 | `templates/ioc-extractor.service` | Hardened systemd unit template. |
 | `templates/ioc` | Installed host launcher for CLI and health operations. |
+| `templates/ioc-config` | Root-only candidate check/apply helper with atomic replacement, health gate and config rollback. |
 | `tests/` | Temporary-directory packaging contract checks; no host provisioning. |
 
 ## Operator documentation
@@ -35,6 +36,7 @@ best effort and must be validated by the operator.
 - [Deployment, upgrade and rollback](../docs/guides/deployment.md)
 - [Complete configuration reference](../docs/guides/configuration.md)
 - [Daemon operations](../docs/guides/daemon-operations.md)
+- [Canonical record lifecycle](../docs/guides/canonical-record-lifecycle.md)
 - [Remote storage synchronization](../docs/guides/remote-storage-sync.md)
 
 The guides are canonical procedures. This README documents only the scripts,
@@ -50,7 +52,9 @@ The installer creates one self-contained prefix:
 ├── releases/<release-id>/       # immutable application releases
 │   └── ioc-app.jar
 ├── current -> releases/<id>     # atomically switched active release
-├── bin/ioc                      # host launcher
+├── bin/
+│   ├── ioc                     # isolated application CLI launcher
+│   └── ioc-config              # atomic operator-YAML check/apply helper
 ├── etc/
 │   ├── application.yml          # operator-owned override
 │   └── ioc-extractor.env        # JVM settings and secrets
@@ -67,10 +71,11 @@ Release files are root-owned and immutable. The service account owns writable
 runtime state. `etc/`, `var/` and `dataframe/` stay outside release directories
 so activation never replaces operator data.
 
-This is the 0.2.x layout. The 0.1.0 single-directory layout
-(`lib/ioc-app-0.1.0.jar`) is intentionally not adopted in place: 0.2.0 uses a
-fresh side-by-side prefix and rebuilds SQLite truth by re-ingesting reviewed
-original sources. The old prefix remains the cross-version rollback point.
+This marked layout was introduced in 0.2.0 and is retained by the 0.3.x line.
+The 0.1.0 single-directory layout (`lib/ioc-app-0.1.0.jar`) is intentionally not
+adopted in place: 0.2.0 uses a fresh side-by-side prefix and rebuilds SQLite
+truth by re-ingesting reviewed original sources. The old prefix remains the
+cross-version rollback point.
 
 ## `install.sh`
 
@@ -108,11 +113,12 @@ Reconcile `*.new` files as described in the deployment guide.
 The installer does not provide the database backup and automatic rollback
 transaction of `deploy-local.sh`.
 
-Upgrades within a marked 0.2.x layout may reuse the prefix. Transition from
-0.1.0 to 0.2.0 is filesystem-side-by-side: preserve the old prefix and unit,
-install into a clean prefix, configure from the 0.2.0 template and re-ingest
-trusted source documents. Generated 0.1.0 CSV projections are not a supported
-SQLite import path.
+Upgrades within the marked layout introduced in 0.2.0 may reuse the prefix,
+subject to the release-specific database/configuration procedure. Transition
+from 0.1.0 to 0.2.0 is filesystem-side-by-side: preserve the old prefix and
+unit, install into a clean prefix, configure from the 0.2.0 template and
+re-ingest trusted source documents. Generated 0.1.0 CSV projections are not a
+supported SQLite import path.
 
 ## `deploy-local.sh`
 
@@ -130,8 +136,9 @@ published under the wrong commit identity. `--port` is rendered into the daemon
 unit as the high-precedence `--server.port` override and is also used by the
 health gate.
 
-The script bootstraps a clean prefix or upgrades an existing marked 0.2.x
-layout. It is not a migration command for the 0.1.0 single-directory layout.
+The script bootstraps a clean prefix or upgrades an existing marked layout from
+0.2.0 or later. It is not a migration command for the 0.1.0 single-directory
+layout.
 
 The privileged phase:
 
@@ -196,10 +203,58 @@ packaged defaults < external YAML < environment < system properties < CLI
 
 Unknown `ioc.*` keys from any channel fail startup. The full template deliberately
 shows every supported section and complete list element shapes. Remote sync stays
-disabled and secrets remain environment placeholders.
+disabled and secrets remain environment placeholders. For a clean prefix the
+template enables canonical fixed validity at `12h`, with `30d` history and
+receipt retention; `existing-records: reject` prevents an unexpected destructive
+activation if the supposedly fresh dataframe DB is not empty.
 
 On upgrade, a changed packaged template is written beside the existing file as
 `application.yml.new` or `ioc-extractor.env.new`; it is never silently merged.
+
+Do not edit the installed YAML in place. Copy it to a separate candidate, edit
+that file, then run `sudo <prefix>/bin/ioc-config apply <candidate.yml>`. The
+helper performs a side-effect-free YAML syntax check, validates the exact staged
+bytes again, atomically replaces the live file and waits for application health.
+If typed or semantic startup fails, it preserves the rejected candidate and
+restores the previous configuration. `check [candidate.yml]` runs only the
+syntax phase and does not open SQLite or initialize transports.
+
+### Two-step canonical validity activation
+
+An existing installation must not combine binary/schema rollout and destructive
+legacy-row activation in one unreviewed restart:
+
+1. Deploy the TTL-capable binary while keeping
+   `ioc.lifecycle.validity.mode: disabled` and
+   `existing-records: reject`. Wait for local health to become `UP`; this
+   compatibility start applies additive migrations without expiring business
+   rows.
+2. Stop intake and optional remote synchronization. Preserve one exact rollback
+   point containing the active immutable application release, the complete
+   operator configuration, `ioc-dataframe.db` and `ioc-service.db` (including
+   their SQLite side files when present). Do not copy a live database with an
+   ordinary filesystem copy; use the deployment backup transaction or a
+   SQLite-consistent backup procedure.
+3. Set `mode: fixed`, a positive `fixed-ttl`, and
+   `existing-records: expire`, then restart the same binary. Startup admission
+   archives and removes every pre-activation canonical row before intake or
+   export opens. Mutable CSV projections may legitimately become empty; this
+   activation does not create an insert-driven export revision.
+4. Wait for health `UP` and verify the active projections. New accepted source
+   observations then repopulate and confirm records under fixed validity.
+
+The additive dataframe migration also installs the reusable export-slot
+registry. Its first eligible active export seeds the existing external IDs;
+later exports preserve survivor slots and reuse the smallest holes. No separate
+service-DB migration or operator command is required, but the registry is part
+of the dataframe backup/rollback boundary.
+
+Activation is durable and one-way for these databases. A later `mode: disabled`
+fails startup with `LIFECYCLE.POLICY_MISMATCH`. Rollback after activation is not
+a config edit and not a partial database restore: stop the service and restore
+the matching pre-activation application release, configuration and both SQLite
+databases as a single recovery point. Files moved or remote side effects after
+that point require separate operational reconciliation.
 
 ## Systemd contract
 
@@ -209,6 +264,9 @@ The rendered service:
 - sets the prefix as `WorkingDirectory`;
 - forces daemon mode and the servlet health surface on the command line;
 - loads `etc/application.yml` and `etc/ioc-extractor.env`;
+- syntax-checks YAML in `ExecCondition`; invalid syntax skips activation without
+  entering `Restart=on-failure`, so a deterministic parse error cannot create a
+  restart storm;
 - binds actuator to loopback by default;
 - permits writes only to declared state directories;
 - applies filesystem, privilege, capability, syscall and resource hardening;

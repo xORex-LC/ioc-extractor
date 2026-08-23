@@ -8,6 +8,7 @@ public record DataframeSchemaChange(Kind kind, String tableName, String columnNa
     public enum Kind {
         CREATE_TABLE,
         ADD_COLUMN,
-        CREATE_VIEW
+        CREATE_VIEW,
+        CREATE_INDEX
     }
 }

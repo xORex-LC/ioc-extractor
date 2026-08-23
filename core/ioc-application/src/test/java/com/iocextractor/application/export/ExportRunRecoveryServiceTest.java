@@ -79,10 +79,29 @@ class ExportRunRecoveryServiceTest {
     }
 
     @Test
-    void completedStagingAfterCrashRepeatsPostHashAndSkipsIdenticalCandidate() {
+    void completedStagingForNewLifecycleRecoversToNewSliceDespiteIdenticalBytes() {
         Fixture fixture = fixture(ExportRunStatus.STARTED, SliceInspectionState.STAGED);
         fixture.ledger.progress = List.of(ExportFixtures.progress(
                 0, ExportFixtures.CONTENT, "slice-old", ExportFixtures.plan().planHash()));
+
+        fixture.service.recoverIncomplete();
+
+        assertThat(fixture.status()).isEqualTo(ExportRunStatus.COMPLETED);
+        assertThat(fixture.writer.discards).isZero();
+        assertThat(fixture.writer.publications).isEqualTo(1);
+        assertThat(fixture.events.events()).singleElement()
+                .isInstanceOf(SliceCompleted.class);
+        assertThat(fixture.ledger.progress).singleElement().satisfies(progress -> {
+            assertThat(progress.lastRevision()).isEqualTo(1);
+            assertThat(progress.lastSliceId()).isEqualTo("run-recovery");
+        });
+    }
+
+    @Test
+    void completedStagingWithoutRevisionAdvanceRemainsSkippableDuringRecovery() {
+        Fixture fixture = fixture(ExportRunStatus.STARTED, SliceInspectionState.STAGED);
+        fixture.ledger.progress = List.of(ExportFixtures.progress(
+                1, ExportFixtures.CONTENT, "slice-old", ExportFixtures.plan().planHash()));
 
         fixture.service.recoverIncomplete();
 
@@ -90,10 +109,9 @@ class ExportRunRecoveryServiceTest {
         assertThat(fixture.writer.discards).isEqualTo(1);
         assertThat(fixture.writer.publications).isZero();
         assertThat(fixture.events.events()).isEmpty();
-        assertThat(fixture.ledger.progress).singleElement().satisfies(progress -> {
-            assertThat(progress.lastRevision()).isEqualTo(1);
-            assertThat(progress.lastSliceId()).isEqualTo("slice-old");
-        });
+        assertThat(fixture.ledger.progress).singleElement()
+                .extracting(ExportProgress::lastSliceId)
+                .isEqualTo("slice-old");
     }
 
     @Test

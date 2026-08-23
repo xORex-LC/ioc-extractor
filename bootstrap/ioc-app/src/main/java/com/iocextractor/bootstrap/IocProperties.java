@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
@@ -41,11 +42,14 @@ public record IocProperties(
         @NotNull @Valid Export export,
         @NotNull @Valid Sync sync,
         @Valid Maintenance maintenance,
+        @Valid Lifecycle lifecycle,
         @NotNull @Valid Observability observability) {
 
+    @ConstructorBinding
     public IocProperties {
         patterns = snapshotMap(patterns);
         pipeline = pipeline == null ? new Pipeline(true, PipelineFailurePolicy.FAIL_FAST, 10_000) : pipeline;
+        lifecycle = lifecycle == null ? Lifecycle.defaults() : lifecycle;
     }
 
     private static <T> List<T> snapshotList(List<T> source) {
@@ -336,6 +340,36 @@ public record IocProperties(
                     RetentionActionType action,
                     String archiveDir) {
             }
+        }
+    }
+
+    /** Runtime safety and bounded maintenance settings for canonical lifecycle data. */
+    public record Lifecycle(@NotNull @Valid Validity validity,
+                            @NotNull Duration historyRetention,
+                            @NotNull Duration historyCleanupInterval,
+                            @NotNull Duration receiptRetention,
+                            @NotNull @Valid Reconcile reconcile,
+                            @NotNull @Valid ClockSafety clock) {
+
+        private static Lifecycle defaults() {
+            return new Lifecycle(new Validity(
+                    LifecycleValidityMode.DISABLED, Duration.ofHours(12), ExistingRecordsPolicy.REJECT),
+                    Duration.ofDays(30), Duration.ofHours(1), Duration.ofDays(30),
+                    new Reconcile(Duration.ofSeconds(5), 1_000),
+                    new ClockSafety(Duration.ofSeconds(2), Duration.ofSeconds(30)));
+        }
+
+        public record Validity(@NotNull LifecycleValidityMode mode,
+                               Duration fixedTtl,
+                               @NotNull ExistingRecordsPolicy existingRecords) {
+        }
+
+        public record Reconcile(@NotNull Duration backstopInterval,
+                                @Positive int batchSize) {
+        }
+
+        public record ClockSafety(@NotNull Duration maxBackwardSkew,
+                                  @NotNull Duration maxClampDuration) {
         }
     }
 

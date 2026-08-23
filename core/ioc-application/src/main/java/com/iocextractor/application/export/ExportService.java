@@ -140,7 +140,7 @@ public final class ExportService implements ExportArtifactsUseCase {
 
         StagedSlice staged = sliceWriter.stage(started, new SnapshotRequest(plan), snapshotReader);
         observer.sliceWritten(started, staged);
-        if (changeDetector.sameContent(staged.manifest(), progress)) {
+        if (changeDetector.isRedundant(staged.manifest(), progress)) {
             sliceWriter.discardStaging(started);
             List<ExportProgress> skipped = changeDetector.skippedProgress(
                     staged.manifest(), progress, clock.instant());

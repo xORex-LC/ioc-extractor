@@ -4,6 +4,7 @@ import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
 import com.iocextractor.application.port.in.ingest.RecoverIngestionUseCase;
 import com.iocextractor.application.artifact.IngestRunRecoveryService;
+import com.iocextractor.application.port.in.artifact.lifecycle.PrepareLifecycleAdmissionUseCase;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
@@ -85,6 +86,7 @@ public class IngestFlowConfiguration {
     public IngestionStartupCoordinator ingestionStartupCoordinator(
             IngestRunRecoveryService runRecovery,
             RecoverIngestionUseCase sourceRecovery,
+            PrepareLifecycleAdmissionUseCase lifecycleAdmission,
             IngestionLifecycleState lifecycleState,
             IngestionStartupObserver startupObserver,
             Clock ingestClock,
@@ -93,7 +95,8 @@ public class IngestFlowConfiguration {
             throw new IllegalStateException("iocIngestionFlow does not expose lifecycle control");
         }
         return new IngestionStartupCoordinator(
-                runRecovery::recover, sourceRecovery, lifecycle, lifecycleState, startupObserver, ingestClock);
+                runRecovery::recover, sourceRecovery, lifecycle, lifecycleState,
+                startupObserver, lifecycleAdmission, ingestClock);
     }
 
     @Bean

@@ -21,8 +21,9 @@ Extractor до начала внедрения новых продуктовых
 этот сервис, но подготавливает проверенный shared-platform слой и реальный
 Maven publication path.
 
-Новые business features IOC Extractor в релиз не входят. Наблюдаемое изменение
-поведения допустимо только как:
+Новые business features IOC Extractor в релиз не входят, кроме явно принятого
+scope change `R030-DATA / DATA-TTL-01` для canonical record lifecycle TTL.
+Иное наблюдаемое изменение поведения допустимо только как:
 
 - явно одобренное исправление дефекта;
 - controlled compatibility retirement;
@@ -84,6 +85,7 @@ policy и release process.
 | ID | Приоритет | Outcome | Contract |
 |---|---|---|---|
 | `R030-BASE` | MUST | Текущее состояние воспроизводимо и измерено | [Baseline](goals/R030-BASE-baseline.md) |
+| `R030-DATA` | MUST | Canonical records имеют проверяемый expiration lifecycle без частичной activation | [Canonical record lifecycle](data-ttl-01/release-contract.md) |
 | `R030-QUAL` | MUST | Code-health review конечен и проверяем | [Code health](goals/R030-QUAL-code-health.md) |
 | `R030-RETIRE` | MUST | Dead/unwired code и ненужная compatibility контролируемо устранены | [Retirement](goals/R030-RETIRE-retirement.md) |
 | `R030-ARCH` | MUST | Maven-границы подтверждены, внутри модулей понятная package organization | [Architecture](goals/R030-ARCH-architecture.md) |
@@ -116,7 +118,8 @@ tests. Необъяснённое изменение считается дефе
 
 ## 6. Что не входит в релиз
 
-По умолчанию 0.3.0 не включает:
+По умолчанию 0.3.0 не включает (исключение DATA-TTL-01 зарегистрировано в
+§11):
 
 - новые пользовательские возможности и новые IOC integrations;
 - реализацию или deployment `feeds-collector`;
@@ -145,6 +148,8 @@ R030-BASE
    │
    ├────────────▶ R030-BUILD / R030-SEC
    │
+   ├────────────▶ R030-DATA ────────────────┐
+   │                                        │
    ▼
 Module hardening waves
 R030-QUAL + R030-RETIRE + R030-ARCH + R030-TEST + affected R030-DOC
@@ -153,7 +158,7 @@ R030-QUAL + R030-RETIRE + R030-ARCH + R030-TEST + affected R030-DOC
    │
    ▼
 Repository-wide documentation and compatibility closure
-   │
+   │◀───────────────────────────────────────┘
    ▼
 R030-REL
 ```
@@ -194,7 +199,7 @@ global gate. Порядок работ определён в
 
 Релиз завершён, когда:
 
-- все десять MUST-goals имеют статус `verified`;
+- все одиннадцать MUST-goals имеют статус `verified`;
 - все применимые cells в [status-matrix.md](status-matrix.md) закрыты;
 - `./mvnw clean verify` проходит из clean checkout;
 - поддерживаемые contracts не изменены без объяснения;
@@ -235,3 +240,9 @@ Scope change фиксирует:
 - новый disposition.
 
 Defer MUST-пункта нельзя скрывать обычным backlog move.
+
+### Принятые scope changes
+
+| ID | Изменение и причина | Затронутые goals | Compatibility/evidence impact | Disposition |
+|---|---|---|---|---|
+| `DATA-TTL-01` | Срочный canonical record expiration lifecycle включён как новая business capability | новый MUST `R030-DATA`; gates `R030-TEST`, `R030-DOC`, `R030-REL` | SQLite/read/ID/projection semantics; explicit upgrade activation and rollback; crash/race/100k evidence; release critical path расширен | Принято 2026-08-15, implementation go-ahead получен; P1–P9 реализованы, packaged qualification/final gate pending. Подробности изолированы в [TTL bundle](data-ttl-01/README.md) |

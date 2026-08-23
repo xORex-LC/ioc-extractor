@@ -59,7 +59,7 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Adapter (out) | `adapter/out/regex` | `Re2jPatternEngine` (default), `JdkRegexPatternEngine` |
 | Adapter (out) | `adapter/out/source` | `TikaSourceReader` |
 | Adapter (out) | `adapter/out/sink/csv` | `CsvArtifactPreparer`, `RowMapper` + мапперы, `CsvArtifactProjection`, export slice writers |
-| Adapter (out) | `adapter/out/store/jdbc` | `JdbcCanonicalArtifactRepository`, `JdbcArtifactIdBaseline`, ledgers, migrations, health |
+| Adapter (out) | `adapter/out/store/jdbc` | Canonical/lifecycle/history repositories, reusable export-slot registry, ledgers, migrations, health |
 | Adapter (in) | `adapter/in/ingest` | Spring Integration file-poll daemon, filesystem lifecycle, file ledger |
 | Adapter (out) | `adapter/out/maintenance` | `FileSystemRetentionStore` (reaper IO; в модуле `adapter-ingest`) |
 | Adapter (out) | `adapter/out/transport/smb` | SMB2/3 `FileTransport` на smbj; session/reconnect/atomic publish внутри адаптера |
@@ -177,6 +177,26 @@ publish начинается только после локального export
 В текущих эталонах `score`/`time_*`/`threat_type`/`description` всегда `NULL`
 (обогащение — опционально, на будущее).
 
+### Canonical record lifecycle
+
+Fixed TTL является свойством одной lifecycle canonical DB-записи, а не IOC type
+или source provenance. Успешная canonical transaction атомарно создаёт либо
+продлевает lifecycle с абсолютным UTC `valid_until`; подтверждение после
+deadline архивирует прежнюю lifecycle и создаёт новую с новым service-owned ID.
+Все active reads используют half-open predicate `valid_until > asOf`.
+
+Expiry обслуживается aggregate nearest-deadline scheduler: event hint и
+five-second read-only backstop обновляют один timer из deadline index, а только
+due timer запускает bounded SQLite batches. Последний реальный reconcile
+хранится в constant-cardinality checkpoint; typed history удаляется independent
+hourly scheduler-ом, а mutable CSV сходится через durable projection generation.
+Timer/job на каждую IOC отсутствует. Expiry не меняет insert-driven `artifact_revision`, поэтому сам
+по себе не формирует immutable export slice; следующий обычный new-row trigger
+читает уже актуальный active snapshot. Lifecycle SQL/history остаются в
+`adapter-store-jdbc`, storage-neutral policy/use cases — в `ioc-application`, а
+clock/config/scheduler/health — в bootstrap. Подробности:
+[dev/canonical-record-lifecycle.md](dev/canonical-record-lifecycle.md).
+
 **Кодировки I/O.** Вход декодируется по `ioc.source.charset` (`auto` = детект Tika/ICU;
 явное имя форсит text/HTML, docx/pdf — по дизайну нет); внутри — Unicode `String`.
 Выход всех CSV-проекций и export-срезов — в `ioc.sink.csv.charset`;
@@ -210,6 +230,14 @@ canonical SQLite (one WAL read tx) ──▶ CSV files ──▶ manifest.json �
 - `artifact_revision` увеличивается в транзакции фактической canonical-вставки.
   Snapshot metadata (`revision`, `changed_at`, `upper_id`) читается в той же
   read transaction, что и строки. Concurrent commit попадает в следующий срез.
+  Byte-identical candidate с более новой covered revision всё равно становится
+  новым completed slice: новая lifecycle является новой delivery occurrence, а
+  content hash не заменяет revision/business-occurrence identity.
+- При active lifecycle внешний `id` slotted artifact читается из durable
+  `(profile, artifact)` registry: surviving lifecycle сохраняют slot, vanished
+  assignments освобождаются только при eligible export, новые lifecycle
+  получают минимальные positive holes без compaction. Canonical row ID и
+  `_lifecycle_id` в этот внешний slot не превращаются.
 - Writer не материализует rows: JDBC callback-stream идёт прямо в CSV digest.
   `_SUCCESS` содержит SHA-256 точных bytes manifest; manifest содержит hashes и
   coverage всех data files. Final становится видимым одним atomic directory move.

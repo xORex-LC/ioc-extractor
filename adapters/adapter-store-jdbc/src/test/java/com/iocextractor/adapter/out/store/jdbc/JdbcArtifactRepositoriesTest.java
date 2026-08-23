@@ -6,6 +6,7 @@ import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.export.ArtifactRevision;
+import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
@@ -208,6 +209,46 @@ class JdbcArtifactRepositoriesTest {
         assertThat(new JdbcArtifactRevisionReader(dataSource).read(List.of("masks")))
                 .containsExactly(new ArtifactRevision("masks", 1, CLOCK.instant()));
         assertThat(sourceRows("masks")).containsExactly("1:" + source + ":1");
+    }
+
+    @Test
+    void canonical_load_supports_activation_projection_then_filters_deadline_and_legacy_writer_fails_closed()
+            throws Exception {
+        var schema = schema("masks", "id", "mask");
+        var repository = canonicalRepository(List.of(schema), List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1)));
+        repository.write("masks", new CanonicalArtifact("masks", List.of("id", "mask"),
+                List.of(row("id", "1", "mask", "due.example"))));
+        try (var connection = dataSource.getConnection();
+             var statement = connection.prepareStatement("""
+                     UPDATE masks
+                     SET _lifecycle_id = 1,
+                         _first_confirmed_at_epoch_ms = ?,
+                         _last_confirmed_at_epoch_ms = ?,
+                         _valid_until_epoch_ms = ?
+                     WHERE id = 1
+                     """)) {
+            statement.setLong(1, CLOCK.millis() - 1_000);
+            statement.setLong(2, CLOCK.millis() - 1_000);
+            statement.setLong(3, CLOCK.millis());
+            statement.executeUpdate();
+        }
+        var control = new JdbcLifecycleControlStore(dataSource, List.of(schema));
+        var activating = control.load().beginActivation("fixed-test-v1");
+        assertThat(control.compareAndSet(control.load(), activating)).isTrue();
+
+        assertThat(repository.load("masks").rows()).isEmpty();
+
+        assertThat(control.compareAndSet(
+                activating, activating.completeActivation(EffectiveTime.at(CLOCK.instant())))).isTrue();
+
+        assertThat(repository.load("masks").rows()).isEmpty();
+        assertThatThrownBy(() -> repository.write(
+                "masks",
+                new CanonicalArtifact("masks", List.of("id", "mask"),
+                        List.of(row("id", "2", "mask", "new.example")))))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("Legacy canonical writer is disabled");
     }
 
     private JdbcCanonicalArtifactRepository canonicalRepository(List<DataframeArtifactSchema> schemas,

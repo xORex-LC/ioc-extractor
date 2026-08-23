@@ -67,7 +67,7 @@ class ExportPlanCatalogTest {
     }
 
     @Test
-    void defaultExportFingerprintsStayWireCompatible() throws Exception {
+    void defaultExportFingerprintsPinSlotPolicyAndNonIdCompatibility() throws Exception {
         IocProperties properties = defaults();
         var plans = catalog(properties, new ArrayList<>()).plans();
 
@@ -75,7 +75,7 @@ class ExportPlanCatalogTest {
                 .extracting(plan -> plan.profile().name(), plan -> plan.planHash())
                 .containsExactly(
                         tuple("reputation-lists",
-                                "389252b9da27e14b1477ac82bb84734c09271ec4a85ed35289390ed4828f410a"),
+                                "004d09885d975a37c9618c7a1bdd38d0221f19d2fbea679b7ce1842ba3bf9588"),
                         tuple("address-blacklist",
                                 "2757f361b6338b8ec0957e8c0ae637ed1b5673441955583f3b97815c70756eea"));
         assertThat(plans.getFirst().artifacts())
@@ -219,7 +219,8 @@ class ExportPlanCatalogTest {
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), source.sink(), source.pipeline(), source.ingestion(),
-                source.artifactIdentity(), export, source.sync(), source.maintenance(), source.observability());
+                source.artifactIdentity(), export, source.sync(), source.maintenance(),
+                source.lifecycle(), source.observability());
     }
 
     private IocProperties withSinkArtifact(IocProperties source, IocProperties.Sink.Artifact replacement) {
@@ -232,7 +233,8 @@ class ExportPlanCatalogTest {
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), sink, source.pipeline(), source.ingestion(),
-                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(), source.observability());
+                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(),
+                source.lifecycle(), source.observability());
     }
 
     private IocProperties withCsv(IocProperties source, IocProperties.Sink.Csv csv) {
@@ -240,7 +242,8 @@ class ExportPlanCatalogTest {
         return new IocProperties(
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), sink, source.pipeline(), source.ingestion(),
-                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(), source.observability());
+                source.artifactIdentity(), source.export(), source.sync(), source.maintenance(),
+                source.lifecycle(), source.observability());
     }
 
     private IocProperties.Sink.Artifact copyArtifact(

@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.ingest.IngestionRecord;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.SourceUnit;
@@ -38,14 +39,14 @@ public final class JdbcIngestionLedger implements IngestionLedger {
     }
 
     @Override
-    public Optional<IngestionRecord> find(SourceKey key) {
+    public Optional<IngestionRecord> find(ObservationId observationId) {
         return jdbc.sql("""
-                        SELECT source_key, status, original_path, processing_path, archived_path,
+                        SELECT observation_id, source_key, status, original_path, processing_path, archived_path,
                                detected_at, updated_at, reason
                         FROM ingestion_ledger
-                        WHERE source_key = :source_key
+                        WHERE observation_id = :observation_id
                         """)
-                .param("source_key", key.value())
+                .param("observation_id", observationId.value())
                 .query((rs, rowNum) -> row(rs))
                 .optional()
                 .map(this::record);
@@ -56,14 +57,15 @@ public final class JdbcIngestionLedger implements IngestionLedger {
         Instant now = Instant.now(clock);
         int changed = jdbc.sql("""
                         INSERT INTO ingestion_ledger (
-                            source_key, status, original_path, processing_path,
+                            observation_id, source_key, status, original_path, processing_path,
                             archived_path, detected_at, updated_at, reason
                         ) VALUES (
-                            :source_key, :status, :original_path, :processing_path,
+                            :observation_id, :source_key, :status, :original_path, :processing_path,
                             NULL, :detected_at, :updated_at, NULL
                         )
-                        ON CONFLICT(source_key) DO NOTHING
+                        ON CONFLICT(observation_id) DO NOTHING
                         """)
+                .param("observation_id", unit.observationId().value())
                 .param("source_key", unit.key().value())
                 .param("status", IngestionStatus.CLAIMED.name())
                 .param("original_path", unit.originalPath().toString())
@@ -73,47 +75,50 @@ public final class JdbcIngestionLedger implements IngestionLedger {
                 .update();
         return changed == 1
                 ? IngestionLedgerTransition.APPLIED
-                : resolve(unit.key(), IngestionStatus.CLAIMED);
+                : resolve(unit.observationId(), IngestionStatus.CLAIMED);
     }
 
     @Override
-    public IngestionLedgerTransition markSourceArchived(SourceKey key, Path archivedPath) {
+    public IngestionLedgerTransition markSourceArchived(ObservationId observationId, Path archivedPath) {
         int changed = jdbc.sql("""
                         UPDATE ingestion_ledger
                         SET status = :status,
                             archived_path = :archived_path,
                             updated_at = :updated_at
-                        WHERE source_key = :source_key
+                        WHERE observation_id = :observation_id
                           AND status = :expected_status
                         """)
                 .param("status", IngestionStatus.SOURCE_ARCHIVED.name())
                 .param("archived_path", archivedPath.toString())
                 .param("updated_at", Instant.now(clock).toString())
-                .param("source_key", key.value())
+                .param("observation_id", observationId.value())
                 .param("expected_status", IngestionStatus.CLAIMED.name())
                 .update();
         return changed == 1
                 ? IngestionLedgerTransition.APPLIED
-                : resolve(key, IngestionStatus.SOURCE_ARCHIVED);
+                : resolve(observationId, IngestionStatus.SOURCE_ARCHIVED);
     }
 
     @Override
-    public IngestionLedgerTransition markFailed(SourceKey key, String reason) {
+    public IngestionLedgerTransition markFailed(ObservationId observationId,
+                                                SourceKey key,
+                                                String reason) {
         Instant now = Instant.now(clock);
         int changed = jdbc.sql("""
                         INSERT INTO ingestion_ledger (
-                            source_key, status, original_path, processing_path,
+                            observation_id, source_key, status, original_path, processing_path,
                             archived_path, detected_at, updated_at, reason
                         ) VALUES (
-                            :source_key, :status, :original_path, :processing_path,
+                            :observation_id, :source_key, :status, :original_path, :processing_path,
                             NULL, :detected_at, :updated_at, :reason
                         )
-                        ON CONFLICT(source_key) DO UPDATE SET
+                        ON CONFLICT(observation_id) DO UPDATE SET
                             status = excluded.status,
                             updated_at = excluded.updated_at,
                             reason = excluded.reason
                         WHERE ingestion_ledger.status = :expected_status
                         """)
+                .param("observation_id", observationId.value())
                 .param("source_key", key.value())
                 .param("status", IngestionStatus.FAILED.name())
                 .param("original_path", "unknown")
@@ -125,17 +130,17 @@ public final class JdbcIngestionLedger implements IngestionLedger {
                 .update();
         return changed == 1
                 ? IngestionLedgerTransition.APPLIED
-                : resolve(key, IngestionStatus.FAILED);
+                : resolve(observationId, IngestionStatus.FAILED);
     }
 
     @Override
     public List<IngestionRecord> findIncomplete() {
         return jdbc.sql("""
-                        SELECT source_key, status, original_path, processing_path, archived_path,
+                        SELECT observation_id, source_key, status, original_path, processing_path, archived_path,
                                detected_at, updated_at, reason
                         FROM ingestion_ledger
                         WHERE status NOT IN ('SOURCE_ARCHIVED', 'FAILED')
-                        ORDER BY detected_at, source_key
+                        ORDER BY detected_at, observation_id
                         """)
                 .query((rs, rowNum) -> row(rs))
                 .list()
@@ -144,8 +149,8 @@ public final class JdbcIngestionLedger implements IngestionLedger {
                 .toList();
     }
 
-    private IngestionLedgerTransition resolve(SourceKey key, IngestionStatus target) {
-        Optional<IngestionRecord> current = find(key);
+    private IngestionLedgerTransition resolve(ObservationId observationId, IngestionStatus target) {
+        Optional<IngestionRecord> current = find(observationId);
         if (current.isEmpty()) {
             return IngestionLedgerTransition.MISSING;
         }
@@ -156,6 +161,7 @@ public final class JdbcIngestionLedger implements IngestionLedger {
 
     private LedgerRow row(ResultSet rs) throws SQLException {
         return new LedgerRow(
+                new ObservationId(rs.getString("observation_id")),
                 new SourceKey(rs.getString("source_key")),
                 status(rs.getString("status")),
                 Path.of(rs.getString("original_path")),
@@ -168,6 +174,7 @@ public final class JdbcIngestionLedger implements IngestionLedger {
 
     private IngestionRecord record(LedgerRow row) {
         return new IngestionRecord(
+                row.observationId(),
                 row.key(),
                 row.status(),
                 row.originalPath(),
@@ -191,7 +198,8 @@ public final class JdbcIngestionLedger implements IngestionLedger {
         return value == null || value.isBlank() ? null : value;
     }
 
-    private record LedgerRow(SourceKey key,
+    private record LedgerRow(ObservationId observationId,
+                             SourceKey key,
                              IngestionStatus status,
                              Path originalPath,
                              Path processingPath,

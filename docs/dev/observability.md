@@ -153,6 +153,22 @@ Control-event publish/dispatch, keyed executor admission и scheduler outcomes
 являются operational events/health signals. Для них не создаётся искусственная
 diagnostic category `EVENTS`, потому что они не являются processing outcome.
 
+Canonical lifecycle имеет отдельную stable category `LIFECYCLE` для failure
+границ admission, unsafe clock, reconciliation, mutable projection и history
+retention. Успешные операции публикуют aggregate ECS actions
+`lifecycle_admission`, `lifecycle_reconcile`, `lifecycle_projection` и
+`lifecycle_retention`; per-record IOC/source values в них отсутствуют.
+Успешный reconcile пишется на INFO только при `expired > 0`, а projection —
+только при выполненной или всё ещё pending работе. Пустые five-second checks
+остаются silent; failures всегда сохраняют diagnostic и ERROR.
+
+Daemon Actuator `lifecycle` health является read-only view durable state. Он
+показывает admission/activation, safe-clock state/skew/clamp age, due/history
+counts, nearest deadline, backlog age, pending projection count и последний
+reconcile checkpoint. Recoverable clamp или convergence lag даёт `DEGRADED`; unsafe
+clock либо failed admission даёт `DOWN`. Health не запускает reconcile, не
+двигает clock high-water и не возвращает IOC, row key или source identity.
+
 ## Как расширять
 
 - Новый diagnostic code добавлять вместе с production producer; catalog

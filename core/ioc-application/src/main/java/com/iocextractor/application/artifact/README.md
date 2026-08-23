@@ -22,6 +22,7 @@ Actuator. Он работает только через ports из `application.
 | `StableArtifactId.java` | Результат stable id allocation |
 | `IngestRun*.java` / `RunLedger`-model | Durable checkpoint model для write→project recovery |
 | `IngestRunRecoveryService.java` | Re-project DB_COMMITTED runs и доставляет advisory projection diagnostics |
+| `lifecycle/` | Canonical record validity, lifecycle identity, activation and projection-work values |
 
 ## Границы
 

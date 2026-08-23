@@ -75,7 +75,7 @@ class ExportServiceTest {
     }
 
     @Test
-    void identicalCandidateIsDiscardedButAdvancesSnapshotRevision() {
+    void identicalBytesFromNewLifecycleCompleteANewSliceAndEmitDeliveryEvent() {
         var ledger = new ExportFixtures.FakeLedger();
         var writer = new ExportFixtures.FakeWriter();
         writer.revision = 7;
@@ -88,15 +88,16 @@ class ExportServiceTest {
 
         var result = service.export(new ExportArtifactsCommand("reputation"));
 
-        assertThat(result.status()).isEqualTo(ExportRunStatus.SKIPPED);
-        assertThat(writer.discards).isEqualTo(1);
-        assertThat(writer.publications).isZero();
+        assertThat(result.status()).isEqualTo(ExportRunStatus.COMPLETED);
+        assertThat(writer.discards).isZero();
+        assertThat(writer.publications).isEqualTo(1);
         assertThat(ledger.progress).singleElement().satisfies(progress -> {
             assertThat(progress.lastRevision()).isEqualTo(7);
-            assertThat(progress.lastSliceId()).isEqualTo("slice-old");
+            assertThat(progress.lastSliceId()).isEqualTo("run-new");
             assertThat(progress.lastSha256()).isEqualTo(CONTENT);
         });
-        assertThat(events.events()).isEmpty();
+        assertThat(events.events()).singleElement()
+                .isInstanceOf(SliceCompleted.class);
     }
 
     @Test

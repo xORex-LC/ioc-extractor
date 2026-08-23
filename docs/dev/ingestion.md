@@ -76,11 +76,16 @@ Daemon использует синхронный Spring Integration channel. О�
    durable run.** Оно ускоряет export, но periodic scheduler остаётся backstop.
 9. **Recovery предшествует intake.** Spring Integration flow имеет
    `autoStartup=false`; один startup coordinator последовательно восстанавливает
-   run ledger, затем source ledger и только после этого запускает flow. Его
+   run ledger, затем source ledger, выполняет common canonical lifecycle
+   admission и только после этого запускает flow. Admission валидирует safe
+   clock/control state, возобновляет activation, закрывает уже due rows и
+   доводит mutable projections. Его
    `ApplicationRunner` order равен `HIGHEST_PRECEDENCE`, поэтому будущий runner
    не сможет случайно опередить barrier.
-10. **Одинаковый `SourceKey` выполняется последовательно.** Ingest, recovery и
-    reject используют один синхронный keyed guard; после admission recovery
+10. **`SourceKey` не является identity попытки.** Каждая принятая доставка
+    получает новый durable `ObservationId`; retry/recovery/reject одной попытки
+    сохраняют его. Одинаковый content-key по-прежнему выполняется
+    последовательно через keyed guard; после admission recovery
     перечитывает текущее ledger-state вместо доверия snapshot-у scan-а. Все
     сервисы над общими source namespace и ledger обязаны разделять один guard;
     production composition inject-ит singleton.
@@ -90,7 +95,8 @@ Daemon использует синхронный Spring Integration channel. О�
 
 ## Durable состояния и recovery
 
-Ingestion ledger хранит terminal lifecycle источника:
+Ingestion ledger хранит terminal lifecycle каждой observation; `source_key`
+остаётся неуникальным content identity для receipt lookup и сериализации:
 
 ```text
 ABSENT -> CLAIMED -> SOURCE_ARCHIVED
@@ -114,8 +120,25 @@ STARTED -> DB_COMMITTED -> PROJECTION_COMPLETED -> COMPLETED
   failure, а не молча считается обработанным;
 - завершённые `SOURCE_ARCHIVED` и `FAILED` не запускаются заново.
 
+После run/source recovery тот же coordinator вызывает lifecycle admission.
+Ошибка safe clock, control/reconciliation или projection convergence оставляет
+intake остановленным и переводит startup lifecycle в failed. Recoverable
+runtime lag после успешного admission может отображаться как `DEGRADED`, пока
+active-read predicate остаётся доказуемым; это не отменяет periodic lifecycle
+backstop.
+
 Это at-least-once orchestration с идемпотентными durable шагами, а не обещание
 распределённого exactly-once.
+
+В active fixed-validity mode перед parsing выполняется lookup complete receipt
+по `(source_key, processing-policy fingerprint)`. Совпавший неистёкший receipt
+воспроизводит typed prepared rows через тот же canonical writer и подтверждает
+freshness без ETL. Receipt отсутствует, устарел или fingerprint изменился —
+выполняется обычный ETL и публикуется новый receipt. Retention по умолчанию
+`30d`; это bounded optimization, а не источник истины. Fingerprint включает
+явный code-policy epoch: при любом изменении parsing/mapping semantics, которое
+не выражено конфигурацией, этот epoch должен быть повышен, чтобы старые typed
+receipts гарантированно ушли на ETL fallback.
 
 Гарантии keyed guard и file-ledger critical section относятся к одному daemon
 process. Поддерживаемый deployment 0.3.0 именно такой; несколько процессов над
@@ -158,9 +181,9 @@ terminal event: `success` с `event.duration`,
 ожидаемым результатом. Startup boundary доставляет этот diagnostic один раз,
 не подменяя его общим `INGEST.RECOVERY_FAILED`; уже выпущенный recovery
 diagnostic также не дублируется. Duplicate admission остаётся успешным terminal
-`source_ingest`, но явно получает `ioc.ingest.disposition=duplicate`, поэтому
-его можно отличить от обработки без extraction по структурированному полю, а
-не по `message`.
+`source_ingest`, но receipt replay явно получает
+`ioc.ingest.disposition=duplicate`, поэтому no-ETL confirmation можно отличить
+от обработки без extraction по структурированному полю, а не по `message`.
 
 Открыты два соседних lifecycle seam-а, которые нельзя скрывать документацией:
 

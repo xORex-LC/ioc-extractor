@@ -38,8 +38,14 @@ public final class ExportChangeDetector {
         return false;
     }
 
-    /** Returns whether candidate data bytes equal the previous completed slice for this plan. */
-    public boolean sameContent(SliceManifest candidate, List<ExportProgress> progress) {
+    /**
+     * Returns whether a candidate is safe to discard without publishing a new slice.
+     *
+     * <p>Equal bytes alone are insufficient: a higher covered revision represents newly
+     * accepted public rows, including a new lifecycle after TTL expiry. Such a candidate must
+     * become a new immutable slice even when its projection happens to equal an older slice.
+     */
+    public boolean isRedundant(SliceManifest candidate, List<ExportProgress> progress) {
         Objects.requireNonNull(candidate, "candidate");
         List<ExportProgress> previous = List.copyOf(Objects.requireNonNull(progress, "progress"));
         if (candidate.artifacts().size() != previous.size()) {
@@ -50,6 +56,7 @@ public final class ExportChangeDetector {
             ExportProgress saved = byArtifact.get(artifact.artifactName());
             return saved != null
                     && saved.planHash().equals(candidate.planHash())
+                    && saved.lastRevision() == artifact.coverage().revision()
                     && saved.lastSha256().equals(artifact.sha256());
         });
     }
@@ -66,14 +73,14 @@ public final class ExportChangeDetector {
     }
 
     /**
-     * Advances snapshot revisions for an identical candidate while retaining hashes and slice id
-     * of the previously published slice.
+     * Retains progress for a redundant candidate without replacing the previously published slice.
      */
     public List<ExportProgress> skippedProgress(SliceManifest candidate,
                                                 List<ExportProgress> progress,
                                                 Instant updatedAt) {
-        if (!sameContent(candidate, progress)) {
-            throw new IllegalArgumentException("Skipped progress requires byte-identical candidate content");
+        if (!isRedundant(candidate, progress)) {
+            throw new IllegalArgumentException(
+                    "Skipped progress requires unchanged plan, revisions, and content");
         }
         Map<String, ExportProgress> previous = index(progress);
         return candidate.artifacts().stream()

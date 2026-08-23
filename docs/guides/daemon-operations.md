@@ -70,9 +70,10 @@ files under `dataframe/`; they are projections rebuilt from canonical storage.
 ## Understand outcomes
 
 A successfully processed source is archived under `var/done`. New canonical rows
-receive stable public IDs; repeated IOC rows are retained once while source
-provenance accumulates. Reprocessing another document therefore does not reset or
-replace the dataset.
+receive non-reusable internal identities; repeated IOC rows are retained once
+while source provenance accumulates. Reprocessing another document therefore
+does not reset or replace the dataset. The `id` in immutable exports is a
+separate stable-while-active reusable slot, not this canonical identity.
 
 Recoverable item-level errors under `collect-and-continue` can produce a completed
 run with diagnostics. Valid rows may still be committed, and logs/health must be

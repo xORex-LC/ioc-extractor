@@ -1,5 +1,8 @@
 package com.iocextractor.adapter.in.ingest;
 
+import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
+import com.iocextractor.application.artifact.lifecycle.LifecycleActivationState;
+import com.iocextractor.application.artifact.lifecycle.LifecycleAdmissionResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.Lifecycle;
 import org.springframework.core.Ordered;
@@ -50,6 +53,12 @@ class IngestionStartupCoordinatorTest {
                 intake,
                 state,
                 observer,
+                () -> {
+                    events.add("lifecycle-admission");
+                    return new LifecycleAdmissionResult(
+                            LifecycleActivationState.DISABLED_COMPATIBLE,
+                            EffectiveTime.at(NOW), 0, 0);
+                },
                 CLOCK);
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -69,7 +78,7 @@ class IngestionStartupCoordinatorTest {
         assertThat(intake.isRunning()).isTrue();
         assertThat(events).containsExactly(
                 "recovery-started", "run-recovery", "source-recovery",
-                "intake-start", "recovery-completed");
+                "lifecycle-admission", "intake-start", "recovery-completed");
         assertThat(state.snapshot()).satisfies(snapshot -> {
             assertThat(snapshot.phase()).isEqualTo(IngestionLifecycleState.Phase.RUNNING);
             assertThat(snapshot.recoveredRuns()).isEqualTo(2);

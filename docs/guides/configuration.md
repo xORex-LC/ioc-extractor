@@ -22,7 +22,23 @@ YAML, environment, a system property or the command line stops startup. This is
 intentional: an operator must never believe that a safety or delivery setting was
 applied when it was silently ignored.
 
-After changing the installed YAML or environment file, restart the service.
+Do not edit the installed YAML in place. Prepare a separate candidate and apply
+it through the installed helper:
+
+```bash
+sudo cp <prefix>/etc/application.yml ./application.candidate.yml
+sudo chown "$(id -u):$(id -g)" ./application.candidate.yml
+${EDITOR:-vi} ./application.candidate.yml
+sudo <prefix>/bin/ioc-config check ./application.candidate.yml
+sudo <prefix>/bin/ioc-config apply ./application.candidate.yml
+```
+
+`check` is a side-effect-free syntax check. `apply` validates the exact staged
+bytes again, replaces the live file atomically, restarts the service and waits
+for health. A typed or semantic startup failure restores the previous YAML and
+preserves the rejected candidate for diagnosis. Syntax failures use
+`CONFIG.YAML_INVALID` with line and column but never echo the source line.
+
 Secrets must be supplied through environment placeholders such as
 `${SMB_PASSWORD}` and must not be written directly into YAML.
 
@@ -239,6 +255,27 @@ baseline for SQLite and deterministic file handling.
 | `ioc.ingestion.ledger.type` | `file`, `jdbc` | `file` | Use `jdbc` when durable run-ledger integration is required; follow the deployment baseline. |
 | `ioc.ingestion.ledger.path` | path | `./var/ledger` | Filesystem ledger location when type is `file`. |
 | `ioc.ingestion.concurrency` | integer, exactly `1` | `1` | Parallel ingestion is not supported in 0.3.0. Startup rejects any other value instead of silently ignoring it. |
+
+## Canonical lifecycle runtime safety
+
+These controls select record validity, bound cleanup and convergence, and guard
+against system-clock rollback. The classpath and upgrade presets remain
+`disabled`; switching an existing database to `fixed` is a one-way operation.
+Do not use zero as a cleanup command: durations and the batch size below must be
+positive.
+
+| Property | Type / accepted values | Built-in default | Guidance |
+|---|---|---|---|
+| `ioc.lifecycle.validity.mode` | `disabled`, `fixed` | `disabled` | `disabled` preserves compatibility before activation. `fixed` enables durable validity and cannot later be disabled for the same database. |
+| `ioc.lifecycle.validity.fixed-ttl` | positive duration | `12h` | Validity granted by each successful canonical confirmation. It is required and positive in `fixed` mode; `0` is rejected. |
+| `ioc.lifecycle.validity.existing-records` | `reject`, `expire` | `reject` | Keep `reject` for the compatibility start. Explicitly select `expire` only for the activation restart; it archives and removes every legacy row and may leave all active projections empty. |
+| `ioc.lifecycle.history-retention` | positive duration | `30d` | Retention of closed full-row lifecycle history; cleanup is independent and bounded. |
+| `ioc.lifecycle.history-cleanup-interval` | positive duration | `1h` | Cadence for independent history/receipt cleanup discovery. Each transaction stays bounded; an existing backlog continues immediately in bounded follow-up tasks. |
+| `ioc.lifecycle.receipt-retention` | positive duration | `30d` | Retention of complete prepared-row confirmation receipts. Missing, stale or policy-mismatched receipts cause ordinary ETL, never rejection. |
+| `ioc.lifecycle.reconcile.backstop-interval` | positive duration | `5s` | Read-only nearest-deadline and projection correctness backstop for lost hints and restart. An empty deadline refresh does not create a reconcile cycle. Keep at or below `5s` for the V1 expiry-latency contract. |
+| `ioc.lifecycle.reconcile.batch-size` | positive integer | `1000` | Maximum rows in one expiry or history-retention transaction; smaller values reduce writer hold time but require more cycles. |
+| `ioc.lifecycle.clock.max-backward-skew` | positive duration | `2s` | Maximum system UTC rollback that may be clamped to the durable high-water and reported `DEGRADED`. |
+| `ioc.lifecycle.clock.max-clamp-duration` | positive duration | `30s` | Maximum continuous clamp window before lifecycle time becomes unsafe and health reports `DOWN`. |
 
 ## Maintenance retention
 

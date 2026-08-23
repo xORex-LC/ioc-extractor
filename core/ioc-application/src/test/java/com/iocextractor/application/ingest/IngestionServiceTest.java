@@ -18,6 +18,11 @@ import com.iocextractor.application.artifact.ArtifactWritePlan;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.artifact.PreparedArtifactRow;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
+import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptReplayResult;
+import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
+import com.iocextractor.application.artifact.lifecycle.LifecycleWriteResult;
+import com.iocextractor.application.artifact.lifecycle.ProjectionGeneration;
 import com.iocextractor.diagnostics.result.FailurePolicy;
 import com.iocextractor.diagnostics.result.Result;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
@@ -60,6 +65,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -412,6 +418,41 @@ class IngestionServiceTest {
     }
 
     @Test
+    void final_rejection_marks_any_partially_committed_canonical_observation_terminal() {
+        var key = new SourceKey("ABC123");
+        var observation = new ObservationId("delivery-failed");
+        var ledger = new MemoryLedger();
+        ledger.record = new IngestionRecord(
+                observation, key, IngestionStatus.CLAIMED,
+                Path.of("inbox/source.html"), Path.of("processing/source.html"), null,
+                Instant.EPOCH, Instant.EPOCH, null);
+        var terminal = new AtomicReference<ObservationId>();
+        var lifecycleSupport = new IngestionLifecycleSupport(
+                command -> Optional.empty(),
+                (observationId, completedAt, retention) -> terminal.set(observationId),
+                () -> EffectiveTime.at(EVENT_TIME),
+                "processing-policy-v1",
+                java.time.Duration.ofDays(30));
+        var service = new IngestionService(
+                ledger,
+                new MemoryLifecycle(),
+                source -> new SourcePreparers(List.of()),
+                extractionFactory(),
+                new MemoryRunLedger(),
+                new CollectingProjection(),
+                new RecordingControlEventPublisher(),
+                clock,
+                NoopDiagnosticSink.INSTANCE,
+                new SynchronousKeyedExecutionGuard(),
+                lifecycleSupport);
+
+        IngestionRejectionResult result = service.reject(observation, key, "pipeline failed");
+
+        assertThat(result).isEqualTo(IngestionRejectionResult.REJECTED);
+        assertThat(terminal).hasValue(observation);
+    }
+
+    @Test
     void extraction_failure_marks_run_failed_and_does_not_emit_event() {
         var key = new SourceKey("ABC123");
         var ledger = new MemoryLedger();
@@ -475,6 +516,54 @@ class IngestionServiceTest {
         assertThat(result.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
         assertThat(runLedger.status).isEqualTo(IngestRunStatus.COMPLETED);
         assertThat(ledger.find(key)).get()
+                .extracting(IngestionRecord::status)
+                .isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
+    }
+
+    @Test
+    void complete_receipt_confirms_a_new_observation_without_running_etl() {
+        var key = new SourceKey("ABC123");
+        var observation = new ObservationId("delivery-current");
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        var preparer = new CountingPreparer();
+        var projection = new CollectingProjection();
+        var events = new RecordingControlEventPublisher();
+        var terminal = new AtomicReference<ObservationId>();
+        var lifecycleSupport = new IngestionLifecycleSupport(
+                command -> Optional.of(new ConfirmationReceiptReplayResult(java.util.Map.of(
+                        "masks", new LifecycleWriteResult(
+                                observation,
+                                "masks",
+                                EffectiveTime.at(EVENT_TIME),
+                                0, 1, 0, 4, new ProjectionGeneration(1), false)))),
+                (observationId, completedAt, retention) -> terminal.set(observationId),
+                () -> EffectiveTime.at(EVENT_TIME),
+                "processing-policy-v1",
+                java.time.Duration.ofDays(30));
+        var service = new IngestionService(
+                ledger,
+                lifecycle,
+                source -> new SourcePreparers(List.of(preparer)),
+                failingExtractionFactory(),
+                new MemoryRunLedger(),
+                projection,
+                events,
+                clock,
+                NoopDiagnosticSink.INSTANCE,
+                new SynchronousKeyedExecutionGuard(),
+                lifecycleSupport);
+
+        IngestSourceResult result = service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source.html"), observation, key, Instant.EPOCH));
+
+        assertThat(result.duplicate()).isTrue();
+        assertThat(result.extractionResultOptional()).isEmpty();
+        assertThat(preparer.written).isZero();
+        assertThat(projection.requests).isEmpty();
+        assertThat(events.events()).isEmpty();
+        assertThat(terminal).hasValue(observation);
+        assertThat(ledger.find(observation)).get()
                 .extracting(IngestionRecord::status)
                 .isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
     }
@@ -787,12 +876,16 @@ class IngestionServiceTest {
         private RuntimeException failRecoveredFailure;
 
         @Override
-        public SourceUnit claim(Path source, SourceKey key, Instant detectedAt) {
+        public SourceUnit claim(Path source,
+                                ObservationId observationId,
+                                SourceKey key,
+                                Instant detectedAt) {
             events.add("claim");
             if (claimFailure != null) {
                 throw claimFailure;
             }
-            return new SourceUnit(key, source, Path.of("processing/" + source.getFileName()), detectedAt);
+            return new SourceUnit(
+                    observationId, key, source, Path.of("processing/" + source.getFileName()), detectedAt);
         }
 
         @Override
@@ -844,9 +937,9 @@ class IngestionServiceTest {
         private IngestionLedgerTransition archiveTransition;
 
         @Override
-        public Optional<IngestionRecord> find(SourceKey key) {
+        public Optional<IngestionRecord> find(ObservationId observationId) {
             return Optional.ofNullable(record)
-                    .filter(item -> item.key().equals(key));
+                    .filter(item -> item.observationId().equals(observationId));
         }
 
         @Override
@@ -859,14 +952,14 @@ class IngestionServiceTest {
                         ? IngestionLedgerTransition.ALREADY_APPLIED
                         : IngestionLedgerTransition.CONFLICT;
             }
-            record = new IngestionRecord(unit.key(), IngestionStatus.CLAIMED,
+            record = new IngestionRecord(unit.observationId(), unit.key(), IngestionStatus.CLAIMED,
                     unit.originalPath(), unit.processingPath(), null,
                     unit.detectedAt(), unit.detectedAt(), null);
             return IngestionLedgerTransition.APPLIED;
         }
 
         @Override
-        public IngestionLedgerTransition markSourceArchived(SourceKey key, Path archivedPath) {
+        public IngestionLedgerTransition markSourceArchived(ObservationId observationId, Path archivedPath) {
             if (archiveTransition != null) {
                 return archiveTransition;
             }
@@ -879,14 +972,16 @@ class IngestionServiceTest {
             if (record.status() != IngestionStatus.CLAIMED) {
                 return IngestionLedgerTransition.CONFLICT;
             }
-            record = new IngestionRecord(key, IngestionStatus.SOURCE_ARCHIVED,
+            record = new IngestionRecord(observationId, record.key(), IngestionStatus.SOURCE_ARCHIVED,
                     record.originalPath(), record.processingPath(), archivedPath,
                     record.detectedAt(), record.detectedAt(), null);
             return IngestionLedgerTransition.APPLIED;
         }
 
         @Override
-        public IngestionLedgerTransition markFailed(SourceKey key, String reason) {
+        public IngestionLedgerTransition markFailed(ObservationId observationId,
+                                                     SourceKey key,
+                                                     String reason) {
             if (record != null && record.status() == IngestionStatus.FAILED) {
                 return IngestionLedgerTransition.ALREADY_APPLIED;
             }
@@ -895,7 +990,7 @@ class IngestionServiceTest {
             }
             Path originalPath = record == null ? Path.of("unknown") : record.originalPath();
             Path processingPath = record == null ? Path.of("unknown") : record.processingPath();
-            record = new IngestionRecord(key, IngestionStatus.FAILED,
+            record = new IngestionRecord(observationId, key, IngestionStatus.FAILED,
                     originalPath, processingPath, null,
                     Instant.EPOCH, Instant.EPOCH, reason);
             return IngestionLedgerTransition.APPLIED;

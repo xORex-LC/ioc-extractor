@@ -77,11 +77,18 @@ class DataframeStorageDaemonRuntimeModeTest {
                 .containsOnlyKeys("jdbcStorageHealthIndicator", "dataframeStorageHealthIndicator");
         assertThat(context.containsBean("ingestRunRecoveryService")).isTrue();
 
-        assertThat(userVersion()).isEqualTo(3);
+        assertThat(userVersion()).isEqualTo(6);
         assertThat(tableExists("masks")).isTrue();
         assertThat(tableExists("masks_sources")).isTrue();
+        assertThat(tableExists("masks_history")).isTrue();
+        assertThat(tableExists("masks_receipt_rows")).isTrue();
         assertThat(viewExists("masks_last_seen")).isTrue();
         assertThat(tableExists("hashes")).isTrue();
+        assertThat(tableExists("canonical_lifecycle_control")).isTrue();
+        assertThat(tableExists("export_slot_assignment")).isTrue();
+        assertThat(tableExists("export_slot_free")).isTrue();
+        assertThat(tableExists("export_slot_state")).isTrue();
+        assertThat(lifecycleState()).isEqualTo("DISABLED_COMPATIBLE");
     }
 
     private int userVersion() throws Exception {
@@ -95,6 +102,17 @@ class DataframeStorageDaemonRuntimeModeTest {
 
     private boolean tableExists(String name) throws Exception {
         return objectExists("table", name);
+    }
+
+    private String lifecycleState() throws Exception {
+        try (Connection connection = dataframeStorageDataSource.getConnection();
+             var statement = connection.createStatement();
+             var resultSet = statement.executeQuery("""
+                     SELECT state FROM canonical_lifecycle_control WHERE singleton_id = 1
+                     """)) {
+            assertThat(resultSet.next()).isTrue();
+            return resultSet.getString(1);
+        }
     }
 
     private boolean viewExists(String name) throws Exception {

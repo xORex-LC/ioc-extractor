@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.in.ingest;
 
 import com.iocextractor.application.ingest.ArchivedSourceUnit;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.SourceUnit;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
@@ -12,6 +13,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
 
@@ -32,36 +35,41 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
     }
 
     @Override
-    public SourceUnit claim(Path source, SourceKey key, Instant detectedAt) {
-        Path target = processingDir.resolve(fileName(key, source));
+    public SourceUnit claim(Path source,
+                            ObservationId observationId,
+                            SourceKey key,
+                            Instant detectedAt) {
+        Path target = processingDir.resolve(fileName(observationId, key, source));
         move(source, target);
-        return new SourceUnit(key, source, target, detectedAt);
+        return new SourceUnit(observationId, key, source, target, detectedAt);
     }
 
     @Override
     public Path archive(SourceUnit unit) {
-        Path target = doneDir.resolve(fileName(unit.key(), unit.processingPath()));
+        Path target = doneDir.resolve(fileName(unit.observationId(), unit.key(), unit.processingPath()));
         move(unit.processingPath(), target);
         return target;
     }
 
     @Override
     public Path archive(ArchivedSourceUnit source) {
-        Path target = doneDir.resolve(fileName(source.key(), source.processingPath()));
+        Path target = doneDir.resolve(fileName(
+                source.observationId(), source.key(), source.processingPath()));
         move(source.processingPath(), target);
         return target;
     }
 
     @Override
     public Path archiveDuplicate(Path source, SourceKey key) {
-        Path target = doneDir.resolve(fileName(key, source));
+        Path target = doneDir.resolve(fileName(ObservationId.legacy(key.value()), key, source));
         move(source, target);
         return target;
     }
 
     @Override
     public Path fail(SourceUnit unit, String reason) {
-        Path target = failedDir.resolve(fileName(unit.key(), unit.processingPath()));
+        Path target = failedDir.resolve(fileName(
+                unit.observationId(), unit.key(), unit.processingPath()));
         move(unit.processingPath(), target);
         writeErrorSidecar(target, reason);
         return target;
@@ -69,7 +77,8 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
 
     @Override
     public Path fail(ArchivedSourceUnit source, String reason) {
-        Path target = failedDir.resolve(fileName(source.key(), source.processingPath()));
+        Path target = failedDir.resolve(fileName(
+                source.observationId(), source.key(), source.processingPath()));
         move(source.processingPath(), target);
         writeErrorSidecar(target, reason);
         return target;
@@ -91,10 +100,12 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
         }
     }
 
-    private String fileName(SourceKey key, Path source) {
+    private String fileName(ObservationId observationId, SourceKey key, Path source) {
         Path sourceFileName = source.getFileName();
         String original = sourceFileName == null ? "source" : sourceFileName.toString();
-        String prefix = key.value() + "-";
+        String prefix = observationId.value().equals("legacy:" + key.value())
+                ? key.value() + "-"
+                : observationToken(observationId) + "__" + key.value() + "-";
         return original.startsWith(prefix) ? original : prefix + original;
     }
 
@@ -127,16 +138,42 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
 
     private ArchivedSourceUnit toArchivedSource(Path source) {
         String filename = source.getFileName().toString();
+        int observationSeparator = filename.indexOf("__");
+        if (observationSeparator > 0) {
+            int contentSeparator = filename.indexOf('-', observationSeparator + 2);
+            if (contentSeparator <= observationSeparator + 2) {
+                return null;
+            }
+            try {
+                var observationId = observationId(filename.substring(0, observationSeparator));
+                var key = new SourceKey(filename.substring(observationSeparator + 2, contentSeparator));
+                return new ArchivedSourceUnit(
+                        observationId, key, source, Files.getLastModifiedTime(source).toInstant());
+            } catch (IllegalArgumentException | IOException invalidP5Name) {
+                return null;
+            }
+        }
         int separator = filename.indexOf('-');
         if (separator <= 0) {
             return null;
         }
         try {
             var detectedAt = Files.getLastModifiedTime(source).toInstant();
-            return new ArchivedSourceUnit(new SourceKey(filename.substring(0, separator)), source, detectedAt);
+            SourceKey key = new SourceKey(filename.substring(0, separator));
+            return new ArchivedSourceUnit(ObservationId.legacy(key.value()), key, source, detectedAt);
         } catch (IOException e) {
             throw new IocExtractorException("Failed to inspect processing source: " + source, e);
         }
+    }
+
+    private String observationToken(ObservationId observationId) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(
+                observationId.value().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private ObservationId observationId(String token) {
+        return new ObservationId(new String(
+                Base64.getUrlDecoder().decode(token), StandardCharsets.UTF_8));
     }
 
     private static Path requireDirectory(Path directory, String name) {

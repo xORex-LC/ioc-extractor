@@ -129,7 +129,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ---- preflight -------------------------------------------------------------
-for command in awk chmod chown cmp curl find getent grep head id install ln mkdir mktemp \
+for command in awk chmod chown cmp cp curl date find flock getent grep head id install ln mkdir mktemp \
     mv ps readlink realpath rm sed sha256sum sleep tar uname useradd; do
   command -v "${command}" >/dev/null 2>&1 || die "required command not found: ${command}"
 done
@@ -440,6 +440,12 @@ sed -e "s|@PREFIX@|${PREFIX}|g" \
     -e "s|@GROUP@|${RUN_GROUP}|g" \
     "${SCRIPT_DIR}/templates/ioc" > "${PREFIX}/bin/ioc"
 chmod 0750 "${PREFIX}/bin/ioc"
+sed -e "s|@PREFIX@|${PREFIX}|g" \
+    -e "s|@JAVA_BIN@|${JAVA_BIN}|g" \
+    -e "s|@GROUP@|${RUN_GROUP}|g" \
+    -e "s|@SERVER_PORT@|${SERVER_PORT}|g" \
+    "${SCRIPT_DIR}/templates/ioc-config" > "${PREFIX}/bin/ioc-config"
+chmod 0750 "${PREFIX}/bin/ioc-config"
 
 # ---- 5. ownership & permissions --------------------------------------------
 # Executables and configuration stay root-owned. Only durable runtime state and
@@ -529,5 +535,5 @@ $(log "done.")
   Export  : ${PREFIX}/var/export/  (immutable artifact slices)
   Output  : ${PREFIX}/dataframe/  (*_generated.csv projections)
   Logs    : journalctl -u ${SERVICE} -f   (and ${PREFIX}/var/logs/)
-  Config  : ${PREFIX}/etc/application.yml  then: systemctl restart ${SERVICE}
+  Config  : sudo ${PREFIX}/bin/ioc-config apply <candidate.yml>
 EOF

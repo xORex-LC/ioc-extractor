@@ -30,8 +30,42 @@ final class IocConfigPreflight implements Validator {
             return;
         }
         validateIngestion(props.ingestion(), errors);
+        validateLifecycle(props.lifecycle(), errors);
         validateArtifactIdentityReferences(props, errors);
         validateSync(props, errors);
+    }
+
+    private void validateLifecycle(IocProperties.Lifecycle lifecycle, Errors errors) {
+        if (lifecycle == null) {
+            return;
+        }
+        rejectIfNotPositive(errors, "lifecycle.historyRetention", lifecycle.historyRetention(),
+                "ioc.lifecycle.history-retention");
+        rejectIfNotPositive(errors, "lifecycle.historyCleanupInterval", lifecycle.historyCleanupInterval(),
+                "ioc.lifecycle.history-cleanup-interval");
+        rejectIfNotPositive(errors, "lifecycle.receiptRetention", lifecycle.receiptRetention(),
+                "ioc.lifecycle.receipt-retention");
+        if (lifecycle.validity() != null
+                && lifecycle.validity().mode() == LifecycleValidityMode.FIXED) {
+            Duration fixedTtl = lifecycle.validity().fixedTtl();
+            if (!isPositive(fixedTtl)) {
+                reject(errors, "lifecycle.validity.fixedTtl", fixedTtl,
+                        "ioc.lifecycle.validity.fixed-ttl is required in fixed mode and must be positive");
+            }
+        }
+        if (lifecycle.reconcile() != null) {
+            rejectIfNotPositive(errors, "lifecycle.reconcile.backstopInterval",
+                    lifecycle.reconcile().backstopInterval(),
+                    "ioc.lifecycle.reconcile.backstop-interval");
+        }
+        if (lifecycle.clock() != null) {
+            rejectIfNotPositive(errors, "lifecycle.clock.maxBackwardSkew",
+                    lifecycle.clock().maxBackwardSkew(),
+                    "ioc.lifecycle.clock.max-backward-skew");
+            rejectIfNotPositive(errors, "lifecycle.clock.maxClampDuration",
+                    lifecycle.clock().maxClampDuration(),
+                    "ioc.lifecycle.clock.max-clamp-duration");
+        }
     }
 
     private void validateIngestion(IocProperties.Ingestion ingestion, Errors errors) {

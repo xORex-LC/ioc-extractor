@@ -66,9 +66,11 @@ Rename явно обозначает producer completion. Прямое копи�
 
 ## Результаты обработки
 
-Успешный source архивируется в `var/done`. Новые canonical rows получают stable
-public IDs; повторный IOC сохраняется один раз, а source provenance накапливается.
-Новый документ не сбрасывает и не заменяет dataset.
+Успешный source архивируется в `var/done`. Новые canonical rows получают
+непереиспользуемые internal identities; повторный IOC сохраняется один раз, а
+source provenance накапливается. Новый документ не сбрасывает и не заменяет
+dataset. Поле `id` в immutable export является отдельным reusable slot,
+стабильным только пока lifecycle активна.
 
 При `collect-and-continue` recoverable item errors могут завершить run с
 diagnostics. Валидные строки при этом записываются, поэтому logs/health следует

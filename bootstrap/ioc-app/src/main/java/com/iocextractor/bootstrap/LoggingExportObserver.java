@@ -38,6 +38,7 @@ public final class LoggingExportObserver implements ExportObserver {
         EventOutcome outcome = run.status() == ExportRunStatus.FAILED
                 ? EventOutcome.FAILURE : EventOutcome.SUCCESS;
         event(EventAction.EXPORT_COMPLETE, run, outcome)
+                .field(LogField.IOC_COMPLETION_STATUS, run.status().name())
                 .message("artifact export completed")
                 .log();
     }

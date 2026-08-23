@@ -1,5 +1,6 @@
 package com.iocextractor.adapter.in.ingest;
 
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.SourceKey;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -63,6 +64,27 @@ class FileSystemSourceLifecycleTest {
                     assertThat(source.key().value()).isEqualTo("abc123");
                     assertThat(source.processingPath().getFileName().toString()).isEqualTo("abc123-source.html");
                 });
+    }
+
+    @Test
+    void repeated_content_is_owned_by_distinct_recoverable_observation_names() throws Exception {
+        var lifecycle = new FileSystemSourceLifecycle(
+                tempDir.resolve("processing"),
+                tempDir.resolve("done"),
+                tempDir.resolve("failed"));
+        var key = new SourceKey("abc123");
+        Path first = Files.writeString(tempDir.resolve("first.html"), "ioc");
+        Path second = Files.writeString(tempDir.resolve("second.html"), "ioc");
+
+        var firstUnit = lifecycle.claim(
+                first, new ObservationId("delivery-1"), key, Instant.EPOCH);
+        var secondUnit = lifecycle.claim(
+                second, new ObservationId("delivery-2"), key, Instant.EPOCH);
+
+        assertThat(firstUnit.processingPath()).isNotEqualTo(secondUnit.processingPath());
+        assertThat(lifecycle.findProcessingSources())
+                .extracting(source -> source.observationId().value())
+                .containsExactlyInAnyOrder("delivery-1", "delivery-2");
     }
 
     @Test

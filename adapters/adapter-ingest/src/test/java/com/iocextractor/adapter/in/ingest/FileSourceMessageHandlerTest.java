@@ -5,6 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.iocextractor.application.ingest.IngestionStatus;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.pipeline.CompletionStatus;
 import com.iocextractor.application.port.in.ExtractionResult;
@@ -105,7 +106,7 @@ class FileSourceMessageHandlerTest {
 
         assertThat(appender.list).hasSize(1);
         ILoggingEvent event = appender.list.getFirst();
-        assertThat(event.getFormattedMessage()).isEqualTo("source duplicate skipped");
+        assertThat(event.getFormattedMessage()).isEqualTo("source confirmation receipt replayed");
         assertThat(eventFields(event))
                 .containsEntry(LogField.EVENT_ACTION.key(), EventAction.SOURCE_INGEST.value())
                 .containsEntry(LogField.EVENT_OUTCOME.key(), EventOutcome.SUCCESS.value())
@@ -296,6 +297,50 @@ class FileSourceMessageHandlerTest {
         assertThat(diagnostics.diagnostics()).isEmpty();
     }
 
+    @Test
+    void identical_later_deliveries_have_distinct_observations_but_the_same_content_key()
+            throws Exception {
+        Path first = Files.writeString(tempDir.resolve("first.html"), "same-ioc");
+        Path second = Files.writeString(tempDir.resolve("second.html"), "same-ioc");
+        List<IngestSourceCommand> commands = new java.util.ArrayList<>();
+        var handler = handler(command -> {
+            commands.add(command);
+            return new IngestSourceResult(
+                    command.key(), IngestionStatus.SOURCE_ARCHIVED, false, null);
+        });
+
+        handler.handle(first.toFile());
+        handler.handle(second.toFile());
+
+        assertThat(commands).hasSize(2);
+        assertThat(commands.get(0).key()).isEqualTo(commands.get(1).key());
+        assertThat(commands.get(0).observationId()).isNotEqualTo(commands.get(1).observationId());
+    }
+
+    @Test
+    void adapter_retries_and_terminal_rejection_keep_one_observation_identity() throws Exception {
+        Path source = Files.writeString(tempDir.resolve("retry.html"), "ioc");
+        List<ObservationId> attempts = new java.util.ArrayList<>();
+        var reject = new RecordingRejectUseCase();
+        var handler = new FileSourceMessageHandler(
+                new FileSourceHasher(),
+                command -> {
+                    attempts.add(command.observationId());
+                    throw new IllegalStateException("boom");
+                },
+                reject,
+                Clock.systemUTC(),
+                2,
+                Duration.ZERO,
+                new CollectingDiagnosticSink());
+
+        assertThatThrownBy(() -> handler.handle(source.toFile()))
+                .isInstanceOf(IocExtractorException.class);
+
+        assertThat(attempts).hasSize(2).allMatch(attempts.getFirst()::equals);
+        assertThat(reject.observationId).isEqualTo(attempts.getFirst());
+    }
+
     private FileSourceMessageHandler handler(IngestSourceUseCase useCase) {
         return new FileSourceMessageHandler(
                 new FileSourceHasher(),
@@ -364,6 +409,7 @@ class FileSourceMessageHandlerTest {
     }
 
     private static final class RecordingRejectUseCase implements RejectIngestionUseCase {
+        private ObservationId observationId;
         private SourceKey key;
         private String reason;
         private int attempts;
@@ -376,6 +422,13 @@ class FileSourceMessageHandlerTest {
             return attempts == 1
                     ? IngestionRejectionResult.REJECTED
                     : IngestionRejectionResult.ALREADY_REJECTED;
+        }
+
+        @Override
+        public IngestionRejectionResult reject(
+                ObservationId observationId, SourceKey key, String reason) {
+            this.observationId = observationId;
+            return reject(key, reason);
         }
     }
 

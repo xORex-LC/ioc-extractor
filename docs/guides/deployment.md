@@ -8,8 +8,8 @@ systemd distributions are best effort and require operator validation.
 
 | Path | Use it for | Guarantees |
 |---|---|---|
-| `packaging/install.sh` | A fresh host/prefix or a controlled upgrade within the 0.2.x marked layout | Host provisioning, verified JDK, safe marked layout, immutable activation, config preservation and local storage health gate |
-| `packaging/deploy-local.sh` | Repeated 0.2.x deployments from a local checkout to a Debian/WSL test host | Clean `verify`, build identity, DB backup, atomic activation, health gate and automatic rollback |
+| `packaging/install.sh` | A fresh host/prefix or a controlled upgrade within the marked layout introduced in 0.2.0 | Host provisioning, verified JDK, safe marked layout, immutable activation, config preservation and local storage health gate |
+| `packaging/deploy-local.sh` | Repeated 0.2.0+ deployments from a local checkout to a Debian/WSL test host | Clean `verify`, build identity, DB backup, atomic activation, health gate and automatic rollback |
 
 `install.sh` restores the previous release/unit and restarts a previously active
 service when a later install step fails, but it does not create or restore a DB
@@ -57,6 +57,11 @@ SHA-256 before staged extraction, deploys an immutable release, installs the
 launcher and systemd unit, then requires all local storage health components to
 become `UP`.
 
+The fresh production configuration enables canonical record validity at `12h`.
+Review the [canonical record lifecycle guide](canonical-record-lifecycle.md)
+before changing that policy. This fresh preset is not silently merged into an
+existing operator configuration during upgrade.
+
 For an offline host, transfer a trusted Temurin 21 tarball with the application:
 
 ```bash
@@ -80,7 +85,9 @@ Use `--no-start` when configuration must be reviewed before first startup. Run
 <prefix>/
 ├── current -> releases/<release-id>
 ├── releases/<release-id>/ioc-app.jar
-├── bin/ioc
+├── bin/
+│   ├── ioc
+│   └── ioc-config
 ├── etc/application.yml
 ├── etc/ioc-extractor.env
 ├── etc/ioc-extractor.installation
@@ -98,17 +105,24 @@ it to another directory.
 
 ## Configure and validate
 
-Edit `<prefix>/etc/application.yml` using the
+Prepare a separate YAML candidate using the
 [configuration reference](configuration.md). Put secrets in
-`<prefix>/etc/ioc-extractor.env`, not in YAML.
+`<prefix>/etc/ioc-extractor.env`, not in YAML. Do not edit the live file in
+place: validation and replacement must be one controlled operation.
 
 ```bash
-sudo systemctl restart ioc-extractor
+sudo /opt/ioc-extractor/bin/ioc-config check ./application.candidate.yml
+sudo /opt/ioc-extractor/bin/ioc-config apply ./application.candidate.yml
 sudo systemctl status ioc-extractor --no-pager
 sudo /opt/ioc-extractor/bin/ioc --version
 sudo /opt/ioc-extractor/bin/ioc health
 sudo journalctl -u ioc-extractor -n 100 --no-pager
 ```
+
+The apply helper stages and syntax-checks the exact bytes, atomically replaces
+the installed YAML and waits for health. A startup failure restores the previous
+file. Direct restarts still have a systemd `ExecCondition` syntax guard; exit
+`78` skips activation without entering a deterministic restart loop.
 
 The health endpoint is loopback-only by default. A healthy local service does
 not imply that optional remote SMB endpoints have already authenticated: sync
@@ -178,7 +192,7 @@ sudo systemctl start ioc-extractor
 Inputs accepted only after the 0.2.0 cutover are not present in the old prefix.
 Preserve them and explicitly reconcile/resubmit them if rollback is required.
 
-## Upgrade within 0.2.x with `install.sh`
+## Upgrade within the marked layout with `install.sh`
 
 1. Verify the new jar and checksum on a trusted build host.
 2. Stop input submission or otherwise establish an ingestion maintenance window.
@@ -197,7 +211,7 @@ sudo packaging/install.sh \
   --prefix /opt/ioc-extractor \
   --jar /tmp/ioc-extractor-new.jar \
   --checksum /tmp/ioc-extractor-new.jar.sha256 \
-  --release-id v0.2.0
+  --release-id v0.3.0
 ```
 
 If the host uses a non-default actuator port, also pass `--server-port PORT`.
@@ -210,6 +224,15 @@ changed it writes `application.yml.new` or `ioc-extractor.env.new` beside it.
 Compare the files; merge new supported properties into the operator copy; keep
 site-specific paths, policies and secrets; then remove the `.new` file after
 successful validation.
+
+For a TTL-capable upgrade, keep lifecycle mode disabled for the first
+compatibility start. The later fixed-validity cutover is destructive to legacy
+active membership and follows the separate
+[canonical lifecycle procedure](canonical-record-lifecycle.md#upgrade-an-existing-installation).
+The same additive dataframe migration installs the export-slot registry. Its
+first active export seeds current external IDs without renumbering survivors;
+rollback therefore still requires the matching binary/configuration and both
+database backups rather than a partial schema downgrade.
 
 ```bash
 sudo diff -u /opt/ioc-extractor/etc/application.yml \
