@@ -1,13 +1,21 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.dataframeimport.model.ImportClaimReservation;
+import com.iocextractor.application.dataframeimport.model.ImportContractFingerprint;
+import com.iocextractor.application.dataframeimport.model.ImportContractId;
+import com.iocextractor.application.dataframeimport.model.ImportContractPin;
 import com.iocextractor.application.dataframeimport.model.ImportDelivery;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryCheckpoint;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryState;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryTransition;
 import com.iocextractor.application.dataframeimport.model.ImportLedgerTransitionResult;
+import com.iocextractor.application.dataframeimport.model.ImportSha256;
+import com.iocextractor.application.dataframeimport.model.ImportSnapshot;
+import com.iocextractor.application.dataframeimport.model.ImportSnapshotReference;
 import com.iocextractor.application.dataframeimport.model.ImportSourceId;
+import com.iocextractor.application.dataframeimport.model.ImportStage;
+import com.iocextractor.application.dataframeimport.model.ImportStageReference;
 import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
 import com.iocextractor.application.tck.dataframeimport.ImportDeliveryLedgerContractTest;
 import com.zaxxer.hikari.HikariDataSource;
@@ -57,10 +65,26 @@ class JdbcImportDeliveryLedgerContractTest extends ImportDeliveryLedgerContractT
                 new ImportDeliveryId("delivery-restart"), new ImportSourceId("source"),
                 "candidate-restart", NOW));
 
-        for (ImportDeliveryState next : List.of(
-                ImportDeliveryState.CLAIMING,
-                ImportDeliveryState.CLAIMED)) {
-            current = transition(ledger, current, next);
+        ImportSnapshot snapshot = new ImportSnapshot(
+                new ImportSnapshotReference("snapshot:restart"), new ImportSha256("a".repeat(64)), 1024);
+        ImportContractPin contract = new ImportContractPin(
+                new ImportContractId("ip-list-v1"), 1,
+                new ImportContractFingerprint("b".repeat(64)));
+        ImportStage stage = new ImportStage(
+                new ImportStageReference("stage:restart"), new ImportSha256("c".repeat(64)), 10, 9, 1);
+        List<CheckpointTransition> transitions = List.of(
+                new CheckpointTransition(ImportDeliveryState.CLAIMING, ImportDeliveryCheckpoint.none()),
+                new CheckpointTransition(ImportDeliveryState.CLAIMED, ImportDeliveryCheckpoint.none()),
+                new CheckpointTransition(
+                        ImportDeliveryState.SNAPSHOT_PINNED, ImportDeliveryCheckpoint.snapshot(snapshot)),
+                new CheckpointTransition(
+                        ImportDeliveryState.CONTRACT_PINNED, ImportDeliveryCheckpoint.contract(contract)),
+                new CheckpointTransition(ImportDeliveryState.STAGING, ImportDeliveryCheckpoint.none()),
+                new CheckpointTransition(ImportDeliveryState.STAGED, ImportDeliveryCheckpoint.stage(stage)),
+                new CheckpointTransition(ImportDeliveryState.PROMOTING, ImportDeliveryCheckpoint.none()));
+
+        for (CheckpointTransition transition : transitions) {
+            current = transition(ledger, current, transition.state(), transition.checkpoint());
             ledger = new JdbcImportDeliveryLedger(dataSource);
             assertThat(ledger.find(current.id())).contains(current);
             assertThat(ledger.findRecoverable(1)).containsExactly(current);
@@ -105,11 +129,21 @@ class JdbcImportDeliveryLedgerContractTest extends ImportDeliveryLedgerContractT
     private ImportDelivery transition(ImportDeliveryLedger ledger,
                                       ImportDelivery current,
                                       ImportDeliveryState next) {
+        return transition(ledger, current, next, ImportDeliveryCheckpoint.none());
+    }
+
+    private ImportDelivery transition(ImportDeliveryLedger ledger,
+                                      ImportDelivery current,
+                                      ImportDeliveryState next,
+                                      ImportDeliveryCheckpoint checkpoint) {
         ImportDeliveryTransition transition = new ImportDeliveryTransition(
                 current.id(), current.state(), current.version(), next, Optional.empty(),
-                ImportDeliveryCheckpoint.none(), Optional.empty(), current.updatedAt().plusSeconds(1));
+                checkpoint, Optional.empty(), current.updatedAt().plusSeconds(1));
         assertThat(ledger.transition(transition)).isEqualTo(ImportLedgerTransitionResult.APPLIED);
         return ledger.find(current.id()).orElseThrow();
+    }
+
+    private record CheckpointTransition(ImportDeliveryState state, ImportDeliveryCheckpoint checkpoint) {
     }
 
     private List<String> queryPlan(Connection connection, String sql) throws Exception {

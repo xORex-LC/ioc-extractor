@@ -56,7 +56,7 @@ class JdbcIngestionLedgerTest extends IngestionLedgerContractTest {
     }
 
     @Test
-    void v8_preserves_legacy_attempt_and_allows_a_new_observation_of_the_same_content()
+    void current_schema_preserves_v8_legacy_attempt_and_allows_a_new_observation_of_the_same_content()
             throws Exception {
         dataSource = dataSource("ledger-v8.db");
         var migrations = ServiceSchemaMigrations.sqlite();
@@ -79,7 +79,7 @@ class JdbcIngestionLedgerTest extends IngestionLedgerContractTest {
         ObservationId current = new ObservationId("observation-current");
 
         assertThat(result.previousVersion()).isEqualTo(7);
-        assertThat(result.appliedVersions()).containsExactly(8);
+        assertThat(result.appliedVersions()).containsExactly(8, 9);
         assertThat(ledger.find(ObservationId.legacy(content.value()))).isPresent();
         assertThat(ledger.markClaimed(new SourceUnit(
                 current,
