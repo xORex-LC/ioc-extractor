@@ -75,9 +75,9 @@ class ExportPlanCatalogTest {
                 .extracting(plan -> plan.profile().name(), plan -> plan.planHash())
                 .containsExactly(
                         tuple("reputation-lists",
-                                "004d09885d975a37c9618c7a1bdd38d0221f19d2fbea679b7ce1842ba3bf9588"),
+                                "f02edaaa1b0ddd13401f016cbebdde67f67f50a28a0808f7e10a906669a8d493"),
                         tuple("address-blacklist",
-                                "2757f361b6338b8ec0957e8c0ae637ed1b5673441955583f3b97815c70756eea"));
+                                "63fad9fe69f104f25e755dfac6eafcd46a2fe9c5c0d7831cc9454147442c073b"));
         assertThat(plans.getFirst().artifacts())
                 .extracting(artifact -> artifact.artifactName(), artifact -> artifact.mappingHash())
                 .containsExactly(

@@ -167,10 +167,10 @@ charset или enabled. Schema/identity changes меняют durable contract и
 | `ioc.artifact-identity.artifacts` | непустой список | по entry на built-in artifact | Согласуйте names с sink artifacts. |
 | `ioc.artifact-identity.artifacts[].name` | artifact name | обязателен | Ссылка на `ioc.sink.artifacts[].name`. |
 | `ioc.artifact-identity.artifacts[].key-columns` | непустой список | зависит от artifact | Значения, формирующие canonical row key. |
-| `ioc.artifact-identity.artifacts[].key-mode` | `first-non-empty` или omitted | omitted | Для альтернативных колонок, например разных hash algorithms. |
+| `ioc.artifact-identity.artifacts[].key-mode` | `composite` или `first-non-empty` | `composite` | `composite` сохраняет весь настроенный tuple; `first-non-empty` предназначен только для alternative-value колонок. |
 | `ioc.artifact-identity.artifacts[].epoch` | positive integer или omitted | omitted | Явная generation identity schema для контролируемой migration. |
 | `ioc.artifact-identity.artifacts[].record-key` | versioned definition name | зависит от artifact | Имя текущей canonical row-key формулы; само поле не выполняет migration. |
-| `ioc.artifact-identity.artifacts[].match-keys` | список named column sets | зависит от artifact | Альтернативные active-record lookup definitions для managed import. |
+| `ioc.artifact-identity.artifacts[].match-keys` | список named column sets | зависит от artifact | Versioned alternative keys для active-record matching; множественное совпадение отклоняется как конфликт. |
 | `ioc.artifact-identity.artifacts[].match-keys[].name` | versioned definition name | обязателен | Стабильная ссылка из import contract. |
 | `ioc.artifact-identity.artifacts[].match-keys[].key-columns` | непустой список columns | обязателен | Tuple альтернативного active matching. |
 

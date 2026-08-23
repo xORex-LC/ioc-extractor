@@ -271,7 +271,7 @@ class IocPropertiesBindingTest {
                     assertThat(props.storage().service().type()).isEqualTo(StorageType.JDBC);
                     assertThat(ArtifactIdStrategy.parse("DESCENDING")).isEqualTo(ArtifactIdStrategy.DESCENDING);
                     assertThat(props.artifactIdentity().artifacts().get(2).keyMode())
-                            .isEqualTo(ArtifactKeyMode.FIRST_NON_EMPTY);
+                            .isEqualTo(ArtifactKeyMode.COMPOSITE);
                     assertThat(ArtifactKeyMode.parse("first_non_empty")).isEqualTo(ArtifactKeyMode.FIRST_NON_EMPTY);
                     assertThat(props.export().trigger().type()).isEqualTo(ExportTriggerType.QUIET_PERIOD);
                     assertThat(ExportOutputMode.parse("Complete")).isEqualTo(ExportOutputMode.COMPLETE);

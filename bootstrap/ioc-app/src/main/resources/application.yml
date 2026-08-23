@@ -230,16 +230,19 @@ ioc:
     artifacts:
       - name: masks
         key-columns: [ mask ]
+        key-mode: composite
         record-key: mask-row-v1
         match-keys:
           - { name: mask-v1, key-columns: [ mask ] }
       - name: ip_list
         key-columns: [ ip ]
+        key-mode: composite
         record-key: ip-row-v1
         match-keys:
           - { name: ip-v1, key-columns: [ ip ] }
       - name: address_blacklist
         key-columns: [ forbidden_url, forbidden_ip ]
+        key-mode: composite
         record-key: address-row-v2
         epoch: 2
         match-keys:
@@ -247,6 +250,7 @@ ioc:
           - { name: forbidden-ip-v1, key-columns: [ forbidden_ip ] }
       - name: hashes
         key-columns: [ hash_md5, hash_sha1, hash_sha256 ]
+        key-mode: composite
         record-key: hash-row-v2
         epoch: 2
         match-keys:

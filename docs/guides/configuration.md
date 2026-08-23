@@ -166,10 +166,10 @@ database is guarded as schema drift.
 | `ioc.artifact-identity.artifacts` | non-empty list | one entry per built-in artifact | Keep names synchronized with sink artifacts. |
 | `ioc.artifact-identity.artifacts[].name` | artifact name | required | References `ioc.sink.artifacts[].name`. |
 | `ioc.artifact-identity.artifacts[].key-columns` | non-empty list | artifact-specific | Values forming the canonical row key. |
-| `ioc.artifact-identity.artifacts[].key-mode` | `first-non-empty` or omitted | omitted | Use for alternative-value columns such as hash algorithms. |
+| `ioc.artifact-identity.artifacts[].key-mode` | `composite` or `first-non-empty` | `composite` | `composite` retains the complete configured tuple; use `first-non-empty` only for alternative-value columns. |
 | `ioc.artifact-identity.artifacts[].epoch` | positive integer or omitted | omitted | Explicit identity-schema generation when a controlled migration requires it. |
 | `ioc.artifact-identity.artifacts[].record-key` | versioned definition name | artifact-specific | Names the current canonical row-key definition; changing it alone does not migrate stored identity. |
-| `ioc.artifact-identity.artifacts[].match-keys` | list of named column sets | artifact-specific | Declares alternative active-record matching definitions for managed import. P0 does not yet execute them. |
+| `ioc.artifact-identity.artifacts[].match-keys` | list of named column sets | artifact-specific | Declares versioned alternative keys used for active-record matching; a multi-match is rejected as a conflict. |
 | `ioc.artifact-identity.artifacts[].match-keys[].name` | versioned definition name | required | Stable contract reference. |
 | `ioc.artifact-identity.artifacts[].match-keys[].key-columns` | non-empty column list | required | Alternative active-record lookup tuple. |
 
