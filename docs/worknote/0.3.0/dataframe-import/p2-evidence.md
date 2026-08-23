@@ -69,7 +69,7 @@ gate; the checks below are the focused P2 evidence.
 | shared ordinary writer | alternate producer row keys matching one configured alias renew one active lifecycle and cannot create an import-only duplicate |
 | public mutation | update, explicit clear, no-op, optional TTL confirmation, alias rebuild and empty-record-key rejection pass |
 | projection compatibility | committed golden resources retain aggregate SHA-256 `39de4ecde3b5501cc0313f734deb43662ae90c691e60bbaae66922a53bdab1c2` |
-| analyzer boundary | affected JDBC module reports `0` visible SpotBugs findings after exact reviewed selectors; baseline schema validation reports `110` accepted identities and `106` selectors |
+| analyzer boundary | affected modules report `0` visible SpotBugs findings after exact reviewed selectors; baseline schema validation reports `107` accepted identities and `103` selectors |
 
 ## 4. SQL trust evidence
 
@@ -81,6 +81,12 @@ selectors remain prepared-statement parameters. `SqlTrustBoundaryTest`, schema
 reconciliation tests and the P2 collision fixtures exercise the rejection and
 rollback boundaries. The accepted-finding entries are exact analyzer
 identities, not wildcard package exclusions.
+
+`P2-IMMUTABLE-MATCH-PLAN`: `CanonicalMatchPlan` validates and deduplicates all
+candidates, then stores `List.copyOf` output. The record accessor exposes only
+that unmodifiable snapshot; its exact `EI_EXPOSE_REP` identity is accepted as
+an analyzer false positive. The P2 refactor also removes five stale SQL
+acceptances from the superseded lifecycle-writer implementation.
 
 ## 5. Compatibility and next boundary
 

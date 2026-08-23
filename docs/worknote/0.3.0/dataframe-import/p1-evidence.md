@@ -65,6 +65,18 @@ immutable validated dataframe schema and revalidates them at quoting; lifecycle
 values remain prepared-statement parameters. The reviewed SpotBugs identity for
 this boundary was recorded when the P1-P2 aggregate analyzer gate was prepared.
 
+`P1-ATOMIC-PROJECTION`: the private projection write boundary catches a runtime
+failure only to remove the incomplete temporary file, then rethrows the same
+failure so application-level failure semantics are preserved. The exact
+SpotBugs exception-policy identity is accepted as policy noise; atomicity tests
+prove that the previous target survives and no temporary file remains.
+
+`P1-IMMUTABLE-EVENT`: `CanonicalArtifactsChanged` validates each artifact name
+and replaces the caller-owned collection with an unmodifiable copy in its
+compact constructor. Its generated record accessor therefore cannot expose
+mutable caller state; the exact `EI_EXPOSE_REP` identity is an analyzer false
+positive, not an ownership escape.
+
 ## 4. Compatibility result
 
 Ordinary document ingest still classifies exactly once per retained IOC and
