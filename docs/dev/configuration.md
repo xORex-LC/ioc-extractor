@@ -111,12 +111,13 @@ P5 добавляет явную one-way activation policy поверх operatio
 duration/value отклоняется collect-all preflight и никогда не интерпретируется
 как команда очистки.
 
-### Managed dataframe import P0 boundary
+### Managed dataframe import P0-P1 boundary
 
 `ioc.dataframe-import` — отдельная strict typed shape для принятого ADR-0024.
 Classpath и production template задают `enabled: false` и пустые `sources`,
-`authority-profiles`, `contracts`; intake worker, CSV adapter и canonical
-promotion в P0 ещё не подключены.
+`authority-profiles`, `contracts`. P1 подключил parser-neutral compiled dialect
+к strict streaming CSV adapter, но intake worker и canonical promotion ещё не
+активированы.
 
 При `enabled: true` bootstrap обязан до runtime собрать весь декларативный
 catalog: source ссылается на существующие contract и authority profile, SMB
@@ -140,7 +141,7 @@ write path. Физическая миграция aliases/compound identity пр
    разные списки допустимых provider/transform/predicate names.
 3. **List overlay следует binder semantics.** Index может прийти из более
    приоритетного source, но элемент bind-ится целиком из source, определившего
-   этот index; partial override не гарантирует сохранение остальных полей.
+этот index; partial override не гарантирует сохранение остальных полей.
 4. **Секреты не становятся diagnostics/log values.** Failure analysis и
    override report показывают key/source/reason, но не winning value.
 5. **Legacy hints централизованы.** Удалённое свойство остаётся неизвестным key;

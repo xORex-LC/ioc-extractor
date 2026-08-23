@@ -34,10 +34,11 @@ Tika, RE2/J, Guava PSL и Commons CSV изолированы адаптерам�
 3. **Поддерживаемый document contract проверяем.** HTML, включая explicit
    legacy charset, PDF, DOCX и XLSX имеют contract tests. Остальные parser-ы
    Tika являются best effort до появления fixture и теста.
-4. **Domain возвращает решения, а не telemetry.** Refang, extraction,
-   attribution и classification материализуют pure outcomes; application
-   использует их для payload, diagnostics и gated TRACE без повторного вызова
-   доменного правила.
+4. **Domain возвращает решения, а не telemetry.** Refang, extraction и
+   attribution материализуют pure outcomes. Pipeline-neutral application
+   `IndicatorClassifier` materializes the same network/file decision for
+   ordinary ingest and managed import; callers own diagnostics and gated TRACE
+   without repeating the domain rule.
 5. **Dedup предшествует classification.** Дубликаты текущего batch не оплачивают
    feature extraction и rule evaluation; durable dedup отдельно выполняет
    canonical storage по `row_key`.

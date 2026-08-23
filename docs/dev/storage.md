@@ -147,6 +147,12 @@ Dataframe v6 мигрирует последний v4 journal row в singleton
 `lifecycle_reconcile_state`. Старый `lifecycle_reconcile_cycle` сохраняется
 read-only для upgrade/rollback evidence, но больше не растёт.
 
+Mutable CSV projection reads active canonical rows through one ordered JDBC
+cursor and writes a sibling temporary file before `ATOMIC_MOVE`. It therefore
+keeps constant row-memory, preserves the previously installed projection on a
+cursor/encoding/write failure, and uses the same active snapshot boundary as
+other lifecycle-aware reads.
+
 ### Export-slot storage path (dataframe v5)
 
 V5 additively создаёт в dataframe DB три export-owned структуры:

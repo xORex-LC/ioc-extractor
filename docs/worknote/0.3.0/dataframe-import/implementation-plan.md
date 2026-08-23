@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — implementation plan"
 version: "0.3.0"
-status: "Approved; P0 committed after working-tree verification"
+status: "Approved; P0-P1 implemented"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "en"
@@ -63,6 +63,10 @@ Gate:
 - all I-01..I-41 mapped to planned tests.
 
 ### P1 — integration-family preparatory refactors
+
+Status: **implemented and committed with focused compatibility verification**.
+See [p1-evidence.md](p1-evidence.md). The full reactor gate remains scheduled
+after P2 so it covers the complete requested implementation span.
 
 Deliver:
 

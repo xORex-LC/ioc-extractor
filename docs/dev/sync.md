@@ -129,7 +129,9 @@ CLI `sync fetch`, `sync publish` и `sync all` используют те же ap
 ## Как расширять
 
 - Новый протокол получает отдельный adapter за `FileTransport` и, при наличии
-  push, за `RemoteChangeSignalSource`.
+  push, за `RemoteChangeSignalSource`. Watch boundary принимает только узкий
+  `RemoteWatchTarget(sourceId, endpoint, remotePath)`; include/exclude fetch
+  policy остаётся в application detection.
 - Remote delete/move/retention требует отдельного решения о владении и не
   добавляется скрытым side effect существующего fetch/publish.
 - Новый target использует существующую slice×target ledger семантику.

@@ -17,6 +17,7 @@ value objects и политики, которые одинаковы для SMB/
 | `RemoteObject` / `RemoteObjectIdentity` | Metadata и fetch-ledger identity удалённого файла |
 | `RemoteFetchInFlightRegistry` | Process-local suppression повторной эмиссии уже поставленных в очередь identity |
 | `RemoteFetchSource` | Transport-neutral configured read-only source |
+| `RemoteWatchTarget` | Narrow source identity/location passed to optional transport push adapters |
 | `RemoteFetchRecord` / `RemoteFetchStatus` | Durable состояние read-only fetch idempotency |
 | `PublishRecord` / `PublishStatus` | Durable per-slice/per-target publish saga state |
 | `PublishLedgerStatusCounts` | Aggregated delivery state counts для hot publish loop |

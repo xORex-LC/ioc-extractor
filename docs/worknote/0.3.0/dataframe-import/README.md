@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — рабочий комплект"
 version: "0.3.0"
-status: "Architecture approved; P0 implemented and verified on the working tree"
+status: "Architecture approved; P0-P1 implemented"
 document_type: "Worknote bundle index"
 source_of_truth: false
 language: "ru"
@@ -20,14 +20,15 @@ operator guides или release contract.
 
 ## Текущий статус
 
-- P0 contract/boundary baseline реализован и проверен на рабочем дереве
-  2026-08-23; исполняющий runtime приёма файлов начинается только с P1+;
+- P0 contract/boundary baseline и P1 integration-family preparation
+  реализованы 2026-08-23; исполняющий intake/promotion runtime начинается с
+  P2+;
 - discovery interview завершено 2026-08-23: все I-01..I-41 имеют статус
   `DECIDED`;
 - архитектурный проект, release contract, data/persistence/operations contracts,
   implementation plan и verification matrix подготовлены 2026-08-23;
-- проектные решения и отдельный implementation go-ahead для P0 одобрены
-  2026-08-23; переход к P1 требует следующего явного решения;
+- проектные решения и implementation go-ahead для последовательных P0-P2
+  одобрены 2026-08-23;
 - исходные требования BR-01..BR-04 зафиксированы в
   [discovery.md](discovery.md);
 - I-01 закрыт: каждый стабилизированный CSV является отдельной delivery;
@@ -130,7 +131,7 @@ operator guides или release contract.
   применяет business-field merge с явным mismatch report; source contract может
   выбрать strict `reject-mismatch`, автоматическая renumber policy запрещена;
 - известных незакрытых business choices не осталось; formal scope, architecture
-  project и P0 baseline завершены, следующий implementation slice — P1;
+  project и P0-P1 baseline завершены, следующий implementation slice — P2;
 - принятый ADR-0015 не редактируется: если новый import contract будет принят,
   потребуется отдельный superseding ADR.
 
@@ -147,6 +148,7 @@ operator guides или release contract.
 | [implementation-plan.md](implementation-plan.md) | Implementation slices P0–P9, dependencies, gates и stop conditions |
 | [verification-matrix.md](verification-matrix.md) | Traceability I-01..I-41, tests, qualification и performance evidence |
 | [p0-evidence.md](p0-evidence.md) | Проверяемые границы, команды и результат реализации P0 |
+| [p1-evidence.md](p1-evidence.md) | Preparatory refactors, focused gates and compatibility evidence for P1 |
 
 ## Правила работы
 
@@ -158,8 +160,8 @@ operator guides или release contract.
    подменяет его.
 4. `CHANGE_NOTIFY`, polling и local filesystem events рассматриваются как
    latency/correctness-механика после определения business delivery boundary.
-5. Завершение P0 не является разрешением начинать P1 или менять runtime/schema
-   следующих slices без отдельного implementation go-ahead.
+5. P0-P2 выполняются по выданному implementation go-ahead; переход к каждому
+   следующему slice допускается только после полного закрытия предыдущего.
 
 ## Граница authority
 

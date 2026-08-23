@@ -69,10 +69,13 @@ fetch по endpoint. Durable `remote_fetch_ledger` и следующий detecti
 
 ### Ingestion completion → export
 
-После завершения canonical run публикуется `CanonicalArtifactsChanged`.
-Listener вызывает только `DaemonExportScheduler.nudge()`; scheduler сам читает
-актуальные revisions и решает, нужен ли export. Periodic export poll закрывает
-restart, duplicate-only ingest и потерянный hint.
+После завершения любой canonical operation с public mutations публикуется
+artifact-level `CanonicalArtifactsChanged(operationId, affectedArtifacts)`.
+Ordinary ingest является первым producer, managed import сможет использовать
+тот же post-commit fact. Listener вызывает только
+`DaemonExportScheduler.nudge()`; scheduler сам читает актуальные revisions и
+решает, нужен ли export. Periodic export poll закрывает restart,
+duplicate-only/no-op operation и потерянный hint.
 
 ### Canonical lifecycle → deadline/projection convergence
 
