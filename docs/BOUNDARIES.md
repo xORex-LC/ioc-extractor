@@ -121,8 +121,9 @@ ruleset без category refs/exclusions; analyzer/configuration error, проп�
 `make verify` не активирует ни один из профилей.
 
 `ioc-domain` дополнительно запрещает Spring, Tika, Commons CSV/IO, Guava,
-RE2/J, picocli, HikariCP и sqlite-jdbc. `ioc-application` запрещает JDBC,
-Spring transactions, HikariCP и sqlite-jdbc. Точные coordinates принадлежат
+RE2/J, picocli, HikariCP и sqlite-jdbc. `ioc-application` запрещает Spring,
+Commons CSV, SMBJ, JDBC, HikariCP и sqlite-jdbc; отдельное ArchUnit-правило
+дублирует этот запрет для managed dataframe-import packages. Точные coordinates принадлежат
 соответствующим POM, чтобы документация не стала второй исполняемой allow/deny
 копией.
 

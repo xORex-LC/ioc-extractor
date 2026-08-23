@@ -169,6 +169,70 @@ charset или enabled. Schema/identity changes меняют durable contract и
 | `ioc.artifact-identity.artifacts[].key-columns` | непустой список | зависит от artifact | Значения, формирующие canonical row key. |
 | `ioc.artifact-identity.artifacts[].key-mode` | `first-non-empty` или omitted | omitted | Для альтернативных колонок, например разных hash algorithms. |
 | `ioc.artifact-identity.artifacts[].epoch` | positive integer или omitted | omitted | Явная generation identity schema для контролируемой migration. |
+| `ioc.artifact-identity.artifacts[].record-key` | versioned definition name | зависит от artifact | Имя текущей canonical row-key формулы; само поле не выполняет migration. |
+| `ioc.artifact-identity.artifacts[].match-keys` | список named column sets | зависит от artifact | Альтернативные active-record lookup definitions для managed import. |
+| `ioc.artifact-identity.artifacts[].match-keys[].name` | versioned definition name | обязателен | Стабильная ссылка из import contract. |
+| `ioc.artifact-identity.artifacts[].match-keys[].key-columns` | непустой список columns | обязателен | Tuple альтернативного active matching. |
+
+## Managed dataframe import: P0 contract baseline
+
+Managed import выключен в обоих поставляемых конфигурациях. P0 bind-ит и
+проверяет полный catalog, но ещё не запускает intake или canonical promotion.
+До реализации runtime slices оставляйте `enabled: false`, кроме contract tests.
+
+| Параметр | Тип / значения | Встроенный default | Рекомендация |
+|---|---|---|---|
+| `ioc.dataframe-import.enabled` | boolean | `false` | Master switch catalog; intake worker в P0 отсутствует. |
+| `ioc.dataframe-import.sources` | список | пусто | Local/SMB trust boundaries; обязателен при enabled. |
+| `ioc.dataframe-import.sources[].id` | уникальная строка | обязателен | Durable source ID. |
+| `ioc.dataframe-import.sources[].transport` | `local`, `smb` | обязателен | Для SMB нужна общая endpoint definition. |
+| `ioc.dataframe-import.sources[].location` | transport-relative путь | обязателен | Выделенный import location. |
+| `ioc.dataframe-import.sources[].endpoint` | sync endpoint ID | только SMB | Для local не задаётся. |
+| `ioc.dataframe-import.sources[].contracts` | список contract IDs | обязателен | Source allowlist. |
+| `ioc.dataframe-import.sources[].authority` | authority profile ID | обязателен | Mutation ceiling источника. |
+| `ioc.dataframe-import.authority-profiles` | список | пусто | Trust ceilings. |
+| `ioc.dataframe-import.authority-profiles[].id` | уникальная строка | обязателен | Стабильный profile ID. |
+| `ioc.dataframe-import.authority-profiles[].artifacts` | список artifacts | обязателен | Максимальный artifact allowlist. |
+| `ioc.dataframe-import.authority-profiles[].maximum-merge-policy` | merge policy | обязателен | Верхняя граница destructive mutation. |
+| `ioc.dataframe-import.authority-profiles[].allow-related-routing` | boolean | `false` | Разрешает явно описанные related branches. |
+| `ioc.dataframe-import.authority-profiles[].allow-machine-only-formula-preserve` | boolean | `false` | Разрешает exact formula-dangerous text только machine boundary. |
+| `ioc.dataframe-import.contracts` | список | пусто | Versioned recognition/mapping contracts. |
+| `ioc.dataframe-import.contracts[].id` | уникальная строка | обязателен | Contract identity. |
+| `ioc.dataframe-import.contracts[].version` | positive integer | обязателен | Явная behavior generation. |
+| `ioc.dataframe-import.contracts[].charset` | supported charset | обязателен | Обычно `UTF-8`. |
+| `ioc.dataframe-import.contracts[].dialect` | strict CSV dialect | обязателен | Parser boundary. |
+| `ioc.dataframe-import.contracts[].dialect.delimiter` | один символ | обязателен | Field delimiter. |
+| `ioc.dataframe-import.contracts[].dialect.quote` | один символ | обязателен | Отличается от delimiter. |
+| `ioc.dataframe-import.contracts[].dialect.record-separator` | `crlf-or-lf`, `lf`, `crlf` | обязателен | Accepted separator policy. |
+| `ioc.dataframe-import.contracts[].dialect.header-required` | boolean | в V1 только `true` | Headerless input запрещён. |
+| `ioc.dataframe-import.contracts[].dialect.null-literals` | exact strings | пусто | Явные `NULL` literals. |
+| `ioc.dataframe-import.contracts[].recognition` | exact signature | обязателен | Не зависит от filename и column order. |
+| `ioc.dataframe-import.contracts[].recognition.required-columns` | непустой список | обязателен | Все должны присутствовать после alias resolution. |
+| `ioc.dataframe-import.contracts[].recognition.optional-columns` | список | пусто | Допустимые необязательные headers. |
+| `ioc.dataframe-import.contracts[].recognition.ignored-columns` | список | пусто | Разрешённые, но не mapped headers. |
+| `ioc.dataframe-import.contracts[].recognition.aliases` | string map | пусто | External-to-canonical header mapping. |
+| `ioc.dataframe-import.contracts[].mode` | `as-is`, `processed` | обязателен | В `as-is` нет implicit preprocessing. |
+| `ioc.dataframe-import.contracts[].routing` | `target-only`, `related-artifacts` | обязателен | Related routing требует authority. |
+| `ioc.dataframe-import.contracts[].row-failure-policy` | `accept-valid`, `reject-delivery` | обязателен | Row isolation либо reject delivery. |
+| `ioc.dataframe-import.contracts[].duplicate-policy` | `coalesce`, `keep-first` | обязателен | Deterministic duplicate handling. |
+| `ioc.dataframe-import.contracts[].renew-unchanged` | boolean | обязателен | Подтверждает ли exact no-op lifecycle validity. |
+| `ioc.dataframe-import.contracts[].formula-policy` | `reject`, `machine-only-preserve` | обязателен | Preserve требует source authority. |
+| `ioc.dataframe-import.contracts[].merge-default` | `keep-existing`, `fill-missing`, `replace-non-null`, `authoritative`, `reject-conflict` | обязателен | Override не превышает source ceiling. |
+| `ioc.dataframe-import.contracts[].artifacts` | список mappings | обязателен | Ровно один primary. |
+| `ioc.dataframe-import.contracts[].artifacts[].name` | artifact name | обязателен | Ссылка на sink/identity artifact. |
+| `ioc.dataframe-import.contracts[].artifacts[].role` | `primary`, `related` | обязателен | Branch role. |
+| `ioc.dataframe-import.contracts[].artifacts[].record-key` | definition ID | обязателен | Текущая active row-key definition. |
+| `ioc.dataframe-import.contracts[].artifacts[].match-keys` | список definition IDs | обязателен | Все имена объявлены у artifact. |
+| `ioc.dataframe-import.contracts[].artifacts[].merge-default` | merge policy | опционален | Artifact override ниже ceiling. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns` | список mappings | обязателен | Произвольный SQL/код запрещён. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].target` | artifact column | обязателен | Unique target. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].source` | recognized header | обязателен | Required/optional canonical header. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].transforms` | ordered list | пусто | Только registered transforms. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].merge-policy` | merge policy | опционален | Column override ниже ceiling. |
+| `ioc.dataframe-import.contracts[].requested-slot` | object | опционален | Только для artifact с external ID. |
+| `ioc.dataframe-import.contracts[].requested-slot.source-column` | recognized header | обязателен внутри object | Requested external slot. |
+| `ioc.dataframe-import.contracts[].requested-slot.profile` | export profile | обязателен внутри object | Slot scope. |
+| `ioc.dataframe-import.contracts[].requested-slot.existing-record-policy` | `preserve-existing`, `reject-mismatch` | обязателен внутри object | Survivor mismatch behavior. |
 
 ## Immutable export
 

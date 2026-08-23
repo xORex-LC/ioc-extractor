@@ -168,6 +168,71 @@ database is guarded as schema drift.
 | `ioc.artifact-identity.artifacts[].key-columns` | non-empty list | artifact-specific | Values forming the canonical row key. |
 | `ioc.artifact-identity.artifacts[].key-mode` | `first-non-empty` or omitted | omitted | Use for alternative-value columns such as hash algorithms. |
 | `ioc.artifact-identity.artifacts[].epoch` | positive integer or omitted | omitted | Explicit identity-schema generation when a controlled migration requires it. |
+| `ioc.artifact-identity.artifacts[].record-key` | versioned definition name | artifact-specific | Names the current canonical row-key definition; changing it alone does not migrate stored identity. |
+| `ioc.artifact-identity.artifacts[].match-keys` | list of named column sets | artifact-specific | Declares alternative active-record matching definitions for managed import. P0 does not yet execute them. |
+| `ioc.artifact-identity.artifacts[].match-keys[].name` | versioned definition name | required | Stable contract reference. |
+| `ioc.artifact-identity.artifacts[].match-keys[].key-columns` | non-empty column list | required | Alternative active-record lookup tuple. |
+
+## Managed dataframe import (P0 contract baseline)
+
+Managed dataframe import is disabled in both shipped configurations. P0 binds
+and validates the complete contract catalog but does not start file intake or
+canonical promotion. Keep `enabled: false` outside development contract tests
+until the later runtime slices are delivered.
+
+| Property | Type / accepted values | Built-in default | Guidance |
+|---|---|---|---|
+| `ioc.dataframe-import.enabled` | boolean | `false` | Master contract-catalog switch; no P0 intake worker exists. |
+| `ioc.dataframe-import.sources` | list | empty | Managed local/SMB trust boundaries. Required when enabled. |
+| `ioc.dataframe-import.sources[].id` | unique string | required | Durable source trust-boundary ID. |
+| `ioc.dataframe-import.sources[].transport` | `local`, `smb` | required | SMB also requires an existing `ioc.sync.endpoints[].name`. |
+| `ioc.dataframe-import.sources[].location` | transport-relative path | required | Dedicated managed-import location. |
+| `ioc.dataframe-import.sources[].endpoint` | sync endpoint ID | SMB only | Omit for local sources. |
+| `ioc.dataframe-import.sources[].contracts` | contract ID list | required | Exact source allowlist. |
+| `ioc.dataframe-import.sources[].authority` | authority profile ID | required | Mutation ceiling for this source. |
+| `ioc.dataframe-import.authority-profiles` | list | empty | Artifact/routing/formula/merge capability ceilings. |
+| `ioc.dataframe-import.authority-profiles[].id` | unique string | required | Stable authority profile ID. |
+| `ioc.dataframe-import.authority-profiles[].artifacts` | artifact name list | required | Maximum artifact allowlist. |
+| `ioc.dataframe-import.authority-profiles[].maximum-merge-policy` | merge policy | required | Upper destructive mutation ceiling. |
+| `ioc.dataframe-import.authority-profiles[].allow-related-routing` | boolean | `false` | Permits explicitly declared related branches. |
+| `ioc.dataframe-import.authority-profiles[].allow-machine-only-formula-preserve` | boolean | `false` | Permits dangerous exact text only on a machine-only boundary. |
+| `ioc.dataframe-import.contracts` | list | empty | Explicitly versioned recognition and mapping contracts. |
+| `ioc.dataframe-import.contracts[].id` | unique string | required | Stable contract identity. |
+| `ioc.dataframe-import.contracts[].version` | positive integer | required | Explicit behavior generation. |
+| `ioc.dataframe-import.contracts[].charset` | supported charset | required | Strict decoder charset, normally `UTF-8`. |
+| `ioc.dataframe-import.contracts[].dialect` | strict CSV dialect | required | Declares one-character delimiter/quote, record separator, required header and null literals. |
+| `ioc.dataframe-import.contracts[].dialect.delimiter` | one character | required | CSV field delimiter. |
+| `ioc.dataframe-import.contracts[].dialect.quote` | one character | required | Must differ from delimiter. |
+| `ioc.dataframe-import.contracts[].dialect.record-separator` | `crlf-or-lf`, `lf`, `crlf` | required | Exact accepted record-separator policy. |
+| `ioc.dataframe-import.contracts[].dialect.header-required` | boolean | must be `true` in V1 | Headerless import is rejected. |
+| `ioc.dataframe-import.contracts[].dialect.null-literals` | exact string list | empty | Values interpreted as explicit `NULL`; an empty CSV cell is also null. |
+| `ioc.dataframe-import.contracts[].recognition` | exact header signature | required | Required/optional/ignored canonical headers and aliases; file name and column order are not identity. |
+| `ioc.dataframe-import.contracts[].recognition.required-columns` | non-empty list | required | All must occur exactly once after alias resolution. |
+| `ioc.dataframe-import.contracts[].recognition.optional-columns` | list | empty | Allowed mapped headers that may be absent. |
+| `ioc.dataframe-import.contracts[].recognition.ignored-columns` | list | empty | Allowed but deliberately unmapped headers. |
+| `ioc.dataframe-import.contracts[].recognition.aliases` | string map | empty | External header to one declared canonical header. |
+| `ioc.dataframe-import.contracts[].mode` | `as-is`, `processed` | required | No implicit preprocessing in `as-is`. |
+| `ioc.dataframe-import.contracts[].routing` | `target-only`, `related-artifacts` | required | Related mappings also require source authority. |
+| `ioc.dataframe-import.contracts[].row-failure-policy` | `accept-valid`, `reject-delivery` | required | Selects row isolation versus whole-delivery rejection. |
+| `ioc.dataframe-import.contracts[].duplicate-policy` | `coalesce`, `keep-first` | required | Deterministic within-delivery duplicate handling. |
+| `ioc.dataframe-import.contracts[].renew-unchanged` | boolean | required | Whether an accepted exact no-op confirms lifecycle validity. |
+| `ioc.dataframe-import.contracts[].formula-policy` | `reject`, `machine-only-preserve` | required | Preservation requires explicit source authority. |
+| `ioc.dataframe-import.contracts[].merge-default` | `keep-existing`, `fill-missing`, `replace-non-null`, `authoritative`, `reject-conflict` | required | Column/artifact overrides cannot exceed the source ceiling. |
+| `ioc.dataframe-import.contracts[].artifacts` | mapping list | required | Exactly one `primary`; related entries require related routing. |
+| `ioc.dataframe-import.contracts[].artifacts[].name` | artifact name | required | References a configured sink/identity artifact. |
+| `ioc.dataframe-import.contracts[].artifacts[].role` | `primary`, `related` | required | Exactly one primary mapping per contract. |
+| `ioc.dataframe-import.contracts[].artifacts[].record-key` | identity definition ID | required | Must equal the artifact's active declared record key. |
+| `ioc.dataframe-import.contracts[].artifacts[].match-keys` | identity definition ID list | required | Every name must exist for that artifact. |
+| `ioc.dataframe-import.contracts[].artifacts[].merge-default` | merge policy | optional | Artifact override below the source ceiling. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns` | mapping list | required | Target/source and ordered registered transforms; arbitrary code or SQL is not allowed. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].target` | artifact column | required | Unique target within the artifact branch. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].source` | recognized header | required | Required or optional canonical input header. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].transforms` | ordered transform list | empty | Registered transform specifications only. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].merge-policy` | merge policy | optional | Column override below the source ceiling. |
+| `ioc.dataframe-import.contracts[].requested-slot` | optional mapping | omitted | Only artifacts with an external ID and a containing stable-slot export profile may use it. |
+| `ioc.dataframe-import.contracts[].requested-slot.source-column` | recognized header | required when present | Positive requested external slot, never canonical identity. |
+| `ioc.dataframe-import.contracts[].requested-slot.profile` | export profile | required when present | Scopes the external slot. |
+| `ioc.dataframe-import.contracts[].requested-slot.existing-record-policy` | `preserve-existing`, `reject-mismatch` | required when present | Handles a survivor whose stable slot differs from the request. |
 
 ## Immutable export
 

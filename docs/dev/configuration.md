@@ -111,6 +111,27 @@ P5 добавляет явную one-way activation policy поверх operatio
 duration/value отклоняется collect-all preflight и никогда не интерпретируется
 как команда очистки.
 
+### Managed dataframe import P0 boundary
+
+`ioc.dataframe-import` — отдельная strict typed shape для принятого ADR-0024.
+Classpath и production template задают `enabled: false` и пустые `sources`,
+`authority-profiles`, `contracts`; intake worker, CSV adapter и canonical
+promotion в P0 ещё не подключены.
+
+При `enabled: true` bootstrap обязан до runtime собрать весь декларативный
+catalog: source ссылается на существующие contract и authority profile, SMB
+source — на общий `ioc.sync.endpoints`, mappings — на artifact columns,
+versioned record/match keys и зарегистрированные transforms. Authority profile
+задаёт верхнюю границу destructive merge, related routing и machine-only
+formula preservation. Компилятор либо публикует immutable catalog с SHA-256
+behavior fingerprint, либо возвращает все безопасные semantic violations;
+частично разрешённого catalog нет.
+
+`ioc.artifact-identity.artifacts[]` в P0 дополнен декларативными `record-key` и
+`match-keys[]`. Они именуют текущую row-key формулу и будущие альтернативные
+active-record lookup paths, но сами по себе не меняют storage identity или
+write path. Физическая миграция aliases/compound identity принадлежит P2.
+
 ## Неочевидные инварианты
 
 1. **Unknown keys fail on every channel.** Нельзя добавлять «временно
@@ -146,6 +167,9 @@ duration/value отклоняется collect-all preflight и никогда н
   `IocUnknownConfigurationPreflight`, `IocConfigPreflight`,
   `ConfigRegistryPreflight`, `IocConfigurationFailureAnalyzer`,
   `IocYamlConfigurationFailureAnalyzer`, `IocYamlSyntaxCheck`.
+- Dataframe import P0: `DataframeImportConfiguration`,
+  `DataframeImportPropertyMapper`, framework-free
+  `DataframeImportCatalogCompiler`.
 - Lifecycle: `ConfigPreflightConfiguration`, `EarlyCliLauncher`,
   `DaemonWebEnvironmentPostProcessor`.
 - Contract tests: `IocPropertiesBindingTest`, unknown-key/preflight/analyzer/
@@ -163,3 +187,4 @@ semantics, validation ownership, runtime-mode startup или lazy/eager boundary
 - [storage.md](storage.md) — storage role selectors и migrations.
 - [observability.md](observability.md) — value-free logging/redaction.
 - [ADR-0016](../ADR/0016-config-preflight-strict-binding.md) — решение strict binding.
+- [ADR-0024](../ADR/0024-managed-dataframe-import.md) — managed import contract и границы authority.
