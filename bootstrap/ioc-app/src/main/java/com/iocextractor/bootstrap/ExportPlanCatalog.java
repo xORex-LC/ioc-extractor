@@ -1,6 +1,8 @@
 package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
+import com.iocextractor.application.artifact.CanonicalKeyDefinition;
+import com.iocextractor.application.artifact.CanonicalKeyMode;
 import com.iocextractor.application.export.ArtifactSchemaFingerprint;
 import com.iocextractor.application.export.ExportArtifactSpec;
 import com.iocextractor.application.export.ExportFormat;
@@ -119,8 +121,17 @@ public final class ExportPlanCatalog {
         Map<String, ArtifactIdentityDefinition> result = new LinkedHashMap<>();
         for (IocProperties.ArtifactIdentity.Artifact configured : properties.artifactIdentity().artifacts()) {
             ArtifactIdentityDefinition definition = new ArtifactIdentityDefinition(
-                    configured.name(), configured.keyColumns(),
-                    configured.keyMode() == ArtifactKeyMode.FIRST_NON_EMPTY,
+                    configured.name(),
+                    new CanonicalKeyDefinition(
+                            configured.recordKey(),
+                            configured.keyMode() == ArtifactKeyMode.FIRST_NON_EMPTY
+                                    ? CanonicalKeyMode.FIRST_NON_EMPTY
+                                    : CanonicalKeyMode.COMPOSITE,
+                            configured.keyColumns()),
+                    configured.matchKeys().stream()
+                            .map(match -> new CanonicalKeyDefinition(
+                                    match.name(), CanonicalKeyMode.COMPOSITE, match.keyColumns()))
+                            .toList(),
                     configured.epoch() == null ? 1 : configured.epoch());
             if (result.put(configured.name(), definition) != null) {
                 throw new IllegalArgumentException("Duplicate artifact identity: " + configured.name());

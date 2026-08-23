@@ -23,6 +23,7 @@ import com.iocextractor.adapter.out.store.jdbc.ArtifactIdAllocatorDefinition;
 import com.iocextractor.adapter.out.store.jdbc.JdbcArtifactRevisionReader;
 import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository;
 import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalLifecycleWriter;
+import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalMatchPlanner;
 import com.iocextractor.adapter.out.store.jdbc.JdbcConfirmationReceiptStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcExpiredArtifactStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleClock;
@@ -55,6 +56,8 @@ import com.iocextractor.application.artifact.IngestRunRecoveryService;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.ArtifactIdSequence;
 import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
+import com.iocextractor.application.artifact.CanonicalKeyDefinition;
+import com.iocextractor.application.artifact.CanonicalKeyMode;
 import com.iocextractor.application.artifact.NoopArtifactProjection;
 import com.iocextractor.application.artifact.NoopRunLedger;
 import com.iocextractor.application.artifact.StoredArtifactIdentity;
@@ -107,6 +110,7 @@ import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.application.port.out.artifact.ArtifactIdBaseline;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityStore;
+import com.iocextractor.application.port.out.artifact.CanonicalMatchPlanner;
 import com.iocextractor.application.port.out.artifact.RunLedger;
 import com.iocextractor.application.port.out.artifact.lifecycle.ArtifactProjectionWorkStore;
 import com.iocextractor.application.port.out.artifact.lifecycle.CanonicalArtifactWriter;
@@ -565,6 +569,15 @@ public class AppConfig {
         return artifactIdentityStore.ensureAll(artifactIdentityDefinitions(props));
     }
 
+    @Bean
+    public CanonicalMatchPlanner canonicalMatchPlanner(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            @Qualifier("artifactIdentityValidation")
+            List<StoredArtifactIdentity> artifactIdentityValidation,
+            IocProperties props) {
+        return new JdbcCanonicalMatchPlanner(dataframeStorageDataSource, dataframeSchemas(props));
+    }
+
     // ---- canonical record lifecycle ---------------------------------------
 
     @Bean
@@ -614,6 +627,8 @@ public class AppConfig {
     public CanonicalArtifactWriter canonicalArtifactWriter(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             DataframeSchemaPlan dataframeSchemaReconciliation,
+            @Qualifier("artifactIdentityValidation")
+            List<StoredArtifactIdentity> artifactIdentityValidation,
             ArtifactIdBaseline artifactIdBaseline,
             JdbcLifecycleClock lifecycleClock,
             ControlEventPublisher controlEventPublisher,
@@ -1393,12 +1408,24 @@ public class AppConfig {
 
     private List<ArtifactIdentityDefinition> artifactIdentityDefinitions(IocProperties props) {
         return props.artifactIdentity().artifacts().stream()
-                .map(artifact -> new ArtifactIdentityDefinition(
-                        artifact.name(),
-                        artifact.keyColumns(),
-                        artifact.keyMode() == ArtifactKeyMode.FIRST_NON_EMPTY,
-                        artifact.epoch() == null ? 1 : artifact.epoch()))
+                .map(this::artifactIdentityDefinition)
                 .toList();
+    }
+
+    private ArtifactIdentityDefinition artifactIdentityDefinition(
+            IocProperties.ArtifactIdentity.Artifact artifact) {
+        int epoch = artifact.epoch() == null ? 1 : artifact.epoch();
+        var recordKey = new CanonicalKeyDefinition(
+                artifact.recordKey(),
+                artifact.keyMode() == ArtifactKeyMode.FIRST_NON_EMPTY
+                        ? CanonicalKeyMode.FIRST_NON_EMPTY
+                        : CanonicalKeyMode.COMPOSITE,
+                artifact.keyColumns());
+        List<CanonicalKeyDefinition> matchKeys = artifact.matchKeys().stream()
+                .map(match -> new CanonicalKeyDefinition(
+                        match.name(), CanonicalKeyMode.COMPOSITE, match.keyColumns()))
+                .toList();
+        return new ArtifactIdentityDefinition(artifact.name(), recordKey, matchKeys, epoch);
     }
 
     private List<ArtifactIdAllocatorDefinition> artifactIdAllocatorDefinitions(

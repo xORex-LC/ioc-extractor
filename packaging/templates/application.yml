@@ -193,15 +193,15 @@ ioc:
         match-keys: [ { name: ip-v1, key-columns: [ ip ] } ]
       - name: address_blacklist
         key-columns: [ forbidden_url, forbidden_ip ]
-        key-mode: first-non-empty
-        record-key: address-first-non-empty-row-v1
+        record-key: address-row-v2
+        epoch: 2
         match-keys:
           - { name: forbidden-url-v1, key-columns: [ forbidden_url ] }
           - { name: forbidden-ip-v1, key-columns: [ forbidden_ip ] }
       - name: hashes
         key-columns: [ hash_md5, hash_sha1, hash_sha256 ]
-        key-mode: first-non-empty
-        record-key: hash-first-non-empty-row-v1
+        record-key: hash-row-v2
+        epoch: 2
         match-keys:
           - { name: hash-md5-v1, key-columns: [ hash_md5 ] }
           - { name: hash-sha1-v1, key-columns: [ hash_sha1 ] }
