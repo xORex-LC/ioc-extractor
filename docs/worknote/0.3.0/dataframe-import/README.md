@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — рабочий комплект"
 version: "0.3.0"
-status: "Architecture approved; P0-P3 implemented, P4 authorized"
+status: "Architecture approved; P0-P4 implemented"
 document_type: "Worknote bundle index"
 source_of_truth: false
 language: "ru"
@@ -21,10 +21,9 @@ operator guides или release contract.
 ## Текущий статус
 
 - P0 contract/boundary baseline, P1 integration-family preparation, P2
-  canonical identity/mutation foundation и P3 sparse preferred export slots
-  реализованы 2026-08-23..2026-08-24;
-  исполняющая delivery infrastructure начинается с P4, local intake — с P5,
-  а canonical promotion — с P6;
+  canonical identity/mutation foundation, P3 sparse preferred export slots и
+  P4 durable delivery ledger/sealed staging реализованы 2026-08-23..2026-08-24;
+  local intake начинается с P5, а canonical promotion — с P6;
 - discovery interview завершено 2026-08-23: все I-01..I-41 имеют статус
   `DECIDED`;
 - архитектурный проект, release contract, data/persistence/operations contracts,
@@ -133,8 +132,7 @@ operator guides или release contract.
   применяет business-field merge с явным mismatch report; source contract может
   выбрать strict `reject-mismatch`, автоматическая renumber policy запрещена;
 - известных незакрытых business choices не осталось; formal scope, architecture
-  project и P0-P3 foundation завершены, следующий авторизованный implementation
-  slice — P4;
+  project и P0-P4 foundation завершены, следующий implementation slice — P5;
 - принятый ADR-0015 не редактируется: если новый import contract будет принят,
   потребуется отдельный superseding ADR.
 
@@ -154,6 +152,7 @@ operator guides или release contract.
 | [p1-evidence.md](p1-evidence.md) | Preparatory refactors, focused gates and compatibility evidence for P1 |
 | [p2-evidence.md](p2-evidence.md) | Versioned identity, alias migration, mutation-kernel and focused gate evidence for P2 |
 | [p3-evidence.md](p3-evidence.md) | Coalesced sparse-slot registry, preferred-slot policy and focused gate evidence for P3 |
+| [p4-evidence.md](p4-evidence.md) | Durable delivery ledger, strict recognition/mapping and sealed staging evidence for P4 |
 
 ## Правила работы
 

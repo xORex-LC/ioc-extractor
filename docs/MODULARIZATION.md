@@ -133,13 +133,13 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `platform-diagnostics-logging` | Bridge `DiagnosticSink` → LogEvent/SLF4J (`LoggingDiagnosticSink`); зависит на `platform-diagnostics` + `platform-observability` |
 | `platform-errors` | базовые ошибки/common-типы и трансляция; нижний слой для `DiagnosticException` |
 | `ioc-domain` | Refanger, IndicatorExtractor, SourceAttributor, MatchPolicy, модели, feature extraction |
-| `ioc-application` | Pipeline/ingest use cases; framework-free Artifact Emission, Remote Sync, canonical lifecycle и managed dataframe-import contracts/models/ports, retry/cadence, sagas и policies |
+| `ioc-application` | Pipeline/ingest use cases; framework-free Artifact Emission, Remote Sync, canonical lifecycle и managed dataframe-import contracts/models/ports, exact recognition, tri-state mapping, staging orchestration, retry/cadence, sagas и policies |
 | `ioc-application-tck` | Переиспользуемые JUnit contract tests application ports, включая import delivery ledger и canonical promotion, исполняемые каждой реализацией |
 | `adapter-regex-re2j` | PatternEngine implementation (RE2J + JDK fallback) |
 | `adapter-source-tika` | SourceReader (Tika) |
 | `adapter-csv` | Strict delimited-row parsing, artifact mapping, cursor-streamed canonical CSV projection, callback-streaming immutable slices, integrity verification, atomic local publish и directory-level slice retention |
 | `adapter-manifest-json-jackson` | Deterministic versioned JSON codec for immutable slice manifests |
-| `adapter-store-jdbc` | Service/dataframe SQLite: canonical/revision/lifecycle storage, typed history/receipts, v5 reusable export-slot registry, v6 bounded reconcile checkpoint, strict active snapshot reader, ingest/export/fetch/publish ledgers + progress, migrations и health |
+| `adapter-store-jdbc` | Service/dataframe SQLite: canonical/revision/lifecycle storage, typed history/receipts, reusable export-slot registry, bounded reconcile checkpoint, strict active snapshot reader, ingest/export/fetch/publish/import ledgers, private sealed import staging, migrations и health |
 | `adapter-transport-smb` | smbj boundary: lazy SMB2/3 sessions, streaming get и atomic slice publish за `FileTransport` |
 | `adapter-psl` | HostClassifier (PSL/Guava) |
 | `adapter-ingest` | Watch ingest: `IngestSourceUseCase`(in), `SourceLifecycle`, file `IngestionLedger`; SourceFeed adapter-local (Spring Integration); `FileSystemRetentionStore` (reaper IO) |

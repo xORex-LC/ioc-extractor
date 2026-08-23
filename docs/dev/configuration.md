@@ -111,13 +111,14 @@ P5 добавляет явную one-way activation policy поверх operatio
 duration/value отклоняется collect-all preflight и никогда не интерпретируется
 как команда очистки.
 
-### Managed dataframe import P0-P1 boundary
+### Managed dataframe import P0-P4 boundary
 
 `ioc.dataframe-import` — отдельная strict typed shape для принятого ADR-0024.
 Classpath и production template задают `enabled: false` и пустые `sources`,
 `authority-profiles`, `contracts`. P1 подключил parser-neutral compiled dialect
-к strict streaming CSV adapter, но intake worker и canonical promotion ещё не
-активированы.
+к strict streaming CSV adapter; P2/P3 подготовили canonical identity и sparse
+requested slots; P4 добавил durable delivery ledger и sealed disk staging.
+Intake worker и canonical promotion всё ещё не активированы.
 
 При `enabled: true` bootstrap обязан до runtime собрать весь декларативный
 catalog: source ссылается на существующие contract и authority profile, SMB

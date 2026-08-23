@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — implementation plan"
 version: "0.3.0"
-status: "Approved; P0-P3 implemented, P4 authorized"
+status: "Approved; P0-P4 implemented"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "en"
@@ -132,6 +132,10 @@ Gate:
 - allocator is atomic with its owning canonical transaction.
 
 ### P4 — durable delivery ledger and workspace
+
+Status: **implemented and committed with focused compatibility verification**.
+See [p4-evidence.md](p4-evidence.md). The final committed-HEAD reactor gate is
+run after the P4 documentation commit.
 
 Deliver:
 

@@ -173,12 +173,12 @@ stage_row_error
   logical group, row number, branch/artifact, diagnostic code, safe detail
 ```
 
-Tri-state encoding is:
+Tri-state encoding in workspace schema v1 is:
 
 ```text
-presence=0                         ABSENT
+presence=0 and value IS NULL       ABSENT
 presence=1 and value IS NULL       NULL
-presence=1 and value IS NOT NULL   VALUE
+presence=2 and value IS NOT NULL   VALUE
 ```
 
 Artifact-specific wide temporary tables may replace the normalized cell table

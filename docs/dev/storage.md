@@ -11,6 +11,7 @@ ioc-dataframe.db                    ioc-service.db
 business rows                      ingestion / ingest_run
 <artifact>_sources                 export run/progress
 artifact identity/revision         remote fetch/publish ledgers
+match aliases                      import delivery/transition ledger
 lifecycle/history/receipts
 ID allocators/projection work
 export-slot registry
@@ -80,6 +81,14 @@ ordered column definitions и declared storage types. Internal columns имею�
 Health проверяет открытие, schema version, необходимые PRAGMA и integrity
 probe. Health сообщает состояние storage, но не заменяет transactional
 guarantees и recovery ledgers.
+
+Service schema v9 добавляет `import_delivery`, append-only transition audit,
+global sequence authority и индексы ordered head/retry/recovery. Bulk mapped
+values не попадают в service DB: каждый delivery использует отдельную private
+SQLite workspace schema v1. Workspace хранит logical rows, artifact branches,
+tri-state cells (`0=ABSENT`, `1=NULL`, `2=VALUE`), match keys и safe row errors;
+после sealing он checkpoint-ится, atomically переименовывается и проверяется
+read-only по pinned digest и metadata.
 
 ### Lifecycle-aware storage path (dataframe v4; explicit activation)
 
@@ -229,6 +238,8 @@ namespace rows.
 | System UTC rollback | small skew clamp-ится; material/prolonged skew отклоняет safe time | исправить clock; readiness отражает `DEGRADED`/`DOWN`, durable high-water не уменьшается |
 | CSV потерян или повреждён | business data не потеряна | полная idempotent projection из dataframe |
 | Service ledger недоступен | coordination operation не притворяется успешной | восстановить service DB/permissions и повторить recovery |
+| Import workspace остался `.building.db` | файл не считается sealed evidence и не допускается к promotion | явно перестроить его из pinned snapshot по service-ledger checkpoint |
+| Sealed import stage не совпадает с digest/metadata | fail-closed до dataframe transaction | восстановить pinned stage либо перестроить из snapshot |
 
 ## Как расширять
 
@@ -254,6 +265,9 @@ namespace rows.
 - Canonical/provenance behavior: `JdbcCanonicalArtifactRepositoryTest` и
   dataframe recovery integration tests.
 - Module boundary: `adapters/adapter-store-jdbc/README.md`.
+- Managed import staging and recovery:
+  [dataframe-import.md](dataframe-import.md), delivery-ledger TCK and
+  `JdbcImportWorkspaceTest`.
 
 ## Когда обновлять документ
 

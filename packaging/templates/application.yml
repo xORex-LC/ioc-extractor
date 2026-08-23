@@ -213,7 +213,7 @@ ioc:
 
   # ---- Managed dataframe import --------------------------------------------
   # Disabled baseline. Enabling requires explicit source, authority and
-  # versioned contract definitions; the P0-P2 foundation does not activate an
+  # versioned contract definitions; the P0-P4 foundation does not activate an
   # intake worker.
   dataframe-import:
     enabled: false
