@@ -5,7 +5,9 @@ import com.iocextractor.application.dataframeimport.model.ImportDelivery;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryTransition;
 import com.iocextractor.application.dataframeimport.model.ImportLedgerTransitionResult;
+import com.iocextractor.application.dataframeimport.model.ImportRetrySchedule;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,12 +42,30 @@ public interface ImportDeliveryLedger {
     Optional<ImportDelivery> findHead();
 
     /**
+     * Returns the minimum nonterminal sequence only when that head is retry-eligible.
+     * A later due delivery must never overtake a deferred head.
+     *
+     * @param now retry eligibility cutoff
+     * @return due global head
+     */
+    Optional<ImportDelivery> findDueHead(Instant now);
+
+    /**
      * Applies an idempotent forward CAS transition.
      *
      * @param transition requested state change
      * @return applied/already-applied/missing/conflict outcome
      */
     ImportLedgerTransitionResult transition(ImportDeliveryTransition transition);
+
+    /**
+     * Applies a same-state CAS retry schedule. Actual failures increment attempts;
+     * capacity deferrals only move the eligibility time.
+     *
+     * @param schedule retry/deferral request
+     * @return CAS outcome
+     */
+    ImportLedgerTransitionResult scheduleRetry(ImportRetrySchedule schedule);
 
     /**
      * Returns at most {@code limit} nonterminal deliveries in sequence order for recovery.

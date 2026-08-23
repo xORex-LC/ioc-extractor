@@ -1,0 +1,124 @@
+package com.iocextractor.adapter.out.store.jdbc;
+
+import com.iocextractor.application.dataframeimport.model.ImportClaimReservation;
+import com.iocextractor.application.dataframeimport.model.ImportDelivery;
+import com.iocextractor.application.dataframeimport.model.ImportDeliveryCheckpoint;
+import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
+import com.iocextractor.application.dataframeimport.model.ImportDeliveryState;
+import com.iocextractor.application.dataframeimport.model.ImportDeliveryTransition;
+import com.iocextractor.application.dataframeimport.model.ImportLedgerTransitionResult;
+import com.iocextractor.application.dataframeimport.model.ImportSourceId;
+import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
+import com.iocextractor.application.tck.dataframeimport.ImportDeliveryLedgerContractTest;
+import com.zaxxer.hikari.HikariDataSource;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class JdbcImportDeliveryLedgerContractTest extends ImportDeliveryLedgerContractTest {
+
+    private static final Instant NOW = Instant.parse("2026-08-24T00:00:00Z");
+
+    @TempDir
+    Path tempDir;
+
+    private HikariDataSource dataSource;
+
+    @AfterEach
+    void close() {
+        if (dataSource != null) {
+            dataSource.close();
+        }
+    }
+
+    @Override
+    protected ImportDeliveryLedger createLedger() {
+        dataSource = new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(
+                new SqliteDataSourceSettings(
+                        "service", "jdbc:sqlite:" + tempDir.resolve("import-ledger.db"),
+                        "low-memory", 1, 4));
+        new SqliteUserVersionSchemaMigrator(dataSource, ServiceSchemaMigrations.sqlite()).migrate();
+        return new JdbcImportDeliveryLedger(dataSource);
+    }
+
+    @Test
+    void reopeningAdapterRecoversEveryPersistedPrePromotionCheckpoint() {
+        ImportDeliveryLedger ledger = createLedger();
+        ImportDelivery current = ledger.reserveClaim(new ImportClaimReservation(
+                new ImportDeliveryId("delivery-restart"), new ImportSourceId("source"),
+                "candidate-restart", NOW));
+
+        for (ImportDeliveryState next : List.of(
+                ImportDeliveryState.CLAIMING,
+                ImportDeliveryState.CLAIMED)) {
+            current = transition(ledger, current, next);
+            ledger = new JdbcImportDeliveryLedger(dataSource);
+            assertThat(ledger.find(current.id())).contains(current);
+            assertThat(ledger.findRecoverable(1)).containsExactly(current);
+        }
+    }
+
+    @Test
+    void serviceSchemaUsesHeadIndexAndWritesCompactOrderedTransitionAudit() throws Exception {
+        ImportDeliveryLedger ledger = createLedger();
+        ImportDelivery detected = ledger.reserveClaim(new ImportClaimReservation(
+                new ImportDeliveryId("delivery-plan"), new ImportSourceId("source"),
+                "candidate-plan", NOW));
+        transition(ledger, detected, ImportDeliveryState.CLAIMING);
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertThat(queryPlan(connection, """
+                    SELECT sequence_no
+                    FROM import_delivery
+                    WHERE state <> 'TERMINAL'
+                    ORDER BY sequence_no
+                    LIMIT 1
+                    """))
+                    .anyMatch(line -> line.contains("ix_import_delivery_head"));
+            try (var resultSet = connection.createStatement().executeQuery("""
+                    SELECT ordinal, from_state, to_state, safe_code
+                    FROM import_delivery_transition
+                    WHERE delivery_id = 'delivery-plan'
+                    ORDER BY ordinal
+                    """)) {
+                assertThat(resultSet.next()).isTrue();
+                assertThat(resultSet.getInt("ordinal")).isEqualTo(1);
+                assertThat(resultSet.getString("safe_code")).isEqualTo("IMPORT.CLAIM_RESERVED");
+                assertThat(resultSet.next()).isTrue();
+                assertThat(resultSet.getInt("ordinal")).isEqualTo(2);
+                assertThat(resultSet.getString("from_state")).isEqualTo("DETECTED");
+                assertThat(resultSet.getString("to_state")).isEqualTo("CLAIMING");
+                assertThat(resultSet.next()).isFalse();
+            }
+        }
+    }
+
+    private ImportDelivery transition(ImportDeliveryLedger ledger,
+                                      ImportDelivery current,
+                                      ImportDeliveryState next) {
+        ImportDeliveryTransition transition = new ImportDeliveryTransition(
+                current.id(), current.state(), current.version(), next, Optional.empty(),
+                ImportDeliveryCheckpoint.none(), Optional.empty(), current.updatedAt().plusSeconds(1));
+        assertThat(ledger.transition(transition)).isEqualTo(ImportLedgerTransitionResult.APPLIED);
+        return ledger.find(current.id()).orElseThrow();
+    }
+
+    private List<String> queryPlan(Connection connection, String sql) throws Exception {
+        List<String> plan = new ArrayList<>();
+        try (var resultSet = connection.createStatement().executeQuery("EXPLAIN QUERY PLAN " + sql)) {
+            while (resultSet.next()) {
+                plan.add(resultSet.getString("detail"));
+            }
+        }
+        return plan;
+    }
+}
