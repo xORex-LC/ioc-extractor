@@ -23,6 +23,8 @@ types to bootstrap; domain/application do not import this package.
 | `LifecycleArtifactSchemaPlanner` | Additive lifecycle columns, typed history/source-summary/receipt mirrors и deadline/retention indexes per artifact |
 | `JdbcExportRunLedger`, `JdbcExportProgressStore` | Formation-saga CAS/single-flight, terminal progress и latest-run health read model |
 | `JdbcRemoteFetchLedger`, `JdbcPublishLedger` | Durable sync fetch idempotency и per-target publish saga state |
+| `JdbcImportDeliveryLedger` | Global import sequence, forward-only checkpoint CAS, retry и head-order authority в service schema v9 |
+| `JdbcImportWorkspace`, `JdbcImportWorkspaceWriter` | Per-delivery SQLite staging, hard limits, deterministic duplicate finalization и sealed-stage verification |
 | `JdbcSnapshotSliceReader`, `JdbcExportSlotRegistry` | Stable reusable slot reconciliation, generation-safe multi-artifact snapshot и callback-streaming public rows |
 | `*Schema*` | SQLite `user_version` runner, migration support and dataframe reconciler |
 | `Dataframe*` | Table-per-artifact desired schema, additive plan and reconciliation |
@@ -57,6 +59,18 @@ caller-owned canonical transaction. Он включается только дл�
 checkpoint. `finish` фиксирует progress и `COMPLETED|SKIPPED` в одной
 service-DB transaction. `JdbcRunLedger` использует ту же CAS-дисциплину
 для ingest saga.
+
+Service migration v9 добавляет `import_delivery` и компактный ordered transition
+audit. `JdbcImportDeliveryLedger` резервирует один global monotonic sequence,
+проводит state/checkpoint через expected-state/version CAS и не позволяет due
+работе обогнать отложенный minimum nonterminal head. Snapshot, contract и stage
+evidence записываются только на соответствующей границе transition.
+
+`JdbcImportWorkspace` использует отдельную SQLite DB на delivery. Writer
+streaming-ом пишет normalized rows/branches/cells/errors в bounded batches,
+создаёт seal-time indexes и set-wise реализует `coalesce|keep-first`. Seal
+checkpoint-ит WAL, проверяет integrity, атомарно публикует opaque stage reference
+и digest; promotion обязана повторно открыть этот файл read-only и сверить pin.
 
 `JdbcRemoteFetchLedger` хранит read-only remote identity (`path + size + mtime`) и
 не требует прав на remote move/delete. `JdbcPublishLedger` ключуется по

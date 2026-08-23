@@ -1,6 +1,7 @@
 package com.iocextractor.application.port.out.dataframeimport;
 
 import com.iocextractor.application.dataframeimport.model.ImportLogicalRow;
+import com.iocextractor.application.dataframeimport.model.ImportRejectedLogicalRow;
 import com.iocextractor.application.dataframeimport.model.ImportStage;
 
 /** One-delivery streaming workspace session; implementations own scratch transactions and sealing. */
@@ -12,6 +13,13 @@ public interface ImportWorkspaceWriter extends AutoCloseable {
      * @param row mapped row
      */
     void append(ImportLogicalRow row);
+
+    /**
+     * Stores one rejected logical row using only safe issue metadata.
+     *
+     * @param row rejected row
+     */
+    void reject(ImportRejectedLogicalRow row);
 
     /**
      * Seals, indexes, closes and integrity-pins the workspace for read-only promotion.

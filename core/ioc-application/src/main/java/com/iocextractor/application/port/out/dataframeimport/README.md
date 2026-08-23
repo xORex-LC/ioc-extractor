@@ -11,8 +11,9 @@ CSV streaming, disk staging, atomic canonical promotion, reports and status.
 |---|---|
 | `ImportDeliveryLedger` | Durable sequence, head selection and CAS transitions |
 | `ManagedImportSourceLifecycle` | Fail-closed local/SMB ownership and snapshot evidence |
-| `DelimitedRecordReader` | Strict parser-independent record stream |
-| `ImportWorkspace` | Rebuildable disk-backed staging and sealing |
+| `DelimitedRecordReader` | Header-only recognition probe plus strict bounded record stream |
+| `ImportValueTransformRegistry` | Adapter-neutral access to the validated CSV transform family |
+| `ImportWorkspace` | Rebuildable disk-backed staging, capacity state and sealed-stage verification |
 | `CanonicalImportWriter` | One cross-artifact dataframe transaction and receipt |
 | `ImportReportStore` | Protected atomic source/report terminal unit |
 | `ImportStatusReader` | Indexed safe aggregate status |

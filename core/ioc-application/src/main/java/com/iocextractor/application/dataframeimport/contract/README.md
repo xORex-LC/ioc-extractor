@@ -14,6 +14,9 @@ source-contract catalog pinned by delivery fingerprints.
 | `DataframeImportCatalogCompiler.java` | Collect-all semantic validation and deterministic fingerprinting |
 | `DataframeImportCatalog.java` | Executable immutable catalog generation |
 | `CompiledDataframeImportContract.java` | One validated versioned contract and fingerprint |
+| `DataframeImportRecognizer.java` | Exact-one structural recognition inside one source allowlist |
+| `DelimitedInputReadException.java` | Safe parser-boundary failure shared with input adapters |
+| `ImportRecognitionException.java` | Safe critical recognition failure taxonomy |
 | `ImportContractViolation.java` | Safe configuration violation |
 
 ## Dependencies

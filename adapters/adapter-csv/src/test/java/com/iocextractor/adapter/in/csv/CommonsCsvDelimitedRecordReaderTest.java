@@ -2,9 +2,11 @@ package com.iocextractor.adapter.in.csv;
 
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
 import com.iocextractor.application.dataframeimport.model.DelimitedDialect;
+import com.iocextractor.application.dataframeimport.model.DelimitedInputLimits;
 import com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord;
 import com.iocextractor.application.dataframeimport.model.ImportRecordSeparator;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshotReference;
+import com.iocextractor.application.port.out.dataframeimport.DelimitedHeaderReadCommand;
 import com.iocextractor.application.port.out.dataframeimport.DelimitedReadCommand;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -91,6 +93,57 @@ class CommonsCsvDelimitedRecordReaderTest {
         assertThat(callbacks).hasValue(2);
     }
 
+    @Test
+    void header_probe_does_not_parse_a_malformed_later_record() throws Exception {
+        Path source = write("ip;score\n\"unterminated;10\n");
+
+        assertThat(reader(source).readHeader(new DelimitedHeaderReadCommand(
+                new ImportSnapshotReference("snapshot"), "UTF-8", DIALECT,
+                DelimitedInputLimits.defaults())))
+                .containsExactly("ip", "score");
+    }
+
+    @Test
+    void enforces_column_row_field_and_record_limits_before_staging() throws Exception {
+        Path twoColumns = write("ip;score\n192.0.2.1;10\n");
+        DelimitedInputLimits oneColumn = new DelimitedInputLimits(10, 1, 20, 40);
+        assertThatThrownBy(() -> reader(twoColumns).read(
+                command(recognition("ip", "score"), oneColumn), ignored -> { }))
+                .isInstanceOf(DelimitedRecordReadException.class)
+                .hasMessageContaining("column limit");
+
+        Path twoRows = write("ip\na\nb\n");
+        DelimitedInputLimits oneRow = new DelimitedInputLimits(1, 2, 20, 40);
+        assertThatThrownBy(() -> reader(twoRows).read(
+                command(recognition(), oneRow), ignored -> { }))
+                .isInstanceOf(DelimitedRecordReadException.class)
+                .hasMessageContaining("row limit");
+
+        Path longField = write("ip\n12345\n");
+        DelimitedInputLimits fourCharacters = new DelimitedInputLimits(1, 2, 4, 8);
+        assertThatThrownBy(() -> reader(longField).read(
+                command(recognition(), fourCharacters), ignored -> { }))
+                .isInstanceOf(DelimitedRecordReadException.class)
+                .hasMessageContaining("field limit");
+
+        Path longRecord = write("ip;score\n1234;5678\n");
+        DelimitedInputLimits sevenCharacters = new DelimitedInputLimits(1, 2, 5, 7);
+        assertThatThrownBy(() -> reader(longRecord).read(
+                command(recognition("ip", "score"), sevenCharacters), ignored -> { }))
+                .isInstanceOf(DelimitedRecordReadException.class)
+                .hasMessageContaining("record limit");
+    }
+
+    @Test
+    void preserves_safe_limit_diagnostics_from_lazy_parser_reads() throws Exception {
+        Path source = write("ip\n" + "a\n".repeat(10_000) + "x".repeat(11) + "\n");
+        DelimitedInputLimits limits = new DelimitedInputLimits(20_000, 2, 10, 20);
+
+        assertThatThrownBy(() -> reader(source).read(command(recognition(), limits), ignored -> { }))
+                .isInstanceOf(DelimitedRecordReadException.class)
+                .hasMessageContaining("field limit");
+    }
+
     private CommonsCsvDelimitedRecordReader reader(Path source) {
         return new CommonsCsvDelimitedRecordReader(ignored -> source);
     }
@@ -100,9 +153,19 @@ class CommonsCsvDelimitedRecordReaderTest {
                 new ImportSnapshotReference("snapshot"), "UTF-8", DIALECT, recognition);
     }
 
+    private DelimitedReadCommand command(DataframeImportCatalogDraft.Recognition recognition,
+                                         DelimitedInputLimits limits) {
+        return new DelimitedReadCommand(
+                new ImportSnapshotReference("snapshot"), "UTF-8", DIALECT, recognition, limits);
+    }
+
     private DataframeImportCatalogDraft.Recognition recognition() {
+        return recognition("ip");
+    }
+
+    private DataframeImportCatalogDraft.Recognition recognition(String... required) {
         return new DataframeImportCatalogDraft.Recognition(
-                List.of("ip"), List.of(), List.of(), Map.of());
+                List.of(required), List.of(), List.of(), Map.of());
     }
 
     private Path write(String content) throws Exception {

@@ -1,9 +1,9 @@
 package com.iocextractor.adapter.in.csv;
 
-import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.application.dataframeimport.contract.DelimitedInputReadException;
 
 /** Safe adapter failure for malformed encoding, delimiter grammar or header structure. */
-public final class DelimitedRecordReadException extends IocExtractorException {
+public final class DelimitedRecordReadException extends DelimitedInputReadException {
 
     /** Creates a structural failure without echoing input values. */
     public DelimitedRecordReadException(String message) {

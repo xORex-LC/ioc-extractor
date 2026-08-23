@@ -1,8 +1,10 @@
 package com.iocextractor.adapter.in.csv;
 
-import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
+import com.iocextractor.application.dataframeimport.mapping.ImportHeaderPlan;
 import com.iocextractor.application.dataframeimport.model.DelimitedDialect;
+import com.iocextractor.application.dataframeimport.model.DelimitedInputLimits;
 import com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord;
+import com.iocextractor.application.port.out.dataframeimport.DelimitedHeaderReadCommand;
 import com.iocextractor.application.port.out.dataframeimport.DelimitedReadCommand;
 import com.iocextractor.application.port.out.dataframeimport.DelimitedRecordConsumer;
 import com.iocextractor.application.port.out.dataframeimport.DelimitedRecordReader;
@@ -14,19 +16,14 @@ import org.apache.commons.csv.DuplicateHeaderMode;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.io.UncheckedIOException;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /** Commons CSV adapter with strict decoding, exact headers and callback streaming. */
 public final class CommonsCsvDelimitedRecordReader implements DelimitedRecordReader {
@@ -39,6 +36,29 @@ public final class CommonsCsvDelimitedRecordReader implements DelimitedRecordRea
     }
 
     @Override
+    public List<String> readHeader(DelimitedHeaderReadCommand command) {
+        Objects.requireNonNull(command, "command");
+        Path path = Objects.requireNonNull(snapshots.resolve(command.snapshotReference()), "snapshot path");
+        Charset charset = charset(command.charset());
+        try (Reader decoded = strictReader(path, charset);
+             Reader separators = new RecordSeparatorValidatingReader(decoded, command.dialect().recordSeparator());
+             Reader limited = new DelimitedInputLimitingReader(separators, command.dialect(), command.limits());
+             CSVParser parser = format(command.dialect()).parse(limited)) {
+            List<String> headers = List.copyOf(parser.getHeaderNames());
+            requireHeaderLimit(headers, command.limits());
+            return headers;
+        } catch (DelimitedRecordReadException failure) {
+            throw failure;
+        } catch (UncheckedIOException failure) {
+            throw readFailure(failure.getCause(), "Cannot parse delimited input header");
+        } catch (CharacterCodingException failure) {
+            throw readFailure(failure, "Cannot parse delimited input header");
+        } catch (IOException failure) {
+            throw readFailure(failure, "Cannot parse delimited input header");
+        }
+    }
+
+    @Override
     public void read(DelimitedReadCommand command, DelimitedRecordConsumer consumer) {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(consumer, "consumer");
@@ -46,24 +66,36 @@ public final class CommonsCsvDelimitedRecordReader implements DelimitedRecordRea
         Charset charset = charset(command.charset());
         try (Reader decoded = strictReader(path, charset);
              Reader separators = new RecordSeparatorValidatingReader(decoded, command.dialect().recordSeparator());
-             CSVParser parser = format(command.dialect()).parse(separators)) {
-            HeaderPlan header = HeaderPlan.compile(parser.getHeaderNames(), command.recognition());
+             Reader limited = new DelimitedInputLimitingReader(separators, command.dialect(), command.limits());
+             CSVParser parser = format(command.dialect()).parse(limited)) {
+            requireHeaderLimit(parser.getHeaderNames(), command.limits());
+            ImportHeaderPlan header = headerPlan(parser.getHeaderNames(), command);
             for (CSVRecord record : parser) {
-                if (!record.isConsistent()) {
-                    throw new DelimitedRecordReadException(
-                            "Delimited input row has a different column count than its header");
-                }
+                requireRecordLimits(record, command.limits());
                 consumer.accept(new ImportDelimitedRecord(
-                        Math.incrementExact(record.getRecordNumber()), header.values(record)));
+                        Math.incrementExact(record.getRecordNumber()),
+                        header.values(record.size(), record::get)));
             }
         } catch (DelimitedRecordReadException failure) {
             throw failure;
+        } catch (UncheckedIOException failure) {
+            throw readFailure(failure.getCause(), "Cannot parse delimited input with the declared contract");
         } catch (CharacterCodingException failure) {
-            throw new DelimitedRecordReadException(
-                    "Delimited input contains malformed or unmappable bytes for the declared charset", failure);
+            throw readFailure(failure, "Cannot parse delimited input with the declared contract");
         } catch (IOException failure) {
-            throw new DelimitedRecordReadException("Cannot parse delimited input with the declared contract", failure);
+            throw readFailure(failure, "Cannot parse delimited input with the declared contract");
         }
+    }
+
+    private DelimitedRecordReadException readFailure(IOException failure, String fallbackMessage) {
+        if (failure instanceof CharacterCodingException) {
+            return new DelimitedRecordReadException(
+                    "Delimited input contains malformed or unmappable bytes for the declared charset", failure);
+        }
+        if (failure instanceof DelimitedInputLimitingReader.InputLimitException) {
+            return new DelimitedRecordReadException(failure.getMessage(), failure);
+        }
+        return new DelimitedRecordReadException(fallbackMessage, failure);
     }
 
     private Reader strictReader(Path path, Charset charset) throws IOException {
@@ -93,57 +125,47 @@ public final class CommonsCsvDelimitedRecordReader implements DelimitedRecordRea
                 .build();
     }
 
-    private record HeaderPlan(List<String> canonicalByIndex, Set<String> ignored) {
-
-        private HeaderPlan {
-            canonicalByIndex = List.copyOf(canonicalByIndex);
-            ignored = Set.copyOf(ignored);
+    private ImportHeaderPlan headerPlan(List<String> headers, DelimitedReadCommand command) {
+        try {
+            return ImportHeaderPlan.compile(headers, command.recognition());
+        } catch (IllegalArgumentException failure) {
+            throw new DelimitedRecordReadException(failure.getMessage(), failure);
         }
+    }
 
-        static HeaderPlan compile(List<String> external,
-                                  DataframeImportCatalogDraft.Recognition recognition) {
-            Objects.requireNonNull(external, "external headers");
-            Objects.requireNonNull(recognition, "recognition");
-            Set<String> allowed = new LinkedHashSet<>();
-            allowed.addAll(recognition.requiredColumns());
-            allowed.addAll(recognition.optionalColumns());
-            allowed.addAll(recognition.ignoredColumns());
-            Set<String> ignored = Set.copyOf(recognition.ignoredColumns());
-            Set<String> present = new HashSet<>();
-            List<String> canonical = new ArrayList<>(external.size());
-            int unexpected = 0;
-            int duplicates = 0;
-            for (String header : external) {
-                String resolved = recognition.aliases().getOrDefault(header, header);
-                canonical.add(resolved);
-                if (!allowed.contains(resolved)) {
-                    unexpected++;
-                } else if (!present.add(resolved)) {
-                    duplicates++;
-                }
-            }
-            List<String> missing = recognition.requiredColumns().stream()
-                    .filter(required -> !present.contains(required))
-                    .toList();
-            if (unexpected > 0 || duplicates > 0 || !missing.isEmpty()) {
-                throw new DelimitedRecordReadException(
-                        "Delimited input header does not match the configured signature"
-                                + " (missing=" + missing.size()
-                                + ", unexpected=" + unexpected
-                                + ", duplicate=" + duplicates + ")");
-            }
-            return new HeaderPlan(canonical, ignored);
+    private void requireHeaderLimit(List<String> headers, DelimitedInputLimits limits) {
+        if (headers.size() > limits.maximumColumns()) {
+            throw new DelimitedRecordReadException("Delimited input exceeds the configured column limit");
         }
-
-        Map<String, String> values(CSVRecord record) {
-            Map<String, String> values = new LinkedHashMap<>();
-            for (int index = 0; index < canonicalByIndex.size(); index++) {
-                String canonical = canonicalByIndex.get(index);
-                if (!ignored.contains(canonical)) {
-                    values.put(canonical, record.get(index));
-                }
+        long headerCharacters = 0;
+        for (String header : headers) {
+            if (header.length() > limits.maximumFieldCharacters()) {
+                throw new DelimitedRecordReadException("Delimited input exceeds the configured field limit");
             }
-            return values;
+            headerCharacters += header.length();
+            if (headerCharacters > limits.maximumRecordCharacters()) {
+                throw new DelimitedRecordReadException("Delimited input exceeds the configured record limit");
+            }
+        }
+    }
+
+    private void requireRecordLimits(CSVRecord record, DelimitedInputLimits limits) {
+        if (!record.isConsistent()) {
+            throw new DelimitedRecordReadException(
+                    "Delimited input row has a different column count than its header");
+        }
+        if (record.getRecordNumber() > limits.maximumRows()) {
+            throw new DelimitedRecordReadException("Delimited input exceeds the configured row limit");
+        }
+        long recordCharacters = 0;
+        for (String value : record) {
+            if (value.length() > limits.maximumFieldCharacters()) {
+                throw new DelimitedRecordReadException("Delimited input exceeds the configured field limit");
+            }
+            recordCharacters += value.length();
+            if (recordCharacters > limits.maximumRecordCharacters()) {
+                throw new DelimitedRecordReadException("Delimited input exceeds the configured record limit");
+            }
         }
     }
 }

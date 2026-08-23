@@ -1,5 +1,8 @@
 package com.iocextractor.application.port.out.dataframeimport;
 
+import com.iocextractor.application.dataframeimport.model.ImportStage;
+import com.iocextractor.application.dataframeimport.model.ImportWorkspaceCapacity;
+
 /** Driven port for per-delivery disk-backed, rebuildable staging. */
 public interface ImportWorkspace {
 
@@ -10,4 +13,13 @@ public interface ImportWorkspace {
      * @return streaming writer
      */
     ImportWorkspaceWriter create(CreateImportWorkspaceCommand command);
+
+    /** Explicitly discards rebuildable scratch state and opens a fresh writer. */
+    ImportWorkspaceWriter rebuild(CreateImportWorkspaceCommand command);
+
+    /** Verifies digest, metadata and SQLite integrity before read-only promotion. */
+    ImportStage verifySealed(CreateImportWorkspaceCommand command, ImportStage expected);
+
+    /** Returns aggregate capacity state without exposing delivery paths. */
+    ImportWorkspaceCapacity capacity();
 }

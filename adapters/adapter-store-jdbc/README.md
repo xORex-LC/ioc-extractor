@@ -126,6 +126,13 @@ runtime JDBC drivers.
   `observation_id`; `source_key` is indexed but non-unique. Claim is
   insert-if-absent; archive updates only `CLAIMED`; failure is one conditional
   SQLite upsert. Legacy source-key rows migrate to `legacy:<source_key>`.
+- Service schema v9 adds `JdbcImportDeliveryLedger`: one global monotonic import
+  sequence, forward-only expected-state/version CAS, state-specific immutable
+  checkpoints, durable retry time and a head query that forbids overtaking.
+- `JdbcImportWorkspace` keeps bulk import rows outside the service/dataframe
+  stores in one opaque per-delivery SQLite file. Batched staging is bounded by
+  parser, row/error, per-stage and aggregate watermarks; sealing checkpoints and
+  verifies SQLite before atomic rename and digest pinning.
 - `JdbcExportRunLedger` stores immutable-slice formation checkpoints in
   `export_run`. A partial unique index enforces one global active run; all state
   changes use expected-status CAS. `COMPLETED`/`SKIPPED` and `export_progress`
