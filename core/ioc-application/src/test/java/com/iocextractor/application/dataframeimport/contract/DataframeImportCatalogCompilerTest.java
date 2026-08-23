@@ -37,7 +37,7 @@ class DataframeImportCatalogCompilerTest {
                     assertThat(contract.fingerprint().value()).matches("[0-9a-f]{64}");
                     assertThat(contract.dialect().delimiter()).isEqualTo(';');
                     assertThat(contract.dialect().quote()).isEqualTo('"');
-                    assertThat(contract.dialect().requiredHeader()).isTrue();
+                    assertThat(contract.dialect().headerRequired()).isTrue();
                     assertThat(contract.dialect().nullLiterals()).containsExactly("NULL");
                 });
         assertThatThrownBy(() -> catalog.sources().clear()).isInstanceOf(UnsupportedOperationException.class);
