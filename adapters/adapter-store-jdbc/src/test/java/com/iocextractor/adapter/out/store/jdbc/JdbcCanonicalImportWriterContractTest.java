@@ -9,6 +9,7 @@ import com.iocextractor.application.artifact.CanonicalKeyMaterial;
 import com.iocextractor.application.artifact.CanonicalKeyMode;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
+import com.iocextractor.application.artifact.lifecycle.LifecycleClockPolicy;
 import com.iocextractor.application.dataframeimport.model.ImportArtifactBranch;
 import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
 import com.iocextractor.application.dataframeimport.model.ImportCell;
@@ -167,6 +168,20 @@ class JdbcCanonicalImportWriterContractTest extends CanonicalImportWriterContrac
         assertThat(environment.queryLong(
                 "SELECT revision FROM artifact_revision WHERE artifact = 'masks'"))
                 .isOne();
+    }
+
+    @Test
+    void runtimeWriterSamplesLifecycleTimeInsideItsOwnedTransaction() {
+        Environment environment = environment("runtime-clock");
+        CanonicalImportCommand command = environment.stage(
+                "delivery-runtime-clock", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "clock.example"), OptionalLong.empty()))), List.of());
+
+        environment.runtimeWriter().promote(command);
+
+        assertThat(environment.count("masks")).isOne();
+        assertThat(environment.count("import_commit")).isOne();
     }
 
     @Test
@@ -596,6 +611,20 @@ class JdbcCanonicalImportWriterContractTest extends CanonicalImportWriterContrac
                     ignored -> EffectiveTime.at(effectiveAt),
                     new FixedRecordValidityPolicy(TTL), CLOCK,
                     new JdbcWriterAdmission(), observer, Duration.ofDays(90));
+        }
+
+        private JdbcCanonicalImportWriter runtimeWriter() {
+            return new JdbcCanonicalImportWriter(
+                    dataSource, schemas,
+                    List.of(
+                            new ArtifactIdAllocatorDefinition(
+                                    "masks", ArtifactIdStrategy.ASCENDING, 1, 1),
+                            new ArtifactIdAllocatorDefinition(
+                                    "hashes", ArtifactIdStrategy.ASCENDING, 1, 1)),
+                    identities, workspaceRoot,
+                    new JdbcLifecycleClock(dataSource, CLOCK,
+                            new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30))),
+                    new FixedRecordValidityPolicy(TTL), CLOCK, new JdbcWriterAdmission());
         }
 
         private void deleteStage(CanonicalImportCommand command) {

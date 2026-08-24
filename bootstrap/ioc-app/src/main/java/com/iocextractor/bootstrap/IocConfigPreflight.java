@@ -39,6 +39,12 @@ final class IocConfigPreflight implements Validator {
     }
 
     private void validateDataframeImport(IocProperties props, Errors errors) {
+        if (props.dataframeImport() != null && props.dataframeImport().enabled()
+                && (props.lifecycle() == null || props.lifecycle().validity() == null
+                || props.lifecycle().validity().mode() != LifecycleValidityMode.FIXED)) {
+            reject(errors, "dataframeImport.enabled", true,
+                    "ioc.dataframe-import.enabled=true requires ioc.lifecycle.validity.mode=fixed");
+        }
         DataframeImportCatalogCompilation compilation = new DataframeImportCatalogCompiler().compile(
                 DataframeImportPropertyMapper.draft(props.dataframeImport()),
                 DataframeImportPropertyMapper.environment(props));

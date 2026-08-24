@@ -170,12 +170,13 @@ class DataframeImportRuntimeConfiguration {
 
     @Bean
     ImportPreviewFileLocator dataframeImportPreviewFileLocator(
-            ImportSnapshotPathResolver snapshots) {
+            @Qualifier("dataframeImportSnapshotPathResolver") ImportSnapshotPathResolver snapshots) {
         return (DataframeImportSnapshotResolver) snapshots;
     }
 
     @Bean
-    DelimitedRecordReader dataframeImportRecordReader(ImportSnapshotPathResolver snapshots) {
+    DelimitedRecordReader dataframeImportRecordReader(
+            @Qualifier("dataframeImportSnapshotPathResolver") ImportSnapshotPathResolver snapshots) {
         return new CommonsCsvDelimitedRecordReader(snapshots);
     }
 
@@ -224,7 +225,7 @@ class DataframeImportRuntimeConfiguration {
     @Bean
     LocalImportTerminalStore dataframeImportTerminalStore(
             IocProperties properties,
-            ImportSnapshotPathResolver snapshots) {
+            @Qualifier("dataframeImportSnapshotPathResolver") ImportSnapshotPathResolver snapshots) {
         var runtime = properties.dataframeImport().runtime();
         return new LocalImportTerminalStore(
                 Path.of(runtime.dirs().terminal()),
@@ -316,6 +317,7 @@ class DataframeImportRuntimeConfiguration {
     @Bean
     RecoverDataframeImportsUseCase recoverDataframeImportsUseCase(
             DataframeImportAdmissionService admission,
+            @Qualifier("processNextDataframeImportUseCase")
             ProcessNextDataframeImportUseCase processor) {
         return new DataframeImportRecoveryService(admission, processor);
     }
@@ -421,6 +423,7 @@ class DataframeImportRuntimeConfiguration {
     @Bean
     @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon'")
     DataframeImportDrainCoordinator dataframeImportDrainCoordinator(
+            @Qualifier("processNextDataframeImportUseCase")
             ProcessNextDataframeImportUseCase processor,
             KeyedSerialExecutor dataframeImportLanes,
             IocProperties properties) {
@@ -432,7 +435,7 @@ class DataframeImportRuntimeConfiguration {
     @Bean
     @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon'")
     DataframeImportRecoveryCoordinator dataframeImportRecoveryCoordinator(
-            RecoverDataframeImportsUseCase recovery,
+            @Qualifier("recoverDataframeImportsUseCase") RecoverDataframeImportsUseCase recovery,
             KeyedSerialExecutor dataframeImportLanes,
             IocProperties properties) {
         return new DataframeImportRecoveryCoordinator(
@@ -451,7 +454,7 @@ class DataframeImportRuntimeConfiguration {
     @Bean(destroyMethod = "close")
     @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon'")
     ManagedDataframeImportRuntime managedDataframeImportRuntime(
-            RecoverDataframeImportsUseCase recovery,
+            @Qualifier("recoverDataframeImportsUseCase") RecoverDataframeImportsUseCase recovery,
             DataframeImportDetectionCoordinator detection,
             DataframeImportDrainCoordinator drain,
             DataframeImportRecoveryCoordinator recoveryCoordinator,

@@ -108,6 +108,18 @@ class IocPropertiesBindingTest {
     }
 
     @Test
+    void rejectsEnabledDataframeImportWithoutActiveLifecycleMode() {
+        contextRunner(concat(
+                validDataframeImport(),
+                new String[] { "ioc.lifecycle.validity.mode=disabled" }))
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .filteredOn(error -> "dataframeImport.enabled".equals(error.getField()))
+                        .singleElement()
+                        .satisfies(error -> assertThat(error.getDefaultMessage())
+                                .contains("ioc.lifecycle.validity.mode=fixed")));
+    }
+
+    @Test
     void reportsAllMissingEnabledDataframeImportSectionsTogether() {
         contextRunner("ioc.dataframe-import.enabled=true")
                 .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
@@ -925,6 +937,7 @@ class IocPropertiesBindingTest {
 
     private static String[] validDataframeImport() {
         return new String[] {
+                "ioc.lifecycle.validity.mode=fixed",
                 "ioc.dataframe-import.enabled=true",
                 "ioc.dataframe-import.sources[0].id=local",
                 "ioc.dataframe-import.sources[0].transport=local",

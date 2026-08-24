@@ -8,7 +8,6 @@ import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
 import com.iocextractor.application.artifact.CanonicalRecordMutationKind;
 import com.iocextractor.application.artifact.CanonicalRecordMutationOutcome;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
-import com.iocextractor.application.artifact.lifecycle.LifecycleTimeSource;
 import com.iocextractor.application.artifact.lifecycle.ProjectionGeneration;
 import com.iocextractor.application.artifact.lifecycle.RecordValidityPolicy;
 import com.iocextractor.application.artifact.lifecycle.ValidityDecision;
@@ -99,12 +98,12 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
             List<ArtifactIdentityDefinition> identityDefinitions,
             Path workspaceRoot,
-            LifecycleTimeSource timeSource,
+            JdbcLifecycleClock timeSource,
             RecordValidityPolicy validityPolicy,
             Clock allocatorClock,
             JdbcWriterAdmission writerAdmission) {
         this(dataSource, schemas, publicIdDefinitions, identityDefinitions, workspaceRoot,
-                ignored -> Objects.requireNonNull(timeSource, "timeSource").now(),
+                Objects.requireNonNull(timeSource, "timeSource")::now,
                 validityPolicy, allocatorClock, writerAdmission,
                 JdbcCanonicalImportObserver.NOOP, DEFAULT_RECEIPT_RETENTION);
     }
