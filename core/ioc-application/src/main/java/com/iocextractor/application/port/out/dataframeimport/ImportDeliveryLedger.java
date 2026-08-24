@@ -13,13 +13,16 @@ import java.util.Optional;
 
 /**
  * Driven port for durable global claim order and forward-only delivery state.
- * Implementations must make reservation idempotent by delivery ID, allocate a
- * non-reusable monotonic sequence atomically and enforce CAS transitions.
+ * Implementations must make reservation idempotent by delivery ID and active
+ * source candidate, allocate a non-reusable monotonic sequence atomically and
+ * enforce CAS transitions.
  */
 public interface ImportDeliveryLedger {
 
     /**
-     * Creates or returns the exact existing claim reservation without changing its sequence.
+     * Creates a reservation, replays its exact delivery identity, or returns the
+     * already-active occurrence for the same source candidate. A terminal
+     * occurrence never suppresses a later delivery of the same candidate.
      *
      * @param reservation occurrence reservation
      * @return durable delivery in {@code DETECTED} or a later state

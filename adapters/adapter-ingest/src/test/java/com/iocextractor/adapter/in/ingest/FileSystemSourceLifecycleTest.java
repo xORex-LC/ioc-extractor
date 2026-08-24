@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -101,5 +102,39 @@ class FileSystemSourceLifecycleTest {
         assertThatThrownBy(() -> new FileSystemSourceLifecycle(directory, directory, empty))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("failedDir must not be an empty path");
+    }
+
+    @Test
+    void existing_target_is_never_replaced() throws Exception {
+        Path processing = tempDir.resolve("processing");
+        Files.createDirectories(processing);
+        Files.writeString(processing.resolve("abc123-source.html"), "owned");
+        Path source = Files.writeString(tempDir.resolve("source.html"), "new");
+        var lifecycle = new FileSystemSourceLifecycle(
+                processing, tempDir.resolve("done"), tempDir.resolve("failed"));
+
+        assertThatThrownBy(() -> lifecycle.claim(
+                source, new SourceKey("abc123"), Instant.EPOCH))
+                .hasMessageContaining("target already exists");
+
+        assertThat(source).hasContent("new");
+        assertThat(processing.resolve("abc123-source.html")).hasContent("owned");
+    }
+
+    @Test
+    void unsupported_atomic_move_has_no_non_atomic_fallback() throws Exception {
+        Path source = Files.writeString(tempDir.resolve("source.html"), "ioc");
+        var ownership = new StrictAtomicFileOwnership((ignoredSource, ignoredTarget) -> {
+            throw new AtomicMoveNotSupportedException("source", "target", "unsupported");
+        });
+        var lifecycle = new FileSystemSourceLifecycle(
+                tempDir.resolve("processing"), tempDir.resolve("done"),
+                tempDir.resolve("failed"), ownership);
+
+        assertThatThrownBy(() -> lifecycle.claim(
+                source, new SourceKey("abc123"), Instant.EPOCH))
+                .hasMessageContaining("not supported");
+
+        assertThat(source).exists();
     }
 }

@@ -8,10 +8,8 @@ import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.common.IocExtractorException;
 
 import java.io.IOException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -27,11 +25,20 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
     private final Path processingDir;
     private final Path doneDir;
     private final Path failedDir;
+    private final StrictAtomicFileOwnership ownership;
 
     public FileSystemSourceLifecycle(Path processingDir, Path doneDir, Path failedDir) {
+        this(processingDir, doneDir, failedDir, new StrictAtomicFileOwnership());
+    }
+
+    FileSystemSourceLifecycle(Path processingDir,
+                              Path doneDir,
+                              Path failedDir,
+                              StrictAtomicFileOwnership ownership) {
         this.processingDir = requireDirectory(processingDir, "processingDir");
         this.doneDir = requireDirectory(doneDir, "doneDir");
         this.failedDir = requireDirectory(failedDir, "failedDir");
+        this.ownership = Objects.requireNonNull(ownership, "ownership");
     }
 
     @Override
@@ -110,21 +117,7 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
     }
 
     private void move(Path source, Path target) {
-        Path targetParent = target.getParent();
-        if (targetParent == null) {
-            throw new IocExtractorException(
-                    "Failed to move source file from " + source + " to parentless target " + target);
-        }
-        try {
-            Files.createDirectories(targetParent);
-            try {
-                Files.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } catch (IOException e) {
-            throw new IocExtractorException("Failed to move source file from " + source + " to " + target, e);
-        }
+        ownership.claim(source, target);
     }
 
     private void writeErrorSidecar(Path failedSource, String reason) {

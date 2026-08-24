@@ -174,15 +174,27 @@ charset или enabled. Schema/identity changes меняют durable contract и
 | `ioc.artifact-identity.artifacts[].match-keys[].name` | versioned definition name | обязателен | Стабильная ссылка из import contract. |
 | `ioc.artifact-identity.artifacts[].match-keys[].key-columns` | непустой список columns | обязателен | Tuple альтернативного active matching. |
 
-## Managed dataframe import: P0 contract baseline
+## Managed dataframe import
 
-Managed import выключен в обоих поставляемых конфигурациях. P0 bind-ит и
-проверяет полный catalog, но ещё не запускает intake или canonical promotion.
-До реализации runtime slices оставляйте `enabled: false`, кроме contract tests.
+Managed import выключен в обоих поставляемых конфигурациях. Компоненты local
+ownership, immutable snapshot и source detection уже реализованы, но P7 всё ещё
+владеет startup barrier и terminal recovery. До завершения P7 оставляйте
+`enabled: false`, кроме квалификационных tests.
 
 | Параметр | Тип / значения | Встроенный default | Рекомендация |
 |---|---|---|---|
-| `ioc.dataframe-import.enabled` | boolean | `false` | Master switch catalog; intake worker в P0 отсутствует. |
+| `ioc.dataframe-import.enabled` | boolean | `false` | Master switch catalog; startup остаётся закрыт до P7. |
+| `ioc.dataframe-import.runtime.dirs.processing` | путь | `./var/import/processing` | Private transport-owned файлы после strict claim; для local source нужен тот же filesystem. |
+| `ioc.dataframe-import.runtime.dirs.snapshots` | путь | `./var/import/snapshots` | Private immutable snapshots; size и digest закрепляются в service ledger. |
+| `ioc.dataframe-import.runtime.dirs.staging` | путь | `./var/import/staging` | Sealed SQLite workspace на delivery; не пересекается с другими managed roots. |
+| `ioc.dataframe-import.runtime.dirs.terminal` | путь | `./var/import/terminal` | Успешные terminal delivery units. |
+| `ioc.dataframe-import.runtime.dirs.quarantine` | путь | `./var/import/quarantine` | Отклонённые или unsafe terminal delivery units. |
+| `ioc.dataframe-import.runtime.detect.use-watch-service` | boolean | `false` | Только optional latency hint; polling остаётся authority. |
+| `ioc.dataframe-import.runtime.detect.reconcile-interval` | positive duration | `5s` | Complete-listing backstop для каждого source. |
+| `ioc.dataframe-import.runtime.stability.quiet-period` | non-negative duration | `2s` | Период неизменной metadata до claim. |
+| `ioc.dataframe-import.runtime.retry.delay` | non-negative duration | `5s` | Durable next-attempt delay без sleep detector/poller thread. |
+| `ioc.dataframe-import.runtime.limits.maximum-snapshot-bytes` | positive bytes | `268435456` | Hard snapshot limit, проверяемый при streaming. |
+| `ioc.dataframe-import.runtime.limits.recovery-batch-size` | positive integer | `100` | Bound одного pre-promotion recovery pass. |
 | `ioc.dataframe-import.sources` | список | пусто | Local/SMB trust boundaries; обязателен при enabled. |
 | `ioc.dataframe-import.sources[].id` | уникальная строка | обязателен | Durable source ID. |
 | `ioc.dataframe-import.sources[].transport` | `local`, `smb` | обязателен | Для SMB нужна общая endpoint definition. |

@@ -11,6 +11,7 @@ CSV streaming, disk staging, atomic canonical promotion, reports and status.
 |---|---|
 | `ImportDeliveryLedger` | Durable sequence, head selection and CAS transitions |
 | `ManagedImportSourceLifecycle` | Fail-closed local/SMB ownership and snapshot evidence |
+| `ImportChangeSignalSource` | Optional source-level latency hint with no trusted filename payload |
 | `DelimitedRecordReader` | Header-only recognition probe plus strict bounded record stream |
 | `ImportValueTransformRegistry` | Adapter-neutral access to the validated CSV transform family |
 | `ImportWorkspace` | Rebuildable disk-backed staging, capacity state and sealed-stage verification |

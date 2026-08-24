@@ -42,6 +42,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -169,31 +171,36 @@ class FileSourceMessageHandlerTest {
     }
 
     @Test
-    void interruptedHashRetryIsNotMisclassifiedAsUnreadableSource() {
-        var reject = new RecordingRejectUseCase();
-        var diagnostics = new CollectingDiagnosticSink();
+    void positiveBackoffSchedulesContinuationWithoutBlockingPollerThread() throws Exception {
+        Path source = Files.writeString(tempDir.resolve("retry.html"), "ioc");
+        CountDownLatch rejected = new CountDownLatch(1);
+        AtomicInteger attempts = new AtomicInteger();
         var handler = new FileSourceMessageHandler(
                 new FileSourceHasher(),
                 command -> {
-                    throw new AssertionError("unreadable source must not reach ingestion");
+                    attempts.incrementAndGet();
+                    throw new IllegalStateException("transient");
                 },
-                reject,
+                (key, reason) -> {
+                    rejected.countDown();
+                    return IngestionRejectionResult.REJECTED;
+                },
                 Clock.systemUTC(),
                 2,
-                Duration.ofSeconds(1),
-                diagnostics);
+                Duration.ofMillis(100),
+                new CollectingDiagnosticSink());
 
-        Thread.currentThread().interrupt();
+        long startedAt = System.nanoTime();
         try {
-            assertThatThrownBy(() -> handler.handle(tempDir.toFile()))
-                    .isInstanceOf(IocExtractorException.class)
-                    .hasMessageContaining("Interrupted while waiting for ingest retry");
-        } finally {
-            Thread.interrupted();
-        }
+            handler.handle(source.toFile());
+            long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
 
-        assertThat(reject.attempts).isZero();
-        assertThat(diagnostics.diagnostics()).isEmpty();
+            assertThat(elapsedMillis).isLessThan(100);
+            assertThat(rejected.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(attempts).hasValue(2);
+        } finally {
+            handler.close();
+        }
     }
 
     @Test

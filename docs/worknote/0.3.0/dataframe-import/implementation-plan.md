@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — implementation plan"
 version: "0.3.0"
-status: "Approved; P0-P4 implemented"
+status: "Approved; P0-P5 implemented"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "en"
@@ -155,6 +155,11 @@ Gate:
 
 ### P5 — local managed intake
 
+Status: **implemented with focused compatibility verification**. See
+[p5-evidence.md](p5-evidence.md). Runtime startup remains deliberately gated by
+P7's shared recovery barrier; P5 delivers and qualifies the complete local
+ownership/admission boundary without opening intake early.
+
 Deliver:
 
 - strict local ownership transfer and immutable snapshot store;
@@ -253,7 +258,7 @@ Gate:
 P0
  +--> P1 --> P2 --> P3 --+
  |                       |
- +----------> P4 --------+--> P6 --> P7 --> P9
+ +----------> P4 --> P5 -+--> P6 --> P7 --> P9
                               |
                               +--> P8 ----+
 ```

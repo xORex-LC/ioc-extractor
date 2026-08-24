@@ -173,16 +173,27 @@ database is guarded as schema drift.
 | `ioc.artifact-identity.artifacts[].match-keys[].name` | versioned definition name | required | Stable contract reference. |
 | `ioc.artifact-identity.artifacts[].match-keys[].key-columns` | non-empty column list | required | Alternative active-record lookup tuple. |
 
-## Managed dataframe import (P0 contract baseline)
+## Managed dataframe import
 
-Managed dataframe import is disabled in both shipped configurations. P0 binds
-and validates the complete contract catalog but does not start file intake or
-canonical promotion. Keep `enabled: false` outside development contract tests
-until the later runtime slices are delivered.
+Managed dataframe import is disabled in both shipped configurations. The local
+ownership, immutable-snapshot and source-detection components are present, but
+P7 still owns startup-barrier activation and terminal recovery. Keep
+`enabled: false` outside development qualification until that slice is complete.
 
 | Property | Type / accepted values | Built-in default | Guidance |
 |---|---|---|---|
-| `ioc.dataframe-import.enabled` | boolean | `false` | Master contract-catalog switch; no P0 intake worker exists. |
+| `ioc.dataframe-import.enabled` | boolean | `false` | Master contract-catalog switch; startup remains gated until P7. |
+| `ioc.dataframe-import.runtime.dirs.processing` | path | `./var/import/processing` | Private transport-owned files after strict claim; keep on the same filesystem as each local inbox. |
+| `ioc.dataframe-import.runtime.dirs.snapshots` | path | `./var/import/snapshots` | Private immutable byte snapshots; size and digest are pinned in the service ledger. |
+| `ioc.dataframe-import.runtime.dirs.staging` | path | `./var/import/staging` | Per-delivery sealed SQLite workspaces; must not overlap another managed root. |
+| `ioc.dataframe-import.runtime.dirs.terminal` | path | `./var/import/terminal` | Successful terminal delivery units. |
+| `ioc.dataframe-import.runtime.dirs.quarantine` | path | `./var/import/quarantine` | Rejected or unsafe terminal delivery units. |
+| `ioc.dataframe-import.runtime.detect.use-watch-service` | boolean | `false` | Optional local latency hint only; polling remains authoritative. |
+| `ioc.dataframe-import.runtime.detect.reconcile-interval` | positive duration | `5s` | Complete-listing correctness backstop for every configured source. |
+| `ioc.dataframe-import.runtime.stability.quiet-period` | non-negative duration | `2s` | Required unchanged metadata interval before claim. |
+| `ioc.dataframe-import.runtime.retry.delay` | non-negative duration | `5s` | Durable next-attempt delay; no detector or poller thread sleeps. |
+| `ioc.dataframe-import.runtime.limits.maximum-snapshot-bytes` | positive bytes | `268435456` | Hard per-delivery snapshot limit checked while streaming. |
+| `ioc.dataframe-import.runtime.limits.recovery-batch-size` | positive integer | `100` | Bound for one pre-promotion recovery pass. |
 | `ioc.dataframe-import.sources` | list | empty | Managed local/SMB trust boundaries. Required when enabled. |
 | `ioc.dataframe-import.sources[].id` | unique string | required | Durable source trust-boundary ID. |
 | `ioc.dataframe-import.sources[].transport` | `local`, `smb` | required | SMB also requires an existing `ioc.sync.endpoints[].name`. |

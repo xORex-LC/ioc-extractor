@@ -16,6 +16,8 @@ artifacts directly.
 |---|---|
 | `pom.xml` | Maven module descriptor |
 | `src/main/java/com/iocextractor/adapter/in/ingest/` | Spring Integration flow and filesystem adapters |
+| `LocalManagedImportSourceLifecycle` | Strict local claim, producer-stability proof and immutable snapshot materialization |
+| `LocalImportChangeSignalSource` | Optional WatchService doorbell that discards event filenames |
 
 ## Зависимости
 
@@ -63,3 +65,9 @@ concurrency, Spring Integration file support.
   ещё не выпущенный `INGEST.*` carrier на startup boundary, но не дублирует
   `INGEST.RECOVERY_FAILED`, уже выпущенный application recovery.
 - Локальный error-log не дублирует canonical diagnostic delivery.
+- `StrictAtomicFileOwnership` — общий fail-closed primitive обычного и managed
+  intake: только regular non-symlink source, private target, no-replace и без
+  copy/non-atomic fallback. Managed intake дополнительно revalidate-ит stable
+  candidate после claim и фиксирует read-only snapshot с SHA-256/size/fsync.
+- Positive retry backoff обычного ingest планируется на daemon scheduler;
+  poller thread больше не удерживается через `Thread.sleep`.

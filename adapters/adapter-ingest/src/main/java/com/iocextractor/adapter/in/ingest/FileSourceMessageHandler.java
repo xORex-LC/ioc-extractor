@@ -33,13 +33,19 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Handles one file message from Spring Integration and delegates the business
  * operation to {@link IngestSourceUseCase}.
  */
-public final class FileSourceMessageHandler {
+public final class FileSourceMessageHandler implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(FileSourceMessageHandler.class);
 
@@ -51,6 +57,8 @@ public final class FileSourceMessageHandler {
     private final Duration backoff;
     private final DiagnosticSink diagnosticSink;
     private final DiagnosticFactory diagnostics;
+    private final ScheduledExecutorService retryScheduler;
+    private final Set<Path> retrying = ConcurrentHashMap.newKeySet();
 
     public FileSourceMessageHandler(FileSourceHasher hasher,
                                     IngestSourceUseCase useCase,
@@ -59,6 +67,19 @@ public final class FileSourceMessageHandler {
                                     int maxAttempts,
                                     Duration backoff,
                                     DiagnosticSink diagnosticSink) {
+        this(hasher, useCase, rejectUseCase, clock, maxAttempts, backoff, diagnosticSink,
+                Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform()
+                        .daemon().name("ioc-ingest-retry", 0).factory()));
+    }
+
+    FileSourceMessageHandler(FileSourceHasher hasher,
+                             IngestSourceUseCase useCase,
+                             RejectIngestionUseCase rejectUseCase,
+                             Clock clock,
+                             int maxAttempts,
+                             Duration backoff,
+                             DiagnosticSink diagnosticSink,
+                             ScheduledExecutorService retryScheduler) {
         this.hasher = Objects.requireNonNull(hasher, "hasher");
         this.useCase = Objects.requireNonNull(useCase, "useCase");
         this.rejectUseCase = Objects.requireNonNull(rejectUseCase, "rejectUseCase");
@@ -67,11 +88,28 @@ public final class FileSourceMessageHandler {
         this.backoff = backoff == null ? Duration.ZERO : backoff;
         this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
         this.diagnostics = new DiagnosticFactory(clock);
+        this.retryScheduler = Objects.requireNonNull(retryScheduler, "retryScheduler");
     }
 
     public void handle(File file) {
-        Path source = file.toPath();
+        Path source = file.toPath().toAbsolutePath().normalize();
         ObservationId observationId = new ObservationId(UUID.randomUUID().toString());
+        if (backoff.isPositive() && maxAttempts > 1) {
+            if (retrying.add(source)) {
+                hashAsync(new RetryContext(source, observationId), 1);
+            }
+            return;
+        }
+        handleSynchronously(source, observationId);
+    }
+
+    @Override
+    public void close() {
+        retryScheduler.shutdownNow();
+        retrying.clear();
+    }
+
+    private void handleSynchronously(Path source, ObservationId observationId) {
         SourceKey key;
         try {
             key = hashWithRetries(source);
@@ -96,9 +134,6 @@ public final class FileSourceMessageHandler {
                 return;
             } catch (RuntimeException e) {
                 last = e;
-                if (attempt < maxAttempts) {
-                    sleep();
-                }
             }
         }
         RuntimeException terminal = last;
@@ -124,9 +159,6 @@ public final class FileSourceMessageHandler {
                 return hasher.sha256(source);
             } catch (RuntimeException failure) {
                 last = failure;
-                if (attempt < maxAttempts) {
-                    sleep();
-                }
             }
         }
         throw new HashingExhaustedException(Objects.requireNonNull(last, "hashing failure"));
@@ -217,16 +249,73 @@ public final class FileSourceMessageHandler {
         };
     }
 
-    private void sleep() {
-        if (backoff.isZero() || backoff.isNegative()) {
-            return;
-        }
+    private void hashAsync(RetryContext context, int attempt) {
         try {
-            Thread.sleep(backoff.toMillis());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IocExtractorException("Interrupted while waiting for ingest retry", e);
+            SourceKey key = hasher.sha256(context.source());
+            ingestAsync(context, key, 1, null);
+        } catch (RuntimeException failure) {
+            if (attempt < maxAttempts && schedule(() -> hashAsync(context, attempt + 1), context)) {
+                return;
+            }
+            retrying.remove(context.source());
+            rejectUnreadable(context.source(), context.observationId(), failure);
         }
+    }
+
+    private void ingestAsync(RetryContext context,
+                             SourceKey key,
+                             int attempt,
+                             RuntimeException previousFailure) {
+        try {
+            IngestSourceResult result = useCase.ingest(new IngestSourceCommand(
+                    context.source(), context.observationId(), key, Instant.now(clock)));
+            if (result.status() == IngestionStatus.FAILED && previousFailure != null) {
+                completeAsyncFailure(context, key, previousFailure, true);
+                return;
+            }
+            retrying.remove(context.source());
+            if (result.status() != IngestionStatus.FAILED) {
+                logHandledSource(result, context.source(), key);
+            }
+        } catch (RuntimeException failure) {
+            if (attempt < maxAttempts
+                    && schedule(() -> ingestAsync(context, key, attempt + 1, failure), context)) {
+                return;
+            }
+            completeAsyncFailure(context, key, failure, false);
+        }
+    }
+
+    private boolean schedule(Runnable retry, RetryContext context) {
+        try {
+            retryScheduler.schedule(retry, backoff.toMillis(), TimeUnit.MILLISECONDS);
+            return true;
+        } catch (RejectedExecutionException rejected) {
+            retrying.remove(context.source());
+            emitIngestDiagnostic(rejected);
+            return false;
+        }
+    }
+
+    private void completeAsyncFailure(RetryContext context,
+                                      SourceKey key,
+                                      RuntimeException failure,
+                                      boolean alreadyRejected) {
+        RuntimeException terminal = failure;
+        if (!alreadyRejected) {
+            try {
+                rejectUseCase.reject(context.observationId(), key, reason(failure));
+            } catch (RuntimeException rejectionFailure) {
+                rejectionFailure.addSuppressed(failure);
+                terminal = rejectionFailure;
+            }
+        }
+        retrying.remove(context.source());
+        emitIngestDiagnostic(terminal);
+        log.error("Source ingestion failed after scheduled retries: {}", context.source(), terminal);
+    }
+
+    private record RetryContext(Path source, ObservationId observationId) {
     }
 
     private static final class HashingExhaustedException extends RuntimeException {

@@ -51,6 +51,21 @@ public abstract class ImportDeliveryLedgerContractTest {
     }
 
     @Test
+    void duplicateDetectionReturnsTheActiveOccurrenceWithoutConsumingSequence() {
+        ImportDeliveryLedger ledger = createLedger();
+        ImportDelivery first = ledger.reserveClaim(reservation("delivery-active", "candidate-active"));
+
+        ImportDelivery duplicate = ledger.reserveClaim(reservation("delivery-duplicate", "candidate-active"));
+        ImportDelivery next = ledger.reserveClaim(reservation("delivery-after", "candidate-after"));
+
+        assertThat(duplicate).isEqualTo(first);
+        assertThat(ledger.find(new ImportDeliveryId("delivery-duplicate"))).isEmpty();
+        // SQLite may burn an AUTOINCREMENT value while resolving the unique
+        // active-candidate conflict; monotonic delivery identities are never reused.
+        assertThat(next.sequence()).isGreaterThan(first.sequence());
+    }
+
+    @Test
     void transitionUsesStateAndVersionCompareAndSet() {
         ImportDeliveryLedger ledger = createLedger();
         ImportDelivery detected = ledger.reserveClaim(reservation("delivery-cas", "candidate-cas"));

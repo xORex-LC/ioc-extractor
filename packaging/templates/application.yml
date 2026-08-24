@@ -213,13 +213,29 @@ ioc:
 
   # ---- Managed dataframe import --------------------------------------------
   # Disabled baseline. Enabling requires explicit source, authority and
-  # versioned contract definitions; the P0-P4 foundation does not activate an
-  # intake worker.
+  # versioned contract definitions; P7 activates workers behind startup recovery.
   dataframe-import:
     enabled: false
     sources: []
     authority-profiles: []
     contracts: []
+    runtime:
+      dirs:
+        processing: "./var/import/processing"
+        snapshots: "./var/import/snapshots"
+        staging: "./var/import/staging"
+        terminal: "./var/import/terminal"
+        quarantine: "./var/import/quarantine"
+      detect:
+        use-watch-service: false
+        reconcile-interval: 5s
+      stability:
+        quiet-period: 2s
+      retry:
+        delay: 5s
+      limits:
+        maximum-snapshot-bytes: 268435456
+        recovery-batch-size: 100
     # Complete schema illustration for a future enabled runtime. Keep these
     # entries commented until a later slice supplies executable intake.
     # sources:

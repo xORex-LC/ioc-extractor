@@ -1,5 +1,7 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
+import com.iocextractor.application.dataframeimport.DataframeImportAdmissionService;
+import com.iocextractor.application.dataframeimport.ImportDeliverySnapshotPinned;
 import com.iocextractor.application.dataframeimport.model.ImportClaimReservation;
 import com.iocextractor.application.dataframeimport.model.ImportContractFingerprint;
 import com.iocextractor.application.dataframeimport.model.ImportContractId;
@@ -17,7 +19,14 @@ import com.iocextractor.application.dataframeimport.model.ImportSourceId;
 import com.iocextractor.application.dataframeimport.model.ImportStage;
 import com.iocextractor.application.dataframeimport.model.ImportStageReference;
 import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
+import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceCommand;
+import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceResult;
+import com.iocextractor.application.port.out.dataframeimport.DispositionImportSourceCommand;
+import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
+import com.iocextractor.application.dataframeimport.model.ImportSourceCandidate;
+import com.iocextractor.application.port.in.dataframeimport.AdmitDataframeImportCommand;
 import com.iocextractor.application.tck.dataframeimport.ImportDeliveryLedgerContractTest;
+import com.iocextractor.platform.events.ControlEvent;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +35,9 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.time.Instant;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -124,6 +136,48 @@ class JdbcImportDeliveryLedgerContractTest extends ImportDeliveryLedgerContractT
                 assertThat(resultSet.next()).isFalse();
             }
         }
+    }
+
+    @Test
+    void admissionPinsSnapshotBeforePublishingAndPersistsRetryWithoutSleeping() {
+        ImportDeliveryLedger ledger = createLedger();
+        ImportSnapshot snapshot = new ImportSnapshot(
+                new ImportSnapshotReference("snapshot:admitted"), new ImportSha256("d".repeat(64)), 17);
+        List<ControlEvent> events = new ArrayList<>();
+        ManagedImportSourceLifecycle lifecycle = new ManagedImportSourceLifecycle() {
+            @Override
+            public List<ImportSourceCandidate> detect(ImportSourceId sourceId, Instant observedAt) {
+                return List.of();
+            }
+
+            @Override
+            public ClaimImportSourceResult claim(ClaimImportSourceCommand command) {
+                return new ClaimImportSourceResult(snapshot);
+            }
+
+            @Override
+            public void disposition(DispositionImportSourceCommand command) {
+            }
+        };
+        var service = new DataframeImportAdmissionService(
+                ledger, lifecycle, events::add,
+                Clock.fixed(NOW, ZoneOffset.UTC), Duration.ofSeconds(30));
+
+        var admitted = service.admit(new AdmitDataframeImportCommand(new ImportClaimReservation(
+                new ImportDeliveryId("delivery-admitted"), new ImportSourceId("source"),
+                "candidate-admitted", NOW)));
+
+        assertThat(admitted.newlyReserved()).isTrue();
+        assertThat(admitted.delivery().state()).isEqualTo(ImportDeliveryState.SNAPSHOT_PINNED);
+        assertThat(admitted.delivery().snapshot()).contains(snapshot);
+        assertThat(events).singleElement().isInstanceOf(ImportDeliverySnapshotPinned.class);
+
+        var duplicate = service.admit(new AdmitDataframeImportCommand(new ImportClaimReservation(
+                new ImportDeliveryId("delivery-duplicate"), new ImportSourceId("source"),
+                "candidate-admitted", NOW.plusSeconds(1))));
+        assertThat(duplicate.newlyReserved()).isFalse();
+        assertThat(duplicate.delivery().id()).isEqualTo(admitted.delivery().id());
+        assertThat(events).hasSize(1);
     }
 
     private ImportDelivery transition(ImportDeliveryLedger ledger,

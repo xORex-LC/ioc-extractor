@@ -100,7 +100,7 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
                                 VALUES (
                                     :delivery_id, :source_id, :candidate_token, :replay_of,
                                     'DETECTED', NULL, 0, 0, :created_at_ms, :updated_at_ms)
-                                ON CONFLICT(delivery_id) DO NOTHING
+                                ON CONFLICT DO NOTHING
                                 """)
                         .param("delivery_id", reservation.deliveryId().value())
                         .param("source_id", reservation.sourceId().value())
@@ -109,10 +109,11 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
                         .param("created_at_ms", reservation.detectedAt().toEpochMilli())
                         .param("updated_at_ms", reservation.detectedAt().toEpochMilli())
                         .update();
-                ImportDelivery delivery = required(reservation.deliveryId());
-                if (!sameReservation(delivery, reservation)) {
-                    throw new IllegalStateException("Import delivery identity conflicts with an existing reservation");
-                }
+                ImportDelivery delivery = find(reservation.deliveryId())
+                        .map(existing -> requireSameReservation(existing, reservation))
+                        .orElseGet(() -> findActiveCandidate(reservation.sourceId(), reservation.candidateToken())
+                                .orElseThrow(() -> new IllegalStateException(
+                                        "Import claim reservation was neither inserted nor resolved")));
                 if (affected == 1) {
                     appendTransition(delivery.id(), ImportDeliveryState.DETECTED,
                             ImportDeliveryState.DETECTED, "IMPORT.CLAIM_RESERVED", reservation.detectedAt());
@@ -121,8 +122,31 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
             });
             return Objects.requireNonNull(result, "transaction result");
         } catch (DataAccessException failure) {
-            throw new IllegalStateException("Import candidate already has an active delivery", failure);
+            throw new IllegalStateException("Import claim reservation failed", failure);
         }
+    }
+
+    private ImportDelivery requireSameReservation(ImportDelivery delivery,
+                                                  ImportClaimReservation reservation) {
+        if (!sameReservation(delivery, reservation)) {
+            throw new IllegalStateException("Import delivery identity conflicts with an existing reservation");
+        }
+        return delivery;
+    }
+
+    private Optional<ImportDelivery> findActiveCandidate(ImportSourceId sourceId, String candidateToken) {
+        return jdbc.sql("SELECT " + SELECT_COLUMNS + """
+                        FROM import_delivery
+                        WHERE source_id = :source_id
+                          AND candidate_token = :candidate_token
+                          AND state <> 'TERMINAL'
+                        ORDER BY sequence_no
+                        LIMIT 1
+                        """)
+                .param("source_id", sourceId.value())
+                .param("candidate_token", candidateToken)
+                .query(DELIVERY_ROW_MAPPER)
+                .optional();
     }
 
     @Override

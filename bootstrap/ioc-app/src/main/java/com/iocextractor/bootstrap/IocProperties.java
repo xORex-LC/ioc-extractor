@@ -17,6 +17,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.AssertTrue;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.validation.annotation.Validated;
@@ -244,12 +245,14 @@ public record IocProperties(
             boolean enabled,
             @NotNull @Valid List<SourceDefinition> sources,
             @NotNull @Valid List<AuthorityProfile> authorityProfiles,
-            @NotNull @Valid List<Contract> contracts) {
+            @NotNull @Valid List<Contract> contracts,
+            @NotNull @Valid RuntimeSettings runtime) {
 
         public DataframeImport {
             sources = snapshotList(sources);
             authorityProfiles = snapshotList(authorityProfiles);
             contracts = snapshotList(contracts);
+            runtime = runtime == null ? RuntimeSettings.defaults() : runtime;
         }
 
         /** Returns the immutable source snapshot. */
@@ -271,7 +274,89 @@ public record IocProperties(
         }
 
         private static DataframeImport disabled() {
-            return new DataframeImport(false, List.of(), List.of(), List.of());
+            return new DataframeImport(false, List.of(), List.of(), List.of(), RuntimeSettings.defaults());
+        }
+
+        /** Local intake, loss-tolerant detection and bounded snapshot settings. */
+        public record RuntimeSettings(
+                @NotNull @Valid Directories dirs,
+                @NotNull @Valid Detect detect,
+                @NotNull @Valid Stability stability,
+                @NotNull @Valid Retry retry,
+                @NotNull @Valid Limits limits) {
+
+            public RuntimeSettings {
+                dirs = dirs == null ? Directories.defaults() : dirs;
+                detect = detect == null ? Detect.defaults() : detect;
+                stability = stability == null ? Stability.defaults() : stability;
+                retry = retry == null ? Retry.defaults() : retry;
+                limits = limits == null ? Limits.defaults() : limits;
+            }
+
+            private static RuntimeSettings defaults() {
+                return new RuntimeSettings(null, null, null, null, null);
+            }
+        }
+
+        /** Private managed-import filesystem namespace. */
+        public record Directories(
+                @NotBlank String processing,
+                @NotBlank String snapshots,
+                @NotBlank String staging,
+                @NotBlank String terminal,
+                @NotBlank String quarantine) {
+
+            private static Directories defaults() {
+                return new Directories("./var/import/processing", "./var/import/snapshots",
+                        "./var/import/staging", "./var/import/terminal", "./var/import/quarantine");
+            }
+        }
+
+        /** Poll correctness backstop and optional watch latency hint. */
+        public record Detect(boolean useWatchService, @NotNull Duration reconcileInterval) {
+
+            @AssertTrue(message = "must be positive")
+            public boolean isReconcileIntervalValid() {
+                return reconcileInterval == null || reconcileInterval.isPositive();
+            }
+
+            private static Detect defaults() {
+                return new Detect(false, Duration.ofSeconds(5));
+            }
+        }
+
+        /** Producer quiescence required before candidate admission. */
+        public record Stability(@NotNull Duration quietPeriod) {
+
+            @AssertTrue(message = "must not be negative")
+            public boolean isQuietPeriodValid() {
+                return quietPeriod == null || !quietPeriod.isNegative();
+            }
+
+            private static Stability defaults() {
+                return new Stability(Duration.ofSeconds(2));
+            }
+        }
+
+        /** Durable, non-blocking admission retry schedule. */
+        public record Retry(@NotNull Duration delay) {
+
+            @AssertTrue(message = "must not be negative")
+            public boolean isDelayValid() {
+                return delay == null || !delay.isNegative();
+            }
+
+            private static Retry defaults() {
+                return new Retry(Duration.ofSeconds(5));
+            }
+        }
+
+        /** Snapshot and bounded recovery limits. */
+        public record Limits(@Positive long maximumSnapshotBytes, @Positive int recoveryBatchSize) {
+
+            private static Limits defaults() {
+                return new Limits(256L * 1024 * 1024, 100);
+            }
         }
 
         /** One local or SMB import source and its contract/authority allowlist. */
