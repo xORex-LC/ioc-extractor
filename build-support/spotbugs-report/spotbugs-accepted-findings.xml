@@ -830,7 +830,7 @@
     <finding id="SB04-091" module="adapters/adapter-transport-smb" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="94ece55bd8105af5894ae60a0ce84620" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
         <method name="publish" signature="(Lcom/iocextractor/adapter/out/transport/smb/SmbShareClient;Lcom/iocextractor/application/sync/PublishAtomicallyRequest;)Lcom/iocextractor/application/sync/PublishReceipt;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="172" bytecode="413" />
+        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="172" bytecode="412" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
