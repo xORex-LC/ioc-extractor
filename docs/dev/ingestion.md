@@ -50,6 +50,13 @@ Daemon использует синхронный Spring Integration channel. О�
 Инжест не владеет правилами извлечения, схемой хранения или export slices: он
 координирует эти capability через порты.
 
+Managed dataframe import использует тот же startup admission barrier и
+post-commit canonical-change path, но не является веткой обычного document
+ingest. Его local lifecycle adapter переиспользует filesystem primitives для
+claim/snapshot/disposition, тогда как versioned recognition, FIFO delivery
+ledger, sealed staging и atomic promotion остаются отдельным application use
+case. Каталоги и ledgers двух intake-контуров не взаимозаменяемы.
+
 ## Инварианты корректности
 
 1. **SQLite — источник истины.** CSV после commit является восстанавливаемой
@@ -232,4 +239,6 @@ stability/claim semantics, daemon ordering или границы driving adapter
 - [storage.md](storage.md) — canonical write и projection semantics.
 - [artifact-export.md](artifact-export.md) — export после canonical change.
 - [event-coordination.md](event-coordination.md) — ingest→export fast-path.
+- [dataframe-import.md](dataframe-import.md) — отдельный structured CSV intake
+  поверх общего canonical admission.
 - [ADR-0001](../ADR/0001-streaming-ingestion.md) — исходное решение daemon ingest.

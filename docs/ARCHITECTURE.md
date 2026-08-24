@@ -209,6 +209,18 @@ legacy `cp1251` при явном charset), PDF, DOCX и XLSX. Другие фо
 считаются поддерживаемым release-контрактом, пока не добавлены в corpus/contract
 tests.
 
+**Managed dataframe import.** Выделенные local/SMB inbox принимают
+export-shaped CSV как отдельные occurrences по versioned contracts, а не как
+вторую систему записи. После ownership claim создаётся immutable local snapshot;
+exact-one recognition, streaming tri-state mapping и sealed staging завершаются
+одной cross-artifact dataframe transaction. `as-is` использует объявленные
+source values, `processed` переиспользует обычные refang/extract/classify и
+artifact policies. Только active rows участвуют в matching; отсутствующие в
+delivery rows не меняются. Service ledger + dataframe receipt являются truth,
+а WatchService/SMB `CHANGE_NOTIFY` — только latency hints. Детали:
+[dev/dataframe-import.md](dev/dataframe-import.md) и
+[ADR-0024](ADR/0024-managed-dataframe-import.md).
+
 ## Immutable artifact export
 
 Canonical SQLite остаётся системой записи, а export — отдельным bounded context

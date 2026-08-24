@@ -181,6 +181,14 @@ Managed import выключен в обоих поставляемых конф�
 и managed import. Оставляйте `enabled: false`, пока source, authority и contract
 catalog не квалифицированы для конкретного deployment.
 
+Production template использует низколатентный event-first профиль: полный
+listing import каждые `2s`, stability window `2s` и retry delay `2s`; ordinary
+local ingest сканируется каждые `5s` с quiet period `2s`; export объединяет
+изменения в течение `1s`, имеет recovery poll `10s` и max cap `30s`; SMB
+notifications используют debounce `1s`, sync reconciliation — `10s`. Это
+override template, а не built-in defaults из таблицы ниже. Не уменьшайте quiet
+period ниже максимального времени неатомарной producer-side записи файла.
+
 | Параметр | Тип / значения | Встроенный default | Рекомендация |
 |---|---|---|---|
 | `ioc.dataframe-import.enabled` | boolean | `false` | Master runtime/catalog switch; startup fail-closed до завершения recovery. |

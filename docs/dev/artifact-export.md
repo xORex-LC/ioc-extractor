@@ -122,6 +122,12 @@ CLI запускает named profile вручную. Daemon поддержива
 quiet-period/max-cap policy; ingest event только вызывает coalesced `nudge()`, а
 periodic cadence остаётся backstop.
 
+Managed import с public mutation публикует тот же artifact-level
+`CanonicalArtifactsChanged` только после общей dataframe transaction. Поэтому
+delivery из сотен тысяч rows создаёт один quiet-period burst, а не slice после
+каждой row. Import no-op и TTL-only confirmation не продвигают artifact revision
+и сами по себе immutable slice не создают.
+
 Lifecycle expiry отдельно восстанавливает mutable `*_generated.csv`, но не
 вызывает `DaemonExportScheduler.nudge()`. Поэтому истечение само по себе не
 создаёт immutable slice; только следующий разрешённый new-data export зафиксирует
@@ -172,6 +178,7 @@ plan/hash contract, recovery evidence, cadence ownership или retention guard.
 - [storage.md](storage.md) — revisions и snapshot source.
 - [sync.md](sync.md) — remote publish completed slices.
 - [event-coordination.md](event-coordination.md) — fast-path + reconcile.
+- [dataframe-import.md](dataframe-import.md) — import commit и revision trigger.
 - [ADR-0012](../ADR/0012-streaming-dataframe-emission.md) — решение Artifact Emission.
 - [ADR-0021](../ADR/0021-stable-reusable-export-slots.md) — stable sparse
   reusable external `id`.

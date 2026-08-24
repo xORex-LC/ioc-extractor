@@ -60,6 +60,11 @@ Tika, RE2/J, Guava PSL и Commons CSV изолированы адаптерам�
    повторную failure-policy rejection.
 10. **Dry-run не выполняет side effects.** Pipeline проходит read/decision/
    preparation, но пропускает canonical commit и projection.
+11. **Processed import переиспользует policy, а не orchestration.**
+    `ProcessedImportRowPreparer` применяет ordinary refang/extract/classify и
+    declarative artifact mapping к уже структурированной logical row. Он не
+    читает source, не владеет staging/transaction и сохраняет compound-row
+    grouping; `as-is` этот path не вызывает.
 
 ## Декларативный artifact mapping
 

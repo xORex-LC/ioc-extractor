@@ -194,7 +194,7 @@ export-slot ownership сохраняются. Named match definitions остаю
 `JdbcCanonicalMatchPlanner` принимает batch requests, помещает key material в
 connection-local TEMP table и одним set-based join возвращает zero/exact-one/
 multi plan в исходном порядке. `JdbcCanonicalMutationEngine` использует этот
-же connection-scoped механизм для ordinary lifecycle writer и будущей import
+же connection-scoped механизм для ordinary lifecycle writer и managed-import
 promotion. Insert/restart/renew/archive поддерживают aliases атомарно; public
 mutation отдельно сообщает update, clear, no-op или TTL confirmation. Изменение
 record key, включая очистку всех его значений, не допускается in-place и должно
@@ -240,6 +240,7 @@ namespace rows.
 | Service ledger недоступен | coordination operation не притворяется успешной | восстановить service DB/permissions и повторить recovery |
 | Import workspace остался `.building.db` | файл не считается sealed evidence и не допускается к promotion | явно перестроить его из pinned snapshot по service-ledger checkpoint |
 | Sealed import stage не совпадает с digest/metadata | fail-closed до dataframe transaction | восстановить pinned stage либо перестроить из snapshot |
+| Crash после import dataframe commit до service checkpoint | canonical mutation уже завершена ровно один раз | `import_commit` receipt восстанавливает result и продолжает finalization без повторного apply |
 
 ## Как расширять
 

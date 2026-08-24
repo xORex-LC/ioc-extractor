@@ -15,4 +15,5 @@
 | [deployment.md](deployment.md) | [ru/deployment.md](ru/deployment.md) | Установка, upgrade, reconciliation конфигурации, backup, rollback, restore и uninstall |
 | [daemon-operations.md](daemon-operations.md) | [ru/daemon-operations.md](ru/daemon-operations.md) | Повседневная эксплуатация daemon: подача файлов, health/logs, failed sources, backlog, retention и recovery |
 | [canonical-record-lifecycle.md](canonical-record-lifecycle.md) | [ru/canonical-record-lifecycle.md](ru/canonical-record-lifecycle.md) | Fresh-install TTL, двухэтапная activation для upgrade, health, retention и rollback boundary |
+| [dataframe-import.md](dataframe-import.md) | [ru/dataframe-import.md](ru/dataframe-import.md) | Настройка и эксплуатация contract-driven local/SMB CSV import, preview, status, replay и recovery |
 | [remote-storage-sync.md](remote-storage-sync.md) | [ru/remote-storage-sync.md](ru/remote-storage-sync.md) | Работа с удалённым хранилищем: как устроены fetch/publish и push-уведомления, справочник конфигурации с подбором значений, права/сбои/восстановление/мониторинг, настройка SMB-шары на Linux (Samba) и Windows Server, чек-листы |

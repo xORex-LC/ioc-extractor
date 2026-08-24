@@ -147,9 +147,11 @@ supported contract не входят. Их появление является �
 | `SEC-INP-1` | RE2-safe regex contract | Enforced | RE2/J по умолчанию, JDK fallback и RE2-compatible patterns; [processing.md](dev/processing.md) |
 | `SEC-INP-2` | Bounded resource policy для document parsing | Planned | gap зарегистрирован как `SRC-2` в [KNOWN-ISSUES.md](KNOWN-ISSUES.md); activation — отдельный hardening slice |
 | `SEC-INP-3` | Параметризованный durable-write contract | Enforced + Monitored | шесть regression-тестов останавливают build при ослаблении известных trust boundaries: business values bind'ятся, configured identifiers соответствуют `[A-Za-z][A-Za-z0-9_]*`, internal identifiers — `[A-Za-z_][A-Za-z0-9_]*` и quote-ятся, SQL types allowlisted; health PRAGMA закрыты typed enum + literal execute-sites. SpotBugs автоматически сигнализирует о новых non-constant JDBC entry points, а exact-baseline gate блокирует их до исправления или явного reviewed disposition |
+| `SEC-INP-4` | Bounded managed CSV intake и source authority ceiling | Enforced | strict charset/dialect/header recognition, snapshot/field/record/row/column bounds, formula rejection, declarative artifact/routing/merge ceiling и safe row diagnostics; [dataframe import](dev/dataframe-import.md) |
 | `SEC-OUT-1` | CSV spreadsheet formula-injection applicability contract | Manual + Enforced defaults | для shipped default profile path `not_applicable`: marker matches начинаются с `БИБ`/`Письмо`, остальные колонки ограничены indicator/value/const contract; универсальной output-neutralization нет, configuration-dependent seam отслеживается как `OUT-2`; будущий фикс обязан учитывать machine-consumer semantics |
 | `SEC-LOG-1` | Redaction чувствительных IOC/URL components и transport credentials | Enforced | `SensitiveLogValueSanitizer`, diagnostic formatter и regression tests; [observability.md](dev/observability.md) |
 | `SEC-DATA-1` | Atomic durable protocols и checksummed immutable export slices | Enforced | ledgers, manifests, `_SUCCESS`, checksum verification и recovery contracts; [sync.md](dev/sync.md) |
+| `SEC-DATA-2` | Managed-import ownership, immutable evidence и exactly-once promotion | Enforced | local atomic move либо SMB server-side rename, private hashed snapshot, sealed stage, one-transaction promotion и dataframe receipt; protected source/report terminal unit |
 
 ### 4.2. Dependencies, CI и supply chain
 
@@ -180,7 +182,7 @@ supported contract не входят. Их появление является �
 | `SEC-REL-4` | Build provenance/attestation | Planned | trigger — доверенная CI release build и consumer verification; ориентир — [SLSA](https://slsa.dev/spec/v1.2/) |
 | `SEC-OPS-1` | Dedicated non-root daemon и systemd sandbox/resource limits | Enforced для packaged deployment | `NoNewPrivileges`, filesystem/device/kernel/namespace restrictions, `LimitCORE`, memory/CPU/task limits; [packaging README](../packaging/README.md#systemd-hardening) |
 | `SEC-OPS-2` | Actuator не публикуется наружу по умолчанию | Enforced defaults | loopback bind, health/info only, без shutdown endpoint; [application.yml](../bootstrap/ioc-app/src/main/resources/application.yml) |
-| `SEC-OPS-3` | Least-privilege SMB operation и credential redaction | Manual + Enforced parts | operator guide минимальных прав, host-owned secret config, redacted settings/log context; [remote sync guide](guides/remote-storage-sync.md) |
+| `SEC-OPS-3` | Least-privilege SMB operation и credential redaction | Manual + Enforced parts | operator guides минимальных прав, host-owned secret config, redacted settings/log context; [remote sync](guides/remote-storage-sync.md), [managed import](guides/dataframe-import.md) |
 
 ## 5. Dependency security contract
 

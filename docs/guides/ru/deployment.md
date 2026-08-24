@@ -94,6 +94,8 @@ Custom `--jdk-url` также требует `--jdk-sha256` и HTTPS. Default UR
 ├── var/db/
 ├── var/export/
 ├── var/inbox/  var/processing/  var/done/  var/failed/
+├── var/import/inbox/  var/import/processing/  var/import/snapshots/
+├── var/import/staging/  var/import/terminal/  var/import/quarantine/
 ├── var/ledger/ var/logs/
 └── dataframe/
 ```
@@ -102,6 +104,11 @@ Custom `--jdk-url` также требует `--jdk-sha256` и HTTPS. Default UR
 `dataframe/`, а не внутри release directory. Root-owned installation marker
 связывает точный prefix, service name и service user; не редактируйте и не
 копируйте его в другую директорию.
+
+Все managed-import каталоги являются service-owned state с режимом `0750`. Не
+помещайте операторскую drop location внутрь `processing`, `snapshots`, `staging`,
+`terminal` или `quarantine`; producer boundary — только настроенный `inbox` либо
+выделенный SMB path.
 
 ## Конфигурация и проверка
 

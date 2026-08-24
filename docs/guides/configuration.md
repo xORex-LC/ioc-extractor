@@ -180,6 +180,14 @@ starts intake only after the shared startup recovery barrier has reconciled
 ordinary ingestion and managed import. Keep `enabled: false` until the source,
 authority and contract catalog has been qualified for the deployment.
 
+The production template uses an event-first low-latency preset: import full
+listing every `2s`, a `2s` stability window and `2s` retry delay; ordinary local
+ingest scans every `5s` with a `2s` quiet period; export coalesces changes for
+`1s` with a `10s` recovery poll and `30s` maximum cap; SMB notifications use a
+`1s` debounce and sync reconciliation uses `10s`. These are template overrides,
+not the built-in defaults shown below. Do not reduce a quiet period below the
+longest producer-side non-atomic copy interval.
+
 | Property | Type / accepted values | Built-in default | Guidance |
 |---|---|---|---|
 | `ioc.dataframe-import.enabled` | boolean | `false` | Master runtime/catalog switch; startup remains fail-closed until recovery completes. |

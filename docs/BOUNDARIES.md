@@ -65,6 +65,7 @@
 | `platform-events` остаётся framework-free, не зависит от keyed execution и не становится serializable broker contract | `ArchitectureTest.platform_events_is_framework_free_and_not_a_broker`, `control_events_are_not_serializable`, `keyed_execution_is_not_part_of_platform_events` |
 | `platform-concurrency` не зависит от events/frameworks/business layers | `ArchitectureTest.platform_concurrency_is_framework_free_and_event_free` |
 | JDBC/Hikari/SQLite и SMBJ types не протекают внутрь | storage/transport rules в `ArchitectureTest` + application Enforcer |
+| Managed import application model/ports не импортируют CSV/JDBC/SMBJ/Spring; transport и parser implementations остаются в своих adapters | dataframe-import rules в `ArchitectureTest` + application Enforcer |
 | Jackson manifest mapping остаётся в manifest/CLI/bootstrap boundaries | `ArchitectureTest.jackson_manifest_mapping_stays_in_its_adapter` |
 | Adapters не владеют конкретными pipeline stages; stages не владеют порядком pipeline | pipeline rules в `ArchitectureTest` и `PipelineModelArchitectureTest` |
 | Application port contracts — interfaces; command/result records являются явным исключением | `ArchitectureTest.ports_are_interfaces` |

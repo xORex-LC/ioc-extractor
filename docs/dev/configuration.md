@@ -144,10 +144,10 @@ local source; SMB processing/terminal/quarantine namespaces создаются �
 его remote inbox как `.ioc-managed-import/*`. Snapshot byte limit и stability
 quiet period одинаково применяются к обоим transport-ам.
 
-`ioc.artifact-identity.artifacts[]` в P0 дополнен декларативными `record-key` и
-`match-keys[]`. Они именуют текущую row-key формулу и будущие альтернативные
-active-record lookup paths, но сами по себе не меняют storage identity или
-write path. Физическая миграция aliases/compound identity принадлежит P2.
+`ioc.artifact-identity.artifacts[]` содержит декларативные `record-key` и
+`match-keys[]`. Они именуют текущую row-key формулу и альтернативные active-row
+lookup paths. Изменение identity требует отдельного `epoch`/migration решения;
+обычная правка YAML не переписывает populated canonical state.
 
 ## Неочевидные инварианты
 

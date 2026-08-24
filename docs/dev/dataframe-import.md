@@ -37,9 +37,12 @@ checkpoint are idempotent, so startup recovery moves an incomplete delivery
 forward from durable evidence rather than restarting it as a new occurrence.
 
 `as-is` mapping runs only transforms declared by the pinned contract and retains
-the `ABSENT`, explicit `NULL` and `VALUE` cell states. `processed` remains a
-fail-closed catalog option until its separate preparation strategy is connected;
-it is never silently treated as `as-is`.
+the `ABSENT`, explicit `NULL` and `VALUE` cell states. `processed` delegates the
+mapped logical row through the ordinary refang, extraction, classification and
+artifact mapping policies. Pipeline-owned identity, routing and match fields
+replace imported copies, while operator-owned metadata retains tri-state merge
+semantics. Every populated IOC carrier must contain one whole-cell IOC; compound
+URL/IP or multi-hash fields remain one atomic artifact row.
 
 ## Source ownership
 
@@ -149,8 +152,9 @@ admission complete.
 - Add a transport by implementing the source lifecycle and optional doorbell
   ports. The transport must prove ownership, stable materialization, idempotent
   disposition and complete-listing recovery.
-- Connect processed mode through a framework-free preparation strategy and
-  qualify it against the existing ordinary pipeline before enabling contracts.
+- Extend processed mode through `ProcessedImportRowPreparer`; keep the
+  application port framework-free and qualify new carrier/provider semantics
+  against the ordinary pipeline before enabling a contract.
 
 ## Sources of truth
 
@@ -172,5 +176,7 @@ admission complete.
 - [processing.md](processing.md) — ordinary processing and reusable preparation.
 - [ingestion.md](ingestion.md) — ordinary whole-file ingest ownership/recovery.
 - [event-coordination.md](event-coordination.md) — events-as-hints doctrine.
+- [operator guide](../guides/dataframe-import.md) — configuration, intake,
+  status, replay and incident procedures.
 - [ADR-0015](../ADR/0015-retire-legacy-csv-lookup-storage.md) — legacy CSV
   lookup/seed retirement preserved by managed import.

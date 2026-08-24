@@ -141,6 +141,9 @@ observer.
 4. INFO/WARN/ERROR/FATAL diagnostic renderer заменяет raw indicator/value/item
    short identity и не выводит входной документ целиком.
 5. Transport host/share/username/password не входят в operational fields.
+6. Managed import reports, health и INFO logs не содержат raw CSV cells,
+   producer filename/path, snapshot digest или contract-sensitive payload;
+   используются delivery/sequence, aggregate counts и stable safe codes.
 
 ## Корректность и correlation
 
@@ -168,6 +171,12 @@ counts, nearest deadline, backlog age, pending projection count и послед�
 reconcile checkpoint. Recoverable clamp или convergence lag даёт `DEGRADED`; unsafe
 clock либо failed admission даёт `DOWN`. Health не запускает reconcile, не
 двигает clock high-water и не возвращает IOC, row key или source identity.
+
+Daemon Actuator `dataframeImport` показывает phase recovery/runtime,
+aggregate backlog и безопасный head retry state. `DEGRADED` означает bounded
+retry/backlog с сохранённой correctness; contradictory durable evidence либо
+failed startup recovery даёт `DOWN`. Read path использует indexed bounded
+aggregates и не запускает import work.
 
 ## Как расширять
 

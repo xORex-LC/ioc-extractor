@@ -51,6 +51,9 @@ work -> durable idempotency ledger / authoritative state
 - Для ingest→export это `DaemonExportScheduler.nudge()`, который coalesce-ит
   hints и применяет собственную cadence policy.
 - Bounded admission может shed-нуть hint; reconcile обязан восстановить работу.
+- Managed import local WatchService и SMB `CHANGE_NOTIFY` только ставят
+  source-scoped detection hint в тот же bounded admission path; они не являются
+  delivery identity, ordering или ownership evidence.
 
 ## Реализованные потоки
 

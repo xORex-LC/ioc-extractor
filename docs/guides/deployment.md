@@ -94,6 +94,8 @@ Use `--no-start` when configuration must be reviewed before first startup. Run
 ├── var/db/
 ├── var/export/
 ├── var/inbox/  var/processing/  var/done/  var/failed/
+├── var/import/inbox/  var/import/processing/  var/import/snapshots/
+├── var/import/staging/  var/import/terminal/  var/import/quarantine/
 ├── var/ledger/ var/logs/
 └── dataframe/
 ```
@@ -102,6 +104,11 @@ Use `--no-start` when configuration must be reviewed before first startup. Run
 `dataframe/`; it is not part of a release directory. The root-owned installation
 marker binds the exact prefix, service name and service user; do not edit or copy
 it to another directory.
+
+All managed-import directories are service-owned `0750` state. Do not place an
+operator drop location inside `processing`, `snapshots`, `staging`, `terminal`
+or `quarantine`; only a configured `inbox` or a dedicated SMB path is a producer
+boundary.
 
 ## Configure and validate
 
