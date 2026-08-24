@@ -106,7 +106,7 @@ class DataframeImportRowMapperTest {
     }
 
     @Test
-    void fails_closed_until_processed_row_preparation_is_connected() {
+    void fails_closed_when_processed_row_preparation_is_not_connected() {
         DataframeImportRowMapper mapper = new DataframeImportRowMapper((specification, value) -> value, keys);
 
         assertThatThrownBy(() -> mapper.map(contract(ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED),

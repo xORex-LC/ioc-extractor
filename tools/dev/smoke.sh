@@ -141,7 +141,7 @@ smoke_import() {
     --set 'ioc.dataframe-import.contracts[0].dialect.quote="' \
     --set ioc.dataframe-import.contracts[0].dialect.record-separator=crlf-or-lf \
     --set ioc.dataframe-import.contracts[0].dialect.header-required=true \
-    --set ioc.dataframe-import.contracts[0].mode=as-is \
+    --set ioc.dataframe-import.contracts[0].mode=processed \
     --set ioc.dataframe-import.contracts[0].routing=target-only \
     --set ioc.dataframe-import.contracts[0].row-failure-policy=accept-valid \
     --set ioc.dataframe-import.contracts[0].duplicate-policy=coalesce \

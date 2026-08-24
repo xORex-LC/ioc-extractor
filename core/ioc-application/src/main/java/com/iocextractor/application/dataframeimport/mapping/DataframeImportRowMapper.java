@@ -15,6 +15,7 @@ import com.iocextractor.application.dataframeimport.model.ImportMergePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportProcessingMode;
 import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
 import com.iocextractor.application.port.out.dataframeimport.ImportValueTransformRegistry;
+import com.iocextractor.application.port.out.dataframeimport.ProcessedImportRowPreparer;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -34,12 +35,25 @@ public final class DataframeImportRowMapper {
 
     private final ImportValueTransformRegistry transforms;
     private final CanonicalArtifactKeyResolver keyResolver;
+    private final ProcessedImportRowPreparer processed;
 
     /** Creates a mapper using framework-free transform and canonical-key collaborators. */
     public DataframeImportRowMapper(ImportValueTransformRegistry transforms,
                                     CanonicalArtifactKeyResolver keyResolver) {
+        this(transforms, keyResolver, (contract, record, mapped) -> {
+            throw new ImportRowMappingException(
+                    ImportRowMappingException.Reason.PROCESSED_MODE_UNAVAILABLE,
+                    "Processed import requires the dedicated preparation strategy");
+        });
+    }
+
+    /** Creates a mapper with both declarative and ordinary-policy preparation strategies. */
+    public DataframeImportRowMapper(ImportValueTransformRegistry transforms,
+                                    CanonicalArtifactKeyResolver keyResolver,
+                                    ProcessedImportRowPreparer processed) {
         this.transforms = Objects.requireNonNull(transforms, "transforms");
         this.keyResolver = Objects.requireNonNull(keyResolver, "keyResolver");
+        this.processed = Objects.requireNonNull(processed, "processed");
     }
 
     /** Maps one source row atomically across all declared artifact branches. */
@@ -47,11 +61,6 @@ public final class DataframeImportRowMapper {
                                       ImportDelimitedRecord record) {
         Objects.requireNonNull(contract, "contract");
         Objects.requireNonNull(record, "record");
-        if (contract.definition().mode() != ImportProcessingMode.AS_IS) {
-            throw new ImportRowMappingException(
-                    ImportRowMappingException.Reason.PROCESSED_MODE_UNAVAILABLE,
-                    "Processed import requires the dedicated preparation strategy");
-        }
         List<ImportRowIssue> issues = new ArrayList<>();
         List<ImportArtifactBranch> branches = new ArrayList<>(contract.definition().artifacts().size());
         for (DataframeImportCatalogDraft.Artifact artifact : contract.definition().artifacts()) {
@@ -70,9 +79,13 @@ public final class DataframeImportRowMapper {
                     artifact.name(), artifact.role(), cells, mergePolicies,
                     requestedSlot, recordKey, matchKeys));
         }
-        return issues.isEmpty()
-                ? ImportRowMappingResult.accepted(new ImportLogicalRow(record.sourceRowNumber(), branches))
-                : ImportRowMappingResult.rejected(issues);
+        if (!issues.isEmpty()) {
+            return ImportRowMappingResult.rejected(issues);
+        }
+        ImportLogicalRow mapped = new ImportLogicalRow(record.sourceRowNumber(), branches);
+        return contract.definition().mode() == ImportProcessingMode.AS_IS
+                ? ImportRowMappingResult.accepted(mapped)
+                : processed.prepare(contract, record, mapped);
     }
 
     private Map<String, ImportMergePolicy> mergePolicies(

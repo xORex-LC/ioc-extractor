@@ -16,6 +16,7 @@ CSV streaming, disk staging, atomic canonical promotion, reports and status.
 | `ImportValueTransformRegistry` | Adapter-neutral access to the validated CSV transform family |
 | `ImportWorkspace` | Rebuildable disk-backed staging, capacity state and sealed-stage verification |
 | `CanonicalImportWriter` | One cross-artifact dataframe transaction, exact receipt replay and safe mutation summary |
+| `ProcessedImportRowPreparer` | Ordinary refang/extract/classify/artifact-policy strategy for explicit `processed` contracts |
 | `ImportReportStore` | Protected atomic source/report terminal unit |
 | `ImportStatusReader` | Indexed safe aggregate status |
 

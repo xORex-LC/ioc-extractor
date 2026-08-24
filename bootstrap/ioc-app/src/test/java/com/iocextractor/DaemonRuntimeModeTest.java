@@ -56,7 +56,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "ioc.dataframe-import.contracts[0].dialect.quote=\"",
         "ioc.dataframe-import.contracts[0].dialect.record-separator=crlf-or-lf",
         "ioc.dataframe-import.contracts[0].dialect.header-required=true",
-        "ioc.dataframe-import.contracts[0].mode=as-is",
+        "ioc.dataframe-import.contracts[0].mode=processed",
         "ioc.dataframe-import.contracts[0].routing=target-only",
         "ioc.dataframe-import.contracts[0].row-failure-policy=accept-valid",
         "ioc.dataframe-import.contracts[0].duplicate-policy=coalesce",

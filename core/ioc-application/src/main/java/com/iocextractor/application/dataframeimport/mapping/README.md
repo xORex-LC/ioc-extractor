@@ -22,6 +22,8 @@ canonical persistence.
 **Depends on:** `dataframeimport.model`. **Must not depend on:** adapters,
 frameworks, storage or transport libraries.
 
-The P4 mapper is the `as-is` strategy. A `processed` contract fails closed until
-the dedicated framework-free preparation strategy is connected; it is never
-silently interpreted as `as-is`.
+The declarative mapper owns the `as-is` strategy. An explicit `processed`
+contract delegates its already mapped row through `ProcessedImportRowPreparer`;
+the CSV adapter reuses ordinary refang, extraction, classification and artifact
+mapping policy, replaces derived fields, preserves operator-owned fields and
+recomputes canonical/match keys before staging.

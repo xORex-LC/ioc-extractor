@@ -50,6 +50,11 @@ public final class ConfigurableRowMapper implements RowMapper {
         return header;
     }
 
+    /** Returns the immutable declarative columns for adapter-owned policy reuse. */
+    public List<ColumnSpec> columns() {
+        return columns;
+    }
+
     @Override
     public Optional<String> idColumn() {
         return idColumn;

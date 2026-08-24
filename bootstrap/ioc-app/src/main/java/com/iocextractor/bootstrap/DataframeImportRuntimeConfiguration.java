@@ -2,6 +2,7 @@ package com.iocextractor.bootstrap;
 
 import com.iocextractor.adapter.in.csv.CommonsCsvDelimitedRecordReader;
 import com.iocextractor.adapter.in.csv.CommonsCsvImportValueTransformRegistry;
+import com.iocextractor.adapter.in.csv.CsvProcessedImportRowPreparer;
 import com.iocextractor.adapter.in.csv.ImportSnapshotPathResolver;
 import com.iocextractor.adapter.in.cli.ImportPreviewFileLocator;
 import com.iocextractor.adapter.in.ingest.LocalImportChangeSignalSource;
@@ -24,6 +25,7 @@ import com.iocextractor.adapter.out.transport.smb.SmbManagedImportSourceLifecycl
 import com.iocextractor.adapter.out.transport.smb.SmbSessionPool;
 import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
+import com.iocextractor.application.classification.IndicatorClassifier;
 import com.iocextractor.application.dataframeimport.DataframeImportAdmissionService;
 import com.iocextractor.application.dataframeimport.DataframeImportDetectionCoordinator;
 import com.iocextractor.application.dataframeimport.DataframeImportDetectionService;
@@ -66,11 +68,15 @@ import com.iocextractor.application.port.out.dataframeimport.ImportTerminalReten
 import com.iocextractor.application.port.out.dataframeimport.ImportValueTransformRegistry;
 import com.iocextractor.application.port.out.dataframeimport.ImportWorkspace;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
+import com.iocextractor.application.port.out.dataframeimport.ProcessedImportRowPreparer;
 import com.iocextractor.application.port.out.artifact.ArtifactIdBaseline;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.platform.concurrent.BoundedKeyedSerialExecutor;
 import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
 import com.iocextractor.platform.events.ControlEventPublisher;
+import com.iocextractor.domain.classify.MatchPolicy;
+import com.iocextractor.domain.extract.IndicatorExtractor;
+import com.iocextractor.domain.refang.Refanger;
 import com.zaxxer.hikari.HikariDataSource;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -193,13 +199,30 @@ class DataframeImportRuntimeConfiguration {
     }
 
     @Bean
+    ProcessedImportRowPreparer dataframeImportProcessedRowPreparer(
+            AppConfig appConfig,
+            IocProperties properties,
+            ArtifactIdBaseline artifactIdBaseline,
+            Refanger refanger,
+            IndicatorExtractor extractor,
+            MatchPolicy matchPolicy) {
+        CanonicalArtifactKeyResolver keys = new CanonicalArtifactKeyResolver(
+                appConfig.artifactIdentityDefinitions(properties));
+        return new CsvProcessedImportRowPreparer(
+                appConfig.artifactDefinitions(properties, artifactIdBaseline),
+                refanger, extractor, new IndicatorClassifier(matchPolicy), keys);
+    }
+
+    @Bean
     DataframeImportRowMapper dataframeImportRowMapper(
             ImportValueTransformRegistry transforms,
+            ProcessedImportRowPreparer processed,
             AppConfig appConfig,
             IocProperties properties) {
         return new DataframeImportRowMapper(
                 transforms,
-                new CanonicalArtifactKeyResolver(appConfig.artifactIdentityDefinitions(properties)));
+                new CanonicalArtifactKeyResolver(appConfig.artifactIdentityDefinitions(properties)),
+                processed);
     }
 
     @Bean

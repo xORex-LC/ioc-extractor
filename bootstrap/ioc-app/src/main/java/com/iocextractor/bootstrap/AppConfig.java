@@ -1346,8 +1346,8 @@ public class AppConfig {
                 .toList();
     }
 
-    private List<CsvArtifactDefinition> artifactDefinitions(IocProperties props,
-                                                            ArtifactIdBaseline artifactIdBaseline) {
+    List<CsvArtifactDefinition> artifactDefinitions(IocProperties props,
+                                                    ArtifactIdBaseline artifactIdBaseline) {
         Map<String, ValueProvider> providers = ConfigRegistryCatalog.valueProviders();
         Map<String, Transform> transforms = ConfigRegistryCatalog.transforms();
         Map<String, Predicate<ClassifiedIndicator>> filters = ConfigRegistryCatalog.artifactFilters();

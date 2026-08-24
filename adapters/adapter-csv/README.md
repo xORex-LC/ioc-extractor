@@ -40,6 +40,10 @@ errors/diagnostics/observability, Commons CSV, SLF4J API.
   element diagnostic. Остальные mapper defects останавливают run;
   route/filter/mapping decisions передаются в gated application TRACE port без
   повторной классификации;
+- `CsvProcessedImportRowPreparer` подключает explicit `processed` import mode к
+  обычным refang/extract/classify и CSV artifact policies. Он требует ровно один
+  whole-cell IOC для каждого semantic carrier, сохраняет compound-row
+  correlation и никогда не подменяет `processed` режим поведением `as-is`;
 - public id остаётся deferred slot до commit; `from: id` не допускает
   `when-type` или transforms, что проверяется bootstrap config preflight;
   mapping SPI не получает временный id, а id-provider возвращает пустой slot;

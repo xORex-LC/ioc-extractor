@@ -58,6 +58,7 @@ class DataframeImportSmbRuntimeConfigurationTest {
     private String[] properties(Path root) {
         return new String[] {
                 "ioc.dataframe-import.enabled=true",
+                "ioc.lifecycle.validity.mode=fixed",
                 "ioc.dataframe-import.runtime.dirs.snapshots=" + root.resolve("snapshots"),
                 "ioc.dataframe-import.sources[0].id=smb-feed",
                 "ioc.dataframe-import.sources[0].transport=smb",
