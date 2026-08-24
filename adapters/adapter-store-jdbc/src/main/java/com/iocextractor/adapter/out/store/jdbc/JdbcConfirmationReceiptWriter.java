@@ -12,7 +12,12 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+
+import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.bind;
+import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.epochMillis;
+import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.joinedQuoted;
+import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.placeholders;
+import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.quote;
 
 /** Stages typed prepared rows and publishes only structurally complete receipts. */
 final class JdbcConfirmationReceiptWriter {
@@ -211,30 +216,6 @@ final class JdbcConfirmationReceiptWriter {
 
     private List<String> publicHeader(DataframeArtifactSchema schema) {
         return schema.columns().stream().map(DataframeColumn::name).toList();
-    }
-
-    private long epochMillis(EffectiveTime time) {
-        return time.value().toEpochMilli();
-    }
-
-    private String placeholders(int count) {
-        return java.util.stream.IntStream.range(0, count).mapToObj(ignored -> "?")
-                .collect(Collectors.joining(", "));
-    }
-
-    private String joinedQuoted(List<String> identifiers) {
-        return identifiers.stream().map(this::quote).collect(Collectors.joining(", "));
-    }
-
-    private String quote(String identifier) {
-        return "\"" + DataframeColumn.requireSqlIdentifier(identifier, "identifier") + "\"";
-    }
-
-    private void bind(PreparedStatement statement, List<Object> values) throws SQLException {
-        statement.clearParameters();
-        for (int index = 0; index < values.size(); index++) {
-            statement.setObject(index + 1, values.get(index));
-        }
     }
 
     private record ReceiptTotals(int markerCount, long markerRows) {

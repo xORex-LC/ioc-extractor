@@ -216,7 +216,7 @@ public final class JdbcCanonicalArtifactRepository
             }
             inserted = statement.executeUpdate();
         }
-        upsertSource(connection, schema.artifactName(), rowKey.value(), sourceKey, observedAt);
+        recordSource(connection, schema.artifactName(), rowKey.value(), sourceKey, observedAt);
         return inserted > 0;
     }
 
@@ -245,28 +245,16 @@ public final class JdbcCanonicalArtifactRepository
         }
     }
 
-    private void upsertSource(Connection connection,
+    private void recordSource(Connection connection,
                               String artifactName,
                               String rowKey,
                               String sourceKey,
                               String observedAt) throws SQLException {
-        String sourceTable = artifactName + "_sources";
         Long rowId = rowId(connection, artifactName, rowKey);
         if (rowId == null) {
             return;
         }
-        String sql = "INSERT INTO " + quote(sourceTable)
-                + " (" + joinedQuoted(List.of("row_id", "source_key", "first_seen_at", "last_seen_at", "occurrences"))
-                + ") VALUES (?, ?, ?, ?, 1) ON CONFLICT(" + quote("row_id") + ", " + quote("source_key") + ") "
-                + "DO UPDATE SET " + quote("last_seen_at") + " = excluded." + quote("last_seen_at")
-                + ", " + quote("occurrences") + " = " + quote("occurrences") + " + 1";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, rowId);
-            statement.setString(2, sourceKey);
-            statement.setString(3, observedAt);
-            statement.setString(4, observedAt);
-            statement.executeUpdate();
-        }
+        JdbcCanonicalSourceRecorder.record(connection, artifactName, rowId, sourceKey, observedAt);
     }
 
     private Long rowId(Connection connection, String artifactName, String rowKey) throws SQLException {

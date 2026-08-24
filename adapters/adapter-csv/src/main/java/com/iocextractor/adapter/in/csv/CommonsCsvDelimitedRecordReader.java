@@ -50,7 +50,7 @@ public final class CommonsCsvDelimitedRecordReader implements DelimitedRecordRea
         } catch (DelimitedRecordReadException failure) {
             throw failure;
         } catch (UncheckedIOException failure) {
-            throw readFailure(failure.getCause(), "Cannot parse delimited input header");
+            throw readFailure(failure, "Cannot parse delimited input header");
         } catch (CharacterCodingException failure) {
             throw readFailure(failure, "Cannot parse delimited input header");
         } catch (IOException failure) {
@@ -79,7 +79,7 @@ public final class CommonsCsvDelimitedRecordReader implements DelimitedRecordRea
         } catch (DelimitedRecordReadException failure) {
             throw failure;
         } catch (UncheckedIOException failure) {
-            throw readFailure(failure.getCause(), "Cannot parse delimited input with the declared contract");
+            throw readFailure(failure, "Cannot parse delimited input with the declared contract");
         } catch (CharacterCodingException failure) {
             throw readFailure(failure, "Cannot parse delimited input with the declared contract");
         } catch (IOException failure) {
@@ -87,15 +87,22 @@ public final class CommonsCsvDelimitedRecordReader implements DelimitedRecordRea
         }
     }
 
+    private DelimitedRecordReadException readFailure(UncheckedIOException failure, String fallbackMessage) {
+        return new DelimitedRecordReadException(failureMessage(failure.getCause(), fallbackMessage), failure);
+    }
+
     private DelimitedRecordReadException readFailure(IOException failure, String fallbackMessage) {
+        return new DelimitedRecordReadException(failureMessage(failure, fallbackMessage), failure);
+    }
+
+    private String failureMessage(IOException failure, String fallbackMessage) {
         if (failure instanceof CharacterCodingException) {
-            return new DelimitedRecordReadException(
-                    "Delimited input contains malformed or unmappable bytes for the declared charset", failure);
+            return "Delimited input contains malformed or unmappable bytes for the declared charset";
         }
         if (failure instanceof DelimitedInputLimitingReader.InputLimitException) {
-            return new DelimitedRecordReadException(failure.getMessage(), failure);
+            return failure.getMessage();
         }
-        return new DelimitedRecordReadException(fallbackMessage, failure);
+        return fallbackMessage;
     }
 
     private Reader strictReader(Path path, Charset charset) throws IOException {

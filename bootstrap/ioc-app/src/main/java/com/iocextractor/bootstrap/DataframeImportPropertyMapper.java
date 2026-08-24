@@ -30,59 +30,98 @@ final class DataframeImportPropertyMapper {
 
     static DataframeImportCatalogEnvironment environment(IocProperties properties) {
         Map<String, MutableArtifactSchema> schemas = new LinkedHashMap<>();
-        if (properties.sink() != null && properties.sink().artifacts() != null) {
-            for (IocProperties.Sink.Artifact artifact : properties.sink().artifacts()) {
-                if (artifact == null || !hasText(artifact.name())) {
-                    continue;
-                }
-                MutableArtifactSchema schema = schemas.computeIfAbsent(artifact.name(), ignored -> new MutableArtifactSchema());
-                schema.hasExternalId = artifact.hasPublicIdColumn();
-                if (artifact.columns() != null) {
-                    artifact.columns().stream().filter(java.util.Objects::nonNull)
-                            .map(IocProperties.Sink.Artifact.Column::name).filter(DataframeImportPropertyMapper::hasText)
-                            .forEach(schema.columns::add);
-                }
+        collectSinkSchemas(properties.sink(), schemas);
+        collectIdentitySchemas(properties.artifactIdentity(), schemas);
+        collectExportSlotProfiles(properties.export(), schemas);
+        return new DataframeImportCatalogEnvironment(
+                immutableSchemas(schemas), ConfigRegistryCatalog.transformKeys(), endpointNames(properties.sync()));
+    }
+
+    private static void collectSinkSchemas(IocProperties.Sink sink,
+                                           Map<String, MutableArtifactSchema> schemas) {
+        if (sink == null || sink.artifacts() == null) {
+            return;
+        }
+        for (IocProperties.Sink.Artifact artifact : sink.artifacts()) {
+            if (artifact == null || !hasText(artifact.name())) {
+                continue;
+            }
+            MutableArtifactSchema schema = schema(schemas, artifact.name());
+            schema.hasExternalId = artifact.hasPublicIdColumn();
+            if (artifact.columns() != null) {
+                artifact.columns().stream().filter(java.util.Objects::nonNull)
+                        .map(IocProperties.Sink.Artifact.Column::name)
+                        .filter(DataframeImportPropertyMapper::hasText)
+                        .forEach(schema.columns::add);
             }
         }
-        if (properties.artifactIdentity() != null && properties.artifactIdentity().artifacts() != null) {
-            for (IocProperties.ArtifactIdentity.Artifact artifact : properties.artifactIdentity().artifacts()) {
-                if (artifact == null || !hasText(artifact.name())) {
-                    continue;
-                }
-                MutableArtifactSchema schema = schemas.computeIfAbsent(artifact.name(), ignored -> new MutableArtifactSchema());
-                schema.recordKey = artifact.recordKey();
-                if (artifact.matchKeys() == null) {
-                    continue;
-                }
+    }
+
+    private static void collectIdentitySchemas(IocProperties.ArtifactIdentity identity,
+                                               Map<String, MutableArtifactSchema> schemas) {
+        if (identity == null || identity.artifacts() == null) {
+            return;
+        }
+        for (IocProperties.ArtifactIdentity.Artifact artifact : identity.artifacts()) {
+            if (artifact == null || !hasText(artifact.name())) {
+                continue;
+            }
+            MutableArtifactSchema schema = schema(schemas, artifact.name());
+            schema.recordKey = artifact.recordKey();
+            if (artifact.matchKeys() != null) {
                 artifact.matchKeys().stream().filter(java.util.Objects::nonNull)
                         .map(IocProperties.ArtifactIdentity.Artifact.MatchKey::name)
-                        .filter(DataframeImportPropertyMapper::hasText).forEach(schema.matchKeys::add);
+                        .filter(DataframeImportPropertyMapper::hasText)
+                        .forEach(schema.matchKeys::add);
             }
         }
-        if (properties.export() != null && properties.export().profiles() != null) {
-            for (IocProperties.Export.Profile profile : properties.export().profiles()) {
-                if (profile == null || !hasText(profile.name()) || profile.artifacts() == null) {
-                    continue;
-                }
-                for (String artifact : profile.artifacts()) {
-                    if (hasText(artifact)) {
-                        schemas.computeIfAbsent(artifact, ignored -> new MutableArtifactSchema())
-                                .slotProfiles.add(profile.name());
-                    }
-                }
-            }
-        }
-        Map<String, DataframeImportCatalogEnvironment.ArtifactSchema> artifacts = new LinkedHashMap<>();
-        schemas.forEach((name, schema) -> artifacts.put(name, new DataframeImportCatalogEnvironment.ArtifactSchema(
-                schema.columns, schema.recordKey, schema.matchKeys, schema.slotProfiles, schema.hasExternalId)));
+    }
 
+    private static void collectExportSlotProfiles(IocProperties.Export export,
+                                                  Map<String, MutableArtifactSchema> schemas) {
+        if (export == null || export.profiles() == null) {
+            return;
+        }
+        for (IocProperties.Export.Profile profile : export.profiles()) {
+            collectExportSlotProfile(profile, schemas);
+        }
+    }
+
+    private static void collectExportSlotProfile(IocProperties.Export.Profile profile,
+                                                 Map<String, MutableArtifactSchema> schemas) {
+        if (profile == null || !hasText(profile.name()) || profile.artifacts() == null) {
+            return;
+        }
+        for (String artifact : profile.artifacts()) {
+            if (hasText(artifact)) {
+                schema(schemas, artifact).slotProfiles.add(profile.name());
+            }
+        }
+    }
+
+    private static Map<String, DataframeImportCatalogEnvironment.ArtifactSchema> immutableSchemas(
+            Map<String, MutableArtifactSchema> schemas) {
+        Map<String, DataframeImportCatalogEnvironment.ArtifactSchema> artifacts = new LinkedHashMap<>();
+        schemas.forEach((name, schema) -> artifacts.put(name,
+                new DataframeImportCatalogEnvironment.ArtifactSchema(
+                        schema.columns, schema.recordKey, schema.matchKeys,
+                        schema.slotProfiles, schema.hasExternalId)));
+        return artifacts;
+    }
+
+    private static Set<String> endpointNames(IocProperties.Sync sync) {
         Set<String> endpoints = new LinkedHashSet<>();
-        if (properties.sync() != null && properties.sync().endpoints() != null) {
-            properties.sync().endpoints().stream().filter(java.util.Objects::nonNull)
-                    .map(IocProperties.Sync.Endpoint::name).filter(DataframeImportPropertyMapper::hasText)
+        if (sync != null && sync.endpoints() != null) {
+            sync.endpoints().stream().filter(java.util.Objects::nonNull)
+                    .map(IocProperties.Sync.Endpoint::name)
+                    .filter(DataframeImportPropertyMapper::hasText)
                     .forEach(endpoints::add);
         }
-        return new DataframeImportCatalogEnvironment(artifacts, ConfigRegistryCatalog.transformKeys(), endpoints);
+        return endpoints;
+    }
+
+    private static MutableArtifactSchema schema(Map<String, MutableArtifactSchema> schemas, String artifact) {
+        return schemas.computeIfAbsent(artifact, ignored -> new MutableArtifactSchema());
     }
 
     private static DataframeImportCatalogDraft.Source source(IocProperties.DataframeImport.SourceDefinition source) {

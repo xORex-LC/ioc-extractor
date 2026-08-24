@@ -195,30 +195,50 @@ public final class DataframeImportCatalogCompiler {
                 continue;
             }
             putUnique(result, source.id(), source, path + ".id", "source", violations);
-            require(source.transport() != null, path + ".transport", "source transport is required", violations);
-            requireText(source.location(), path + ".location", "source location is required", violations);
-            validateEndpoint(source, environment, path, violations);
-            requireNotEmpty(source.contracts(), path + ".contracts",
-                    "source contract allowlist must not be empty", violations);
-            rejectBlankOrDuplicate(source.contracts(), path + ".contracts", "contract reference", violations);
-            DataframeImportCatalogDraft.AuthorityProfile authority = authorities.get(source.authority());
-            if (!hasText(source.authority()) || authority == null) {
-                violations.add(violation(path + ".authority", "source must reference a configured authority profile"));
-            }
-            if (source.contracts() != null) {
-                for (int contractIndex = 0; contractIndex < source.contracts().size(); contractIndex++) {
-                    String contractId = source.contracts().get(contractIndex);
-                    DataframeImportCatalogDraft.Contract contract = contracts.get(contractId);
-                    if (!hasText(contractId) || contract == null) {
-                        violations.add(violation(path + ".contracts[%d]".formatted(contractIndex),
-                                "source must reference a configured contract"));
-                    } else if (authority != null) {
-                        validateAuthority(source, authority, contract, path, contractIndex, violations);
-                    }
-                }
-            }
+            validateSource(source, path, environment, authorities, contracts, violations);
         }
         return result;
+    }
+
+    private void validateSource(
+            DataframeImportCatalogDraft.Source source,
+            String path,
+            DataframeImportCatalogEnvironment environment,
+            Map<String, DataframeImportCatalogDraft.AuthorityProfile> authorities,
+            Map<String, DataframeImportCatalogDraft.Contract> contracts,
+            List<ImportContractViolation> violations) {
+        require(source.transport() != null, path + ".transport", "source transport is required", violations);
+        requireText(source.location(), path + ".location", "source location is required", violations);
+        validateEndpoint(source, environment, path, violations);
+        requireNotEmpty(source.contracts(), path + ".contracts",
+                "source contract allowlist must not be empty", violations);
+        rejectBlankOrDuplicate(source.contracts(), path + ".contracts", "contract reference", violations);
+        DataframeImportCatalogDraft.AuthorityProfile authority = authorities.get(source.authority());
+        if (!hasText(source.authority()) || authority == null) {
+            violations.add(violation(path + ".authority", "source must reference a configured authority profile"));
+        }
+        validateSourceContracts(source.contracts(), authority, contracts, path, violations);
+    }
+
+    private void validateSourceContracts(
+            List<String> contractIds,
+            DataframeImportCatalogDraft.AuthorityProfile authority,
+            Map<String, DataframeImportCatalogDraft.Contract> contracts,
+            String sourcePath,
+            List<ImportContractViolation> violations) {
+        if (contractIds == null) {
+            return;
+        }
+        for (int contractIndex = 0; contractIndex < contractIds.size(); contractIndex++) {
+            String contractId = contractIds.get(contractIndex);
+            DataframeImportCatalogDraft.Contract contract = contracts.get(contractId);
+            String path = sourcePath + ".contracts[%d]".formatted(contractIndex);
+            if (!hasText(contractId) || contract == null) {
+                violations.add(violation(path, "source must reference a configured contract"));
+            } else if (authority != null) {
+                validateAuthority(authority, contract, path, violations);
+            }
+        }
     }
 
     private void validateEndpoint(DataframeImportCatalogDraft.Source source,
@@ -234,13 +254,18 @@ public final class DataframeImportCatalogCompiler {
         }
     }
 
-    private void validateAuthority(DataframeImportCatalogDraft.Source source,
-                                   DataframeImportCatalogDraft.AuthorityProfile authority,
+    private void validateAuthority(DataframeImportCatalogDraft.AuthorityProfile authority,
                                    DataframeImportCatalogDraft.Contract contract,
-                                   String sourcePath,
-                                   int contractIndex,
+                                   String path,
                                    List<ImportContractViolation> violations) {
-        String path = sourcePath + ".contracts[%d]".formatted(contractIndex);
+        validateAuthorityPolicies(authority, contract, path, violations);
+        validateAuthorityArtifacts(authority, contract.artifacts(), path, violations);
+    }
+
+    private void validateAuthorityPolicies(DataframeImportCatalogDraft.AuthorityProfile authority,
+                                           DataframeImportCatalogDraft.Contract contract,
+                                           String path,
+                                           List<ImportContractViolation> violations) {
         if (contract.routing() == ImportRoutingPolicy.RELATED_ARTIFACTS && !authority.allowRelatedRouting()) {
             violations.add(violation(path, "source authority does not permit related-artifact routing"));
         }
@@ -252,12 +277,19 @@ public final class DataframeImportCatalogCompiler {
                 && !contract.mergeDefault().isAllowedBy(authority.maximumMergePolicy())) {
             violations.add(violation(path, "contract default merge policy exceeds source authority"));
         }
-        if (contract.artifacts() == null) {
+    }
+
+    private void validateAuthorityArtifacts(
+            DataframeImportCatalogDraft.AuthorityProfile authority,
+            List<DataframeImportCatalogDraft.Artifact> artifacts,
+            String path,
+            List<ImportContractViolation> violations) {
+        if (artifacts == null) {
             return;
         }
         Set<String> allowedArtifacts = authority.artifacts() == null
                 ? Set.of() : new HashSet<>(authority.artifacts());
-        for (DataframeImportCatalogDraft.Artifact artifact : contract.artifacts()) {
+        for (DataframeImportCatalogDraft.Artifact artifact : artifacts) {
             if (artifact == null) {
                 continue;
             }
@@ -265,12 +297,20 @@ public final class DataframeImportCatalogCompiler {
                 violations.add(violation(path, "contract artifact is outside the source authority allowlist"));
             }
             validateMergeCeiling(artifact.mergeDefault(), authority.maximumMergePolicy(), path, violations);
-            if (artifact.columns() != null) {
-                for (DataframeImportCatalogDraft.Column column : artifact.columns()) {
-                    if (column != null) {
-                        validateMergeCeiling(column.mergePolicy(), authority.maximumMergePolicy(), path, violations);
-                    }
-                }
+            validateColumnMergeCeilings(artifact.columns(), authority.maximumMergePolicy(), path, violations);
+        }
+    }
+
+    private void validateColumnMergeCeilings(List<DataframeImportCatalogDraft.Column> columns,
+                                             ImportMergePolicy ceiling,
+                                             String path,
+                                             List<ImportContractViolation> violations) {
+        if (columns == null) {
+            return;
+        }
+        for (DataframeImportCatalogDraft.Column column : columns) {
+            if (column != null) {
+                validateMergeCeiling(column.mergePolicy(), ceiling, path, violations);
             }
         }
     }
@@ -394,37 +434,63 @@ public final class DataframeImportCatalogCompiler {
                 violations.add(violation(path, "artifact mapping must be an object"));
                 continue;
             }
-            if (!hasText(artifact.name()) || !artifactNames.add(artifact.name())) {
-                violations.add(violation(path + ".name", "artifact mapping name must be non-blank and unique"));
-            }
-            if (artifact.role() == ImportArtifactRole.PRIMARY) {
-                if (primary == null) {
-                    primary = artifact;
-                } else {
-                    violations.add(violation(path + ".role", "exactly one primary artifact is allowed"));
-                }
-            } else if (artifact.role() == null) {
-                violations.add(violation(path + ".role", "artifact role is required"));
-            }
-            if (artifact.role() == ImportArtifactRole.RELATED
-                    && contract.routing() == ImportRoutingPolicy.TARGET_ONLY) {
-                violations.add(violation(path + ".role", "target-only routing must not declare related artifacts"));
-            }
-            DataframeImportCatalogEnvironment.ArtifactSchema schema = environment.artifacts().get(artifact.name());
-            if (schema == null) {
-                violations.add(violation(path + ".name", "artifact must reference a configured canonical schema"));
-            }
-            if (!hasText(artifact.recordKey()) || schema == null || !artifact.recordKey().equals(schema.recordKey())) {
-                violations.add(violation(path + ".record-key",
-                        "record key must reference the artifact's active identity definition"));
-            }
-            validateMatchKeys(artifact, schema, path, violations);
-            validateColumns(artifact, schema, recognized, environment.transforms(), path, violations);
+            validateArtifactName(artifact, artifactNames, path, violations);
+            primary = validateArtifactRole(artifact, contract.routing(), primary, path, violations);
+            validateArtifactSchema(artifact, recognized, environment, path, violations);
         }
         if (primary == null) {
             violations.add(violation(contractPath + ".artifacts", "exactly one primary artifact is required"));
         }
         return primary;
+    }
+
+    private void validateArtifactName(DataframeImportCatalogDraft.Artifact artifact,
+                                      Set<String> artifactNames,
+                                      String path,
+                                      List<ImportContractViolation> violations) {
+        if (!hasText(artifact.name()) || !artifactNames.add(artifact.name())) {
+            violations.add(violation(path + ".name", "artifact mapping name must be non-blank and unique"));
+        }
+    }
+
+    private DataframeImportCatalogDraft.Artifact validateArtifactRole(
+            DataframeImportCatalogDraft.Artifact artifact,
+            ImportRoutingPolicy routing,
+            DataframeImportCatalogDraft.Artifact primary,
+            String path,
+            List<ImportContractViolation> violations) {
+        DataframeImportCatalogDraft.Artifact resolvedPrimary = primary;
+        if (artifact.role() == ImportArtifactRole.PRIMARY) {
+            if (primary == null) {
+                resolvedPrimary = artifact;
+            } else {
+                violations.add(violation(path + ".role", "exactly one primary artifact is allowed"));
+            }
+        } else if (artifact.role() == null) {
+            violations.add(violation(path + ".role", "artifact role is required"));
+        }
+        if (artifact.role() == ImportArtifactRole.RELATED && routing == ImportRoutingPolicy.TARGET_ONLY) {
+            violations.add(violation(path + ".role", "target-only routing must not declare related artifacts"));
+        }
+        return resolvedPrimary;
+    }
+
+    private void validateArtifactSchema(
+            DataframeImportCatalogDraft.Artifact artifact,
+            Set<String> recognized,
+            DataframeImportCatalogEnvironment environment,
+            String path,
+            List<ImportContractViolation> violations) {
+        DataframeImportCatalogEnvironment.ArtifactSchema schema = environment.artifacts().get(artifact.name());
+        if (schema == null) {
+            violations.add(violation(path + ".name", "artifact must reference a configured canonical schema"));
+        }
+        if (!hasText(artifact.recordKey()) || schema == null || !artifact.recordKey().equals(schema.recordKey())) {
+            violations.add(violation(path + ".record-key",
+                    "record key must reference the artifact's active identity definition"));
+        }
+        validateMatchKeys(artifact, schema, path, violations);
+        validateColumns(artifact, schema, recognized, environment.transforms(), path, violations);
     }
 
     private void validateMatchKeys(DataframeImportCatalogDraft.Artifact artifact,

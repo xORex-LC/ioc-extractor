@@ -29,6 +29,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.bind;
+import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.epochMillis;
+import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.joinedQuoted;
+import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.placeholders;
+import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.quote;
+
 /**
  * Connection-scoped canonical record mutation kernel shared by ingest and import.
  *
@@ -120,6 +126,22 @@ public final class JdbcCanonicalMutationEngine {
             throw new IocExtractorException("Canonical record-key mutation must create a new record");
         }
 
+        PublicRowChanges changes = detectPublicRowChanges(schema, stored.publicRow(), finalRow);
+        if (changes.hasChanges()) {
+            updatePublicRow(connection, schema, canonicalRowId, finalRow, changes.columns());
+            replaceAliases(connection, schema, canonicalRowId, stored.lifecycleId(), finalRow);
+        }
+        if (renewTtl) {
+            renewLifecycleOnly(connection, schema, stored, asOf, validity);
+        }
+        return new CanonicalRecordMutationOutcome(
+                changes.mutationKind(renewTtl), canonicalRowId, stored.lifecycleId(),
+                changes.updated(), changes.cleared());
+    }
+
+    private PublicRowChanges detectPublicRowChanges(DataframeArtifactSchema schema,
+                                                    ArtifactRow stored,
+                                                    ArtifactRow incoming) {
         Set<String> updated = new LinkedHashSet<>();
         Set<String> cleared = new LinkedHashSet<>();
         List<String> changed = new ArrayList<>();
@@ -127,8 +149,8 @@ public final class JdbcCanonicalMutationEngine {
             if ("id".equals(column.name())) {
                 continue;
             }
-            String before = stored.publicRow().value(column.name());
-            String after = finalRow.value(column.name());
+            String before = stored.value(column.name());
+            String after = incoming.value(column.name());
             if (!Objects.equals(before, after)) {
                 changed.add(column.name());
                 if (after == null) {
@@ -138,18 +160,7 @@ public final class JdbcCanonicalMutationEngine {
                 }
             }
         }
-        if (!changed.isEmpty()) {
-            updatePublicRow(connection, schema, canonicalRowId, finalRow, changed);
-            replaceAliases(connection, schema, canonicalRowId, stored.lifecycleId(), finalRow);
-        }
-        if (renewTtl) {
-            renewLifecycleOnly(connection, schema, stored, asOf, validity);
-        }
-        CanonicalRecordMutationKind kind = !cleared.isEmpty()
-                ? CanonicalRecordMutationKind.CLEARED
-                : !updated.isEmpty() ? CanonicalRecordMutationKind.UPDATED
-                : renewTtl ? CanonicalRecordMutationKind.TTL_CONFIRMED : CanonicalRecordMutationKind.NO_OP;
-        return new CanonicalRecordMutationOutcome(kind, canonicalRowId, stored.lifecycleId(), updated, cleared);
+        return new PublicRowChanges(changed, updated, cleared);
     }
 
     private Optional<StoredLifecycle> findStored(Connection connection,
@@ -240,7 +251,8 @@ public final class JdbcCanonicalMutationEngine {
             statement.executeUpdate();
         }
         long rowId = requireRowId(connection, schema.artifactName(), rowKey.value());
-        upsertSource(connection, schema.artifactName(), rowId, sourceKey, asOf.value().toString());
+        JdbcCanonicalSourceRecorder.record(
+                connection, schema.artifactName(), rowId, sourceKey, asOf.value().toString());
         return rowId;
     }
 
@@ -251,7 +263,8 @@ public final class JdbcCanonicalMutationEngine {
                              EffectiveTime asOf,
                              ValidityDecision validity) throws SQLException {
         renewLifecycleOnly(connection, schema, stored, asOf, validity);
-        upsertSource(connection, schema.artifactName(), stored.rowId(), sourceKey, asOf.value().toString());
+        JdbcCanonicalSourceRecorder.record(
+                connection, schema.artifactName(), stored.rowId(), sourceKey, asOf.value().toString());
     }
 
     private void renewLifecycleOnly(Connection connection,
@@ -323,25 +336,6 @@ public final class JdbcCanonicalMutationEngine {
         }
     }
 
-    private void upsertSource(Connection connection,
-                              String artifact,
-                              long rowId,
-                              String sourceKey,
-                              String observedAt) throws SQLException {
-        String sql = "INSERT INTO " + quote(artifact + "_sources") + " ("
-                + joinedQuoted(List.of("row_id", "source_key", "first_seen_at", "last_seen_at", "occurrences"))
-                + ") VALUES (?, ?, ?, ?, 1) ON CONFLICT(" + quote("row_id") + ", " + quote("source_key")
-                + ") DO UPDATE SET " + quote("last_seen_at") + " = excluded." + quote("last_seen_at")
-                + ", " + quote("occurrences") + " = " + quote("occurrences") + " + 1";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, rowId);
-            statement.setString(2, sourceKey);
-            statement.setString(3, observedAt);
-            statement.setString(4, observedAt);
-            statement.executeUpdate();
-        }
-    }
-
     private long requireRowId(Connection connection, String artifact, String rowKey) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
                 "SELECT " + quote("id") + " FROM " + quote(artifact)
@@ -379,34 +373,35 @@ public final class JdbcCanonicalMutationEngine {
         return key;
     }
 
-    private long epochMillis(EffectiveTime time) {
-        return time.value().toEpochMilli();
-    }
-
-    private String placeholders(int count) {
-        return java.util.stream.IntStream.range(0, count).mapToObj(ignored -> "?")
-                .collect(Collectors.joining(", "));
-    }
-
-    private String joinedQuoted(List<String> identifiers) {
-        return identifiers.stream().map(this::quote).collect(Collectors.joining(", "));
-    }
-
-    private String quote(String identifier) {
-        return "\"" + DataframeColumn.requireSqlIdentifier(identifier, "identifier") + "\"";
-    }
-
-    private void bind(PreparedStatement statement, List<Object> values) throws SQLException {
-        statement.clearParameters();
-        for (int index = 0; index < values.size(); index++) {
-            statement.setObject(index + 1, values.get(index));
-        }
-    }
-
     private record StoredLifecycle(long rowId,
                                    long lifecycleId,
                                    long validUntilEpochMs,
                                    ArtifactRowKey rowKey,
                                    ArtifactRow publicRow) {
+    }
+
+    private record PublicRowChanges(List<String> columns,
+                                    Set<String> updated,
+                                    Set<String> cleared) {
+
+        private PublicRowChanges {
+            columns = List.copyOf(columns);
+            updated = Set.copyOf(updated);
+            cleared = Set.copyOf(cleared);
+        }
+
+        private boolean hasChanges() {
+            return !columns.isEmpty();
+        }
+
+        private CanonicalRecordMutationKind mutationKind(boolean renewTtl) {
+            if (!cleared.isEmpty()) {
+                return CanonicalRecordMutationKind.CLEARED;
+            }
+            if (!updated.isEmpty()) {
+                return CanonicalRecordMutationKind.UPDATED;
+            }
+            return renewTtl ? CanonicalRecordMutationKind.TTL_CONFIRMED : CanonicalRecordMutationKind.NO_OP;
+        }
     }
 }

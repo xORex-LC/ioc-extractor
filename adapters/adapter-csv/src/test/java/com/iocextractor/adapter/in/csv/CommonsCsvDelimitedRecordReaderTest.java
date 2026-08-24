@@ -11,6 +11,8 @@ import com.iocextractor.application.port.out.dataframeimport.DelimitedReadComman
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.UncheckedIOException;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -51,7 +53,8 @@ class CommonsCsvDelimitedRecordReaderTest {
 
         assertThatThrownBy(() -> reader(source).read(command(recognition()), ignored -> { }))
                 .isInstanceOf(DelimitedRecordReadException.class)
-                .hasMessageContaining("malformed or unmappable bytes");
+                .hasMessageContaining("malformed or unmappable bytes")
+                .hasRootCauseInstanceOf(CharacterCodingException.class);
     }
 
     @Test
@@ -141,7 +144,9 @@ class CommonsCsvDelimitedRecordReaderTest {
 
         assertThatThrownBy(() -> reader(source).read(command(recognition(), limits), ignored -> { }))
                 .isInstanceOf(DelimitedRecordReadException.class)
-                .hasMessageContaining("field limit");
+                .hasMessageContaining("field limit")
+                .hasCauseInstanceOf(UncheckedIOException.class)
+                .hasRootCauseInstanceOf(DelimitedInputLimitingReader.InputLimitException.class);
     }
 
     private CommonsCsvDelimitedRecordReader reader(Path source) {

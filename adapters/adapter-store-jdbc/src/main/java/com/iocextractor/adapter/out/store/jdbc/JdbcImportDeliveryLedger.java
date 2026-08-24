@@ -23,6 +23,7 @@ import com.iocextractor.application.dataframeimport.model.ImportStageReference;
 import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
 import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
 import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -34,6 +35,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 
 /**
  * SQLite service-ledger adapter for globally ordered managed dataframe imports.
@@ -72,6 +74,8 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
             ORDER BY sequence_no
             LIMIT :limit
             """;
+    private static final RowMapper<ImportDelivery> DELIVERY_ROW_MAPPER =
+            (resultSet, ignoredRowNumber) -> mapDelivery(resultSet);
 
     private final JdbcClient jdbc;
     private final TransactionTemplate transactions;
@@ -126,14 +130,14 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
         Objects.requireNonNull(deliveryId, "deliveryId");
         return jdbc.sql("SELECT " + SELECT_COLUMNS + " FROM import_delivery WHERE delivery_id = :delivery_id")
                 .param("delivery_id", deliveryId.value())
-                .query(JdbcImportDeliveryLedger::mapDelivery)
+                .query(DELIVERY_ROW_MAPPER)
                 .optional();
     }
 
     @Override
     public Optional<ImportDelivery> findHead() {
         return jdbc.sql(FIND_HEAD_SQL)
-                .query(JdbcImportDeliveryLedger::mapDelivery)
+                .query(DELIVERY_ROW_MAPPER)
                 .optional();
     }
 
@@ -142,7 +146,7 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
         Objects.requireNonNull(now, "now");
         return jdbc.sql(FIND_DUE_HEAD_SQL)
                 .param("now", now.toEpochMilli())
-                .query(JdbcImportDeliveryLedger::mapDelivery)
+                .query(DELIVERY_ROW_MAPPER)
                 .optional();
     }
 
@@ -203,7 +207,7 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
         }
         return jdbc.sql(FIND_RECOVERABLE_SQL)
                 .param("limit", limit)
-                .query(JdbcImportDeliveryLedger::mapDelivery)
+                .query(DELIVERY_ROW_MAPPER)
                 .list();
     }
 
@@ -239,17 +243,17 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
                 .param("next_state", transition.nextState().name())
                 .param("terminal_outcome", transition.terminalOutcome()
                         .map(ImportTerminalOutcome::name).orElse(null))
-                .param("snapshot_locator", snapshot == null ? null : snapshot.reference().value())
-                .param("snapshot_sha256", snapshot == null ? null : snapshot.digest().value())
-                .param("snapshot_size", snapshot == null ? null : snapshot.size())
-                .param("contract_id", contract == null ? null : contract.id().value())
-                .param("contract_version", contract == null ? null : contract.version())
-                .param("contract_fingerprint", contract == null ? null : contract.fingerprint().value())
-                .param("stage_locator", stage == null ? null : stage.reference().value())
-                .param("stage_sha256", stage == null ? null : stage.digest().value())
-                .param("stage_source_rows", stage == null ? null : stage.sourceRows())
-                .param("stage_accepted_rows", stage == null ? null : stage.acceptedRows())
-                .param("stage_rejected_rows", stage == null ? null : stage.rejectedRows())
+                .param("snapshot_locator", nullable(snapshot, value -> value.reference().value()))
+                .param("snapshot_sha256", nullable(snapshot, value -> value.digest().value()))
+                .param("snapshot_size", nullable(snapshot, ImportSnapshot::size))
+                .param("contract_id", nullable(contract, value -> value.id().value()))
+                .param("contract_version", nullable(contract, ImportContractPin::version))
+                .param("contract_fingerprint", nullable(contract, value -> value.fingerprint().value()))
+                .param("stage_locator", nullable(stage, value -> value.reference().value()))
+                .param("stage_sha256", nullable(stage, value -> value.digest().value()))
+                .param("stage_source_rows", nullable(stage, ImportStage::sourceRows))
+                .param("stage_accepted_rows", nullable(stage, ImportStage::acceptedRows))
+                .param("stage_rejected_rows", nullable(stage, ImportStage::rejectedRows))
                 .param("last_error_code", transition.safeCode().orElse(null))
                 .param("updated_at_ms", transition.occurredAt().toEpochMilli())
                 .param("delivery_id", transition.deliveryId().value())
@@ -361,7 +365,7 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
         }
     }
 
-    private static ImportDelivery mapDelivery(ResultSet resultSet, int rowNumber) throws SQLException {
+    private static ImportDelivery mapDelivery(ResultSet resultSet) throws SQLException {
         Optional<ImportSnapshot> snapshot = optional(resultSet.getString("snapshot_locator"))
                 .map(locator -> new ImportSnapshot(
                         new ImportSnapshotReference(locator),
@@ -399,6 +403,10 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
 
     private static Optional<String> optional(String value) {
         return Optional.ofNullable(value);
+    }
+
+    private static <S, T> T nullable(S source, Function<S, T> mapper) {
+        return source == null ? null : mapper.apply(source);
     }
 
     private static Optional<Long> optionalLong(ResultSet resultSet, String column) throws SQLException {
