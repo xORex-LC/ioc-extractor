@@ -15,10 +15,11 @@ performs no filesystem, CSV, Spring, SMB or JDBC work.
 | `contract/` | Collect-all source-contract compiler and immutable catalog |
 | `mapping/` | Header resolution, declarative row mapping and field-level tri-state merge decisions |
 
-`DataframeImportStagingService` streams each pinned snapshot through the driven
-CSV and workspace ports without touching canonical truth. Driving and driven
-boundaries are under `application.port.{in,out}.dataframeimport`; all integration
-mechanisms remain in their adapters.
+`DataframeImportStagingService` implements the narrow `DataframeImportStager`
+application seam and streams each pinned snapshot through the driven CSV and
+workspace ports without touching canonical truth. Driving and driven boundaries
+are under `application.port.{in,out}.dataframeimport`; all integration mechanisms
+remain in their adapters.
 
 `DataframeImportAdmissionService` reserves global order before transport work,
 persists retry eligibility instead of sleeping and publishes
@@ -32,6 +33,11 @@ forward-finalization result and never reapplies business mutations.
 `EventPublishingCanonicalImportWriter` emits deadline, projection and artifact
 hints only for a newly committed result; durable dataframe markers remain the
 correctness backstop.
+
+`DataframeImportProcessingService` treats a durable state that already advanced
+across a failed call response as successful replay evidence. It schedules a
+retry only while the same operation still owns the current state and fails
+closed on impossible backward transitions.
 
 `ImportWorkspaceException` classifies safe staging consistency, capacity and
 storage failures outside the port namespace, preserving the ports-as-interfaces

@@ -40,8 +40,8 @@ import java.util.Set;
 public final class DataframeImportProcessingService implements ProcessNextDataframeImportUseCase {
 
     private final ImportDeliveryLedger ledger;
-    private final DataframeImportStagingService staging;
-    private final DataframeImportPromotionService promotion;
+    private final DataframeImportStager staging;
+    private final ProcessNextDataframeImportUseCase promotion;
     private final ImportWorkspace workspace;
     private final ImportCommitEvidenceStore commits;
     private final ImportReportStore reports;
@@ -52,8 +52,8 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
     /** Creates one framework-free global-head processor. */
     public DataframeImportProcessingService(
             ImportDeliveryLedger ledger,
-            DataframeImportStagingService staging,
-            DataframeImportPromotionService promotion,
+            DataframeImportStager staging,
+            ProcessNextDataframeImportUseCase promotion,
             ImportWorkspace workspace,
             ImportCommitEvidenceStore commits,
             ImportReportStore reports,
@@ -136,12 +136,16 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             return result.workPerformed() ? result : idle();
         } catch (RuntimeException failure) {
             ImportDelivery current = required(delivery);
-            if (current.state() == ImportDeliveryState.STAGED
-                    || current.state() == ImportDeliveryState.PROMOTING) {
-                defer(current, ImportDiagnosticCodes.PROCESSING_FAILED.id(), true);
-                return performed(delivery);
-            }
-            throw failure;
+            return switch (current.state()) {
+                case STAGED, PROMOTING -> {
+                    defer(current, ImportDiagnosticCodes.PROCESSING_FAILED.id(), true);
+                    yield performed(delivery);
+                }
+                case CANONICAL_COMMITTED, FINALIZING, TERMINAL -> performed(delivery);
+                case DETECTED, CLAIMING, CLAIMED, SNAPSHOT_PINNED, CONTRACT_PINNED, STAGING ->
+                        throw contradiction(
+                                "Import promotion failed after an invalid durable state change", failure);
+            };
         }
     }
 
@@ -165,12 +169,16 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             throw contradiction;
         } catch (RuntimeException failure) {
             ImportDelivery current = required(initial);
-            if (current.state() == ImportDeliveryState.CANONICAL_COMMITTED
-                    || current.state() == ImportDeliveryState.FINALIZING) {
-                defer(current, ImportDiagnosticCodes.FINALIZATION_FAILED.id(), true);
-                return performed(initial);
-            }
-            throw failure;
+            return switch (current.state()) {
+                case CANONICAL_COMMITTED, FINALIZING -> {
+                    defer(current, ImportDiagnosticCodes.FINALIZATION_FAILED.id(), true);
+                    yield performed(initial);
+                }
+                case TERMINAL -> performed(initial);
+                case DETECTED, CLAIMING, CLAIMED, SNAPSHOT_PINNED, CONTRACT_PINNED,
+                        STAGING, STAGED, PROMOTING -> throw contradiction(
+                                "Import finalization failed after an invalid durable state change", failure);
+            };
         }
     }
 
@@ -184,13 +192,15 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             transition(current, ImportDeliveryState.TERMINAL,
                     ImportDeliveryCheckpoint.none(), ImportTerminalOutcome.REJECTED);
             return performed(initial);
+        } catch (DataframeImportConsistencyException contradiction) {
+            throw contradiction;
         } catch (RuntimeException failure) {
             ImportDelivery current = required(initial);
-            if (current.state() != ImportDeliveryState.TERMINAL) {
-                defer(current, ImportDiagnosticCodes.FINALIZATION_FAILED.id(), true);
+            if (current.state() == ImportDeliveryState.TERMINAL) {
                 return performed(initial);
             }
-            throw failure;
+            defer(current, ImportDiagnosticCodes.FINALIZATION_FAILED.id(), true);
+            return performed(initial);
         }
     }
 
@@ -297,5 +307,10 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
 
     private DataframeImportConsistencyException contradiction(String message) {
         return new DataframeImportConsistencyException(message);
+    }
+
+    private DataframeImportConsistencyException contradiction(
+            String message, RuntimeException cause) {
+        return new DataframeImportConsistencyException(message, cause);
     }
 }

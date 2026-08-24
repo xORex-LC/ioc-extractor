@@ -23,7 +23,7 @@ import java.util.Optional;
  * Recognition-to-sealed-stage application service. It performs no canonical
  * database write and leaves recovery state transitions to the P5/P6 orchestrator.
  */
-public final class DataframeImportStagingService {
+public final class DataframeImportStagingService implements DataframeImportStager {
 
     private final DataframeImportRecognizer recognizer;
     private final DataframeImportRowMapper mapper;
@@ -45,6 +45,7 @@ public final class DataframeImportStagingService {
     }
 
     /** Strictly recognizes, maps and disk-stages one immutable delivery snapshot. */
+    @Override
     public ImportStagingResult stage(ImportStagingCommand command) {
         Objects.requireNonNull(command, "command");
         CompiledDataframeImportContract contract = recognizer.recognize(

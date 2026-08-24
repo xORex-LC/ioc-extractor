@@ -7,4 +7,9 @@ public final class DataframeImportConsistencyException extends IllegalStateExcep
     public DataframeImportConsistencyException(String message) {
         super(message);
     }
+
+    /** Creates a value-free consistency failure while retaining its technical cause. */
+    public DataframeImportConsistencyException(String message, Throwable cause) {
+        super(message, cause);
+    }
 }
