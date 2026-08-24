@@ -5,6 +5,7 @@ import com.iocextractor.application.port.in.sync.RemoteFetchResult;
 import com.iocextractor.application.port.in.sync.RemoteFetchUseCase;
 import com.iocextractor.application.port.in.sync.ValidateSyncSelectionUseCase;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
@@ -46,6 +47,7 @@ public final class SyncFetchCommand implements Callable<Integer> {
      * @param validator configuration-backed selection preflight
      * @param useCase lazily resolved remote fetch primary port
      */
+    @Autowired
     public SyncFetchCommand(ValidateSyncSelectionUseCase validator,
                             ObjectProvider<RemoteFetchUseCase> useCase) {
         this.validator = validator;

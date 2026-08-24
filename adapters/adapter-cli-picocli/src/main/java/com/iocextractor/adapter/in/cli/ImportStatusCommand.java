@@ -3,6 +3,7 @@ package com.iocextractor.adapter.in.cli;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryState;
 import com.iocextractor.application.port.in.dataframeimport.QueryDataframeImportStatusUseCase;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
@@ -26,6 +27,7 @@ public final class ImportStatusCommand implements Callable<Integer> {
         this(null);
     }
 
+    @Autowired
     public ImportStatusCommand(ObjectProvider<QueryDataframeImportStatusUseCase> statusUseCases) {
         this.statusUseCases = statusUseCases;
     }

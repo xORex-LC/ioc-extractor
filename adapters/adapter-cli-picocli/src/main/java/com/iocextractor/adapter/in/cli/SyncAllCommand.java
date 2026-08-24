@@ -9,6 +9,7 @@ import com.iocextractor.application.port.in.sync.RemoteFetchResult;
 import com.iocextractor.application.port.in.sync.RemoteFetchUseCase;
 import com.iocextractor.application.port.in.sync.ValidateSyncSelectionUseCase;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
@@ -58,6 +59,7 @@ public final class SyncAllCommand implements Callable<Integer> {
      * @param fetchUseCase lazily resolved remote fetch primary port
      * @param publishUseCase lazily resolved artifact publish primary port
      */
+    @Autowired
     public SyncAllCommand(ValidateSyncSelectionUseCase validator,
                           ObjectProvider<RemoteFetchUseCase> fetchUseCase,
                           ObjectProvider<ArtifactPublishUseCase> publishUseCase) {

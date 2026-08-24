@@ -6,6 +6,7 @@ import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
 import com.iocextractor.application.port.in.sync.ValidateSyncSelectionUseCase;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
@@ -50,6 +51,7 @@ public final class SyncPublishCommand implements Callable<Integer> {
      * @param validator configuration-backed selection preflight
      * @param useCase lazily resolved artifact publish primary port
      */
+    @Autowired
     public SyncPublishCommand(ValidateSyncSelectionUseCase validator,
                               ObjectProvider<ArtifactPublishUseCase> useCase) {
         this.validator = validator;

@@ -4,6 +4,7 @@ import com.iocextractor.application.dataframeimport.model.ImportSourceId;
 import com.iocextractor.application.port.in.dataframeimport.ValidateDataframeImportCommand;
 import com.iocextractor.application.port.in.dataframeimport.ValidateDataframeImportUseCase;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
@@ -36,6 +37,7 @@ public final class ImportValidateCommand implements Callable<Integer> {
         this(null, null);
     }
 
+    @Autowired
     public ImportValidateCommand(ObjectProvider<ValidateDataframeImportUseCase> validators,
                                  ObjectProvider<ImportPreviewFileLocator> locators) {
         this.validators = validators;
