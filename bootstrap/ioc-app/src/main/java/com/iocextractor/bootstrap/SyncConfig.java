@@ -6,6 +6,7 @@ import com.iocextractor.adapter.out.store.jdbc.JdbcRemoteFetchLedger;
 import com.iocextractor.adapter.out.transport.smb.SmbChangeNotifyWatcher;
 import com.iocextractor.adapter.out.transport.smb.SmbEndpointSettings;
 import com.iocextractor.adapter.out.transport.smb.SmbFileTransport;
+import com.iocextractor.adapter.out.transport.smb.SmbSessionPool;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
 import com.iocextractor.application.port.in.sync.RemoteFetchUseCase;
 import com.iocextractor.application.port.in.sync.ValidateSyncSelectionUseCase;
@@ -67,21 +68,46 @@ public class SyncConfig {
     @Bean
     @Lazy
     @ConditionalOnProperty(prefix = "ioc.sync", name = "enabled", havingValue = "true")
-    public TransportRegistry transportRegistry(IocProperties props) {
+    public TransportRegistry transportRegistry(IocProperties props,
+                                               SmbFileTransport smb,
+                                               SmbChangeNotifyWatcher smbWatcher) {
         List<IocProperties.Sync.Endpoint> smbEndpoints = props.sync().endpoints().stream()
                 .filter(endpoint -> endpoint.transport() == SyncTransport.SMB)
                 .toList();
-
-        List<SmbEndpointSettings> smbSettings = smbEndpoints.stream()
-                .map(this::smbSettings)
-                .toList();
-        SmbFileTransport smb = new SmbFileTransport(smbSettings);
-        SmbChangeNotifyWatcher smbWatcher = new SmbChangeNotifyWatcher(smbSettings, syncRetryPolicy(props));
         List<TransportRegistry.Binding> bindings = smbEndpoints.stream()
                 .map(endpoint -> new TransportRegistry.Binding(
                         endpoint.name(), smb, smb::closeIdle, smb, smbWatcher))
                 .toList();
         return new TransportRegistry(bindings);
+    }
+
+    @Bean(destroyMethod = "close")
+    @ConditionalOnExpression("'${ioc.sync.enabled:false}' == 'true' || "
+            + "'${ioc.dataframe-import.enabled:false}' == 'true'")
+    public SmbSessionPool smbSessionPool(IocProperties props) {
+        List<SmbEndpointSettings> settings = props.sync().endpoints().stream()
+                .filter(endpoint -> endpoint.transport() == SyncTransport.SMB)
+                .map(this::smbSettings)
+                .toList();
+        return new SmbSessionPool(settings);
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.sync.enabled:false}' == 'true' || "
+            + "'${ioc.dataframe-import.enabled:false}' == 'true'")
+    public SmbFileTransport smbFileTransport(SmbSessionPool pool) {
+        return new SmbFileTransport(pool);
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.sync.enabled:false}' == 'true' || "
+            + "'${ioc.dataframe-import.enabled:false}' == 'true'")
+    public SmbChangeNotifyWatcher smbChangeNotifyWatcher(IocProperties props) {
+        List<SmbEndpointSettings> settings = props.sync().endpoints().stream()
+                .filter(endpoint -> endpoint.transport() == SyncTransport.SMB)
+                .map(this::smbSettings)
+                .toList();
+        return new SmbChangeNotifyWatcher(settings, syncRetryPolicy(props));
     }
 
     @Bean

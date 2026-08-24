@@ -1,13 +1,17 @@
 # adapter/out/transport/smb
 
-SMB-адаптер для `FileTransport`. Модуль инкапсулирует `smbj` и не отдаёт наружу
-SMB-сессии, handles или типы transport-библиотеки.
+SMB-адаптер для sync `FileTransport` и managed dataframe-import lifecycle.
+Модуль инкапсулирует `smbj` и не отдаёт его типы через application ports.
 
 ## Состав
 
 | Файл | Роль |
 |---|---|
+| `SmbSessionPool` | Общий lazy endpoint-keyed pool для sync/import operations с сериализацией, reconnect и idle close. |
 | `SmbFileTransport` | Реализация transport-neutral `FileTransport`: `list`, `stat`, `get`, `delete`, `publishAtomically`. |
+| `SmbManagedImportSourceLifecycle` | Complete listing, server-side claim rename, orphan adoption, durable local snapshot и remote disposition. |
+| `SmbImportSourceDefinition` | Привязка managed source к endpoint и remote inbox. |
+| `SmbImportChangeSignalSource` | Преобразует `CHANGE_NOTIFY` в source-scoped import listing hint. |
 | `SmbChangeNotifyWatcher` | Optional `RemoteChangeSignalSource` поверх SMB2 `CHANGE_NOTIFY`; отдаёт только doorbell-сигналы. |
 | `SmbjChangeNotifySessionFactory` | Выделенный SMBJ client/session/share/directory handle для long-poll watch. |
 | `SmbEndpointSettings` | Immutable-настройки endpoint с маскированием credentials. |
@@ -25,9 +29,21 @@ SMB-сессии, handles или типы transport-библиотеки.
 - Уже опубликованный slice с совпадающим marker считается idempotent success.
 - Remote partial без marker считается adapter-owned состоянием и может быть перезаписан.
 - `delete` используется только явными retention/cleanup сценариями; fetch-source в v1 read-only.
-- Соединение создаётся lazy и переиспользуется per endpoint. Операции одного endpoint
+- Sync/import соединение создаётся lazy и переиспользуется per endpoint. Операции одного endpoint
   сериализованы, поэтому reconnect/idle-close не закрывают share во время активного IO;
   разные endpoints могут обслуживаться параллельно.
+- Managed import определяет стабильность полным listing и фиксирует leaf, size,
+  last-write time и server file ID. После ledger reservation первым ownership
+  действием является `inbox/file → inbox/.ioc-managed-import/processing/<delivery-token>.csv`.
+- Producer+processing collision не перезаписывается. Processing orphan
+  переиспользуется только той же delivery, что позволяет продолжить после
+  disconnect сразу за rename.
+- Materialization открывает claimed object без write sharing, проверяет remote
+  evidence до/после stream и публикует fsync-ed local snapshot через atomic move.
+  Изменение объекта или разрыв оставляет только retryable remote ownership и не
+  открывает canonical write path.
+- Remote disposition выполняется после local terminal source/report unit:
+  `REJECTED` идёт в `quarantine`, остальные terminal outcomes — в `terminal`.
 - `CHANGE_NOTIFY` использует выделенный клиент и не делит cached `SmbShareClient` с
   `list/get/publish`; long-poll watch не должен блокировать обычные transport операции.
 - Watcher — это accelerator, не correctness path: callback только сообщает
@@ -50,16 +66,22 @@ SMB-сессии, handles или типы transport-библиотеки.
 
 Unit-тесты используют fake `SmbShareClient`/watch-session без SMB-сервера и проверяют
 атомарность publish-протокола, idempotency, reconnect-on-transient, timeout wiring,
-taxonomy mapping, watch re-arm, lease re-open и bounded close.
+taxonomy mapping, watch re-arm, lease re-open, bounded close, polling без
+notifications, claim-before-download, share conflict, collision, object
+substitution/mutation, orphan adoption, disposition и shared-session reuse.
 
-Opt-in contract test против живого SMB-сервера:
+Пять opt-in контрактных сценариев против живого SMB-сервера проверяют managed
+claim/disposition/restart и `CHANGE_NOTIFY`:
 
 ```bash
-./mvnw -pl adapters/adapter-transport-smb test \
+./mvnw -pl adapters/adapter-transport-smb -am test \
   -Dioc.smb.contract=true \
   -Dioc.smb.host=127.0.0.1 \
   -Dioc.smb.share=test-share \
   -Dioc.smb.username="$SMB_USER" \
   -Dioc.smb.password="$SMB_PASSWORD" \
-  -Dioc.smb.remotePath=send
+  -Dioc.smb.remotePath=import
 ```
+
+Каждый сценарий создаёт только собственный UUID-подкаталог под `remotePath` и
+удаляет именно его в `finally`; корень operator inbox не очищается.

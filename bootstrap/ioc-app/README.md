@@ -105,9 +105,11 @@ production packaging template включает `fixed/12h`; существующ
 ## Managed dataframe import runtime
 
 При `ioc.dataframe-import.enabled=true` composition root собирает framework-free
-recognition/staging/promotion/finalization use cases с local ownership
-(SMB подключается следующим P8 slice),
-service/dataframe JDBC evidence и общим post-commit event path. Один
+recognition/staging/promotion/finalization use cases с local либо SMB ownership,
+service/dataframe JDBC evidence и общим post-commit event path. SMB sources
+используют тот же endpoint catalog и shared session pool, что ordinary sync;
+server-side rename предшествует durable local snapshot, а `CHANGE_NOTIFY`
+остаётся необязательным doorbell. Один
 `CanonicalIntakeStartupCoordinator` держит ordinary ingest и managed import
 закрытыми до обеих recovery-процедур и lifecycle admission. Periodic full scan
 и ledger reconcile остаются correctness backstop; WatchService,

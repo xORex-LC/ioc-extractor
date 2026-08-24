@@ -3,7 +3,11 @@ package com.iocextractor.adapter.out.transport.smb;
 import java.time.Instant;
 import java.util.Objects;
 
-record SmbRemoteEntry(String path, long size, Instant modifiedAt, boolean directory) {
+record SmbRemoteEntry(String path,
+                      long size,
+                      Instant modifiedAt,
+                      boolean directory,
+                      long fileId) {
 
     SmbRemoteEntry {
         if (path == null || path.isBlank()) {

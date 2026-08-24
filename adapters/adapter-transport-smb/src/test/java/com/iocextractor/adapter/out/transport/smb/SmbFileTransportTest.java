@@ -218,7 +218,8 @@ class SmbFileTransportTest {
             String prefix = remotePath + "/";
             return files.entrySet().stream()
                     .filter(entry -> entry.getKey().startsWith(prefix))
-                    .map(entry -> new SmbRemoteEntry(entry.getKey(), entry.getValue().length, Instant.EPOCH, false))
+                    .map(entry -> new SmbRemoteEntry(
+                            entry.getKey(), entry.getValue().length, Instant.EPOCH, false, 0L))
                     .toList();
         }
 
@@ -229,7 +230,8 @@ class SmbFileTransportTest {
             if (content == null) {
                 return Optional.empty();
             }
-            return Optional.of(new SmbRemoteEntry(remotePath, content.length, Instant.EPOCH, false));
+            return Optional.of(new SmbRemoteEntry(
+                    remotePath, content.length, Instant.EPOCH, false, 0L));
         }
 
         @Override

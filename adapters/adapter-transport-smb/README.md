@@ -3,11 +3,13 @@
 ## Назначение
 
 Outbound remote-transport adapter over **SMB2/3** (smbj): реализует
-`FileTransport` (list/stat/get/delete + atomic multi-file publish) и опциональный
-`RemoteChangeSignalSource` (SMB2 `CHANGE_NOTIFY` push для fetch).
+`FileTransport` (list/stat/get/delete + atomic multi-file publish), managed
+dataframe-import ownership/materialization/disposition и опциональный
+`RemoteChangeSignalSource` (SMB2 `CHANGE_NOTIFY` doorbell для fetch/import).
 
 **Правило слоя:** держит только SMB-специфику (сессии, handles, timeouts,
-reconnect, marker-last publish, watch-lifecycle); discovery/dedup/ledger-логика
+reconnect, server rename, file identity/share modes, marker-last publish,
+watch-lifecycle); discovery/dedup/ledger-логика
 остаётся в application. Наружу торчит контракт порта, не типы smbj.
 
 ## Структура
@@ -15,14 +17,17 @@ reconnect, marker-last publish, watch-lifecycle); discovery/dedup/ledger-лог�
 | Подпапка / файл | Назначение |
 |---|---|
 | `pom.xml` | Maven module descriptor |
-| `SmbFileTransport` | `FileTransport`: list/stat/get/delete + `publishAtomically` (per-endpoint lock, cached client, `closeIdle`) |
+| `SmbSessionPool` | Общий lazy endpoint-keyed pool для sync и managed import; сериализует endpoint operation и владеет reconnect/idle close |
+| `SmbFileTransport` | `FileTransport`: list/stat/get/delete + `publishAtomically` поверх общего pool |
 | `SmbShareClient` / `SmbjShareClient` (+ `Factory`) | Обёртка над smbj share; открытие/аутентификация/операции |
+| `SmbManagedImportSourceLifecycle` | Server-side claim rename, orphan adoption, write-exclusive durable local snapshot и remote terminal/quarantine disposition |
+| `SmbImportChangeSignalSource` | Source-scoped import doorbells поверх transport-neutral watch port |
 | `SmbEndpointSettings` | Настройки соединения (host/share/domain/creds/таймауты); пароль — defensive copy, `<redacted>` в `toString` |
 | `ConnectTimeoutSocketFactory` | Настоящий TCP connect-timeout (smbj его не даёт) |
 | `SmbExceptionMapper` | smbj/IO ошибки → `RemoteTransportException` с `RemoteErrorKind` |
 | `SmbChangeNotifyWatcher` | `RemoteChangeSignalSource`: выделенная watch-сессия, doorbell-callback, re-arm/overflow/lease, capped backoff |
 | `Smb*ChangeNotify{Session,Pending,Result,SessionFactory}` | Тестируемый SPI-seam вокруг `CHANGE_NOTIFY`; `Smbj…` — реализация на smbj |
-| `SmbRemoteEntry` | Маппинг записи каталога в доменный `RemoteObject` |
+| `SmbRemoteEntry` | Внутреннее remote evidence: path, size, last-write time, directory bit и server file ID |
 
 ## Зависимости
 
@@ -40,4 +45,5 @@ errors/observability, **smbj** (единственная внешняя transpor
 - Гайд по эксплуатации/настройке SMB-шары:
   [../../docs/guides/remote-storage-sync.md](../../docs/guides/remote-storage-sync.md).
 - Решения: ADR [0011](../../docs/ADR/0011-remote-sync.md),
-  [0013](../../docs/ADR/0013-event-driven-coordination.md).
+  [0013](../../docs/ADR/0013-event-driven-coordination.md),
+  [0024](../../docs/ADR/0024-managed-dataframe-import.md).

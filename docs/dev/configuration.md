@@ -111,14 +111,15 @@ P5 добавляет явную one-way activation policy поверх operatio
 duration/value отклоняется collect-all preflight и никогда не интерпретируется
 как команда очистки.
 
-### Managed dataframe import P0-P4 boundary
+### Managed dataframe import
 
 `ioc.dataframe-import` — отдельная strict typed shape для принятого ADR-0024.
 Classpath и production template задают `enabled: false` и пустые `sources`,
-`authority-profiles`, `contracts`. P1 подключил parser-neutral compiled dialect
-к strict streaming CSV adapter; P2/P3 подготовили canonical identity и sparse
-requested slots; P4 добавил durable delivery ledger и sealed disk staging.
-Intake worker и canonical promotion всё ещё не активированы.
+`authority-profiles`, `contracts`. При `enabled: true` daemon собирает полный
+local/SMB intake runtime: ownership claim, private immutable snapshot, exact
+recognition, sealed staging, atomic canonical promotion, recovery, terminal
+report/disposition и retention. Stateful storage обязан быть JDBC; startup
+recovery barrier открывает ordinary ingest и import только совместно.
 
 При `enabled: true` bootstrap обязан до runtime собрать весь декларативный
 catalog: source ссылается на существующие contract и authority profile, SMB
@@ -128,6 +129,20 @@ versioned record/match keys и зарегистрированные transforms. 
 formula preservation. Компилятор либо публикует immutable catalog с SHA-256
 behavior fingerprint, либо возвращает все безопасные semantic violations;
 частично разрешённого catalog нет.
+
+`runtime.detect.poll-interval` остаётся correctness cadence полного перечисления.
+`use-watch-service` для local и `use-change-notifications` для SMB включают
+только latency hints; они не отключают polling/reconcile. SMB source использует
+существующий endpoint из `ioc.sync.endpoints`, включая credentials и transport
+timeouts, даже когда обычный `ioc.sync.enabled=false`. Обычный sync и import
+делят lazy endpoint-keyed session pool, а long-poll `CHANGE_NOTIFY` держит
+отдельные watch sessions.
+
+`runtime.dirs.snapshots` содержит private immutable snapshots для обоих
+transport-ов. Local-specific processing/terminal/quarantine roots применяются к
+local source; SMB processing/terminal/quarantine namespaces создаются внутри
+его remote inbox как `.ioc-managed-import/*`. Snapshot byte limit и stability
+quiet period одинаково применяются к обоим transport-ам.
 
 `ioc.artifact-identity.artifacts[]` в P0 дополнен декларативными `record-key` и
 `match-keys[]`. Они именуют текущую row-key формулу и будущие альтернативные
@@ -169,9 +184,9 @@ write path. Физическая миграция aliases/compound identity пр
   `IocUnknownConfigurationPreflight`, `IocConfigPreflight`,
   `ConfigRegistryPreflight`, `IocConfigurationFailureAnalyzer`,
   `IocYamlConfigurationFailureAnalyzer`, `IocYamlSyntaxCheck`.
-- Dataframe import P0: `DataframeImportConfiguration`,
+- Dataframe import: `DataframeImportConfiguration`,
   `DataframeImportPropertyMapper`, framework-free
-  `DataframeImportCatalogCompiler`.
+  `DataframeImportCatalogCompiler`, `DataframeImportRuntimeConfiguration`.
 - Lifecycle: `ConfigPreflightConfiguration`, `EarlyCliLauncher`,
   `DaemonWebEnvironmentPostProcessor`.
 - Contract tests: `IocPropertiesBindingTest`, unknown-key/preflight/analyzer/

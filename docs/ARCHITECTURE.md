@@ -62,7 +62,7 @@ bootstrap ─▶ adapters ─▶ application ─▶ domain
 | Adapter (out) | `adapter/out/store/jdbc` | Canonical/lifecycle/history repositories, reusable export-slot registry, ledgers, migrations, health |
 | Adapter (in) | `adapter/in/ingest` | Spring Integration file-poll daemon, filesystem lifecycle, file ledger |
 | Adapter (out) | `adapter/out/maintenance` | `FileSystemRetentionStore` (reaper IO; в модуле `adapter-ingest`) |
-| Adapter (out) | `adapter/out/transport/smb` | SMB2/3 `FileTransport` на smbj; session/reconnect/atomic publish внутри адаптера |
+| Adapter (out) | `adapter/out/transport/smb` | SMB2/3 sync и managed-import transport на smbj: shared endpoint sessions, server-side import claim/materialization, remote disposition и `CHANGE_NOTIFY` |
 | Bootstrap | `bootstrap` | `IocProperties` (конфиг), `AppConfig` (composition root), daemon schedulers, `DaemonWebEnvironmentPostProcessor` (web only in daemon), health indicators |
 | Platform | `common` | `IocExtractorException` (`ioc-platform-errors`) |
 

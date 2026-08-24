@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — implementation plan"
 version: "0.3.0"
-status: "Approved; P0-P7 implemented"
+status: "Approved; P0-P8 implemented"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "en"
@@ -225,6 +225,12 @@ Gate:
 - status/health/report leakage tests pass.
 
 ### P8 — SMB managed intake
+
+Status: **implemented with focused and live SMB verification**. See
+[p8-evidence.md](p8-evidence.md). The approved live stand covers the repository
+Samba contract; additional production server-family breadth remains a P9
+packaging/release qualification obligation. Full committed-HEAD verification
+follows the P8 commit and covers the requested P7/P8 span.
 
 Deliver:
 

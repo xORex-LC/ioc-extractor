@@ -12,16 +12,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
-import java.time.Instant;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 
 /**
  * SMBJ-backed {@link FileTransport} implementation.
@@ -31,34 +26,31 @@ import java.util.function.Function;
  */
 public final class SmbFileTransport implements FileTransport, AutoCloseable {
 
-    private final Map<String, SmbEndpointSettings> endpoints;
-    private final SmbShareClientFactory clientFactory;
-    private final Clock clock;
-    private final Map<String, CachedClient> clients = new ConcurrentHashMap<>();
-    private final Map<String, Object> endpointLocks = new HashMap<>();
+    private final SmbSessionPool sessions;
+    private final boolean ownsSessions;
 
     public SmbFileTransport(List<SmbEndpointSettings> endpoints) {
-        this(endpoints, new SmbjShareClientFactory(), Clock.systemUTC());
+        this(new SmbSessionPool(endpoints), true);
     }
 
     SmbFileTransport(List<SmbEndpointSettings> endpoints, SmbShareClientFactory clientFactory, Clock clock) {
-        Objects.requireNonNull(endpoints, "endpoints");
-        this.endpoints = new HashMap<>();
-        for (SmbEndpointSettings endpoint : endpoints) {
-            SmbEndpointSettings previous = this.endpoints.putIfAbsent(endpoint.name(), endpoint);
-            if (previous != null) {
-                throw new IllegalArgumentException("duplicate SMB endpoint: " + endpoint.name());
-            }
-            endpointLocks.put(endpoint.name(), new Object());
-        }
-        this.clientFactory = Objects.requireNonNull(clientFactory, "clientFactory");
-        this.clock = Objects.requireNonNull(clock, "clock");
+        this(new SmbSessionPool(endpoints, clientFactory, clock), true);
+    }
+
+    /** Creates a stateless sync transport over the application-shared SMB pool. */
+    public SmbFileTransport(SmbSessionPool sessions) {
+        this(sessions, false);
+    }
+
+    private SmbFileTransport(SmbSessionPool sessions, boolean ownsSessions) {
+        this.sessions = Objects.requireNonNull(sessions, "sessions");
+        this.ownsSessions = ownsSessions;
     }
 
     @Override
     public List<RemoteObject> list(String endpoint, String remotePath) {
         String normalizedPath = normalizeRemotePath(remotePath);
-        return withClient(endpoint, "list", client -> client.list(normalizedPath).stream()
+        return sessions.withClient(endpoint, "list", client -> client.list(normalizedPath).stream()
                 .filter(entry -> !entry.directory())
                 .map(entry -> new RemoteObject(entry.path(), entry.size(), entry.modifiedAt()))
                 .toList());
@@ -67,7 +59,7 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
     @Override
     public Optional<RemoteObject> stat(String endpoint, String remotePath) {
         String normalizedPath = normalizeRemotePath(remotePath);
-        return withClient(endpoint, "stat", client -> client.stat(normalizedPath)
+        return sessions.withClient(endpoint, "stat", client -> client.stat(normalizedPath)
                 .filter(entry -> !entry.directory())
                 .map(entry -> new RemoteObject(entry.path(), entry.size(), entry.modifiedAt())));
     }
@@ -76,7 +68,7 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
     public void get(String endpoint, String remotePath, Path localDestination) {
         Objects.requireNonNull(localDestination, "localDestination");
         String normalizedPath = normalizeRemotePath(remotePath);
-        withClient(endpoint, "get", client -> {
+        sessions.withClient(endpoint, "get", client -> {
             client.download(normalizedPath, localDestination);
             return null;
         });
@@ -85,7 +77,7 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
     @Override
     public void delete(String endpoint, String remotePath) {
         String normalizedPath = normalizeRemotePath(remotePath);
-        withClient(endpoint, "delete", client -> {
+        sessions.withClient(endpoint, "delete", client -> {
             client.delete(normalizedPath);
             return null;
         });
@@ -94,30 +86,19 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
     @Override
     public PublishReceipt publishAtomically(PublishAtomicallyRequest request) {
         Objects.requireNonNull(request, "request");
-        return withClient(request.endpoint(), "publish", client -> publish(client, request));
+        return sessions.withClient(request.endpoint(), "publish", client -> publish(client, request));
     }
 
     @Override
     public void close() {
-        for (String endpoint : endpoints.keySet()) {
-            synchronized (endpointLocks.get(endpoint)) {
-                closeClient(endpoint);
-            }
+        if (ownsSessions) {
+            sessions.close();
         }
     }
 
     /** Closes cached clients that have been idle longer than their endpoint policy. */
     public void closeIdle() {
-        Instant now = clock.instant();
-        for (String endpoint : endpoints.keySet()) {
-            synchronized (endpointLocks.get(endpoint)) {
-                CachedClient cached = clients.get(endpoint);
-                if (cached != null && !now.minus(endpoint(endpoint).idleTimeout())
-                        .isBefore(cached.lastUsedAt())) {
-                    closeClient(endpoint);
-                }
-            }
-        }
+        sessions.closeIdle();
     }
 
     private PublishReceipt publish(SmbShareClient client, PublishAtomicallyRequest request) {
@@ -170,63 +151,6 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
         } catch (RuntimeException failure) {
             cleanup(client, temporaryPath);
             throw failure;
-        }
-    }
-
-    private <T> T withClient(String endpoint, String operation, Function<SmbShareClient, T> action) {
-        requireEndpointName(endpoint);
-        endpoint(endpoint);
-        synchronized (endpointLocks.get(endpoint)) {
-            try {
-                SmbShareClient client = client(endpoint);
-                T result = action.apply(client);
-                touch(endpoint);
-                return result;
-            } catch (RuntimeException failure) {
-                RemoteTransportException mapped = SmbExceptionMapper.map(failure, operation, endpoint);
-                if (mapped.kind() == RemoteErrorKind.TRANSIENT || mapped.kind() == RemoteErrorKind.UNREACHABLE) {
-                    closeClient(endpoint);
-                }
-                throw mapped;
-            }
-        }
-    }
-
-    private SmbShareClient client(String endpoint) {
-        CachedClient cached = clients.get(endpoint);
-        if (cached != null) {
-            return cached.client();
-        }
-        SmbShareClient opened = clientFactory.open(endpoint(endpoint));
-        clients.put(endpoint, new CachedClient(opened, clock.instant()));
-        return opened;
-    }
-
-    private void touch(String endpoint) {
-        CachedClient cached = clients.get(endpoint);
-        if (cached != null) {
-            clients.put(endpoint, new CachedClient(cached.client(), clock.instant()));
-        }
-    }
-
-    private void closeClient(String endpoint) {
-        CachedClient cached = clients.remove(endpoint);
-        if (cached != null) {
-            cached.client().close();
-        }
-    }
-
-    private SmbEndpointSettings endpoint(String name) {
-        SmbEndpointSettings endpoint = endpoints.get(name);
-        if (endpoint == null) {
-            throw new IllegalArgumentException("unknown SMB endpoint: " + name);
-        }
-        return endpoint;
-    }
-
-    private void requireEndpointName(String endpoint) {
-        if (endpoint == null || endpoint.isBlank()) {
-            throw new IllegalArgumentException("endpoint must not be blank");
         }
     }
 
@@ -332,9 +256,6 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
             end--;
         }
         return value.substring(start, end);
-    }
-
-    private record CachedClient(SmbShareClient client, Instant lastUsedAt) {
     }
 
     private record UploadFile(Path localPath, String leafName, String remotePath) {

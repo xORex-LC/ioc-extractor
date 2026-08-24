@@ -79,9 +79,11 @@ P8 supplies its transport adapter and qualification evidence.
 | configuration | classpath/template/operator guides agree on local runtime, retention and shutdown settings; invalid archive policy is rejected |
 
 The focused P7 corpus completed with `64` tests, all green, after the retention
-contract correction. The broader affected-reactor gate and static analyzers are
-run on the complete P7 tree before its commit; final full-reactor freshness is
-recorded after P8 so it covers the requested two-slice implementation span.
+contract correction. A clean detached worktree at committed P7 HEAD `edc0774c`
+then ran the 21-project affected reactor through `clean test`; every module
+passed and `ioc-app` ran `276` tests without failure. Final full-reactor
+freshness is recorded after P8 so it covers the requested two-slice
+implementation span.
 
 ## 6. Next boundary
 

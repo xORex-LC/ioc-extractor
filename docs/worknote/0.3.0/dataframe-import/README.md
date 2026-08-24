@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — рабочий комплект"
 version: "0.3.0"
-status: "Architecture approved; P0-P7 implemented"
+status: "Architecture approved; P0-P8 implemented"
 document_type: "Worknote bundle index"
 source_of_truth: false
 language: "ru"
@@ -23,13 +23,14 @@ operator guides или release contract.
 - P0 contract/boundary baseline, P1 integration-family preparation, P2
   canonical identity/mutation foundation, P3 sparse preferred export slots,
   P4 durable delivery ledger/sealed staging, P5 local managed intake и P6
-  atomic canonical promotion и P7 recovery/finalization/operator UX реализованы
-  2026-08-23..2026-08-24; следующий implementation slice — P8 SMB managed intake;
+  atomic canonical promotion, P7 recovery/finalization/operator UX и P8 SMB
+  managed intake реализованы 2026-08-23..2026-08-24; следующий implementation
+  slice — P9 performance, packaging and publication;
 - discovery interview завершено 2026-08-23: все I-01..I-41 имеют статус
   `DECIDED`;
 - архитектурный проект, release contract, data/persistence/operations contracts,
   implementation plan и verification matrix подготовлены 2026-08-23;
-- проектные решения и implementation go-ahead для последовательных P0-P4
+- проектные решения и implementation go-ahead для последовательных P0-P8
   одобрены 2026-08-23..2026-08-24;
 - исходные требования BR-01..BR-04 зафиксированы в
   [discovery.md](discovery.md);
@@ -133,7 +134,7 @@ operator guides или release contract.
   применяет business-field merge с явным mismatch report; source contract может
   выбрать strict `reject-mismatch`, автоматическая renumber policy запрещена;
 - известных незакрытых business choices не осталось; formal scope, architecture
-  project и P0-P7 foundation завершены, следующий implementation slice — P8;
+  project и P0-P8 foundation/runtime завершены, следующий implementation slice — P9;
 - принятый ADR-0015 не редактируется: если новый import contract будет принят,
   потребуется отдельный superseding ADR.
 
@@ -157,6 +158,7 @@ operator guides или release contract.
 | [p5-evidence.md](p5-evidence.md) | Strict local ownership, immutable snapshot admission and loss-tolerant detection evidence for P5 |
 | [p6-evidence.md](p6-evidence.md) | Atomic canonical promotion, receipt replay, slot and writer-admission evidence for P6 |
 | [p7-evidence.md](p7-evidence.md) | Recovery barrier, global lane, finalization, retention and operator UX evidence for P7 |
+| [p8-evidence.md](p8-evidence.md) | SMB server-side ownership, durable materialization, shared sessions, notifications and live contract evidence for P8 |
 
 ## Правила работы
 

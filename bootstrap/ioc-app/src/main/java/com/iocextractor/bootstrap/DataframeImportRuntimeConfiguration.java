@@ -17,6 +17,11 @@ import com.iocextractor.adapter.out.store.jdbc.JdbcImportWorkspace;
 import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleClock;
 import com.iocextractor.adapter.out.store.jdbc.JdbcWriterAdmission;
 import com.iocextractor.adapter.out.store.jdbc.SchemaMigrationResult;
+import com.iocextractor.adapter.out.transport.smb.SmbChangeNotifyWatcher;
+import com.iocextractor.adapter.out.transport.smb.SmbImportChangeSignalSource;
+import com.iocextractor.adapter.out.transport.smb.SmbImportSourceDefinition;
+import com.iocextractor.adapter.out.transport.smb.SmbManagedImportSourceLifecycle;
+import com.iocextractor.adapter.out.transport.smb.SmbSessionPool;
 import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
 import com.iocextractor.application.dataframeimport.DataframeImportAdmissionService;
@@ -98,15 +103,19 @@ class DataframeImportRuntimeConfiguration {
     @Bean
     ManagedImportSourceAdapters managedImportSourceAdapters(
             DataframeImportCatalog catalog,
-            IocProperties properties) {
+            IocProperties properties,
+            SmbSessionPool smbSessions,
+            SmbChangeNotifyWatcher smbWatcher) {
         List<LocalImportSourceDefinition> localSources = catalog.sources().entrySet().stream()
                 .filter(entry -> entry.getValue().transport() == ImportSourceTransport.LOCAL)
                 .map(entry -> new LocalImportSourceDefinition(
                         entry.getKey(), Path.of(entry.getValue().location())))
                 .toList();
-        if (localSources.size() != catalog.sources().size()) {
-            throw new IllegalStateException("SMB managed import requires the P8 transport adapter");
-        }
+        List<SmbImportSourceDefinition> smbSources = catalog.sources().entrySet().stream()
+                .filter(entry -> entry.getValue().transport() == ImportSourceTransport.SMB)
+                .map(entry -> new SmbImportSourceDefinition(
+                        entry.getKey(), entry.getValue().endpoint(), entry.getValue().location()))
+                .toList();
         IocProperties.DataframeImport.RuntimeSettings runtime = properties.dataframeImport().runtime();
         Map<ImportSourceId, ManagedImportSourceLifecycle> routes = new LinkedHashMap<>();
         List<ImportSnapshotPathResolver> resolvers = new ArrayList<>();
@@ -125,6 +134,19 @@ class DataframeImportRuntimeConfiguration {
             localSources.forEach(source -> routes.put(source.sourceId(), local));
             if (runtime.detect().useWatchService()) {
                 signals.add(new LocalImportChangeSignalSource(localSources));
+            }
+        }
+        if (!smbSources.isEmpty()) {
+            var smb = new SmbManagedImportSourceLifecycle(
+                    smbSources,
+                    smbSessions,
+                    Path.of(runtime.dirs().snapshots()),
+                    runtime.stability().quietPeriod(),
+                    runtime.limits().maximumSnapshotBytes());
+            smbSources.forEach(source -> routes.put(source.sourceId(), smb));
+            resolvers.add(smb::resolveSnapshot);
+            if (runtime.detect().useChangeNotifications()) {
+                signals.add(new SmbImportChangeSignalSource(smbSources, smbWatcher));
             }
         }
         var routed = new RoutedManagedImportSourceLifecycle(routes, resolvers);

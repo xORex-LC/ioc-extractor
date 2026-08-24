@@ -71,8 +71,8 @@ fetch по endpoint. Durable `remote_fetch_ledger` и следующий detecti
 
 После завершения любой canonical operation с public mutations публикуется
 artifact-level `CanonicalArtifactsChanged(operationId, affectedArtifacts)`.
-Ordinary ingest является первым producer, managed import сможет использовать
-тот же post-commit fact. Listener вызывает только
+Ordinary ingest и managed import публикуют один post-commit fact; import делает
+это только после успешной общей dataframe transaction. Listener вызывает только
 `DaemonExportScheduler.nudge()`; scheduler сам читает актуальные revisions и
 решает, нужен ли export. Periodic export poll закрывает restart,
 duplicate-only/no-op operation и потерянный hint.

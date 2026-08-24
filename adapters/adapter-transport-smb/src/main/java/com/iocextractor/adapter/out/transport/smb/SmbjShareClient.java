@@ -36,6 +36,9 @@ final class SmbjShareClient implements SmbShareClient {
             FILE_SHARE_READ,
             FILE_SHARE_WRITE,
             FILE_SHARE_DELETE);
+    private static final EnumSet<SMB2ShareAccess> SHARE_READ_DELETE = EnumSet.of(
+            FILE_SHARE_READ,
+            FILE_SHARE_DELETE);
 
     private final SMBClient client;
     private final DiskShare share;
@@ -52,8 +55,9 @@ final class SmbjShareClient implements SmbShareClient {
                 .map(entry -> new SmbRemoteEntry(
                         SmbFileTransport.join(remotePath, entry.getFileName()),
                         entry.getEndOfFile(),
-                        toInstant(entry.getChangeTime()),
-                        isDirectory(entry.getFileAttributes())))
+                        toInstant(entry.getLastWriteTime()),
+                        isDirectory(entry.getFileAttributes()),
+                        entry.getFileId()))
                 .toList();
     }
 
@@ -67,8 +71,9 @@ final class SmbjShareClient implements SmbShareClient {
         return Optional.of(new SmbRemoteEntry(
                 remotePath,
                 information.getStandardInformation().getEndOfFile(),
-                toInstant(information.getBasicInformation().getChangeTime()),
-                information.getStandardInformation().isDirectory()));
+                toInstant(information.getBasicInformation().getLastWriteTime()),
+                information.getStandardInformation().isDirectory(),
+                information.getInternalInformation().getIndexNumber()));
     }
 
     @Override
@@ -77,7 +82,7 @@ final class SmbjShareClient implements SmbShareClient {
                 toSmbPath(remotePath),
                 EnumSet.of(GENERIC_READ),
                 EnumSet.of(FILE_ATTRIBUTE_NORMAL),
-                SHARE_ALL,
+                SHARE_READ_DELETE,
                 FILE_OPEN,
                 null);
              InputStream input = remote.getInputStream();
@@ -162,10 +167,12 @@ final class SmbjShareClient implements SmbShareClient {
 
     @Override
     public void rename(String sourcePath, String targetPath) {
+        boolean directory = stat(sourcePath).map(SmbRemoteEntry::directory)
+                .orElseThrow(() -> new IllegalArgumentException("SMB rename source does not exist"));
         try (DiskEntry entry = share.open(
                 toSmbPath(sourcePath),
                 EnumSet.of(AccessMask.DELETE),
-                EnumSet.of(FILE_ATTRIBUTE_DIRECTORY),
+                EnumSet.of(directory ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL),
                 SHARE_ALL,
                 FILE_OPEN,
                 null)) {
@@ -176,6 +183,16 @@ final class SmbjShareClient implements SmbShareClient {
     @Override
     public void deleteTree(String remotePath) {
         delete(remotePath);
+    }
+
+    File openWriteHandleWithoutDeleteSharing(String remotePath) {
+        return share.openFile(
+                toSmbPath(remotePath),
+                EnumSet.of(GENERIC_WRITE),
+                EnumSet.of(FILE_ATTRIBUTE_NORMAL),
+                EnumSet.of(FILE_SHARE_READ, FILE_SHARE_WRITE),
+                FILE_OPEN,
+                null);
     }
 
     @Override
