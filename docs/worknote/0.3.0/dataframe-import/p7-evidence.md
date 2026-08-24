@@ -70,6 +70,7 @@ P8 supplies its transport adapter and qualification evidence.
 | Check | Result |
 |---|---|
 | shared startup order | ordinary run/source recovery, lifecycle admission and import recovery complete before either intake starts; failure closes both |
+| startup failure precedence | recovery/runtime start failures abort bootstrap unchanged; intake/runtime cleanup and observer failures remain suppressed evidence and cannot replace the primary cause |
 | durable head | deferred minimum sequence remains the sole due head; later deliveries are not selected |
 | crash recovery | claim/stage/promotion/finalization checkpoints either resume forward or fail closed on contradictory evidence |
 | report leakage | atomic terminal report retains row/code/count evidence and does not contain source IOC values, snapshot references or paths |

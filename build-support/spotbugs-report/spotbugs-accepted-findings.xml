@@ -860,6 +860,28 @@
         </suppression>
         <rationale>Reviewed cleanup-boundary signal: every owned watch is closed in reverse order, the first cleanup failure remains primary, later failures are attached as suppressed, and the lifecycle owner decides shutdown handling.</rationale>
     </finding>
+    <finding id="DATA-IMPORT-P7-SB-002" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="33647f9283725fba8bd5d784ee39b0b3" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P7-STARTUP-BARRIER" review="ingestion-cleanup-propagation-change">
+        <class name="com.iocextractor.bootstrap.CanonicalIntakeStartupCoordinator" />
+        <method name="run" signature="(Lorg/springframework/boot/ApplicationArguments;)V" />
+        <anchor sourcePath="com/iocextractor/bootstrap/CanonicalIntakeStartupCoordinator.java" startLine="80" bytecode="203" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.bootstrap.CanonicalIntakeStartupCoordinator" />
+            <Method name="run" />
+        </suppression>
+        <rationale>Reviewed startup-boundary signal: a recovery or intake failure must abort Spring startup after both intake runtimes are stopped; cleanup and observer failures are attached as suppressed evidence without replacing the primary failure.</rationale>
+    </finding>
+    <finding id="DATA-IMPORT-P7-SB-003" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="eba8ed1425f8460fd63af71b801701eb" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P7-STARTUP-BARRIER" review="cleanup-ownership-accounting-change">
+        <class name="com.iocextractor.bootstrap.ManagedDataframeImportRuntime" />
+        <method name="start" signature="()V" />
+        <anchor sourcePath="com/iocextractor/bootstrap/ManagedDataframeImportRuntime.java" startLine="122" bytecode="179" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.bootstrap.ManagedDataframeImportRuntime" />
+            <Method name="start" />
+        </suppression>
+        <rationale>Reviewed startup-boundary signal: partial scheduler, lane and change-signal ownership is closed before the primary start failure is rethrown to abort bootstrap; cleanup failures are preserved only as suppressed evidence.</rationale>
+    </finding>
     <finding id="SB04-045" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="d84b636c441d973b1edeaf94d00e4fb7" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="C2-REP-C" review="immutable-snapshot-construction-change">
         <class name="com.iocextractor.bootstrap.ExportPlanCatalog" />
         <method name="plans" signature="()Ljava/util/List;" />

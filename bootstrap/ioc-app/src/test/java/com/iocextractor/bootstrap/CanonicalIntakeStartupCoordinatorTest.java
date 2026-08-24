@@ -66,6 +66,29 @@ class CanonicalIntakeStartupCoordinatorTest {
         assertThat(state.snapshot().phase()).isEqualTo(IngestionLifecycleState.Phase.FAILED);
     }
 
+    @Test
+    void importStartFailureRemainsPrimaryWhenRuntimeCleanupAlsoFails() {
+        List<String> events = new ArrayList<>();
+        RecordingLifecycle intake = new RecordingLifecycle(events);
+        RecordingImportRuntime imports = new RecordingImportRuntime(events, false, true, true);
+        IngestionLifecycleState state = new IngestionLifecycleState();
+        CanonicalIntakeStartupCoordinator coordinator = coordinator(events, intake, imports, state);
+
+        assertThatThrownBy(() -> coordinator.run(null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("import start failed")
+                .satisfies(failure -> assertThat(failure.getSuppressed())
+                        .extracting(Throwable::getMessage)
+                        .containsExactly("import close failed"));
+
+        assertThat(events).containsExactly(
+                "recovery-started", "ordinary-run-recovery", "ordinary-source-recovery",
+                "lifecycle-admission", "import-recovery", "import-start", "intake-stop",
+                "import-close", "recovery-failed");
+        assertThat(intake.isRunning()).isFalse();
+        assertThat(state.snapshot().phase()).isEqualTo(IngestionLifecycleState.Phase.FAILED);
+    }
+
     private CanonicalIntakeStartupCoordinator coordinator(
             List<String> events,
             Lifecycle intake,
@@ -100,10 +123,19 @@ class CanonicalIntakeStartupCoordinatorTest {
     private static final class RecordingImportRuntime implements DataframeImportRuntimeLifecycle {
         private final List<String> events;
         private final boolean failRecovery;
+        private final boolean failStart;
+        private final boolean failClose;
 
         private RecordingImportRuntime(List<String> events, boolean failRecovery) {
+            this(events, failRecovery, false, false);
+        }
+
+        private RecordingImportRuntime(List<String> events, boolean failRecovery,
+                                       boolean failStart, boolean failClose) {
             this.events = events;
             this.failRecovery = failRecovery;
+            this.failStart = failStart;
+            this.failClose = failClose;
         }
 
         @Override
@@ -118,6 +150,9 @@ class CanonicalIntakeStartupCoordinatorTest {
         @Override
         public void start() {
             events.add("import-start");
+            if (failStart) {
+                throw new IllegalStateException("import start failed");
+            }
         }
 
         @Override
@@ -128,6 +163,9 @@ class CanonicalIntakeStartupCoordinatorTest {
         @Override
         public void close() {
             events.add("import-close");
+            if (failClose) {
+                throw new IllegalStateException("import close failed");
+            }
         }
     }
 

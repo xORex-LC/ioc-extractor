@@ -114,7 +114,11 @@ final class ManagedDataframeImportRuntime implements DataframeImportRuntimeLifec
             state.running(clock.instant());
         } catch (RuntimeException failure) {
             state.failed(clock.instant(), ImportDiagnosticCodes.CHANGE_SIGNAL_FAILED.id());
-            close();
+            try {
+                close();
+            } catch (RuntimeException closeFailure) {
+                failure.addSuppressed(closeFailure);
+            }
             throw failure;
         }
     }
