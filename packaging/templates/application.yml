@@ -267,7 +267,7 @@ ioc:
     #       quote: '"'
     #       record-separator: crlf-or-lf
     #       header-required: true
-    #       null-literals: [ NULL ]
+    #       null-literals: [ "NULL" ]
     #     recognition:
     #       required-columns: [ ip ]
     #       optional-columns: [ score ]
