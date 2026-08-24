@@ -6,6 +6,7 @@
     <review-trigger id="artifact-filter-construction-contract-change">Review when ArtifactFilter gains singleton identity semantics or configured construction stops using its public constructor.</review-trigger>
     <review-trigger id="sql-identifier-grammar-change">Review when identifier or type allowlists, quoting, or generated DDL inputs accept new grammar.</review-trigger>
     <review-trigger id="sql-schema-map-binding-change">Review when repository queries bypass immutable schema resolution, identifier quoting, or value binding.</review-trigger>
+    <review-trigger id="sql-format-template-change">Review when SQL template arguments become runtime supplied or line-separator semantics become significant.</review-trigger>
     <review-trigger id="sqlite-pragma-policy-change">Review when tuning presets cease to be closed adapter-owned values or a PRAGMA token becomes operator supplied.</review-trigger>
     <review-trigger id="migration-source-version-contract-change">Review when migration SQL becomes external or runtime supplied, or user_version stops being a validated positive integer.</review-trigger>
     <review-trigger id="export-query-shape-contract-change">Review when export artifacts or columns bypass schema membership, identifier validation, quoting, or bound values.</review-trigger>
@@ -561,6 +562,17 @@
             <Method name="planActiveMatches" />
         </suppression>
         <rationale>Reviewed false positive: artifact identifiers come only from the validated immutable schema catalog and are revalidated and quoted at the SQL boundary; artifact names and effective times are bound.</rationale>
+    </finding>
+    <finding id="DATA-IMPORT-P7-SB-001" module="adapters/adapter-store-jdbc" type="VA_FORMAT_STRING_USES_NEWLINE" hash="ed9069d022cc91ff04f2cc4b6afb52b" occurrence="0" priority="2" rank="20" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P7-RETENTION" review="sql-format-template-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcImportDeliveryLedger" />
+        <method name="&lt;clinit&gt;" signature="()V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcImportDeliveryLedger.java" startLine="95" bytecode="19" />
+        <suppression>
+            <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcImportDeliveryLedger" />
+            <Method name="&lt;clinit&gt;" />
+        </suppression>
+        <rationale>Reviewed formatting signal: this SQL text deliberately keeps LF as dialect-neutral whitespace; its only format arguments are adapter-owned SELECT_COLUMNS constants, while platform-specific %n would add variability without changing execution.</rationale>
     </finding>
     <finding id="DATA-TTL-P3-SB-001" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="9998cdad3dab4afa72d77d162ed3894f" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcActiveArtifactReader" />

@@ -74,6 +74,7 @@ P8 supplies its transport adapter and qualification evidence.
 | crash recovery | claim/stage/promotion/finalization checkpoints either resume forward or fail closed on contradictory evidence |
 | report leakage | atomic terminal report retains row/code/count evidence and does not contain source IOC values, snapshot references or paths |
 | retention | age and count selection are unioned per disjoint outcome target; delete and idempotent atomic archive preserve the source/report pair |
+| SQL template analysis | the retention query formats only adapter-owned column constants; its literal LF whitespace is narrowly accepted as `DATA-IMPORT-P7-SB-001` instead of introducing platform-specific `%n` output |
 | operator UX | validate is advisory, status is read-only and replay creates a new causally linked occurrence |
 | health leakage | only aggregate queue/head facts and cataloged safe codes are exposed; retrying head is `DEGRADED` |
 | configuration | classpath/template/operator guides agree on local runtime, retention and shutdown settings; invalid archive policy is rejected |
