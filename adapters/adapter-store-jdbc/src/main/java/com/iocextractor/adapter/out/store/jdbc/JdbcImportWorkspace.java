@@ -156,8 +156,9 @@ public final class JdbcImportWorkspace implements ImportWorkspace {
                 INSERT INTO stage_meta(
                     delivery_id, schema_version, snapshot_sha256, snapshot_size,
                     contract_id, contract_version, contract_fingerprint,
-                    duplicate_policy, plan_hash)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    duplicate_policy, row_failure_policy, renew_unchanged,
+                    slot_profile, existing_slot_policy, plan_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """)) {
             statement.setString(1, command.deliveryId().value());
             statement.setInt(2, ImportWorkspaceSchema.VERSION);
@@ -167,7 +168,12 @@ public final class JdbcImportWorkspace implements ImportWorkspace {
             statement.setInt(6, command.contract().version());
             statement.setString(7, command.contract().fingerprint().value());
             statement.setString(8, command.duplicatePolicy().name());
-            statement.setString(9, planHash(command));
+            statement.setString(9, command.promotionPolicy().rowFailurePolicy().name());
+            statement.setInt(10, command.promotionPolicy().renewUnchanged() ? 1 : 0);
+            var requestedSlot = command.promotionPolicy().requestedSlotPolicy();
+            statement.setString(11, requestedSlot.map(value -> value.profile()).orElse(null));
+            statement.setString(12, requestedSlot.map(value -> value.existingRecordPolicy().name()).orElse(null));
+            statement.setString(13, planHash(command));
             statement.executeUpdate();
         }
     }
@@ -178,7 +184,9 @@ public final class JdbcImportWorkspace implements ImportWorkspace {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT schema_version, snapshot_sha256, snapshot_size,
                        contract_id, contract_version, contract_fingerprint,
-                       duplicate_policy, source_row_count, accepted_count,
+                       duplicate_policy, row_failure_policy, renew_unchanged,
+                       slot_profile, existing_slot_policy,
+                       source_row_count, accepted_count,
                        rejected_count, plan_hash, sealed_at_ms
                 FROM stage_meta
                 WHERE delivery_id = ?
@@ -194,6 +202,18 @@ public final class JdbcImportWorkspace implements ImportWorkspace {
                         && command.contract().fingerprint().value().equals(
                                 resultSet.getString("contract_fingerprint"))
                         && command.duplicatePolicy().name().equals(resultSet.getString("duplicate_policy"))
+                        && command.promotionPolicy().rowFailurePolicy().name().equals(
+                                resultSet.getString("row_failure_policy"))
+                        && (command.promotionPolicy().renewUnchanged() ? 1 : 0)
+                                == resultSet.getInt("renew_unchanged")
+                        && Objects.equals(
+                                command.promotionPolicy().requestedSlotPolicy()
+                                        .map(value -> value.profile()).orElse(null),
+                                resultSet.getString("slot_profile"))
+                        && Objects.equals(
+                                command.promotionPolicy().requestedSlotPolicy()
+                                        .map(value -> value.existingRecordPolicy().name()).orElse(null),
+                                resultSet.getString("existing_slot_policy"))
                         && expected.sourceRows() == resultSet.getLong("source_row_count")
                         && expected.acceptedRows() == resultSet.getLong("accepted_count")
                         && expected.rejectedRows() == resultSet.getLong("rejected_count")
@@ -286,7 +306,13 @@ public final class JdbcImportWorkspace implements ImportWorkspace {
                 command.contract().id().value(),
                 Integer.toString(command.contract().version()),
                 command.contract().fingerprint().value(),
-                command.duplicatePolicy().name());
+                command.duplicatePolicy().name(),
+                command.promotionPolicy().rowFailurePolicy().name(),
+                Boolean.toString(command.promotionPolicy().renewUnchanged()),
+                command.promotionPolicy().requestedSlotPolicy()
+                        .map(value -> value.profile()).orElse("-"),
+                command.promotionPolicy().requestedSlotPolicy()
+                        .map(value -> value.existingRecordPolicy().name()).orElse("-"));
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(digest.digest(

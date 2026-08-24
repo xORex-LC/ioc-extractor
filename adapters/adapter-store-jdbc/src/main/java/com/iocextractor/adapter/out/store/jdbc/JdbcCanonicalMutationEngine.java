@@ -116,6 +116,19 @@ public final class JdbcCanonicalMutationEngine {
                                                          boolean renewTtl,
                                                          EffectiveTime asOf,
                                                          ValidityDecision validity) throws SQLException {
+        return mutateExisting(connection, schema, canonicalRowId, finalRow, renewTtl,
+                null, asOf, validity);
+    }
+
+    /** Applies a pre-resolved import patch and records its source occurrence. */
+    CanonicalRecordMutationOutcome mutateExisting(Connection connection,
+                                                   DataframeArtifactSchema schema,
+                                                   long canonicalRowId,
+                                                   ArtifactRow finalRow,
+                                                   boolean renewTtl,
+                                                   String sourceKey,
+                                                   EffectiveTime asOf,
+                                                   ValidityDecision validity) throws SQLException {
         StoredLifecycle stored = loadStored(connection, schema, canonicalRowId);
         if (stored.validUntilEpochMs() <= epochMillis(asOf)) {
             throw new IocExtractorException("Cannot mutate an expired canonical lifecycle");
@@ -134,9 +147,46 @@ public final class JdbcCanonicalMutationEngine {
         if (renewTtl) {
             renewLifecycleOnly(connection, schema, stored, asOf, validity);
         }
+        if (sourceKey != null) {
+            JdbcCanonicalSourceRecorder.record(
+                    connection, schema.artifactName(), canonicalRowId,
+                    sourceKey, asOf.value().toString());
+        }
         return new CanonicalRecordMutationOutcome(
                 changes.mutationKind(renewTtl), canonicalRowId, stored.lifecycleId(),
                 changes.updated(), changes.cleared());
+    }
+
+    /** Inserts or restarts one already planned import branch without re-matching. */
+    CanonicalRecordMutationOutcome insertPlanned(Connection connection,
+                                                 DataframeArtifactSchema schema,
+                                                 String sourceKey,
+                                                 ArtifactRow incoming,
+                                                 ArtifactRowKey recordKey,
+                                                 LifecycleId lifecycleId,
+                                                 EffectiveTime asOf,
+                                                 ValidityDecision validity) throws SQLException {
+        Optional<StoredLifecycle> sameKey = findStored(connection, schema, recordKey.value());
+        CanonicalRecordMutationKind kind = CanonicalRecordMutationKind.INSERTED;
+        if (sameKey.isPresent()) {
+            StoredLifecycle stored = sameKey.orElseThrow();
+            if (stored.validUntilEpochMs() > epochMillis(asOf)) {
+                throw new IocExtractorException("Active canonical record-key collision after import planning");
+            }
+            lifecycleArchive.archiveAndDelete(connection, schema, stored.rowId(), asOf);
+            kind = CanonicalRecordMutationKind.RESTARTED;
+        }
+        long rowId = insertActive(connection, schema, sourceKey, incoming, recordKey,
+                lifecycleId, asOf, validity);
+        replaceAliases(connection, schema, rowId, lifecycleId.value(), incoming);
+        return outcome(kind, rowId, lifecycleId.value());
+    }
+
+    /** Loads one active-match candidate for bounded import merge planning. */
+    StoredLifecycle loadForImport(Connection connection,
+                                  DataframeArtifactSchema schema,
+                                  long canonicalRowId) {
+        return loadStored(connection, schema, canonicalRowId);
     }
 
     private PublicRowChanges detectPublicRowChanges(DataframeArtifactSchema schema,
@@ -373,11 +423,11 @@ public final class JdbcCanonicalMutationEngine {
         return key;
     }
 
-    private record StoredLifecycle(long rowId,
-                                   long lifecycleId,
-                                   long validUntilEpochMs,
-                                   ArtifactRowKey rowKey,
-                                   ArtifactRow publicRow) {
+    record StoredLifecycle(long rowId,
+                           long lifecycleId,
+                           long validUntilEpochMs,
+                           ArtifactRowKey rowKey,
+                           ArtifactRow publicRow) {
     }
 
     private record PublicRowChanges(List<String> columns,

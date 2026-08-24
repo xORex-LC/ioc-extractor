@@ -38,6 +38,7 @@ import com.iocextractor.adapter.out.store.jdbc.JdbcExportRunLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcRunLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcSnapshotSliceReader;
 import com.iocextractor.adapter.out.store.jdbc.JdbcStorageHealthProbe;
+import com.iocextractor.adapter.out.store.jdbc.JdbcWriterAdmission;
 import com.iocextractor.adapter.out.store.jdbc.LegacyLedgerImporter;
 import com.iocextractor.adapter.out.store.jdbc.DataframeArtifactSchema;
 import com.iocextractor.adapter.out.store.jdbc.DataframeColumn;
@@ -624,6 +625,11 @@ public class AppConfig {
     }
 
     @Bean
+    public JdbcWriterAdmission jdbcWriterAdmission() {
+        return new JdbcWriterAdmission();
+    }
+
+    @Bean
     public CanonicalArtifactWriter canonicalArtifactWriter(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             DataframeSchemaPlan dataframeSchemaReconciliation,
@@ -632,6 +638,7 @@ public class AppConfig {
             ArtifactIdBaseline artifactIdBaseline,
             JdbcLifecycleClock lifecycleClock,
             ControlEventPublisher controlEventPublisher,
+            JdbcWriterAdmission jdbcWriterAdmission,
             IocProperties props,
             Clock clock) {
         var writer = new JdbcCanonicalLifecycleWriter(
@@ -641,7 +648,8 @@ public class AppConfig {
                 lifecycleClock,
                 new FixedRecordValidityPolicy(props.lifecycle().validity().fixedTtl()),
                 clock,
-                artifactIdentityDefinitions(props));
+                artifactIdentityDefinitions(props),
+                jdbcWriterAdmission);
         return new EventPublishingCanonicalArtifactWriter(writer, controlEventPublisher);
     }
 
@@ -658,8 +666,10 @@ public class AppConfig {
     public ExpiredArtifactStore expiredArtifactStore(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             DataframeSchemaPlan dataframeSchemaReconciliation,
+            JdbcWriterAdmission jdbcWriterAdmission,
             IocProperties props) {
-        return new JdbcExpiredArtifactStore(dataframeStorageDataSource, dataframeSchemas(props));
+        return new JdbcExpiredArtifactStore(
+                dataframeStorageDataSource, dataframeSchemas(props), jdbcWriterAdmission);
     }
 
     @Bean
@@ -850,14 +860,16 @@ public class AppConfig {
             IocProperties props,
             DiagnosticSink diagnosticSink,
             Clock clock,
-            JdbcLifecycleClock lifecycleClock) {
+            JdbcLifecycleClock lifecycleClock,
+            JdbcWriterAdmission jdbcWriterAdmission) {
         return new JdbcSnapshotSliceReader(
                 dataframeStorageDataSource,
                 dataframeSchemas(props),
                 clock,
                 lifecycleClock,
                 diagnosticSink,
-                new DiagnosticFactory(clock));
+                new DiagnosticFactory(clock),
+                jdbcWriterAdmission);
     }
 
     @Bean

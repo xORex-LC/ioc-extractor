@@ -45,6 +45,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
     private final ConnectionTimeSource timeSource;
     private final RecordValidityPolicy validityPolicy;
     private final JdbcLifecycleTransactionObserver transactionObserver;
+    private final JdbcWriterAdmission writerAdmission;
 
     /** Creates and validates the lifecycle writer's durable ID allocators. */
     public JdbcCanonicalLifecycleWriter(DataSource dataSource,
@@ -55,7 +56,8 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                         java.time.Clock allocatorClock) {
         this(dataSource, schemas, publicIdDefinitions,
                 (ConnectionTimeSource) ignored -> Objects.requireNonNull(timeSource, "timeSource").now(),
-                validityPolicy, allocatorClock, JdbcLifecycleTransactionObserver.NOOP, List.of());
+                validityPolicy, allocatorClock, JdbcLifecycleTransactionObserver.NOOP, List.of(),
+                new JdbcWriterAdmission());
     }
 
     /** Creates a testable writer with an explicit lifecycle time source and key catalog. */
@@ -69,7 +71,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
         this(dataSource, schemas, publicIdDefinitions,
                 (ConnectionTimeSource) ignored -> Objects.requireNonNull(timeSource, "timeSource").now(),
                 validityPolicy, allocatorClock, JdbcLifecycleTransactionObserver.NOOP,
-                identityDefinitions);
+                identityDefinitions, new JdbcWriterAdmission());
     }
 
     /** Creates a writer that advances clock high-water in the canonical transaction. */
@@ -81,7 +83,8 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                         java.time.Clock allocatorClock) {
         this(dataSource, schemas, publicIdDefinitions,
                 (ConnectionTimeSource) Objects.requireNonNull(timeSource, "timeSource")::now,
-                validityPolicy, allocatorClock, JdbcLifecycleTransactionObserver.NOOP, List.of());
+                validityPolicy, allocatorClock, JdbcLifecycleTransactionObserver.NOOP, List.of(),
+                new JdbcWriterAdmission());
     }
 
     /** Creates a writer backed by the shared versioned match and mutation kernel. */
@@ -95,7 +98,22 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
         this(dataSource, schemas, publicIdDefinitions,
                 (ConnectionTimeSource) Objects.requireNonNull(timeSource, "timeSource")::now,
                 validityPolicy, allocatorClock, JdbcLifecycleTransactionObserver.NOOP,
-                identityDefinitions);
+                identityDefinitions, new JdbcWriterAdmission());
+    }
+
+    /** Creates a writer participating in one composition-root writer admission. */
+    public JdbcCanonicalLifecycleWriter(DataSource dataSource,
+                                        List<DataframeArtifactSchema> schemas,
+                                        List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
+                                        JdbcLifecycleClock timeSource,
+                                        RecordValidityPolicy validityPolicy,
+                                        java.time.Clock allocatorClock,
+                                        List<ArtifactIdentityDefinition> identityDefinitions,
+                                        JdbcWriterAdmission writerAdmission) {
+        this(dataSource, schemas, publicIdDefinitions,
+                (ConnectionTimeSource) Objects.requireNonNull(timeSource, "timeSource")::now,
+                validityPolicy, allocatorClock, JdbcLifecycleTransactionObserver.NOOP,
+                identityDefinitions, writerAdmission);
     }
 
     JdbcCanonicalLifecycleWriter(DataSource dataSource,
@@ -107,7 +125,8 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                  JdbcLifecycleTransactionObserver transactionObserver) {
         this(dataSource, schemas, publicIdDefinitions,
                 (ConnectionTimeSource) ignored -> Objects.requireNonNull(timeSource, "timeSource").now(),
-                validityPolicy, allocatorClock, transactionObserver, List.of());
+                validityPolicy, allocatorClock, transactionObserver, List.of(),
+                new JdbcWriterAdmission());
     }
 
     private JdbcCanonicalLifecycleWriter(DataSource dataSource,
@@ -117,12 +136,14 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                          RecordValidityPolicy validityPolicy,
                                          java.time.Clock allocatorClock,
                                          JdbcLifecycleTransactionObserver transactionObserver,
-                                         List<ArtifactIdentityDefinition> identityDefinitions) {
+                                         List<ArtifactIdentityDefinition> identityDefinitions,
+                                         JdbcWriterAdmission writerAdmission) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
         this.timeSource = Objects.requireNonNull(timeSource, "timeSource");
         this.validityPolicy = Objects.requireNonNull(validityPolicy, "validityPolicy");
         this.transactionObserver = Objects.requireNonNull(transactionObserver, "transactionObserver");
+        this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
         Objects.requireNonNull(allocatorClock, "allocatorClock");
         this.lifecycleIdAllocator = new JdbcLifecycleIdAllocator(dataSource, allocatorClock);
         this.mutationEngine = new JdbcCanonicalMutationEngine(dataSource, schemas, identityDefinitions);
@@ -140,6 +161,12 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
         }
 
         ReservedIds ids = reserveWorstCase(schema, confirmation.records());
+        return writerAdmission.execute(() -> confirmAdmitted(schema, confirmation, ids));
+    }
+
+    private LifecycleWriteResult confirmAdmitted(DataframeArtifactSchema schema,
+                                                  CanonicalArtifactConfirmation confirmation,
+                                                  ReservedIds ids) {
         try (Connection connection = dataSource.getConnection()) {
             return confirm(connection, schema, confirmation, ids);
         } catch (IocExtractorException e) {

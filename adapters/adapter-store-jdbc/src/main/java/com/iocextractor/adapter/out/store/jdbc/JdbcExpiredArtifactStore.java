@@ -29,19 +29,35 @@ public final class JdbcExpiredArtifactStore implements ExpiredArtifactStore {
     private final Map<String, DataframeArtifactSchema> schemas;
     private final JdbcLifecycleArchive lifecycleArchive;
     private final JdbcLifecycleTransactionObserver transactionObserver;
+    private final JdbcWriterAdmission writerAdmission;
 
     /** Creates the expiration store over the configured artifact catalog. */
     public JdbcExpiredArtifactStore(DataSource dataSource, List<DataframeArtifactSchema> schemas) {
-        this(dataSource, schemas, JdbcLifecycleTransactionObserver.NOOP);
+        this(dataSource, schemas, JdbcLifecycleTransactionObserver.NOOP, new JdbcWriterAdmission());
+    }
+
+    /** Creates an expiration store participating in shared fair writer admission. */
+    public JdbcExpiredArtifactStore(DataSource dataSource,
+                                    List<DataframeArtifactSchema> schemas,
+                                    JdbcWriterAdmission writerAdmission) {
+        this(dataSource, schemas, JdbcLifecycleTransactionObserver.NOOP, writerAdmission);
     }
 
     JdbcExpiredArtifactStore(DataSource dataSource,
                              List<DataframeArtifactSchema> schemas,
                              JdbcLifecycleTransactionObserver transactionObserver) {
+        this(dataSource, schemas, transactionObserver, new JdbcWriterAdmission());
+    }
+
+    private JdbcExpiredArtifactStore(DataSource dataSource,
+                                     List<DataframeArtifactSchema> schemas,
+                                     JdbcLifecycleTransactionObserver transactionObserver,
+                                     JdbcWriterAdmission writerAdmission) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
         this.lifecycleArchive = new JdbcLifecycleArchive();
         this.transactionObserver = Objects.requireNonNull(transactionObserver, "transactionObserver");
+        this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
     }
 
     @Override
@@ -75,12 +91,19 @@ public final class JdbcExpiredArtifactStore implements ExpiredArtifactStore {
         if (batchSize <= 0) {
             throw new IllegalArgumentException("Expiry batch size must be positive");
         }
+        return writerAdmission.execute(() -> expireDueAdmitted(schema, cycleAsOf, batchSize));
+    }
+
+    private ExpiryBatchResult expireDueAdmitted(DataframeArtifactSchema schema,
+                                                 EffectiveTime cycleAsOf,
+                                                 int batchSize) {
         try (Connection connection = dataSource.getConnection()) {
             return expireDue(connection, schema, cycleAsOf, batchSize);
         } catch (IocExtractorException e) {
             throw e;
         } catch (SQLException | RuntimeException e) {
-            throw new IocExtractorException("Failed to expire JDBC artifact rows: " + artifactName, e);
+            throw new IocExtractorException(
+                    "Failed to expire JDBC artifact rows: " + schema.artifactName(), e);
         }
     }
 

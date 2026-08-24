@@ -15,6 +15,7 @@ import java.util.OptionalLong;
  * @param artifactName configured artifact name
  * @param role branch role
  * @param cells target columns with tri-state values
+ * @param mergePolicies effective merge policy for every target cell
  * @param requestedSlot requested external slot on a primary branch when present
  * @param recordKey proposed canonical record key
  * @param matchKeys usable active-record match keys
@@ -23,6 +24,7 @@ public record ImportArtifactBranch(
         String artifactName,
         ImportArtifactRole role,
         Map<String, ImportCell> cells,
+        Map<String, ImportMergePolicy> mergePolicies,
         OptionalLong requestedSlot,
         Optional<CanonicalKeyMaterial> recordKey,
         List<CanonicalKeyMaterial> matchKeys) {
@@ -32,6 +34,7 @@ public record ImportArtifactBranch(
         Objects.requireNonNull(artifactName, "artifactName");
         Objects.requireNonNull(role, "role");
         cells = Map.copyOf(new LinkedHashMap<>(Objects.requireNonNull(cells, "cells")));
+        mergePolicies = Map.copyOf(new LinkedHashMap<>(Objects.requireNonNull(mergePolicies, "mergePolicies")));
         requestedSlot = Objects.requireNonNull(requestedSlot, "requestedSlot");
         recordKey = Objects.requireNonNull(recordKey, "recordKey");
         matchKeys = List.copyOf(Objects.requireNonNull(matchKeys, "matchKeys"));
@@ -44,6 +47,9 @@ public record ImportArtifactBranch(
         if (role == ImportArtifactRole.RELATED && requestedSlot.isPresent()) {
             throw new IllegalArgumentException("Only the primary import branch may request an export slot");
         }
+        if (!mergePolicies.keySet().equals(cells.keySet())) {
+            throw new IllegalArgumentException("Every import cell requires exactly one effective merge policy");
+        }
         if (matchKeys.stream().map(CanonicalKeyMaterial::definitionId).distinct().count() != matchKeys.size()) {
             throw new IllegalArgumentException("Import branch match-key definitions must be unique");
         }
@@ -54,6 +60,25 @@ public record ImportArtifactBranch(
                                 ImportArtifactRole role,
                                 Map<String, ImportCell> cells,
                                 OptionalLong requestedSlot) {
-        this(artifactName, role, cells, requestedSlot, Optional.empty(), List.of());
+        this(artifactName, role, cells, authoritativePolicies(cells),
+                requestedSlot, Optional.empty(), List.of());
+    }
+
+    /** Compatibility constructor for already resolved key material. */
+    public ImportArtifactBranch(String artifactName,
+                                ImportArtifactRole role,
+                                Map<String, ImportCell> cells,
+                                OptionalLong requestedSlot,
+                                Optional<CanonicalKeyMaterial> recordKey,
+                                List<CanonicalKeyMaterial> matchKeys) {
+        this(artifactName, role, cells, authoritativePolicies(cells),
+                requestedSlot, recordKey, matchKeys);
+    }
+
+    private static Map<String, ImportMergePolicy> authoritativePolicies(Map<String, ImportCell> cells) {
+        Objects.requireNonNull(cells, "cells");
+        Map<String, ImportMergePolicy> policies = new LinkedHashMap<>();
+        cells.keySet().forEach(column -> policies.put(column, ImportMergePolicy.AUTHORITATIVE));
+        return policies;
     }
 }

@@ -563,6 +563,17 @@
         </suppression>
         <rationale>Reviewed exception-policy signal: sealing is an unchecked atomic adapter boundary, and abort preserves its primary integrity or storage failure while attaching rollback and close failures as suppressed evidence.</rationale>
     </finding>
+    <finding id="DATA-IMPORT-P6-SB-001" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="ba1a865673cbd6309d17be5213c5cc53" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-IMPORT-01" evidence="P6-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalImportWriter" />
+        <method name="planActiveMatches" signature="(Ljava/sql/Connection;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalImportWriter.java" startLine="454" bytecode="101" />
+        <suppression>
+            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
+            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalImportWriter" />
+            <Method name="planActiveMatches" />
+        </suppression>
+        <rationale>Reviewed false positive: artifact identifiers come only from the validated immutable schema catalog and are revalidated and quoted at the SQL boundary; artifact names and effective times are bound.</rationale>
+    </finding>
     <finding id="DATA-TTL-P3-SB-001" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="9998cdad3dab4afa72d77d162ed3894f" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcActiveArtifactReader" />
         <method name="readRecords" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/DataframeArtifactSchema;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;)Ljava/util/List;" />
@@ -599,7 +610,7 @@
     <finding id="DATA-TTL-P3-SB-009" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="f206db689dff545e80c90ca15a9051e6" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExpiredArtifactStore" />
         <method name="hasDueRows" signature="(Ljava/sql/Connection;Ljava/lang/String;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;)Z" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExpiredArtifactStore.java" startLine="156" bytecode="21" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExpiredArtifactStore.java" startLine="179" bytecode="22" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExpiredArtifactStore" />
@@ -610,7 +621,7 @@
     <finding id="DATA-TTL-P3-SB-010" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="b07f4ebce5e268f4ae767cb98ec7f792" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExpiredArtifactStore" />
         <method name="nearestDeadline" signature="(Ljava/sql/Connection;Ljava/lang/String;)Ljava/util/Optional;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExpiredArtifactStore.java" startLine="122" bytecode="17" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExpiredArtifactStore.java" startLine="145" bytecode="18" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExpiredArtifactStore" />
@@ -621,7 +632,7 @@
     <finding id="DATA-TTL-P3-SB-011" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="21dd192547e2a697ec00af2bac397239" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P3-SQL-TRUST" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcExpiredArtifactStore" />
         <method name="selectDueRows" signature="(Ljava/sql/Connection;Ljava/lang/String;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;I)Ljava/util/List;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExpiredArtifactStore.java" startLine="140" bytecode="41" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcExpiredArtifactStore.java" startLine="163" bytecode="43" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcExpiredArtifactStore" />

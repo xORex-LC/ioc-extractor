@@ -3,6 +3,7 @@ package com.iocextractor.application.port.out.dataframeimport;
 import com.iocextractor.application.dataframeimport.model.ImportContractPin;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
 import com.iocextractor.application.dataframeimport.model.ImportDuplicatePolicy;
+import com.iocextractor.application.dataframeimport.model.ImportPromotionPolicy;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshot;
 
 import java.util.Objects;
@@ -12,7 +13,8 @@ public record CreateImportWorkspaceCommand(
         ImportDeliveryId deliveryId,
         ImportSnapshot snapshot,
         ImportContractPin contract,
-        ImportDuplicatePolicy duplicatePolicy) {
+        ImportDuplicatePolicy duplicatePolicy,
+        ImportPromotionPolicy promotionPolicy) {
 
     /** Requires all immutable staging identity inputs. */
     public CreateImportWorkspaceCommand {
@@ -20,5 +22,14 @@ public record CreateImportWorkspaceCommand(
         Objects.requireNonNull(snapshot, "snapshot");
         Objects.requireNonNull(contract, "contract");
         Objects.requireNonNull(duplicatePolicy, "duplicatePolicy");
+        Objects.requireNonNull(promotionPolicy, "promotionPolicy");
+    }
+
+    /** Compatibility constructor for adapter fixtures that do not exercise promotion. */
+    public CreateImportWorkspaceCommand(ImportDeliveryId deliveryId,
+                                        ImportSnapshot snapshot,
+                                        ImportContractPin contract,
+                                        ImportDuplicatePolicy duplicatePolicy) {
+        this(deliveryId, snapshot, contract, duplicatePolicy, ImportPromotionPolicy.defaults());
     }
 }

@@ -56,12 +56,13 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
     private final DiagnosticSink diagnosticSink;
     private final DiagnosticFactory diagnosticFactory;
     private final JdbcExportSlotRegistry exportSlots;
+    private final JdbcWriterAdmission writerAdmission;
 
     public JdbcSnapshotSliceReader(DataSource dataSource,
                                    List<DataframeArtifactSchema> schemas,
                                    Clock clock) {
         this(dataSource, schemas, clock, () -> EffectiveTime.at(clock.instant()),
-                NoopDiagnosticSink.INSTANCE, new DiagnosticFactory(clock));
+                NoopDiagnosticSink.INSTANCE, new DiagnosticFactory(clock), new JdbcWriterAdmission());
     }
 
     public JdbcSnapshotSliceReader(DataSource dataSource,
@@ -70,7 +71,7 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                                    DiagnosticSink diagnosticSink,
                                    DiagnosticFactory diagnosticFactory) {
         this(dataSource, schemas, clock, () -> EffectiveTime.at(clock.instant()),
-                diagnosticSink, diagnosticFactory);
+                diagnosticSink, diagnosticFactory, new JdbcWriterAdmission());
     }
 
     /** Creates a snapshot reader whose active boundary uses the safe lifecycle clock. */
@@ -80,6 +81,18 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                                    LifecycleTimeSource activeTimeSource,
                                    DiagnosticSink diagnosticSink,
                                    DiagnosticFactory diagnosticFactory) {
+        this(dataSource, schemas, clock, activeTimeSource, diagnosticSink, diagnosticFactory,
+                new JdbcWriterAdmission());
+    }
+
+    /** Creates a reader whose slot reconciliation shares fair JDBC write admission. */
+    public JdbcSnapshotSliceReader(DataSource dataSource,
+                                   List<DataframeArtifactSchema> schemas,
+                                   Clock clock,
+                                   LifecycleTimeSource activeTimeSource,
+                                   DiagnosticSink diagnosticSink,
+                                   DiagnosticFactory diagnosticFactory,
+                                   JdbcWriterAdmission writerAdmission) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -87,6 +100,7 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
         this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
         this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
         this.exportSlots = new JdbcExportSlotRegistry();
+        this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
     }
 
     /**
@@ -126,7 +140,18 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
                                           Instant asOf) throws SQLException {
         JdbcExportSlotRegistry.SnapshotChangedException lastRace = null;
         for (int attempt = 1; attempt <= MAX_SLOT_SNAPSHOT_ATTEMPTS; attempt++) {
-            reconcileExportSlots(plan, expectedState, asOf);
+            try {
+                writerAdmission.execute(() -> {
+                    try {
+                        reconcileExportSlots(plan, expectedState, asOf);
+                        return null;
+                    } catch (SQLException failure) {
+                        throw new SlotReconciliationFailure(failure);
+                    }
+                });
+            } catch (SlotReconciliationFailure failure) {
+                throw failure.sqlCause();
+            }
             try (Connection connection = dataSource.getConnection()) {
                 return stream(connection, plan, consumer, expectedState, asOf);
             } catch (JdbcExportSlotRegistry.SnapshotChangedException changed) {
@@ -134,6 +159,19 @@ public final class JdbcSnapshotSliceReader implements SnapshotSliceReader {
             }
         }
         throw new SQLException("Canonical data kept changing while opening export-slot snapshot", lastRace);
+    }
+
+    private static final class SlotReconciliationFailure extends RuntimeException {
+        private final SQLException sqlCause;
+
+        private SlotReconciliationFailure(SQLException cause) {
+            super(cause);
+            this.sqlCause = cause;
+        }
+
+        private SQLException sqlCause() {
+            return sqlCause;
+        }
     }
 
     private void reconcileExportSlots(ExportPlan plan,

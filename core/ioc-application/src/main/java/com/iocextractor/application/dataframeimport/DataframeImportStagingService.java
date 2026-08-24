@@ -6,6 +6,8 @@ import com.iocextractor.application.dataframeimport.mapping.DataframeImportRowMa
 import com.iocextractor.application.dataframeimport.mapping.ImportRowMappingResult;
 import com.iocextractor.application.dataframeimport.model.ImportContractPin;
 import com.iocextractor.application.dataframeimport.model.ImportRejectedLogicalRow;
+import com.iocextractor.application.dataframeimport.model.ImportPromotionPolicy;
+import com.iocextractor.application.dataframeimport.model.ImportRequestedSlotPolicy;
 import com.iocextractor.application.dataframeimport.model.ImportStage;
 import com.iocextractor.application.dataframeimport.model.ImportWorkspaceLimits;
 import com.iocextractor.application.port.out.dataframeimport.CreateImportWorkspaceCommand;
@@ -15,6 +17,7 @@ import com.iocextractor.application.port.out.dataframeimport.ImportWorkspace;
 import com.iocextractor.application.port.out.dataframeimport.ImportWorkspaceWriter;
 
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Recognition-to-sealed-stage application service. It performs no canonical
@@ -49,7 +52,8 @@ public final class DataframeImportStagingService {
         ImportContractPin pin = new ImportContractPin(
                 contract.id(), contract.version(), contract.fingerprint());
         CreateImportWorkspaceCommand workspaceCommand = new CreateImportWorkspaceCommand(
-                command.deliveryId(), command.snapshot(), pin, contract.definition().duplicatePolicy());
+                command.deliveryId(), command.snapshot(), pin, contract.definition().duplicatePolicy(),
+                promotionPolicy(contract));
         try (ImportWorkspaceWriter writer = workspace.create(workspaceCommand)) {
             reader.read(new DelimitedReadCommand(
                             command.snapshot().reference(), contract.definition().charset(), contract.dialect(),
@@ -59,6 +63,18 @@ public final class DataframeImportStagingService {
             workspace.verifySealed(workspaceCommand, stage);
             return new ImportStagingResult(pin, stage);
         }
+    }
+
+    private ImportPromotionPolicy promotionPolicy(CompiledDataframeImportContract contract) {
+        var requested = contract.definition().requestedSlot();
+        Optional<ImportRequestedSlotPolicy> slotPolicy = requested == null
+                ? Optional.empty()
+                : Optional.of(new ImportRequestedSlotPolicy(
+                        requested.profile(), requested.existingRecordPolicy()));
+        return new ImportPromotionPolicy(
+                contract.definition().rowFailurePolicy(),
+                contract.definition().renewUnchanged(),
+                slotPolicy);
     }
 
     private void append(ImportWorkspaceWriter writer, ImportRowMappingResult result) {

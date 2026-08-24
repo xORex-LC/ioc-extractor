@@ -59,6 +59,11 @@ Composition root и конфигурация. Единственное мест�
 projection и health contributors. Доменные объекты остаются framework-free —
 Spring живёт здесь.
 
+Canonical SQLite writers, expiry и export-slot reconciliation получают один
+fair `JdbcWriterAdmission` bean. Это локальная защита от barging, а не замена DB
+transaction ownership. Managed import promotion намеренно не запускается до P7,
+когда composition root сможет сначала завершить общий recovery barrier.
+
 ## Lazy export composition
 
 `LazyServiceStorage` владеет service datasource/migrations и не открывает их в

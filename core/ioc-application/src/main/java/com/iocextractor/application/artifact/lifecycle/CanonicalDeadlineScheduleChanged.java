@@ -23,14 +23,24 @@ public record CanonicalDeadlineScheduleChanged(ControlEventMetadata metadata,
     /** Creates one replay-safe post-commit scheduling hint. */
     public static CanonicalDeadlineScheduleChanged from(LifecycleWriteResult result) {
         Objects.requireNonNull(result, "result");
-        String observation = result.observationId().value();
         String artifact = result.artifactName();
         Instant occurredAt = result.effectiveTime().value();
+        return from(result.observationId(), artifact, occurredAt);
+    }
+
+    /** Creates a replay-safe hint for another canonical observation workflow. */
+    public static CanonicalDeadlineScheduleChanged from(ObservationId observationId,
+                                                        String artifactName,
+                                                        Instant occurredAt) {
+        Objects.requireNonNull(observationId, "observationId");
+        String observation = observationId.value();
+        String artifact = requireText(artifactName, "artifactName");
         String eventId = "canonical-deadline:" + observation + ":" + artifact;
         return new CanonicalDeadlineScheduleChanged(
                 ControlEventMetadata.withoutCausation(
-                        eventId, EVENT_TYPE, EVENT_VERSION, occurredAt, observation),
-                result.observationId(),
+                        eventId, EVENT_TYPE, EVENT_VERSION,
+                        Objects.requireNonNull(occurredAt, "occurredAt"), observation),
+                observationId,
                 artifact);
     }
 

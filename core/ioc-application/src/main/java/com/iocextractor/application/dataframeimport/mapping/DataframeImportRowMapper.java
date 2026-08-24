@@ -11,6 +11,7 @@ import com.iocextractor.application.dataframeimport.model.ImportCell;
 import com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord;
 import com.iocextractor.application.dataframeimport.model.ImportFormulaPolicy;
 import com.iocextractor.application.dataframeimport.model.ImportLogicalRow;
+import com.iocextractor.application.dataframeimport.model.ImportMergePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportProcessingMode;
 import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
 import com.iocextractor.application.port.out.dataframeimport.ImportValueTransformRegistry;
@@ -55,6 +56,7 @@ public final class DataframeImportRowMapper {
         List<ImportArtifactBranch> branches = new ArrayList<>(contract.definition().artifacts().size());
         for (DataframeImportCatalogDraft.Artifact artifact : contract.definition().artifacts()) {
             Map<String, ImportCell> cells = cells(contract, artifact, record, issues);
+            Map<String, ImportMergePolicy> mergePolicies = mergePolicies(contract, artifact);
             OptionalLong requestedSlot = requestedSlot(contract, artifact, record, issues);
             ArtifactRow keyRow = ArtifactRow.ordered(values(cells));
             Optional<CanonicalKeyMaterial> recordKey = keyResolver.recordKeyOf(artifact.name(), keyRow);
@@ -65,11 +67,27 @@ public final class DataframeImportRowMapper {
                     .filter(key -> artifact.matchKeys().contains(key.definitionId()))
                     .toList();
             branches.add(new ImportArtifactBranch(
-                    artifact.name(), artifact.role(), cells, requestedSlot, recordKey, matchKeys));
+                    artifact.name(), artifact.role(), cells, mergePolicies,
+                    requestedSlot, recordKey, matchKeys));
         }
         return issues.isEmpty()
                 ? ImportRowMappingResult.accepted(new ImportLogicalRow(record.sourceRowNumber(), branches))
                 : ImportRowMappingResult.rejected(issues);
+    }
+
+    private Map<String, ImportMergePolicy> mergePolicies(
+            CompiledDataframeImportContract contract,
+            DataframeImportCatalogDraft.Artifact artifact) {
+        Map<String, ImportMergePolicy> policies = new LinkedHashMap<>();
+        for (DataframeImportCatalogDraft.Column column : artifact.columns()) {
+            ImportMergePolicy policy = column.mergePolicy() != null
+                    ? column.mergePolicy()
+                    : artifact.mergeDefault() != null
+                            ? artifact.mergeDefault()
+                            : contract.definition().mergeDefault();
+            policies.put(column.target(), Objects.requireNonNull(policy, "effective import merge policy"));
+        }
+        return policies;
     }
 
     private Map<String, ImportCell> cells(CompiledDataframeImportContract contract,

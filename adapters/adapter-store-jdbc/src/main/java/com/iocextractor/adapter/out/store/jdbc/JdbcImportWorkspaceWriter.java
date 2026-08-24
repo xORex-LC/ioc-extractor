@@ -80,8 +80,8 @@ final class JdbcImportWorkspaceWriter implements ImportWorkspaceWriter {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, Statement.RETURN_GENERATED_KEYS);
         this.insertCell = connection.prepareStatement("""
-                INSERT INTO stage_cell(branch_id, target_column, presence, value)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO stage_cell(branch_id, target_column, merge_policy, presence, value)
+                VALUES (?, ?, ?, ?, ?)
                 """);
         this.insertMatchKey = connection.prepareStatement("""
                 INSERT INTO stage_match_key(branch_id, definition_id, key_hash, key_canonical)
@@ -230,19 +230,24 @@ final class JdbcImportWorkspaceWriter implements ImportWorkspaceWriter {
             branchId = generated.getLong(1);
         }
         branch.cells().entrySet().stream().sorted(java.util.Map.Entry.comparingByKey())
-                .forEach(entry -> addCell(branchId, entry.getKey(), entry.getValue()));
+                .forEach(entry -> addCell(
+                        branchId, entry.getKey(), entry.getValue(), branch.mergePolicies().get(entry.getKey())));
         insertCell.executeBatch();
         branch.matchKeys().stream().sorted(Comparator.comparing(CanonicalKeyMaterial::definitionId))
                 .forEach(key -> addMatchKey(branchId, key));
         insertMatchKey.executeBatch();
     }
 
-    private void addCell(long branchId, String target, ImportCell cell) {
+    private void addCell(long branchId,
+                         String target,
+                         ImportCell cell,
+                         com.iocextractor.application.dataframeimport.model.ImportMergePolicy mergePolicy) {
         try {
             insertCell.setLong(1, branchId);
             insertCell.setString(2, target);
-            insertCell.setInt(3, cell.presence().ordinal());
-            insertCell.setString(4, cell.value());
+            insertCell.setString(3, mergePolicy.name());
+            insertCell.setInt(4, cell.presence().ordinal());
+            insertCell.setString(5, cell.value());
             insertCell.addBatch();
         } catch (SQLException failure) {
             throw storageFailure("Cannot prepare import staging cell", failure);

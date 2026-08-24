@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — implementation plan"
 version: "0.3.0"
-status: "Approved; P0-P5 implemented"
+status: "Approved; P0-P6 implemented"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "en"
@@ -155,7 +155,7 @@ Gate:
 
 ### P5 — local managed intake
 
-Status: **implemented with focused compatibility verification**. See
+Status: **implemented and committed with focused compatibility verification**. See
 [p5-evidence.md](p5-evidence.md). Runtime startup remains deliberately gated by
 P7's shared recovery barrier; P5 delivers and qualifies the complete local
 ownership/admission boundary without opening intake early.
@@ -176,6 +176,10 @@ Gate:
 - no canonical write path is reachable without pinned snapshot evidence.
 
 ### P6 — atomic promotion
+
+Status: **implemented and committed with affected-reactor verification**. See
+[p6-evidence.md](p6-evidence.md). Composition into the daemon remains gated by
+P7's shared recovery-before-intake barrier.
 
 Deliver:
 

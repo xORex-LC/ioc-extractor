@@ -25,6 +25,8 @@ types to bootstrap; domain/application do not import this package.
 | `JdbcRemoteFetchLedger`, `JdbcPublishLedger` | Durable sync fetch idempotency и per-target publish saga state |
 | `JdbcImportDeliveryLedger` | Global import sequence, forward-only checkpoint CAS, retry и head-order authority в service schema v9 |
 | `JdbcImportWorkspace`, `JdbcImportWorkspaceWriter` | Per-delivery SQLite staging, hard limits, deterministic duplicate finalization и sealed-stage verification |
+| `JdbcCanonicalImportWriter` | Read-only stage attach, active-only planning и одна cross-artifact canonical transaction с replay receipt |
+| `JdbcWriterAdmission` | Общая fair same-process admission для canonical confirmation, import, expiry и slot reconciliation |
 | `JdbcSnapshotSliceReader`, `JdbcExportSlotRegistry` | Stable reusable slot reconciliation, generation-safe multi-artifact snapshot и callback-streaming public rows |
 | `*Schema*` | SQLite `user_version` runner, migration support and dataframe reconciler |
 | `Dataframe*` | Table-per-artifact desired schema, additive plan and reconciliation |
@@ -71,6 +73,23 @@ streaming-ом пишет normalized rows/branches/cells/errors в bounded batch
 создаёт seal-time indexes и set-wise реализует `coalesce|keep-first`. Seal
 checkpoint-ит WAL, проверяет integrity, атомарно публикует opaque stage reference
 и digest; promotion обязана повторно открыть этот файл read-only и сверить pin.
+
+Dataframe migration v9 добавляет `import_commit`, per-artifact mutation evidence,
+safe row rejections и requested-slot resolutions. `JdbcCanonicalImportWriter`
+сначала восстанавливается по exact receipt, затем проверяет immutable stage вне
+writer admission, заранее резервирует worst-case monotonic IDs и под общей fair
+admission выполняет active matching, tri-state merge, row fan-out, lifecycle,
+provenance, aliases, preferred slots, revisions и projection generations в одной
+dataframe transaction. Temporary planning tables connection-scoped и очищаются
+при каждом использовании pooled connection. Сбой до commit оставляет состояние
+`before`, а receipt после commit является authority для forward-only replay.
+Safe slot evidence сохраняет exact/fallback и preserved survivor mismatch без
+IOC payload; strict mismatch отклоняет всю logical row.
+
+`JdbcWriterAdmission` не заменяет SQLite transaction ownership и не используется
+для hashing, parsing или file I/O. Composition root передаёт один экземпляр в
+ordinary canonical writer, expiry и export-slot reconciliation; import writer
+будет подключён к тому же экземпляру только вместе с P7 recovery barrier.
 
 `JdbcRemoteFetchLedger` хранит read-only remote identity (`path + size + mtime`) и
 не требует прав на remote move/delete. `JdbcPublishLedger` ключуется по

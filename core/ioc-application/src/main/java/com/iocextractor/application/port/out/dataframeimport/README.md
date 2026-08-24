@@ -15,7 +15,7 @@ CSV streaming, disk staging, atomic canonical promotion, reports and status.
 | `DelimitedRecordReader` | Header-only recognition probe plus strict bounded record stream |
 | `ImportValueTransformRegistry` | Adapter-neutral access to the validated CSV transform family |
 | `ImportWorkspace` | Rebuildable disk-backed staging, capacity state and sealed-stage verification |
-| `CanonicalImportWriter` | One cross-artifact dataframe transaction and receipt |
+| `CanonicalImportWriter` | One cross-artifact dataframe transaction, exact receipt replay and safe mutation summary |
 | `ImportReportStore` | Protected atomic source/report terminal unit |
 | `ImportStatusReader` | Indexed safe aggregate status |
 

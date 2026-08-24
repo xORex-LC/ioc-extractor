@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — рабочий комплект"
 version: "0.3.0"
-status: "Architecture approved; P0-P4 implemented"
+status: "Architecture approved; P0-P6 implemented"
 document_type: "Worknote bundle index"
 source_of_truth: false
 language: "ru"
@@ -21,9 +21,10 @@ operator guides или release contract.
 ## Текущий статус
 
 - P0 contract/boundary baseline, P1 integration-family preparation, P2
-  canonical identity/mutation foundation, P3 sparse preferred export slots и
-  P4 durable delivery ledger/sealed staging реализованы 2026-08-23..2026-08-24;
-  local intake начинается с P5, а canonical promotion — с P6;
+  canonical identity/mutation foundation, P3 sparse preferred export slots,
+  P4 durable delivery ledger/sealed staging, P5 local managed intake и P6
+  atomic canonical promotion реализованы 2026-08-23..2026-08-24; следующий
+  implementation slice — P7 recovery/finalization/operator UX;
 - discovery interview завершено 2026-08-23: все I-01..I-41 имеют статус
   `DECIDED`;
 - архитектурный проект, release contract, data/persistence/operations contracts,
@@ -132,7 +133,7 @@ operator guides или release contract.
   применяет business-field merge с явным mismatch report; source contract может
   выбрать strict `reject-mismatch`, автоматическая renumber policy запрещена;
 - известных незакрытых business choices не осталось; formal scope, architecture
-  project и P0-P4 foundation завершены, следующий implementation slice — P5;
+  project и P0-P6 foundation завершены, следующий implementation slice — P7;
 - принятый ADR-0015 не редактируется: если новый import contract будет принят,
   потребуется отдельный superseding ADR.
 
@@ -153,6 +154,8 @@ operator guides или release contract.
 | [p2-evidence.md](p2-evidence.md) | Versioned identity, alias migration, mutation-kernel and focused gate evidence for P2 |
 | [p3-evidence.md](p3-evidence.md) | Coalesced sparse-slot registry, preferred-slot policy and focused gate evidence for P3 |
 | [p4-evidence.md](p4-evidence.md) | Durable delivery ledger, strict recognition/mapping and sealed staging evidence for P4 |
+| [p5-evidence.md](p5-evidence.md) | Strict local ownership, immutable snapshot admission and loss-tolerant detection evidence for P5 |
+| [p6-evidence.md](p6-evidence.md) | Atomic canonical promotion, receipt replay, slot and writer-admission evidence for P6 |
 
 ## Правила работы
 
@@ -164,7 +167,7 @@ operator guides или release contract.
    подменяет его.
 4. `CHANGE_NOTIFY`, polling и local filesystem events рассматриваются как
    latency/correctness-механика после определения business delivery boundary.
-5. P0-P4 выполняются по выданному implementation go-ahead; переход к каждому
+5. P0-P6 выполняются по выданному implementation go-ahead; переход к каждому
    следующему slice допускается только после полного закрытия предыдущего.
 
 ## Граница authority

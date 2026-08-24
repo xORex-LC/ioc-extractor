@@ -7,7 +7,7 @@ import java.sql.Statement;
 /** Private SQLite staging schema; versioned independently from service/dataframe stores. */
 final class ImportWorkspaceSchema {
 
-    static final int VERSION = 1;
+    static final int VERSION = 2;
 
     private static final String CREATE_META = """
             CREATE TABLE stage_meta (
@@ -19,6 +19,10 @@ final class ImportWorkspaceSchema {
                 contract_version INTEGER NOT NULL,
                 contract_fingerprint TEXT NOT NULL,
                 duplicate_policy TEXT NOT NULL,
+                row_failure_policy TEXT NOT NULL,
+                renew_unchanged INTEGER NOT NULL CHECK (renew_unchanged IN (0, 1)),
+                slot_profile TEXT,
+                existing_slot_policy TEXT,
                 source_row_count INTEGER NOT NULL DEFAULT 0,
                 logical_row_count INTEGER NOT NULL DEFAULT 0,
                 accepted_count INTEGER NOT NULL DEFAULT 0,
@@ -56,6 +60,7 @@ final class ImportWorkspaceSchema {
             CREATE TABLE stage_cell (
                 branch_id INTEGER NOT NULL,
                 target_column TEXT NOT NULL,
+                merge_policy TEXT NOT NULL,
                 presence INTEGER NOT NULL CHECK (presence BETWEEN 0 AND 2),
                 value TEXT,
                 PRIMARY KEY(branch_id, target_column),

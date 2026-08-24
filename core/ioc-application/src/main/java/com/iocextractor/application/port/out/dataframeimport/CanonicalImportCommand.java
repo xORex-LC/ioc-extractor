@@ -1,9 +1,10 @@
 package com.iocextractor.application.port.out.dataframeimport;
 
-import com.iocextractor.application.dataframeimport.model.ImportContractFingerprint;
+import com.iocextractor.application.dataframeimport.model.ImportContractPin;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
 import com.iocextractor.application.dataframeimport.model.ImportDeliverySequence;
-import com.iocextractor.application.dataframeimport.model.ImportSha256;
+import com.iocextractor.application.dataframeimport.model.ImportSnapshot;
+import com.iocextractor.application.dataframeimport.model.ImportSourceId;
 import com.iocextractor.application.dataframeimport.model.ImportStage;
 
 import java.util.Objects;
@@ -12,16 +13,18 @@ import java.util.Objects;
 public record CanonicalImportCommand(
         ImportDeliveryId deliveryId,
         ImportDeliverySequence sequence,
-        ImportSha256 snapshotDigest,
-        ImportContractFingerprint contractFingerprint,
+        ImportSourceId sourceId,
+        ImportSnapshot snapshot,
+        ImportContractPin contract,
         ImportStage stage) {
 
     /** Requires complete promotion evidence. */
     public CanonicalImportCommand {
         Objects.requireNonNull(deliveryId, "deliveryId");
         Objects.requireNonNull(sequence, "sequence");
-        Objects.requireNonNull(snapshotDigest, "snapshotDigest");
-        Objects.requireNonNull(contractFingerprint, "contractFingerprint");
+        Objects.requireNonNull(sourceId, "sourceId");
+        Objects.requireNonNull(snapshot, "snapshot");
+        Objects.requireNonNull(contract, "contract");
         Objects.requireNonNull(stage, "stage");
     }
 }

@@ -342,11 +342,6 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
                 .update();
     }
 
-    private ImportDelivery required(ImportDeliveryId deliveryId) {
-        return find(deliveryId).orElseThrow(() -> new IllegalStateException(
-                "Import delivery disappeared during its service-ledger transaction"));
-    }
-
     private boolean sameReservation(ImportDelivery delivery, ImportClaimReservation reservation) {
         return delivery.id().equals(reservation.deliveryId())
                 && delivery.sourceId().equals(reservation.sourceId())
