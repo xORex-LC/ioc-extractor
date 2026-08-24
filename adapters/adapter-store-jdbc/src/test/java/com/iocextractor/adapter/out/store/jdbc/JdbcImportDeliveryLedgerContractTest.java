@@ -18,6 +18,9 @@ import com.iocextractor.application.dataframeimport.model.ImportSnapshotReferenc
 import com.iocextractor.application.dataframeimport.model.ImportSourceId;
 import com.iocextractor.application.dataframeimport.model.ImportStage;
 import com.iocextractor.application.dataframeimport.model.ImportStageReference;
+import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
+import com.iocextractor.application.dataframeimport.model.ImportTerminalRetentionTarget;
+import com.iocextractor.application.maintenance.RetentionAction;
 import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
 import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceResult;
@@ -41,6 +44,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -158,6 +162,10 @@ class JdbcImportDeliveryLedgerContractTest extends ImportDeliveryLedgerContractT
             @Override
             public void disposition(DispositionImportSourceCommand command) {
             }
+
+            @Override
+            public void purgeSnapshot(ImportDeliveryId deliveryId, ImportSourceId sourceId) {
+            }
         };
         var service = new DataframeImportAdmissionService(
                 ledger, lifecycle, events::add,
@@ -178,6 +186,35 @@ class JdbcImportDeliveryLedgerContractTest extends ImportDeliveryLedgerContractT
         assertThat(duplicate.newlyReserved()).isFalse();
         assertThat(duplicate.delivery().id()).isEqualTo(admitted.delivery().id());
         assertThat(events).hasSize(1);
+    }
+
+    @Test
+    void retentionSelectionUnionsMaximumAgeAndMaximumCountWithinOutcomeTarget() {
+        ImportDeliveryLedger ledger = createLedger();
+        ImportDelivery oldest = terminalRejected(ledger, "oldest", NOW.minus(Duration.ofDays(10)));
+        ImportDelivery outsideCount = terminalRejected(ledger, "outside-count", NOW.minus(Duration.ofDays(4)));
+        terminalRejected(ledger, "kept-a", NOW.minus(Duration.ofDays(3)));
+        terminalRejected(ledger, "kept-b", NOW.minus(Duration.ofDays(2)));
+        var target = new ImportTerminalRetentionTarget(
+                "unsuccessful", Set.of(ImportTerminalOutcome.REJECTED),
+                Duration.ofDays(5), 2, RetentionAction.DELETE, null);
+
+        assertThat(ledger.findRetentionCandidates(target, NOW, 10))
+                .extracting(ImportDelivery::id)
+                .containsExactly(oldest.id(), outsideCount.id());
+    }
+
+    private ImportDelivery terminalRejected(
+            ImportDeliveryLedger ledger, String token, Instant terminalAt) {
+        ImportDelivery current = ledger.reserveClaim(new ImportClaimReservation(
+                new ImportDeliveryId("delivery-" + token), new ImportSourceId("source"),
+                "candidate-" + token, terminalAt.minusSeconds(1)));
+        ImportDeliveryTransition transition = new ImportDeliveryTransition(
+                current.id(), current.state(), current.version(), ImportDeliveryState.TERMINAL,
+                Optional.of(ImportTerminalOutcome.REJECTED), ImportDeliveryCheckpoint.none(),
+                Optional.empty(), terminalAt);
+        assertThat(ledger.transition(transition)).isEqualTo(ImportLedgerTransitionResult.APPLIED);
+        return ledger.find(current.id()).orElseThrow();
     }
 
     private ImportDelivery transition(ImportDeliveryLedger ledger,

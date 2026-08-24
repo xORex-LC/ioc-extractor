@@ -54,6 +54,18 @@ reconcile остаются authority.
 unexpired receipt с точным processing-policy fingerprint и иначе возвращает
 обычный ETL fallback.
 
+Managed dataframe import остаётся отдельным application capability. Его
+`DataframeImportProcessingService` продвигает только минимальный non-terminal
+global sequence через pinned snapshot, exact contract, sealed stage, canonical
+receipt и forward-only finalization. `DataframeImportRecoveryService`, drain и
+reconcile coordinators используют ledger как authority; in-memory events и
+keyed executor лишь ускоряют работу. Validate/status/replay/retention доступны
+через узкие driving ports и не дают оператору skip/reorder либо прямую mutation
+ledger.
+Terminal retention использует общую семантику
+`max-age|max-count|delete|archive` для непересекающихся outcome targets и
+очищает snapshot/stage/receipt/ledger только после обработки source/report unit.
+
 ## Зависимости
 
 **Зависит внутрь от:** domain и framework-free platform contracts для ETL,

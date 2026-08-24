@@ -175,25 +175,37 @@ database is guarded as schema drift.
 
 ## Managed dataframe import
 
-Managed dataframe import is disabled in both shipped configurations. The local
-ownership, immutable-snapshot and source-detection components are present, but
-P7 still owns startup-barrier activation and terminal recovery. Keep
-`enabled: false` outside development qualification until that slice is complete.
+Managed dataframe import is disabled in both shipped configurations. Enabling it
+starts intake only after the shared startup recovery barrier has reconciled
+ordinary ingestion and managed import. Keep `enabled: false` until the source,
+authority and contract catalog has been qualified for the deployment.
 
 | Property | Type / accepted values | Built-in default | Guidance |
 |---|---|---|---|
-| `ioc.dataframe-import.enabled` | boolean | `false` | Master contract-catalog switch; startup remains gated until P7. |
+| `ioc.dataframe-import.enabled` | boolean | `false` | Master runtime/catalog switch; startup remains fail-closed until recovery completes. |
 | `ioc.dataframe-import.runtime.dirs.processing` | path | `./var/import/processing` | Private transport-owned files after strict claim; keep on the same filesystem as each local inbox. |
 | `ioc.dataframe-import.runtime.dirs.snapshots` | path | `./var/import/snapshots` | Private immutable byte snapshots; size and digest are pinned in the service ledger. |
 | `ioc.dataframe-import.runtime.dirs.staging` | path | `./var/import/staging` | Per-delivery sealed SQLite workspaces; must not overlap another managed root. |
 | `ioc.dataframe-import.runtime.dirs.terminal` | path | `./var/import/terminal` | Successful terminal delivery units. |
 | `ioc.dataframe-import.runtime.dirs.quarantine` | path | `./var/import/quarantine` | Rejected or unsafe terminal delivery units. |
 | `ioc.dataframe-import.runtime.detect.use-watch-service` | boolean | `false` | Optional local latency hint only; polling remains authoritative. |
+| `ioc.dataframe-import.runtime.detect.use-change-notifications` | boolean | `true` | Optional SMB latency hint only; complete listing remains authoritative when notifications are disabled, lost or rejected. |
 | `ioc.dataframe-import.runtime.detect.reconcile-interval` | positive duration | `5s` | Complete-listing correctness backstop for every configured source. |
 | `ioc.dataframe-import.runtime.stability.quiet-period` | non-negative duration | `2s` | Required unchanged metadata interval before claim. |
 | `ioc.dataframe-import.runtime.retry.delay` | non-negative duration | `5s` | Durable next-attempt delay; no detector or poller thread sleeps. |
 | `ioc.dataframe-import.runtime.limits.maximum-snapshot-bytes` | positive bytes | `268435456` | Hard per-delivery snapshot limit checked while streaming. |
 | `ioc.dataframe-import.runtime.limits.recovery-batch-size` | positive integer | `100` | Bound for one pre-promotion recovery pass. |
+| `ioc.dataframe-import.runtime.retention.successful.max-age` | duration or omitted | `30d` | Maximum age of successful protected source/report units. |
+| `ioc.dataframe-import.runtime.retention.successful.max-count` | non-negative integer | `0` | Maximum retained successful units; `0` disables count-based selection. |
+| `ioc.dataframe-import.runtime.retention.successful.action` | `delete` or `archive` | `delete` | Action for an expired successful unit. |
+| `ioc.dataframe-import.runtime.retention.successful.archive-dir` | path | none | Required protected destination when the successful action is `archive`. |
+| `ioc.dataframe-import.runtime.retention.unsuccessful.max-age` | duration or omitted | `90d` | Maximum age of rejected/partial protected source/report units. |
+| `ioc.dataframe-import.runtime.retention.unsuccessful.max-count` | non-negative integer | `0` | Maximum retained rejected/partial units; `0` disables count-based selection. |
+| `ioc.dataframe-import.runtime.retention.unsuccessful.action` | `delete` or `archive` | `delete` | Action for an expired rejected/partial unit. |
+| `ioc.dataframe-import.runtime.retention.unsuccessful.archive-dir` | path | none | Required protected destination when the unsuccessful action is `archive`. |
+| `ioc.dataframe-import.runtime.retention.interval` | positive duration | `1h` | Independent bounded retention cadence. |
+| `ioc.dataframe-import.runtime.retention.batch-size` | positive integer | `100` | Maximum terminal deliveries purged in one retention pass. |
+| `ioc.dataframe-import.runtime.shutdown-timeout` | positive duration | `30s` | Bound for stopping change hints and allowing accepted lane work to reach a durable checkpoint. |
 | `ioc.dataframe-import.sources` | list | empty | Managed local/SMB trust boundaries. Required when enabled. |
 | `ioc.dataframe-import.sources[].id` | unique string | required | Durable source trust-boundary ID. |
 | `ioc.dataframe-import.sources[].transport` | `local`, `smb` | required | SMB also requires an existing `ioc.sync.endpoints[].name`. |

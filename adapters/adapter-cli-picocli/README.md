@@ -12,7 +12,7 @@ does not implement business rules.
 | Подпапка / файл | Назначение |
 |---|---|
 | `pom.xml` | Maven module descriptor |
-| `src/main/java/com/iocextractor/adapter/in/cli/` | CLI root, extract/export/health commands |
+| `src/main/java/com/iocextractor/adapter/in/cli/` | CLI root, extract/export/health/import commands |
 
 ## Зависимости
 
@@ -35,3 +35,9 @@ counts; `COMPLETED_WITH_ERRORS` возвращает отдельный exit cod
 старта Spring. Отсутствующая или некорректная build identity не подменяется
 fallback-версией: CLI возвращает exit code `1` и одну операторскую строку в
 stderr без stack trace.
+
+`ioc import validate` выполняет side-effect-free preview по caller-owned CSV,
+`ioc import status` показывает только aggregate recovery/head state, а
+`ioc import replay` создаёт новую causally linked occurrence из retained
+terminal unit. Эти команды используют lazy `ObjectProvider`: root help не
+поднимает storage graph, а disabled capability завершается явной ошибкой.

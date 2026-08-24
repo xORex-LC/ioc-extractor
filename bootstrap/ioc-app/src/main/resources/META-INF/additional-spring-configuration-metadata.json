@@ -141,6 +141,14 @@
     {
       "name": "ioc.dataframe-import.contracts[].requested-slot.existing-record-policy",
       "values": [ { "value": "preserve-existing" }, { "value": "reject-mismatch" } ]
+    },
+    {
+      "name": "ioc.dataframe-import.runtime.retention.successful.action",
+      "values": [ { "value": "delete" }, { "value": "archive" } ]
+    },
+    {
+      "name": "ioc.dataframe-import.runtime.retention.unsuccessful.action",
+      "values": [ { "value": "delete" }, { "value": "archive" } ]
     }
   ]
 }

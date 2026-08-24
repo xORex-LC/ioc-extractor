@@ -18,6 +18,7 @@ artifacts directly.
 | `src/main/java/com/iocextractor/adapter/in/ingest/` | Spring Integration flow and filesystem adapters |
 | `LocalManagedImportSourceLifecycle` | Strict local claim, producer-stability proof and immutable snapshot materialization |
 | `LocalImportChangeSignalSource` | Optional WatchService doorbell that discards event filenames |
+| `LocalImportTerminalStore` | Atomic protected source/report unit, replay materialization and idempotent delete/archive retention |
 
 ## Зависимости
 
@@ -28,12 +29,12 @@ concurrency, Spring Integration file support.
 
 ## Инварианты
 
-- `iocIngestionFlow` не стартует автоматически. `IngestionStartupCoordinator`
-  сначала восстанавливает run ledger, затем source ledger, выполняет common
-  canonical lifecycle admission и только после этого открывает intake; любая
-  ошибка оставляет flow остановленным. Coordinator имеет `ApplicationRunner`
-  order `HIGHEST_PRECEDENCE`. Lifecycle policy/SQL остаются за application/JDBC;
-  этот driving adapter знает только admission port.
+- `iocIngestionFlow` не стартует автоматически. Единственный bootstrap-owned
+  `CanonicalIntakeStartupCoordinator` сначала восстанавливает ordinary run/source
+  ledgers, выполняет common canonical lifecycle admission и managed-import
+  recovery, запускает import reconcile, и только после этого открывает ordinary
+  intake. Ошибка оставляет оба intake закрытыми. Lifecycle policy/SQL остаются
+  за application/JDBC; этот driving adapter знает только admission ports.
 - Все application entry points для одного content `SourceKey` используют общий
   synchronous keyed guard. File ledger отдельно сериализует read/decide/replace
   внутри одного adapter instance; сервисы над общими namespace/ledger обязаны

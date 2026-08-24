@@ -259,8 +259,8 @@ ioc:
           - { name: hash-sha256-v1, key-columns: [ hash_sha256 ] }
 
   # ---- Managed dataframe import --------------------------------------------
-  # The strict contract catalog remains disabled. P5 supplies local ownership,
-  # immutable snapshot and detection primitives; P7 owns startup-barrier activation.
+  # The runtime is disabled by default and opens intake only after the shared
+  # ordinary-ingest/managed-import startup recovery barrier has completed.
   dataframe-import:
     enabled: false
     sources: []
@@ -275,6 +275,7 @@ ioc:
         quarantine: "./var/import/quarantine"
       detect:
         use-watch-service: false
+        use-change-notifications: true
         reconcile-interval: 5s
       stability:
         quiet-period: 2s
@@ -283,6 +284,12 @@ ioc:
       limits:
         maximum-snapshot-bytes: 268435456
         recovery-batch-size: 100
+      retention:
+        successful: { max-age: 30d, max-count: 0, action: delete }
+        unsuccessful: { max-age: 90d, max-count: 0, action: delete }
+        interval: 1h
+        batch-size: 100
+      shutdown-timeout: 30s
 
   # ---- Immutable artifact emission ------------------------------------------
   # Profiles are indivisible ordered sets. C8 exposes manual `ioc export`; the

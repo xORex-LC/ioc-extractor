@@ -52,6 +52,7 @@ import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceSettings;
 import com.iocextractor.adapter.out.store.jdbc.SqlitePragmaPolicy;
 import com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator;
 import com.iocextractor.adapter.in.ingest.IngestionLifecycleState;
+import com.iocextractor.adapter.in.ingest.IngestionStartupObserver;
 import com.iocextractor.adapter.in.ingest.FileSourceHasher;
 import com.iocextractor.application.artifact.IngestRunRecoveryService;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
@@ -102,6 +103,7 @@ import com.iocextractor.application.port.in.export.ExportArtifactsUseCase;
 import com.iocextractor.application.port.in.export.RecoverExportUseCase;
 import com.iocextractor.application.port.in.export.RunSliceRetentionUseCase;
 import com.iocextractor.application.port.in.export.ValidateExportProfileUseCase;
+import com.iocextractor.application.port.in.ingest.RecoverIngestionUseCase;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.maintenance.RetentionStore;
@@ -1155,6 +1157,25 @@ public class AppConfig {
 
     @Bean
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
+    public CanonicalIntakeStartupCoordinator canonicalIntakeStartupCoordinator(
+            IngestRunRecoveryService runRecovery,
+            RecoverIngestionUseCase sourceRecovery,
+            PrepareLifecycleAdmissionUseCase lifecycleAdmission,
+            IngestionLifecycleState lifecycleState,
+            IngestionStartupObserver startupObserver,
+            Clock clock,
+            @Qualifier("iocIngestionFlow") IntegrationFlow intakeFlow,
+            ObjectProvider<DataframeImportRuntimeLifecycle> importRuntime) {
+        if (!(intakeFlow instanceof Lifecycle lifecycle)) {
+            throw new IllegalStateException("iocIngestionFlow does not expose lifecycle control");
+        }
+        return new CanonicalIntakeStartupCoordinator(
+                runRecovery, sourceRecovery, lifecycleAdmission, lifecycle,
+                importRuntime.getIfAvailable(), lifecycleState, startupObserver, clock);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public IngestionService ingestionService(IngestionLedger ledger,
                                              SourceLifecycle sourceLifecycle,
                                              SourcePreparerFactory sourcePreparerFactory,
@@ -1404,7 +1425,7 @@ public class AppConfig {
                 .toList();
     }
 
-    private List<DataframeArtifactSchema> dataframeSchemas(IocProperties props) {
+    List<DataframeArtifactSchema> dataframeSchemas(IocProperties props) {
         return props.sink().artifacts().stream()
                 .filter(artifact -> artifact.enabled())
                 .map(artifact -> new DataframeArtifactSchema(
@@ -1419,7 +1440,7 @@ public class AppConfig {
         return dataframeSchemas(props).stream().map(DataframeArtifactSchema::artifactName).toList();
     }
 
-    private List<ArtifactIdentityDefinition> artifactIdentityDefinitions(IocProperties props) {
+    List<ArtifactIdentityDefinition> artifactIdentityDefinitions(IocProperties props) {
         return props.artifactIdentity().artifacts().stream()
                 .map(this::artifactIdentityDefinition)
                 .toList();
@@ -1441,7 +1462,7 @@ public class AppConfig {
         return new ArtifactIdentityDefinition(artifact.name(), recordKey, matchKeys, epoch);
     }
 
-    private List<ArtifactIdAllocatorDefinition> artifactIdAllocatorDefinitions(
+    List<ArtifactIdAllocatorDefinition> artifactIdAllocatorDefinitions(
             IocProperties props,
             ArtifactIdBaseline artifactIdBaseline) {
         Map<String, Integer> epochs = artifactIdentityDefinitions(props).stream()

@@ -123,6 +123,15 @@ public final class EarlyCliLauncher {
                 if (type == ExportCommand.class) {
                     return type.cast(new ExportCommand(null, null, "oneshot"));
                 }
+                if (type == ImportValidateCommand.class) {
+                    return type.cast(new ImportValidateCommand());
+                }
+                if (type == ImportStatusCommand.class) {
+                    return type.cast(new ImportStatusCommand());
+                }
+                if (type == ImportReplayCommand.class) {
+                    return type.cast(new ImportReplayCommand());
+                }
                 if (type == SyncFetchCommand.class) {
                     return type.cast(new SyncFetchCommand(null, null));
                 }

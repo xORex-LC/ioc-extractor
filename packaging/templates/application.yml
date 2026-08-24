@@ -213,7 +213,7 @@ ioc:
 
   # ---- Managed dataframe import --------------------------------------------
   # Disabled baseline. Enabling requires explicit source, authority and
-  # versioned contract definitions; P7 activates workers behind startup recovery.
+  # versioned contract definitions; intake opens only after startup recovery.
   dataframe-import:
     enabled: false
     sources: []
@@ -228,6 +228,7 @@ ioc:
         quarantine: "./var/import/quarantine"
       detect:
         use-watch-service: false
+        use-change-notifications: true
         reconcile-interval: 5s
       stability:
         quiet-period: 2s
@@ -236,8 +237,14 @@ ioc:
       limits:
         maximum-snapshot-bytes: 268435456
         recovery-batch-size: 100
-    # Complete schema illustration for a future enabled runtime. Keep these
-    # entries commented until a later slice supplies executable intake.
+      retention:
+        successful: { max-age: 30d, max-count: 0, action: delete }
+        unsuccessful: { max-age: 90d, max-count: 0, action: delete }
+        interval: 1h
+        batch-size: 100
+      shutdown-timeout: 30s
+    # Complete schema illustration. Keep these entries commented until an
+    # operator has defined and qualified the intended trust boundary.
     # sources:
     #   - id: trusted-local
     #     transport: local

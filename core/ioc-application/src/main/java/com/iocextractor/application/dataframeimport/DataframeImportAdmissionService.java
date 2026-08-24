@@ -15,7 +15,9 @@ import com.iocextractor.application.port.in.dataframeimport.RecoverDataframeImpo
 import com.iocextractor.application.port.in.dataframeimport.RecoverDataframeImportsUseCase;
 import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
+import com.iocextractor.application.port.out.dataframeimport.ImportReplaySnapshotStore;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
+import com.iocextractor.diagnostics.codes.ImportDiagnosticCodes;
 import com.iocextractor.platform.events.ControlEventPublisher;
 
 import java.time.Clock;
@@ -33,11 +35,10 @@ import java.util.Optional;
 public final class DataframeImportAdmissionService
         implements AdmitDataframeImportUseCase, RecoverDataframeImportsUseCase {
 
-    private static final String CLAIM_FAILED = "IMPORT.CLAIM_FAILED";
-
     private final ImportDeliveryLedger ledger;
     private final ManagedImportSourceLifecycle sources;
     private final ControlEventPublisher events;
+    private final ImportReplaySnapshotStore replays;
     private final Clock clock;
     private final Duration retryDelay;
 
@@ -47,9 +48,23 @@ public final class DataframeImportAdmissionService
                                            ControlEventPublisher events,
                                            Clock clock,
                                            Duration retryDelay) {
+        this(ledger, sources, events, clock, retryDelay,
+                (terminalDeliveryId, replayDeliveryId) -> {
+                    throw new IllegalStateException("Import replay snapshot store is not configured");
+                });
+    }
+
+    /** Creates admission with protected terminal replay materialization. */
+    public DataframeImportAdmissionService(ImportDeliveryLedger ledger,
+                                           ManagedImportSourceLifecycle sources,
+                                           ControlEventPublisher events,
+                                           Clock clock,
+                                           Duration retryDelay,
+                                           ImportReplaySnapshotStore replays) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.sources = Objects.requireNonNull(sources, "sources");
         this.events = Objects.requireNonNull(events, "events");
+        this.replays = Objects.requireNonNull(replays, "replays");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.retryDelay = Objects.requireNonNull(retryDelay, "retryDelay");
         if (retryDelay.isNegative()) {
@@ -121,6 +136,9 @@ public final class DataframeImportAdmissionService
     }
 
     private ImportSnapshot claim(ImportDelivery delivery) {
+        if (delivery.replayOf().isPresent()) {
+            return replays.materializeReplay(delivery.replayOf().orElseThrow(), delivery.id());
+        }
         return sources.claim(new ClaimImportSourceCommand(
                 delivery.id(), delivery.sourceId(), delivery.candidateToken())).snapshot();
     }
@@ -140,7 +158,7 @@ public final class DataframeImportAdmissionService
         Instant occurredAt = clock.instant();
         ImportRetrySchedule retry = new ImportRetrySchedule(
                 delivery.id(), delivery.state(), delivery.version(),
-                occurredAt.plus(retryDelay), CLAIM_FAILED, true, occurredAt);
+                occurredAt.plus(retryDelay), ImportDiagnosticCodes.CLAIM_FAILED.id(), true, occurredAt);
         ImportLedgerTransitionResult result = ledger.scheduleRetry(retry);
         if (result != ImportLedgerTransitionResult.APPLIED
                 && result != ImportLedgerTransitionResult.ALREADY_APPLIED) {

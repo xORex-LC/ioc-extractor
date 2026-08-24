@@ -150,6 +150,10 @@ class ConfigurationDocumentationContractTest {
                 importTokens(ImportArtifactRole.values()));
         assertHint(metadata, "ioc.dataframe-import.contracts[].requested-slot.existing-record-policy",
                 importTokens(ImportExistingSlotPolicy.values()));
+        assertHint(metadata, "ioc.dataframe-import.runtime.retention.successful.action",
+                selectorTokens(RetentionActionType.values()));
+        assertHint(metadata, "ioc.dataframe-import.runtime.retention.unsuccessful.action",
+                selectorTokens(RetentionActionType.values()));
         assertHint(metadata, "ioc.source.charset", Set.of("auto"));
         assertThat(hintBlock(metadata, "ioc.source.charset"))
                 .contains("handle-as", "java.nio.charset.Charset");

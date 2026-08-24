@@ -1,0 +1,63 @@
+package com.iocextractor.bootstrap;
+
+import com.iocextractor.application.dataframeimport.model.ImportDeliveryStatus;
+import com.iocextractor.application.port.in.dataframeimport.QueryDataframeImportStatusUseCase;
+import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthIndicator;
+
+import java.util.Objects;
+
+/** Value-free actuator view backed by indexed aggregate ledger queries. */
+final class DataframeImportHealthIndicator implements HealthIndicator {
+
+    private final QueryDataframeImportStatusUseCase statusUseCase;
+    private final DataframeImportRuntimeState runtimeState;
+    private final KeyedSerialExecutor lanes;
+
+    DataframeImportHealthIndicator(QueryDataframeImportStatusUseCase statusUseCase,
+                                   DataframeImportRuntimeState runtimeState,
+                                   KeyedSerialExecutor lanes) {
+        this.statusUseCase = Objects.requireNonNull(statusUseCase, "statusUseCase");
+        this.runtimeState = Objects.requireNonNull(runtimeState, "runtimeState");
+        this.lanes = Objects.requireNonNull(lanes, "lanes");
+    }
+
+    @Override
+    public Health health() {
+        DataframeImportRuntimeState.Snapshot runtime = runtimeState.snapshot();
+        ImportDeliveryStatus status = statusUseCase.status();
+        var laneSnapshot = lanes.snapshot();
+        int queued = laneSnapshot.keys().stream().mapToInt(value -> value.queuedDepth()).sum();
+        long running = laneSnapshot.keys().stream().filter(value -> value.running()).count();
+
+        boolean retryingHead = status.headRetryCount() > 0 || status.headRetryDelay().isPresent();
+        Health.Builder builder = switch (runtime.phase()) {
+            case RUNNING -> retryingHead ? Health.status("DEGRADED") : Health.up();
+            case DEGRADED, PENDING, RECOVERING, STOPPED -> Health.status("DEGRADED");
+            case FAILED -> Health.down();
+        };
+        builder.withDetail("phase", runtime.phase().name())
+                .withDetail("recoveryComplete", status.recoveryComplete())
+                .withDetail("nonterminal", status.stateCounts().values().stream()
+                        .mapToLong(Long::longValue).sum())
+                .withDetail("queuedWork", queued)
+                .withDetail("runningLanes", running);
+        status.headSequence().ifPresent(sequence ->
+                builder.withDetail("headSequence", sequence.value()));
+        status.headState().ifPresent(state ->
+                builder.withDetail("headState", state.name()));
+        status.headAge().ifPresent(age ->
+                builder.withDetail("headAgeSeconds", age.toSeconds()));
+        if (status.headRetryCount() > 0) {
+            builder.withDetail("headRetryCount", status.headRetryCount());
+        }
+        status.headRetryDelay().ifPresent(delay ->
+                builder.withDetail("headRetryDelaySeconds", delay.toSeconds()));
+        String safeCode = runtime.code() != null ? runtime.code() : status.headCode().orElse(null);
+        if (safeCode != null) {
+            builder.withDetail("code", safeCode);
+        }
+        return builder.build();
+    }
+}

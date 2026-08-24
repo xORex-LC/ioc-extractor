@@ -139,7 +139,15 @@ class DataframeImportStagingServiceTest {
 
         @Override
         public ImportWorkspaceWriter rebuild(CreateImportWorkspaceCommand createCommand) {
-            throw new UnsupportedOperationException();
+            return create(createCommand);
+        }
+
+        @Override
+        public java.util.Optional<ImportStage> adoptSealed(
+                com.iocextractor.application.dataframeimport.model.ImportDeliveryId deliveryId,
+                ImportSnapshot snapshot,
+                com.iocextractor.application.dataframeimport.model.ImportContractPin contract) {
+            return java.util.Optional.empty();
         }
 
         @Override
@@ -152,6 +160,11 @@ class DataframeImportStagingServiceTest {
         @Override
         public ImportWorkspaceCapacity capacity() {
             return new ImportWorkspaceCapacity(0, 1, ImportWorkspaceCapacity.State.ACCEPTING);
+        }
+
+        @Override
+        public void discard(com.iocextractor.application.dataframeimport.model.ImportDeliveryId deliveryId) {
+            // No external scratch state in this test double.
         }
 
         @Override

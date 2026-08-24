@@ -10,6 +10,7 @@ public enum DiagnosticCategory {
     CLASSIFY,
     SINK,
     INGEST,
+    IMPORT,
     STORAGE,
     EXPORT,
     SYNC,

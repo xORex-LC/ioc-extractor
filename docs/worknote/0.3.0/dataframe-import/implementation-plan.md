@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — implementation plan"
 version: "0.3.0"
-status: "Approved; P0-P6 implemented"
+status: "Approved; P0-P7 implemented"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "en"
@@ -202,6 +202,10 @@ Gate:
 - TTL/no-op and public mutation revision semantics pass.
 
 ### P7 — recovery, finalization and operator UX
+
+Status: **implemented with focused and affected-reactor verification**. See
+[p7-evidence.md](p7-evidence.md). Full committed-HEAD verification follows P8
+so the gate covers the requested P7/P8 span.
 
 Deliver:
 

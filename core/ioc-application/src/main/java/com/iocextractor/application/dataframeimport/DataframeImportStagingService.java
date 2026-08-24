@@ -54,7 +54,7 @@ public final class DataframeImportStagingService {
         CreateImportWorkspaceCommand workspaceCommand = new CreateImportWorkspaceCommand(
                 command.deliveryId(), command.snapshot(), pin, contract.definition().duplicatePolicy(),
                 promotionPolicy(contract));
-        try (ImportWorkspaceWriter writer = workspace.create(workspaceCommand)) {
+        try (ImportWorkspaceWriter writer = workspace.rebuild(workspaceCommand)) {
             reader.read(new DelimitedReadCommand(
                             command.snapshot().reference(), contract.definition().charset(), contract.dialect(),
                             contract.definition().recognition(), limits.inputLimits()),

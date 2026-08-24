@@ -176,25 +176,37 @@ charset или enabled. Schema/identity changes меняют durable contract и
 
 ## Managed dataframe import
 
-Managed import выключен в обоих поставляемых конфигурациях. Компоненты local
-ownership, immutable snapshot и source detection уже реализованы, но P7 всё ещё
-владеет startup barrier и terminal recovery. До завершения P7 оставляйте
-`enabled: false`, кроме квалификационных tests.
+Managed import выключен в обоих поставляемых конфигурациях. При включении intake
+открывается только после общего startup recovery barrier для ordinary ingestion
+и managed import. Оставляйте `enabled: false`, пока source, authority и contract
+catalog не квалифицированы для конкретного deployment.
 
 | Параметр | Тип / значения | Встроенный default | Рекомендация |
 |---|---|---|---|
-| `ioc.dataframe-import.enabled` | boolean | `false` | Master switch catalog; startup остаётся закрыт до P7. |
+| `ioc.dataframe-import.enabled` | boolean | `false` | Master runtime/catalog switch; startup fail-closed до завершения recovery. |
 | `ioc.dataframe-import.runtime.dirs.processing` | путь | `./var/import/processing` | Private transport-owned файлы после strict claim; для local source нужен тот же filesystem. |
 | `ioc.dataframe-import.runtime.dirs.snapshots` | путь | `./var/import/snapshots` | Private immutable snapshots; size и digest закрепляются в service ledger. |
 | `ioc.dataframe-import.runtime.dirs.staging` | путь | `./var/import/staging` | Sealed SQLite workspace на delivery; не пересекается с другими managed roots. |
 | `ioc.dataframe-import.runtime.dirs.terminal` | путь | `./var/import/terminal` | Успешные terminal delivery units. |
 | `ioc.dataframe-import.runtime.dirs.quarantine` | путь | `./var/import/quarantine` | Отклонённые или unsafe terminal delivery units. |
 | `ioc.dataframe-import.runtime.detect.use-watch-service` | boolean | `false` | Только optional latency hint; polling остаётся authority. |
+| `ioc.dataframe-import.runtime.detect.use-change-notifications` | boolean | `true` | Только optional SMB latency hint; complete listing остаётся authority при disabled/lost/rejected notifications. |
 | `ioc.dataframe-import.runtime.detect.reconcile-interval` | positive duration | `5s` | Complete-listing backstop для каждого source. |
 | `ioc.dataframe-import.runtime.stability.quiet-period` | non-negative duration | `2s` | Период неизменной metadata до claim. |
 | `ioc.dataframe-import.runtime.retry.delay` | non-negative duration | `5s` | Durable next-attempt delay без sleep detector/poller thread. |
 | `ioc.dataframe-import.runtime.limits.maximum-snapshot-bytes` | positive bytes | `268435456` | Hard snapshot limit, проверяемый при streaming. |
 | `ioc.dataframe-import.runtime.limits.recovery-batch-size` | positive integer | `100` | Bound одного pre-promotion recovery pass. |
+| `ioc.dataframe-import.runtime.retention.successful.max-age` | duration или отсутствует | `30d` | Максимальный возраст успешных protected source/report units. |
+| `ioc.dataframe-import.runtime.retention.successful.max-count` | неотрицательное целое | `0` | Максимум сохранённых успешных units; `0` отключает count-based selection. |
+| `ioc.dataframe-import.runtime.retention.successful.action` | `delete` или `archive` | `delete` | Действие для истёкшей успешной unit. |
+| `ioc.dataframe-import.runtime.retention.successful.archive-dir` | path | отсутствует | Обязательный protected destination при action `archive`. |
+| `ioc.dataframe-import.runtime.retention.unsuccessful.max-age` | duration или отсутствует | `90d` | Максимальный возраст rejected/partial protected source/report units. |
+| `ioc.dataframe-import.runtime.retention.unsuccessful.max-count` | неотрицательное целое | `0` | Максимум сохранённых rejected/partial units; `0` отключает count-based selection. |
+| `ioc.dataframe-import.runtime.retention.unsuccessful.action` | `delete` или `archive` | `delete` | Действие для истёкшей rejected/partial unit. |
+| `ioc.dataframe-import.runtime.retention.unsuccessful.archive-dir` | path | отсутствует | Обязательный protected destination при action `archive`. |
+| `ioc.dataframe-import.runtime.retention.interval` | positive duration | `1h` | Независимый bounded retention cadence. |
+| `ioc.dataframe-import.runtime.retention.batch-size` | positive integer | `100` | Максимум terminal deliveries одного retention pass. |
+| `ioc.dataframe-import.runtime.shutdown-timeout` | positive duration | `30s` | Bound остановки change hints и завершения принятой lane work до durable checkpoint. |
 | `ioc.dataframe-import.sources` | список | пусто | Local/SMB trust boundaries; обязателен при enabled. |
 | `ioc.dataframe-import.sources[].id` | уникальная строка | обязателен | Durable source ID. |
 | `ioc.dataframe-import.sources[].transport` | `local`, `smb` | обязателен | Для SMB нужна общая endpoint definition. |

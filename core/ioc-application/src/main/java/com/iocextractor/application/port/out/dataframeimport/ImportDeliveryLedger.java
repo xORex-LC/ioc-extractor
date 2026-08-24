@@ -6,6 +6,7 @@ import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryTransition;
 import com.iocextractor.application.dataframeimport.model.ImportLedgerTransitionResult;
 import com.iocextractor.application.dataframeimport.model.ImportRetrySchedule;
+import com.iocextractor.application.dataframeimport.model.ImportTerminalRetentionTarget;
 
 import java.time.Instant;
 import java.util.List;
@@ -77,4 +78,14 @@ public interface ImportDeliveryLedger {
      * @return ordered recovery records
      */
     List<ImportDelivery> findRecoverable(int limit);
+
+    /**
+     * Returns the oldest terminal deliveries selected by the common age/count
+     * retention semantics for one disjoint outcome target.
+     */
+    List<ImportDelivery> findRetentionCandidates(
+            ImportTerminalRetentionTarget target, Instant now, int limit);
+
+    /** Deletes exactly one unchanged terminal aggregate after external evidence cleanup. */
+    boolean purgeTerminal(ImportDeliveryId deliveryId, long expectedVersion);
 }

@@ -5,6 +5,7 @@ import com.iocextractor.diagnostics.codes.ClassificationDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.ExtractionDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.ExportDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.IngestDiagnosticCodes;
+import com.iocextractor.diagnostics.codes.ImportDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.LifecycleDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
 import com.iocextractor.diagnostics.codes.SchemaDiagnosticCodes;
@@ -27,6 +28,7 @@ public final class DiagnosticCatalogs {
             ClassificationDiagnosticCodes.values(),
             SinkDiagnosticCodes.values(),
             IngestDiagnosticCodes.values(),
+            ImportDiagnosticCodes.values(),
             StorageDiagnosticCodes.values(),
             SchemaDiagnosticCodes.values(),
             ExportDiagnosticCodes.values(),

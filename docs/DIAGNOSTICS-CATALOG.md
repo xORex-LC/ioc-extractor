@@ -20,6 +20,17 @@ Generated from `DiagnosticCatalogs`.
 | `INGEST.DEAD_LETTER_FAILED` | INGEST | ERROR | OPERATION | `ingest.dead-letter-failed` | Source {source} could not be moved to the failed area: {reason} |
 | `INGEST.STATE_TRANSITION_CONFLICT` | INGEST | ERROR | OPERATION | `ingest.state-transition-conflict` | Ingestion ledger operation {operation} for source {source} returned {transition}; expected {expected} |
 | `INGEST.RECOVERY_FAILED` | INGEST | ERROR | OPERATION | `ingest.recovery-failed` | Ingestion recovery failed for source {source}: {reason} |
+| `IMPORT.CLAIM_FAILED` | IMPORT | ERROR | OPERATION | `import.claim-failed` | Managed import claim failed; durable retry remains scheduled |
+| `IMPORT.INPUT_INVALID` | IMPORT | ERROR | OPERATION | `import.input-invalid` | Managed import input failed its declared structural contract |
+| `IMPORT.CONTRACT_NOT_RECOGNIZED` | IMPORT | ERROR | OPERATION | `import.contract-not-recognized` | Managed import input matched no allowlisted contract |
+| `IMPORT.CONTRACT_AMBIGUOUS` | IMPORT | ERROR | OPERATION | `import.contract-ambiguous` | Managed import input matched more than one allowlisted contract |
+| `IMPORT.LIMIT_EXCEEDED` | IMPORT | ERROR | OPERATION | `import.limit-exceeded` | Managed import input exceeded a configured hard resource limit |
+| `IMPORT.CAPACITY_PAUSED` | IMPORT | WARN | OPERATION | `import.capacity-paused` | Managed import intake is safely paused at a configured capacity watermark |
+| `IMPORT.PROCESSING_FAILED` | IMPORT | ERROR | OPERATION | `import.processing-failed` | Managed import processing failed; durable retry remains scheduled |
+| `IMPORT.FINALIZATION_FAILED` | IMPORT | ERROR | OPERATION | `import.finalization-failed` | Managed import finalization failed; forward recovery remains scheduled |
+| `IMPORT.CONSISTENCY_FAILED` | IMPORT | FATAL | OPERATION | `import.consistency-failed` | Managed import durable evidence is contradictory and intake remains closed |
+| `IMPORT.RETENTION_FAILED` | IMPORT | ERROR | OPERATION | `import.retention-failed` | Managed import terminal retention failed and will be retried |
+| `IMPORT.CHANGE_SIGNAL_FAILED` | IMPORT | WARN | OPERATION | `import.change-signal-failed` | Managed import change notification is unavailable; polling remains active |
 | `STORAGE.MIGRATION_APPLIED` | STORAGE | INFO | OPERATION | `storage.migration-applied` | Storage {dbRole} applied schema migration {migrationVersion}; schema is now {schemaVersion} |
 | `STORAGE.MIGRATION_ROLLBACK` | STORAGE | FATAL | OPERATION | `storage.migration-rollback` | Storage {dbRole} rolled back schema migration {migrationVersion}: {reason} |
 | `STORAGE.MIGRATION_DOWNGRADE` | STORAGE | FATAL | OPERATION | `storage.migration-downgrade` | Storage {dbRole} schema version {fromVersion} is newer than supported version {toVersion} |

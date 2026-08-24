@@ -283,7 +283,9 @@ public record IocProperties(
                 @NotNull @Valid Detect detect,
                 @NotNull @Valid Stability stability,
                 @NotNull @Valid Retry retry,
-                @NotNull @Valid Limits limits) {
+                @NotNull @Valid Limits limits,
+                @NotNull @Valid Retention retention,
+                @NotNull Duration shutdownTimeout) {
 
             public RuntimeSettings {
                 dirs = dirs == null ? Directories.defaults() : dirs;
@@ -291,10 +293,17 @@ public record IocProperties(
                 stability = stability == null ? Stability.defaults() : stability;
                 retry = retry == null ? Retry.defaults() : retry;
                 limits = limits == null ? Limits.defaults() : limits;
+                retention = retention == null ? Retention.defaults() : retention;
+                shutdownTimeout = shutdownTimeout == null ? Duration.ofSeconds(30) : shutdownTimeout;
+            }
+
+            @AssertTrue(message = "shutdown-timeout must be positive")
+            public boolean isShutdownTimeoutValid() {
+                return shutdownTimeout == null || shutdownTimeout.isPositive();
             }
 
             private static RuntimeSettings defaults() {
-                return new RuntimeSettings(null, null, null, null, null);
+                return new RuntimeSettings(null, null, null, null, null, null, null);
             }
         }
 
@@ -313,7 +322,9 @@ public record IocProperties(
         }
 
         /** Poll correctness backstop and optional watch latency hint. */
-        public record Detect(boolean useWatchService, @NotNull Duration reconcileInterval) {
+        public record Detect(boolean useWatchService,
+                             boolean useChangeNotifications,
+                             @NotNull Duration reconcileInterval) {
 
             @AssertTrue(message = "must be positive")
             public boolean isReconcileIntervalValid() {
@@ -321,7 +332,7 @@ public record IocProperties(
             }
 
             private static Detect defaults() {
-                return new Detect(false, Duration.ofSeconds(5));
+                return new Detect(false, true, Duration.ofSeconds(5));
             }
         }
 
@@ -356,6 +367,46 @@ public record IocProperties(
 
             private static Limits defaults() {
                 return new Limits(256L * 1024 * 1024, 100);
+            }
+        }
+
+        /** Terminal evidence retention using the common max-age/count/action vocabulary. */
+        public record Retention(@NotNull @Valid Target successful,
+                                @NotNull @Valid Target unsuccessful,
+                                @NotNull Duration interval,
+                                @Positive int batchSize) {
+
+            @AssertTrue(message = "interval must be positive")
+            public boolean isIntervalValid() {
+                return interval == null || interval.isPositive();
+            }
+
+            private static Retention defaults() {
+                return new Retention(Target.deleteAfter(Duration.ofDays(30)),
+                        Target.deleteAfter(Duration.ofDays(90)),
+                        Duration.ofHours(1), 100);
+            }
+
+            /** One terminal outcome group governed by the common retention policy. */
+            public record Target(Duration maxAge,
+                                 @PositiveOrZero int maxCount,
+                                 @NotNull RetentionActionType action,
+                                 String archiveDir) {
+
+                @AssertTrue(message = "must enable max-age or max-count and configure archive-dir for archive")
+                public boolean isPolicyValid() {
+                    boolean ageEnabled = maxAge != null && maxAge.isPositive();
+                    boolean countEnabled = maxCount > 0;
+                    boolean ageValid = maxAge == null || !maxAge.isNegative();
+                    boolean archiveValid = action == null
+                            || action != RetentionActionType.ARCHIVE
+                            || archiveDir != null && !archiveDir.isBlank();
+                    return ageValid && (ageEnabled || countEnabled) && archiveValid;
+                }
+
+                private static Target deleteAfter(Duration maxAge) {
+                    return new Target(maxAge, 0, RetentionActionType.DELETE, null);
+                }
             }
         }
 

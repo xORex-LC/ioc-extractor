@@ -21,6 +21,7 @@ import com.iocextractor.application.dataframeimport.model.ImportSourceId;
 import com.iocextractor.application.dataframeimport.model.ImportStage;
 import com.iocextractor.application.dataframeimport.model.ImportStageReference;
 import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
+import com.iocextractor.application.dataframeimport.model.ImportTerminalRetentionTarget;
 import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.RowMapper;
@@ -32,6 +33,7 @@ import javax.sql.DataSource;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -74,17 +76,45 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
             ORDER BY sequence_no
             LIMIT :limit
             """;
+    private static final String FIND_RETENTION_CANDIDATES_SQL = """
+            WITH ranked AS (
+                SELECT %s,
+                       ROW_NUMBER() OVER (
+                           ORDER BY updated_at_ms DESC, sequence_no DESC
+                       ) AS retention_rank
+                FROM import_delivery
+                WHERE state = 'TERMINAL'
+                  AND terminal_outcome IN (:outcomes)
+            )
+            SELECT %s
+            FROM ranked
+            WHERE (:age_enabled = 1 AND updated_at_ms < :age_cutoff)
+               OR (:max_count > 0 AND retention_rank > :max_count)
+            ORDER BY updated_at_ms, sequence_no
+            LIMIT :limit
+            """.formatted(SELECT_COLUMNS, SELECT_COLUMNS);
     private static final RowMapper<ImportDelivery> DELIVERY_ROW_MAPPER =
             (resultSet, ignoredRowNumber) -> mapDelivery(resultSet);
 
     private final JdbcClient jdbc;
     private final TransactionTemplate transactions;
+    private final Duration successRetention;
+    private final Duration nonSuccessRetention;
 
     /** Creates a ledger on an already migrated service datasource. */
     public JdbcImportDeliveryLedger(DataSource dataSource) {
+        this(dataSource, Duration.ofDays(30), Duration.ofDays(90));
+    }
+
+    /** Creates a ledger with explicit terminal-unit retention deadlines. */
+    public JdbcImportDeliveryLedger(DataSource dataSource,
+                                    Duration successRetention,
+                                    Duration nonSuccessRetention) {
         Objects.requireNonNull(dataSource, "dataSource");
         this.jdbc = JdbcClient.create(dataSource);
         this.transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+        this.successRetention = optionalRetention(successRetention, "successRetention");
+        this.nonSuccessRetention = optionalRetention(nonSuccessRetention, "nonSuccessRetention");
     }
 
     @Override
@@ -235,6 +265,43 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
                 .list();
     }
 
+    @Override
+    public List<ImportDelivery> findRetentionCandidates(
+            ImportTerminalRetentionTarget target, Instant now, int limit) {
+        Objects.requireNonNull(target, "target");
+        Objects.requireNonNull(now, "now");
+        if (limit < 1) {
+            throw new IllegalArgumentException("Import purge limit must be positive");
+        }
+        boolean ageEnabled = target.maxAge() != null && target.maxAge().isPositive();
+        long cutoff = ageEnabled ? now.minus(target.maxAge()).toEpochMilli() : now.toEpochMilli();
+        return jdbc.sql(FIND_RETENTION_CANDIDATES_SQL)
+                .param("outcomes", target.outcomes().stream().map(Enum::name).toList())
+                .param("age_enabled", ageEnabled ? 1 : 0)
+                .param("age_cutoff", cutoff)
+                .param("max_count", target.maxCount())
+                .param("limit", limit)
+                .query(DELIVERY_ROW_MAPPER)
+                .list();
+    }
+
+    @Override
+    public boolean purgeTerminal(ImportDeliveryId deliveryId, long expectedVersion) {
+        Objects.requireNonNull(deliveryId, "deliveryId");
+        if (expectedVersion < 0) {
+            throw new IllegalArgumentException("Expected import delivery version must not be negative");
+        }
+        return jdbc.sql("""
+                        DELETE FROM import_delivery
+                        WHERE delivery_id = :delivery_id
+                          AND state = 'TERMINAL'
+                          AND version = :expected_version
+                        """)
+                .param("delivery_id", deliveryId.value())
+                .param("expected_version", expectedVersion)
+                .update() == 1;
+    }
+
     private int updateTransition(ImportDeliveryTransition transition) {
         ImportDeliveryCheckpoint checkpoint = transition.checkpoint();
         ImportSnapshot snapshot = checkpoint.snapshot().orElse(null);
@@ -259,7 +326,8 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
                             next_attempt_at_ms = NULL,
                             last_error_code = :last_error_code,
                             updated_at_ms = :updated_at_ms,
-                            terminal_at_ms = CASE WHEN :next_state = 'TERMINAL' THEN :updated_at_ms ELSE NULL END
+                            terminal_at_ms = CASE WHEN :next_state = 'TERMINAL' THEN :updated_at_ms ELSE NULL END,
+                            purge_after_ms = CASE WHEN :next_state = 'TERMINAL' THEN :purge_after_ms ELSE NULL END
                         WHERE delivery_id = :delivery_id
                           AND state = :expected_state
                           AND version = :expected_version
@@ -280,6 +348,7 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
                 .param("stage_rejected_rows", nullable(stage, ImportStage::rejectedRows))
                 .param("last_error_code", transition.safeCode().orElse(null))
                 .param("updated_at_ms", transition.occurredAt().toEpochMilli())
+                .param("purge_after_ms", purgeAfter(transition))
                 .param("delivery_id", transition.deliveryId().value())
                 .param("expected_state", transition.expectedState().name())
                 .param("expected_version", transition.expectedVersion())
@@ -378,10 +447,22 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
                 && outcome != ImportTerminalOutcome.REJECTED) {
             throw new IllegalArgumentException("Pre-commit import delivery may terminate only as REJECTED");
         }
-        if (expected.ordinal() >= ImportDeliveryState.CANONICAL_COMMITTED.ordinal()
-                && outcome == ImportTerminalOutcome.REJECTED) {
-            throw new IllegalArgumentException("Canonically committed import delivery cannot become REJECTED");
+    }
+
+    private Long purgeAfter(ImportDeliveryTransition transition) {
+        if (transition.terminalOutcome().isEmpty()) {
+            return null;
         }
+        Duration retention = transition.terminalOutcome().orElseThrow() == ImportTerminalOutcome.SUCCEEDED
+                ? successRetention : nonSuccessRetention;
+        return retention == null ? null : transition.occurredAt().plus(retention).toEpochMilli();
+    }
+
+    private Duration optionalRetention(Duration value, String name) {
+        if (value != null && value.isNegative()) {
+            throw new IllegalArgumentException(name + " must not be negative");
+        }
+        return value == null || value.isZero() ? null : value;
     }
 
     private static ImportDelivery mapDelivery(ResultSet resultSet) throws SQLException {

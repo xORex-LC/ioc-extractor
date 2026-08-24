@@ -2,7 +2,6 @@
 <spotbugs-accepted-findings schemaVersion="2" engineVersion="4.10.3">
     <review-trigger id="cli-exception-boundary-change">Review when command logging, exit-code mapping, or Picocli exception propagation changes.</review-trigger>
     <review-trigger id="nio-direct-child-provenance-change">Review when a dereferenced path no longer comes directly from Files.list of a verified directory.</review-trigger>
-    <review-trigger id="ingestion-startup-failure-contract-change">Review when startup recovery stops being fail-closed or failure propagation and intake shutdown ordering changes.</review-trigger>
     <review-trigger id="immutable-snapshot-construction-change">Review when construction stops copying payload collections or an exposed snapshot becomes mutable.</review-trigger>
     <review-trigger id="artifact-filter-construction-contract-change">Review when ArtifactFilter gains singleton identity semantics or configured construction stops using its public constructor.</review-trigger>
     <review-trigger id="sql-identifier-grammar-change">Review when identifier or type allowlists, quoting, or generated DDL inputs accept new grammar.</review-trigger>
@@ -64,17 +63,6 @@
             <Method name="toArchivedSource" />
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
-    </finding>
-    <finding id="I4-SB-04" module="adapters/adapter-ingest" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="d56f19992d2df7d7a5419935e72e36b4" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="I4-SB-04" review="ingestion-startup-failure-contract-change">
-        <class name="com.iocextractor.adapter.in.ingest.IngestionStartupCoordinator" />
-        <method name="run" signature="(Lorg/springframework/boot/ApplicationArguments;)V" />
-        <anchor sourcePath="com/iocextractor/adapter/in/ingest/IngestionStartupCoordinator.java" startLine="97" bytecode="212" />
-        <suppression>
-            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
-            <Class name="com.iocextractor.adapter.in.ingest.IngestionStartupCoordinator" />
-            <Method name="run" />
-        </suppression>
-        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under I4-SB-04.</rationale>
     </finding>
     <finding id="SB04-043" module="adapters/adapter-csv" type="EI_EXPOSE_REP" hash="7517b4775548db7bcd7d6dd8b38e66fe" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="C2-REP-C" review="immutable-snapshot-construction-change">
         <class name="com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper" />

@@ -102,6 +102,24 @@ production packaging template включает `fixed/12h`; существующ
 `@Scheduled`, ShedLock, Spring Batch, новый module и новая runtime library не
 используются.
 
+## Managed dataframe import runtime
+
+При `ioc.dataframe-import.enabled=true` composition root собирает framework-free
+recognition/staging/promotion/finalization use cases с local ownership
+(SMB подключается следующим P8 slice),
+service/dataframe JDBC evidence и общим post-commit event path. Один
+`CanonicalIntakeStartupCoordinator` держит ordinary ingest и managed import
+закрытыми до обеих recovery-процедур и lifecycle admission. Periodic full scan
+и ledger reconcile остаются correctness backstop; WatchService,
+`CHANGE_NOTIFY` и application events только вызывают bounded `nudge()`.
+
+Global import drain и recovery используют один constant keyed lane, поэтому
+executor ordering не может обойти минимальный durable sequence. Runtime health
+и Micrometer gauges публикуют только phase, aggregate backlog, safe head retry
+facts и lane depth.
+Shutdown сначала закрывает watches/new hints, затем scheduler и ждёт уже
+принятую lane work до typed timeout.
+
 ## Зависимости
 
 **Зависит от:** selected platform/core/adapters modules, Spring Boot and its

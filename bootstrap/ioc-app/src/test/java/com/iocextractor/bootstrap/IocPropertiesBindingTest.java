@@ -58,8 +58,23 @@ class IocPropertiesBindingTest {
             assertThat(lifecycle.clock().maxBackwardSkew()).isEqualTo(Duration.ofSeconds(2));
             assertThat(lifecycle.clock().maxClampDuration()).isEqualTo(Duration.ofSeconds(30));
             assertThat(context.getBean(IocProperties.class).dataframeImport().enabled()).isFalse();
+            var importRetention = context.getBean(IocProperties.class)
+                    .dataframeImport().runtime().retention();
+            assertThat(importRetention.successful().maxAge()).isEqualTo(Duration.ofDays(30));
+            assertThat(importRetention.unsuccessful().maxAge()).isEqualTo(Duration.ofDays(90));
+            assertThat(importRetention.successful().action()).isEqualTo(RetentionActionType.DELETE);
             assertThat(context).doesNotHaveBean(DataframeImportCatalog.class);
         });
+    }
+
+    @Test
+    void dataframeImportArchiveRetentionRequiresDestination() {
+        contextRunner("ioc.dataframe-import.runtime.retention.successful.action=archive")
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .filteredOn(error -> error.getField().contains("retention.successful"))
+                        .singleElement()
+                        .satisfies(error -> assertThat(error.getDefaultMessage())
+                                .contains("archive-dir")));
     }
 
     @Test

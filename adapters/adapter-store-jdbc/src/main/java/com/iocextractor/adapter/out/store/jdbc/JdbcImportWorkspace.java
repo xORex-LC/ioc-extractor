@@ -2,6 +2,9 @@ package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.dataframeimport.model.ImportSha256;
 import com.iocextractor.application.dataframeimport.model.ImportStage;
+import com.iocextractor.application.dataframeimport.model.ImportContractPin;
+import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
+import com.iocextractor.application.dataframeimport.model.ImportSnapshot;
 import com.iocextractor.application.dataframeimport.model.ImportWorkspaceCapacity;
 import com.iocextractor.application.dataframeimport.model.ImportWorkspaceLimits;
 import com.iocextractor.application.port.out.dataframeimport.CreateImportWorkspaceCommand;
@@ -28,6 +31,7 @@ import java.sql.Statement;
 import java.time.Clock;
 import java.util.HexFormat;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
@@ -133,6 +137,57 @@ public final class JdbcImportWorkspace implements ImportWorkspace {
     }
 
     @Override
+    public Optional<ImportStage> adoptSealed(ImportDeliveryId deliveryId,
+                                             ImportSnapshot snapshot,
+                                             ImportContractPin contract) {
+        Objects.requireNonNull(deliveryId, "deliveryId");
+        Objects.requireNonNull(snapshot, "snapshot");
+        Objects.requireNonNull(contract, "contract");
+        ImportWorkspaceLayout.WorkspacePaths paths = layout.paths(deliveryId);
+        if (!Files.exists(paths.sealed())) {
+            return Optional.empty();
+        }
+        if (!Files.isRegularFile(paths.sealed())) {
+            throw integrityFailure("Recoverable import stage is not a regular sealed file");
+        }
+        String url = "jdbc:sqlite:file:" + paths.sealed().toAbsolutePath() + "?mode=ro";
+        try (Connection connection = DriverManager.getConnection(url);
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT snapshot_sha256, snapshot_size, contract_id, contract_version,
+                            contract_fingerprint, source_row_count, accepted_count,
+                            rejected_count, sealed_at_ms
+                     FROM stage_meta WHERE delivery_id = ?
+                     """)) {
+            statement.setString(1, deliveryId.value());
+            try (ResultSet row = statement.executeQuery()) {
+                boolean valid = row.next()
+                        && snapshot.digest().value().equals(row.getString("snapshot_sha256"))
+                        && snapshot.size() == row.getLong("snapshot_size")
+                        && contract.id().value().equals(row.getString("contract_id"))
+                        && contract.version() == row.getInt("contract_version")
+                        && contract.fingerprint().value().equals(row.getString("contract_fingerprint"))
+                        && row.getObject("sealed_at_ms") != null;
+                if (!valid) {
+                    throw integrityFailure("Recoverable import stage metadata contradicts pinned evidence");
+                }
+                ImportStage stage = new ImportStage(
+                        paths.reference(), digest(paths.sealed()), row.getLong("source_row_count"),
+                        row.getLong("accepted_count"), row.getLong("rejected_count"));
+                if (row.next()) {
+                    throw integrityFailure("Recoverable import stage contains duplicate metadata");
+                }
+                return Optional.of(stage);
+            }
+        } catch (ImportWorkspaceException failure) {
+            throw failure;
+        } catch (SQLException failure) {
+            throw new ImportWorkspaceException(
+                    ImportWorkspaceException.Reason.STAGE_INTEGRITY_FAILED,
+                    "Cannot adopt recoverable import stage", failure);
+        }
+    }
+
+    @Override
     public ImportWorkspaceCapacity capacity() {
         long used = workspaceBytes();
         ImportWorkspaceCapacity.State previous = capacityState.get();
@@ -149,6 +204,18 @@ public final class JdbcImportWorkspace implements ImportWorkspace {
         }
         capacityState.set(next);
         return new ImportWorkspaceCapacity(used, limits.maximumWorkspaceBytes(), next);
+    }
+
+    @Override
+    public void discard(ImportDeliveryId deliveryId) {
+        Objects.requireNonNull(deliveryId, "deliveryId");
+        ImportWorkspaceLayout.WorkspacePaths paths = layout.paths(deliveryId);
+        try {
+            deleteWorkspace(paths.building());
+            deleteWorkspace(paths.sealed());
+        } catch (IOException failure) {
+            throw storageFailure("Cannot discard import workspace", failure);
+        }
     }
 
     private void insertMeta(Connection connection, CreateImportWorkspaceCommand command) throws SQLException {

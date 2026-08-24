@@ -133,6 +133,12 @@ runtime JDBC drivers.
   stores in one opaque per-delivery SQLite file. Batched staging is bounded by
   parser, row/error, per-stage and aggregate watermarks; sealing checkpoints and
   verifies SQLite before atomic rename and digest pinning.
+- `JdbcImportCommitEvidenceStore` читает только safe aggregate receipt и row
+  issue codes для forward finalization; `JdbcImportStatusReader` выполняет
+  indexed aggregate/head queries без locators, filenames, hashes или IOC values.
+  Terminal retention выполняет bounded age/count selection per outcome target,
+  удаляет dataframe receipt лишь после успешного delete/archive protected
+  source/report unit и затем CAS-purge service-ledger row.
 - `JdbcExportRunLedger` stores immutable-slice formation checkpoints in
   `export_run`. A partial unique index enforces one global active run; all state
   changes use expected-status CAS. `COMPLETED`/`SKIPPED` and `export_progress`

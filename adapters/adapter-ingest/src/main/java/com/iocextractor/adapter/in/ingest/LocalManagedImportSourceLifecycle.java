@@ -51,7 +51,7 @@ import java.util.Set;
  */
 public final class LocalManagedImportSourceLifecycle implements ManagedImportSourceLifecycle {
 
-    private static final String REFERENCE_PREFIX = "local-snapshot-v1:";
+    static final String REFERENCE_PREFIX = LocalImportSnapshotPathResolver.REFERENCE_PREFIX;
     private static final Set<PosixFilePermission> PRIVATE_DIRECTORY_PERMISSIONS = EnumSet.of(
             PosixFilePermission.OWNER_READ,
             PosixFilePermission.OWNER_WRITE,
@@ -185,26 +185,36 @@ public final class LocalManagedImportSourceLifecycle implements ManagedImportSou
         }
         Path outcomeRoot = command.outcome() == com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome.REJECTED
                 ? quarantineRoot : terminalRoot;
-        Path target = outcomeRoot.resolve(token).resolve("source");
-        ownership.claim(claimed, target);
-        protectDirectory(requiredParent(target));
+        Path terminalUnit = outcomeRoot.resolve(token);
+        if (!Files.isRegularFile(terminalUnit.resolve("source.csv"), LinkOption.NOFOLLOW_LINKS)
+                || !Files.isRegularFile(terminalUnit.resolve("report.json"), LinkOption.NOFOLLOW_LINKS)) {
+            throw new IocExtractorException("Protected import terminal unit is not published");
+        }
+        try {
+            Files.delete(claimed);
+            Files.deleteIfExists(requiredParent(claimed));
+        } catch (IOException failure) {
+            throw storageFailure("Failed to release finalized local import source", failure);
+        }
+    }
+
+    @Override
+    public void purgeSnapshot(ImportDeliveryId deliveryId, ImportSourceId sourceId) {
+        Objects.requireNonNull(deliveryId, "deliveryId");
+        requiredInbox(sourceId);
+        Path directory = snapshotRoot.resolve(deliveryToken(deliveryId));
+        try {
+            Files.deleteIfExists(directory.resolve("snapshot.part"));
+            Files.deleteIfExists(directory.resolve("snapshot.csv"));
+            Files.deleteIfExists(directory);
+        } catch (IOException failure) {
+            throw storageFailure("Failed to purge local import snapshot", failure);
+        }
     }
 
     /** Resolves only adapter-issued immutable references for the CSV reader. */
     public Path resolveSnapshot(ImportSnapshotReference reference) {
-        Objects.requireNonNull(reference, "reference");
-        if (!reference.value().startsWith(REFERENCE_PREFIX)) {
-            throw new IllegalArgumentException("Unsupported local import snapshot reference");
-        }
-        String token = reference.value().substring(REFERENCE_PREFIX.length());
-        if (!token.matches("[0-9a-f]{64}")) {
-            throw new IllegalArgumentException("Malformed local import snapshot reference");
-        }
-        Path resolved = snapshotRoot.resolve(token).resolve("snapshot.csv").normalize();
-        if (!resolved.startsWith(snapshotRoot)) {
-            throw new IllegalArgumentException("Local import snapshot escapes its private root");
-        }
-        return resolved;
+        return new LocalImportSnapshotPathResolver(snapshotRoot).resolve(reference);
     }
 
     private ImportSnapshot materialize(ImportDeliveryId deliveryId, Path claimed, Path published) {
@@ -360,7 +370,7 @@ public final class LocalManagedImportSourceLifecycle implements ManagedImportSou
     }
 
     private ImportSnapshotReference reference(ImportDeliveryId deliveryId) {
-        return new ImportSnapshotReference(REFERENCE_PREFIX + deliveryToken(deliveryId));
+        return referenceFor(deliveryId);
     }
 
     private Path requiredParent(Path path) {
@@ -379,11 +389,15 @@ public final class LocalManagedImportSourceLifecycle implements ManagedImportSou
         return name.toString();
     }
 
-    private String deliveryToken(ImportDeliveryId deliveryId) {
+    static ImportSnapshotReference referenceFor(ImportDeliveryId deliveryId) {
+        return LocalImportSnapshotPathResolver.referenceFor(deliveryId);
+    }
+
+    static String deliveryToken(ImportDeliveryId deliveryId) {
         return sha256(deliveryId.value());
     }
 
-    private static CopyEvidence copyAndDigest(Path source, Path target, long limit) throws IOException {
+    static CopyEvidence copyAndDigest(Path source, Path target, long limit) throws IOException {
         Set<OpenOption> options = Set.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
         MessageDigest digest = newDigest();
         long size = 0;
@@ -406,7 +420,7 @@ public final class LocalManagedImportSourceLifecycle implements ManagedImportSou
         return new CopyEvidence(HexFormat.of().formatHex(digest.digest()), size);
     }
 
-    private static CopyEvidence digest(Path path, long limit) throws IOException {
+    static CopyEvidence digest(Path path, long limit) throws IOException {
         MessageDigest digest = newDigest();
         long size = 0;
         try (InputStream input = Files.newInputStream(path)) {
