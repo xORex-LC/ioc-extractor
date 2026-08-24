@@ -49,6 +49,11 @@ URL/IP or multi-hash fields remain one atomic artifact row.
 Local and SMB sources implement the same application lifecycle port, but retain
 transport-specific ownership mechanics.
 
+Candidate selection is intentionally independent of filename and suffix. A
+producer-side temporary file must therefore stay outside the configured source
+directory until one atomic handoff; a stable `.part` inside the source is still
+a delivery candidate.
+
 For SMB, the adapter first compares the listed candidate's leaf, size,
 last-write time and server file ID, then renames it on the server into the
 adapter-owned namespace. The destination name is a SHA-256 token of the durable

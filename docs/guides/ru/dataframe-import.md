@@ -62,10 +62,12 @@ intake повторно проверяет live catalog, source evidence и acti
 
 ## Подача local delivery
 
-Скопируйте файл под временным именем внутри настроенного source-каталога,
-завершите и fsync-ните его, затем атомарно переименуйте в окончательное имя
-`.csv`. Не пишите сразу в окончательное имя и не помещайте файлы в `processing`,
-`snapshots`, `staging`, `terminal` или `quarantine`.
+Сформируйте и fsync-ните файл вне настроенного source-каталога, но на том же
+filesystem, затем атомарно переместите завершённый файл в этот каталог. Не
+используйте имя `.part` внутри наблюдаемого каталога: filename и suffix не
+выбирают contract, поэтому каждый стабильный regular file является delivery
+candidate. Не помещайте producer files в `processing`, `snapshots`, `staging`,
+`terminal` или `quarantine`.
 
 Сервис ждёт стабильную metadata, атомарно claim-ит файл и создаёт private
 immutable snapshot до parsing. Каждый стабилизированный CSV является отдельной
@@ -77,6 +79,11 @@ delivery, включая byte-identical повторную подачу.
 list, read, rename/move и create-directory внутри этого каталога и его private
 namespace `.ioc-managed-import`. Producer и consumer должны использовать один
 server-side filesystem, чтобы claim выполнялся rename без copy/delete.
+Предпочтительно загружать файл в отдельный producer-owned sibling staging
+каталог и выполнять один server-side rename в настроенный source. Если producer
+вынужден писать сразу в source-каталог, его максимальная пауза записи должна
+быть меньше stability quiet period; если это невозможно гарантировать,
+увеличьте quiet period.
 
 Включите SMB encryption, если доверие к сети не обеспечено другим
 документированным control. `CHANGE_NOTIFY` уменьшает latency; complete listing

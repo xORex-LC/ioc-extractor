@@ -61,10 +61,12 @@ revalidates the live catalog, source evidence and active database state.
 
 ## Submit a local delivery
 
-Copy to a temporary name inside the configured source directory, finish and
-fsync the file, then rename it atomically to its final `.csv` name. Do not write
-directly to the final name and do not place files in `processing`, `snapshots`,
-`staging`, `terminal` or `quarantine`.
+Build and fsync the file outside the configured source directory, but on the
+same filesystem, then atomically move the completed file into that directory.
+Do not use a `.part` name inside the watched directory: filenames and suffixes
+do not select a contract, so every stable regular file there is a delivery
+candidate. Never place producer files in `processing`, `snapshots`, `staging`,
+`terminal` or `quarantine`.
 
 The service waits for stable metadata, atomically claims the file and creates a
 private immutable snapshot before parsing. Each stabilized CSV is a distinct
@@ -76,6 +78,11 @@ Use a dedicated directory on the configured share. The service account needs
 list, read, rename/move and create-directory rights within that directory and
 its private `.ioc-managed-import` namespace. Producer and consumer must be on
 the same server-side filesystem so claim can use rename without copy/delete.
+Prefer uploading into a producer-owned sibling staging directory and then using
+one server-side rename into the configured source. If the producer must stream
+directly into the source directory, its maximum write pause must stay below the
+configured stability quiet period; increase that period when this cannot be
+guaranteed.
 
 Enable SMB encryption unless the network is trusted by another documented
 control. `CHANGE_NOTIFY` reduces latency; complete listing remains enabled and
