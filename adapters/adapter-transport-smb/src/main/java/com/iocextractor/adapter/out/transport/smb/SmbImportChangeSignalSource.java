@@ -39,7 +39,7 @@ public final class SmbImportChangeSignalSource implements ImportChangeSignalSour
                         handler(source.sourceId(), signalConsumer)));
             }
         } catch (RuntimeException failure) {
-            close();
+            closeAfterFailedStart(failure);
             throw failure;
         }
     }
@@ -61,6 +61,14 @@ public final class SmbImportChangeSignalSource implements ImportChangeSignalSour
         watches.clear();
         if (failure != null) {
             throw failure;
+        }
+    }
+
+    private void closeAfterFailedStart(RuntimeException primaryFailure) {
+        try {
+            close();
+        } catch (RuntimeException closeFailure) {
+            primaryFailure.addSuppressed(closeFailure);
         }
     }
 

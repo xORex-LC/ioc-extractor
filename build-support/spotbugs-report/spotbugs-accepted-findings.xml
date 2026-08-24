@@ -826,6 +826,28 @@
         </suppression>
         <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-B.</rationale>
     </finding>
+    <finding id="DATA-IMPORT-P8-SB-001" module="adapters/adapter-transport-smb" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="dc137b0ff7d60ed5b9f8da8b2502cb0a" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P8-CHANGE-NOTIFY" review="cleanup-ownership-accounting-change">
+        <class name="com.iocextractor.adapter.out.transport.smb.SmbImportChangeSignalSource" />
+        <method name="start" signature="(Ljava/util/function/Consumer;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbImportChangeSignalSource.java" startLine="43" bytecode="112" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.adapter.out.transport.smb.SmbImportChangeSignalSource" />
+            <Method name="start" />
+        </suppression>
+        <rationale>Reviewed adapter-boundary signal: partial CHANGE_NOTIFY registration is rolled back, cleanup failures are suppressed onto the primary registration failure, and the primary failure is propagated so bootstrap cannot retain a partially started hint set.</rationale>
+    </finding>
+    <finding id="DATA-IMPORT-P8-SB-002" module="adapters/adapter-transport-smb" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="a005e9ffb2944a77926eb16f131df758" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P8-CHANGE-NOTIFY" review="cleanup-ownership-accounting-change">
+        <class name="com.iocextractor.adapter.out.transport.smb.SmbImportChangeSignalSource" />
+        <method name="close" signature="()V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbImportChangeSignalSource.java" startLine="63" bytecode="80" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.adapter.out.transport.smb.SmbImportChangeSignalSource" />
+            <Method name="close" />
+        </suppression>
+        <rationale>Reviewed cleanup-boundary signal: every owned watch is closed in reverse order, the first cleanup failure remains primary, later failures are attached as suppressed, and the lifecycle owner decides shutdown handling.</rationale>
+    </finding>
     <finding id="SB04-045" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="d84b636c441d973b1edeaf94d00e4fb7" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="C2-REP-C" review="immutable-snapshot-construction-change">
         <class name="com.iocextractor.bootstrap.ExportPlanCatalog" />
         <method name="plans" signature="()Ljava/util/List;" />

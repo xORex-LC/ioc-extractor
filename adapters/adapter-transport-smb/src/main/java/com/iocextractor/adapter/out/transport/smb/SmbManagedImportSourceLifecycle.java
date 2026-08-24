@@ -240,11 +240,12 @@ public final class SmbManagedImportSourceLifecycle implements ManagedImportSourc
             SmbImportSourceDefinition source,
             String claimedPath,
             CandidateEvidence candidate) {
-        Path published = published(deliveryId);
+        Path deliveryDirectory = publishedDirectory(deliveryId);
+        Path published = deliveryDirectory.resolve("snapshot.csv");
         Path part = published.resolveSibling("snapshot.part");
         try {
-            Files.createDirectories(published.getParent());
-            protectDirectory(published.getParent());
+            Files.createDirectories(deliveryDirectory);
+            protectDirectory(deliveryDirectory);
             Files.deleteIfExists(part);
             SmbRemoteEntry remote = sessions.withClient(source.endpoint(), "import-stat-claimed",
                     client -> client.stat(claimedPath)
@@ -282,7 +283,7 @@ public final class SmbManagedImportSourceLifecycle implements ManagedImportSourc
                 Files.deleteIfExists(part);
             }
             protectFile(published);
-            force(published.getParent());
+            force(deliveryDirectory);
             ImportSnapshot snapshot = inspect(deliveryId, published);
             if (snapshot.size() != evidence.size()
                     || !snapshot.digest().value().equals(evidence.sha256())) {
@@ -327,7 +328,11 @@ public final class SmbManagedImportSourceLifecycle implements ManagedImportSourc
     }
 
     private Path published(ImportDeliveryId deliveryId) {
-        return snapshotRoot.resolve(deliveryToken(deliveryId)).resolve("snapshot.csv");
+        return publishedDirectory(deliveryId).resolve("snapshot.csv");
+    }
+
+    private Path publishedDirectory(ImportDeliveryId deliveryId) {
+        return snapshotRoot.resolve(deliveryToken(deliveryId));
     }
 
     private String managed(SmbImportSourceDefinition source, String phase) {
