@@ -32,6 +32,7 @@ import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
 import com.iocextractor.platform.events.ControlEventObserver;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -272,7 +273,7 @@ public class SyncConfig {
             ArtifactPublishUseCase useCase,
             TransportRegistry transports,
             SyncHealthState healthState,
-            KeyedSerialExecutor syncPublishKeyedExecutor,
+            @Qualifier("syncKeyedExecutor") KeyedSerialExecutor syncPublishKeyedExecutor,
             IocProperties props) {
         return new DaemonPublishScheduler(
                 publishTargets(props), useCase, transports, healthState,
@@ -312,7 +313,7 @@ public class SyncConfig {
             + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
     public SliceCompletedPublishListener sliceCompletedPublishListener(
             ArtifactPublishUseCase useCase,
-            KeyedSerialExecutor syncKeyedExecutor,
+            @Qualifier("syncKeyedExecutor") KeyedSerialExecutor syncKeyedExecutor,
             ControlEventObserver observer,
             IocProperties props) {
         return new SliceCompletedPublishListener(
@@ -326,7 +327,7 @@ public class SyncConfig {
             + "'${ioc.storage.service.type:disabled}' == 'jdbc'")
     public RemoteChangeFetchListener remoteChangeFetchListener(
             RemoteFetchUseCase useCase,
-            KeyedSerialExecutor syncKeyedExecutor,
+            @Qualifier("syncKeyedExecutor") KeyedSerialExecutor syncKeyedExecutor,
             ControlEventObserver observer,
             SyncHealthState healthState,
             RemoteFetchInFlightRegistry inFlight) {
@@ -344,7 +345,7 @@ public class SyncConfig {
             SyncHealthState state,
             PublishLedger ledger,
             CompletedSliceCatalog catalog,
-            KeyedSerialExecutor syncKeyedExecutor,
+            @Qualifier("syncKeyedExecutor") KeyedSerialExecutor syncKeyedExecutor,
             ObjectProvider<SliceRetentionGuard> retentionGuard,
             IocProperties props) {
         return new SyncHealthIndicator(

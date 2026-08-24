@@ -426,7 +426,7 @@ class DataframeImportRuntimeConfiguration {
             DataframeImportCatalog catalog,
             DataframeImportAdmissionService admission,
             ManagedImportSourceLifecycle sources,
-            KeyedSerialExecutor dataframeImportLanes,
+            @Qualifier("dataframeImportLanes") KeyedSerialExecutor dataframeImportLanes,
             Clock clock) {
         var detector = new DataframeImportDetectionService(
                 sources, admission, clock,
@@ -441,7 +441,7 @@ class DataframeImportRuntimeConfiguration {
     DataframeImportDrainCoordinator dataframeImportDrainCoordinator(
             @Qualifier("processNextDataframeImportUseCase")
             ProcessNextDataframeImportUseCase processor,
-            KeyedSerialExecutor dataframeImportLanes,
+            @Qualifier("dataframeImportLanes") KeyedSerialExecutor dataframeImportLanes,
             IocProperties properties) {
         return new DataframeImportDrainCoordinator(
                 processor, dataframeImportLanes,
@@ -452,7 +452,7 @@ class DataframeImportRuntimeConfiguration {
     @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon'")
     DataframeImportRecoveryCoordinator dataframeImportRecoveryCoordinator(
             @Qualifier("recoverDataframeImportsUseCase") RecoverDataframeImportsUseCase recovery,
-            KeyedSerialExecutor dataframeImportLanes,
+            @Qualifier("dataframeImportLanes") KeyedSerialExecutor dataframeImportLanes,
             IocProperties properties) {
         return new DataframeImportRecoveryCoordinator(
                 recovery,
@@ -476,7 +476,7 @@ class DataframeImportRuntimeConfiguration {
             DataframeImportRecoveryCoordinator recoveryCoordinator,
             RunDataframeImportRetentionUseCase retention,
             ManagedImportSourceAdapters adapters,
-            KeyedSerialExecutor dataframeImportLanes,
+            @Qualifier("dataframeImportLanes") KeyedSerialExecutor dataframeImportLanes,
             DataframeImportRuntimeState state,
             DiagnosticSink diagnostics,
             IocProperties properties,
@@ -495,7 +495,7 @@ class DataframeImportRuntimeConfiguration {
     DataframeImportHealthIndicator dataframeImportHealthIndicator(
             QueryDataframeImportStatusUseCase status,
             DataframeImportRuntimeState state,
-            KeyedSerialExecutor dataframeImportLanes) {
+            @Qualifier("dataframeImportLanes") KeyedSerialExecutor dataframeImportLanes) {
         return new DataframeImportHealthIndicator(status, state, dataframeImportLanes);
     }
 
@@ -504,7 +504,7 @@ class DataframeImportRuntimeConfiguration {
     DataframeImportMetrics dataframeImportMetrics(
             MeterRegistry registry,
             DataframeImportRuntimeState state,
-            KeyedSerialExecutor dataframeImportLanes) {
+            @Qualifier("dataframeImportLanes") KeyedSerialExecutor dataframeImportLanes) {
         return new DataframeImportMetrics(registry, state, dataframeImportLanes);
     }
 }
