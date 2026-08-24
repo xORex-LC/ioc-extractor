@@ -229,11 +229,11 @@ ioc:
       detect:
         use-watch-service: false
         use-change-notifications: true
-        reconcile-interval: 5s
+        reconcile-interval: 2s
       stability:
         quiet-period: 2s
       retry:
-        delay: 5s
+        delay: 2s
       limits:
         maximum-snapshot-bytes: 268435456
         recovery-batch-size: 100
@@ -301,10 +301,12 @@ ioc:
     enabled: true
     root: "./var/export"
     trigger:
-      type: interval
-      interval: 5m
-      quiet-period: 5m
-      max-cap: 1h
+      # Canonical-change events are the fast path. One second coalesces a burst
+      # into one slice; the ten-second interval is only a lost-event backstop.
+      type: quiet-period
+      interval: 10s
+      quiet-period: 1s
+      max-cap: 30s
     profiles:
       - name: reputation-lists
         output-mode: complete
@@ -330,10 +332,10 @@ ioc:
       # Polling is the correctness baseline. WatchService remains an opt-in
       # latency optimization for local filesystems with reliable events.
       use-watch-service: false
-      reconcile-interval: 30s
+      reconcile-interval: 5s
       max-messages-per-poll: 50
     stability:
-      quiet-period: 10s
+      quiet-period: 2s
     retry:
       max-attempts: 3
       backoff: 5s
@@ -384,11 +386,11 @@ ioc:
     endpoints: []
     fetch:
       enabled: false
-      interval: 1m
+      interval: 10s
       sources: []
     publish:
       enabled: false
-      interval: 5m
+      interval: 10s
       targets: []
 
   # To enable SMB, replace the complete sync block above with this example.
@@ -412,7 +414,7 @@ ioc:
   #         idle-timeout: 5m
   #   fetch:
   #     enabled: true
-  #     interval: 1m
+  #     interval: 10s
   #     sources:
   #       - name: incoming-ioc
   #         endpoint: delivery-share
@@ -421,10 +423,10 @@ ioc:
   #         exclude: [ "*.tmp", "*.part", ".*" ]
   #         change-notify:
   #           enabled: false
-  #           debounce: 3s
+  #           debounce: 1s
   #   publish:
   #     enabled: true
-  #     interval: 5m
+  #     interval: 10s
   #     targets:
   #       - name: reputation-delivery
   #         endpoint: delivery-share

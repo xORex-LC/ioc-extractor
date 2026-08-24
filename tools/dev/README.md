@@ -18,7 +18,7 @@
 | `runtime.sh … up|down|status|reset` | Управлять изолированным daemon под `.dev/runtime` |
 | `submit.sh … SOURCE` | Атомарно подать fixture/source в inbox developer daemon |
 | `database.sh … shell|schema|tables` | Read-only inspection service/dataframe SQLite |
-| `smoke.sh [cli|oneshot|daemon|all]` | Проверить public CLI, canonical storage/export и daemon ingest/health |
+| `smoke.sh [cli|oneshot|daemon|import|all]` | Проверить public CLI, canonical storage/export, daemon ingest/health и полный local managed-import flow |
 | `lifecycle-smoke.sh …` | Через daemon проверить active→history expiry, bounded retention, projection/export convergence, query plans и ID non-reuse |
 | `dataframe-import-load.sh …` | Выполнить opt-in 100k/1M полный JDBC import profile, проверить SLO/heap/query plans и сохранить evidence |
 | `logs.sh …` | Читать и фильтровать ECS JSON по level/event/run/diagnostic |
@@ -75,6 +75,11 @@ remote sync и никогда не использует systemd/sudo.
 Daemon smoke намеренно использует polling backstop (`use-watch-service=false`),
 чтобы проверять переносимый correctness path независимо от WSL/filesystem watch
 семантики. Обычный `runtime.sh up` не меняет application default.
+
+Managed-import smoke, напротив, включает local WatchService как latency hint и
+оставляет двухсекундный complete-listing reconcile. Он атомарно публикует CSV,
+ожидает защищённую terminal source/report unit, проверяет canonical projection и
+повторно проверяет daemon health.
 
 Lifecycle smoke также использует только public daemon ingestion. Он читает
 SQLite в read-only режиме для assertions/query plans, сохраняет report под

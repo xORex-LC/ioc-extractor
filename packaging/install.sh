@@ -13,6 +13,7 @@
 #   <prefix>/current              atomic symlink to the active release
 #   <prefix>/etc/                 operator config + root-owned installation marker
 #   <prefix>/var/                 db/ export/ inbox/ processing/ done/ failed/ ledger/ logs/
+#                                 import/{inbox,processing,snapshots,staging,terminal,quarantine}/
 #   <prefix>/dataframe/           generated CSV projections
 #
 # Idempotent: re-running upgrades the jar and unit; existing config is preserved
@@ -291,6 +292,9 @@ mkdir -p \
   "${PREFIX}/var/db" "${PREFIX}/var/export" \
   "${PREFIX}/var/inbox" "${PREFIX}/var/processing" "${PREFIX}/var/done" \
   "${PREFIX}/var/failed" "${PREFIX}/var/ledger" "${PREFIX}/var/logs" \
+  "${PREFIX}/var/import/inbox" "${PREFIX}/var/import/processing" \
+  "${PREFIX}/var/import/snapshots" "${PREFIX}/var/import/staging" \
+  "${PREFIX}/var/import/terminal" "${PREFIX}/var/import/quarantine" \
   "${PREFIX}/dataframe"
 ioc_write_marker "${PREFIX}" "${SERVICE}" "${RUN_USER}"
 

@@ -152,6 +152,13 @@ if UNSAFE_JVM_OUTPUT="$("${REPO_ROOT}/tools/dev/runtime.sh" \
 fi
 grep -Fq 'unsupported --jvm-arg' <<< "${UNSAFE_JVM_OUTPUT}" \
   || fail "runtime did not reject an unsafe JVM argument at validation"
+if INDEXED_PROPERTY_OUTPUT="$("${REPO_ROOT}/tools/dev/runtime.sh" \
+    --workspace "${WORKSPACE}/indexed-runtime" \
+    --set 'ioc.example[0].name=value' status 2>&1)"; then
+  fail "stopped runtime unexpectedly reported success for indexed-property validation"
+fi
+grep -Fq 'STOPPED' <<< "${INDEXED_PROPERTY_OUTPUT}" \
+  || fail "runtime rejected a safe indexed JVM property"
 "${REPO_ROOT}/tools/dev/smoke.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/lifecycle-smoke.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/dataframe-import-load.sh" --help >/dev/null
@@ -195,6 +202,8 @@ make --no-print-directory -s -C "${REPO_ROOT}" help \
   | grep -q 'release-notes-context' || fail "Make help lost the release-notes context command"
 make --no-print-directory -s -C "${REPO_ROOT}" help \
   | grep -q 'lifecycle-load' || fail "Make help lost the lifecycle load command"
+make --no-print-directory -s -C "${REPO_ROOT}" help \
+  | grep -q 'dataframe-import-smoke' || fail "Make help lost the managed import smoke command"
 if grep -REq '^[[:space:]]*(run:[[:space:]]*)?make([[:space:]]|$)' \
     "${REPO_ROOT}/.github/workflows"; then
   fail "GitHub workflow depends on the developer-facing Make facade"

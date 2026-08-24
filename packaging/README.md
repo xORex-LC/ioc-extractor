@@ -63,6 +63,8 @@ The installer creates one self-contained prefix:
 │   ├── db/                      # canonical dataframe + service ledgers
 │   ├── export/                  # immutable slices and delivery state
 │   ├── inbox/ processing/ done/ failed/
+│   ├── import/                  # private managed-import work and evidence
+│   │   └── inbox/ processing/ snapshots/ staging/ terminal/ quarantine/
 │   └── ledger/ logs/
 └── dataframe/                   # generated mutable CSV projections
 ```
@@ -70,6 +72,16 @@ The installer creates one self-contained prefix:
 Release files are root-owned and immutable. The service account owns writable
 runtime state. `etc/`, `var/` and `dataframe/` stay outside release directories
 so activation never replaces operator data.
+
+Fresh installs and upgrades create the complete `var/import` tree as private
+`0750` service-owned state. The production template is event-first wherever a
+reliable doorbell exists: SMB `CHANGE_NOTIFY`, canonical-change and
+slice-completed events provide latency, while 2s import, 5s local-ingest and 10s
+export/sync scans remain correctness backstops. Local WatchService remains an
+explicit opt-in because it has no complete-rescan backstop of its own. File
+stability is 2s and export burst coalescing is 1s; zero-duration windows are
+intentionally not used because they can claim a producer's in-place copy or
+create redundant slices.
 
 This marked layout was introduced in 0.2.0 and is retained by the 0.3.x line.
 The 0.1.0 single-directory layout (`lib/ioc-app-0.1.0.jar`) is intentionally not

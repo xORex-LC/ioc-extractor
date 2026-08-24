@@ -79,6 +79,31 @@ grep -Fq 'receipt-retention: 30d' <<< "${FRESH_LIFECYCLE}" \
   || fail "fresh-install receipt retention is not 30d"
 grep -Fq 'mode: disabled' <<< "${CLASSPATH_LIFECYCLE}" \
   || fail "upgrade-compatible classpath lifecycle default is not disabled"
+for import_dir in inbox processing snapshots staging terminal quarantine; do
+  assert_contains "${PACKAGING_DIR}/install.sh" \
+    "\${PREFIX}/var/import/${import_dir}" \
+    "fresh installer lost private managed-import directory"
+  assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
+    "\${PREFIX}/var/import/${import_dir}" \
+    "upgrade deploy lost managed-import directory reconciliation"
+done
+assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
+  "install -d -o \"\${RUN_USER}\" -g \"\${RUN_GROUP}\" -m 0750" \
+  "upgrade deploy lost private managed-import directory reconciliation"
+
+FRESH_EXPORT="$(sed -n '/^  export:/,/^  ingestion:/p' "${FRESH_CONFIG}")"
+FRESH_INGEST="$(sed -n '/^  ingestion:/,/^  lifecycle:/p' "${FRESH_CONFIG}")"
+FRESH_IMPORT="$(sed -n '/^  dataframe-import:/,/^  export:/p' "${FRESH_CONFIG}")"
+grep -Fq 'quiet-period: 1s' <<< "${FRESH_EXPORT}" \
+  || fail "fresh production export lost the one-second event coalescing window"
+grep -Fq 'interval: 10s' <<< "${FRESH_EXPORT}" \
+  || fail "fresh production export lost its ten-second correctness backstop"
+grep -Fq 'use-watch-service: false' <<< "${FRESH_INGEST}" \
+  || fail "fresh local ingestion lost its complete polling correctness path"
+grep -Fq 'reconcile-interval: 5s' <<< "${FRESH_INGEST}" \
+  || fail "fresh local ingestion lost its bounded correctness backstop"
+grep -Fq 'reconcile-interval: 2s' <<< "${FRESH_IMPORT}" \
+  || fail "fresh managed import lost its bounded correctness backstop"
 
 # Existing configuration is operator-owned: both privileged deployment paths
 # must stage a changed template as .new rather than overwrite it implicitly.

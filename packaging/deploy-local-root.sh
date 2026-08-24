@@ -138,6 +138,11 @@ fi
 RUN_USER="$(stat -c '%U' "${PREFIX}/var")"
 RUN_GROUP="$(stat -c '%G' "${PREFIX}/var")"
 ioc_validate_service_user "${RUN_USER}" || die "unsafe installed service account"
+install -d -o "${RUN_USER}" -g "${RUN_GROUP}" -m 0750 \
+  "${PREFIX}/var/import" \
+  "${PREFIX}/var/import/inbox" "${PREFIX}/var/import/processing" \
+  "${PREFIX}/var/import/snapshots" "${PREFIX}/var/import/staging" \
+  "${PREFIX}/var/import/terminal" "${PREFIX}/var/import/quarantine"
 MARKER="$(ioc_marker_path "${PREFIX}")"
 if [[ -e "${MARKER}" ]]; then
   ioc_is_valid_marker "${PREFIX}" "${SERVICE}" "${RUN_USER}" \

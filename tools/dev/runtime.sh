@@ -52,7 +52,7 @@ for value in "${HEALTH_ATTEMPTS}" "${HEALTH_INTERVAL}"; do
   [[ "${value}" =~ ^[1-9][0-9]*$ ]] || dev_die "health timing values must be positive integers"
 done
 for property in "${JAVA_PROPERTIES[@]}"; do
-  [[ "${property}" =~ ^[A-Za-z0-9_.-]+=[^[:cntrl:]]*$ ]] \
+  [[ "${property}" =~ ^([A-Za-z0-9_.-]|\[[0-9]+\])+=[^[:cntrl:]]*$ ]] \
     || dev_die "invalid --set property: ${property}"
 done
 for option in "${JVM_OPTIONS[@]}"; do
