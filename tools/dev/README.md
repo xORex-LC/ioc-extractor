@@ -20,6 +20,7 @@
 | `database.sh … shell|schema|tables` | Read-only inspection service/dataframe SQLite |
 | `smoke.sh [cli|oneshot|daemon|all]` | Проверить public CLI, canonical storage/export и daemon ingest/health |
 | `lifecycle-smoke.sh …` | Через daemon проверить active→history expiry, bounded retention, projection/export convergence, query plans и ID non-reuse |
+| `dataframe-import-load.sh …` | Выполнить opt-in 100k/1M полный JDBC import profile, проверить SLO/heap/query plans и сохранить evidence |
 | `logs.sh …` | Читать и фильтровать ECS JSON по level/event/run/diagnostic |
 | `release-notes-context.sh …` | Собрать read-only Git/PR inventory для ручной подготовки release notes |
 
@@ -41,6 +42,7 @@ tools/dev/logs.sh --workspace .dev/runtime errors
 tools/dev/runtime.sh down
 tools/dev/smoke.sh all
 tools/dev/lifecycle-smoke.sh --size 1000
+tools/dev/dataframe-import-load.sh --profile mixed --size 1000000
 tools/dev/release-notes-context.sh --previous-tag v0.1.0 --target HEAD
 ```
 
@@ -81,6 +83,15 @@ SQLite в read-only режиме для assertions/query plans, сохраняе
 проверяет тот же state transition на 1k input rows. Harness также закрепляет
 export contract: expiry не создаёт immutable slice, а последующие новые public
 rows создают slice с точным active membership.
+
+Managed-import load harness является отдельной opt-in квалификацией, а не частью
+обычного `make verify`. Профиль `insert/100000` измеряет полный staging и
+canonical promotion. Профиль `mixed/1000000` создаёт валидный active baseline,
+а затем одной поставкой проверяет равные доли insert/update/no-op/conflict.
+Тестовый seed пишет только во временную JUnit SQLite под `.dev`; production и
+developer runtime databases он не открывает. Оба профиля работают с packaged
+daemon heap ceiling `-Xmx512m`, закрепляют peak-heap SLO и сохраняют plans/RSS в
+`report.md` выбранного evidence workspace.
 
 `lifecycle-load` закрепляет измеримый regression envelope, а не hardware-neutral
 benchmark: input fixture маршрутизируется как минимум в 100k canonical rows,

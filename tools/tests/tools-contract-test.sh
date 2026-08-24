@@ -127,6 +127,7 @@ for script in \
     tools/dev/doctor.sh \
     tools/dev/fixture.sh \
     tools/dev/logs.sh \
+    tools/dev/dataframe-import-load.sh \
     tools/dev/lifecycle-smoke.sh \
     tools/dev/release-notes-context.sh \
     tools/dev/database.sh \
@@ -153,6 +154,7 @@ grep -Fq 'unsupported --jvm-arg' <<< "${UNSAFE_JVM_OUTPUT}" \
   || fail "runtime did not reject an unsafe JVM argument at validation"
 "${REPO_ROOT}/tools/dev/smoke.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/lifecycle-smoke.sh" --help >/dev/null
+"${REPO_ROOT}/tools/dev/dataframe-import-load.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/submit.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/database.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/release-notes-context.sh" --help >/dev/null

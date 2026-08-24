@@ -35,4 +35,8 @@ public final class JdbcWriterAdmission {
     boolean fair() {
         return lock.isFair();
     }
+
+    int queuedWriters() {
+        return lock.getQueueLength();
+    }
 }

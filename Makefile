@@ -19,6 +19,7 @@ MODULE ?=
 TEST ?=
 SOURCE ?=
 PROFILE ?= reputation-lists
+IMPORT_PROFILE ?= insert
 SIZE ?= 1000
 SEED ?= 42
 FORMAT ?= html
@@ -45,7 +46,7 @@ GITHUB ?= 0
 	context \
 	run stop runtime-up runtime-down runtime-status runtime-reset submit \
 	fixture fixture-1k fixture-5k fixture-100k smoke smoke-cli smoke-oneshot smoke-daemon \
-	lifecycle-smoke lifecycle-load \
+	lifecycle-smoke lifecycle-load dataframe-import-load dataframe-import-load-100k dataframe-import-load-1m \
 	db logs logs-errors release-notes-context \
 	lint-shell docs security-update security-scan security-report \
 	ci-build ci-pmd ci-packaging ci-docs ci pre-push
@@ -198,6 +199,17 @@ lifecycle-load: package ## Run the 100k lifecycle reference profile; override SI
 		--max-retention-seconds 180 --max-rss-kib 1048576); \
 		[[ -z "$(JAR)" ]] || args+=(--jar "$(JAR)"); \
 		tools/dev/lifecycle-smoke.sh "$${args[@]}"
+
+dataframe-import-load: ## Run opt-in full import load; IMPORT_PROFILE=insert|mixed SIZE=100000
+	@tools/dev/dataframe-import-load.sh --profile "$(IMPORT_PROFILE)" --size "$(SIZE)"
+
+dataframe-import-load-100k: IMPORT_PROFILE=insert
+dataframe-import-load-100k: SIZE=100000
+dataframe-import-load-100k: dataframe-import-load ## Qualify the 100k full-import baseline
+
+dataframe-import-load-1m: IMPORT_PROFILE=mixed
+dataframe-import-load-1m: SIZE=1000000
+dataframe-import-load-1m: dataframe-import-load ## Qualify the 1M mixed-import release profile
 
 db: ## Inspect SQLite read-only; DB=service|dataframe DB_COMMAND=shell|schema|tables
 	@tools/dev/database.sh --workspace "$(WORKSPACE)" --db "$(DB)" "$(DB_COMMAND)"

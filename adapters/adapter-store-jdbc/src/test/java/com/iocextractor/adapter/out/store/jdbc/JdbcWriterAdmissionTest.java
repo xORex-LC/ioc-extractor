@@ -2,10 +2,15 @@ package com.iocextractor.adapter.out.store.jdbc;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -40,6 +45,43 @@ class JdbcWriterAdmissionTest {
         assertThat(maximum).hasValue(1);
     }
 
+    @Test
+    void admitsImportIngestLifecycleAndExportSlotWritersInObservedQueueOrder() throws Exception {
+        JdbcWriterAdmission admission = new JdbcWriterAdmission();
+        CountDownLatch holderEntered = new CountDownLatch(1);
+        CountDownLatch releaseHolder = new CountDownLatch(1);
+        List<String> admitted = Collections.synchronizedList(new ArrayList<>());
+        List<String> families = List.of("import", "ingest", "lifecycle", "export-slot");
+
+        try (var executor = Executors.newFixedThreadPool(families.size() + 1)) {
+            Future<?> holder = executor.submit(() -> admission.execute(() -> {
+                holderEntered.countDown();
+                await(releaseHolder);
+                return null;
+            }));
+            assertThat(holderEntered.await(5, TimeUnit.SECONDS)).isTrue();
+
+            List<Future<?>> waiters = new ArrayList<>();
+            for (int index = 0; index < families.size(); index++) {
+                String family = families.get(index);
+                waiters.add(executor.submit(() -> admission.execute(() -> {
+                    admitted.add(family);
+                    return null;
+                })));
+                awaitQueueDepth(admission, index + 1);
+            }
+
+            releaseHolder.countDown();
+            holder.get(5, TimeUnit.SECONDS);
+            for (Future<?> waiter : waiters) {
+                waiter.get(5, TimeUnit.SECONDS);
+            }
+        }
+
+        assertThat(admission.fair()).isTrue();
+        assertThat(admitted).containsExactlyElementsOf(families);
+    }
+
     private Void admitted(JdbcWriterAdmission admission,
                           AtomicInteger active,
                           AtomicInteger maximum) {
@@ -60,5 +102,13 @@ class JdbcWriterAdmissionTest {
             Thread.currentThread().interrupt();
             throw new AssertionError(failure);
         }
+    }
+
+    private void awaitQueueDepth(JdbcWriterAdmission admission, int expected) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (admission.queuedWriters() < expected && System.nanoTime() < deadline) {
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+        }
+        assertThat(admission.queuedWriters()).isGreaterThanOrEqualTo(expected);
     }
 }
