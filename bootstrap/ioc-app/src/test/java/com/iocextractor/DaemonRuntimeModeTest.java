@@ -1,6 +1,7 @@
 package com.iocextractor;
 
 import com.iocextractor.adapter.in.cli.CliRunner;
+import com.iocextractor.adapter.in.cli.ImportPreviewFileLocator;
 import com.iocextractor.adapter.in.ingest.FileIngestionLedger;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
@@ -114,6 +115,8 @@ class DaemonRuntimeModeTest {
         assertThat(context.getBeansOfType(DaemonPublishScheduler.class)).isEmpty();
         assertThat(context.containsBean("managedDataframeImportRuntime")).isTrue();
         assertThat(context.containsBean("dataframeImportHealthIndicator")).isTrue();
+        assertThat(context.getBeansOfType(ImportPreviewFileLocator.class))
+                .containsOnlyKeys("dataframeImportSnapshotPathResolver");
         assertThat(context.getBean(SliceRetentionGuard.class))
                 .isSameAs(StandaloneSliceRetentionGuard.INSTANCE);
     }

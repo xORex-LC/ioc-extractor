@@ -4,7 +4,6 @@ import com.iocextractor.adapter.in.csv.CommonsCsvDelimitedRecordReader;
 import com.iocextractor.adapter.in.csv.CommonsCsvImportValueTransformRegistry;
 import com.iocextractor.adapter.in.csv.CsvProcessedImportRowPreparer;
 import com.iocextractor.adapter.in.csv.ImportSnapshotPathResolver;
-import com.iocextractor.adapter.in.cli.ImportPreviewFileLocator;
 import com.iocextractor.adapter.in.ingest.LocalImportChangeSignalSource;
 import com.iocextractor.adapter.in.ingest.LocalImportSourceDefinition;
 import com.iocextractor.adapter.in.ingest.LocalImportSnapshotPathResolver;
@@ -172,12 +171,6 @@ class DataframeImportRuntimeConfiguration {
         return new DataframeImportSnapshotResolver(
                 adapters.snapshots(),
                 properties.dataframeImport().runtime().limits().maximumSnapshotBytes());
-    }
-
-    @Bean
-    ImportPreviewFileLocator dataframeImportPreviewFileLocator(
-            @Qualifier("dataframeImportSnapshotPathResolver") ImportSnapshotPathResolver snapshots) {
-        return (DataframeImportSnapshotResolver) snapshots;
     }
 
     @Bean
