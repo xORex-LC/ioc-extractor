@@ -31,7 +31,9 @@ final class DataframeImportLaneObserver implements KeyedSerialExecutorObserver {
 
     @Override
     public void rejected(WorkAdmission admission) {
-        degrade();
+        // A bounded lane may shed a duplicate latency hint while equivalent work is
+        // already running and queued. Periodic reconcile is the correctness path, so
+        // normal coalescing pressure must not leave health permanently degraded.
     }
 
     @Override

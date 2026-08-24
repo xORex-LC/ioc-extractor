@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.RejectedExecutionException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -21,7 +22,7 @@ class DataframeImportLaneObserverTest {
     private static final WorkKey KEY = new WorkKey("import-global");
 
     @Test
-    void rejectedLatencyHintDegradesWithoutExposingExecutorFailure() {
+    void rejectedLatencyHintIsRecoverableCoalescingPressure() {
         DataframeImportRuntimeState state = runningState();
         List<Diagnostic> diagnostics = new ArrayList<>();
         DataframeImportLaneObserver observer = new DataframeImportLaneObserver(
@@ -29,10 +30,26 @@ class DataframeImportLaneObserverTest {
 
         observer.rejected(WorkAdmission.rejected(KEY, 1));
 
+        assertThat(state.snapshot().phase()).isEqualTo(DataframeImportRuntimeState.Phase.RUNNING);
+        assertThat(state.snapshot().code()).isNull();
+        assertThat(diagnostics).isEmpty();
+    }
+
+    @Test
+    void workerDispatchFailureDegradesWithoutExposingExecutorFailure() {
+        DataframeImportRuntimeState state = runningState();
+        List<Diagnostic> diagnostics = new ArrayList<>();
+        DataframeImportLaneObserver observer = new DataframeImportLaneObserver(
+                state, diagnostics::add, CLOCK);
+
+        observer.dispatchRejected(KEY, 2, new RejectedExecutionException("private detail"));
+
         assertThat(state.snapshot().phase()).isEqualTo(DataframeImportRuntimeState.Phase.DEGRADED);
         assertThat(state.snapshot().code()).isEqualTo("IMPORT.PROCESSING_FAILED");
-        assertThat(diagnostics).singleElement().satisfies(diagnostic ->
-                assertThat(diagnostic.code().id()).isEqualTo("IMPORT.PROCESSING_FAILED"));
+        assertThat(diagnostics).singleElement().satisfies(diagnostic -> {
+            assertThat(diagnostic.code().id()).isEqualTo("IMPORT.PROCESSING_FAILED");
+            assertThat(diagnostic.context().toString()).doesNotContain("private detail");
+        });
     }
 
     @Test
