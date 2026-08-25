@@ -249,6 +249,13 @@ Gate:
 
 ### P9 — performance, packaging and publication
 
+Status: **implementation complete; release qualification in progress**. The
+100k/1M load profiles, writer fairness, local smoke, deployed upgrade,
+failure-triggered rollback and external Samba round trip are recorded in
+[p9-evidence.md](p9-evidence.md). Packaged fresh-install, the exact tagged
+`v0.2.0` upgrade/rollback scenario and final committed-HEAD verification remain
+open gates and must not be inferred from the older live predecessor test.
+
 Deliver:
 
 - 100k and 1M reference load evidence with query plans and heap profile;
