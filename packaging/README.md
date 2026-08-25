@@ -156,7 +156,8 @@ The privileged phase:
 
 1. verifies the exact jar checksum and release metadata;
 2. stops the active service;
-3. backs up both SQLite databases and the previous systemd unit as one recovery point;
+3. backs up both SQLite databases, including their POSIX ACLs and extended
+   attributes, and the previous systemd unit as one recovery point;
 4. installs a new immutable release and atomically switches `current`;
 5. starts the service and checks local actuator health;
 6. restores the previous release, systemd unit and database backup if the gate fails;
@@ -165,12 +166,13 @@ The privileged phase:
 Remote sync health is deliberately not a deployment gate: an unavailable
 optional SMB server must not roll back a locally healthy application release.
 The automatic rollback covers the active application symlink, the version-matched
-systemd unit and both SQLite databases. Unit restoration matters when an older
-release does not understand a newly introduced pre-start command. Database and
-unit sidecars share one release ID and retention prunes them as a pair. Rollback
-cannot reverse files already moved by ingestion, generated
-projections/export slices or completed remote side effects; pause input and
-optional synchronization when testing a rollback-sensitive migration.
+systemd unit and both SQLite databases, including database POSIX ACLs and extended
+attributes. Unit restoration matters when an older release does not understand a
+newly introduced pre-start command. Database and unit sidecars share one release
+ID and retention prunes them as a pair. Rollback cannot reverse files already
+moved by ingestion, generated projections/export slices or completed remote side
+effects; pause input and optional synchronization when testing a
+rollback-sensitive migration.
 
 ## `uninstall.sh`
 

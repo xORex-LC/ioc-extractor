@@ -262,18 +262,19 @@ Maven gate, verifies that the build did not change the checkout, creates a
 release identified by commit and build time, backs up both SQLite databases and
 the previous systemd unit, atomically switches `current`, starts the service and
 runs a local health gate. On failure it restores the previous symlink, unit and
-DB backup. `--port PORT` becomes the daemon's high-precedence `--server.port`
-value, not merely the probe address.
+DB backup, including the database POSIX ACLs and extended attributes. `--port
+PORT` becomes the daemon's high-precedence `--server.port` value, not merely the
+probe address.
 
 Use this path for a test stand, not as a substitute for a reviewed production
 release process. It bootstraps a clean prefix and upgrades only the current
 marked release layout; it is not a 0.1.0 migration command.
 
 Rollback is deliberately bounded to the application symlink, its version-matched
-systemd unit and two SQLite databases. It cannot reverse input files already
-moved by a briefly running new daemon, generated CSV/export files or completed
-remote writes. Pause input and optional synchronization before a
-rollback-sensitive migration.
+systemd unit and two SQLite databases, including their POSIX ACLs and extended
+attributes. It cannot reverse input files already moved by a briefly running new
+daemon, generated CSV/export files or completed remote writes. Pause input and
+optional synchronization before a rollback-sensitive migration.
 
 ## Manual application rollback
 

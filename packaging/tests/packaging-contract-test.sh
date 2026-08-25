@@ -124,6 +124,14 @@ assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
   "local deployment rollback no longer restores the previous systemd unit"
 # shellcheck disable=SC2016 # deployment-script variables are matched literally
 assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
+  'tar --acls --xattrs -C "${PREFIX}/var" -cf "${BACKUP}.tmp" db' \
+  "local deployment backup no longer preserves database ACLs and xattrs"
+# shellcheck disable=SC2016 # deployment-script variables are matched literally
+assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
+  'tar --acls --xattrs -C "${PREFIX}/var" -xf "${BACKUP}"' \
+  "local deployment rollback no longer restores database ACLs and xattrs"
+# shellcheck disable=SC2016 # deployment-script variables are matched literally
+assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
   'prune_backup_sets "${PREFIX}/backups" "${BACKUP_RETENTION}"' \
   "local deployment no longer retains database and unit backups as pairs"
 ioc_is_valid_marker "${SAFE_PREFIX}" "ioc-extractor" "ioc-test" \

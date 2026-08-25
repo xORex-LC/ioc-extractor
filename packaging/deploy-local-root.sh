@@ -198,7 +198,7 @@ rollback_on_error() {
       FAILED_DB="${PREFIX}/var/db.failed-${RELEASE_ID}-$$"
       [[ ! -e "${FAILED_DB}" ]] || FAILED_DB="${FAILED_DB}.retry"
       [[ ! -e "${PREFIX}/var/db" ]] || mv "${PREFIX}/var/db" "${FAILED_DB}"
-      tar -C "${PREFIX}/var" -xf "${BACKUP}"
+      tar --acls --xattrs -C "${PREFIX}/var" -xf "${BACKUP}"
     fi
   fi
   if [[ "${UNIT_REFRESHED}" == "true" && -f "${UNIT_BACKUP}" ]]; then
@@ -286,7 +286,7 @@ chown -R root:root "${RELEASE_DIR}"
 log "stopping ${SERVICE} and backing up SQLite state"
 ROLLBACK_ARMED="true"
 systemctl stop "${SERVICE}"
-tar -C "${PREFIX}/var" -cf "${BACKUP}.tmp" db
+tar --acls --xattrs -C "${PREFIX}/var" -cf "${BACKUP}.tmp" db
 tar -tf "${BACKUP}.tmp" >/dev/null
 mv -f "${BACKUP}.tmp" "${BACKUP}"
 
