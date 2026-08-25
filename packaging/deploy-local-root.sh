@@ -92,13 +92,22 @@ prune_directories() { # parent keep protected-path
   done
 }
 
-prune_files() { # parent keep
-  local parent="$1" keep="$2" path
-  mapfile -t paths < <(find "${parent}" -mindepth 1 -maxdepth 1 -type f -printf '%T@ %p\n' \
+prune_backup_sets() { # parent keep
+  local parent="$1" keep="$2" database_backup unit_backup
+  local -a database_backups=()
+  mapfile -t database_backups < <(find "${parent}" -mindepth 1 -maxdepth 1 \
+    -type f -name '*-db.tar' -printf '%T@ %p\n' \
     | sort -nr | awk -v keep="${keep}" 'NR > keep { sub(/^[^ ]+ /, ""); print }')
-  for path in "${paths[@]:-}"; do
-    [[ -z "${path}" ]] || rm -f -- "${path}"
+  for database_backup in "${database_backups[@]:-}"; do
+    [[ -n "${database_backup}" ]] || continue
+    unit_backup="${database_backup%-db.tar}-unit.service"
+    rm -f -- "${database_backup}" "${unit_backup}"
   done
+  while IFS= read -r -d '' unit_backup; do
+    database_backup="${unit_backup%-unit.service}-db.tar"
+    [[ -f "${database_backup}" ]] || rm -f -- "${unit_backup}"
+  done < <(find "${parent}" -mindepth 1 -maxdepth 1 \
+    -type f -name '*-unit.service' -print0)
 }
 
 if [[ ! -e "${PREFIX}/current" || ! -f "/etc/systemd/system/${SERVICE}.service" ]]; then
@@ -162,6 +171,52 @@ else
 fi
 [[ -x "${JAVA_BIN}" && "${JAVA_BIN}" != /home/* ]] || die "safe Java runtime not found for systemd unit"
 
+PREVIOUS_TARGET="$(readlink "${PREFIX}/current")"
+ioc_is_release_target "${PREVIOUS_TARGET}" \
+  || die "current symlink points outside releases: ${PREVIOUS_TARGET}"
+PREVIOUS_DIR="${PREFIX}/${PREVIOUS_TARGET}"
+UNIT="/etc/systemd/system/${SERVICE}.service"
+mkdir -p "${PREFIX}/backups"
+BACKUP="${PREFIX}/backups/${RELEASE_ID}-db.tar"
+UNIT_BACKUP="${PREFIX}/backups/${RELEASE_ID}-unit.service"
+install -o root -g root -m 0644 "${UNIT}" "${UNIT_BACKUP}.tmp"
+mv -f "${UNIT_BACKUP}.tmp" "${UNIT_BACKUP}"
+
+ROLLBACK_ARMED="false"
+UNIT_REFRESHED="false"
+rollback_on_error() {
+  local status=$?
+  trap - ERR
+  if [[ "${ROLLBACK_ARMED}" == "true" ]]; then
+    log "activation failed; restoring ${PREVIOUS_TARGET}, systemd unit and SQLite backup"
+    systemctl stop "${SERVICE}" 2>/dev/null || true
+    CURRENT_TMP="${PREFIX}/.current.rollback.$$"
+    rm -f -- "${CURRENT_TMP}"
+    ln -s "${PREVIOUS_TARGET}" "${CURRENT_TMP}"
+    mv -Tf "${CURRENT_TMP}" "${PREFIX}/current"
+    if [[ -f "${BACKUP}" ]]; then
+      FAILED_DB="${PREFIX}/var/db.failed-${RELEASE_ID}-$$"
+      [[ ! -e "${FAILED_DB}" ]] || FAILED_DB="${FAILED_DB}.retry"
+      [[ ! -e "${PREFIX}/var/db" ]] || mv "${PREFIX}/var/db" "${FAILED_DB}"
+      tar -C "${PREFIX}/var" -xf "${BACKUP}"
+    fi
+  fi
+  if [[ "${UNIT_REFRESHED}" == "true" && -f "${UNIT_BACKUP}" ]]; then
+    install -o root -g root -m 0644 "${UNIT_BACKUP}" "${UNIT}"
+    systemctl daemon-reload || true
+  fi
+  if [[ "${ROLLBACK_ARMED}" == "true" ]]; then
+    systemctl start "${SERVICE}" || true
+    if ! wait_for_health; then
+      systemctl --no-pager --full status "${SERVICE}" || true
+      journalctl -u "${SERVICE}" -n 100 --no-pager || true
+      printf '\033[1;31m[error]\033[0m rollback health check failed\n' >&2
+    fi
+  fi
+  exit "${status}"
+}
+trap rollback_on_error ERR
+
 refresh_config_candidate() { # template installed-file
   local template="$1" installed="$2"
   if [[ -f "${installed}" ]] && cmp -s "${template}" "${installed}"; then
@@ -176,7 +231,6 @@ refresh_config_candidate() { # template installed-file
 refresh_config_candidate "${SCRIPT_DIR}/templates/application.yml" "${PREFIX}/etc/application.yml"
 refresh_config_candidate "${SCRIPT_DIR}/templates/ioc-extractor.env" "${PREFIX}/etc/ioc-extractor.env"
 
-UNIT="/etc/systemd/system/${SERVICE}.service"
 sed -e "s|@PREFIX@|${PREFIX}|g" \
     -e "s|@JAVA_BIN@|${JAVA_BIN}|g" \
     -e "s|@USER@|${RUN_USER}|g" \
@@ -184,6 +238,7 @@ sed -e "s|@PREFIX@|${PREFIX}|g" \
     -e "s|@SERVER_PORT_ARG@|--server.port=${PORT}|g" \
     "${SCRIPT_DIR}/templates/ioc-extractor.service" > "${UNIT}.tmp"
 install -o root -g root -m 0644 "${UNIT}.tmp" "${UNIT}"
+UNIT_REFRESHED="true"
 rm -f "${UNIT}.tmp"
 systemctl daemon-reload
 
@@ -205,11 +260,6 @@ sed -e "s|@PREFIX@|${PREFIX}|g" \
 install -o root -g "${RUN_GROUP}" -m 0750 \
   "${PREFIX}/bin/ioc-config.tmp" "${PREFIX}/bin/ioc-config"
 rm -f "${PREFIX}/bin/ioc-config.tmp"
-PREVIOUS_TARGET="$(readlink "${PREFIX}/current")"
-ioc_is_release_target "${PREVIOUS_TARGET}" \
-  || die "current symlink points outside releases: ${PREVIOUS_TARGET}"
-PREVIOUS_DIR="${PREFIX}/${PREVIOUS_TARGET}"
-
 RELEASE_DIR="${PREFIX}/releases/${RELEASE_ID}"
 if [[ -e "${RELEASE_DIR}" ]]; then
   [[ -f "${RELEASE_DIR}/ioc-app.jar" ]] || die "existing release is incomplete"
@@ -233,36 +283,6 @@ else
 fi
 chown -R root:root "${RELEASE_DIR}"
 
-mkdir -p "${PREFIX}/backups"
-BACKUP="${PREFIX}/backups/${RELEASE_ID}-db.tar"
-ROLLBACK_ARMED="false"
-rollback_on_error() {
-  local status=$?
-  trap - ERR
-  if [[ "${ROLLBACK_ARMED}" == "true" ]]; then
-    log "activation failed; restoring ${PREVIOUS_TARGET} and SQLite backup"
-    systemctl stop "${SERVICE}" 2>/dev/null || true
-    CURRENT_TMP="${PREFIX}/.current.rollback.$$"
-    rm -f -- "${CURRENT_TMP}"
-    ln -s "${PREVIOUS_TARGET}" "${CURRENT_TMP}"
-    mv -Tf "${CURRENT_TMP}" "${PREFIX}/current"
-    if [[ -f "${BACKUP}" ]]; then
-      FAILED_DB="${PREFIX}/var/db.failed-${RELEASE_ID}-$$"
-      [[ ! -e "${FAILED_DB}" ]] || FAILED_DB="${FAILED_DB}.retry"
-      [[ ! -e "${PREFIX}/var/db" ]] || mv "${PREFIX}/var/db" "${FAILED_DB}"
-      tar -C "${PREFIX}/var" -xf "${BACKUP}"
-    fi
-    systemctl start "${SERVICE}" || true
-    if ! wait_for_health; then
-      systemctl --no-pager --full status "${SERVICE}" || true
-      journalctl -u "${SERVICE}" -n 100 --no-pager || true
-      printf '\033[1;31m[error]\033[0m rollback health check failed\n' >&2
-    fi
-  fi
-  exit "${status}"
-}
-trap rollback_on_error ERR
-
 log "stopping ${SERVICE} and backing up SQLite state"
 ROLLBACK_ARMED="true"
 systemctl stop "${SERVICE}"
@@ -282,9 +302,10 @@ if ! wait_for_health; then
   false
 fi
 ROLLBACK_ARMED="false"
+UNIT_REFRESHED="false"
 trap - ERR
 
 ACTIVE_DIR="$(readlink -f "${PREFIX}/current")"
 prune_directories "${PREFIX}/releases" "${RELEASE_RETENTION}" "${ACTIVE_DIR}"
-prune_files "${PREFIX}/backups" "${BACKUP_RETENTION}"
+prune_backup_sets "${PREFIX}/backups" "${BACKUP_RETENTION}"
 log "deployment is healthy; previous release was ${PREVIOUS_DIR}"

@@ -259,19 +259,21 @@ Run this command as an ordinary user:
 
 It rejects a dirty checkout unless `--allow-dirty` is explicit, runs the full
 Maven gate, verifies that the build did not change the checkout, creates a
-release identified by commit and build time, backs up both SQLite databases,
-atomically switches `current`, starts the service and runs a local health gate.
-On failure it restores the previous symlink and DB backup. `--port PORT` becomes
-the daemon's high-precedence `--server.port` value, not merely the probe address.
+release identified by commit and build time, backs up both SQLite databases and
+the previous systemd unit, atomically switches `current`, starts the service and
+runs a local health gate. On failure it restores the previous symlink, unit and
+DB backup. `--port PORT` becomes the daemon's high-precedence `--server.port`
+value, not merely the probe address.
 
 Use this path for a test stand, not as a substitute for a reviewed production
 release process. It bootstraps a clean prefix and upgrades only the current
 marked release layout; it is not a 0.1.0 migration command.
 
-Rollback is deliberately bounded to the application symlink and two SQLite
-databases. It cannot reverse input files already moved by a briefly running new
-daemon, generated CSV/export files or completed remote writes. Pause input and
-optional synchronization before a rollback-sensitive migration.
+Rollback is deliberately bounded to the application symlink, its version-matched
+systemd unit and two SQLite databases. It cannot reverse input files already
+moved by a briefly running new daemon, generated CSV/export files or completed
+remote writes. Pause input and optional synchronization before a
+rollback-sensitive migration.
 
 ## Manual application rollback
 
@@ -281,32 +283,40 @@ If an `install.sh` upgrade fails but the data schema is known to be compatible:
 2. point a temporary symlink at the previous immutable release;
 3. atomically replace `current`;
 4. restore the matching DB backup if the failed release may have written data;
-5. start and validate the service.
+5. restore the matching systemd unit and reload systemd;
+6. start and validate the service.
 
 ```bash
 sudo systemctl stop ioc-extractor
 cd /opt/ioc-extractor
 sudo ln -s releases/<previous-release-id> .current.rollback
 sudo mv -Tf .current.rollback current
+sudo install -o root -g root -m 0644 \
+  backups/<failed-release-id>-unit.service \
+  /etc/systemd/system/ioc-extractor.service
+sudo systemctl daemon-reload
 sudo systemctl start ioc-extractor
 sudo ./bin/ioc health
 ```
 
-Never combine an old application release with an arbitrary newer database.
-Application, configuration and database backup form one rollback point.
+Never combine an old application release with an arbitrary newer database or
+unit. Application, unit, configuration and database backup form one rollback
+point. The unit sidecar uses the release ID of the deployment being rolled back
+because it contains that deployment's previous unit.
 
 ## Restore databases
 
 1. stop the service;
 2. preserve the failed `var/db` directory for investigation;
-3. copy the complete backed-up DB directory, including any sidecars;
+3. extract the complete backed-up DB directory, including any sidecars;
 4. restore ownership and restrictive permissions;
 5. start the service and check health/logs before re-enabling input.
 
 ```bash
 sudo systemctl stop ioc-extractor
 sudo mv /opt/ioc-extractor/var/db /opt/ioc-extractor/var/db.failed
-sudo cp -a /opt/ioc-extractor/backups/<backup-id>/db /opt/ioc-extractor/var/db
+sudo tar -C /opt/ioc-extractor/var -xf \
+  /opt/ioc-extractor/backups/<failed-release-id>-db.tar
 sudo chown -R ioc:ioc /opt/ioc-extractor/var/db
 sudo systemctl start ioc-extractor
 ```

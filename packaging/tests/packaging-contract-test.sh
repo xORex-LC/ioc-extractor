@@ -114,6 +114,18 @@ assert_contains "${PACKAGING_DIR}/install.sh" 'install -m 0640 "${src}" "${dst}.
 assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
   'install -o root -g "${RUN_GROUP}" -m 0640 "${template}" "${installed}.new"' \
   "local deployment lost upgrade configuration preservation"
+# shellcheck disable=SC2016 # deployment-script variables are matched literally
+assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
+  'UNIT_BACKUP="${PREFIX}/backups/${RELEASE_ID}-unit.service"' \
+  "local deployment lost version-matched systemd unit backup"
+# shellcheck disable=SC2016 # deployment-script variables are matched literally
+assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
+  'install -o root -g root -m 0644 "${UNIT_BACKUP}" "${UNIT}"' \
+  "local deployment rollback no longer restores the previous systemd unit"
+# shellcheck disable=SC2016 # deployment-script variables are matched literally
+assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
+  'prune_backup_sets "${PREFIX}/backups" "${BACKUP_RETENTION}"' \
+  "local deployment no longer retains database and unit backups as pairs"
 ioc_is_valid_marker "${SAFE_PREFIX}" "ioc-extractor" "ioc-test" \
   || fail "new installation marker did not validate"
 if ioc_is_valid_marker "${SAFE_PREFIX}" "ioc-extractor" "another-user"; then
