@@ -31,12 +31,12 @@ dev_require_command tar
 
 case "$(uname -s):$(uname -m)" in
   Linux:x86_64)
-    TARGET="x86_64-unknown-linux-gnu"
-    EXPECTED_SHA256="${LYCHEE_LINUX_X86_64_SHA256}"
+    TARGET="x86_64-unknown-linux-musl"
+    EXPECTED_SHA256="${LYCHEE_LINUX_X86_64_MUSL_SHA256}"
     ;;
   Linux:aarch64|Linux:arm64)
-    TARGET="aarch64-unknown-linux-gnu"
-    EXPECTED_SHA256="${LYCHEE_LINUX_AARCH64_SHA256}"
+    TARGET="aarch64-unknown-linux-musl"
+    EXPECTED_SHA256="${LYCHEE_LINUX_AARCH64_MUSL_SHA256}"
     ;;
   *) dev_die "repo-local lychee bootstrap supports Linux x86_64 and aarch64" ;;
 esac

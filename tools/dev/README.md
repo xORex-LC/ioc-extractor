@@ -63,10 +63,10 @@ dependency/security candidates. `GITHUB=1` дополнительно запра
 результат служит входом для ручной курации, а не готовыми release notes.
 
 `lychee` отсутствует в обычных Ubuntu APT repositories. `make bootstrap`
-загружает закреплённый pre-built release для Linux x86_64/aarch64, проверяет
+загружает закреплённый static-musl release для Linux x86_64/aarch64, проверяет
 коммитнутый SHA-256 и атомарно устанавливает binary под `.dev/tools/bin` без
-`sudo`, Snap или Rust toolchain. System-wide `lychee` из `PATH` также
-поддерживается.
+`sudo`, Snap, Rust toolchain или зависимости от версии host glibc. System-wide
+`lychee` из `PATH` также поддерживается.
 
 `reset` удаляет только предварительно проверенный workspace внутри repo-local
 `.dev/`; symlink и внешние пути отклоняются. Runtime по умолчанию не включает

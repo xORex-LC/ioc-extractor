@@ -36,7 +36,7 @@ null-доступы не отключаются. VS Code Java подключае
 make help
 make context
 make doctor
-make bootstrap  # repo-local lychee, если его нет в PATH
+make bootstrap  # repo-local static-musl lychee, если его нет в PATH
 make dependency-analysis
 make pmd-analysis
 make pmd-watchlist
