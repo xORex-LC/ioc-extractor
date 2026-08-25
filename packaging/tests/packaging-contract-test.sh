@@ -134,6 +134,9 @@ assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
 assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
   'prune_backup_sets "${PREFIX}/backups" "${BACKUP_RETENTION}"' \
   "local deployment no longer retains database and unit backups as pairs"
+assert_contains "${PACKAGING_DIR}/deploy-local.sh" \
+  'JDK 21+ is required for verification' \
+  "local deployment no longer rejects an incompatible build JVM before Maven"
 ioc_is_valid_marker "${SAFE_PREFIX}" "ioc-extractor" "ioc-test" \
   || fail "new installation marker did not validate"
 if ioc_is_valid_marker "${SAFE_PREFIX}" "ioc-extractor" "another-user"; then

@@ -60,6 +60,18 @@ for command in find git sha256sum sudo flock; do
   command -v "${command}" >/dev/null 2>&1 || die "required command not found: ${command}"
 done
 
+if [[ -n "${JAVA_HOME:-}" ]]; then
+  BUILD_JAVA="${JAVA_HOME}/bin/java"
+  [[ -x "${BUILD_JAVA}" ]] || die "JAVA_HOME does not contain an executable bin/java: ${JAVA_HOME}"
+else
+  BUILD_JAVA="$(command -v java 2>/dev/null || true)"
+  [[ -n "${BUILD_JAVA}" ]] || die "JDK 21+ is required; java was not found"
+fi
+BUILD_JAVA_MAJOR="$("${BUILD_JAVA}" -version 2>&1 \
+  | sed -n 's/.*version "\([0-9]*\).*/\1/p' | head -1)"
+[[ "${BUILD_JAVA_MAJOR:-0}" -ge 21 ]] \
+  || die "JDK 21+ is required for verification; found ${BUILD_JAVA_MAJOR:-unknown}. Set JAVA_HOME and PATH to a JDK 21 installation"
+
 cd "${REPO_ROOT}"
 [[ -x ./mvnw ]] || die "Maven wrapper not found at ${REPO_ROOT}/mvnw"
 [[ "$(git rev-parse --show-toplevel)" == "${REPO_ROOT}" ]] || die "script is not inside the repository root"

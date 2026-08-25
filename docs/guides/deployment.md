@@ -266,6 +266,15 @@ DB backup, including the database POSIX ACLs and extended attributes. `--port
 PORT` becomes the daemon's high-precedence `--server.port` value, not merely the
 probe address.
 
+The build JVM is checked before Maven starts. If the host default is older than
+21, select a JDK 21 installation explicitly for the deployment shell:
+
+```bash
+export JAVA_HOME=/path/to/jdk-21
+export PATH="${JAVA_HOME}/bin:${PATH}"
+make doctor-core
+```
+
 Use this path for a test stand, not as a substitute for a reviewed production
 release process. It bootstraps a clean prefix and upgrades only the current
 marked release layout; it is not a 0.1.0 migration command.

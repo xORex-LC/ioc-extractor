@@ -146,7 +146,9 @@ the complete Maven `clean verify` gate. A dirty tree is rejected unless
 tree is compared again after the build so generated/concurrent changes cannot be
 published under the wrong commit identity. `--port` is rendered into the daemon
 unit as the high-precedence `--server.port` override and is also used by the
-health gate.
+health gate. The script rejects a build JVM older than 21 before starting Maven;
+select the intended JDK through `JAVA_HOME` and `PATH` when the host's default
+Java is older than the service runtime.
 
 The script bootstraps a clean prefix or upgrades an existing marked layout from
 0.2.0 or later. It is not a migration command for the 0.1.0 single-directory
