@@ -12,7 +12,7 @@ class LoggingTaxonomyTest {
 
     private static final Set<String> ACTION_AREAS = Set.of(
             "app", "cli", "pipeline", "source", "sink", "maintenance", "storage",
-            "export", "sync", "events", "diagnostics", "lifecycle");
+            "export", "sync", "events", "diagnostics", "lifecycle", "import");
 
     private static final Set<String> ECS_FIELD_PREFIXES = Set.of("event.", "error.", "file.");
 

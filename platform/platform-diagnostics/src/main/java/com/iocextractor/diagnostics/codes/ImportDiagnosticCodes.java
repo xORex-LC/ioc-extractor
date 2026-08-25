@@ -5,10 +5,15 @@ import com.iocextractor.diagnostics.DiagnosticCode;
 import com.iocextractor.diagnostics.DiagnosticImpact;
 import com.iocextractor.diagnostics.DiagnosticSeverity;
 
+import java.util.Arrays;
+import java.util.Optional;
+
 /** Stable value-free diagnostics for managed dataframe delivery coordination. */
 public enum ImportDiagnosticCodes implements DiagnosticCode {
     CLAIM_FAILED(DiagnosticSeverity.ERROR, "import.claim-failed",
             "Managed import claim failed; durable retry remains scheduled"),
+    SOURCE_NOT_CONFIGURED(DiagnosticSeverity.ERROR, "import.source-not-configured",
+            "Managed import delivery references no configured source"),
     INPUT_INVALID(DiagnosticSeverity.ERROR, "import.input-invalid",
             "Managed import input failed its declared structural contract"),
     CONTRACT_NOT_RECOGNIZED(DiagnosticSeverity.ERROR, "import.contract-not-recognized",
@@ -68,5 +73,13 @@ public enum ImportDiagnosticCodes implements DiagnosticCode {
     @Override
     public String defaultMessageTemplate() {
         return message;
+    }
+
+    /** Resolves one stable import diagnostic identifier. */
+    public static Optional<ImportDiagnosticCodes> findById(String id) {
+        if (id == null || id.isBlank()) {
+            return Optional.empty();
+        }
+        return Arrays.stream(values()).filter(code -> code.id().equals(id)).findFirst();
     }
 }

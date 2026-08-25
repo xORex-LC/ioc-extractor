@@ -19,6 +19,7 @@ CSV streaming, disk staging, atomic canonical promotion, reports and status.
 | `ProcessedImportRowPreparer` | Ordinary refang/extract/classify/artifact-policy strategy for explicit `processed` contracts |
 | `ImportReportStore` | Protected atomic source/report terminal unit |
 | `ImportStatusReader` | Indexed safe aggregate status |
+| `DataframeImportObserver` | Framework-free operational callbacks after durable delivery checkpoints |
 
 ## Dependencies
 

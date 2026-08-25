@@ -16,6 +16,17 @@ Generated from `EventAction` and `LogField`.
 | `source_read` | source | Source document text was read. |
 | `source_ingest` | source | Source ingestion reached a terminal handled outcome. |
 | `ingest_recover` | source | Daemon startup ingestion recovery progressed or failed. |
+| `import_start` | import | A managed dataframe delivery was durably admitted. |
+| `import_claim` | import | Managed import source ownership and snapshot claim completed. |
+| `import_stage` | import | Managed import recognition and sealed staging completed. |
+| `import_promote` | import | Managed import canonical promotion completed. |
+| `import_retry` | import | A managed import delivery was durably deferred for retry. |
+| `import_complete` | import | A managed import delivery reached a terminal outcome. |
+| `import_recover` | import | Managed import durable recovery progressed or failed. |
+| `import_retention` | import | Managed import terminal retention progressed or failed. |
+| `import_change_signal` | import | Managed import change notification availability changed. |
+| `import_work_admission` | import | Managed import keyed work was admitted or rejected. |
+| `import_work_dispatch` | import | Managed import keyed work was dispatched or failed. |
 | `lifecycle_admission` | lifecycle | Canonical lifecycle admission completed or failed. |
 | `lifecycle_reconcile` | lifecycle | Canonical expiration reconciliation completed or failed. |
 | `lifecycle_projection` | lifecycle | Mutable lifecycle projection convergence completed or failed. |
@@ -72,6 +83,27 @@ Generated from `EventAction` and `LogField`.
 | `ioc.ingest.disposition` | ioc | `string` | Stable terminal disposition of a source ingestion attempt. |
 | `ioc.ingest.recovered_runs` | ioc | `long` | Number of incomplete ingest runs examined during startup recovery. |
 | `ioc.ingest.recovered_sources` | ioc | `long` | Number of incomplete source records handled during startup recovery. |
+| `ioc.import.delivery.id` | ioc | `string` | Non-reusable managed import delivery occurrence identifier. |
+| `ioc.import.sequence` | ioc | `long` | Global durable managed import claim sequence. |
+| `ioc.import.state` | ioc | `string` | Durable managed import delivery state. |
+| `ioc.import.outcome` | ioc | `string` | Terminal managed import delivery outcome. |
+| `ioc.import.contract.id` | ioc | `string` | Pinned managed import contract identifier. |
+| `ioc.import.contract.version` | ioc | `long` | Pinned managed import contract version. |
+| `ioc.import.attempt_count` | ioc | `long` | Number of failed managed import processing attempts. |
+| `ioc.import.retry_delay_ms` | ioc | `long` | Remaining durable managed import retry delay in milliseconds. |
+| `ioc.import.accepted_rows` | ioc | `long` | Accepted logical rows in a managed import phase or delivery. |
+| `ioc.import.rejected_rows` | ioc | `long` | Rejected logical rows in a managed import phase or delivery. |
+| `ioc.import.public_mutations` | ioc | `long` | Inserted, updated or cleared public rows in a managed import promotion. |
+| `ioc.import.affected_artifacts` | ioc | `string` | Sorted value-free artifact names affected by managed import. |
+| `ioc.import.promotion_outcome` | ioc | `string` | Whether canonical promotion committed now or replayed an existing receipt. |
+| `ioc.import.recovery.examined` | ioc | `long` | Managed import durable records examined during recovery. |
+| `ioc.import.recovery.advanced` | ioc | `long` | Managed import durable records advanced during recovery. |
+| `ioc.import.recovery.contradictions` | ioc | `long` | Managed import durable contradictions found during recovery. |
+| `ioc.import.retained` | ioc | `long` | Managed import terminal units removed by one retention pass. |
+| `ioc.import.work.key` | ioc | `string` | Key used to serialize managed import work. |
+| `ioc.import.queue_depth` | ioc | `long` | Number of queued managed import work items. |
+| `ioc.import.shed_to_reconcile` | ioc | `boolean` | Whether managed import work was shed to durable reconciliation. |
+| `ioc.import.abandoned_work` | ioc | `long` | Number of managed import work items abandoned after dispatch rejection. |
 | `ioc.lifecycle.state` | ioc | `string` | Persisted canonical lifecycle activation state. |
 | `ioc.lifecycle.cycle.id` | ioc | `long` | Durable expiration reconciliation cycle identifier. |
 | `ioc.lifecycle.expired` | ioc | `long` | Number of canonical lifecycles expired in an aggregate operation. |

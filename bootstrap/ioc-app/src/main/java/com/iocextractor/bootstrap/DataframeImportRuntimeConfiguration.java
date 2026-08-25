@@ -58,6 +58,7 @@ import com.iocextractor.application.port.in.dataframeimport.RunDataframeImportRe
 import com.iocextractor.application.port.in.dataframeimport.ValidateDataframeImportUseCase;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportWriter;
 import com.iocextractor.application.port.out.dataframeimport.DelimitedRecordReader;
+import com.iocextractor.application.port.out.dataframeimport.DataframeImportObserver;
 import com.iocextractor.application.port.out.dataframeimport.ImportChangeSignalSource;
 import com.iocextractor.application.port.out.dataframeimport.ImportCommitEvidenceStore;
 import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
@@ -294,11 +295,17 @@ class DataframeImportRuntimeConfiguration {
     }
 
     @Bean
+    DataframeImportObserver dataframeImportObserver(DiagnosticSink diagnostics, Clock clock) {
+        return new LoggingDataframeImportObserver(diagnostics, clock);
+    }
+
+    @Bean
     DataframeImportPromotionService dataframeImportPromotionService(
             ImportDeliveryLedger ledger,
             CanonicalImportWriter writer,
-            Clock clock) {
-        return new DataframeImportPromotionService(ledger, writer, clock);
+            Clock clock,
+            DataframeImportObserver observer) {
+        return new DataframeImportPromotionService(ledger, writer, clock, observer);
     }
 
     @Bean
@@ -308,10 +315,11 @@ class DataframeImportRuntimeConfiguration {
             ControlEventPublisher events,
             LocalImportTerminalStore terminals,
             IocProperties properties,
-            Clock clock) {
+            Clock clock,
+            DataframeImportObserver observer) {
         return new DataframeImportAdmissionService(
                 ledger, sources, events, clock,
-                properties.dataframeImport().runtime().retry().delay(), terminals);
+                properties.dataframeImport().runtime().retry().delay(), terminals, observer);
     }
 
     @Bean
@@ -324,10 +332,11 @@ class DataframeImportRuntimeConfiguration {
             LocalImportTerminalStore terminals,
             ManagedImportSourceLifecycle sources,
             IocProperties properties,
-            Clock clock) {
+            Clock clock,
+            DataframeImportObserver observer) {
         return new DataframeImportProcessingService(
                 ledger, staging, promotion, workspace, commits, terminals, sources, clock,
-                properties.dataframeImport().runtime().retry().delay());
+                properties.dataframeImport().runtime().retry().delay(), observer);
     }
 
     @Bean

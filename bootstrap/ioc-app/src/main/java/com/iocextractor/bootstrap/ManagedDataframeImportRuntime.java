@@ -8,13 +8,13 @@ import com.iocextractor.application.port.in.dataframeimport.RecoverDataframeImpo
 import com.iocextractor.application.port.in.dataframeimport.RecoverDataframeImportsUseCase;
 import com.iocextractor.application.port.in.dataframeimport.RunDataframeImportRetentionUseCase;
 import com.iocextractor.application.port.out.dataframeimport.ImportChangeSignalSource;
-import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.ImportDiagnosticCodes;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executors;
@@ -33,8 +33,7 @@ final class ManagedDataframeImportRuntime implements DataframeImportRuntimeLifec
     private final List<ImportChangeSignalSource> changeSignals;
     private final KeyedSerialExecutor lanes;
     private final DataframeImportRuntimeState state;
-    private final DiagnosticSink diagnostics;
-    private final DiagnosticFactory diagnosticFactory;
+    private final DataframeImportRuntimeObserver observer;
     private final Clock clock;
     private final int recoveryBatchSize;
     private final int retentionBatchSize;
@@ -69,9 +68,8 @@ final class ManagedDataframeImportRuntime implements DataframeImportRuntimeLifec
         this.changeSignals = List.copyOf(Objects.requireNonNull(changeSignals, "changeSignals"));
         this.lanes = Objects.requireNonNull(lanes, "lanes");
         this.state = Objects.requireNonNull(state, "state");
-        this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
         this.clock = Objects.requireNonNull(clock, "clock");
-        this.diagnosticFactory = new DiagnosticFactory(clock);
+        this.observer = new DataframeImportRuntimeObserver(diagnostics, clock);
         this.recoveryBatchSize = requirePositive(recoveryBatchSize, "recoveryBatchSize");
         this.retentionBatchSize = requirePositive(retentionBatchSize, "retentionBatchSize");
         this.reconcileInterval = requirePositive(reconcileInterval, "reconcileInterval");
@@ -83,14 +81,29 @@ final class ManagedDataframeImportRuntime implements DataframeImportRuntimeLifec
 
     @Override
     public RecoverDataframeImportsResult recoverBeforeIntake() {
+        Instant startedAt = clock.instant();
         state.recovering(clock.instant());
-        RecoverDataframeImportsResult result = recovery.recover(recoveryBatchSize);
+        observer.recoveryStarted();
+        RecoverDataframeImportsResult result;
+        boolean recovered = false;
+        try {
+            result = recovery.recover(recoveryBatchSize);
+            recovered = true;
+        } finally {
+            if (!recovered) {
+                state.failed(clock.instant(), ImportDiagnosticCodes.PROCESSING_FAILED.id());
+                observer.recoveryFailed(ImportDiagnosticCodes.PROCESSING_FAILED);
+            }
+        }
         if (result.contradictions() > 0) {
             state.failed(clock.instant(), ImportDiagnosticCodes.CONSISTENCY_FAILED.id());
-            emit(ImportDiagnosticCodes.CONSISTENCY_FAILED);
+            observer.recoveryFailed(
+                    ImportDiagnosticCodes.CONSISTENCY_FAILED,
+                    DataframeImportConsistencyException.class.getName());
             throw new DataframeImportConsistencyException(
                     "Managed import recovery found contradictory durable evidence");
         }
+        observer.recoveryCompleted(result, elapsedSince(startedAt));
         return result;
     }
 
@@ -99,12 +112,14 @@ final class ManagedDataframeImportRuntime implements DataframeImportRuntimeLifec
         if (!started.compareAndSet(false, true)) {
             return;
         }
+        boolean startingChangeSignals = false;
         try {
             reconcile();
             scheduler.scheduleWithFixedDelay(this::safeReconcile,
                     reconcileInterval.toMillis(), reconcileInterval.toMillis(), TimeUnit.MILLISECONDS);
             scheduler.scheduleWithFixedDelay(this::safeRetention,
                     retentionInterval.toMillis(), retentionInterval.toMillis(), TimeUnit.MILLISECONDS);
+            startingChangeSignals = true;
             for (ImportChangeSignalSource signal : changeSignals) {
                 signal.start(sourceId -> {
                     detection.nudge(sourceId);
@@ -113,13 +128,8 @@ final class ManagedDataframeImportRuntime implements DataframeImportRuntimeLifec
             }
             state.running(clock.instant());
         } catch (RuntimeException failure) {
-            state.failed(clock.instant(), ImportDiagnosticCodes.CHANGE_SIGNAL_FAILED.id());
-            try {
-                close();
-            } catch (RuntimeException closeFailure) {
-                failure.addSuppressed(closeFailure);
-            }
-            throw failure;
+            recordStartupFailure(startingChangeSignals, failure);
+            throw closeAfterStartupFailure(failure);
         }
     }
 
@@ -138,7 +148,8 @@ final class ManagedDataframeImportRuntime implements DataframeImportRuntimeLifec
             reconcile();
         } catch (RuntimeException failure) {
             state.degraded(ImportDiagnosticCodes.PROCESSING_FAILED.id());
-            emit(ImportDiagnosticCodes.PROCESSING_FAILED);
+            observer.recoveryFailed(
+                    ImportDiagnosticCodes.PROCESSING_FAILED, failure.getClass().getName());
         }
     }
 
@@ -148,19 +159,13 @@ final class ManagedDataframeImportRuntime implements DataframeImportRuntimeLifec
     }
 
     private void safeRetention() {
+        Instant startedAt = clock.instant();
         try {
-            retention.retain(retentionBatchSize);
+            int retained = retention.retain(retentionBatchSize);
+            observer.retentionCompleted(retained, elapsedSince(startedAt));
         } catch (RuntimeException failure) {
             state.degraded(ImportDiagnosticCodes.RETENTION_FAILED.id());
-            emit(ImportDiagnosticCodes.RETENTION_FAILED);
-        }
-    }
-
-    private void emit(ImportDiagnosticCodes code) {
-        try {
-            diagnostics.emit(diagnosticFactory.create(code).build());
-        } catch (RuntimeException ignored) {
-            // Observation cannot alter durable import recovery.
+            observer.retentionFailed(failure.getClass().getName());
         }
     }
 
@@ -185,6 +190,26 @@ final class ManagedDataframeImportRuntime implements DataframeImportRuntimeLifec
         } catch (RuntimeException ignored) {
             // Poll/reconcile is already stopped and the process is shutting down.
         }
+    }
+
+    private RuntimeException closeAfterStartupFailure(RuntimeException failure) {
+        try {
+            close();
+        } catch (RuntimeException closeFailure) {
+            failure.addSuppressed(closeFailure);
+        }
+        return failure;
+    }
+
+    private void recordStartupFailure(boolean startingChangeSignals, RuntimeException failure) {
+        if (startingChangeSignals) {
+            state.failed(clock.instant(), ImportDiagnosticCodes.CHANGE_SIGNAL_FAILED.id());
+            observer.changeSignalFailed(failure.getClass().getName());
+            return;
+        }
+        state.failed(clock.instant(), ImportDiagnosticCodes.PROCESSING_FAILED.id());
+        observer.recoveryFailed(
+                ImportDiagnosticCodes.PROCESSING_FAILED, failure.getClass().getName());
     }
 
     private void awaitScheduler() {
@@ -219,5 +244,10 @@ final class ManagedDataframeImportRuntime implements DataframeImportRuntimeLifec
             throw new IllegalArgumentException(name + " must be positive");
         }
         return value;
+    }
+
+    private Duration elapsedSince(Instant startedAt) {
+        Duration elapsed = Duration.between(startedAt, clock.instant());
+        return elapsed.isNegative() ? Duration.ZERO : elapsed;
     }
 }

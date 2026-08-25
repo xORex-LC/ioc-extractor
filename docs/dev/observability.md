@@ -178,6 +178,24 @@ retry/backlog с сохранённой correctness; contradictory durable evide
 failed startup recovery даёт `DOWN`. Read path использует indexed bounded
 aggregates и не запускает import work.
 
+Managed dataframe import использует framework-free `DataframeImportObserver` в
+application и logging adapter в bootstrap. События `import_start`,
+`import_claim`, `import_stage`, `import_promote` и `import_complete` создаются
+только после соответствующего durable checkpoint; `import_retry` — после
+сохранения retry schedule. Startup recovery и непустой retention публикуются
+агрегатно, пустые периодические проверки остаются silent. Отказы change signal
+и keyed executor фиксируются как operational failure, но reconcile остаётся
+источником корректности. Observer обёрнут non-throwing decorator и не участвует
+в решениях state machine.
+
+INFO/WARN/ERROR события импорта содержат только delivery/sequence/source,
+state/outcome, contract id/version, агрегатные счётчики, artifact names и stable
+error type/code. Candidate token, filename/path, snapshot/stage/report locator,
+digest, raw row/IOC и exception message не передаются в logging adapter.
+Diagnostic occurrence для retry/rejection/runtime failure создаёт одна владеющая
+граница после durable решения; сам typed operational event diagnostic не
+дублирует.
+
 ## Как расширять
 
 - Новый diagnostic code добавлять вместе с production producer; catalog

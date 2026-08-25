@@ -14,6 +14,7 @@ import com.iocextractor.application.port.in.dataframeimport.AdmitDataframeImport
 import com.iocextractor.application.port.in.dataframeimport.RecoverDataframeImportsResult;
 import com.iocextractor.application.port.in.dataframeimport.RecoverDataframeImportsUseCase;
 import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceCommand;
+import com.iocextractor.application.port.out.dataframeimport.DataframeImportObserver;
 import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
 import com.iocextractor.application.port.out.dataframeimport.ImportReplaySnapshotStore;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
@@ -39,6 +40,7 @@ public final class DataframeImportAdmissionService
     private final ManagedImportSourceLifecycle sources;
     private final ControlEventPublisher events;
     private final ImportReplaySnapshotStore replays;
+    private final DataframeImportObserver observer;
     private final Clock clock;
     private final Duration retryDelay;
 
@@ -51,7 +53,7 @@ public final class DataframeImportAdmissionService
         this(ledger, sources, events, clock, retryDelay,
                 (terminalDeliveryId, replayDeliveryId) -> {
                     throw new IllegalStateException("Import replay snapshot store is not configured");
-                });
+                }, NoopDataframeImportObserver.INSTANCE);
     }
 
     /** Creates admission with protected terminal replay materialization. */
@@ -61,10 +63,23 @@ public final class DataframeImportAdmissionService
                                            Clock clock,
                                            Duration retryDelay,
                                            ImportReplaySnapshotStore replays) {
+        this(ledger, sources, events, clock, retryDelay, replays,
+                NoopDataframeImportObserver.INSTANCE);
+    }
+
+    /** Creates admission with protected replay materialization and operational observation. */
+    public DataframeImportAdmissionService(ImportDeliveryLedger ledger,
+                                           ManagedImportSourceLifecycle sources,
+                                           ControlEventPublisher events,
+                                           Clock clock,
+                                           Duration retryDelay,
+                                           ImportReplaySnapshotStore replays,
+                                           DataframeImportObserver observer) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.sources = Objects.requireNonNull(sources, "sources");
         this.events = Objects.requireNonNull(events, "events");
         this.replays = Objects.requireNonNull(replays, "replays");
+        this.observer = new ResilientDataframeImportObserver(observer);
         this.clock = Objects.requireNonNull(clock, "clock");
         this.retryDelay = Objects.requireNonNull(retryDelay, "retryDelay");
         if (retryDelay.isNegative()) {
@@ -81,6 +96,7 @@ public final class DataframeImportAdmissionService
         if (!newlyReserved) {
             return new AdmitDataframeImportResult(reserved, false);
         }
+        observer.deliveryDetected(reserved);
         return new AdmitDataframeImportResult(advanceClaim(reserved), true);
     }
 
@@ -111,6 +127,7 @@ public final class DataframeImportAdmissionService
     }
 
     private ImportDelivery advanceClaim(ImportDelivery initial) {
+        Instant startedAt = clock.instant();
         ImportDelivery current = initial;
         if (current.state() == ImportDeliveryState.DETECTED) {
             current = transition(current, ImportDeliveryState.CLAIMING, ImportDeliveryCheckpoint.none());
@@ -120,16 +137,20 @@ public final class DataframeImportAdmissionService
             try {
                 snapshot = claim(current);
             } catch (RuntimeException failure) {
-                return defer(current);
+                return defer(current, failure);
             }
             current = transition(current, ImportDeliveryState.CLAIMED, ImportDeliveryCheckpoint.none());
-            return pinSnapshot(current, snapshot);
+            ImportDelivery pinned = pinSnapshot(current, snapshot);
+            observer.claimCompleted(pinned, elapsedSince(startedAt));
+            return pinned;
         }
         if (current.state() == ImportDeliveryState.CLAIMED) {
             try {
-                return pinSnapshot(current, claim(current));
+                ImportDelivery pinned = pinSnapshot(current, claim(current));
+                observer.claimCompleted(pinned, elapsedSince(startedAt));
+                return pinned;
             } catch (RuntimeException failure) {
-                return defer(current);
+                return defer(current, failure);
             }
         }
         return current;
@@ -154,7 +175,7 @@ public final class DataframeImportAdmissionService
         return pinned;
     }
 
-    private ImportDelivery defer(ImportDelivery delivery) {
+    private ImportDelivery defer(ImportDelivery delivery, RuntimeException failure) {
         Instant occurredAt = clock.instant();
         ImportRetrySchedule retry = new ImportRetrySchedule(
                 delivery.id(), delivery.state(), delivery.version(),
@@ -164,7 +185,9 @@ public final class DataframeImportAdmissionService
                 && result != ImportLedgerTransitionResult.ALREADY_APPLIED) {
             throw new IllegalStateException("Import claim retry state conflicts with durable delivery");
         }
-        return required(delivery);
+        ImportDelivery deferred = required(delivery);
+        observer.retryScheduled(deferred, Optional.of(failure.getClass().getName()));
+        return deferred;
     }
 
     private ImportDelivery transition(ImportDelivery current,
@@ -203,5 +226,10 @@ public final class DataframeImportAdmissionService
 
     private boolean due(ImportDelivery delivery, Instant now) {
         return delivery.nextAttemptAt().map(deadline -> !deadline.isAfter(now)).orElse(true);
+    }
+
+    private Duration elapsedSince(Instant startedAt) {
+        Duration elapsed = Duration.between(startedAt, clock.instant());
+        return elapsed.isNegative() ? Duration.ZERO : elapsed;
     }
 }

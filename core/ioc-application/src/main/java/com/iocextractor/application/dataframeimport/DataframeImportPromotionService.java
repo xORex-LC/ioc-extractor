@@ -7,10 +7,14 @@ import com.iocextractor.application.dataframeimport.model.ImportLedgerTransition
 import com.iocextractor.application.port.in.dataframeimport.ProcessNextDataframeImportResult;
 import com.iocextractor.application.port.in.dataframeimport.ProcessNextDataframeImportUseCase;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportCommand;
+import com.iocextractor.application.port.out.dataframeimport.CanonicalImportResult;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportWriter;
+import com.iocextractor.application.port.out.dataframeimport.DataframeImportObserver;
 import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
 
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -20,15 +24,26 @@ public final class DataframeImportPromotionService implements ProcessNextDatafra
     private final ImportDeliveryLedger ledger;
     private final CanonicalImportWriter writer;
     private final Clock clock;
+    private final DataframeImportObserver observer;
 
     /** Creates the framework-free forward-only promotion orchestrator. */
     public DataframeImportPromotionService(
             ImportDeliveryLedger ledger,
             CanonicalImportWriter writer,
             Clock clock) {
+        this(ledger, writer, clock, NoopDataframeImportObserver.INSTANCE);
+    }
+
+    /** Creates promotion with operational observation after the durable receipt. */
+    public DataframeImportPromotionService(
+            ImportDeliveryLedger ledger,
+            CanonicalImportWriter writer,
+            Clock clock,
+            DataframeImportObserver observer) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.writer = Objects.requireNonNull(writer, "writer");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.observer = new ResilientDataframeImportObserver(observer);
     }
 
     @Override
@@ -53,7 +68,8 @@ public final class DataframeImportPromotionService implements ProcessNextDatafra
             return idle();
         }
 
-        writer.promote(command(delivery));
+        Instant startedAt = clock.instant();
+        CanonicalImportResult result = writer.promote(command(delivery));
         ImportLedgerTransitionResult committed = ledger.transition(new ImportDeliveryTransition(
                 delivery.id(), ImportDeliveryState.PROMOTING, delivery.version(),
                 ImportDeliveryState.CANONICAL_COMMITTED, Optional.empty(), clock.instant()));
@@ -61,6 +77,9 @@ public final class DataframeImportPromotionService implements ProcessNextDatafra
                 && committed != ImportLedgerTransitionResult.ALREADY_APPLIED) {
             throw new IllegalStateException("Canonical import receipt could not advance the service ledger");
         }
+        ImportDelivery completed = ledger.find(delivery.id()).orElseThrow(
+                () -> new IllegalStateException("Committed import delivery disappeared"));
+        observer.promotionCompleted(completed, result, elapsedSince(startedAt));
         return new ProcessNextDataframeImportResult(true, Optional.of(delivery.id()));
     }
 
@@ -77,5 +96,10 @@ public final class DataframeImportPromotionService implements ProcessNextDatafra
 
     private ProcessNextDataframeImportResult idle() {
         return new ProcessNextDataframeImportResult(false, Optional.empty());
+    }
+
+    private Duration elapsedSince(Instant startedAt) {
+        Duration elapsed = Duration.between(startedAt, clock.instant());
+        return elapsed.isNegative() ? Duration.ZERO : elapsed;
     }
 }

@@ -188,6 +188,20 @@ duration and artifact names. Never log:
 Generated diagnostics documentation is updated from code registries, never by
 editing generated output.
 
+Implemented operational emission follows the shared observer pattern:
+
+- the application-owned `DataframeImportObserver` is framework-free and is
+  invoked only after durable admission, claim, staging, promotion, retry and
+  terminal checkpoints;
+- the bootstrap logging adapter emits the cataloged `import_*` ECS actions and
+  the owning boundary emits each matching delivery diagnostic once;
+- startup recovery and non-empty retention use aggregate events; empty periodic
+  checks remain silent;
+- keyed-lane shedding/failure and change-notification loss are explicit
+  operational events while durable reconcile remains the correctness path;
+- a non-throwing decorator prevents logging or diagnostic delivery failure from
+  changing import state or control flow.
+
 ### 8.3 Delivery report
 
 The protected JSON report contains:

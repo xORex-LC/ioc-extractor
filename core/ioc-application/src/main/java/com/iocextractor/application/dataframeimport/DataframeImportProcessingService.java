@@ -16,6 +16,7 @@ import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
 import com.iocextractor.application.port.in.dataframeimport.ProcessNextDataframeImportResult;
 import com.iocextractor.application.port.in.dataframeimport.ProcessNextDataframeImportUseCase;
 import com.iocextractor.application.port.out.dataframeimport.DispositionImportSourceCommand;
+import com.iocextractor.application.port.out.dataframeimport.DataframeImportObserver;
 import com.iocextractor.application.port.out.dataframeimport.ImportCommitEvidenceStore;
 import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
 import com.iocextractor.application.port.out.dataframeimport.ImportReportStore;
@@ -48,6 +49,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
     private final ManagedImportSourceLifecycle sources;
     private final Clock clock;
     private final Duration retryDelay;
+    private final DataframeImportObserver observer;
 
     /** Creates one framework-free global-head processor. */
     public DataframeImportProcessingService(
@@ -60,6 +62,22 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             ManagedImportSourceLifecycle sources,
             Clock clock,
             Duration retryDelay) {
+        this(ledger, staging, promotion, workspace, commits, reports, sources, clock,
+                retryDelay, NoopDataframeImportObserver.INSTANCE);
+    }
+
+    /** Creates one framework-free global-head processor with operational observation. */
+    public DataframeImportProcessingService(
+            ImportDeliveryLedger ledger,
+            DataframeImportStager staging,
+            ProcessNextDataframeImportUseCase promotion,
+            ImportWorkspace workspace,
+            ImportCommitEvidenceStore commits,
+            ImportReportStore reports,
+            ManagedImportSourceLifecycle sources,
+            Clock clock,
+            Duration retryDelay,
+            DataframeImportObserver observer) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.staging = Objects.requireNonNull(staging, "staging");
         this.promotion = Objects.requireNonNull(promotion, "promotion");
@@ -69,6 +87,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
         this.sources = Objects.requireNonNull(sources, "sources");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.retryDelay = Objects.requireNonNull(retryDelay, "retryDelay");
+        this.observer = new ResilientDataframeImportObserver(observer);
         if (retryDelay.isNegative()) {
             throw new IllegalArgumentException("Import processing retry delay must not be negative");
         }
@@ -90,6 +109,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
     }
 
     private ProcessNextDataframeImportResult stage(ImportDelivery initial) {
+        Instant startedAt = clock.instant();
         try {
             ImportDelivery current = initial;
             ImportStagingResult result;
@@ -112,20 +132,22 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
                 current = transition(current, ImportDeliveryState.STAGING, ImportDeliveryCheckpoint.none());
             }
             if (current.state() == ImportDeliveryState.STAGING) {
-                transition(current, ImportDeliveryState.STAGED,
+                current = transition(current, ImportDeliveryState.STAGED,
                         ImportDeliveryCheckpoint.stage(result.stage()));
             }
+            observer.stagingCompleted(current, elapsedSince(startedAt));
             return performed(initial);
         } catch (ImportRecognitionException failure) {
-            return reject(initial, recognitionCode(failure));
+            return reject(initial, recognitionCode(failure), startedAt);
         } catch (DelimitedInputReadException failure) {
-            return reject(initial, ImportDiagnosticCodes.INPUT_INVALID.id());
+            return reject(initial, ImportDiagnosticCodes.INPUT_INVALID.id(), startedAt);
         } catch (ImportWorkspaceException failure) {
-            return workspaceFailure(initial, failure);
+            return workspaceFailure(initial, failure, startedAt);
         } catch (DataframeImportConsistencyException contradiction) {
             throw contradiction;
         } catch (RuntimeException failure) {
-            defer(initial, ImportDiagnosticCodes.PROCESSING_FAILED.id(), true);
+            defer(initial, ImportDiagnosticCodes.PROCESSING_FAILED.id(), true,
+                    Optional.of(failure.getClass().getName()));
             return performed(initial);
         }
     }
@@ -138,7 +160,8 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             ImportDelivery current = required(delivery);
             return switch (current.state()) {
                 case STAGED, PROMOTING -> {
-                    defer(current, ImportDiagnosticCodes.PROCESSING_FAILED.id(), true);
+                    defer(current, ImportDiagnosticCodes.PROCESSING_FAILED.id(), true,
+                            Optional.of(failure.getClass().getName()));
                     yield performed(delivery);
                 }
                 case CANONICAL_COMMITTED, FINALIZING, TERMINAL -> performed(delivery);
@@ -150,6 +173,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
     }
 
     private ProcessNextDataframeImportResult finalizeCommitted(ImportDelivery initial) {
+        Instant startedAt = clock.instant();
         try {
             ImportDelivery current = initial;
             if (current.state() == ImportDeliveryState.CANONICAL_COMMITTED) {
@@ -159,11 +183,15 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             ImportCommitEvidence evidence = commits.find(current.id()).orElseThrow(
                     () -> contradiction("Canonical import service state has no dataframe receipt"));
             ImportTerminalOutcome outcome = evidence.terminalOutcome();
-            reports.publish(report(current, outcome, evidence.acceptedRows(), evidence.rejectedRows(),
-                    evidence.publicMutations(), evidence.affectedArtifacts(), List.of(), evidence.issues()));
+            PublishImportReportCommand report = report(
+                    current, outcome, evidence.acceptedRows(), evidence.rejectedRows(),
+                    evidence.publicMutations(), evidence.affectedArtifacts(), List.of(), evidence.issues());
+            reports.publish(report);
             sources.disposition(new DispositionImportSourceCommand(
                     current.id(), current.sourceId(), outcome));
-            transition(current, ImportDeliveryState.TERMINAL, ImportDeliveryCheckpoint.none(), outcome);
+            current = transition(
+                    current, ImportDeliveryState.TERMINAL, ImportDeliveryCheckpoint.none(), outcome);
+            observer.deliveryCompleted(current, report, elapsedSince(startedAt));
             return performed(initial);
         } catch (DataframeImportConsistencyException contradiction) {
             throw contradiction;
@@ -171,7 +199,8 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             ImportDelivery current = required(initial);
             return switch (current.state()) {
                 case CANONICAL_COMMITTED, FINALIZING -> {
-                    defer(current, ImportDiagnosticCodes.FINALIZATION_FAILED.id(), true);
+                    defer(current, ImportDiagnosticCodes.FINALIZATION_FAILED.id(), true,
+                            Optional.of(failure.getClass().getName()));
                     yield performed(initial);
                 }
                 case TERMINAL -> performed(initial);
@@ -182,15 +211,18 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
         }
     }
 
-    private ProcessNextDataframeImportResult reject(ImportDelivery initial, String code) {
+    private ProcessNextDataframeImportResult reject(
+            ImportDelivery initial, String code, Instant startedAt) {
         try {
             ImportDelivery current = required(initial);
-            reports.publish(report(current, ImportTerminalOutcome.REJECTED,
-                    0, 0, 0, Set.of(), List.of(code), List.of()));
+            PublishImportReportCommand report = report(current, ImportTerminalOutcome.REJECTED,
+                    0, 0, 0, Set.of(), List.of(code), List.of());
+            reports.publish(report);
             sources.disposition(new DispositionImportSourceCommand(
                     current.id(), current.sourceId(), ImportTerminalOutcome.REJECTED));
-            transition(current, ImportDeliveryState.TERMINAL,
+            current = transition(current, ImportDeliveryState.TERMINAL,
                     ImportDeliveryCheckpoint.none(), ImportTerminalOutcome.REJECTED);
+            observer.deliveryCompleted(current, report, elapsedSince(startedAt));
             return performed(initial);
         } catch (DataframeImportConsistencyException contradiction) {
             throw contradiction;
@@ -199,23 +231,27 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             if (current.state() == ImportDeliveryState.TERMINAL) {
                 return performed(initial);
             }
-            defer(current, ImportDiagnosticCodes.FINALIZATION_FAILED.id(), true);
+            defer(current, ImportDiagnosticCodes.FINALIZATION_FAILED.id(), true,
+                    Optional.of(failure.getClass().getName()));
             return performed(initial);
         }
     }
 
     private ProcessNextDataframeImportResult workspaceFailure(
-            ImportDelivery delivery, ImportWorkspaceException failure) {
+            ImportDelivery delivery, ImportWorkspaceException failure, Instant startedAt) {
         return switch (failure.reason()) {
             case CAPACITY_PAUSED -> {
-                defer(required(delivery), ImportDiagnosticCodes.CAPACITY_PAUSED.id(), false);
+                defer(required(delivery), ImportDiagnosticCodes.CAPACITY_PAUSED.id(), false,
+                        Optional.empty());
                 yield performed(delivery);
             }
-            case HARD_LIMIT_EXCEEDED -> reject(delivery, ImportDiagnosticCodes.LIMIT_EXCEEDED.id());
+            case HARD_LIMIT_EXCEEDED -> reject(
+                    delivery, ImportDiagnosticCodes.LIMIT_EXCEEDED.id(), startedAt);
             case STAGE_INTEGRITY_FAILED, STAGE_NOT_SEALED ->
                     throw contradiction("Import sealed-stage evidence is contradictory");
             case INCOMPATIBLE_EXISTING_STAGE, STORAGE_FAILURE -> {
-                defer(required(delivery), ImportDiagnosticCodes.PROCESSING_FAILED.id(), true);
+                defer(required(delivery), ImportDiagnosticCodes.PROCESSING_FAILED.id(), true,
+                        Optional.of(failure.getClass().getName()));
                 yield performed(delivery);
             }
         };
@@ -272,7 +308,10 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
         return required(current);
     }
 
-    private void defer(ImportDelivery delivery, String code, boolean failedAttempt) {
+    private void defer(ImportDelivery delivery,
+                       String code,
+                       boolean failedAttempt,
+                       Optional<String> errorType) {
         Instant now = clock.instant();
         ImportRetrySchedule schedule = new ImportRetrySchedule(
                 delivery.id(), delivery.state(), delivery.version(), now.plus(retryDelay),
@@ -282,6 +321,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
                 && result != ImportLedgerTransitionResult.ALREADY_APPLIED) {
             throw contradiction("Import retry scheduling conflicts with durable state");
         }
+        observer.retryScheduled(required(delivery), errorType);
     }
 
     private ImportDelivery required(ImportDelivery delivery) {
@@ -291,7 +331,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
 
     private String recognitionCode(ImportRecognitionException failure) {
         return switch (failure.reason()) {
-            case SOURCE_NOT_CONFIGURED -> "IMPORT.SOURCE_NOT_CONFIGURED";
+            case SOURCE_NOT_CONFIGURED -> ImportDiagnosticCodes.SOURCE_NOT_CONFIGURED.id();
             case CONTRACT_NOT_RECOGNIZED -> ImportDiagnosticCodes.CONTRACT_NOT_RECOGNIZED.id();
             case CONTRACT_AMBIGUOUS -> ImportDiagnosticCodes.CONTRACT_AMBIGUOUS.id();
         };
@@ -312,5 +352,10 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
     private DataframeImportConsistencyException contradiction(
             String message, RuntimeException cause) {
         return new DataframeImportConsistencyException(message, cause);
+    }
+
+    private Duration elapsedSince(Instant startedAt) {
+        Duration elapsed = Duration.between(startedAt, clock.instant());
+        return elapsed.isNegative() ? Duration.ZERO : elapsed;
     }
 }
