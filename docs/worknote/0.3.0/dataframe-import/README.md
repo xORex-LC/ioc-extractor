@@ -26,7 +26,7 @@ operator guides или release contract.
   atomic canonical promotion, P7 recovery/finalization/operator UX и P8 SMB
   managed intake реализованы 2026-08-23..2026-08-24; P9 implementation,
   reference load и основной live-stand qualification завершены, а exact
-  `v0.2.0`/fresh-install packaging и final committed-HEAD gates ещё открыты;
+  `v0.2.0`/fresh-install packaging gate ещё открыт;
 - discovery interview завершено 2026-08-23: все I-01..I-41 имеют статус
   `DECIDED`;
 - архитектурный проект, release contract, data/persistence/operations contracts,

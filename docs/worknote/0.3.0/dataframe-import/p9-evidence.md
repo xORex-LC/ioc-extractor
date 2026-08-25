@@ -56,6 +56,9 @@ subsystem's blocking work. `make dataframe-import-smoke` then passed local
 claim, immutable snapshot, staging, canonical commit, terminal source/report
 publication and mutable projection convergence.
 
+The final full reactor, build-quality reports and documentation gates passed on
+the committed evidence state, and `make context` reported fresh verification.
+
 ## 4. Packaging and rollback
 
 Commit `646fb714ebdfcbf4f8e41fd1502e8848d82b6374` was deployed through
@@ -152,8 +155,6 @@ digests are intentionally omitted from this versioned evidence.
 
 - Run packaged fresh-install and exact `v0.2.0` upgrade/rollback qualification
   on a disposable systemd host.
-- Run the final full reactor and documentation gates on the final committed
-  HEAD, then require `make context` to report fresh verification.
 - Qualify any additional production Windows Server/NAS family before claiming
   support beyond the approved Samba implementation; polling remains the
   correctness fallback when notifications are unavailable.

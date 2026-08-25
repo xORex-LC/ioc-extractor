@@ -253,8 +253,8 @@ Status: **implementation complete; release qualification in progress**. The
 100k/1M load profiles, writer fairness, local smoke, deployed upgrade,
 failure-triggered rollback and external Samba round trip are recorded in
 [p9-evidence.md](p9-evidence.md). Packaged fresh-install, the exact tagged
-`v0.2.0` upgrade/rollback scenario and final committed-HEAD verification remain
-open gates and must not be inferred from the older live predecessor test.
+`v0.2.0` upgrade/rollback scenario remains an open gate and must not be inferred
+from the older live predecessor test.
 
 Deliver:
 
