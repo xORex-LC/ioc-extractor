@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.in.csv;
 
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
+import com.iocextractor.application.dataframeimport.contract.DelimitedInputReadException.Reason;
 import com.iocextractor.application.dataframeimport.model.DelimitedDialect;
 import com.iocextractor.application.dataframeimport.model.DelimitedInputLimits;
 import com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord;
@@ -10,6 +11,8 @@ import com.iocextractor.application.port.out.dataframeimport.DelimitedHeaderRead
 import com.iocextractor.application.port.out.dataframeimport.DelimitedReadCommand;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.UncheckedIOException;
 import java.nio.charset.CharacterCodingException;
@@ -46,6 +49,46 @@ class CommonsCsvDelimitedRecordReaderTest {
                 new ImportDelimitedRecord(3, Map.of("ip", "198.51.100.2", "score", "20")));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"\n", "\r\n"})
+    void ignores_empty_physical_lines_between_and_after_records(String separator) throws Exception {
+        Path source = write("ip;score" + separator
+                + separator
+                + "192.0.2.1;10" + separator
+                + separator
+                + "198.51.100.2;20" + separator
+                + separator.repeat(5));
+        var records = new ArrayList<ImportDelimitedRecord>();
+
+        reader(source).read(command(recognition("ip", "score")), records::add);
+
+        assertThat(records).extracting(ImportDelimitedRecord::values).containsExactly(
+                Map.of("ip", "192.0.2.1", "score", "10"),
+                Map.of("ip", "198.51.100.2", "score", "20"));
+    }
+
+    @Test
+    void preserves_delimiter_only_record_for_row_level_policy() throws Exception {
+        Path source = write("ip;score\n;\n192.0.2.1;10\n");
+        var records = new ArrayList<ImportDelimitedRecord>();
+
+        reader(source).read(command(recognition("ip", "score")), records::add);
+
+        assertThat(records).containsExactly(
+                new ImportDelimitedRecord(2, Map.of("ip", "", "score", "")),
+                new ImportDelimitedRecord(3, Map.of("ip", "192.0.2.1", "score", "10")));
+    }
+
+    @Test
+    void rejects_non_empty_short_record_with_safe_reason() throws Exception {
+        Path source = write("ip;score\n192.0.2.1\n");
+
+        assertThatThrownBy(() -> reader(source).read(
+                command(recognition("ip", "score")), ignored -> { }))
+                .isInstanceOfSatisfying(DelimitedRecordReadException.class,
+                        failure -> assertThat(failure.reason()).isEqualTo(Reason.COLUMN_COUNT_MISMATCH));
+    }
+
     @Test
     void rejects_malformed_bytes_instead_of_replacing_them() throws Exception {
         Path source = tempDir.resolve("malformed.csv");
@@ -54,6 +97,8 @@ class CommonsCsvDelimitedRecordReaderTest {
         assertThatThrownBy(() -> reader(source).read(command(recognition()), ignored -> { }))
                 .isInstanceOf(DelimitedRecordReadException.class)
                 .hasMessageContaining("malformed or unmappable bytes")
+                .isInstanceOfSatisfying(DelimitedRecordReadException.class,
+                        failure -> assertThat(failure.reason()).isEqualTo(Reason.MALFORMED_ENCODING))
                 .hasRootCauseInstanceOf(CharacterCodingException.class);
     }
 
@@ -67,7 +112,9 @@ class CommonsCsvDelimitedRecordReaderTest {
 
         assertThatThrownBy(() -> reader(source).read(command, ignored -> { }))
                 .isInstanceOf(DelimitedRecordReadException.class)
-                .hasMessageContaining("declared contract");
+                .hasMessageContaining("declared contract")
+                .isInstanceOfSatisfying(DelimitedRecordReadException.class,
+                        failure -> assertThat(failure.reason()).isEqualTo(Reason.RECORD_SEPARATOR_MISMATCH));
     }
 
     @Test

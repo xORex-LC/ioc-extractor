@@ -1,5 +1,6 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.application.dataframeimport.contract.DelimitedInputReadException;
 import com.iocextractor.application.dataframeimport.model.ImportDelivery;
 import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportResult;
@@ -95,15 +96,17 @@ final class LoggingDataframeImportObserver implements DataframeImportObserver {
                 ? EventOutcome.SUCCESS : EventOutcome.FAILURE;
         LogEvent event = report.outcome() == ImportTerminalOutcome.SUCCEEDED
                 ? LogEvents.info(log) : LogEvents.warn(log);
-        event(event, EventAction.IMPORT_COMPLETE, delivery, outcome)
+        LogEvent completed = event(event, EventAction.IMPORT_COMPLETE, delivery, outcome)
                 .durationNanos(duration.toNanos())
                 .field(LogField.IOC_IMPORT_OUTCOME, report.outcome().name())
+                .field(LogField.IOC_IMPORT_DISPOSITION, disposition(report.outcome()))
                 .field(LogField.IOC_IMPORT_ACCEPTED_ROWS, report.acceptedRows())
                 .field(LogField.IOC_IMPORT_REJECTED_ROWS, report.rejectedRows())
                 .field(LogField.IOC_IMPORT_PUBLIC_MUTATIONS, report.publicMutations())
-                .field(LogField.IOC_IMPORT_AFFECTED_ARTIFACTS, artifacts(report.affectedArtifacts()))
-                .message("managed dataframe import delivery completed")
-                .log();
+                .field(LogField.IOC_IMPORT_AFFECTED_ARTIFACTS, artifacts(report.affectedArtifacts()));
+        failureReason(report).ifPresent(reason ->
+                completed.field(LogField.IOC_IMPORT_FAILURE_REASON, reason.value()));
+        completed.message(completionMessage(report.outcome())).log();
     }
 
     private LogEvent event(
@@ -132,6 +135,24 @@ final class LoggingDataframeImportObserver implements DataframeImportObserver {
     private String artifacts(Set<String> affectedArtifacts) {
         return affectedArtifacts.stream().sorted().reduce((left, right) -> left + "," + right)
                 .orElse("");
+    }
+
+    private Optional<DelimitedInputReadException.Reason> failureReason(
+            PublishImportReportCommand report) {
+        return report.deliveryCodes().stream()
+                .map(DelimitedInputReadException.Reason::fromReportCode)
+                .flatMap(Optional::stream)
+                .findFirst();
+    }
+
+    private String disposition(ImportTerminalOutcome outcome) {
+        return outcome == ImportTerminalOutcome.REJECTED ? "quarantine" : "terminal";
+    }
+
+    private String completionMessage(ImportTerminalOutcome outcome) {
+        return outcome == ImportTerminalOutcome.REJECTED
+                ? "managed dataframe import delivery quarantined"
+                : "managed dataframe import delivery completed";
     }
 
     private void emit(ImportDiagnosticCodes code) {

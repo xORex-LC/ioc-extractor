@@ -138,9 +138,10 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             observer.stagingCompleted(current, elapsedSince(startedAt));
             return performed(initial);
         } catch (ImportRecognitionException failure) {
-            return reject(initial, recognitionCode(failure), startedAt);
+            return reject(initial, List.of(recognitionCode(failure)), startedAt);
         } catch (DelimitedInputReadException failure) {
-            return reject(initial, ImportDiagnosticCodes.INPUT_INVALID.id(), startedAt);
+            return reject(initial, List.of(
+                    ImportDiagnosticCodes.INPUT_INVALID.id(), failure.reason().reportCode()), startedAt);
         } catch (ImportWorkspaceException failure) {
             return workspaceFailure(initial, failure, startedAt);
         } catch (DataframeImportConsistencyException contradiction) {
@@ -212,11 +213,11 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
     }
 
     private ProcessNextDataframeImportResult reject(
-            ImportDelivery initial, String code, Instant startedAt) {
+            ImportDelivery initial, List<String> codes, Instant startedAt) {
         try {
             ImportDelivery current = required(initial);
             PublishImportReportCommand report = report(current, ImportTerminalOutcome.REJECTED,
-                    0, 0, 0, Set.of(), List.of(code), List.of());
+                    0, 0, 0, Set.of(), codes, List.of());
             reports.publish(report);
             sources.disposition(new DispositionImportSourceCommand(
                     current.id(), current.sourceId(), ImportTerminalOutcome.REJECTED));
@@ -246,7 +247,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
                 yield performed(delivery);
             }
             case HARD_LIMIT_EXCEEDED -> reject(
-                    delivery, ImportDiagnosticCodes.LIMIT_EXCEEDED.id(), startedAt);
+                    delivery, List.of(ImportDiagnosticCodes.LIMIT_EXCEEDED.id()), startedAt);
             case STAGE_INTEGRITY_FAILED, STAGE_NOT_SEALED ->
                     throw contradiction("Import sealed-stage evidence is contradictory");
             case INCOMPATIBLE_EXISTING_STAGE, STORAGE_FAILURE -> {

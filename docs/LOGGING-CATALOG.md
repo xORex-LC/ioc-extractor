@@ -87,6 +87,8 @@ Generated from `EventAction` and `LogField`.
 | `ioc.import.sequence` | ioc | `long` | Global durable managed import claim sequence. |
 | `ioc.import.state` | ioc | `string` | Durable managed import delivery state. |
 | `ioc.import.outcome` | ioc | `string` | Terminal managed import delivery outcome. |
+| `ioc.import.disposition` | ioc | `string` | Safe managed import destination class: terminal or quarantine. |
+| `ioc.import.failure_reason` | ioc | `string` | Stable value-free reason for a managed import terminal failure. |
 | `ioc.import.contract.id` | ioc | `string` | Pinned managed import contract identifier. |
 | `ioc.import.contract.version` | ioc | `long` | Pinned managed import contract version. |
 | `ioc.import.attempt_count` | ioc | `long` | Number of failed managed import processing attempts. |

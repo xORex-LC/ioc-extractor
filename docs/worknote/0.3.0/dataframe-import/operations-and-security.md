@@ -105,6 +105,13 @@ transaction by business contract; it cannot be split merely to meet a latency
 target. Performance qualification must therefore establish an acceptable
 maximum delivery envelope.
 
+Commons CSV ignores empty physical lines, including blank lines trailing a
+delivery. A delimiter-only or whitespace-only line is still a record: it is not
+silently normalized away and remains subject to the configured row policy or
+strict structural validation. Parser-boundary failures retain a stable,
+value-free reason in the protected report without copying raw content or an
+exception message.
+
 ## 6. Scheduling and fairness
 
 - source detection: keyed by source, bounded and parallel across sources;
@@ -195,6 +202,9 @@ Implemented operational emission follows the shared observer pattern:
   terminal checkpoints;
 - the bootstrap logging adapter emits the cataloged `import_*` ECS actions and
   the owning boundary emits each matching delivery diagnostic once;
+- `import_complete` identifies the durable disposition as `terminal` or
+  `quarantine`; classified parser failures also carry a stable value-free
+  failure reason, never the parser message or source content;
 - startup recovery and non-empty retention use aggregate events; empty periodic
   checks remain silent;
 - keyed-lane shedding/failure and change-notification loss are explicit

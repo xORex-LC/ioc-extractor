@@ -1,5 +1,6 @@
 package com.iocextractor.adapter.in.csv;
 
+import com.iocextractor.application.dataframeimport.contract.DelimitedInputReadException.Reason;
 import com.iocextractor.application.dataframeimport.mapping.ImportHeaderPlan;
 import com.iocextractor.application.dataframeimport.model.DelimitedDialect;
 import com.iocextractor.application.dataframeimport.model.DelimitedInputLimits;
@@ -88,11 +89,27 @@ public final class CommonsCsvDelimitedRecordReader implements DelimitedRecordRea
     }
 
     private DelimitedRecordReadException readFailure(UncheckedIOException failure, String fallbackMessage) {
-        return new DelimitedRecordReadException(failureMessage(failure.getCause(), fallbackMessage), failure);
+        IOException cause = failure.getCause();
+        return new DelimitedRecordReadException(
+                failureReason(cause), failureMessage(cause, fallbackMessage), failure);
     }
 
     private DelimitedRecordReadException readFailure(IOException failure, String fallbackMessage) {
-        return new DelimitedRecordReadException(failureMessage(failure, fallbackMessage), failure);
+        return new DelimitedRecordReadException(
+                failureReason(failure), failureMessage(failure, fallbackMessage), failure);
+    }
+
+    private Reason failureReason(IOException failure) {
+        if (failure instanceof CharacterCodingException) {
+            return Reason.MALFORMED_ENCODING;
+        }
+        if (failure instanceof DelimitedInputLimitingReader.InputLimitException) {
+            return Reason.RESOURCE_LIMIT_EXCEEDED;
+        }
+        if (failure instanceof RecordSeparatorValidatingReader.RecordSeparatorException) {
+            return Reason.RECORD_SEPARATOR_MISMATCH;
+        }
+        return Reason.PARSER_FAILURE;
     }
 
     private String failureMessage(IOException failure, String fallbackMessage) {
@@ -115,7 +132,8 @@ public final class CommonsCsvDelimitedRecordReader implements DelimitedRecordRea
         try {
             return Charset.forName(name);
         } catch (IllegalArgumentException failure) {
-            throw new DelimitedRecordReadException("Delimited input charset is not supported", failure);
+            throw new DelimitedRecordReadException(
+                    Reason.UNSUPPORTED_CHARSET, "Delimited input charset is not supported", failure);
         }
     }
 
@@ -127,7 +145,7 @@ public final class CommonsCsvDelimitedRecordReader implements DelimitedRecordRea
                 .setSkipHeaderRecord(true)
                 .setAllowMissingColumnNames(false)
                 .setDuplicateHeaderMode(DuplicateHeaderMode.ALLOW_ALL)
-                .setIgnoreEmptyLines(false)
+                .setIgnoreEmptyLines(true)
                 .setIgnoreSurroundingSpaces(false)
                 .build();
     }
@@ -136,22 +154,28 @@ public final class CommonsCsvDelimitedRecordReader implements DelimitedRecordRea
         try {
             return ImportHeaderPlan.compile(headers, command.recognition());
         } catch (IllegalArgumentException failure) {
-            throw new DelimitedRecordReadException(failure.getMessage(), failure);
+            throw new DelimitedRecordReadException(Reason.HEADER_MISMATCH, failure.getMessage(), failure);
         }
     }
 
     private void requireHeaderLimit(List<String> headers, DelimitedInputLimits limits) {
         if (headers.size() > limits.maximumColumns()) {
-            throw new DelimitedRecordReadException("Delimited input exceeds the configured column limit");
+            throw new DelimitedRecordReadException(
+                    Reason.RESOURCE_LIMIT_EXCEEDED,
+                    "Delimited input exceeds the configured column limit");
         }
         long headerCharacters = 0;
         for (String header : headers) {
             if (header.length() > limits.maximumFieldCharacters()) {
-                throw new DelimitedRecordReadException("Delimited input exceeds the configured field limit");
+                throw new DelimitedRecordReadException(
+                        Reason.RESOURCE_LIMIT_EXCEEDED,
+                        "Delimited input exceeds the configured field limit");
             }
             headerCharacters += header.length();
             if (headerCharacters > limits.maximumRecordCharacters()) {
-                throw new DelimitedRecordReadException("Delimited input exceeds the configured record limit");
+                throw new DelimitedRecordReadException(
+                        Reason.RESOURCE_LIMIT_EXCEEDED,
+                        "Delimited input exceeds the configured record limit");
             }
         }
     }
@@ -159,19 +183,26 @@ public final class CommonsCsvDelimitedRecordReader implements DelimitedRecordRea
     private void requireRecordLimits(CSVRecord record, DelimitedInputLimits limits) {
         if (!record.isConsistent()) {
             throw new DelimitedRecordReadException(
+                    Reason.COLUMN_COUNT_MISMATCH,
                     "Delimited input row has a different column count than its header");
         }
         if (record.getRecordNumber() > limits.maximumRows()) {
-            throw new DelimitedRecordReadException("Delimited input exceeds the configured row limit");
+            throw new DelimitedRecordReadException(
+                    Reason.RESOURCE_LIMIT_EXCEEDED,
+                    "Delimited input exceeds the configured row limit");
         }
         long recordCharacters = 0;
         for (String value : record) {
             if (value.length() > limits.maximumFieldCharacters()) {
-                throw new DelimitedRecordReadException("Delimited input exceeds the configured field limit");
+                throw new DelimitedRecordReadException(
+                        Reason.RESOURCE_LIMIT_EXCEEDED,
+                        "Delimited input exceeds the configured field limit");
             }
             recordCharacters += value.length();
             if (recordCharacters > limits.maximumRecordCharacters()) {
-                throw new DelimitedRecordReadException("Delimited input exceeds the configured record limit");
+                throw new DelimitedRecordReadException(
+                        Reason.RESOURCE_LIMIT_EXCEEDED,
+                        "Delimited input exceeds the configured record limit");
             }
         }
     }

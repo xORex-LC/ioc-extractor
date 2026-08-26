@@ -87,11 +87,33 @@ class LoggingDataframeImportObserverTest {
                 .containsEntry(LogField.EVENT_OUTCOME.key(), EventOutcome.FAILURE.value())
                 .containsEntry(LogField.IOC_IMPORT_RETRY_DELAY_MS.key(), 5000L);
         assertThat(fields(appender.list.getLast()))
-                .containsEntry(LogField.IOC_IMPORT_OUTCOME.key(), ImportTerminalOutcome.REJECTED.name());
+                .containsEntry(LogField.IOC_IMPORT_OUTCOME.key(), ImportTerminalOutcome.REJECTED.name())
+                .containsEntry(LogField.IOC_IMPORT_DISPOSITION.key(), "quarantine")
+                .containsEntry(LogField.IOC_IMPORT_FAILURE_REASON.key(), "column_count_mismatch");
+        assertThat(appender.list.getLast().getFormattedMessage())
+                .isEqualTo("managed dataframe import delivery quarantined");
         assertThat(diagnostics).extracting(diagnostic -> diagnostic.code().id())
                 .containsExactly("IMPORT.PROCESSING_FAILED", "IMPORT.INPUT_INVALID");
         assertThat(appender.list).noneSatisfy(event -> assertThat(event.toString())
                 .contains(PRIVATE_VALUE));
+    }
+
+    @Test
+    void reportsSuccessfulDeliveryAsTerminalWithoutFailureReason() {
+        var appender = appender();
+        var observer = new LoggingDataframeImportObserver(ignored -> { }, CLOCK);
+
+        observer.deliveryCompleted(delivery(), succeededReport(), Duration.ofMillis(5));
+
+        assertThat(appender.list).singleElement().satisfies(event -> {
+            assertThat(event.getLevel()).isEqualTo(Level.INFO);
+            assertThat(event.getFormattedMessage())
+                    .isEqualTo("managed dataframe import delivery completed");
+            assertThat(fields(event))
+                    .containsEntry(LogField.IOC_IMPORT_OUTCOME.key(), ImportTerminalOutcome.SUCCEEDED.name())
+                    .containsEntry(LogField.IOC_IMPORT_DISPOSITION.key(), "terminal")
+                    .doesNotContainKey(LogField.IOC_IMPORT_FAILURE_REASON.key());
+        });
     }
 
     private ImportDelivery delivery() {
@@ -124,7 +146,16 @@ class LoggingDataframeImportObserverTest {
                 Optional.of(new ImportContractPin(
                         new ImportContractId("ip-list-v1"), 2, new ImportContractFingerprint(HASH))),
                 ImportTerminalOutcome.REJECTED, 0, 0, 0, Set.of(),
-                List.of("IMPORT.INPUT_INVALID"), List.of());
+                List.of("IMPORT.INPUT_INVALID", "IMPORT.INPUT_INVALID.COLUMN_COUNT_MISMATCH"), List.of());
+    }
+
+    private PublishImportReportCommand succeededReport() {
+        return new PublishImportReportCommand(
+                new ImportDeliveryId("delivery-1"), new ImportSourceId("source-1"),
+                new ImportSnapshotReference("snapshot:test"),
+                Optional.of(new ImportContractPin(
+                        new ImportContractId("ip-list-v1"), 2, new ImportContractFingerprint(HASH))),
+                ImportTerminalOutcome.SUCCEEDED, 2, 0, 2, Set.of("ip_list"), List.of(), List.of());
     }
 
     private ListAppender<ILoggingEvent> appender() {

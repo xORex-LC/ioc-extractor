@@ -190,8 +190,11 @@ application и logging adapter в bootstrap. События `import_start`,
 
 INFO/WARN/ERROR события импорта содержат только delivery/sequence/source,
 state/outcome, contract id/version, агрегатные счётчики, artifact names и stable
-error type/code. Candidate token, filename/path, snapshot/stage/report locator,
-digest, raw row/IOC и exception message не передаются в logging adapter.
+error type/code. Завершающее событие содержит `ioc.import.disposition` со
+значением `terminal` или `quarantine`; при безопасно классифицированной ошибке
+парсинга дополнительно передаётся value-free `ioc.import.failure_reason`.
+Candidate token, filename/path, snapshot/stage/report locator, digest, raw
+row/IOC и exception message не передаются в logging adapter.
 Diagnostic occurrence для retry/rejection/runtime failure создаёт одна владеющая
 граница после durable решения; сам typed operational event diagnostic не
 дублирует.

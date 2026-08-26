@@ -6,12 +6,12 @@ import com.iocextractor.application.dataframeimport.contract.DelimitedInputReadE
 public final class DelimitedRecordReadException extends DelimitedInputReadException {
 
     /** Creates a structural failure without echoing input values. */
-    public DelimitedRecordReadException(String message) {
-        super(message);
+    public DelimitedRecordReadException(Reason reason, String message) {
+        super(reason, message);
     }
 
     /** Creates an I/O or decoder failure without echoing input values. */
-    public DelimitedRecordReadException(String message, Throwable cause) {
-        super(message, cause);
+    public DelimitedRecordReadException(Reason reason, String message, Throwable cause) {
+        super(reason, message, cause);
     }
 }

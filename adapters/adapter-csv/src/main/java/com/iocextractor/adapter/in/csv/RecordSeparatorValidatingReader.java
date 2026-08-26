@@ -67,6 +67,16 @@ final class RecordSeparatorValidatingReader extends FilterReader {
     }
 
     private IOException invalid() {
-        return new IOException("Input uses a record separator outside the declared dialect");
+        return new RecordSeparatorException("Input uses a record separator outside the declared dialect");
+    }
+
+    /** Distinguishes a declared-dialect mismatch from other parser I/O failures. */
+    static final class RecordSeparatorException extends IOException {
+
+        private static final long serialVersionUID = 1L;
+
+        private RecordSeparatorException(String message) {
+            super(message);
+        }
     }
 }

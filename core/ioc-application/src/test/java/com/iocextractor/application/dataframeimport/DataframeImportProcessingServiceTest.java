@@ -1,5 +1,6 @@
 package com.iocextractor.application.dataframeimport;
 
+import com.iocextractor.application.dataframeimport.contract.DelimitedInputReadException;
 import com.iocextractor.application.dataframeimport.contract.ImportRecognitionException;
 import com.iocextractor.application.dataframeimport.model.ImportClaimReservation;
 import com.iocextractor.application.dataframeimport.model.ImportCommitEvidence;
@@ -33,9 +34,11 @@ import com.iocextractor.application.port.out.dataframeimport.CreateImportWorkspa
 import com.iocextractor.application.port.out.dataframeimport.DispositionImportSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ImportCommitEvidenceStore;
 import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
+import com.iocextractor.application.port.out.dataframeimport.ImportReportStore;
 import com.iocextractor.application.port.out.dataframeimport.ImportWorkspace;
 import com.iocextractor.application.port.out.dataframeimport.ImportWorkspaceWriter;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
+import com.iocextractor.application.port.out.dataframeimport.PublishImportReportCommand;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -45,6 +48,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -107,17 +111,46 @@ class DataframeImportProcessingServiceTest {
         assertThat(ledger.retrySchedules).isZero();
     }
 
+    @Test
+    void preserves_safe_parser_reason_in_terminal_report() {
+        StatefulLedger ledger = new StatefulLedger(delivery(ImportDeliveryState.SNAPSHOT_PINNED));
+        DataframeImportStager rejectingStager = command -> {
+            throw new DelimitedInputReadException(
+                    DelimitedInputReadException.Reason.COLUMN_COUNT_MISMATCH,
+                    "safe structural failure");
+        };
+        var published = new AtomicReference<PublishImportReportCommand>();
+        DataframeImportProcessingService service = service(
+                ledger, rejectingStager, this::idle, published::set);
+
+        ProcessNextDataframeImportResult result = service.processNext();
+
+        assertThat(result.workPerformed()).isTrue();
+        assertThat(published.get()).isNotNull();
+        assertThat(published.get().deliveryCodes()).containsExactly(
+                "IMPORT.INPUT_INVALID", "IMPORT.INPUT_INVALID.COLUMN_COUNT_MISMATCH");
+        assertThat(ledger.current.terminalOutcome()).contains(ImportTerminalOutcome.REJECTED);
+    }
+
     private DataframeImportProcessingService service(
             StatefulLedger ledger,
             DataframeImportStager stager,
             ProcessNextDataframeImportUseCase promotion) {
+        return service(ledger, stager, promotion, command -> { });
+    }
+
+    private DataframeImportProcessingService service(
+            StatefulLedger ledger,
+            DataframeImportStager stager,
+            ProcessNextDataframeImportUseCase promotion,
+            ImportReportStore reports) {
         return new DataframeImportProcessingService(
                 ledger,
                 stager,
                 promotion,
                 unusedWorkspace(),
                 commitEvidenceStore(ledger.current.id()),
-                command -> { },
+                reports,
                 unusedSourceLifecycle(),
                 CLOCK,
                 Duration.ofSeconds(5));
