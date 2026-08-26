@@ -78,8 +78,13 @@ decision log.
     and full reconciliation are correctness authorities.
 19. Claimed deliveries apply in one durable global sequence. Retry of the head
     never permits a later sequence to overtake it.
-20. A terminal source and safe report are retained as one protected unit.
+20. A local terminal source and safe report are retained as one protected unit.
     Defaults are 30 days for success and 90 days for partial/rejected outcomes.
+21. An SMB source becomes eligible only after its operator-provisioned private
+    namespace passes the positive capability gate. Expired remote
+    terminal/quarantine remnants are purged by exact token before local
+    evidence, and the terminal ledger row remains the last retry authority.
+    Replay has no remote source occurrence.
 
 ## 3. Scope
 
@@ -96,6 +101,10 @@ decision log.
 - preferred immutable-export slots with stable-survivor behavior;
 - one cross-artifact dataframe transaction and an idempotent promotion receipt;
 - durable ordering, retry, restart recovery and terminal disposition;
+- operator-provisioned SMB service namespace, per-source capability admission
+  and bounded source-side terminal retention;
+- transport-neutral source readiness, managed-object identity, immutable local
+  snapshot and retention orchestration reused by local and SMB flows;
 - advisory CLI validation/preview plus read-only status and health;
 - aggregate diagnostics, metrics and protected per-delivery reports;
 - bounded resource controls and performance/load qualification;
@@ -135,6 +144,14 @@ decision log.
 - Existing CSV export formatting remains byte-compatible unless a separately
   approved projection change is required.
 - No adapter-to-adapter dependency or framework dependency in core is allowed.
+- Application services must not branch on SMB to perform capability, snapshot
+  or retention policy. SMB paths/status/session types stay in its adapter.
+- Managed-object identity and local immutable snapshot publication have one
+  implementation contract across local and SMB sources; candidate tokens remain
+  claim evidence and are not cleanup locators.
+- Refactoring preserves the current managed-object token bytes and resolves
+  existing local/SMB snapshot-reference versions until their durable deliveries
+  are no longer recoverable; no in-place evidence rewrite is allowed.
 
 ## 5. Definition of ready
 
@@ -171,10 +188,16 @@ DATA-IMPORT-01 is complete only when:
    one another under contention.
 8. Diagnostics, health, reports and retention expose no raw IOC, path,
    credential or digest data outside protected artifacts.
-9. Published ADR, capability, module, configuration, security, operations and
+9. SMB qualification uses separate producer/service identities and proves
+   namespace admission, no-replace claim, terminal disposition, remote-first
+   exact purge, producer denial and crash-safe ledger-last cleanup.
+10. Architecture/contract tests prove one managed-object ID formula, one local
+    immutable-snapshot implementation contract, transport-neutral readiness and
+    retention orchestration, and no adapter-to-adapter dependency.
+11. Published ADR, capability, module, configuration, security, operations and
    release documentation match the implementation.
-10. Packaging upgrade, rollback and fresh-install qualification pass.
-11. `make verify` passes on the final committed HEAD and `make context` reports
+12. Packaging upgrade, rollback and fresh-install qualification pass.
+13. `make verify` passes on the final committed HEAD and `make context` reports
     fresh evidence.
 
 ## 7. Release accounting

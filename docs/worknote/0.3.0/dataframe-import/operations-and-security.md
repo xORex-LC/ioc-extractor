@@ -20,10 +20,26 @@ V1 trusts the configured producer identity and managed transport boundary. It
 does not authenticate individual files with digital signatures. This exclusion
 must be visible in the operator guide and threat model.
 
+### 1.1 Reuse boundary
+
+Application code owns source-neutral readiness, delivery ordering, immutable
+managed-object identity, snapshot and retention ports, cleanup ordering and
+health states. Existing `RetentionPolicy` and `platform-concurrency` primitives
+remain the common policy/scheduling implementations. One local-filesystem
+snapshot adapter performs bounded hash/fsync/atomic publication and purge for
+both local and SMB source flows.
+
+Source adapters own only their real integration mechanics: local atomic move
+and no-follow checks in the local adapter; SMB namespace, sessions, evidence,
+rename/share modes and exact remote delete in the SMB adapter. They do not call
+one another. Ordinary read-only `FileTransport` is not widened merely to share
+code with managed import.
+
 ## 2. Local source lifecycle
 
-The local adapter owns detection and filesystem mechanics behind
-`ManagedImportSourceLifecycle`.
+The local source adapter owns detection, claim/revalidation and source
+disposition behind application ports. The shared local snapshot store owns
+snapshot publication and cleanup for every source transport.
 
 Required controls:
 
@@ -52,20 +68,36 @@ The SMB adapter must prove ownership before downloading:
 1. list/detect under the configured source path;
 2. server-side rename the file into a private service processing namespace;
 3. reject destination collisions and incompatible share/access modes;
-4. stream the claimed remote object into a private local `.part` with digest
-   and size;
-5. force and atomically publish the local immutable snapshot;
+4. stream the claimed remote object through the common immutable-snapshot port;
+5. let the local snapshot implementation bound, hash, force and atomically
+   publish the immutable snapshot;
 6. retain enough remote claim metadata for orphan adoption after restart;
 7. archive/quarantine remote state during forward finalization.
 
 The import port is separate from generic `FileTransport`; raw rename is not
-added to a broad fetch/publish abstraction. The SMB session/connection pool may
-be extracted for reuse so import does not establish a competing stack.
+added to a broad fetch/publish abstraction. Managed import reuses the existing
+SMB session pool, share-client primitives, exception mapper and watch
+infrastructure shared with sync; it does not establish a competing stack.
 
 Real SMB qualification must cover rename of regular files, collision,
 concurrent producer handles/share modes, disconnect/reconnect, rename-success
 plus download-failure, orphan recovery and server-specific CHANGE_NOTIFY
 behavior. Unit mocks alone are insufficient.
+
+ADR-0025 strengthens this boundary. The fixed
+`.ioc-managed-import/{processing,terminal,quarantine,probe}` namespace is
+operator-provisioned; runtime directory creation is forbidden. Before first
+claim, a source-scoped positive capability probe must exercise the same
+no-replace rename and exact-delete primitives used by real deliveries. The
+producer-denial side of the ACL contract remains an operator-run negative test,
+not an application ACL-audit claim.
+
+Remote terminal/quarantine objects follow the same outcome-age eligibility as
+the protected local terminal unit. Their exact regular-file purge precedes
+local terminal/workspace/snapshot/receipt cleanup, and the terminal service
+ledger row is deleted last. A replay has no remote occurrence and skips remote
+disposition and purge. Detailed current-to-target delta and implementation
+gates are in [smb-hardening.md](smb-hardening.md).
 
 ## 4. Change notification and reconciliation
 

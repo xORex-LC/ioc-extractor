@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — рабочий комплект"
 version: "0.3.0"
-status: "Architecture approved; P0-P8 implemented; P9 qualification in progress"
+status: "Architecture approved; P0-P8 implemented; P9 and SMB hardening in progress"
 document_type: "Worknote bundle index"
 source_of_truth: false
 language: "ru"
@@ -27,6 +27,9 @@ operator guides или release contract.
   managed intake реализованы 2026-08-23..2026-08-24; P9 implementation,
   reference load и основной live-stand qualification завершены, а exact
   `v0.2.0`/fresh-install packaging gate ещё открыт;
+- SMB namespace/capability/remote-terminal-retention hardening принят отдельным
+  ADR-0025 2026-08-26; документальный H0 завершён, runtime scopes H1-H5 ещё не
+  реализованы и не входят в прежнее P8 evidence;
 - discovery interview завершено 2026-08-23: все I-01..I-41 имеют статус
   `DECIDED`;
 - архитектурный проект, release contract, data/persistence/operations contracts,
@@ -161,6 +164,7 @@ operator guides или release contract.
 | [p7-evidence.md](p7-evidence.md) | Recovery barrier, global lane, finalization, retention and operator UX evidence for P7 |
 | [p8-evidence.md](p8-evidence.md) | SMB server-side ownership, durable materialization, shared sessions, notifications and live contract evidence for P8 |
 | [p9-evidence.md](p9-evidence.md) | Reference load, fairness, packaging rollback and external Samba round-trip evidence for P9 |
+| [smb-hardening.md](smb-hardening.md) | ADR-0025 delta, trust boundary, port split, cleanup state machine and H0-H5 implementation/qualification gates |
 
 ## Правила работы
 
