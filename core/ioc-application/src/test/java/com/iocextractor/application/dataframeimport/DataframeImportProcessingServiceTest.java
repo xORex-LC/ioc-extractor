@@ -49,6 +49,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -89,6 +90,48 @@ class DataframeImportProcessingServiceTest {
         assertThat(ledger.current.state()).isEqualTo(ImportDeliveryState.TERMINAL);
         assertThat(ledger.current.terminalOutcome()).contains(ImportTerminalOutcome.SUCCEEDED);
         assertThat(ledger.retrySchedules).isZero();
+    }
+
+    @Test
+    void replayFinalizationDoesNotCallSourceDisposition() {
+        ImportDelivery forward = delivery(ImportDeliveryState.CANONICAL_COMMITTED);
+        ImportDelivery replay = new ImportDelivery(
+                forward.id(), forward.sequence(), forward.sourceId(), forward.candidateToken(),
+                Optional.of(new ImportDeliveryId("parent")), forward.state(), forward.version(),
+                forward.evidence(), forward.retry(), forward.terminalOutcome(),
+                forward.createdAt(), forward.updatedAt());
+        StatefulLedger ledger = new StatefulLedger(replay);
+        AtomicBoolean dispositionCalled = new AtomicBoolean();
+        ManagedImportSourceLifecycle sources = new ManagedImportSourceLifecycle() {
+            @Override
+            public List<ImportSourceCandidate> detect(ImportSourceId sourceId, Instant observedAt) {
+                throw new AssertionError("source detection must not be called");
+            }
+
+            @Override
+            public ClaimImportSourceResult claim(ClaimImportSourceCommand command) {
+                throw new AssertionError("source claim must not be called");
+            }
+
+            @Override
+            public void disposition(DispositionImportSourceCommand command) {
+                dispositionCalled.set(true);
+            }
+
+            @Override
+            public void purgeSnapshot(ImportDeliveryId deliveryId, ImportSourceId sourceId) {
+                throw new AssertionError("snapshot purge must not be called");
+            }
+        };
+        DataframeImportProcessingService service = new DataframeImportProcessingService(
+                ledger, unusedStager(), this::idle, unusedWorkspace(),
+                commitEvidenceStore(replay.id()), command -> { }, sources,
+                CLOCK, Duration.ofSeconds(5));
+
+        service.processNext();
+
+        assertThat(ledger.current.state()).isEqualTo(ImportDeliveryState.TERMINAL);
+        assertThat(dispositionCalled).isFalse();
     }
 
     @Test
@@ -240,6 +283,7 @@ class DataframeImportProcessingServiceTest {
             public void purgeSnapshot(ImportDeliveryId deliveryId, ImportSourceId sourceId) {
                 throw new AssertionError("snapshot purge must not be called");
             }
+
         };
     }
 

@@ -188,8 +188,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
                     current, outcome, evidence.acceptedRows(), evidence.rejectedRows(),
                     evidence.publicMutations(), evidence.affectedArtifacts(), List.of(), evidence.issues());
             reports.publish(report);
-            sources.disposition(new DispositionImportSourceCommand(
-                    current.id(), current.sourceId(), outcome));
+            dispositionForwardSource(current, outcome);
             current = transition(
                     current, ImportDeliveryState.TERMINAL, ImportDeliveryCheckpoint.none(), outcome);
             observer.deliveryCompleted(current, report, elapsedSince(startedAt));
@@ -219,8 +218,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             PublishImportReportCommand report = report(current, ImportTerminalOutcome.REJECTED,
                     0, 0, 0, Set.of(), codes, List.of());
             reports.publish(report);
-            sources.disposition(new DispositionImportSourceCommand(
-                    current.id(), current.sourceId(), ImportTerminalOutcome.REJECTED));
+            dispositionForwardSource(current, ImportTerminalOutcome.REJECTED);
             current = transition(current, ImportDeliveryState.TERMINAL,
                     ImportDeliveryCheckpoint.none(), ImportTerminalOutcome.REJECTED);
             observer.deliveryCompleted(current, report, elapsedSince(startedAt));
@@ -286,6 +284,15 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
                         () -> contradiction("Import finalization has no pinned snapshot")).reference(),
                 delivery.contract(), outcome, acceptedRows, rejectedRows, publicMutations,
                 affectedArtifacts, deliveryCodes, issues);
+    }
+
+    private void dispositionForwardSource(
+            ImportDelivery delivery, ImportTerminalOutcome outcome) {
+        if (delivery.sourceOccurrenceKind()
+                == com.iocextractor.application.dataframeimport.model.ImportSourceOccurrenceKind.FORWARD) {
+            sources.disposition(new DispositionImportSourceCommand(
+                    delivery.id(), delivery.sourceId(), outcome));
+        }
     }
 
     private ImportDelivery transition(ImportDelivery current,

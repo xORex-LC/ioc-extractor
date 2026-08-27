@@ -90,4 +90,11 @@ public record ImportDelivery(
     public Optional<String> lastErrorCode() {
         return retry.lastErrorCode();
     }
+
+    /** Returns whether this occurrence owns a transport source remnant. */
+    public ImportSourceOccurrenceKind sourceOccurrenceKind() {
+        return replayOf.isPresent()
+                ? ImportSourceOccurrenceKind.SOURCE_DETACHED_REPLAY
+                : ImportSourceOccurrenceKind.FORWARD;
+    }
 }
