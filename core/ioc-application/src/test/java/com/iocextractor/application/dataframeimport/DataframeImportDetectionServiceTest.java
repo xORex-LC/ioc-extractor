@@ -44,11 +44,6 @@ class DataframeImportDetectionServiceTest {
             public void disposition(DispositionImportSourceCommand command) {
                 throw new UnsupportedOperationException();
             }
-
-            @Override
-            public void purgeSnapshot(ImportDeliveryId deliveryId, ImportSourceId sourceId) {
-                throw new UnsupportedOperationException();
-            }
         };
         var readiness = new DataframeImportSourceReadinessCoordinator(sourceId ->
                 sourceId.equals(CLOSED)

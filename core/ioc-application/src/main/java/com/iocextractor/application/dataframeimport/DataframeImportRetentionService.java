@@ -1,14 +1,17 @@
 package com.iocextractor.application.dataframeimport;
 
 import com.iocextractor.application.dataframeimport.model.ImportDelivery;
+import com.iocextractor.application.dataframeimport.model.ImportManagedObjectId;
 import com.iocextractor.application.dataframeimport.model.ImportTerminalRetentionTarget;
 import com.iocextractor.application.maintenance.RetentionAction;
 import com.iocextractor.application.port.in.dataframeimport.RunDataframeImportRetentionUseCase;
 import com.iocextractor.application.port.out.dataframeimport.ImportCommitEvidenceStore;
 import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
 import com.iocextractor.application.port.out.dataframeimport.ImportTerminalRetentionStore;
+import com.iocextractor.application.port.out.dataframeimport.ImportTerminalSourceRetention;
+import com.iocextractor.application.port.out.dataframeimport.ImportSnapshotStore;
 import com.iocextractor.application.port.out.dataframeimport.ImportWorkspace;
-import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
+import com.iocextractor.application.port.out.dataframeimport.PurgeImportTerminalSourceCommand;
 
 import java.time.Clock;
 import java.util.List;
@@ -19,7 +22,8 @@ public final class DataframeImportRetentionService implements RunDataframeImport
 
     private final ImportDeliveryLedger ledger;
     private final ImportTerminalRetentionStore terminals;
-    private final ManagedImportSourceLifecycle sources;
+    private final ImportTerminalSourceRetention sourceRetention;
+    private final ImportSnapshotStore snapshots;
     private final ImportWorkspace workspace;
     private final ImportCommitEvidenceStore commits;
     private final Clock clock;
@@ -28,14 +32,16 @@ public final class DataframeImportRetentionService implements RunDataframeImport
     /** Creates independently schedulable import retention. */
     public DataframeImportRetentionService(ImportDeliveryLedger ledger,
                                            ImportTerminalRetentionStore terminals,
-                                           ManagedImportSourceLifecycle sources,
+                                           ImportTerminalSourceRetention sourceRetention,
+                                           ImportSnapshotStore snapshots,
                                            ImportWorkspace workspace,
                                            ImportCommitEvidenceStore commits,
                                            Clock clock,
                                            List<ImportTerminalRetentionTarget> targets) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.terminals = Objects.requireNonNull(terminals, "terminals");
-        this.sources = Objects.requireNonNull(sources, "sources");
+        this.sourceRetention = Objects.requireNonNull(sourceRetention, "sourceRetention");
+        this.snapshots = Objects.requireNonNull(snapshots, "snapshots");
         this.workspace = Objects.requireNonNull(workspace, "workspace");
         this.commits = Objects.requireNonNull(commits, "commits");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -65,13 +71,19 @@ public final class DataframeImportRetentionService implements RunDataframeImport
     }
 
     private void retainTerminal(ImportTerminalRetentionTarget target, ImportDelivery delivery) {
+        if (delivery.sourceOccurrenceKind()
+                == com.iocextractor.application.dataframeimport.model.ImportSourceOccurrenceKind.FORWARD) {
+            sourceRetention.purge(new PurgeImportTerminalSourceCommand(
+                    delivery.id(), delivery.sourceId(), ImportManagedObjectId.from(delivery.id()),
+                    delivery.terminalOutcome().orElseThrow()));
+        }
         if (target.action() == RetentionAction.ARCHIVE) {
             terminals.archive(delivery.id(), target.archiveDirectory());
         } else {
             terminals.delete(delivery.id());
         }
         workspace.discard(delivery.id());
-        sources.purgeSnapshot(delivery.id(), delivery.sourceId());
+        snapshots.purge(delivery.id());
         commits.purge(delivery.id());
         if (!ledger.purgeTerminal(delivery.id(), delivery.version())) {
             throw new DataframeImportConsistencyException(

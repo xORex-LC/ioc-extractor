@@ -66,6 +66,7 @@ import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedge
 import com.iocextractor.application.port.out.dataframeimport.ImportReplaySnapshotStore;
 import com.iocextractor.application.port.out.dataframeimport.ImportReportStore;
 import com.iocextractor.application.port.out.dataframeimport.ImportSnapshotStore;
+import com.iocextractor.application.port.out.dataframeimport.ImportTerminalSourceRetention;
 import com.iocextractor.application.port.out.dataframeimport.ImportTerminalRetentionStore;
 import com.iocextractor.application.port.out.dataframeimport.ImportValueTransformRegistry;
 import com.iocextractor.application.port.out.dataframeimport.ImportWorkspace;
@@ -159,7 +160,7 @@ class DataframeImportRuntimeConfiguration {
         }
         var routed = new RoutedManagedImportSourceLifecycle(routes, resolvers);
         return new ManagedImportSourceAdapters(
-                routed, routed, snapshotStore, routed, signals);
+                routed, routed, snapshotStore, routed, routed, signals);
     }
 
     @Bean
@@ -171,6 +172,12 @@ class DataframeImportRuntimeConfiguration {
     @Bean
     ImportSnapshotStore dataframeImportSnapshotStore(ManagedImportSourceAdapters adapters) {
         return adapters.snapshotStore();
+    }
+
+    @Bean
+    ImportTerminalSourceRetention dataframeImportTerminalSourceRetention(
+            ManagedImportSourceAdapters adapters) {
+        return adapters.sourceRetention();
     }
 
     @Bean
@@ -392,13 +399,15 @@ class DataframeImportRuntimeConfiguration {
     RunDataframeImportRetentionUseCase runDataframeImportRetentionUseCase(
             ImportDeliveryLedger ledger,
             LocalImportTerminalStore terminals,
-            ManagedImportSourceLifecycle sources,
+            @Qualifier("dataframeImportTerminalSourceRetention")
+            ImportTerminalSourceRetention sourceRetention,
+            ImportSnapshotStore snapshots,
             ImportWorkspace workspace,
             ImportCommitEvidenceStore commits,
             IocProperties properties,
             Clock clock) {
         return new DataframeImportRetentionService(
-                ledger, terminals, sources, workspace, commits, clock,
+                ledger, terminals, sourceRetention, snapshots, workspace, commits, clock,
                 importRetentionTargets(properties.dataframeImport().runtime().retention()));
     }
 

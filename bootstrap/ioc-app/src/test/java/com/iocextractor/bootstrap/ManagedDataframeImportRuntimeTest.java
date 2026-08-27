@@ -108,10 +108,6 @@ class ManagedDataframeImportRuntimeTest {
             throw new UnsupportedOperationException();
         }
 
-        @Override
-        public void purgeSnapshot(ImportDeliveryId deliveryId, ImportSourceId sourceId) {
-            throw new UnsupportedOperationException();
-        }
     }
 
     private static final class FailingShutdownExecutor implements KeyedSerialExecutor {

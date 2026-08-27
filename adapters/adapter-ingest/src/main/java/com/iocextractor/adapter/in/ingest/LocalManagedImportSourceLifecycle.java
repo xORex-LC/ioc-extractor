@@ -11,6 +11,8 @@ import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceRe
 import com.iocextractor.application.port.out.dataframeimport.DispositionImportSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
 import com.iocextractor.application.port.out.dataframeimport.ImportSnapshotStore;
+import com.iocextractor.application.port.out.dataframeimport.ImportTerminalSourceRetention;
+import com.iocextractor.application.port.out.dataframeimport.PurgeImportTerminalSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ImportSourceCapability;
 import com.iocextractor.common.IocExtractorException;
 
@@ -51,7 +53,7 @@ import java.util.Set;
  * adapter.</p>
  */
 public final class LocalManagedImportSourceLifecycle
-        implements ManagedImportSourceLifecycle, ImportSourceCapability {
+        implements ManagedImportSourceLifecycle, ImportTerminalSourceRetention, ImportSourceCapability {
 
     private static final Set<PosixFilePermission> PRIVATE_DIRECTORY_PERMISSIONS = EnumSet.of(
             PosixFilePermission.OWNER_READ,
@@ -231,10 +233,11 @@ public final class LocalManagedImportSourceLifecycle
         }
     }
 
+    /** Local claims leave no transport-managed terminal source remnant. */
     @Override
-    public void purgeSnapshot(ImportDeliveryId deliveryId, ImportSourceId sourceId) {
-        requiredInbox(sourceId);
-        snapshots.purge(deliveryId);
+    public void purge(PurgeImportTerminalSourceCommand command) {
+        Objects.requireNonNull(command, "command");
+        requiredInbox(command.sourceId());
     }
 
     /** Resolves only adapter-issued immutable references for the CSV reader. */

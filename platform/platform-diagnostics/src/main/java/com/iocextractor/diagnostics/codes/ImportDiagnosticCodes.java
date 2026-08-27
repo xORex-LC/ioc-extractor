@@ -36,6 +36,8 @@ public enum ImportDiagnosticCodes implements DiagnosticCode {
             "Managed import durable evidence is contradictory and intake remains closed"),
     RETENTION_FAILED(DiagnosticSeverity.ERROR, "import.retention-failed",
             "Managed import terminal retention failed and will be retried"),
+    RETENTION_CONTRADICTION(DiagnosticSeverity.FATAL, "import.retention-contradiction",
+            "Managed import terminal source evidence is contradictory; cleanup remains closed"),
     CHANGE_SIGNAL_FAILED(DiagnosticSeverity.WARN, "import.change-signal-failed",
             "Managed import change notification is unavailable; polling remains active");
 

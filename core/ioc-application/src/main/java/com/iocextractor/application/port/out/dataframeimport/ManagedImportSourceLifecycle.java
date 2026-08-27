@@ -1,7 +1,6 @@
 package com.iocextractor.application.port.out.dataframeimport;
 
 import com.iocextractor.application.dataframeimport.model.ImportSourceCandidate;
-import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
 import com.iocextractor.application.dataframeimport.model.ImportSourceId;
 
 import java.time.Instant;
@@ -39,6 +38,4 @@ public interface ManagedImportSourceLifecycle {
      */
     void disposition(DispositionImportSourceCommand command);
 
-    /** Removes the private local snapshot after terminal retention expires. */
-    void purgeSnapshot(ImportDeliveryId deliveryId, ImportSourceId sourceId);
 }

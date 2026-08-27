@@ -1,5 +1,6 @@
 package com.iocextractor.adapter.out.transport.smb;
 
+import com.iocextractor.application.dataframeimport.DataframeImportConsistencyException;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
 import com.iocextractor.application.dataframeimport.model.ImportManagedObjectId;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshotReference;
@@ -13,6 +14,8 @@ import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceRe
 import com.iocextractor.application.port.out.dataframeimport.DispositionImportSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
 import com.iocextractor.application.port.out.dataframeimport.ImportSnapshotStore;
+import com.iocextractor.application.port.out.dataframeimport.ImportTerminalSourceRetention;
+import com.iocextractor.application.port.out.dataframeimport.PurgeImportTerminalSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ImportSourceCapability;
 import com.iocextractor.application.sync.RemoteErrorKind;
 import com.iocextractor.application.sync.RemoteTransportException;
@@ -34,7 +37,7 @@ import java.util.Set;
 
 /** SMB ownership adapter: server rename first, then durable private local materialization. */
 public final class SmbManagedImportSourceLifecycle
-        implements ManagedImportSourceLifecycle, ImportSourceCapability {
+        implements ManagedImportSourceLifecycle, ImportTerminalSourceRetention, ImportSourceCapability {
 
     private static final String PRIVATE_NAMESPACE = ".ioc-managed-import";
     private final Map<ImportSourceId, SmbImportSourceDefinition> sources;
@@ -246,10 +249,35 @@ public final class SmbManagedImportSourceLifecycle
         });
     }
 
+    /** Deletes exactly the expected regular terminal object and treats absence as success. */
     @Override
-    public void purgeSnapshot(ImportDeliveryId deliveryId, ImportSourceId sourceId) {
-        source(sourceId);
-        snapshots.purge(deliveryId);
+    public void purge(PurgeImportTerminalSourceCommand command) {
+        Objects.requireNonNull(command, "command");
+        SmbImportSourceDefinition source = source(command.sourceId());
+        String token = command.managedObjectId().value() + ".csv";
+        String expected = SmbFileTransport.join(managed(source,
+                command.expectedOutcome() == ImportTerminalOutcome.REJECTED
+                        ? "quarantine" : "terminal"), token);
+        String processing = SmbFileTransport.join(managed(source, "processing"), token);
+        String other = SmbFileTransport.join(managed(source,
+                command.expectedOutcome() == ImportTerminalOutcome.REJECTED
+                        ? "terminal" : "quarantine"), token);
+        sessions.withClient(source.endpoint(), "import-retention", client -> {
+            if (client.stat(processing).isPresent() || client.stat(other).isPresent()) {
+                throw new DataframeImportConsistencyException(
+                        "SMB import terminal source evidence is contradictory");
+            }
+            var entry = client.stat(expected);
+            if (entry.isEmpty()) {
+                return null;
+            }
+            if (!entry.orElseThrow().regularFile()) {
+                throw new DataframeImportConsistencyException(
+                        "SMB import terminal source object is not a regular file");
+            }
+            client.deleteRegularFile(expected);
+            return null;
+        });
     }
 
     /** Resolves only immutable local snapshots issued by this SMB adapter. */

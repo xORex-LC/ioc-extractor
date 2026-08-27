@@ -67,8 +67,8 @@ final class DataframeImportRuntimeObserver {
                 .log());
     }
 
-    void retentionFailed(String errorType) {
-        failure(EventAction.IMPORT_RETENTION, ImportDiagnosticCodes.RETENTION_FAILED,
+    void retentionFailed(ImportDiagnosticCodes code, String errorType) {
+        failure(EventAction.IMPORT_RETENTION, code,
                 errorType, "managed dataframe import retention failed");
     }
 

@@ -164,8 +164,15 @@ final class ManagedDataframeImportRuntime implements DataframeImportRuntimeLifec
             int retained = retention.retain(retentionBatchSize);
             observer.retentionCompleted(retained, elapsedSince(startedAt));
         } catch (RuntimeException failure) {
-            state.degraded(ImportDiagnosticCodes.RETENTION_FAILED.id());
-            observer.retentionFailed(failure.getClass().getName());
+            ImportDiagnosticCodes code = failure instanceof DataframeImportConsistencyException
+                    ? ImportDiagnosticCodes.RETENTION_CONTRADICTION
+                    : ImportDiagnosticCodes.RETENTION_FAILED;
+            if (code == ImportDiagnosticCodes.RETENTION_CONTRADICTION) {
+                state.failed(clock.instant(), code.id());
+            } else {
+                state.degraded(code.id());
+            }
+            observer.retentionFailed(code, failure.getClass().getName());
         }
     }
 

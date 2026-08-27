@@ -1,12 +1,14 @@
 package com.iocextractor.adapter.out.transport.smb;
 
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
+import com.iocextractor.application.dataframeimport.model.ImportManagedObjectId;
 import com.iocextractor.application.dataframeimport.model.ImportSourceCandidate;
 import com.iocextractor.application.dataframeimport.model.ImportSourceId;
 import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
 import com.iocextractor.application.dataframeimport.model.ImportSourceReadinessStatus;
 import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.DispositionImportSourceCommand;
+import com.iocextractor.application.port.out.dataframeimport.PurgeImportTerminalSourceCommand;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -201,6 +203,55 @@ class SmbManagedImportSourceLifecycleTest {
                 assertThat(operation).startsWith("create-empty:incoming/.ioc-managed-import/probe/"));
         assertThat(fixture.remote.operations).anySatisfy(operation ->
                 assertThat(operation).startsWith("delete-file:incoming/.ioc-managed-import/terminal/"));
+    }
+
+    @Test
+    void retentionDeletesOnlyExpectedTerminalFileAndAbsenceIsIdempotent() {
+        Fixture fixture = fixture(Duration.ZERO);
+        String terminal = "incoming/.ioc-managed-import/terminal/"
+                + deliveryToken(DELIVERY) + ".csv";
+        fixture.remote.put(terminal, "retained", MODIFIED_AT);
+        var command = new PurgeImportTerminalSourceCommand(
+                DELIVERY, SOURCE, ImportManagedObjectId.from(DELIVERY),
+                ImportTerminalOutcome.SUCCEEDED);
+
+        fixture.lifecycle.purge(command);
+        fixture.lifecycle.purge(command);
+
+        assertThat(fixture.remote.files).doesNotContainKey(terminal);
+        assertThat(fixture.remote.operations).contains("delete-file:" + terminal);
+    }
+
+    @Test
+    void retentionFailsClosedWhileManagedObjectStillExistsInProcessing() {
+        Fixture fixture = fixture(Duration.ZERO);
+        fixture.remote.put(processingPath(DELIVERY), "claimed", MODIFIED_AT);
+        var command = new PurgeImportTerminalSourceCommand(
+                DELIVERY, SOURCE, ImportManagedObjectId.from(DELIVERY),
+                ImportTerminalOutcome.SUCCEEDED);
+
+        assertThatThrownBy(() -> fixture.lifecycle.purge(command))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("contradictory");
+        assertThat(fixture.remote.files).containsKey(processingPath(DELIVERY));
+    }
+
+    @Test
+    void retentionRejectsReparsePointWithoutDeletingIt() {
+        Fixture fixture = fixture(Duration.ZERO);
+        String terminal = "incoming/.ioc-managed-import/terminal/"
+                + deliveryToken(DELIVERY) + ".csv";
+        fixture.remote.put(terminal, "link-like", MODIFIED_AT);
+        fixture.remote.reparsePoints.add(terminal);
+        var command = new PurgeImportTerminalSourceCommand(
+                DELIVERY, SOURCE, ImportManagedObjectId.from(DELIVERY),
+                ImportTerminalOutcome.SUCCEEDED);
+
+        assertThatThrownBy(() -> fixture.lifecycle.purge(command))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("not a regular file");
+        assertThat(fixture.remote.files).containsKey(terminal);
+        assertThat(fixture.remote.operations).doesNotContain("delete-file:" + terminal);
     }
 
     @Test

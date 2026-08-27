@@ -117,11 +117,6 @@ class DataframeImportProcessingServiceTest {
             public void disposition(DispositionImportSourceCommand command) {
                 dispositionCalled.set(true);
             }
-
-            @Override
-            public void purgeSnapshot(ImportDeliveryId deliveryId, ImportSourceId sourceId) {
-                throw new AssertionError("snapshot purge must not be called");
-            }
         };
         DataframeImportProcessingService service = new DataframeImportProcessingService(
                 ledger, unusedStager(), this::idle, unusedWorkspace(),
@@ -277,11 +272,6 @@ class DataframeImportProcessingServiceTest {
             @Override
             public void disposition(DispositionImportSourceCommand command) {
                 // Terminal disposition is an expected part of finalization.
-            }
-
-            @Override
-            public void purgeSnapshot(ImportDeliveryId deliveryId, ImportSourceId sourceId) {
-                throw new AssertionError("snapshot purge must not be called");
             }
 
         };

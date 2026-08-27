@@ -33,6 +33,7 @@ Generated from `DiagnosticCatalogs`.
 | `IMPORT.FINALIZATION_FAILED` | IMPORT | ERROR | OPERATION | `import.finalization-failed` | Managed import finalization failed; forward recovery remains scheduled |
 | `IMPORT.CONSISTENCY_FAILED` | IMPORT | FATAL | OPERATION | `import.consistency-failed` | Managed import durable evidence is contradictory and intake remains closed |
 | `IMPORT.RETENTION_FAILED` | IMPORT | ERROR | OPERATION | `import.retention-failed` | Managed import terminal retention failed and will be retried |
+| `IMPORT.RETENTION_CONTRADICTION` | IMPORT | FATAL | OPERATION | `import.retention-contradiction` | Managed import terminal source evidence is contradictory; cleanup remains closed |
 | `IMPORT.CHANGE_SIGNAL_FAILED` | IMPORT | WARN | OPERATION | `import.change-signal-failed` | Managed import change notification is unavailable; polling remains active |
 | `STORAGE.MIGRATION_APPLIED` | STORAGE | INFO | OPERATION | `storage.migration-applied` | Storage {dbRole} applied schema migration {migrationVersion}; schema is now {schemaVersion} |
 | `STORAGE.MIGRATION_ROLLBACK` | STORAGE | FATAL | OPERATION | `storage.migration-rollback` | Storage {dbRole} rolled back schema migration {migrationVersion}: {reason} |

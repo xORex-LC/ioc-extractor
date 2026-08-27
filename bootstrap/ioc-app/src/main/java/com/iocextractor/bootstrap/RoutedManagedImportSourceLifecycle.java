@@ -1,7 +1,6 @@
 package com.iocextractor.bootstrap;
 
 import com.iocextractor.adapter.in.csv.ImportSnapshotPathResolver;
-import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshotReference;
 import com.iocextractor.application.dataframeimport.model.ImportSourceCandidate;
 import com.iocextractor.application.dataframeimport.model.ImportSourceId;
@@ -10,6 +9,8 @@ import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceCo
 import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceResult;
 import com.iocextractor.application.port.out.dataframeimport.DispositionImportSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
+import com.iocextractor.application.port.out.dataframeimport.ImportTerminalSourceRetention;
+import com.iocextractor.application.port.out.dataframeimport.PurgeImportTerminalSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ImportSourceCapability;
 
 import java.nio.file.Path;
@@ -21,7 +22,8 @@ import java.util.Objects;
 
 /** Bootstrap-only router across transport-specific source ownership adapters. */
 final class RoutedManagedImportSourceLifecycle
-        implements ManagedImportSourceLifecycle, ImportSnapshotPathResolver, ImportSourceCapability {
+        implements ManagedImportSourceLifecycle, ImportSnapshotPathResolver,
+        ImportTerminalSourceRetention, ImportSourceCapability {
 
     private final Map<ImportSourceId, ManagedImportSourceLifecycle> routes;
     private final List<ImportSnapshotPathResolver> snapshots;
@@ -61,8 +63,12 @@ final class RoutedManagedImportSourceLifecycle
     }
 
     @Override
-    public void purgeSnapshot(ImportDeliveryId deliveryId, ImportSourceId sourceId) {
-        route(sourceId).purgeSnapshot(deliveryId, sourceId);
+    public void purge(PurgeImportTerminalSourceCommand command) {
+        ManagedImportSourceLifecycle lifecycle = route(command.sourceId());
+        if (!(lifecycle instanceof ImportTerminalSourceRetention retention)) {
+            throw new IllegalStateException("Managed import source has no terminal retention adapter");
+        }
+        retention.purge(command);
     }
 
     @Override

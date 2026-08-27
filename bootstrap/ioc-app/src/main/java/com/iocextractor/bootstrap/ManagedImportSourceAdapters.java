@@ -3,6 +3,7 @@ package com.iocextractor.bootstrap;
 import com.iocextractor.adapter.in.csv.ImportSnapshotPathResolver;
 import com.iocextractor.application.port.out.dataframeimport.ImportChangeSignalSource;
 import com.iocextractor.application.port.out.dataframeimport.ImportSnapshotStore;
+import com.iocextractor.application.port.out.dataframeimport.ImportTerminalSourceRetention;
 import com.iocextractor.application.port.out.dataframeimport.ImportSourceCapability;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
 
@@ -14,6 +15,7 @@ record ManagedImportSourceAdapters(
         ManagedImportSourceLifecycle lifecycle,
         ImportSnapshotPathResolver snapshots,
         ImportSnapshotStore snapshotStore,
+        ImportTerminalSourceRetention sourceRetention,
         ImportSourceCapability capability,
         List<ImportChangeSignalSource> changeSignals) {
 
@@ -21,6 +23,7 @@ record ManagedImportSourceAdapters(
         Objects.requireNonNull(lifecycle, "lifecycle");
         Objects.requireNonNull(snapshots, "snapshots");
         Objects.requireNonNull(snapshotStore, "snapshotStore");
+        Objects.requireNonNull(sourceRetention, "sourceRetention");
         Objects.requireNonNull(capability, "capability");
         changeSignals = List.copyOf(Objects.requireNonNull(changeSignals, "changeSignals"));
     }

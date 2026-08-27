@@ -163,9 +163,6 @@ class JdbcImportDeliveryLedgerContractTest extends ImportDeliveryLedgerContractT
             public void disposition(DispositionImportSourceCommand command) {
             }
 
-            @Override
-            public void purgeSnapshot(ImportDeliveryId deliveryId, ImportSourceId sourceId) {
-            }
         };
         var service = new DataframeImportAdmissionService(
                 ledger, lifecycle, events::add,
