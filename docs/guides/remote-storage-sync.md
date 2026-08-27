@@ -47,6 +47,13 @@ SQLite ──▶ export slice (./var/export) ───────────�
 Both flows run on a schedule in daemon mode only; in oneshot mode the same
 operations are available manually through the CLI (`ioc sync fetch|publish|all`).
 
+This read-only fetch contract is intentionally different from
+[managed dataframe import](dataframe-import.md#submit-an-smb-delivery). Managed
+import claims producer files by server-side rename and later purges exact
+service-owned terminal objects from a separately provisioned private namespace.
+Sharing an endpoint/session pool does not give ordinary sync fetch those
+mutating rights.
+
 ### 1.2 Three principles that explain all of the behavior
 
 **1. Durable idempotency through ledgers.** Every downloaded file and every

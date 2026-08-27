@@ -62,9 +62,15 @@ reconcile coordinators используют ledger как authority; in-memory e
 keyed executor лишь ускоряют работу. Validate/status/replay/retention доступны
 через узкие driving ports и не дают оператору skip/reorder либо прямую mutation
 ledger.
+`DataframeImportSourceReadinessCoordinator` закрывает только источник, не
+прошедший transport-neutral positive capability probe. Общие
+`ImportManagedObjectId` и `ImportSnapshotStore` сохраняют token/snapshot
+контракт независимым от local/SMB транспорта; replay имеет явный
+source-detached kind и не вызывает source disposition/retention.
 Terminal retention использует общую семантику
 `max-age|max-count|delete|archive` для непересекающихся outcome targets и
-очищает snapshot/stage/receipt/ledger только после обработки source/report unit.
+сначала очищает transport-managed terminal source, затем local terminal unit,
+snapshot/stage/receipt и только последним CAS удаляет ledger row.
 
 ## Зависимости
 

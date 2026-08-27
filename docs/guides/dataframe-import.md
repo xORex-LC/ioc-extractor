@@ -17,6 +17,8 @@ same canonical SQLite truth as ordinary extraction.
    headers and declared aliases, never the filename or column order.
 5. Validate representative valid, malformed, duplicate and ambiguous files
    before enabling intake.
+6. For every SMB source, pre-provision the private namespace and verify its ACLs
+   with separate producer and service identities before starting the runtime.
 
 Use the complete property reference in [configuration.md](configuration.md) and
 start from the commented example in the production
@@ -74,10 +76,41 @@ delivery, including a byte-identical resubmission.
 
 ## Submit an SMB delivery
 
-Use a dedicated directory on the configured share. The service account needs
-list, read, rename/move and create-directory rights within that directory and
-its private `.ioc-managed-import` namespace. Producer and consumer must be on
-the same server-side filesystem so claim can use rename without copy/delete.
+Use a dedicated directory on the configured share. Managed import is a mutating
+consumer: unlike ordinary `sync.fetch`, it claims, moves and eventually deletes
+its own managed objects. Do not grant these rights to a read-only sync-fetch
+source merely because both capabilities share an SMB endpoint/session pool.
+
+Pre-create this exact namespace below each configured managed-import location:
+
+```text
+<source>/
+└── .ioc-managed-import/
+    ├── processing/
+    ├── terminal/
+    ├── quarantine/
+    └── probe/
+```
+
+The application never creates these directories. Before candidate listing it
+uses the service identity to create an empty reserved object in `probe`, rename
+it through `processing` to `terminal`, and delete that exact regular file. A
+missing directory or deterministic permission/object mismatch closes only that
+source; a later reconcile reprobes it. This is a positive operation check, not
+an ACL audit: the application cannot prove that the producer is denied access.
+
+Use two distinct identities and enforce this minimum matrix on the server:
+
+| Location / operation | Producer identity | Service identity |
+|---|---|---|
+| `<source>` publish completed regular file | allow create/write and atomic handoff; grant only the listing/read rights the producer actually needs | allow list/read and server-side rename into `processing` |
+| `.ioc-managed-import` and all children | deny traversal, listing, read, write and delete | allow traversal and the exact probe/claim/disposition/retention operations |
+| `probe` | no access | create empty regular file, rename out and exact delete for recovery |
+| `processing` | no access | create by rename, read with write sharing excluded, rename out; no recursive delete |
+| `terminal`, `quarantine` | no access | create by rename, inspect and delete exact regular managed object |
+
+Producer and consumer must be on the same server-side filesystem so claim can
+use rename without copy/delete.
 Prefer uploading into a producer-owned sibling staging directory and then using
 one server-side rename into the configured source. If the producer must stream
 directly into the source directory, its maximum write pause must stay below the
@@ -87,6 +120,43 @@ guaranteed.
 Enable SMB encryption unless the network is trusted by another documented
 control. `CHANGE_NOTIFY` reduces latency; complete listing remains enabled and
 recovers notification loss, disconnects and restarts.
+
+### Samba example
+
+Create the namespace as an administrator, then express the matrix with your
+site's POSIX ACL groups. This example uses dedicated accounts and assumes the
+share is configured to honor filesystem ACLs:
+
+```bash
+install -d -m 0770 -o ioc-service -g ioc-service /srv/ioc-import/inbox/.ioc-managed-import/{processing,terminal,quarantine,probe}
+setfacl -m u:ioc-service:rwx,u:ioc-producer:-wx,m::rwx /srv/ioc-import/inbox
+setfacl -m d:u:ioc-service:rw-,d:m::rw- /srv/ioc-import/inbox
+setfacl -R -m u:ioc-service:rwx,u:ioc-producer:---,m::rwx /srv/ioc-import/inbox/.ioc-managed-import
+```
+
+Adapt owner/group/default ACLs to the server's Samba identity mapping. Test as
+the producer that private traversal/list/read/write/delete all fail, and test as
+the service account that the application capability gate becomes ready. Do not
+infer producer denial from a successful service probe.
+
+### Windows Server example
+
+Create the four directories in the share's NTFS backing folder. Give the
+service account `Modify` on `<source>` and the private subtree. Give the producer
+only the source-folder rights needed to publish a completed file, then remove
+inherited producer/group access from `.ioc-managed-import` (retain
+Administrators/SYSTEM and the service identity). Use Advanced Security or
+`icacls`; exact principals and inheritance flags are deployment-specific.
+
+Verify with `runas` or separate sessions for both identities: the producer must
+be unable to traverse or list the private subtree, while the service account
+must pass the capability gate and a producer-created candidate must be claimable.
+The application does not inspect or certify NTFS/Samba ACL policy.
+
+The repository's opt-in `SmbManagedImportHardeningContractTest` performs this
+two-identity proof against a pre-provisioned fixture. It never creates or
+recursively deletes the namespace; see the SMB adapter README for its value-free
+system-property invocation.
 
 ## Observe progress
 
@@ -110,7 +180,10 @@ the stability window for producers that cannot publish by atomic rename.
 ## Outcomes and recovery
 
 - Successful deliveries move to the protected terminal area with a safe JSON
-  report. Rejected deliveries move to quarantine.
+  report. Rejected deliveries move to quarantine. For SMB forward deliveries,
+  retention deletes the exact remote terminal/quarantine regular object before
+  local terminal/workspace/snapshot/receipt cleanup and deletes the durable
+  ledger row last.
 - A malformed file, ambiguous contract or hard parser limit rejects the whole
   delivery. With `accept-valid`, an isolated invalid row does not discard other
   valid rows; `reject-delivery` is the strict alternative.
@@ -127,7 +200,8 @@ To replay retained terminal evidence as a new occurrence:
 ```
 
 Replay never reopens the old terminal record. It receives a new delivery ID and
-sequence and retains a causal link to the original.
+sequence, retains a causal link to the original and is source-detached: it does
+not disposition or purge an SMB object.
 
 ## Incident checklist
 

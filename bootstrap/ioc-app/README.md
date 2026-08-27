@@ -109,7 +109,10 @@ recognition/staging/promotion/finalization use cases с local либо SMB owner
 service/dataframe JDBC evidence и общим post-commit event path. SMB sources
 используют тот же endpoint catalog и shared session pool, что ordinary sync;
 server-side rename предшествует durable local snapshot, а `CHANGE_NOTIFY`
-остаётся необязательным doorbell. Один
+остаётся необязательным doorbell. Один shared local snapshot-store bean
+обслуживает local, SMB и replay flows через application port; transport router
+отдельно предоставляет source capability и terminal-source retention без
+adapter-to-adapter dependency. Один
 `CanonicalIntakeStartupCoordinator` держит ordinary ingest и managed import
 закрытыми до обеих recovery-процедур и lifecycle admission. Periodic full scan
 и ledger reconcile остаются correctness backstop; WatchService,
@@ -118,7 +121,9 @@ server-side rename предшествует durable local snapshot, а `CHANGE_N
 Global import drain и recovery используют один constant keyed lane, поэтому
 executor ordering не может обойти минимальный durable sequence. Runtime health
 и Micrometer gauges публикуют только phase, aggregate backlog, safe head retry
-facts и lane depth.
+facts, aggregate source-readiness counts и lane depth. Incompatible source
+делает health `DOWN`, transient source — `DEGRADED`; endpoint/path/identity не
+публикуются.
 Shutdown сначала закрывает watches/new hints, затем scheduler и ждёт уже
 принятую lane work до typed timeout.
 

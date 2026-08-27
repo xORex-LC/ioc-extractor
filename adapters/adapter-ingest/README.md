@@ -16,7 +16,8 @@ artifacts directly.
 |---|---|
 | `pom.xml` | Maven module descriptor |
 | `src/main/java/com/iocextractor/adapter/in/ingest/` | Spring Integration flow and filesystem adapters |
-| `LocalManagedImportSourceLifecycle` | Strict local claim, producer-stability proof and immutable snapshot materialization |
+| `LocalManagedImportSourceLifecycle` | Strict local claim, producer-stability proof, claimed-byte access and source disposition |
+| `LocalFilesystemImportSnapshotStore` | One protected immutable snapshot publication/resolution/purge implementation shared by local, SMB and replay flows through an application port |
 | `LocalImportChangeSignalSource` | Optional WatchService doorbell that discards event filenames |
 | `LocalImportTerminalStore` | Atomic protected source/report unit, replay materialization and idempotent delete/archive retention |
 
@@ -47,6 +48,11 @@ concurrency, Spring Integration file support.
   и ledger key включают observation identity, поэтому одинаковые bytes из двух
   доставок не перезаписывают друг друга. Старые content-keyed ledger/files
   читаются как `legacy:<sourceKey>` для recovery.
+
+- Managed-import snapshot persistence не является local-source policy:
+  `LocalFilesystemImportSnapshotStore` принимает transport-supplied writer,
+  владеет byte bound/hash/fsync/no-replace publication и понимает старые
+  `local-snapshot-v1`/`smb-snapshot-v1` references без их переписывания.
 
 - `FileSourceMessageHandler` владеет final retry boundary: после исчерпания
   попыток он выполняет reject/dead-letter transition, если use case ещё

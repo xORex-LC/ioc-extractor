@@ -179,6 +179,10 @@ Managed dataframe import is disabled in both shipped configurations. Enabling it
 starts intake only after the shared startup recovery barrier has reconciled
 ordinary ingestion and managed import. Keep `enabled: false` until the source,
 authority and contract catalog has been qualified for the deployment.
+An SMB source also requires the operator-provisioned private namespace and
+two-identity permission checks described in the
+[managed-import guide](dataframe-import.md#submit-an-smb-delivery). No additional
+configuration key creates or audits that namespace.
 
 The production template uses an event-first low-latency preset: import full
 listing every `2s`, a `2s` stability window and `2s` retry delay; ordinary local
@@ -217,7 +221,7 @@ longest producer-side non-atomic copy interval.
 | `ioc.dataframe-import.sources` | list | empty | Managed local/SMB trust boundaries. Required when enabled. |
 | `ioc.dataframe-import.sources[].id` | unique string | required | Durable source trust-boundary ID. |
 | `ioc.dataframe-import.sources[].transport` | `local`, `smb` | required | SMB also requires an existing `ioc.sync.endpoints[].name`. |
-| `ioc.dataframe-import.sources[].location` | transport-relative path | required | Dedicated managed-import location. |
+| `ioc.dataframe-import.sources[].location` | transport-relative path | required | Dedicated managed-import location. For SMB, pre-create `.ioc-managed-import/{processing,terminal,quarantine,probe}` below it; the runtime never creates these directories. |
 | `ioc.dataframe-import.sources[].endpoint` | sync endpoint ID | SMB only | Omit for local sources. |
 | `ioc.dataframe-import.sources[].contracts` | contract ID list | required | Exact source allowlist. |
 | `ioc.dataframe-import.sources[].authority` | authority profile ID | required | Mutation ceiling for this source. |

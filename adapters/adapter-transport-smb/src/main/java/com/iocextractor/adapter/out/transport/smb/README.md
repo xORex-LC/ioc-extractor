@@ -70,8 +70,8 @@ taxonomy mapping, watch re-arm, lease re-open, bounded close, polling без
 notifications, claim-before-download, share conflict, collision, object
 substitution/mutation, orphan adoption, disposition и shared-session reuse.
 
-Пять opt-in контрактных сценариев против живого SMB-сервера проверяют managed
-claim/disposition/restart и `CHANGE_NOTIFY`:
+Пять базовых opt-in контрактных сценариев против живого SMB-сервера проверяют
+managed claim/disposition/restart и `CHANGE_NOTIFY`:
 
 ```bash
 ./mvnw -pl adapters/adapter-transport-smb -am test \
@@ -85,3 +85,20 @@ claim/disposition/restart и `CHANGE_NOTIFY`:
 
 Каждый сценарий создаёт только собственный UUID-подкаталог под `remotePath` и
 удаляет именно его в `finally`; корень operator inbox не очищается.
+
+Отдельный hardening-contract требует заранее подготовленный namespace и две
+identity. Он не создаёт/не удаляет каталоги и проверяет positive capability,
+missing namespace, producer denial, claim, reconnect, disposition и exact
+retention:
+
+```bash
+./mvnw -pl adapters/adapter-transport-smb -am test \
+  -Dioc.smb.hardening.contract=true \
+  -Dioc.smb.host=files.example.test \
+  -Dioc.smb.share=intel \
+  -Dioc.smb.username="$SMB_SERVICE_USER" \
+  -Dioc.smb.password="$SMB_SERVICE_PASSWORD" \
+  -Dioc.smb.producer.username="$SMB_PRODUCER_USER" \
+  -Dioc.smb.producer.password="$SMB_PRODUCER_PASSWORD" \
+  -Dioc.smb.hardening.remotePath=managed-import/inbox
+```

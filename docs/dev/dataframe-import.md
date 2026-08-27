@@ -16,6 +16,9 @@ import does not restore the retired hand-filled CSV lookup/seed path.
 periodic complete listing <------------------------------ correctness backstop
         ^                         local watch / SMB CHANGE_NOTIFY (doorbells)
         |
+positive source capability gate
+  -> source-scoped READY / TRANSIENTLY_UNAVAILABLE / INCOMPATIBLE
+        |
 stabilized candidate
   -> reserve durable delivery ID and global sequence
   -> claim source ownership
@@ -61,12 +64,20 @@ delivery ID, so it does not disclose the producer filename. Existing producer
 and destination objects are a collision and fail closed; neither is overwritten.
 After a restart, the same delivery can adopt the already-renamed object.
 
+Before listing candidates, each source passes a transport-neutral positive
+capability gate. Local sources validate their source root. SMB sources require
+the operator-provisioned `processing`, `terminal`, `quarantine` and `probe`
+directories, then prove an empty private object can be created, renamed through
+the accepted private flow and deleted exactly. A failed source remains closed
+and is reprobed by a later bounded reconcile; unrelated sources remain open.
+
 Materialization opens the claimed file for read while excluding concurrent write
-sharing, downloads into a private `.part`, checks size and the remote evidence
-before and after the stream, hashes and fsyncs the local file, then atomically
-publishes `snapshot.csv`. Canonical processing can start only from that pinned
-snapshot. A terminal outcome moves the remote processing object to `terminal`
-or `quarantine` only after the protected local source/report unit exists.
+sharing and streams it to the common local snapshot store. The source adapter
+checks source evidence before and after the stream; the shared store owns the
+byte limit, digest, fsync, no-replace atomic publication, reference compatibility
+and purge. Canonical processing can start only from that pinned snapshot. A
+terminal outcome moves the remote processing object to `terminal` or
+`quarantine` only after the protected local source/report unit exists.
 
 Sync and managed import share one lazy endpoint-keyed SMB session pool. Operations
 for one endpoint are serialized so idle close or reconnect cannot invalidate an
@@ -84,10 +95,13 @@ continues when notifications are disabled, lost, duplicated or reconnecting.
 - `adapter-store-jdbc` owns service schema v9, private sealed workspaces,
   active-only canonical matching/mutation, sparse requested slots and the
   dataframe `import_commit` receipt.
-- `adapter-ingest` owns local claim/snapshot/terminal filesystem mechanics and
-  local WatchService hints.
+- `adapter-ingest` owns local claim/terminal filesystem mechanics, the one
+  local-filesystem immutable snapshot-store implementation shared by every
+  source transport, and local WatchService hints.
 - `adapter-transport-smb` owns SMB sessions, server rename, object evidence,
-  durable local materialization, remote disposition and `CHANGE_NOTIFY`.
+  claimed-byte access, the positive private-namespace probe, remote disposition,
+  exact terminal-source purge and `CHANGE_NOTIFY`. It does not depend on the
+  local adapter.
 - `ioc-app` is the only composition root. It shares the ordinary-ingest/import
   recovery barrier and post-commit canonical-change path.
 - `ioc-application-tck` owns reusable ledger and canonical-promotion contracts.
@@ -119,6 +133,10 @@ continues when notifications are disabled, lost, duplicated or reconnecting.
 10. **Terminal evidence is a unit.** The protected source and safe JSON report
     are published atomically; raw IOC cells, paths and digests do not enter
     reports, health details or diagnostics.
+11. **Retention removes authority last.** A forward delivery purges the exact
+    transport-managed terminal object before local terminal, workspace,
+    snapshot and receipt cleanup; the ledger row is deleted last. Replay is
+    explicitly source-detached and performs no source disposition or retention.
 
 ## Failures and recovery
 
@@ -132,6 +150,9 @@ continues when notifications are disabled, lost, duplicated or reconnecting.
 | crash before dataframe commit | resume/rebuild from the latest service-ledger checkpoint | ledger, snapshot and sealed stage |
 | crash after dataframe commit | observe `import_commit` and finalize without applying mutations twice | dataframe receipt |
 | event or notification loss | wait for the next bounded full listing or durable-head reconcile | periodic backstops |
+| missing private SMB namespace or deterministic permission mismatch | close only that source before listing/claim and report incompatible readiness | positive capability probe plus bounded reprobe |
+| temporary SMB capability or terminal-retention failure | keep intake or cleanup authority closed for the affected source and retry | source readiness state or terminal ledger row |
+| replay finalization/retention | skip transport disposition and source-remnant purge | explicit source occurrence kind plus retained local terminal unit |
 
 Contradictory durable evidence fails the startup recovery barrier. Ordinary
 ingest and managed import both remain closed until their recovery and lifecycle
@@ -145,8 +166,10 @@ admission complete.
   cannot skip, reorder or force-complete a delivery.
 - `ioc import replay` creates a new occurrence with a causal link to retained
   terminal evidence.
-- Actuator health distinguishes failed recovery, safely degraded retry/backlog
-  and normal progress. Metrics remain low-cardinality.
+- Actuator health distinguishes failed recovery, safely degraded retry/backlog,
+  transient source unavailability, incompatible source capability and normal
+  progress. Source details are aggregate and value-free. Metrics remain
+  low-cardinality.
 
 ## How to extend
 

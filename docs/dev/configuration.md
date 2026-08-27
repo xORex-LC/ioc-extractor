@@ -140,9 +140,13 @@ timeouts, даже когда обычный `ioc.sync.enabled=false`. Обыч�
 
 `runtime.dirs.snapshots` содержит private immutable snapshots для обоих
 transport-ов. Local-specific processing/terminal/quarantine roots применяются к
-local source; SMB processing/terminal/quarantine namespaces создаются внутри
-его remote inbox как `.ioc-managed-import/*`. Snapshot byte limit и stability
-quiet period одинаково применяются к обоим transport-ам.
+local source. Для SMB оператор заранее создаёт
+`.ioc-managed-import/{processing,terminal,quarantine,probe}` внутри remote inbox;
+runtime не создаёт эти каталоги и перед listing/claim выполняет positive
+source-capability probe. Один local-filesystem snapshot store обслуживает оба
+transport-а через application port; SMB adapter не владеет local persistence и
+не зависит от ingest adapter. Snapshot byte limit и stability quiet period
+одинаково применяются к обоим transport-ам.
 
 `ioc.artifact-identity.artifacts[]` содержит декларативные `record-key` и
 `match-keys[]`. Они именуют текущую row-key формулу и альтернативные active-row

@@ -26,6 +26,9 @@ persists retry eligibility instead of sleeping and publishes
 `ImportDeliverySnapshotPinned` only after immutable evidence is durable.
 `DataframeImportDetectionCoordinator` serializes poll/watch triggers by source;
 its full-source reconcile path remains correctness authority.
+`DataframeImportSourceReadinessCoordinator` gates each source through a
+transport-neutral positive capability result, caches success and reprobes a
+closed source without stopping unrelated sources.
 
 `DataframeImportPromotionService` advances only the durable global head from
 `STAGED` through `PROMOTING` to `CANONICAL_COMMITTED`. A receipt replay is a
@@ -37,7 +40,14 @@ correctness backstop.
 `DataframeImportProcessingService` treats a durable state that already advanced
 across a failed call response as successful replay evidence. It schedules a
 retry only while the same operation still owns the current state and fails
-closed on impossible backward transitions.
+closed on impossible backward transitions. Forward deliveries own source
+disposition; a replay derives an explicit source-detached occurrence kind from
+its durable causal parent and never calls a transport adapter for disposition.
+
+`DataframeImportRetentionService` selects terminal outcomes with the shared
+retention policy but owns import-specific cleanup order: transport terminal
+source first for forward occurrences, then protected local terminal evidence,
+workspace, snapshot and dataframe receipt, with ledger CAS deletion last.
 
 `ImportWorkspaceException` classifies safe staging consistency, capacity and
 storage failures outside the port namespace, preserving the ports-as-interfaces

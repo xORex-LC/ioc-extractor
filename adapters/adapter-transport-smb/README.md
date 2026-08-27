@@ -4,7 +4,7 @@
 
 Outbound remote-transport adapter over **SMB2/3** (smbj): реализует
 `FileTransport` (list/stat/get/delete + atomic multi-file publish), managed
-dataframe-import ownership/materialization/disposition и опциональный
+dataframe-import ownership/source access/disposition/retention и опциональный
 `RemoteChangeSignalSource` (SMB2 `CHANGE_NOTIFY` doorbell для fetch/import).
 
 **Правило слоя:** держит только SMB-специфику (сессии, handles, timeouts,
@@ -20,7 +20,7 @@ watch-lifecycle); discovery/dedup/ledger-логика
 | `SmbSessionPool` | Общий lazy endpoint-keyed pool для sync и managed import; сериализует endpoint operation и владеет reconnect/idle close |
 | `SmbFileTransport` | `FileTransport`: list/stat/get/delete + `publishAtomically` поверх общего pool |
 | `SmbShareClient` / `SmbjShareClient` (+ `Factory`) | Обёртка над smbj share; открытие/аутентификация/операции |
-| `SmbManagedImportSourceLifecycle` | Server-side claim rename, orphan adoption, write-exclusive durable local snapshot и remote terminal/quarantine disposition |
+| `SmbManagedImportSourceLifecycle` | Positive pre-provisioned namespace probe, server-side claim rename, orphan adoption, write-exclusive claimed-byte access, remote disposition и exact terminal-source purge |
 | `SmbImportChangeSignalSource` | Source-scoped import doorbells поверх transport-neutral watch port |
 | `SmbEndpointSettings` | Настройки соединения (host/share/domain/creds/таймауты); пароль — defensive copy, `<redacted>` в `toString` |
 | `ConnectTimeoutSocketFactory` | Настоящий TCP connect-timeout (smbj его не даёт) |
@@ -39,11 +39,19 @@ errors/observability, **smbj** (единственная внешняя transpor
 **Не импортируется:** bootstrap и соседние адаптеры. Один модуль = одна внешняя
 библиотека/интеграция (SMB): смена транспорта затрагивает только этот модуль.
 
+Managed import не расширяет read-only контракт ordinary sync fetch. Runtime не
+создаёт `.ioc-managed-import/{processing,terminal,quarantine,probe}`: operator
+provisions namespace/ACL, adapter проверяет положительный private-object flow.
+Локальный snapshot хранится общей реализацией за application port, переданной
+composition root; SMB module не зависит от `adapter-ingest`.
+
 ## Связанные документы
 
 - Способность целиком: [../../docs/dev/sync.md](../../docs/dev/sync.md).
 - Гайд по эксплуатации/настройке SMB-шары:
   [../../docs/guides/remote-storage-sync.md](../../docs/guides/remote-storage-sync.md).
+- Гайд managed import namespace/ACL:
+  [../../docs/guides/dataframe-import.md](../../docs/guides/dataframe-import.md#submit-an-smb-delivery).
 - Решения: ADR [0011](../../docs/ADR/0011-remote-sync.md),
   [0013](../../docs/ADR/0013-event-driven-coordination.md),
   [0024](../../docs/ADR/0024-managed-dataframe-import.md).
