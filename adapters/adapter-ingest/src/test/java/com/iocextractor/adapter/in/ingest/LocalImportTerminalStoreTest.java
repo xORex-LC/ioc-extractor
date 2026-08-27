@@ -68,7 +68,8 @@ class LocalImportTerminalStoreTest {
         var replay = store.materializeReplay(terminal, new ImportDeliveryId("delivery-replay"));
 
         assertThat(replay.size()).isEqualTo(Files.size(source));
-        assertThat(replay.reference().value()).startsWith(LocalManagedImportSourceLifecycle.REFERENCE_PREFIX);
+        assertThat(replay.reference().value())
+                .startsWith(LocalFilesystemImportSnapshotStore.REFERENCE_PREFIX);
         store.delete(terminal);
         assertThat(temporaryDirectory.resolve("terminal")).isEmptyDirectory();
     }

@@ -44,7 +44,7 @@ class SmbManagedImportContractTest {
 
         try (SmbShareClient client = new SmbjShareClientFactory().open(endpoint);
              SmbSessionPool pool = new SmbSessionPool(List.of(endpoint))) {
-            client.createDirectories(root);
+            provision(client, root);
             client.upload(input, producer);
             SmbManagedImportSourceLifecycle lifecycle = lifecycle(root, pool);
             ImportSourceCandidate candidate = lifecycle.detect(SOURCE, Instant.now()).getFirst();
@@ -81,7 +81,7 @@ class SmbManagedImportContractTest {
 
         try (SmbShareClient client = new SmbjShareClientFactory().open(endpoint);
              SmbSessionPool pool = new SmbSessionPool(List.of(endpoint))) {
-            client.createDirectories(root);
+            provision(client, root);
             client.upload(producerFile, producer);
             SmbManagedImportSourceLifecycle lifecycle = lifecycle(root, pool);
             ImportSourceCandidate candidate = lifecycle.detect(SOURCE, Instant.now()).getFirst();
@@ -117,7 +117,7 @@ class SmbManagedImportContractTest {
         try {
             try (SmbShareClient client = new SmbjShareClientFactory().open(endpoint);
                  SmbSessionPool firstPool = new SmbSessionPool(List.of(endpoint))) {
-                client.createDirectories(root);
+                provision(client, root);
                 client.upload(input, producer);
                 candidate = lifecycle(root, firstPool).detect(SOURCE, Instant.now()).getFirst();
                 client.createDirectories(parent(processing));
@@ -148,9 +148,16 @@ class SmbManagedImportContractTest {
         return new SmbManagedImportSourceLifecycle(
                 List.of(new SmbImportSourceDefinition(SOURCE, "contract", root)),
                 pool,
-                tempDir.resolve("snapshots"),
+                new TestImportSnapshotStore(tempDir.resolve("snapshots")),
                 Duration.ZERO,
                 1024 * 1024);
+    }
+
+    private void provision(SmbShareClient client, String root) {
+        for (String phase : List.of("processing", "terminal", "quarantine", "probe")) {
+            client.createDirectories(SmbFileTransport.join(
+                    SmbFileTransport.join(root, ".ioc-managed-import"), phase));
+        }
     }
 
     private static String uniqueRoot(String scenario) {

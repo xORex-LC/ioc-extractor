@@ -9,6 +9,7 @@ import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
 import com.iocextractor.application.port.out.dataframeimport.ImportReplaySnapshotStore;
 import com.iocextractor.application.port.out.dataframeimport.ImportReportStore;
 import com.iocextractor.application.port.out.dataframeimport.ImportTerminalRetentionStore;
+import com.iocextractor.application.port.out.dataframeimport.ImportSnapshotStore;
 import com.iocextractor.application.port.out.dataframeimport.PublishImportReportCommand;
 import com.iocextractor.common.IocExtractorException;
 
@@ -44,6 +45,7 @@ public final class LocalImportTerminalStore
     private final Path quarantineRoot;
     private final Path snapshotRoot;
     private final Function<ImportSnapshotReference, Path> snapshots;
+    private final ImportSnapshotStore snapshotStore;
     private final long maximumSnapshotBytes;
 
     /** Creates protected roots and a resolver for adapter-issued immutable snapshots. */
@@ -52,10 +54,22 @@ public final class LocalImportTerminalStore
                                     Path snapshotRoot,
                                     Function<ImportSnapshotReference, Path> snapshots,
                                     long maximumSnapshotBytes) {
+        this(terminalRoot, quarantineRoot, snapshotRoot, snapshots, maximumSnapshotBytes,
+                new LocalFilesystemImportSnapshotStore(snapshotRoot, maximumSnapshotBytes));
+    }
+
+    /** Creates terminal storage over the composition-root shared snapshot store. */
+    public LocalImportTerminalStore(Path terminalRoot,
+                                    Path quarantineRoot,
+                                    Path snapshotRoot,
+                                    Function<ImportSnapshotReference, Path> snapshots,
+                                    long maximumSnapshotBytes,
+                                    ImportSnapshotStore snapshotStore) {
         this.terminalRoot = prepare(terminalRoot);
         this.quarantineRoot = prepare(quarantineRoot);
         this.snapshotRoot = prepare(snapshotRoot);
         this.snapshots = Objects.requireNonNull(snapshots, "snapshots");
+        this.snapshotStore = Objects.requireNonNull(snapshotStore, "snapshotStore");
         if (maximumSnapshotBytes < 1) {
             throw new IllegalArgumentException("Maximum replay snapshot bytes must be positive");
         }
@@ -109,38 +123,9 @@ public final class LocalImportTerminalStore
         Objects.requireNonNull(terminalDeliveryId, "terminalDeliveryId");
         Objects.requireNonNull(replayDeliveryId, "replayDeliveryId");
         Path source = retainedUnit(terminalDeliveryId).resolve("source.csv");
-        String replayToken = LocalManagedImportSourceLifecycle.deliveryToken(replayDeliveryId);
-        Path replayDirectory = snapshotRoot.resolve(replayToken);
-        Path published = replayDirectory.resolve("snapshot.csv");
-        if (Files.isRegularFile(published, LinkOption.NOFOLLOW_LINKS)) {
-            return inspectReplay(replayDeliveryId, published);
-        }
-        Path part = replayDirectory.resolve("snapshot.part");
-        try {
-            Files.createDirectories(replayDirectory);
-            protectDirectory(replayDirectory);
-            Files.deleteIfExists(part);
-            LocalManagedImportSourceLifecycle.CopyEvidence evidence =
-                    LocalManagedImportSourceLifecycle.copyAndDigest(
-                            source, part, maximumSnapshotBytes);
-            force(part);
-            try {
-                Files.move(part, published, StandardCopyOption.ATOMIC_MOVE);
-            } catch (FileAlreadyExistsException collision) {
-                Files.deleteIfExists(part);
-            }
-            protectFile(published);
-            force(replayDirectory);
-            ImportSnapshot snapshot = inspectReplay(replayDeliveryId, published);
-            if (!snapshot.digest().value().equals(evidence.sha256()) || snapshot.size() != evidence.size()) {
-                throw new IocExtractorException("Replay snapshot evidence does not match terminal source");
-            }
-            return snapshot;
-        } catch (IocExtractorException failure) {
-            throw failure;
-        } catch (IOException failure) {
-            throw new IocExtractorException("Cannot materialize retained import replay", failure);
-        }
+        return snapshotStore.materialize(replayDeliveryId,
+                target -> LocalManagedImportSourceLifecycle.copyBounded(
+                        source, target, maximumSnapshotBytes));
     }
 
     @Override
@@ -186,18 +171,6 @@ public final class LocalImportTerminalStore
             force(sourceSuccess ? terminalRoot : quarantineRoot);
         } catch (IOException failure) {
             throw new IocExtractorException("Cannot atomically archive protected import terminal unit", failure);
-        }
-    }
-
-    private ImportSnapshot inspectReplay(ImportDeliveryId deliveryId, Path source) {
-        try {
-            LocalManagedImportSourceLifecycle.CopyEvidence evidence =
-                    LocalManagedImportSourceLifecycle.digest(source, maximumSnapshotBytes);
-            return new ImportSnapshot(
-                    LocalImportSnapshotPathResolver.referenceFor(deliveryId),
-                    new ImportSha256(evidence.sha256()), evidence.size());
-        } catch (IOException failure) {
-            throw new IocExtractorException("Cannot verify retained import replay", failure);
         }
     }
 

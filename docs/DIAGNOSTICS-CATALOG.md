@@ -22,6 +22,8 @@ Generated from `DiagnosticCatalogs`.
 | `INGEST.RECOVERY_FAILED` | INGEST | ERROR | OPERATION | `ingest.recovery-failed` | Ingestion recovery failed for source {source}: {reason} |
 | `IMPORT.CLAIM_FAILED` | IMPORT | ERROR | OPERATION | `import.claim-failed` | Managed import claim failed; durable retry remains scheduled |
 | `IMPORT.SOURCE_NOT_CONFIGURED` | IMPORT | ERROR | OPERATION | `import.source-not-configured` | Managed import delivery references no configured source |
+| `IMPORT.SOURCE_CAPABILITY_FAILED` | IMPORT | ERROR | OPERATION | `import.source-capability-failed` | Managed import source capability is temporarily unavailable; intake remains closed |
+| `IMPORT.SOURCE_NAMESPACE_INCOMPATIBLE` | IMPORT | FATAL | OPERATION | `import.source-namespace-incompatible` | Managed import source namespace or permissions are incompatible; intake remains closed |
 | `IMPORT.INPUT_INVALID` | IMPORT | ERROR | OPERATION | `import.input-invalid` | Managed import input failed its declared structural contract |
 | `IMPORT.CONTRACT_NOT_RECOGNIZED` | IMPORT | ERROR | OPERATION | `import.contract-not-recognized` | Managed import input matched no allowlisted contract |
 | `IMPORT.CONTRACT_AMBIGUOUS` | IMPORT | ERROR | OPERATION | `import.contract-ambiguous` | Managed import input matched more than one allowlisted contract |

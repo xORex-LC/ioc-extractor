@@ -164,14 +164,14 @@ class LocalManagedImportSourceLifecycleTest {
                 Duration.ZERO, 1024 * 1024, ownership, copier);
     }
 
-    private static LocalManagedImportSourceLifecycle.CopyEvidence copyEvidence(
+    private static long copyEvidence(
             Path source, Path target, long limit) throws IOException {
         byte[] bytes = Files.readAllBytes(source);
         if (bytes.length > limit) {
             throw new IOException("limit");
         }
         Files.write(target, bytes);
-        return new LocalManagedImportSourceLifecycle.CopyEvidence(sha256(bytes), bytes.length);
+        return bytes.length;
     }
 
     private static String sha256(byte[] value) {

@@ -24,7 +24,9 @@ import static com.hierynomus.msdtyp.AccessMask.GENERIC_READ;
 import static com.hierynomus.msdtyp.AccessMask.GENERIC_WRITE;
 import static com.hierynomus.msfscc.FileAttributes.FILE_ATTRIBUTE_DIRECTORY;
 import static com.hierynomus.msfscc.FileAttributes.FILE_ATTRIBUTE_NORMAL;
+import static com.hierynomus.msfscc.FileAttributes.FILE_ATTRIBUTE_REPARSE_POINT;
 import static com.hierynomus.mssmb2.SMB2CreateDisposition.FILE_OPEN;
+import static com.hierynomus.mssmb2.SMB2CreateDisposition.FILE_CREATE;
 import static com.hierynomus.mssmb2.SMB2CreateDisposition.FILE_OVERWRITE_IF;
 import static com.hierynomus.mssmb2.SMB2ShareAccess.FILE_SHARE_DELETE;
 import static com.hierynomus.mssmb2.SMB2ShareAccess.FILE_SHARE_READ;
@@ -57,6 +59,7 @@ final class SmbjShareClient implements SmbShareClient {
                         entry.getEndOfFile(),
                         toInstant(entry.getLastWriteTime()),
                         isDirectory(entry.getFileAttributes()),
+                        isReparsePoint(entry.getFileAttributes()),
                         entry.getFileId()))
                 .toList();
     }
@@ -73,6 +76,7 @@ final class SmbjShareClient implements SmbShareClient {
                 information.getStandardInformation().getEndOfFile(),
                 toInstant(information.getBasicInformation().getLastWriteTime()),
                 information.getStandardInformation().isDirectory(),
+                isReparsePoint(information.getBasicInformation().getFileAttributes()),
                 information.getInternalInformation().getIndexNumber()));
     }
 
@@ -100,6 +104,18 @@ final class SmbjShareClient implements SmbShareClient {
             share.rm(smbPath);
         } else if (share.folderExists(smbPath)) {
             share.rmdir(smbPath, true);
+        }
+    }
+
+    @Override
+    public void deleteRegularFile(String remotePath) {
+        String smbPath = toSmbPath(remotePath);
+        Optional<SmbRemoteEntry> entry = stat(remotePath);
+        if (entry.isPresent() && !entry.orElseThrow().regularFile()) {
+            throw new IllegalArgumentException("SMB delete target is not a regular file");
+        }
+        if (entry.isPresent()) {
+            share.rm(smbPath);
         }
     }
 
@@ -146,6 +162,19 @@ final class SmbjShareClient implements SmbShareClient {
             if (!share.folderExists(smbPath)) {
                 share.mkdir(smbPath);
             }
+        }
+    }
+
+    @Override
+    public void createEmptyFile(String remotePath) {
+        try (File ignored = share.openFile(
+                toSmbPath(remotePath),
+                EnumSet.of(GENERIC_WRITE),
+                EnumSet.of(FILE_ATTRIBUTE_NORMAL),
+                SHARE_ALL,
+                FILE_CREATE,
+                null)) {
+            // Opening with FILE_CREATE is the exclusive empty-object probe.
         }
     }
 
@@ -212,6 +241,10 @@ final class SmbjShareClient implements SmbShareClient {
 
     private static boolean isDirectory(long attributes) {
         return (attributes & FILE_ATTRIBUTE_DIRECTORY.getValue()) != 0;
+    }
+
+    private static boolean isReparsePoint(long attributes) {
+        return (attributes & FILE_ATTRIBUTE_REPARSE_POINT.getValue()) != 0;
     }
 
     private static Instant toInstant(com.hierynomus.msdtyp.FileTime fileTime) {

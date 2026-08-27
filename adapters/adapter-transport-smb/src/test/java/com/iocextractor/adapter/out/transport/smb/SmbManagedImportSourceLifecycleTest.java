@@ -4,6 +4,7 @@ import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
 import com.iocextractor.application.dataframeimport.model.ImportSourceCandidate;
 import com.iocextractor.application.dataframeimport.model.ImportSourceId;
 import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
+import com.iocextractor.application.dataframeimport.model.ImportSourceReadinessStatus;
 import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.DispositionImportSourceCommand;
 import org.junit.jupiter.api.Test;
@@ -178,6 +179,31 @@ class SmbManagedImportSourceLifecycleTest {
     }
 
     @Test
+    void capabilityProbeRequiresPreProvisionedNamespaceAndNeverCreatesDirectories() {
+        Fixture fixture = fixture(Duration.ZERO);
+        fixture.remote.directories.remove("incoming/.ioc-managed-import/probe");
+
+        var readiness = fixture.lifecycle.probe(SOURCE);
+
+        assertThat(readiness.status()).isEqualTo(ImportSourceReadinessStatus.INCOMPATIBLE);
+        assertThat(readiness.diagnosticCode()).isEqualTo("IMPORT.SOURCE_NAMESPACE_INCOMPATIBLE");
+        assertThat(fixture.remote.operations).noneMatch(value -> value.startsWith("mkdir:"));
+    }
+
+    @Test
+    void capabilityProbeUsesPrivateNoReplaceFlowAndExactDelete() {
+        Fixture fixture = fixture(Duration.ZERO);
+
+        var readiness = fixture.lifecycle.probe(SOURCE);
+
+        assertThat(readiness.status()).isEqualTo(ImportSourceReadinessStatus.READY);
+        assertThat(fixture.remote.operations).anySatisfy(operation ->
+                assertThat(operation).startsWith("create-empty:incoming/.ioc-managed-import/probe/"));
+        assertThat(fixture.remote.operations).anySatisfy(operation ->
+                assertThat(operation).startsWith("delete-file:incoming/.ioc-managed-import/terminal/"));
+    }
+
+    @Test
     void syncTransportAndManagedImportReuseOneEndpointSession() {
         Fixture fixture = fixture(Duration.ZERO);
         fixture.remote.put("incoming/feed.csv", "ip\n192.0.2.8\n", MODIFIED_AT);
@@ -195,13 +221,20 @@ class SmbManagedImportSourceLifecycleTest {
 
     private Fixture fixture(Duration quietPeriod) {
         RemoteState remote = new RemoteState();
+        remote.directories.addAll(Set.of(
+                "incoming",
+                "incoming/.ioc-managed-import",
+                "incoming/.ioc-managed-import/processing",
+                "incoming/.ioc-managed-import/terminal",
+                "incoming/.ioc-managed-import/quarantine",
+                "incoming/.ioc-managed-import/probe"));
         FakeFactory factory = new FakeFactory(remote);
         SmbSessionPool sessions = new SmbSessionPool(
                 List.of(settings()), factory,
                 Clock.fixed(MODIFIED_AT, ZoneOffset.UTC));
         SmbManagedImportSourceLifecycle lifecycle = new SmbManagedImportSourceLifecycle(
                 List.of(new SmbImportSourceDefinition(SOURCE, "primary", "incoming")),
-                sessions, tempDir, quietPeriod, 1024 * 1024);
+                sessions, new TestImportSnapshotStore(tempDir), quietPeriod, 1024 * 1024);
         return new Fixture(remote, factory, sessions, lifecycle);
     }
 
@@ -256,7 +289,8 @@ class SmbManagedImportSourceLifecycleTest {
                     .filter(entry -> entry.getKey().startsWith(prefix))
                     .filter(entry -> !entry.getKey().substring(prefix.length()).contains("/"))
                     .map(entry -> new SmbRemoteEntry(entry.getKey(), entry.getValue().bytes().length,
-                            entry.getValue().modifiedAt(), false, entry.getValue().fileId()))
+                            entry.getValue().modifiedAt(), false,
+                            remote.reparsePoints.contains(entry.getKey()), entry.getValue().fileId()))
                     .toList();
         }
 
@@ -264,7 +298,8 @@ class SmbManagedImportSourceLifecycleTest {
         public Optional<SmbRemoteEntry> stat(String remotePath) {
             StoredFile file = remote.files.get(remotePath);
             return file == null ? Optional.empty() : Optional.of(new SmbRemoteEntry(
-                    remotePath, file.bytes().length, file.modifiedAt(), false, file.fileId()));
+                    remotePath, file.bytes().length, file.modifiedAt(), false,
+                    remote.reparsePoints.contains(remotePath), file.fileId()));
         }
 
         @Override
@@ -293,6 +328,16 @@ class SmbManagedImportSourceLifecycleTest {
         }
 
         @Override
+        public void deleteRegularFile(String remotePath) {
+            if (remote.reparsePoints.contains(remotePath)) {
+                throw new IllegalArgumentException("SMB delete target is not a regular file");
+            }
+            remote.files.remove(remotePath);
+            remote.reparsePoints.remove(remotePath);
+            remote.operations.add("delete-file:" + remotePath);
+        }
+
+        @Override
         public boolean fileExists(String remotePath) {
             return remote.files.containsKey(remotePath);
         }
@@ -318,6 +363,15 @@ class SmbManagedImportSourceLifecycleTest {
                 current.append(part);
                 remote.directories.add(current.toString());
             }
+        }
+
+        @Override
+        public void createEmptyFile(String remotePath) {
+            if (remote.files.containsKey(remotePath) || remote.directories.contains(remotePath)) {
+                throw new IllegalStateException("probe collision");
+            }
+            remote.put(remotePath, new byte[0], MODIFIED_AT);
+            remote.operations.add("create-empty:" + remotePath);
         }
 
         @Override
@@ -361,6 +415,7 @@ class SmbManagedImportSourceLifecycleTest {
     private static final class RemoteState {
         private final Map<String, StoredFile> files = new HashMap<>();
         private final Set<String> directories = new HashSet<>();
+        private final Set<String> reparsePoints = new HashSet<>();
         private final List<String> operations = new ArrayList<>();
         private long nextFileId = 1L;
         private boolean failNextDownload;

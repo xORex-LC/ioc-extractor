@@ -7,7 +7,16 @@ record SmbRemoteEntry(String path,
                       long size,
                       Instant modifiedAt,
                       boolean directory,
+                      boolean reparsePoint,
                       long fileId) {
+
+    SmbRemoteEntry(String path,
+                   long size,
+                   Instant modifiedAt,
+                   boolean directory,
+                   long fileId) {
+        this(path, size, modifiedAt, directory, false, fileId);
+    }
 
     SmbRemoteEntry {
         if (path == null || path.isBlank()) {
@@ -17,5 +26,9 @@ record SmbRemoteEntry(String path,
             throw new IllegalArgumentException("size must not be negative");
         }
         modifiedAt = Objects.requireNonNull(modifiedAt, "modifiedAt");
+    }
+
+    boolean regularFile() {
+        return !directory && !reparsePoint;
     }
 }

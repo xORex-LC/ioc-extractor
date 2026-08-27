@@ -1,8 +1,13 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.application.dataframeimport.DataframeImportSourceReadinessCoordinator;
 import com.iocextractor.application.dataframeimport.model.ImportDeliverySequence;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryState;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryStatus;
+import com.iocextractor.application.dataframeimport.model.ImportSourceId;
+import com.iocextractor.application.dataframeimport.model.ImportSourceReadiness;
+import com.iocextractor.application.dataframeimport.model.ImportSourceReadinessPhase;
+import com.iocextractor.application.dataframeimport.model.ImportSourceReadinessStatus;
 import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
 import com.iocextractor.platform.concurrent.KeyedSerialExecutorSnapshot;
 import com.iocextractor.platform.concurrent.KeyedWorkSnapshot;
@@ -93,6 +98,34 @@ class DataframeImportHealthIndicatorTest {
                 .containsEntry("headRetryCount", 2)
                 .containsEntry("headRetryDelaySeconds", 4L)
                 .containsEntry("code", "IMPORT.PROCESSING_FAILED");
+    }
+
+    @Test
+    void incompatibleSourceIsDownWithAggregateValueFreeReadiness() {
+        DataframeImportRuntimeState state = new DataframeImportRuntimeState();
+        state.running(Instant.parse("2026-08-24T12:00:01Z"));
+        ImportSourceId sourceId = new ImportSourceId("smb-source");
+        var readiness = new DataframeImportSourceReadinessCoordinator(ignored ->
+                new ImportSourceReadiness(sourceId,
+                        ImportSourceReadinessPhase.NAMESPACE,
+                        ImportSourceReadinessStatus.INCOMPATIBLE,
+                        "IMPORT.SOURCE_NAMESPACE_INCOMPATIBLE", false));
+        assertThat(readiness.ready(sourceId)).isFalse();
+
+        var health = new DataframeImportHealthIndicator(
+                () -> new ImportDeliveryStatus(
+                        Map.of(), Optional.empty(), Optional.empty(), Optional.empty(),
+                        0, Optional.empty(), Optional.empty(), true),
+                state, executorSnapshot(0, false), readiness).health();
+
+        assertThat(health.getStatus()).isEqualTo(Status.DOWN);
+        assertThat(health.getDetails())
+                .containsEntry("readySources", 0L)
+                .containsEntry("transientSources", 0L)
+                .containsEntry("incompatibleSources", 1L)
+                .containsEntry("code", "IMPORT.SOURCE_NAMESPACE_INCOMPATIBLE");
+        assertThat(health.getDetails().toString())
+                .doesNotContain("smb-source", "path", "endpoint", "credential");
     }
 
     private KeyedSerialExecutor executorSnapshot(int queued, boolean running) {

@@ -5,10 +5,12 @@ import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshotReference;
 import com.iocextractor.application.dataframeimport.model.ImportSourceCandidate;
 import com.iocextractor.application.dataframeimport.model.ImportSourceId;
+import com.iocextractor.application.dataframeimport.model.ImportSourceReadiness;
 import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceResult;
 import com.iocextractor.application.port.out.dataframeimport.DispositionImportSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
+import com.iocextractor.application.port.out.dataframeimport.ImportSourceCapability;
 
 import java.nio.file.Path;
 import java.time.Instant;
@@ -19,7 +21,7 @@ import java.util.Objects;
 
 /** Bootstrap-only router across transport-specific source ownership adapters. */
 final class RoutedManagedImportSourceLifecycle
-        implements ManagedImportSourceLifecycle, ImportSnapshotPathResolver {
+        implements ManagedImportSourceLifecycle, ImportSnapshotPathResolver, ImportSourceCapability {
 
     private final Map<ImportSourceId, ManagedImportSourceLifecycle> routes;
     private final List<ImportSnapshotPathResolver> snapshots;
@@ -37,6 +39,15 @@ final class RoutedManagedImportSourceLifecycle
     @Override
     public List<ImportSourceCandidate> detect(ImportSourceId sourceId, Instant observedAt) {
         return route(sourceId).detect(sourceId, observedAt);
+    }
+
+    @Override
+    public ImportSourceReadiness probe(ImportSourceId sourceId) {
+        ManagedImportSourceLifecycle lifecycle = route(sourceId);
+        if (!(lifecycle instanceof ImportSourceCapability capability)) {
+            throw new IllegalStateException("Managed import source has no capability adapter");
+        }
+        return capability.probe(sourceId);
     }
 
     @Override

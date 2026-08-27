@@ -6,8 +6,8 @@ import com.iocextractor.adapter.in.csv.CsvProcessedImportRowPreparer;
 import com.iocextractor.adapter.in.csv.ImportSnapshotPathResolver;
 import com.iocextractor.adapter.in.ingest.LocalImportChangeSignalSource;
 import com.iocextractor.adapter.in.ingest.LocalImportSourceDefinition;
-import com.iocextractor.adapter.in.ingest.LocalImportSnapshotPathResolver;
 import com.iocextractor.adapter.in.ingest.LocalImportTerminalStore;
+import com.iocextractor.adapter.in.ingest.LocalFilesystemImportSnapshotStore;
 import com.iocextractor.adapter.in.ingest.LocalManagedImportSourceLifecycle;
 import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalImportWriter;
 import com.iocextractor.adapter.out.store.jdbc.JdbcImportCommitEvidenceStore;
@@ -37,6 +37,7 @@ import com.iocextractor.application.dataframeimport.DataframeImportReplayService
 import com.iocextractor.application.dataframeimport.DataframeImportRetentionService;
 import com.iocextractor.application.dataframeimport.DataframeImportStagingService;
 import com.iocextractor.application.dataframeimport.DataframeImportStatusService;
+import com.iocextractor.application.dataframeimport.DataframeImportSourceReadinessCoordinator;
 import com.iocextractor.application.dataframeimport.DataframeImportValidationService;
 import com.iocextractor.application.dataframeimport.EventPublishingCanonicalImportWriter;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalog;
@@ -64,6 +65,7 @@ import com.iocextractor.application.port.out.dataframeimport.ImportCommitEvidenc
 import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
 import com.iocextractor.application.port.out.dataframeimport.ImportReplaySnapshotStore;
 import com.iocextractor.application.port.out.dataframeimport.ImportReportStore;
+import com.iocextractor.application.port.out.dataframeimport.ImportSnapshotStore;
 import com.iocextractor.application.port.out.dataframeimport.ImportTerminalRetentionStore;
 import com.iocextractor.application.port.out.dataframeimport.ImportValueTransformRegistry;
 import com.iocextractor.application.port.out.dataframeimport.ImportWorkspace;
@@ -126,8 +128,9 @@ class DataframeImportRuntimeConfiguration {
         Map<ImportSourceId, ManagedImportSourceLifecycle> routes = new LinkedHashMap<>();
         List<ImportSnapshotPathResolver> resolvers = new ArrayList<>();
         List<ImportChangeSignalSource> signals = new ArrayList<>();
-        resolvers.add(new LocalImportSnapshotPathResolver(
-                Path.of(runtime.dirs().snapshots()))::resolve);
+        ImportSnapshotStore snapshotStore = new LocalFilesystemImportSnapshotStore(
+                Path.of(runtime.dirs().snapshots()), runtime.limits().maximumSnapshotBytes());
+        resolvers.add(snapshotStore::resolve);
         if (!localSources.isEmpty()) {
             var local = new LocalManagedImportSourceLifecycle(
                     localSources,
@@ -136,7 +139,7 @@ class DataframeImportRuntimeConfiguration {
                     Path.of(runtime.dirs().terminal()),
                     Path.of(runtime.dirs().quarantine()),
                     runtime.stability().quietPeriod(),
-                    runtime.limits().maximumSnapshotBytes());
+                    runtime.limits().maximumSnapshotBytes(), snapshotStore);
             localSources.forEach(source -> routes.put(source.sourceId(), local));
             if (runtime.detect().useWatchService()) {
                 signals.add(new LocalImportChangeSignalSource(localSources));
@@ -144,25 +147,36 @@ class DataframeImportRuntimeConfiguration {
         }
         if (!smbSources.isEmpty()) {
             var smb = new SmbManagedImportSourceLifecycle(
-                    smbSources,
-                    smbSessions,
-                    Path.of(runtime.dirs().snapshots()),
-                    runtime.stability().quietPeriod(),
-                    runtime.limits().maximumSnapshotBytes());
+                smbSources,
+                smbSessions,
+                snapshotStore,
+                runtime.stability().quietPeriod(),
+                runtime.limits().maximumSnapshotBytes());
             smbSources.forEach(source -> routes.put(source.sourceId(), smb));
-            resolvers.add(smb::resolveSnapshot);
             if (runtime.detect().useChangeNotifications()) {
                 signals.add(new SmbImportChangeSignalSource(smbSources, smbWatcher));
             }
         }
         var routed = new RoutedManagedImportSourceLifecycle(routes, resolvers);
-        return new ManagedImportSourceAdapters(routed, routed, signals);
+        return new ManagedImportSourceAdapters(
+                routed, routed, snapshotStore, routed, signals);
     }
 
     @Bean
     ManagedImportSourceLifecycle managedImportSourceLifecycle(
             ManagedImportSourceAdapters adapters) {
         return adapters.lifecycle();
+    }
+
+    @Bean
+    ImportSnapshotStore dataframeImportSnapshotStore(ManagedImportSourceAdapters adapters) {
+        return adapters.snapshotStore();
+    }
+
+    @Bean
+    DataframeImportSourceReadinessCoordinator dataframeImportSourceReadinessCoordinator(
+            ManagedImportSourceAdapters adapters) {
+        return new DataframeImportSourceReadinessCoordinator(adapters.capability());
     }
 
     @Bean
@@ -242,6 +256,7 @@ class DataframeImportRuntimeConfiguration {
     @Bean
     LocalImportTerminalStore dataframeImportTerminalStore(
             IocProperties properties,
+            ImportSnapshotStore snapshotStore,
             @Qualifier("dataframeImportSnapshotPathResolver") ImportSnapshotPathResolver snapshots) {
         var runtime = properties.dataframeImport().runtime();
         return new LocalImportTerminalStore(
@@ -249,7 +264,7 @@ class DataframeImportRuntimeConfiguration {
                 Path.of(runtime.dirs().quarantine()),
                 Path.of(runtime.dirs().snapshots()),
                 snapshots::resolve,
-                runtime.limits().maximumSnapshotBytes());
+                runtime.limits().maximumSnapshotBytes(), snapshotStore);
     }
 
     @Bean
@@ -436,10 +451,11 @@ class DataframeImportRuntimeConfiguration {
             DataframeImportAdmissionService admission,
             ManagedImportSourceLifecycle sources,
             @Qualifier("dataframeImportLanes") KeyedSerialExecutor dataframeImportLanes,
+            DataframeImportSourceReadinessCoordinator readiness,
             Clock clock) {
         var detector = new DataframeImportDetectionService(
                 sources, admission, clock,
-                () -> new ImportDeliveryId(UUID.randomUUID().toString()));
+                () -> new ImportDeliveryId(UUID.randomUUID().toString()), readiness);
         List<ImportSourceId> sourceIds = catalog.sources().keySet().stream().sorted(
                 java.util.Comparator.comparing(ImportSourceId::value)).toList();
         return new DataframeImportDetectionCoordinator(sourceIds, detector, dataframeImportLanes);
@@ -504,8 +520,9 @@ class DataframeImportRuntimeConfiguration {
     DataframeImportHealthIndicator dataframeImportHealthIndicator(
             QueryDataframeImportStatusUseCase status,
             DataframeImportRuntimeState state,
+            DataframeImportSourceReadinessCoordinator readiness,
             @Qualifier("dataframeImportLanes") KeyedSerialExecutor dataframeImportLanes) {
-        return new DataframeImportHealthIndicator(status, state, dataframeImportLanes);
+        return new DataframeImportHealthIndicator(status, state, dataframeImportLanes, readiness);
     }
 
     @Bean

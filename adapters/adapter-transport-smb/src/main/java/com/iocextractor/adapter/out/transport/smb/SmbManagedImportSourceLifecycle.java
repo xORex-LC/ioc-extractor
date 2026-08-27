@@ -1,58 +1,45 @@
 package com.iocextractor.adapter.out.transport.smb;
 
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
-import com.iocextractor.application.dataframeimport.model.ImportSha256;
-import com.iocextractor.application.dataframeimport.model.ImportSnapshot;
+import com.iocextractor.application.dataframeimport.model.ImportManagedObjectId;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshotReference;
 import com.iocextractor.application.dataframeimport.model.ImportSourceCandidate;
 import com.iocextractor.application.dataframeimport.model.ImportSourceId;
+import com.iocextractor.application.dataframeimport.model.ImportSourceReadiness;
+import com.iocextractor.application.dataframeimport.model.ImportSourceReadinessPhase;
 import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
 import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceResult;
 import com.iocextractor.application.port.out.dataframeimport.DispositionImportSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
+import com.iocextractor.application.port.out.dataframeimport.ImportSnapshotStore;
+import com.iocextractor.application.port.out.dataframeimport.ImportSourceCapability;
+import com.iocextractor.application.sync.RemoteErrorKind;
+import com.iocextractor.application.sync.RemoteTransportException;
 import com.iocextractor.common.IocExtractorException;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.channels.FileChannel;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.PosixFilePermission;
-import java.security.DigestInputStream;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
-import java.util.EnumSet;
 import java.util.HashMap;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
 /** SMB ownership adapter: server rename first, then durable private local materialization. */
-public final class SmbManagedImportSourceLifecycle implements ManagedImportSourceLifecycle {
+public final class SmbManagedImportSourceLifecycle
+        implements ManagedImportSourceLifecycle, ImportSourceCapability {
 
-    private static final String REFERENCE_PREFIX = "smb-snapshot-v1:";
     private static final String PRIVATE_NAMESPACE = ".ioc-managed-import";
-    private static final Set<PosixFilePermission> DIRECTORY_PERMISSIONS = EnumSet.of(
-            PosixFilePermission.OWNER_READ,
-            PosixFilePermission.OWNER_WRITE,
-            PosixFilePermission.OWNER_EXECUTE);
-    private static final Set<PosixFilePermission> FILE_PERMISSIONS = EnumSet.of(
-            PosixFilePermission.OWNER_READ);
-
     private final Map<ImportSourceId, SmbImportSourceDefinition> sources;
     private final SmbSessionPool sessions;
-    private final Path snapshotRoot;
+    private final ImportSnapshotStore snapshots;
     private final Duration quietPeriod;
     private final long maximumSnapshotBytes;
     private final Map<CandidateIdentity, StabilitySample> samples = new HashMap<>();
@@ -62,7 +49,7 @@ public final class SmbManagedImportSourceLifecycle implements ManagedImportSourc
     public SmbManagedImportSourceLifecycle(
             List<SmbImportSourceDefinition> definitions,
             SmbSessionPool sessions,
-            Path snapshotRoot,
+            ImportSnapshotStore snapshots,
             Duration quietPeriod,
             long maximumSnapshotBytes) {
         Objects.requireNonNull(definitions, "definitions");
@@ -70,7 +57,7 @@ public final class SmbManagedImportSourceLifecycle implements ManagedImportSourc
             throw new IllegalArgumentException("At least one SMB import source is required");
         }
         this.sessions = Objects.requireNonNull(sessions, "sessions");
-        this.snapshotRoot = prepare(snapshotRoot);
+        this.snapshots = Objects.requireNonNull(snapshots, "snapshots");
         this.quietPeriod = Objects.requireNonNull(quietPeriod, "quietPeriod");
         if (quietPeriod.isNegative()) {
             throw new IllegalArgumentException("SMB import quiet period must not be negative");
@@ -104,6 +91,60 @@ public final class SmbManagedImportSourceLifecycle implements ManagedImportSourc
         }
     }
 
+    @Override
+    public ImportSourceReadiness probe(ImportSourceId sourceId) {
+        SmbImportSourceDefinition source = source(sourceId);
+        synchronized (sourceLocks.get(sourceId)) {
+            try {
+                return sessions.withClient(source.endpoint(), "import-capability",
+                        client -> probe(sourceId, source, client));
+            } catch (RemoteTransportException failure) {
+                boolean retry = failure.kind() == RemoteErrorKind.TRANSIENT
+                        || failure.kind() == RemoteErrorKind.UNREACHABLE;
+                return ImportSourceReadiness.capabilityFailed(sourceId,
+                        ImportSourceReadinessPhase.PRIVATE_OBJECT_FLOW, retry);
+            } catch (RuntimeException failure) {
+                return ImportSourceReadiness.capabilityFailed(sourceId,
+                        ImportSourceReadinessPhase.PRIVATE_OBJECT_FLOW, false);
+            }
+        }
+    }
+
+    private ImportSourceReadiness probe(
+            ImportSourceId sourceId,
+            SmbImportSourceDefinition source,
+            SmbShareClient client) {
+        for (String phase : List.of("processing", "terminal", "quarantine", "probe")) {
+            if (!client.directoryExists(managed(source, phase))) {
+                return ImportSourceReadiness.namespaceIncompatible(sourceId);
+            }
+        }
+        String token = ImportManagedObjectId.from(new ImportDeliveryId(
+                "capability:" + sourceId.value() + ":" + java.util.UUID.randomUUID())).value();
+        String probe = SmbFileTransport.join(managed(source, "probe"), token + ".probe");
+        String processing = SmbFileTransport.join(managed(source, "processing"), token + ".probe");
+        String terminal = SmbFileTransport.join(managed(source, "terminal"), token + ".probe");
+        try {
+            client.createEmptyFile(probe);
+            client.rename(probe, processing);
+            client.rename(processing, terminal);
+            client.deleteRegularFile(terminal);
+            return ImportSourceReadiness.ready(sourceId);
+        } finally {
+            bestEffortDelete(client, terminal);
+            bestEffortDelete(client, processing);
+            bestEffortDelete(client, probe);
+        }
+    }
+
+    private void bestEffortDelete(SmbShareClient client, String path) {
+        try {
+            client.deleteRegularFile(path);
+        } catch (RuntimeException ignored) {
+            // The failed probe remains closed; a later probe retries cleanup using its own token.
+        }
+    }
+
     private List<ImportSourceCandidate> detect(
             ImportSourceId sourceId,
             SmbImportSourceDefinition source,
@@ -111,7 +152,7 @@ public final class SmbManagedImportSourceLifecycle implements ManagedImportSourc
         List<SmbRemoteEntry> entries = sessions.withClient(source.endpoint(), "import-list",
                 client -> client.list(source.inbox()));
         List<SmbRemoteEntry> files = entries.stream()
-                .filter(entry -> !entry.directory())
+                .filter(SmbRemoteEntry::regularFile)
                 .sorted(Comparator.comparing(SmbRemoteEntry::path))
                 .toList();
         List<ImportSourceCandidate> stable = new ArrayList<>();
@@ -140,16 +181,10 @@ public final class SmbManagedImportSourceLifecycle implements ManagedImportSourc
         Objects.requireNonNull(command, "command");
         SmbImportSourceDefinition source = source(command.sourceId());
         CandidateEvidence candidate = CandidateEvidence.parse(command.candidateToken());
-        Path published = published(command.deliveryId());
-        if (Files.isRegularFile(published, LinkOption.NOFOLLOW_LINKS)) {
-            return new ClaimImportSourceResult(inspect(command.deliveryId(), published));
-        }
-
         String producerPath = SmbFileTransport.join(source.inbox(), candidate.leaf());
         String processingRoot = managed(source, "processing");
         String claimedPath = SmbFileTransport.join(processingRoot, deliveryToken(command.deliveryId()) + ".csv");
         sessions.withClient(source.endpoint(), "import-claim", client -> {
-            client.createDirectories(processingRoot);
             boolean producerExists = client.fileExists(producerPath);
             boolean claimedExists = client.fileExists(claimedPath);
             if (producerExists && claimedExists) {
@@ -157,7 +192,7 @@ public final class SmbManagedImportSourceLifecycle implements ManagedImportSourc
             }
             if (!claimedExists) {
                 SmbRemoteEntry current = client.stat(producerPath)
-                        .filter(entry -> !entry.directory())
+                        .filter(SmbRemoteEntry::regularFile)
                         .orElseThrow(() -> new IocExtractorException(
                                 "SMB import candidate disappeared before claim"));
                 if (!candidate.matches(current)) {
@@ -166,7 +201,7 @@ public final class SmbManagedImportSourceLifecycle implements ManagedImportSourc
                 client.rename(producerPath, claimedPath);
             }
             SmbRemoteEntry claimed = client.stat(claimedPath)
-                    .filter(entry -> !entry.directory())
+                    .filter(SmbRemoteEntry::regularFile)
                     .orElseThrow(() -> new IocExtractorException(
                             "SMB import claimed object is missing"));
             if (!candidate.matchesContent(claimed)) {
@@ -176,7 +211,8 @@ public final class SmbManagedImportSourceLifecycle implements ManagedImportSourc
             return null;
         });
         return new ClaimImportSourceResult(
-                materialize(command.deliveryId(), source, claimedPath, candidate));
+                snapshots.materialize(command.deliveryId(),
+                        target -> materialize(source, claimedPath, candidate, target)));
     }
 
     @Override
@@ -189,9 +225,15 @@ public final class SmbManagedImportSourceLifecycle implements ManagedImportSourc
                 command.outcome() == ImportTerminalOutcome.REJECTED ? "quarantine" : "terminal");
         String destination = SmbFileTransport.join(outcomeRoot, token);
         sessions.withClient(source.endpoint(), "import-disposition", client -> {
-            client.createDirectories(outcomeRoot);
-            boolean claimedExists = client.fileExists(claimed);
-            boolean destinationExists = client.fileExists(destination);
+            var claimedEntry = client.stat(claimed);
+            var destinationEntry = client.stat(destination);
+            if (claimedEntry.filter(entry -> !entry.regularFile()).isPresent()
+                    || destinationEntry.filter(entry -> !entry.regularFile()).isPresent()) {
+                throw new IocExtractorException(
+                        "SMB import disposition object is not a regular file");
+            }
+            boolean claimedExists = claimedEntry.isPresent();
+            boolean destinationExists = destinationEntry.isPresent();
             if (claimedExists && destinationExists) {
                 throw new IocExtractorException("SMB import disposition destination collision");
             }
@@ -206,50 +248,23 @@ public final class SmbManagedImportSourceLifecycle implements ManagedImportSourc
 
     @Override
     public void purgeSnapshot(ImportDeliveryId deliveryId, ImportSourceId sourceId) {
-        Objects.requireNonNull(deliveryId, "deliveryId");
         source(sourceId);
-        Path directory = snapshotRoot.resolve(deliveryToken(deliveryId));
-        try {
-            Files.deleteIfExists(directory.resolve("snapshot.part"));
-            Files.deleteIfExists(directory.resolve("snapshot.csv"));
-            Files.deleteIfExists(directory);
-        } catch (IOException failure) {
-            throw new IocExtractorException("Cannot purge SMB import snapshot", failure);
-        }
+        snapshots.purge(deliveryId);
     }
 
     /** Resolves only immutable local snapshots issued by this SMB adapter. */
     public Path resolveSnapshot(ImportSnapshotReference reference) {
-        Objects.requireNonNull(reference, "reference");
-        if (!reference.value().startsWith(REFERENCE_PREFIX)) {
-            throw new IllegalArgumentException("Unsupported SMB import snapshot reference");
-        }
-        String token = reference.value().substring(REFERENCE_PREFIX.length());
-        if (!token.matches("[0-9a-f]{64}")) {
-            throw new IllegalArgumentException("Malformed SMB import snapshot reference");
-        }
-        Path resolved = snapshotRoot.resolve(token).resolve("snapshot.csv").normalize();
-        if (!resolved.startsWith(snapshotRoot)) {
-            throw new IllegalArgumentException("SMB import snapshot escapes its private root");
-        }
-        return resolved;
+        return snapshots.resolve(reference);
     }
 
-    private ImportSnapshot materialize(
-            ImportDeliveryId deliveryId,
+    private void materialize(
             SmbImportSourceDefinition source,
             String claimedPath,
-            CandidateEvidence candidate) {
-        Path deliveryDirectory = publishedDirectory(deliveryId);
-        Path published = deliveryDirectory.resolve("snapshot.csv");
-        Path part = published.resolveSibling("snapshot.part");
-        try {
-            Files.createDirectories(deliveryDirectory);
-            protectDirectory(deliveryDirectory);
-            Files.deleteIfExists(part);
+            CandidateEvidence candidate,
+            Path part) {
             SmbRemoteEntry remote = sessions.withClient(source.endpoint(), "import-stat-claimed",
                     client -> client.stat(claimedPath)
-                            .filter(entry -> !entry.directory())
+                            .filter(SmbRemoteEntry::regularFile)
                             .orElseThrow(() -> new IocExtractorException(
                                     "SMB import claimed object is missing")));
             if (remote.size() > maximumSnapshotBytes) {
@@ -263,76 +278,24 @@ public final class SmbManagedImportSourceLifecycle implements ManagedImportSourc
                 client.download(claimedPath, part);
                 return null;
             });
-            CopyEvidence evidence = digest(part);
-            if (evidence.size() != remote.size()) {
+            long downloadedSize;
+            try {
+                downloadedSize = Files.size(part);
+            } catch (IOException failure) {
+                throw new IocExtractorException("Cannot inspect SMB import materialization", failure);
+            }
+            if (downloadedSize != remote.size()) {
                 throw new IocExtractorException("SMB import materialization size mismatch");
             }
             SmbRemoteEntry after = sessions.withClient(source.endpoint(), "import-stat-after-download",
                     client -> client.stat(claimedPath)
-                            .filter(entry -> !entry.directory())
+                            .filter(SmbRemoteEntry::regularFile)
                             .orElseThrow(() -> new IocExtractorException(
                                     "SMB import claimed object disappeared during materialization")));
             if (!sameRemoteEvidence(remote, after)) {
                 throw new IocExtractorException(
                         "SMB import claimed object changed during materialization");
             }
-            force(part);
-            try {
-                Files.move(part, published, StandardCopyOption.ATOMIC_MOVE);
-            } catch (java.nio.file.FileAlreadyExistsException collision) {
-                Files.deleteIfExists(part);
-            }
-            protectFile(published);
-            force(deliveryDirectory);
-            ImportSnapshot snapshot = inspect(deliveryId, published);
-            if (snapshot.size() != evidence.size()
-                    || !snapshot.digest().value().equals(evidence.sha256())) {
-                throw new IocExtractorException(
-                        "Published SMB import snapshot does not match materialization");
-            }
-            return snapshot;
-        } catch (IocExtractorException failure) {
-            deletePart(part, failure);
-            throw failure;
-        } catch (IOException failure) {
-            deletePart(part, failure);
-            throw new IocExtractorException("Cannot durably materialize SMB import snapshot", failure);
-        }
-    }
-
-    private ImportSnapshot inspect(ImportDeliveryId deliveryId, Path published) {
-        if (!Files.isRegularFile(published, LinkOption.NOFOLLOW_LINKS)
-                || Files.isSymbolicLink(published)) {
-            throw new IocExtractorException("SMB import snapshot is not a protected regular file");
-        }
-        try {
-            CopyEvidence evidence = digest(published);
-            return new ImportSnapshot(
-                    new ImportSnapshotReference(REFERENCE_PREFIX + deliveryToken(deliveryId)),
-                    new ImportSha256(evidence.sha256()), evidence.size());
-        } catch (IOException failure) {
-            throw new IocExtractorException("Cannot verify SMB import snapshot", failure);
-        }
-    }
-
-    private CopyEvidence digest(Path file) throws IOException {
-        MessageDigest digest = sha256();
-        long size;
-        try (InputStream input = new DigestInputStream(Files.newInputStream(file), digest)) {
-            size = input.transferTo(java.io.OutputStream.nullOutputStream());
-        }
-        if (size > maximumSnapshotBytes) {
-            throw new IocExtractorException("SMB import snapshot exceeds configured byte limit");
-        }
-        return new CopyEvidence(size, HexFormat.of().formatHex(digest.digest()));
-    }
-
-    private Path published(ImportDeliveryId deliveryId) {
-        return publishedDirectory(deliveryId).resolve("snapshot.csv");
-    }
-
-    private Path publishedDirectory(ImportDeliveryId deliveryId) {
-        return snapshotRoot.resolve(deliveryToken(deliveryId));
     }
 
     private String managed(SmbImportSourceDefinition source, String phase) {
@@ -365,69 +328,13 @@ public final class SmbManagedImportSourceLifecycle implements ManagedImportSourc
     }
 
     static String deliveryToken(ImportDeliveryId deliveryId) {
-        Objects.requireNonNull(deliveryId, "deliveryId");
-        MessageDigest digest = sha256();
-        return HexFormat.of().formatHex(digest.digest(
-                deliveryId.value().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-    }
-
-    private static MessageDigest sha256() {
-        try {
-            return MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException("SHA-256 is unavailable", impossible);
-        }
-    }
-
-    private Path prepare(Path root) {
-        Objects.requireNonNull(root, "root");
-        try {
-            Path normalized = root.toAbsolutePath().normalize();
-            Files.createDirectories(normalized);
-            protectDirectory(normalized);
-            return normalized.toRealPath(LinkOption.NOFOLLOW_LINKS);
-        } catch (IOException failure) {
-            throw new IocExtractorException("Cannot prepare SMB import snapshot root", failure);
-        }
-    }
-
-    private void force(Path path) throws IOException {
-        try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
-            channel.force(true);
-        }
-    }
-
-    private void protectDirectory(Path directory) throws IOException {
-        try {
-            Files.setPosixFilePermissions(directory, DIRECTORY_PERMISSIONS);
-        } catch (UnsupportedOperationException ignored) {
-            // Platform ACLs remain authoritative on non-POSIX filesystems.
-        }
-    }
-
-    private void protectFile(Path file) throws IOException {
-        try {
-            Files.setPosixFilePermissions(file, FILE_PERMISSIONS);
-        } catch (UnsupportedOperationException ignored) {
-            // Platform ACLs remain authoritative on non-POSIX filesystems.
-        }
-    }
-
-    private void deletePart(Path part, Exception primary) {
-        try {
-            Files.deleteIfExists(part);
-        } catch (IOException cleanupFailure) {
-            primary.addSuppressed(cleanupFailure);
-        }
+        return ImportManagedObjectId.from(deliveryId).value();
     }
 
     private record CandidateIdentity(ImportSourceId sourceId, String leaf) {
     }
 
     private record StabilitySample(CandidateEvidence evidence, Instant unchangedSince) {
-    }
-
-    private record CopyEvidence(long size, String sha256) {
     }
 
     private record CandidateEvidence(String leaf,
@@ -443,14 +350,14 @@ public final class SmbManagedImportSourceLifecycle implements ManagedImportSourc
         }
 
         private boolean matches(SmbRemoteEntry entry) {
-            return !entry.directory() && size == entry.size()
+            return entry.regularFile() && size == entry.size()
                     && modifiedAt.equals(entry.modifiedAt())
                     && fileId == entry.fileId()
                     && leaf.equals(entry.path().substring(entry.path().lastIndexOf('/') + 1));
         }
 
         private boolean matchesContent(SmbRemoteEntry entry) {
-            return !entry.directory() && size == entry.size()
+            return entry.regularFile() && size == entry.size()
                     && modifiedAt.equals(entry.modifiedAt())
                     && fileId == entry.fileId();
         }

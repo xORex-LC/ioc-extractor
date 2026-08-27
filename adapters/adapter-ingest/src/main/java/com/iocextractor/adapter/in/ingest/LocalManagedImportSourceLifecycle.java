@@ -1,21 +1,22 @@
 package com.iocextractor.adapter.in.ingest;
 
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
-import com.iocextractor.application.dataframeimport.model.ImportSha256;
-import com.iocextractor.application.dataframeimport.model.ImportSnapshot;
+import com.iocextractor.application.dataframeimport.model.ImportManagedObjectId;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshotReference;
 import com.iocextractor.application.dataframeimport.model.ImportSourceCandidate;
 import com.iocextractor.application.dataframeimport.model.ImportSourceId;
+import com.iocextractor.application.dataframeimport.model.ImportSourceReadiness;
 import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceResult;
 import com.iocextractor.application.port.out.dataframeimport.DispositionImportSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
+import com.iocextractor.application.port.out.dataframeimport.ImportSnapshotStore;
+import com.iocextractor.application.port.out.dataframeimport.ImportSourceCapability;
 import com.iocextractor.common.IocExtractorException;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
@@ -49,19 +50,17 @@ import java.util.Set;
  * parser can resolve a source-inbox or mutable processing path through this
  * adapter.</p>
  */
-public final class LocalManagedImportSourceLifecycle implements ManagedImportSourceLifecycle {
+public final class LocalManagedImportSourceLifecycle
+        implements ManagedImportSourceLifecycle, ImportSourceCapability {
 
-    static final String REFERENCE_PREFIX = LocalImportSnapshotPathResolver.REFERENCE_PREFIX;
     private static final Set<PosixFilePermission> PRIVATE_DIRECTORY_PERMISSIONS = EnumSet.of(
             PosixFilePermission.OWNER_READ,
             PosixFilePermission.OWNER_WRITE,
             PosixFilePermission.OWNER_EXECUTE);
-    private static final Set<PosixFilePermission> PRIVATE_FILE_PERMISSIONS = EnumSet.of(
-            PosixFilePermission.OWNER_READ);
-
     private final Map<ImportSourceId, Path> inboxes;
     private final Path processingRoot;
     private final Path snapshotRoot;
+    private final ImportSnapshotStore snapshots;
     private final Path terminalRoot;
     private final Path quarantineRoot;
     private final Duration quietPeriod;
@@ -79,8 +78,24 @@ public final class LocalManagedImportSourceLifecycle implements ManagedImportSou
                                              Duration quietPeriod,
                                              long maximumSnapshotBytes) {
         this(sources, processingRoot, snapshotRoot, terminalRoot, quarantineRoot,
-                quietPeriod, maximumSnapshotBytes, new StrictAtomicFileOwnership(),
-                LocalManagedImportSourceLifecycle::copyAndDigest);
+                quietPeriod, maximumSnapshotBytes,
+                new LocalFilesystemImportSnapshotStore(snapshotRoot, maximumSnapshotBytes),
+                new StrictAtomicFileOwnership(),
+                LocalManagedImportSourceLifecycle::copyBounded);
+    }
+
+    /** Creates local source access over the composition-root shared snapshot store. */
+    public LocalManagedImportSourceLifecycle(List<LocalImportSourceDefinition> sources,
+                                             Path processingRoot,
+                                             Path snapshotRoot,
+                                             Path terminalRoot,
+                                             Path quarantineRoot,
+                                             Duration quietPeriod,
+                                             long maximumSnapshotBytes,
+                                             ImportSnapshotStore snapshots) {
+        this(sources, processingRoot, snapshotRoot, terminalRoot, quarantineRoot,
+                quietPeriod, maximumSnapshotBytes, snapshots,
+                new StrictAtomicFileOwnership(), LocalManagedImportSourceLifecycle::copyBounded);
     }
 
     LocalManagedImportSourceLifecycle(List<LocalImportSourceDefinition> sources,
@@ -92,10 +107,27 @@ public final class LocalManagedImportSourceLifecycle implements ManagedImportSou
                                       long maximumSnapshotBytes,
                                       StrictAtomicFileOwnership ownership,
                                       SnapshotCopier snapshotCopier) {
+        this(sources, processingRoot, snapshotRoot, terminalRoot, quarantineRoot,
+                quietPeriod, maximumSnapshotBytes,
+                new LocalFilesystemImportSnapshotStore(snapshotRoot, maximumSnapshotBytes),
+                ownership, snapshotCopier);
+    }
+
+    private LocalManagedImportSourceLifecycle(List<LocalImportSourceDefinition> sources,
+                                      Path processingRoot,
+                                      Path snapshotRoot,
+                                      Path terminalRoot,
+                                      Path quarantineRoot,
+                                      Duration quietPeriod,
+                                      long maximumSnapshotBytes,
+                                      ImportSnapshotStore snapshots,
+                                      StrictAtomicFileOwnership ownership,
+                                      SnapshotCopier snapshotCopier) {
         Objects.requireNonNull(sources, "sources");
         this.quietPeriod = Objects.requireNonNull(quietPeriod, "quietPeriod");
         this.ownership = Objects.requireNonNull(ownership, "ownership");
         this.snapshotCopier = Objects.requireNonNull(snapshotCopier, "snapshotCopier");
+        this.snapshots = Objects.requireNonNull(snapshots, "snapshots");
         if (sources.isEmpty()) {
             throw new IllegalArgumentException("At least one local import source is required");
         }
@@ -149,6 +181,12 @@ public final class LocalManagedImportSourceLifecycle implements ManagedImportSou
     }
 
     @Override
+    public ImportSourceReadiness probe(ImportSourceId sourceId) {
+        requiredInbox(sourceId);
+        return ImportSourceReadiness.ready(sourceId);
+    }
+
+    @Override
     public ClaimImportSourceResult claim(ClaimImportSourceCommand command) {
         Objects.requireNonNull(command, "command");
         Path inbox = requiredInbox(command.sourceId());
@@ -156,12 +194,6 @@ public final class LocalManagedImportSourceLifecycle implements ManagedImportSou
         Path source = containedChild(inbox, candidate.fileName());
         Path deliveryProcessing = processingRoot.resolve(deliveryToken(command.deliveryId()));
         Path claimed = deliveryProcessing.resolve("source");
-        Path deliverySnapshot = snapshotRoot.resolve(deliveryToken(command.deliveryId()));
-        Path published = deliverySnapshot.resolve("snapshot.csv");
-
-        if (Files.exists(published, LinkOption.NOFOLLOW_LINKS)) {
-            return new ClaimImportSourceResult(inspectPublished(command.deliveryId(), published));
-        }
         boolean sourceExists = Files.exists(source, LinkOption.NOFOLLOW_LINKS);
         boolean claimedExists = Files.exists(claimed, LinkOption.NOFOLLOW_LINKS);
         if (sourceExists && claimedExists) {
@@ -172,7 +204,8 @@ public final class LocalManagedImportSourceLifecycle implements ManagedImportSou
             ownership.claim(source, claimed);
             protectDirectory(deliveryProcessing);
         }
-        return new ClaimImportSourceResult(materialize(command.deliveryId(), claimed, published));
+        return new ClaimImportSourceResult(snapshots.materialize(
+                command.deliveryId(), target -> materialize(claimed, target)));
     }
 
     @Override
@@ -200,68 +233,30 @@ public final class LocalManagedImportSourceLifecycle implements ManagedImportSou
 
     @Override
     public void purgeSnapshot(ImportDeliveryId deliveryId, ImportSourceId sourceId) {
-        Objects.requireNonNull(deliveryId, "deliveryId");
         requiredInbox(sourceId);
-        Path directory = snapshotRoot.resolve(deliveryToken(deliveryId));
-        try {
-            Files.deleteIfExists(directory.resolve("snapshot.part"));
-            Files.deleteIfExists(directory.resolve("snapshot.csv"));
-            Files.deleteIfExists(directory);
-        } catch (IOException failure) {
-            throw storageFailure("Failed to purge local import snapshot", failure);
-        }
+        snapshots.purge(deliveryId);
     }
 
     /** Resolves only adapter-issued immutable references for the CSV reader. */
     public Path resolveSnapshot(ImportSnapshotReference reference) {
-        return new LocalImportSnapshotPathResolver(snapshotRoot).resolve(reference);
+        return snapshots.resolve(reference);
     }
 
-    private ImportSnapshot materialize(ImportDeliveryId deliveryId, Path claimed, Path published) {
+    private void materialize(Path claimed, Path part) throws IOException {
         BasicFileAttributes before = requiredRegularAttributes(claimed, "Claimed import source is not regular");
         if (before.size() > maximumSnapshotBytes) {
             throw new IocExtractorException("Import snapshot exceeds configured byte limit");
         }
-        Path part = published.resolveSibling("snapshot.part");
         try {
-            Path publishedParent = requiredParent(published);
-            Files.createDirectories(publishedParent);
-            protectDirectory(publishedParent);
-            CopyEvidence evidence = snapshotCopier.copy(claimed, part, maximumSnapshotBytes);
-            force(part);
+            long copiedBytes = snapshotCopier.copy(claimed, part, maximumSnapshotBytes);
             BasicFileAttributes after = requiredRegularAttributes(claimed, "Claimed import source changed type");
-            if (!sameSource(before, after) || evidence.size() != after.size()) {
+            if (!sameSource(before, after) || copiedBytes != after.size()) {
                 Files.deleteIfExists(part);
                 throw new IocExtractorException("Claimed import source changed while snapshotting");
             }
-            try {
-                Files.move(part, published, StandardCopyOption.ATOMIC_MOVE);
-            } catch (FileAlreadyExistsException collision) {
-                Files.deleteIfExists(part);
-            }
-            forceDirectory(publishedParent);
-            protectFile(published);
-            ImportSnapshot snapshot = inspectPublished(deliveryId, published);
-            if (!snapshot.digest().value().equals(evidence.sha256()) || snapshot.size() != evidence.size()) {
-                throw new IocExtractorException("Published import snapshot evidence does not match materialization");
-            }
-            return snapshot;
         } catch (IocExtractorException failure) {
             deletePart(part, failure);
             throw failure;
-        } catch (IOException failure) {
-            deletePart(part, failure);
-            throw storageFailure("Failed to materialize local import snapshot", failure);
-        }
-    }
-
-    private ImportSnapshot inspectPublished(ImportDeliveryId deliveryId, Path published) {
-        requiredRegularAttributes(published, "Published import snapshot is not regular");
-        try {
-            CopyEvidence evidence = digest(published, maximumSnapshotBytes);
-            return new ImportSnapshot(reference(deliveryId), new ImportSha256(evidence.sha256()), evidence.size());
-        } catch (IOException failure) {
-            throw storageFailure("Failed to verify local import snapshot", failure);
         }
     }
 
@@ -369,10 +364,6 @@ public final class LocalManagedImportSourceLifecycle implements ManagedImportSou
         return resolved;
     }
 
-    private ImportSnapshotReference reference(ImportDeliveryId deliveryId) {
-        return referenceFor(deliveryId);
-    }
-
     private Path requiredParent(Path path) {
         Path parent = path.getParent();
         if (parent == null) {
@@ -389,17 +380,12 @@ public final class LocalManagedImportSourceLifecycle implements ManagedImportSou
         return name.toString();
     }
 
-    static ImportSnapshotReference referenceFor(ImportDeliveryId deliveryId) {
-        return LocalImportSnapshotPathResolver.referenceFor(deliveryId);
-    }
-
     static String deliveryToken(ImportDeliveryId deliveryId) {
-        return sha256(deliveryId.value());
+        return ImportManagedObjectId.from(deliveryId).value();
     }
 
-    static CopyEvidence copyAndDigest(Path source, Path target, long limit) throws IOException {
+    static long copyBounded(Path source, Path target, long limit) throws IOException {
         Set<OpenOption> options = Set.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-        MessageDigest digest = newDigest();
         long size = 0;
         try (InputStream input = Files.newInputStream(source);
              OutputStream output = Files.newOutputStream(target, options.toArray(OpenOption[]::new))) {
@@ -414,30 +400,9 @@ public final class LocalManagedImportSourceLifecycle implements ManagedImportSou
                     throw new IocExtractorException("Import snapshot exceeds configured byte limit");
                 }
                 output.write(buffer, 0, read);
-                digest.update(buffer, 0, read);
             }
         }
-        return new CopyEvidence(HexFormat.of().formatHex(digest.digest()), size);
-    }
-
-    static CopyEvidence digest(Path path, long limit) throws IOException {
-        MessageDigest digest = newDigest();
-        long size = 0;
-        try (InputStream input = Files.newInputStream(path)) {
-            byte[] buffer = new byte[64 * 1024];
-            int read;
-            while ((read = input.read(buffer)) >= 0) {
-                if (read == 0) {
-                    continue;
-                }
-                size += read;
-                if (size > limit) {
-                    throw new IocExtractorException("Import snapshot exceeds configured byte limit");
-                }
-                digest.update(buffer, 0, read);
-            }
-        }
-        return new CopyEvidence(HexFormat.of().formatHex(digest.digest()), size);
+        return size;
     }
 
     private static MessageDigest newDigest() {
@@ -453,18 +418,6 @@ public final class LocalManagedImportSourceLifecycle implements ManagedImportSou
         return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
     }
 
-    private void force(Path path) throws IOException {
-        try (FileChannel channel = FileChannel.open(path, StandardOpenOption.WRITE)) {
-            channel.force(true);
-        }
-    }
-
-    private void forceDirectory(Path directory) throws IOException {
-        try (FileChannel channel = FileChannel.open(directory, StandardOpenOption.READ)) {
-            channel.force(true);
-        }
-    }
-
     private void protectDirectory(Path directory) {
         try {
             Files.setPosixFilePermissions(directory, PRIVATE_DIRECTORY_PERMISSIONS);
@@ -472,16 +425,6 @@ public final class LocalManagedImportSourceLifecycle implements ManagedImportSou
             // Non-POSIX providers retain their platform ACLs.
         } catch (IOException failure) {
             throw storageFailure("Failed to protect managed import directory", failure);
-        }
-    }
-
-    private void protectFile(Path file) {
-        try {
-            Files.setPosixFilePermissions(file, PRIVATE_FILE_PERMISSIONS);
-        } catch (UnsupportedOperationException ignored) {
-            // Non-POSIX providers retain their platform ACLs.
-        } catch (IOException failure) {
-            throw storageFailure("Failed to protect managed import snapshot", failure);
         }
     }
 
@@ -499,10 +442,7 @@ public final class LocalManagedImportSourceLifecycle implements ManagedImportSou
 
     @FunctionalInterface
     interface SnapshotCopier {
-        CopyEvidence copy(Path source, Path target, long maximumBytes) throws IOException;
-    }
-
-    record CopyEvidence(String sha256, long size) {
+        long copy(Path source, Path target, long maximumBytes) throws IOException;
     }
 
     private record CandidateIdentity(ImportSourceId sourceId, String fileName) {

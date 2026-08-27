@@ -250,6 +250,11 @@ class SmbFileTransportTest {
         }
 
         @Override
+        public void deleteRegularFile(String remotePath) {
+            files.remove(remotePath);
+        }
+
+        @Override
         public boolean fileExists(String remotePath) {
             return files.containsKey(remotePath);
         }
@@ -275,6 +280,13 @@ class SmbFileTransportTest {
                 current.append(part);
                 directories.add(current.toString());
                 operations.add("mkdir:" + current);
+            }
+        }
+
+        @Override
+        public void createEmptyFile(String remotePath) {
+            if (files.putIfAbsent(remotePath, new byte[0]) != null) {
+                throw new IllegalStateException("file exists");
             }
         }
 

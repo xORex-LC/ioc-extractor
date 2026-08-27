@@ -20,21 +20,37 @@ public final class DataframeImportDetectionService {
     private final AdmitDataframeImportUseCase admission;
     private final Clock clock;
     private final Supplier<ImportDeliveryId> deliveryIds;
+    private final DataframeImportSourceReadinessCoordinator readiness;
 
     /** Creates a source detector whose IDs identify occurrences, never file content. */
     public DataframeImportDetectionService(ManagedImportSourceLifecycle sources,
                                            AdmitDataframeImportUseCase admission,
                                            Clock clock,
                                            Supplier<ImportDeliveryId> deliveryIds) {
+        this(sources, admission, clock, deliveryIds,
+                new DataframeImportSourceReadinessCoordinator(
+                        com.iocextractor.application.dataframeimport.model.ImportSourceReadiness::ready));
+    }
+
+    /** Creates a detector guarded by one source-scoped positive capability coordinator. */
+    public DataframeImportDetectionService(ManagedImportSourceLifecycle sources,
+                                           AdmitDataframeImportUseCase admission,
+                                           Clock clock,
+                                           Supplier<ImportDeliveryId> deliveryIds,
+                                           DataframeImportSourceReadinessCoordinator readiness) {
         this.sources = Objects.requireNonNull(sources, "sources");
         this.admission = Objects.requireNonNull(admission, "admission");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.deliveryIds = Objects.requireNonNull(deliveryIds, "deliveryIds");
+        this.readiness = Objects.requireNonNull(readiness, "readiness");
     }
 
     /** Detects stable candidates in deterministic adapter order and admits each occurrence. */
     public int detect(ImportSourceId sourceId) {
         Objects.requireNonNull(sourceId, "sourceId");
+        if (!readiness.ready(sourceId)) {
+            return 0;
+        }
         List<ImportSourceCandidate> candidates = sources.detect(sourceId, clock.instant());
         for (ImportSourceCandidate candidate : candidates) {
             admission.admit(new AdmitDataframeImportCommand(new ImportClaimReservation(

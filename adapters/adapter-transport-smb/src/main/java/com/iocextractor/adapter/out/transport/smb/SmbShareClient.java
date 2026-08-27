@@ -14,6 +14,9 @@ interface SmbShareClient extends AutoCloseable {
 
     void delete(String remotePath);
 
+    /** Deletes one exact regular file and never falls back to directory removal. */
+    void deleteRegularFile(String remotePath);
+
     boolean fileExists(String remotePath);
 
     boolean directoryExists(String remotePath);
@@ -21,6 +24,9 @@ interface SmbShareClient extends AutoCloseable {
     String readText(String remotePath);
 
     void createDirectories(String remotePath);
+
+    /** Creates one empty regular file and fails when the exact object already exists. */
+    void createEmptyFile(String remotePath);
 
     void upload(Path localFile, String remotePath);
 
