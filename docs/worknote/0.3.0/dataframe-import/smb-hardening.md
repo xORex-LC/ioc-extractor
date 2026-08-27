@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — SMB namespace and retention hardening"
 version: "0.3.0"
-status: "Decision accepted; implementation pending"
+status: "H1-H4 implemented; H5 external qualification pending"
 document_type: "Implementation worknote"
 source_of_truth: false
 language: "en"
@@ -348,7 +348,39 @@ H0 documentation evidence on 2026-08-26:
   one test, zero failures/errors/skips, reactor build successful;
 - `git diff --check`: clean.
 
-Implementation remains open under H1-H5 and the relevant known-issue entries
-must not be closed by documentation alone. A full `make verify` is deferred to
-the implementation/final committed-HEAD gate; the pre-scope verification is no
-longer fresh for this dirty documentation tree.
+At the H0 checkpoint implementation remained open under H1-H5, and the relevant
+known-issue entries could not be closed by documentation alone. The pre-scope
+verification ceased to be fresh for that documentation tree.
+
+## 11. H1-H4 implementation evidence
+
+Implementation evidence on 2026-08-27:
+
+- application-owned `ImportManagedObjectId`, source-occurrence kind, readiness,
+  snapshot and terminal-source retention contracts contain no SMB endpoint,
+  path, status or adapter type;
+- one `LocalFilesystemImportSnapshotStore` owns bounded transfer verification,
+  SHA-256, force, atomic publication, both legacy reference prefixes and purge
+  for local, SMB and replay flows; the SMB module has no ingest-adapter
+  dependency;
+- SMB managed import performs no runtime namespace creation, gates listing and
+  claim with the pre-provisioned private-object probe, uses the existing shared
+  session pool and rejects directory or reparse-point deletion targets;
+- replay reaches finalization and retention without source disposition or
+  terminal-source calls; forward retention executes remote source, local
+  terminal, workspace, snapshot, receipt and ledger-CAS cleanup in that order;
+- focused application/adapter/bootstrap tests passed with zero failures,
+  including 28 ArchUnit cases, source-scoped admission, value-free health,
+  replay detachment, snapshot compatibility, reparse rejection and cleanup
+  failure ordering;
+- generated `DIAGNOSTICS-CATALOG.md` is current; `make docs` reported 794 link
+  occurrences, 281 unique, 710 OK, zero errors and 84 excluded;
+- `DocumentationConventionTest` and `git diff --check` passed.
+
+H5 external qualification is deliberately not reported as passed in this
+environment. `SmbManagedImportHardeningContractTest` compiles and is opt-in; it
+was skipped because no approved two-identity live fixture was supplied. Docker
+is installed but its daemon socket is unavailable to the current user. Windows
+Server/NAS targets and packaged fresh-install/upgrade/rollback stands are also
+unavailable and remain explicit skips. The final committed-HEAD `make verify`
+is still required after the implementation commit.
