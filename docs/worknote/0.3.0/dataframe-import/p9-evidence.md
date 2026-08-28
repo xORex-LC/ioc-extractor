@@ -151,6 +151,11 @@ pending publish, import or projection work.
 Endpoint addresses, share paths, credentials, filenames, IOC material and
 digests are intentionally omitted from this versioned evidence.
 
+The round trip above predates ADR-0026 and did not record the effective SMB
+encryption policy, negotiated dialect or encryption gate. It remains valid
+functional Samba evidence, but it is not evidence for the later
+`encryption: required` guarantee.
+
 ## 6. Remaining P9 release gates
 
 - Run packaged fresh-install and exact `v0.2.0` upgrade/rollback qualification
@@ -158,3 +163,6 @@ digests are intentionally omitted from this versioned evidence.
 - Qualify any additional production Windows Server/NAS family before claiming
   support beyond the approved Samba implementation; polling remains the
   correctness fallback when notifications are unavailable.
+- Re-run the approved Samba contract with `encryption: required` and retain the
+  explicit `SmbEncryptionContractTest` result. Until then, effective encrypted
+  transport qualification is an external skip, not a pass.
