@@ -91,10 +91,17 @@ preflight до первого I/O.
 
 Для SMB:
 
+- `encryption=required` является secure default: adapter предлагает только
+  SMB3 dialects и после authentication проверяет effective session encryption
+  до первого share request; нарушение даёт terminal
+  `SECURITY_POLICY_UNMET`, а не сетевой retry;
+- `preferred` запрашивает encryption, но явно допускает незашифрованный SMB2/3
+  fallback; `disabled` не объявляет client preference;
 - `connect-timeout` ограничивает TCP connect;
 - `request-timeout` ограничивает один SMB request;
 - `idle-timeout` задаёт время жизни неиспользуемого cached client;
-- legacy `read-timeout` не поддерживается и получает migration hint.
+- legacy `encrypt` и `read-timeout` не поддерживаются и получают migration
+  hints.
 
 Transport exception нормализуется в `RemoteErrorKind`, после чего application
 выдаёт единый `SYNC.*` diagnostic. Если существует durable work record, сначала
@@ -125,6 +132,7 @@ CLI `sync fetch`, `sync publish` и `sync all` используют те же ap
 6. Event/push может быть потерян без потери данных: reconcile обязан закрыть
    путь.
 7. Sync не владеет extraction, canonical schema или export formation.
+8. `encryption=required` не открывает share без effective SMB3 encryption.
 
 ## Как расширять
 

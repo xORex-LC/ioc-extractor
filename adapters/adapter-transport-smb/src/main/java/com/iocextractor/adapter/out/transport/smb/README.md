@@ -14,7 +14,7 @@ SMB-адаптер для sync `FileTransport` и managed dataframe-import lifec
 | `SmbImportChangeSignalSource` | Преобразует `CHANGE_NOTIFY` в source-scoped import listing hint. |
 | `SmbChangeNotifyWatcher` | Optional `RemoteChangeSignalSource` поверх SMB2 `CHANGE_NOTIFY`; отдаёт только doorbell-сигналы. |
 | `SmbjChangeNotifySessionFactory` | Выделенный SMBJ client/session/share/directory handle для long-poll watch. |
-| `SmbEndpointSettings` | Immutable-настройки endpoint с маскированием credentials. |
+| `SmbEndpointSettings` / `SmbEncryptionPolicy` | Immutable endpoint settings и `disabled|preferred|required` negotiation policy с маскированием credentials. |
 | `ConnectTimeoutSocketFactory` | Ограничивает TCP connect через `Socket.connect(timeout)`. |
 | `SmbjShareClientFactory` | Создаёт SMBJ client/session/share для endpoint. |
 | `SmbjShareClient` | Тонкая обёртка над SMBJ `DiskShare`, работающая в терминах путей и файлов. |
@@ -24,6 +24,9 @@ SMB-адаптер для sync `FileTransport` и managed dataframe-import lifec
 
 - `smbj` остаётся только в этом adapter-модуле.
 - Пароли не попадают в `toString()` и не должны логироваться.
+- `REQUIRED` разрешает только SMB3 dialects и до share I/O проверяет, что
+  authenticated session действительно шифрует packets; mismatch terminal и не
+  маскируется под retryable network failure.
 - `publishAtomically` пишет данные в adapter-owned temp path, commit-marker — последним,
   затем делает `temp → final` rename.
 - Уже опубликованный slice с совпадающим marker считается idempotent success.
@@ -80,6 +83,7 @@ managed claim/disposition/restart и `CHANGE_NOTIFY`:
   -Dioc.smb.share=test-share \
   -Dioc.smb.username="$SMB_USER" \
   -Dioc.smb.password="$SMB_PASSWORD" \
+  -Dioc.smb.encryption=required \
   -Dioc.smb.remotePath=import
 ```
 
@@ -100,5 +104,19 @@ retention:
   -Dioc.smb.password="$SMB_SERVICE_PASSWORD" \
   -Dioc.smb.producer.username="$SMB_PRODUCER_USER" \
   -Dioc.smb.producer.password="$SMB_PRODUCER_PASSWORD" \
+  -Dioc.smb.encryption=required \
   -Dioc.smb.hardening.remotePath=managed-import/inbox
+```
+
+Отдельный live-contract доказывает именно fail-closed encryption negotiation:
+
+```bash
+./mvnw -pl adapters/adapter-transport-smb -am test \
+  -Dioc.smb.encryption.contract=true \
+  -Dioc.smb.host=files.example.test \
+  -Dioc.smb.share=intel \
+  -Dioc.smb.username="$SMB_SERVICE_USER" \
+  -Dioc.smb.password="$SMB_SERVICE_PASSWORD" \
+  -Dioc.smb.encryption=required \
+  -Dioc.smb.remotePath=managed-import/inbox
 ```

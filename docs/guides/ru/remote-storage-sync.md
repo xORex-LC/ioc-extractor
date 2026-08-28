@@ -202,7 +202,7 @@ endpoints:
       domain: CORP             # пусто, если локальная учётка или Samba без домена
       username: ${SMB_USER}
       password: ${SMB_PASSWORD}
-      encrypt: true
+      encryption: required
       connect-timeout: 10s
       request-timeout: 30s
       idle-timeout: 5m
@@ -214,7 +214,7 @@ endpoints:
 | `share` | — | Имя шары (без слэшей): `intel`, а не `\\host\intel` |
 | `domain` | — | AD-домен учётки. Для Samba c локальными пользователями оставьте пустым |
 | `username` / `password` | — | **Только через переменные окружения** (`${SMB_USER}`). Секреты не попадают в логи и health |
-| `encrypt` | — | Шифрование SMB3 на уровне сессии. Включайте всегда, если сервер умеет SMB3 (см. раздел 4). Выключать — только для legacy-серверов и только в доверенной сети |
+| `encryption` | `required` | `required` допускает только SMB3 и до share I/O fail-closed проверяет effective session encryption. `preferred` запрашивает encryption, но явно разрешает незашифрованный SMB2/3 fallback. `disabled` не запрашивает client-preferred encryption и допустим только для осознанно доверенной legacy-сети |
 | `connect-timeout` | 10s | Сколько ждать TCP-подключения. LAN: 5s достаточно. WAN/VPN: 10–15s. Учтите: DNS-резолв в этот бюджет не входит |
 | `request-timeout` | 30s | Потолок **одного обычного SMB-запроса**: чтение блока, запись, получение списка каталога, открытие/закрытие handle'ов. Увеличивайте, если сервер медленный или в каталоге тысячи файлов и листинг не укладывается. Это не интервал опроса, не расписание fetch/publish и не ограничение idle-ожидания `CHANGE_NOTIFY` push-уведомлений |
 | `idle-timeout` | 5m | Сколько держать простаивающее **обычное transport-соединение** перед закрытием. Это соединение используется операциями fetch/publish/list/download/upload; оно отдельно от активной watch-сессии `CHANGE_NOTIFY`. Меньше — чаще повторные подключения (лишние handshake/auth). Больше — дольше живёт сокет, который stateful firewall может молча выкинуть. Практическое правило: **чуть меньше**, чем idle-timeout вашего firewall/NAT (частая заводская настройка — 5–30 минут) |
@@ -376,7 +376,9 @@ exit code 1 (пригодно для скриптов).
 
 Общие требования к серверу любой ОС:
 
-- **SMB2 минимум, SMB3 — рекомендуется** (шифрование, надёжные уведомления).
+- **Secure default `encryption: required` требует SMB3**. SMB2 доступен только
+  после явного выбора `preferred` или `disabled` и принятия незашифрованного
+  fallback оператором.
   SMB1 должен быть выключен;
 - TCP/445 открыт от хоста приложения к серверу;
 - отдельная сервисная учётка для приложения, без интерактивного входа;
@@ -410,8 +412,8 @@ chmod 2770 /srv/intel/out/reputation
 
 ```ini
 [global]
-    server min protocol = SMB2_10        # SMB1 выключен всегда
-    smb encrypt = desired                # required — если ВСЕ клиенты умеют SMB3
+    server min protocol = SMB3_00        # secure default приложения требует SMB3
+    smb encrypt = required               # fail closed для всех клиентов сервера
     # Уведомления об изменениях (нужны для change-notify):
     change notify = yes                  # значение по умолчанию, но зафиксируйте явно
     kernel change notify = yes           # inotify-подложка: ловит и локальные записи
@@ -508,7 +510,7 @@ polling с комфортным интервалом; функционально
 - [ ] Шара доступна с хоста приложения: `smbclient //host/share -U svc-ioc -c 'ls'`
 - [ ] У сервисной учётки: чтение на источнике, полные права на содержимое цели,
       и **нет** ничего лишнего (проверьте, что запись в источник запрещена)
-- [ ] SMB1 выключен на сервере; решено про `encrypt` (SMB3 → `true`)
+- [ ] Сервер поддерживает SMB3 encryption; в приложении оставлен `encryption: required`
 - [ ] Секреты в env (`SMB_USER`/`SMB_PASSWORD`), не в yaml
 - [ ] `exclude` содержит `*.tmp`, `*.part`, `.*`; с производителем данных
       согласована rename-конвенция

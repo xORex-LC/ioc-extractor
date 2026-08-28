@@ -153,6 +153,7 @@ supported contract не входят. Их появление является �
 | `SEC-DATA-1` | Atomic durable protocols и checksummed immutable export slices | Enforced | ledgers, manifests, `_SUCCESS`, checksum verification и recovery contracts; [sync.md](dev/sync.md) |
 | `SEC-DATA-2` | Managed-import ownership, immutable evidence и exactly-once promotion | Enforced | local atomic move либо SMB server-side rename, private hashed snapshot, sealed stage, one-transaction promotion и dataframe receipt; protected source/report terminal unit |
 | `SEC-DATA-3` | Managed-import SMB private namespace и bounded remote terminal evidence | Designed | ADR-0025 требует operator-provisioned namespace, source capability gate, producer-denial negative test и exact remote-first terminal purge с ledger-last recovery; implementation gaps зарегистрированы как `OPS-3`/`OPS-9`, server-family evidence — `OPS-8` |
+| `SEC-DATA-4` | Fail-closed SMB transport encryption policy | Enforced; live qualification pending | `encryption=required` по умолчанию ограничивает negotiation SMB3 dialects и проверяет effective session encryption до share I/O; `preferred`/`disabled` требуют явной настройки; ADR-0026 и opt-in live contract |
 
 ### 4.2. Dependencies, CI и supply chain
 

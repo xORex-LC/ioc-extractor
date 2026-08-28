@@ -217,7 +217,7 @@ endpoints:
       domain: CORP             # empty for a local account or Samba without a domain
       username: ${SMB_USER}
       password: ${SMB_PASSWORD}
-      encrypt: true
+      encryption: required
       connect-timeout: 10s
       request-timeout: 30s
       idle-timeout: 5m
@@ -229,7 +229,7 @@ endpoints:
 | `share` | — | Share name (no slashes): `intel`, not `\\host\intel` |
 | `domain` | — | AD domain of the account. Leave empty for Samba with local users |
 | `username` / `password` | — | **Environment variables only** (`${SMB_USER}`). Secrets never reach logs or health output |
-| `encrypt` | — | SMB3 session-level encryption. Always enable it if the server speaks SMB3 (see section 4). Disable only for legacy servers and only on a trusted network |
+| `encryption` | `required` | `required` allows only SMB3 and fails before share I/O unless session encryption is effective. `preferred` requests encryption but explicitly permits an unencrypted SMB2/3 fallback. `disabled` does not request client-preferred encryption and is suitable only for a deliberately trusted legacy network |
 | `connect-timeout` | 10s | How long to wait for the TCP connection. LAN: 5s is enough. WAN/VPN: 10–15s. Note: DNS resolution is not included in this budget |
 | `request-timeout` | 30s | Ceiling for **one regular SMB request**: reading a block, writing, listing a directory, opening/closing handles. Raise it if the server is slow, or the directory holds thousands of files and the listing does not fit. It is not a polling interval, not a fetch/publish schedule, and it does not limit the idle wait of `CHANGE_NOTIFY` push notifications |
 | `idle-timeout` | 5m | How long to keep an idle **regular transport connection** before closing it. This connection is used by fetch/publish/list/download/upload operations; it is separate from the active `CHANGE_NOTIFY` watch session. Lower — more frequent reconnects (extra handshake/auth). Higher — the socket lives longer and a stateful firewall may silently drop it. Practical rule: **slightly below** the idle timeout of your firewall/NAT (a common factory setting is 5–30 minutes) |
@@ -395,7 +395,9 @@ code 1 (script-friendly).
 
 Common server requirements for any OS:
 
-- **SMB2 minimum, SMB3 recommended** (encryption, reliable notifications).
+- **SMB3 is required by the default `encryption: required` policy**. SMB2 is
+  reachable only after the operator explicitly selects `preferred` or
+  `disabled` and accepts an unencrypted fallback.
   SMB1 must be disabled;
 - TCP/445 open from the application host to the server;
 - a dedicated service account for the application, without interactive logon;
@@ -429,8 +431,8 @@ chmod 2770 /srv/intel/out/reputation
 
 ```ini
 [global]
-    server min protocol = SMB2_10        # SMB1 is always off
-    smb encrypt = desired                # required — if ALL clients speak SMB3
+    server min protocol = SMB3_00        # required by the application secure default
+    smb encrypt = required               # fail closed for every client of this server
     # Change notifications (needed for change-notify):
     change notify = yes                  # the default, but pin it explicitly
     kernel change notify = yes           # the inotify backend: also catches local writes
@@ -527,7 +529,7 @@ with a comfortable interval; you lose nothing functionally.
 - [ ] The share is reachable from the application host: `smbclient //host/share -U svc-ioc -c 'ls'`
 - [ ] The service account has: read on the source, full rights on the target's
       contents, and **nothing** extra (verify that writing to the source is denied)
-- [ ] SMB1 disabled on the server; `encrypt` decided (SMB3 → `true`)
+- [ ] The server supports SMB3 encryption; application `encryption` remains `required`
 - [ ] Secrets in env (`SMB_USER`/`SMB_PASSWORD`), not in yaml
 - [ ] `exclude` contains `*.tmp`, `*.part`, `.*`; the rename convention is
       agreed with the data producer

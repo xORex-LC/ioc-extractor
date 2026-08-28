@@ -22,7 +22,7 @@ watch-lifecycle); discovery/dedup/ledger-логика
 | `SmbShareClient` / `SmbjShareClient` (+ `Factory`) | Обёртка над smbj share; открытие/аутентификация/операции |
 | `SmbManagedImportSourceLifecycle` | Positive pre-provisioned namespace probe, server-side claim rename, orphan adoption, write-exclusive claimed-byte access, remote disposition и exact terminal-source purge |
 | `SmbImportChangeSignalSource` | Source-scoped import doorbells поверх transport-neutral watch port |
-| `SmbEndpointSettings` | Настройки соединения (host/share/domain/creds/таймауты); пароль — defensive copy, `<redacted>` в `toString` |
+| `SmbEndpointSettings` / `SmbEncryptionPolicy` | Настройки соединения (host/share/domain/creds/encryption policy/таймауты); пароль — defensive copy, `<redacted>` в `toString` |
 | `ConnectTimeoutSocketFactory` | Настоящий TCP connect-timeout (smbj его не даёт) |
 | `SmbExceptionMapper` | smbj/IO ошибки → `RemoteTransportException` с `RemoteErrorKind` |
 | `SmbChangeNotifyWatcher` | `RemoteChangeSignalSource`: выделенная watch-сессия, doorbell-callback, re-arm/overflow/lease, capped backoff |
@@ -44,6 +44,12 @@ Managed import не расширяет read-only контракт ordinary sync 
 provisions namespace/ACL, adapter проверяет положительный private-object flow.
 Локальный snapshot хранится общей реализацией за application port, переданной
 composition root; SMB module не зависит от `adapter-ingest`.
+
+Encryption policy также остаётся общей для ordinary sync и managed import:
+`required` допускает только SMB3 и проверяет effective session encryption до
+share I/O, `preferred` явно разрешает fallback, `disabled` не запрашивает
+client-preferred encryption. Policy mismatch публикуется как общий
+`SECURITY_POLICY_UNMET`, а SMBJ mechanics не выходят из adapter.
 
 ## Связанные документы
 
