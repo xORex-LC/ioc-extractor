@@ -130,6 +130,8 @@ class ConfigurationDocumentationContractTest {
         assertHint(metadata, "ioc.lifecycle.validity.mode", selectorTokens(LifecycleValidityMode.values()));
         assertHint(metadata, "ioc.lifecycle.validity.existing-records",
                 selectorTokens(ExistingRecordsPolicy.values()));
+        assertHint(metadata, "ioc.sync.endpoints[].smb.encryption",
+                selectorTokens(SmbEncryptionMode.values()));
         assertHint(metadata, "ioc.dataframe-import.sources[].transport",
                 importTokens(ImportSourceTransport.values()));
         assertHint(metadata, "ioc.dataframe-import.authority-profiles[].maximum-merge-policy",
@@ -174,6 +176,7 @@ class ConfigurationDocumentationContractTest {
         addSelectorTokens(values, ArtifactKeyMode.values());
         addSelectorTokens(values, ExportOutputMode.values());
         addSelectorTokens(values, SyncTransport.values());
+        addSelectorTokens(values, SmbEncryptionMode.values());
         addSelectorTokens(values, RetentionActionType.values());
         addImportTokens(values, ImportSourceTransport.values());
         addImportTokens(values, ImportMergePolicy.values());

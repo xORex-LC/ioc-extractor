@@ -422,7 +422,7 @@ ioc:
           domain: CORP
           username: ${SMB_USER}
           password: ${SMB_PASSWORD}
-          encrypt: true
+          encryption: required
           connect-timeout: 10s
           request-timeout: 30s
           idle-timeout: 5m

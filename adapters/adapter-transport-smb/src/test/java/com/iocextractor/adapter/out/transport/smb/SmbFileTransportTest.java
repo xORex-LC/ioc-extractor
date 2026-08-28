@@ -161,7 +161,7 @@ class SmbFileTransportTest {
                         "",
                         "sync-user",
                         "secret".toCharArray(),
-                        false,
+                        SmbEncryptionPolicy.DISABLED,
                         Duration.ofSeconds(5),
                         Duration.ofSeconds(30),
                         Duration.ofMinutes(5))),

@@ -137,7 +137,7 @@ class SmbManagedImportHardeningContractTest {
                     System.getProperty("ioc.smb.producer.domain", ""),
                     require("ioc.smb.producer.username"),
                     password,
-                    Boolean.getBoolean("ioc.smb.encrypt"),
+                    SmbContractTestSupport.encryptionPolicy(),
                     Duration.ofSeconds(5),
                     Duration.ofSeconds(30),
                     Duration.ofMinutes(1));

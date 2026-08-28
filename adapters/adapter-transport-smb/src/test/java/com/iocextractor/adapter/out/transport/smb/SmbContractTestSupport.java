@@ -22,13 +22,18 @@ final class SmbContractTestSupport {
                     System.getProperty("ioc.smb.domain", ""),
                     require("ioc.smb.username"),
                     password,
-                    Boolean.getBoolean("ioc.smb.encrypt"),
+                    encryptionPolicy(),
                     Duration.ofSeconds(5),
                     requestTimeout,
                     Duration.ofMinutes(1));
         } finally {
             Arrays.fill(password, '\0');
         }
+    }
+
+    static SmbEncryptionPolicy encryptionPolicy() {
+        String configured = System.getProperty("ioc.smb.encryption", "required");
+        return SmbEncryptionPolicy.valueOf(configured.toUpperCase(java.util.Locale.ROOT));
     }
 
     static String remoteRoot() {

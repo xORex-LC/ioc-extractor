@@ -15,6 +15,8 @@ public enum SyncDiagnosticCodes implements DiagnosticCode {
             "Sync endpoint {endpoint} denied access to {path}: {reason}"),
     REMOTE_NOT_FOUND(DiagnosticSeverity.WARN, "sync.remote-not-found",
             "Remote path {path} was not found on sync endpoint {endpoint}"),
+    SECURITY_POLICY_UNMET(DiagnosticSeverity.FATAL, "sync.security-policy-unmet",
+            "Sync endpoint {endpoint} does not satisfy the configured transport security policy: {reason}"),
     TRANSPORT_TRANSIENT(DiagnosticSeverity.WARN, "sync.transport-transient",
             "Transient transport failure on sync endpoint {endpoint}: {reason}"),
     PUBLISH_VERIFY_FAILED(DiagnosticSeverity.ERROR, "sync.publish-verify-failed",

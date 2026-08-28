@@ -99,6 +99,14 @@
       ]
     },
     {
+      "name": "ioc.sync.endpoints[].smb.encryption",
+      "values": [
+        { "value": "required", "description": "Allow only SMB3 and fail connection establishment unless session encryption is effective." },
+        { "value": "preferred", "description": "Request SMB3 encryption but allow an unencrypted SMB2/3 fallback." },
+        { "value": "disabled", "description": "Do not request client-preferred SMB session encryption." }
+      ]
+    },
+    {
       "name": "ioc.dataframe-import.sources[].transport",
       "values": [ { "value": "local" }, { "value": "smb" } ]
     },

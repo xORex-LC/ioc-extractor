@@ -17,7 +17,7 @@ public final class SmbEndpointSettings {
     private final String domain;
     private final String username;
     private final char[] password;
-    private final boolean encrypt;
+    private final SmbEncryptionPolicy encryption;
     private final Duration connectTimeout;
     private final Duration requestTimeout;
     private final Duration idleTimeout;
@@ -28,7 +28,7 @@ public final class SmbEndpointSettings {
                                String domain,
                                String username,
                                char[] password,
-                               boolean encrypt,
+                               SmbEncryptionPolicy encryption,
                                Duration connectTimeout,
                                Duration requestTimeout,
                                Duration idleTimeout) {
@@ -41,7 +41,7 @@ public final class SmbEndpointSettings {
             throw new IllegalArgumentException("password must not be empty");
         }
         this.password = Arrays.copyOf(password, password.length);
-        this.encrypt = encrypt;
+        this.encryption = Objects.requireNonNull(encryption, "encryption");
         this.connectTimeout = requirePositive(connectTimeout, "connectTimeout");
         this.requestTimeout = requirePositive(requestTimeout, "requestTimeout");
         this.idleTimeout = requirePositive(idleTimeout, "idleTimeout");
@@ -77,9 +77,9 @@ public final class SmbEndpointSettings {
         return Arrays.copyOf(password, password.length);
     }
 
-    /** Returns whether SMB encryption should be requested. */
-    public boolean encrypt() {
-        return encrypt;
+    /** Returns the SMB session-encryption negotiation policy. */
+    public SmbEncryptionPolicy encryption() {
+        return encryption;
     }
 
     /** Returns the socket/connect timeout. */
@@ -106,7 +106,7 @@ public final class SmbEndpointSettings {
                 + ", domain='" + domain + '\''
                 + ", username='" + username + '\''
                 + ", password=<redacted>"
-                + ", encrypt=" + encrypt
+                + ", encryption=" + encryption
                 + ", connectTimeout=" + connectTimeout
                 + ", requestTimeout=" + requestTimeout
                 + ", idleTimeout=" + idleTimeout

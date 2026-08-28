@@ -43,6 +43,7 @@ public final class SyncDiagnosticReporter {
             case AUTH_FAILED -> SyncDiagnosticCodes.AUTH_FAILED;
             case PERMISSION_DENIED -> SyncDiagnosticCodes.PERMISSION_DENIED;
             case NOT_FOUND -> SyncDiagnosticCodes.REMOTE_NOT_FOUND;
+            case SECURITY_POLICY_UNMET -> SyncDiagnosticCodes.SECURITY_POLICY_UNMET;
             case TRANSIENT -> SyncDiagnosticCodes.TRANSPORT_TRANSIENT;
         };
     }

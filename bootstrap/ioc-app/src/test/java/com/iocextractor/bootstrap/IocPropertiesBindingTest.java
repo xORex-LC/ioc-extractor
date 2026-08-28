@@ -341,6 +341,17 @@ class IocPropertiesBindingTest {
     }
 
     @Test
+    void rejectsSmbEncryptionTypoDuringBinding() {
+        contextRunner(
+                "ioc.sync.endpoints[0].name=share",
+                "ioc.sync.endpoints[0].transport=smb",
+                "ioc.sync.endpoints[0].smb.encryption=mandatory")
+                .run(context -> assertThat(causeMessages(context.getStartupFailure()))
+                        .contains("ioc.sync.endpoints[].smb.encryption")
+                        .contains("disabled, preferred, required"));
+    }
+
+    @Test
     void rejectsRetentionActionTypoDuringBinding() {
         contextRunner("ioc.maintenance.retention.targets[0].action=drop")
                 .run(context -> assertThat(causeMessages(context.getStartupFailure()))
@@ -410,6 +421,16 @@ class IocPropertiesBindingTest {
                 "ioc.sync.endpoints[0].smb.read-timeout=45s")
                 .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
                         .containsExactly("ioc.sync.endpoints[0].smb.read-timeout"));
+    }
+
+    @Test
+    void rejectsRemovedLegacySmbEncryptKeyAsUnknown() {
+        contextRunner(
+                "ioc.sync.endpoints[0].name=share",
+                "ioc.sync.endpoints[0].transport=smb",
+                "ioc.sync.endpoints[0].smb.encrypt=true")
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
+                        .containsExactly("ioc.sync.endpoints[0].smb.encrypt"));
     }
 
     @Test
@@ -569,6 +590,13 @@ class IocPropertiesBindingTest {
         contextRunnerWithEnvironment(Map.of("IOC_SYNC_ENDPOINTS_0_SMB_READ_TIMEOUT", "45s"))
                 .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
                         .containsExactly("ioc.sync.endpoints[0].smb.read.timeout"));
+    }
+
+    @Test
+    void rejectsRemovedLegacySmbEncryptEnvironmentKeyAsUnknown() {
+        contextRunnerWithEnvironment(Map.of("IOC_SYNC_ENDPOINTS_0_SMB_ENCRYPT", "true"))
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
+                        .containsExactly("ioc.sync.endpoints[0].smb.encrypt"));
     }
 
     @Test

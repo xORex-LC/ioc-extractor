@@ -10,7 +10,6 @@ import com.hierynomus.mssmb2.SMB2ShareAccess;
 import com.hierynomus.mssmb2.SMBApiException;
 import com.hierynomus.mssmb2.messages.SMB2ChangeNotifyResponse;
 import com.hierynomus.smbj.SMBClient;
-import com.hierynomus.smbj.auth.AuthenticationContext;
 import com.hierynomus.smbj.connection.Connection;
 import com.hierynomus.smbj.share.Directory;
 import com.hierynomus.smbj.share.DiskShare;
@@ -18,7 +17,6 @@ import com.hierynomus.smbj.share.Share;
 
 import java.io.IOException;
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
@@ -50,14 +48,8 @@ final class SmbjChangeNotifySessionFactory implements SmbChangeNotifySessionFact
         SMBClient client = new SMBClient(SmbjShareClientFactory.config(settings));
         try {
             Connection connection = client.connect(settings.host());
-            char[] password = settings.password();
-            AuthenticationContext authentication;
-            try {
-                authentication = new AuthenticationContext(settings.username(), password, settings.domain());
-            } finally {
-                Arrays.fill(password, '\0');
-            }
-            Share connectedShare = connection.authenticate(authentication).connectShare(settings.share());
+            Share connectedShare = SmbjShareClientFactory.authenticate(connection, settings)
+                    .connectShare(settings.share());
             DiskShare share = SmbjShareClientFactory.requireDiskShare(connectedShare, settings);
             Directory directory = share.openDirectory(
                     toSmbPath(normalizedPath),

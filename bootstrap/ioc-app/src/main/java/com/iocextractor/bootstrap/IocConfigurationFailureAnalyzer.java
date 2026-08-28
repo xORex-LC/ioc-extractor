@@ -18,6 +18,10 @@ public final class IocConfigurationFailureAnalyzer
             "ioc\\.sync\\.endpoints\\[\\d+]\\.smb\\.read-timeout");
     private static final Pattern SMB_READ_TIMEOUT_ENV = Pattern.compile(
             "ioc_sync_endpoints_\\d+_smb_read_timeout", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SMB_ENCRYPT = Pattern.compile(
+            "ioc\\.sync\\.endpoints\\[\\d+]\\.smb\\.encrypt");
+    private static final Pattern SMB_ENCRYPT_ENV = Pattern.compile(
+            "ioc_sync_endpoints_\\d+_smb_encrypt", Pattern.CASE_INSENSITIVE);
 
     @Override
     protected FailureAnalysis analyze(Throwable rootFailure, UnboundConfigurationPropertiesException cause) {
@@ -56,6 +60,9 @@ public final class IocConfigurationFailureAnalyzer
             } else if (isLegacySmbReadTimeout(key)) {
                 actions.add(
                         "CONFIG.LEGACY_SYNC_TIMEOUT: replace ioc.sync.endpoints[].smb.read-timeout with request-timeout.");
+            } else if (isLegacySmbEncrypt(key)) {
+                actions.add("CONFIG.LEGACY_SMB_ENCRYPTION: replace ioc.sync.endpoints[].smb.encrypt "
+                        + "with encryption=required, preferred or disabled.");
             }
         }
         actions.add("Remove or rename every unknown ioc.* key, then restart the application.");
@@ -81,6 +88,12 @@ public final class IocConfigurationFailureAnalyzer
         return SMB_READ_TIMEOUT.matcher(key.canonicalName()).matches()
                 || (key.rawEnvironmentName() != null
                 && SMB_READ_TIMEOUT_ENV.matcher(key.rawEnvironmentName()).matches());
+    }
+
+    private boolean isLegacySmbEncrypt(UnknownKey key) {
+        return SMB_ENCRYPT.matcher(key.canonicalName()).matches()
+                || (key.rawEnvironmentName() != null
+                && SMB_ENCRYPT_ENV.matcher(key.rawEnvironmentName()).matches());
     }
 
     private record UnknownKey(String canonicalName, String rawEnvironmentName) {

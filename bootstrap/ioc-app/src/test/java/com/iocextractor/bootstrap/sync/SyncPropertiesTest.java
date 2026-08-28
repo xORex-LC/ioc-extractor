@@ -1,6 +1,7 @@
 package com.iocextractor.bootstrap.sync;
 
 import com.iocextractor.bootstrap.IocProperties;
+import com.iocextractor.bootstrap.SmbEncryptionMode;
 import com.iocextractor.bootstrap.SyncTransport;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.convert.ApplicationConversionService;
@@ -25,6 +26,14 @@ class SyncPropertiesTest {
         assertThat(properties.sync().endpoints()).isEmpty();
         assertThat(properties.sync().fetch().sources()).isEmpty();
         assertThat(properties.sync().publish().targets()).isEmpty();
+    }
+
+    @Test
+    void defaultsSmbEncryptionToRequired() {
+        IocProperties.Sync.Endpoint.Smb smb = new IocProperties.Sync.Endpoint.Smb(
+                "server", "share", null, "user", "secret", null, null, null, null);
+
+        assertThat(smb.encryption()).isEqualTo(SmbEncryptionMode.REQUIRED);
     }
 
     @Test
@@ -71,7 +80,7 @@ class SyncPropertiesTest {
     private IocProperties.Sync.Endpoint endpoint(String name) {
         return new IocProperties.Sync.Endpoint(name, SyncTransport.SMB,
                 new IocProperties.Sync.Endpoint.Smb("server", "share", null,
-                        "user", "secret", true, null, null, null));
+                        "user", "secret", SmbEncryptionMode.REQUIRED, null, null, null));
     }
 
     private IocProperties.Sync.Fetch.Source source(String name, String endpoint) {

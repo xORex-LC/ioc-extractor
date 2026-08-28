@@ -7,7 +7,12 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 
+import static com.hierynomus.mssmb2.SMB2Dialect.SMB_2_1;
+import static com.hierynomus.mssmb2.SMB2Dialect.SMB_3_0;
+import static com.hierynomus.mssmb2.SMB2Dialect.SMB_3_0_2;
+import static com.hierynomus.mssmb2.SMB2Dialect.SMB_3_1_1;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SmbjShareClientFactoryTest {
@@ -26,6 +31,55 @@ class SmbjShareClientFactoryTest {
     }
 
     @Test
+    void requiredEncryptionAdvertisesEncryptionAndAllowsOnlySmb3() {
+        var config = SmbjShareClientFactory.config(settings(SmbEncryptionPolicy.REQUIRED));
+
+        assertThat(config.isEncryptData()).isTrue();
+        assertThat(config.getSupportedDialects())
+                .containsExactlyInAnyOrder(SMB_3_1_1, SMB_3_0_2, SMB_3_0);
+    }
+
+    @Test
+    void preferredEncryptionAllowsProtocolFallback() {
+        var config = SmbjShareClientFactory.config(settings(SmbEncryptionPolicy.PREFERRED));
+
+        assertThat(config.isEncryptData()).isTrue();
+        assertThat(config.getSupportedDialects()).contains(SMB_3_1_1, SMB_2_1);
+    }
+
+    @Test
+    void disabledEncryptionDoesNotAdvertiseClientPreference() {
+        var config = SmbjShareClientFactory.config(settings(SmbEncryptionPolicy.DISABLED));
+
+        assertThat(config.isEncryptData()).isFalse();
+    }
+
+    @Test
+    void requiredEncryptionRejectsAnUnencryptedNegotiatedSession() {
+        SmbEndpointSettings settings = settings(SmbEncryptionPolicy.REQUIRED);
+
+        assertThatThrownBy(() -> SmbjShareClientFactory.requireEncryption(
+                settings, SMB_3_1_1, false))
+                .isInstanceOfSatisfying(RemoteTransportException.class, failure -> {
+                    assertThat(failure.kind()).isEqualTo(RemoteErrorKind.SECURITY_POLICY_UNMET);
+                    assertThat(failure.kind().disposition()).isEqualTo(RemoteErrorDisposition.FAIL);
+                    assertThat(failure).hasMessageContaining("SMB3 encryption is required");
+                });
+    }
+
+    @Test
+    void fallbackPoliciesAndEffectiveRequiredEncryptionAreAccepted() {
+        assertThatNoException().isThrownBy(() -> {
+            SmbjShareClientFactory.requireEncryption(
+                    settings(SmbEncryptionPolicy.REQUIRED), SMB_3_1_1, true);
+            SmbjShareClientFactory.requireEncryption(
+                    settings(SmbEncryptionPolicy.PREFERRED), SMB_2_1, false);
+            SmbjShareClientFactory.requireEncryption(
+                    settings(SmbEncryptionPolicy.DISABLED), SMB_2_1, false);
+        });
+    }
+
+    @Test
     void rejectsMissingOrNonDiskShareWithoutRetryingConfiguration() {
         assertThatThrownBy(() -> SmbjShareClientFactory.requireDiskShare(null, settings()))
                 .isInstanceOfSatisfying(RemoteTransportException.class, failure -> {
@@ -36,9 +90,13 @@ class SmbjShareClientFactoryTest {
     }
 
     private SmbEndpointSettings settings() {
+        return settings(SmbEncryptionPolicy.REQUIRED);
+    }
+
+    private SmbEndpointSettings settings(SmbEncryptionPolicy encryption) {
         return new SmbEndpointSettings(
                 "primary", "files.example.test", "share", "", "user",
-                "secret".toCharArray(), true,
+                "secret".toCharArray(), encryption,
                 Duration.ofSeconds(7), Duration.ofSeconds(31), Duration.ofMinutes(5));
     }
 }

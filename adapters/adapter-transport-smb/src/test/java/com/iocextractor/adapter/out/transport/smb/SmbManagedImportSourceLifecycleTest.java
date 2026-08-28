@@ -292,7 +292,7 @@ class SmbManagedImportSourceLifecycleTest {
     private static SmbEndpointSettings settings() {
         return new SmbEndpointSettings(
                 "primary", "files.example.test", "share", "", "user",
-                "secret".toCharArray(), false, Duration.ofSeconds(1),
+                "secret".toCharArray(), SmbEncryptionPolicy.DISABLED, Duration.ofSeconds(1),
                 Duration.ofSeconds(30), Duration.ofMinutes(5));
     }
 

@@ -211,7 +211,7 @@ class SmbChangeNotifyWatcherTest {
                 "",
                 "sync-user",
                 "secret".toCharArray(),
-                false,
+                SmbEncryptionPolicy.DISABLED,
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(30),
                 Duration.ofMinutes(5));

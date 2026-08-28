@@ -149,6 +149,17 @@ class ConfigPreflightConfiguration {
 
     @Bean
     @ConfigurationPropertiesBinding
+    static Converter<String, SmbEncryptionMode> smbEncryptionModeConverter() {
+        return new Converter<String, SmbEncryptionMode>() {
+            @Override
+            public SmbEncryptionMode convert(String source) {
+                return SmbEncryptionMode.parse(source);
+            }
+        };
+    }
+
+    @Bean
+    @ConfigurationPropertiesBinding
     static Converter<String, RetentionActionType> retentionActionTypeConverter() {
         return new Converter<String, RetentionActionType>() {
             @Override

@@ -640,10 +640,13 @@ public record IocProperties(
                               String domain,
                               @NotBlank String username,
                               @NotBlank String password,
-                              boolean encrypt,
+                              @NotNull SmbEncryptionMode encryption,
                               Duration connectTimeout,
                               Duration requestTimeout,
                               Duration idleTimeout) {
+                public Smb {
+                    encryption = encryption == null ? SmbEncryptionMode.REQUIRED : encryption;
+                }
             }
         }
 

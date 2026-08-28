@@ -41,6 +41,19 @@ class IocConfigurationFailureAnalyzerTest {
     }
 
     @Test
+    void reportsLegacySmbEncryptionMigrationHint() {
+        FailureAnalysis analysis = analyze("ioc.sync.endpoints[0].smb.encrypt");
+
+        assertThat(analysis.getDescription())
+                .contains("CONFIG.UNKNOWN_PROPERTY")
+                .contains("ioc.sync.endpoints[0].smb.encrypt");
+        assertThat(analysis.getAction())
+                .contains("CONFIG.LEGACY_SMB_ENCRYPTION")
+                .contains("replace ioc.sync.endpoints[].smb.encrypt")
+                .contains("required, preferred or disabled");
+    }
+
+    @Test
     void showsRawEnvironmentNameWithoutChangingLegacyClassification() {
         ConfigurationProperty property = new ConfigurationProperty(
                 ConfigurationPropertyName.of("ioc.lookup.deduplicate"), "IOC_LOOKUP_DEDUPLICATE", null);
@@ -60,6 +73,17 @@ class IocConfigurationFailureAnalyzerTest {
                 .analyze(new UnboundConfigurationPropertiesException(Set.of(property)));
 
         assertThat(analysis.getAction()).contains("CONFIG.LEGACY_SYNC_TIMEOUT");
+    }
+
+    @Test
+    void recognizesLegacySmbEncryptionFromRawEnvironmentName() {
+        ConfigurationProperty property = new ConfigurationProperty(
+                ConfigurationPropertyName.of("ioc.sync.endpoints[0].smb.encrypt"),
+                "ioc_sync_endpoints_0_smb_encrypt", null);
+        FailureAnalysis analysis = new IocConfigurationFailureAnalyzer()
+                .analyze(new UnboundConfigurationPropertiesException(Set.of(property)));
+
+        assertThat(analysis.getAction()).contains("CONFIG.LEGACY_SMB_ENCRYPTION");
     }
 
     @Test

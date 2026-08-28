@@ -5,6 +5,7 @@ import com.iocextractor.adapter.out.store.jdbc.JdbcPublishLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcRemoteFetchLedger;
 import com.iocextractor.adapter.out.transport.smb.SmbChangeNotifyWatcher;
 import com.iocextractor.adapter.out.transport.smb.SmbEndpointSettings;
+import com.iocextractor.adapter.out.transport.smb.SmbEncryptionPolicy;
 import com.iocextractor.adapter.out.transport.smb.SmbFileTransport;
 import com.iocextractor.adapter.out.transport.smb.SmbSessionPool;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
@@ -360,12 +361,21 @@ public class SyncConfig {
         try {
             return new SmbEndpointSettings(
                     endpoint.name(), smb.host(), smb.share(), smb.domain(), smb.username(), password,
-                    smb.encrypt(), defaultDuration(smb.connectTimeout(), Duration.ofSeconds(10)),
+                    encryptionPolicy(smb.encryption()),
+                    defaultDuration(smb.connectTimeout(), Duration.ofSeconds(10)),
                     defaultDuration(smb.requestTimeout(), Duration.ofSeconds(30)),
                     defaultDuration(smb.idleTimeout(), Duration.ofMinutes(5)));
         } finally {
             Arrays.fill(password, '\0');
         }
+    }
+
+    private SmbEncryptionPolicy encryptionPolicy(SmbEncryptionMode mode) {
+        return switch (mode) {
+            case DISABLED -> SmbEncryptionPolicy.DISABLED;
+            case PREFERRED -> SmbEncryptionPolicy.PREFERRED;
+            case REQUIRED -> SmbEncryptionPolicy.REQUIRED;
+        };
     }
 
     private RetryPolicy syncRetryPolicy(IocProperties props) {

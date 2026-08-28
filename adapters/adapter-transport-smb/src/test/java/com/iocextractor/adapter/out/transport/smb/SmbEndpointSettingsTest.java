@@ -37,7 +37,7 @@ class SmbEndpointSettingsTest {
                 "DOMAIN",
                 "sync-user",
                 password,
-                true,
+                SmbEncryptionPolicy.REQUIRED,
                 Duration.ofSeconds(5),
                 Duration.ofSeconds(30),
                 Duration.ofMinutes(2));

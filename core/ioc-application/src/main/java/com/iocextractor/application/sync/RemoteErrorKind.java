@@ -11,6 +11,7 @@ public enum RemoteErrorKind {
     AUTH_FAILED(RemoteErrorDisposition.FAIL),
     PERMISSION_DENIED(RemoteErrorDisposition.FAIL),
     NOT_FOUND(RemoteErrorDisposition.FAIL),
+    SECURITY_POLICY_UNMET(RemoteErrorDisposition.FAIL),
     TRANSIENT(RemoteErrorDisposition.RETRY_NOW);
 
     private final RemoteErrorDisposition disposition;
