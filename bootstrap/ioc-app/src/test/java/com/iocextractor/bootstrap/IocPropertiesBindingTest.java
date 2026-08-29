@@ -424,13 +424,40 @@ class IocPropertiesBindingTest {
     }
 
     @Test
-    void rejectsRemovedLegacySmbEncryptKeyAsUnknown() {
-        contextRunner(
-                "ioc.sync.endpoints[0].name=share",
-                "ioc.sync.endpoints[0].transport=smb",
-                "ioc.sync.endpoints[0].smb.encrypt=true")
-                .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
-                        .containsExactly("ioc.sync.endpoints[0].smb.encrypt"));
+    void mapsLegacySmbEncryptTrueToRequired() {
+        contextRunner(legacySmbEndpoint(true))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    IocProperties.Sync.Endpoint.Smb smb = context.getBean(IocProperties.class)
+                            .sync().endpoints().getFirst().smb();
+                    assertThat(smb.encryption()).isNull();
+                    assertThat(smb.encrypt()).isTrue();
+                    assertThat(smb.resolvedEncryption()).isEqualTo(SmbEncryptionMode.REQUIRED);
+                });
+    }
+
+    @Test
+    void mapsLegacySmbEncryptFalseToDisabled() {
+        contextRunner(legacySmbEndpoint(false))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    IocProperties.Sync.Endpoint.Smb smb = context.getBean(IocProperties.class)
+                            .sync().endpoints().getFirst().smb();
+                    assertThat(smb.resolvedEncryption()).isEqualTo(SmbEncryptionMode.DISABLED);
+                });
+    }
+
+    @Test
+    void rejectsCurrentAndLegacySmbEncryptionKeysTogether() {
+        contextRunner(concat(
+                legacySmbEndpoint(true),
+                new String[] { "ioc.sync.endpoints[0].smb.encryption=required" }))
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .filteredOn(error -> "sync.endpoints[0].smb.encryption".equals(error.getField()))
+                        .singleElement()
+                        .satisfies(error -> assertThat(error.getDefaultMessage())
+                                .contains("cannot be configured together")
+                                .contains("keep only encryption")));
     }
 
     @Test
@@ -593,10 +620,13 @@ class IocPropertiesBindingTest {
     }
 
     @Test
-    void rejectsRemovedLegacySmbEncryptEnvironmentKeyAsUnknown() {
-        contextRunnerWithEnvironment(Map.of("IOC_SYNC_ENDPOINTS_0_SMB_ENCRYPT", "true"))
-                .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
-                        .containsExactly("ioc.sync.endpoints[0].smb.encrypt"));
+    void recognizesLegacySmbEncryptEnvironmentKey() {
+        IocEnvironmentPropertyMatcher.MatchResult result = new IocEnvironmentPropertyMatcher()
+                .match("IOC_SYNC_ENDPOINTS_0_SMB_ENCRYPT");
+
+        assertThat(result.canonicalNames()).containsExactly("ioc.sync.endpoints[0].smb.encrypt");
+        assertThat(result.isKnown()).isTrue();
+        assertThat(result.isAmbiguous()).isFalse();
     }
 
     @Test
@@ -794,6 +824,18 @@ class IocPropertiesBindingTest {
     private static void assertUnmodifiable(Collection<?> values) {
         assertThat(values).isNotNull();
         assertThatThrownBy(values::clear).isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    private static String[] legacySmbEndpoint(boolean encrypt) {
+        return new String[] {
+                "ioc.sync.endpoints[0].name=share",
+                "ioc.sync.endpoints[0].transport=smb",
+                "ioc.sync.endpoints[0].smb.host=server",
+                "ioc.sync.endpoints[0].smb.share=share",
+                "ioc.sync.endpoints[0].smb.username=user",
+                "ioc.sync.endpoints[0].smb.password=secret",
+                "ioc.sync.endpoints[0].smb.encrypt=" + encrypt
+        };
     }
 
     private static void assertUnmodifiable(Map<?, ?> values) {

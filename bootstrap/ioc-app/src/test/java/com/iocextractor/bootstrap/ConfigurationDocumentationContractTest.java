@@ -97,9 +97,17 @@ class ConfigurationDocumentationContractTest {
     void productionTemplateShowsEveryTypedPropertyField() {
         Set<String> paths = new LinkedHashSet<>();
         collectRecordPaths(IocProperties.class, "ioc", paths);
+        Set<String> compatibilityAliases = new LinkedHashSet<>();
+        collectCompatibilityAliases(IocProperties.class, "ioc", compatibilityAliases);
+        assertThat(compatibilityAliases)
+                .as("typed compatibility aliases must have migration-catalog entries")
+                .containsExactlyInAnyOrderElementsOf(IocConfigurationMigrationCatalog.migrations().stream()
+                        .map(IocConfigurationMigrationCatalog.Migration::propertyPath)
+                        .toList());
         String template = read(reactorRoot().resolve("packaging/templates/application.yml"));
 
         List<String> missing = paths.stream()
+                .filter(path -> !compatibilityAliases.contains(path))
                 .filter(path -> !containsYamlField(template, terminalField(path)))
                 .toList();
 
@@ -132,6 +140,10 @@ class ConfigurationDocumentationContractTest {
                 selectorTokens(ExistingRecordsPolicy.values()));
         assertHint(metadata, "ioc.sync.endpoints[].smb.encryption",
                 selectorTokens(SmbEncryptionMode.values()));
+        assertThat(metadata)
+                .contains("\"name\": \"ioc.sync.endpoints[].smb.encrypt\"")
+                .contains("\"replacement\": \"ioc.sync.endpoints[].smb.encryption\"")
+                .contains("\"level\": \"warning\"");
         assertHint(metadata, "ioc.dataframe-import.sources[].transport",
                 importTokens(ImportSourceTransport.values()));
         assertHint(metadata, "ioc.dataframe-import.authority-profiles[].maximum-merge-policy",
@@ -240,6 +252,26 @@ class ConfigurationDocumentationContractTest {
                 }
             } else {
                 paths.add(path);
+            }
+        }
+    }
+
+    private static void collectCompatibilityAliases(Class<?> recordType, String prefix, Set<String> paths) {
+        for (RecordComponent component : recordType.getRecordComponents()) {
+            String path = prefix + "." + kebabCase(component.getName());
+            Class<?> componentType = component.getType();
+            Type genericType = component.getGenericType();
+            if (component.isAnnotationPresent(ConfigurationCompatibilityAlias.class)) {
+                paths.add(path);
+            }
+            if (componentType.isRecord()) {
+                collectCompatibilityAliases(componentType, path, paths);
+            } else if (Collection.class.isAssignableFrom(componentType)
+                    && genericType instanceof ParameterizedType parameterized) {
+                Type element = parameterized.getActualTypeArguments()[0];
+                if (element instanceof Class<?> elementClass && elementClass.isRecord()) {
+                    collectCompatibilityAliases(elementClass, path + "[]", paths);
+                }
             }
         }
     }

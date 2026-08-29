@@ -369,6 +369,12 @@ final class IocConfigPreflight implements Validator {
             return;
         }
         String prefix = "sync.endpoints[%d].smb.".formatted(endpointIndex);
+        if (smb.encryption() != null && smb.encrypt() != null) {
+            reject(errors, prefix + "encryption", null,
+                    ("ioc.sync.endpoints[%d].smb.encryption and the compatibility alias "
+                            + "ioc.sync.endpoints[%d].smb.encrypt cannot be configured together; "
+                            + "keep only encryption").formatted(endpointIndex, endpointIndex));
+        }
         rejectIfNotPositive(errors, prefix + "connectTimeout", smb.connectTimeout(),
                 "ioc.sync.endpoints[%d].smb.connect-timeout".formatted(endpointIndex));
         rejectIfNotPositive(errors, prefix + "requestTimeout", smb.requestTimeout(),

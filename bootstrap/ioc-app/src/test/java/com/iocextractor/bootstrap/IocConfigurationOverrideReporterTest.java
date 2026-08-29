@@ -65,6 +65,24 @@ class IocConfigurationOverrideReporterTest {
     }
 
     @Test
+    void warnsAboutCompatibilityAliasWithoutLoggingItsValue() {
+        MockEnvironment environment = new MockEnvironment();
+        environment.getPropertySources().addFirst(new MapPropertySource("commandLineArgs", Map.of(
+                "ioc.sync.endpoints[0].smb.encrypt", "true")));
+        IocConfigurationOverrideReporter reporter = new IocConfigurationOverrideReporter(environment);
+        ListAppender<ILoggingEvent> appender = appender();
+
+        reporter.reportOverrides();
+
+        assertThat(appender.list).extracting(ILoggingEvent::getFormattedMessage).containsExactly(
+                "IOC configuration override: ioc.sync.endpoints[0].smb.encrypt <- command line",
+                "CONFIG.LEGACY_SMB_ENCRYPTION: ioc.sync.endpoints[0].smb.encrypt is accepted temporarily "
+                        + "for rollback compatibility; migrate to ioc.sync.endpoints[].smb.encryption");
+        assertThat(appender.list).extracting(ILoggingEvent::getFormattedMessage)
+                .noneMatch(message -> message.contains("true"));
+    }
+
+    @Test
     void listensBeforeApplicationRunners() throws NoSuchMethodException {
         assertThat(IocConfigurationOverrideReporter.class
                 .getDeclaredMethod("onStarted", ApplicationStartedEvent.class)

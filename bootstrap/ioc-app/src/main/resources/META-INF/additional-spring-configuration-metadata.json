@@ -1,4 +1,16 @@
 {
+  "properties": [
+    {
+      "name": "ioc.sync.endpoints[].smb.encrypt",
+      "type": "java.lang.Boolean",
+      "description": "Temporary rollback compatibility alias: true maps to required and false maps to disabled.",
+      "deprecation": {
+        "level": "warning",
+        "replacement": "ioc.sync.endpoints[].smb.encryption",
+        "reason": "Use the closed encryption policy after the previous rollback release is retired."
+      }
+    }
+  ],
   "hints": [
     {
       "name": "ioc.engine",
@@ -104,6 +116,13 @@
         { "value": "required", "description": "Allow only SMB3 and fail connection establishment unless session encryption is effective." },
         { "value": "preferred", "description": "Request SMB3 encryption but allow an unencrypted SMB2/3 fallback." },
         { "value": "disabled", "description": "Do not request client-preferred SMB session encryption." }
+      ]
+    },
+    {
+      "name": "ioc.sync.endpoints[].smb.encrypt",
+      "values": [
+        { "value": true, "description": "Resolve to required during the compatibility window." },
+        { "value": false, "description": "Resolve to disabled during the compatibility window." }
       ]
     },
     {

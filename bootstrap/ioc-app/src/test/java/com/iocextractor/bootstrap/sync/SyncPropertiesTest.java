@@ -31,9 +31,9 @@ class SyncPropertiesTest {
     @Test
     void defaultsSmbEncryptionToRequired() {
         IocProperties.Sync.Endpoint.Smb smb = new IocProperties.Sync.Endpoint.Smb(
-                "server", "share", null, "user", "secret", null, null, null, null);
+                "server", "share", null, "user", "secret", null, null, null, null, null);
 
-        assertThat(smb.encryption()).isEqualTo(SmbEncryptionMode.REQUIRED);
+        assertThat(smb.resolvedEncryption()).isEqualTo(SmbEncryptionMode.REQUIRED);
     }
 
     @Test
@@ -80,7 +80,7 @@ class SyncPropertiesTest {
     private IocProperties.Sync.Endpoint endpoint(String name) {
         return new IocProperties.Sync.Endpoint(name, SyncTransport.SMB,
                 new IocProperties.Sync.Endpoint.Smb("server", "share", null,
-                        "user", "secret", SmbEncryptionMode.REQUIRED, null, null, null));
+                        "user", "secret", SmbEncryptionMode.REQUIRED, null, null, null, null));
     }
 
     private IocProperties.Sync.Fetch.Source source(String name, String endpoint) {

@@ -43,6 +43,9 @@ final class IocConfigurationOverrideReporter {
     void reportOverrides() {
         for (Override override : effectiveOverrides(environment.getPropertySources())) {
             log.info("IOC configuration override: {} <- {}", override.key(), override.source());
+            IocConfigurationMigrationCatalog.find(override.key()).ifPresent(migration ->
+                    log.warn("{}: {} is accepted temporarily for rollback compatibility; migrate to {}",
+                            migration.diagnosticCode(), override.key(), migration.replacement()));
         }
     }
 

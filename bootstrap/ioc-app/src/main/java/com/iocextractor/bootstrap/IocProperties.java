@@ -640,12 +640,26 @@ public record IocProperties(
                               String domain,
                               @NotBlank String username,
                               @NotBlank String password,
-                              @NotNull SmbEncryptionMode encryption,
+                              SmbEncryptionMode encryption,
+                              @ConfigurationCompatibilityAlias Boolean encrypt,
                               Duration connectTimeout,
                               Duration requestTimeout,
                               Duration idleTimeout) {
-                public Smb {
-                    encryption = encryption == null ? SmbEncryptionMode.REQUIRED : encryption;
+
+                /**
+                 * Resolves the current selector, the temporary boolean alias,
+                 * or the secure default in that order.
+                 *
+                 * @return resolved endpoint encryption policy
+                 */
+                public SmbEncryptionMode resolvedEncryption() {
+                    if (encryption != null) {
+                        return encryption;
+                    }
+                    if (encrypt != null) {
+                        return encrypt ? SmbEncryptionMode.REQUIRED : SmbEncryptionMode.DISABLED;
+                    }
+                    return SmbEncryptionMode.REQUIRED;
                 }
             }
         }

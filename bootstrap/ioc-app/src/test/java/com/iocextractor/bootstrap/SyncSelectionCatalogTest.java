@@ -105,7 +105,7 @@ class SyncSelectionCatalogTest {
         return new IocProperties.Sync.Endpoint(name, SyncTransport.SMB,
                 new IocProperties.Sync.Endpoint.Smb(
                         "server", "share", null, "user", "secret", SmbEncryptionMode.REQUIRED,
-                        null, null, null));
+                        null, null, null, null));
     }
 
     private IocProperties defaults() throws Exception {
