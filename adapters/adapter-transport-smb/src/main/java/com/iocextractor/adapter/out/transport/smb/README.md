@@ -14,7 +14,7 @@ SMB-адаптер для sync `FileTransport` и managed dataframe-import lifec
 | `SmbImportChangeSignalSource` | Преобразует `CHANGE_NOTIFY` в source-scoped import listing hint. |
 | `SmbChangeNotifyWatcher` | Optional `RemoteChangeSignalSource` поверх SMB2 `CHANGE_NOTIFY`; отдаёт только doorbell-сигналы. |
 | `SmbjChangeNotifySessionFactory` | Выделенный SMBJ client/session/share/directory handle для long-poll watch. |
-| `SmbEndpointSettings` / `SmbEncryptionPolicy` | Immutable endpoint settings и `disabled|preferred|required` negotiation policy с маскированием credentials. |
+| `SmbEndpointSettings` / `SmbEncryptionPolicy` | Immutable host/port endpoint settings и `disabled|preferred|required` negotiation policy с маскированием credentials. |
 | `ConnectTimeoutSocketFactory` | Ограничивает TCP connect через `Socket.connect(timeout)`. |
 | `SmbjShareClientFactory` | Создаёт SMBJ client/session/share для endpoint. |
 | `SmbjShareClient` | Тонкая обёртка над SMBJ `DiskShare`, работающая в терминах путей и файлов. |
@@ -64,6 +64,8 @@ SMB-адаптер для sync `FileTransport` и managed dataframe-import lifec
 - `connectTimeout` ограничивает TCP dial, `requestTimeout` — отдельный SMB
   read/write/transact request, `idleTimeout` — жизнь неиспользуемого cached client.
   Reader socket работает с `SO_TIMEOUT=0`, поэтому простой не уничтожает живое соединение.
+- Endpoint port по умолчанию `445`; явный custom port одинаково применяется к
+  cached transport/import sessions и выделенному `CHANGE_NOTIFY` connection.
 
 ## Тестирование
 
@@ -80,6 +82,7 @@ managed claim/disposition/restart и `CHANGE_NOTIFY`:
 ./mvnw -pl adapters/adapter-transport-smb -am test \
   -Dioc.smb.contract=true \
   -Dioc.smb.host=127.0.0.1 \
+  -Dioc.smb.port="${SMB_PORT:-445}" \
   -Dioc.smb.share=test-share \
   -Dioc.smb.username="$SMB_USER" \
   -Dioc.smb.password="$SMB_PASSWORD" \
@@ -99,6 +102,7 @@ retention:
 ./mvnw -pl adapters/adapter-transport-smb -am test \
   -Dioc.smb.hardening.contract=true \
   -Dioc.smb.host=files.example.test \
+  -Dioc.smb.port="${SMB_PORT:-445}" \
   -Dioc.smb.share=intel \
   -Dioc.smb.username="$SMB_SERVICE_USER" \
   -Dioc.smb.password="$SMB_SERVICE_PASSWORD" \
@@ -114,6 +118,7 @@ retention:
 ./mvnw -pl adapters/adapter-transport-smb -am test \
   -Dioc.smb.encryption.contract=true \
   -Dioc.smb.host=files.example.test \
+  -Dioc.smb.port="${SMB_PORT:-445}" \
   -Dioc.smb.share=intel \
   -Dioc.smb.username="$SMB_SERVICE_USER" \
   -Dioc.smb.password="$SMB_SERVICE_PASSWORD" \

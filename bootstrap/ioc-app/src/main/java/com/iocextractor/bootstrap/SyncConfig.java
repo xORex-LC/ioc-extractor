@@ -360,7 +360,8 @@ public class SyncConfig {
         char[] password = smb.password().toCharArray();
         try {
             return new SmbEndpointSettings(
-                    endpoint.name(), smb.host(), smb.share(), smb.domain(), smb.username(), password,
+                    endpoint.name(), smb.host(), smb.resolvedPort(), smb.share(), smb.domain(),
+                    smb.username(), password,
                     encryptionPolicy(smb.resolvedEncryption()),
                     defaultDuration(smb.connectTimeout(), Duration.ofSeconds(10)),
                     defaultDuration(smb.requestTimeout(), Duration.ofSeconds(30)),

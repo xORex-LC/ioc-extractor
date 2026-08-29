@@ -213,6 +213,7 @@ endpoints:
     transport: smb
     smb:
       host: files.example.org
+      port: 445
       share: intel
       domain: CORP             # empty for a local account or Samba without a domain
       username: ${SMB_USER}
@@ -225,7 +226,8 @@ endpoints:
 
 | Parameter | Default | What it does and how to choose |
 |---|---|---|
-| `host` | — | File server name or IP. Standard port — TCP/445 |
+| `host` | — | File server name or IP, without a scheme or appended port |
+| `port` | `445` | TCP port for every SMB session owned by this endpoint. Set a different value only for an explicitly configured non-standard listener or port-forward |
 | `share` | — | Share name (no slashes): `intel`, not `\\host\intel` |
 | `domain` | — | AD domain of the account. Leave empty for Samba with local users |
 | `username` / `password` | — | **Environment variables only** (`${SMB_USER}`). Secrets never reach logs or health output |
@@ -399,7 +401,8 @@ Common server requirements for any OS:
   reachable only after the operator explicitly selects `preferred` or
   `disabled` and accepts an unencrypted fallback.
   SMB1 must be disabled;
-- TCP/445 open from the application host to the server;
+- the endpoint's configured TCP port (445 by default) open from the
+  application host to the server;
 - a dedicated service account for the application, without interactive logon;
 - directory layout: separate incoming (`incoming`) and outgoing (`out/...`)
   directories — they have different permissions (see 3.1).

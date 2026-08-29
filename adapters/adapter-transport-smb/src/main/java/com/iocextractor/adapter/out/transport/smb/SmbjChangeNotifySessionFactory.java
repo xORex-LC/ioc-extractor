@@ -47,7 +47,7 @@ final class SmbjChangeNotifySessionFactory implements SmbChangeNotifySessionFact
         String normalizedPath = SmbFileTransport.normalizeRemotePath(remotePath);
         SMBClient client = new SMBClient(SmbjShareClientFactory.config(settings));
         try {
-            Connection connection = client.connect(settings.host());
+            Connection connection = SmbjShareClientFactory.connect(client, settings);
             Share connectedShare = SmbjShareClientFactory.authenticate(connection, settings)
                     .connectShare(settings.share());
             DiskShare share = SmbjShareClientFactory.requireDiskShare(connectedShare, settings);

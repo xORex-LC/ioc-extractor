@@ -12,12 +12,14 @@ import com.iocextractor.application.dataframeimport.model.ImportRowFailurePolicy
 import com.iocextractor.application.dataframeimport.model.ImportSourceTransport;
 import com.iocextractor.domain.model.IndicatorType;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
-import jakarta.validation.constraints.AssertTrue;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.validation.annotation.Validated;
@@ -636,6 +638,7 @@ public record IocProperties(
                                @NotNull SyncTransport transport,
                                @Valid Smb smb) {
             public record Smb(@NotBlank String host,
+                              @Min(1) @Max(65_535) Integer port,
                               @NotBlank String share,
                               String domain,
                               @NotBlank String username,
@@ -645,6 +648,13 @@ public record IocProperties(
                               Duration connectTimeout,
                               Duration requestTimeout,
                               Duration idleTimeout) {
+
+                private static final int DEFAULT_PORT = 445;
+
+                /** Returns the configured TCP port or the standard SMB port. */
+                public int resolvedPort() {
+                    return port == null ? DEFAULT_PORT : port;
+                }
 
                 /**
                  * Resolves the current selector, the temporary boolean alias,

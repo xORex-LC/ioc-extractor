@@ -404,6 +404,7 @@ ioc:
   #       transport: smb
   #       smb:
   #         host: files.example.org
+  #         port: 445
   #         share: ioc
   #         domain: CORP               # optional
   #         username: ${SMB_USER}

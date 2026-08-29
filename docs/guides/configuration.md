@@ -304,7 +304,8 @@ failure behavior and value-selection examples.
 | `ioc.sync.endpoints[].name` | unique string | required | Stable reference used by sources and targets. |
 | `ioc.sync.endpoints[].transport` | `smb` | required | Only SMB is currently supported. |
 | `ioc.sync.endpoints[].smb` | object | required for SMB | Connection settings. |
-| `ioc.sync.endpoints[].smb.host` | hostname or IP | required | SMB server; do not include `smb://`. |
+| `ioc.sync.endpoints[].smb.host` | hostname or IP | required | SMB server; do not include `smb://` or append a port. |
+| `ioc.sync.endpoints[].smb.port` | integer `1..65535` | `445` | TCP port used by regular and `CHANGE_NOTIFY` SMB sessions. Override only when the server or an explicit port-forward listens outside standard TCP/445. |
 | `ioc.sync.endpoints[].smb.share` | share name | required | Top-level share, without a path. |
 | `ioc.sync.endpoints[].smb.domain` | string or null | optional | AD/NTLM domain; omit for local/workgroup accounts. |
 | `ioc.sync.endpoints[].smb.username` | string | required | Prefer `${SMB_USER}`. |

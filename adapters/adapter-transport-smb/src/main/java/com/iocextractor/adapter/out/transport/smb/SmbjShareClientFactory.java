@@ -25,7 +25,7 @@ final class SmbjShareClientFactory implements SmbShareClientFactory {
         SmbConfig config = config(settings);
         SMBClient client = new SMBClient(config);
         try {
-            Connection connection = client.connect(settings.host());
+            Connection connection = connect(client, settings);
             Share connectedShare = authenticate(connection, settings).connectShare(settings.share());
             DiskShare share = requireDiskShare(connectedShare, settings);
             return new SmbjShareClient(client, share);
@@ -33,6 +33,10 @@ final class SmbjShareClientFactory implements SmbShareClientFactory {
             client.close();
             throw SmbExceptionMapper.map(failure, "connect", settings.name());
         }
+    }
+
+    static Connection connect(SMBClient client, SmbEndpointSettings settings) throws IOException {
+        return client.connect(settings.host(), settings.port());
     }
 
     static SmbConfig config(SmbEndpointSettings settings) {

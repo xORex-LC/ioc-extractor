@@ -11,8 +11,11 @@ import java.util.Objects;
  */
 public final class SmbEndpointSettings {
 
+    public static final int DEFAULT_PORT = 445;
+
     private final String name;
     private final String host;
+    private final int port;
     private final String share;
     private final String domain;
     private final String username;
@@ -32,8 +35,24 @@ public final class SmbEndpointSettings {
                                Duration connectTimeout,
                                Duration requestTimeout,
                                Duration idleTimeout) {
+        this(name, host, DEFAULT_PORT, share, domain, username, password, encryption,
+                connectTimeout, requestTimeout, idleTimeout);
+    }
+
+    public SmbEndpointSettings(String name,
+                               String host,
+                               int port,
+                               String share,
+                               String domain,
+                               String username,
+                               char[] password,
+                               SmbEncryptionPolicy encryption,
+                               Duration connectTimeout,
+                               Duration requestTimeout,
+                               Duration idleTimeout) {
         this.name = requireText(name, "name");
         this.host = requireText(host, "host");
+        this.port = requirePort(port);
         this.share = requireText(share, "share");
         this.domain = domain == null ? "" : domain;
         this.username = requireText(username, "username");
@@ -55,6 +74,11 @@ public final class SmbEndpointSettings {
     /** Returns the SMB server hostname or address. */
     public String host() {
         return host;
+    }
+
+    /** Returns the TCP port used to establish the SMB connection. */
+    public int port() {
+        return port;
     }
 
     /** Returns the SMB share name. */
@@ -102,6 +126,7 @@ public final class SmbEndpointSettings {
         return "SmbEndpointSettings["
                 + "name='" + name + '\''
                 + ", host='" + host + '\''
+                + ", port=" + port
                 + ", share='" + share + '\''
                 + ", domain='" + domain + '\''
                 + ", username='" + username + '\''
@@ -124,6 +149,13 @@ public final class SmbEndpointSettings {
         Objects.requireNonNull(value, name);
         if (value.isZero() || value.isNegative()) {
             throw new IllegalArgumentException(name + " must be positive");
+        }
+        return value;
+    }
+
+    private static int requirePort(int value) {
+        if (value < 1 || value > 65_535) {
+            throw new IllegalArgumentException("port must be between 1 and 65535");
         }
         return value;
     }

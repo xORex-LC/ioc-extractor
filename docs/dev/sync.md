@@ -97,6 +97,8 @@ preflight до первого I/O.
   `SECURITY_POLICY_UNMET`, а не сетевой retry;
 - `preferred` запрашивает encryption, но явно допускает незашифрованный SMB2/3
   fallback; `disabled` не объявляет client preference;
+- `port` по умолчанию равен `445` и передаётся в общий SMBJ connect path как
+  обычных transport sessions, так и выделенного `CHANGE_NOTIFY` watcher;
 - `connect-timeout` ограничивает TCP connect;
 - `request-timeout` ограничивает один SMB request;
 - `idle-timeout` задаёт время жизни неиспользуемого cached client;

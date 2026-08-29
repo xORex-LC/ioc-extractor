@@ -18,6 +18,7 @@ final class SmbContractTestSupport {
             return new SmbEndpointSettings(
                     "contract",
                     require("ioc.smb.host"),
+                    port(),
                     require("ioc.smb.share"),
                     System.getProperty("ioc.smb.domain", ""),
                     require("ioc.smb.username"),
@@ -34,6 +35,11 @@ final class SmbContractTestSupport {
     static SmbEncryptionPolicy encryptionPolicy() {
         String configured = System.getProperty("ioc.smb.encryption", "required");
         return SmbEncryptionPolicy.valueOf(configured.toUpperCase(java.util.Locale.ROOT));
+    }
+
+    static int port() {
+        return Integer.parseInt(System.getProperty(
+                "ioc.smb.port", Integer.toString(SmbEndpointSettings.DEFAULT_PORT)));
     }
 
     static String remoteRoot() {

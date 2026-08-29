@@ -448,6 +448,40 @@ class IocPropertiesBindingTest {
     }
 
     @Test
+    void bindsCustomSmbPort() {
+        contextRunner(concat(
+                legacySmbEndpoint(true),
+                new String[] { "ioc.sync.endpoints[0].smb.port=1445" }))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    IocProperties.Sync.Endpoint.Smb smb = context.getBean(IocProperties.class)
+                            .sync().endpoints().getFirst().smb();
+                    assertThat(smb.port()).isEqualTo(1_445);
+                    assertThat(smb.resolvedPort()).isEqualTo(1_445);
+                });
+    }
+
+    @Test
+    void rejectsSmbPortBelowTcpRange() {
+        contextRunner(concat(
+                legacySmbEndpoint(true),
+                new String[] { "ioc.sync.endpoints[0].smb.port=0" }))
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .extracting(FieldError::getField)
+                        .contains("sync.endpoints[0].smb.port"));
+    }
+
+    @Test
+    void rejectsSmbPortAboveTcpRange() {
+        contextRunner(concat(
+                legacySmbEndpoint(true),
+                new String[] { "ioc.sync.endpoints[0].smb.port=65536" }))
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .extracting(FieldError::getField)
+                        .contains("sync.endpoints[0].smb.port"));
+    }
+
+    @Test
     void rejectsCurrentAndLegacySmbEncryptionKeysTogether() {
         contextRunner(concat(
                 legacySmbEndpoint(true),

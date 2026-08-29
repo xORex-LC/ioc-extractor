@@ -301,7 +301,8 @@ topology, failure behavior и подбор значений описаны в
 | `ioc.sync.endpoints[].name` | уникальная строка | обязателен | Stable reference источников и targets. |
 | `ioc.sync.endpoints[].transport` | `smb` | обязателен | Сейчас поддерживается SMB. |
 | `ioc.sync.endpoints[].smb` | object | обязателен для SMB | Connection settings. |
-| `ioc.sync.endpoints[].smb.host` | hostname или IP | обязателен | Без префикса `smb://`. |
+| `ioc.sync.endpoints[].smb.host` | hostname или IP | обязателен | Без префикса `smb://` и без порта в строке. |
+| `ioc.sync.endpoints[].smb.port` | integer `1..65535` | `445` | TCP port для обычных и `CHANGE_NOTIFY` SMB sessions. Переопределяйте только для сервера или явного port-forward не на стандартном TCP/445. |
 | `ioc.sync.endpoints[].smb.share` | share name | обязателен | Имя верхнеуровневой шары без пути. |
 | `ioc.sync.endpoints[].smb.domain` | string или null | опционален | AD/NTLM domain; пропустите для local/workgroup account. |
 | `ioc.sync.endpoints[].smb.username` | string | обязателен | Предпочтительно `${SMB_USER}`. |

@@ -133,6 +133,7 @@ class SmbManagedImportHardeningContractTest {
             return new SmbEndpointSettings(
                     "producer-contract",
                     require("ioc.smb.host"),
+                    SmbContractTestSupport.port(),
                     require("ioc.smb.share"),
                     System.getProperty("ioc.smb.producer.domain", ""),
                     require("ioc.smb.producer.username"),
