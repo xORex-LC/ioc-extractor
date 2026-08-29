@@ -156,6 +156,39 @@ encryption policy, negotiated dialect or encryption gate. It remains valid
 functional Samba evidence, but it is not evidence for the later
 `encryption: required` guarantee.
 
+On 2026-08-29 the current hardening working tree at commit
+`2009d5197e1134b3187ab29f09a5c9bc34f83bd0` was deployed as the explicitly
+dirty local release `2009d5197e11-dirty-20260829T063402Z`. This deployment is
+stand qualification, not immutable release evidence. The active operator
+configuration deliberately retained legacy `encrypt: true` so the previous
+binary remained a viable rollback candidate. The new binary accepted that key,
+emitted the value-free `CONFIG.LEGACY_SMB_ENCRYPTION` migration warning and
+resolved it to the fail-closed `required` policy.
+
+The dedicated mock-free `SmbEncryptionContractTest` was then run separately
+against the live share with `ioc.smb.encryption=required`. Its first remote
+listing completed successfully: one test ran, with zero failures, errors or
+skips. Runtime startup independently initialized SMBJ `AES_128_GCM`, completed
+authentication and brought the endpoint, periodic detection, change-notify
+watch and publish target to `UP`. The direct contract result is the encryption
+gate evidence; the cipher initialization log is retained only as corroborating
+runtime evidence.
+
+The stand is a Windows-host SMB service reached from WSL through localhost, not
+Samba. Share-level access was explicitly granted to the service identity with
+`Change`, while the NTFS tree already granted the required object rights. The
+first post-deployment health sample correctly remained `DOWN` because the
+operator-provisioned private namespace contained only `processing` and
+`terminal`. After the missing empty `quarantine` and `probe` directories were
+provisioned, the positive capability probe completed its create, rename and
+delete flow. Managed import reported two ready sources and zero incompatible
+sources, synchronization remained `UP`, and aggregate health converged to
+`UP`.
+
+This closes encrypted transport qualification for this Windows-host stand. It
+does not qualify Samba, production Windows Server or a NAS family, and the
+dirty deployment does not replace a final committed-HEAD release gate.
+
 ## 6. Remaining P9 release gates
 
 - Run packaged fresh-install and exact `v0.2.0` upgrade/rollback qualification
@@ -163,6 +196,8 @@ functional Samba evidence, but it is not evidence for the later
 - Qualify any additional production Windows Server/NAS family before claiming
   support beyond the approved Samba implementation; polling remains the
   correctness fallback when notifications are unavailable.
-- Re-run the approved Samba contract with `encryption: required` and retain the
-  explicit `SmbEncryptionContractTest` result. Until then, effective encrypted
-  transport qualification is an external skip, not a pass.
+- Run the encryption contract against the separately approved Samba target;
+  the Windows-host result above must not be generalized across server families.
+- Commit the hardening change set and run the final verification gate on that
+  immutable committed `HEAD`; the dirty local deployment is qualification
+  evidence only.
