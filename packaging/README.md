@@ -230,6 +230,14 @@ activation if the supposedly fresh dataframe DB is not empty.
 On upgrade, a changed packaged template is written beside the existing file as
 `application.yml.new` or `ioc-extractor.env.new`; it is never silently merged.
 
+A breaking key rename that must survive binary rollback follows the bounded
+expand/contract contract in ADR-0027. The overlap release temporarily accepts an
+explicitly allowlisted legacy alias, warns without logging its value and rejects
+old and new keys together. Keep the legacy key while the previous binary is an
+active rollback point; after that point is retired, validate and apply a separate
+candidate using the current key. Fresh templates never include compatibility
+aliases.
+
 Do not edit the installed YAML in place. Copy it to a separate candidate, edit
 that file, then run `sudo <prefix>/bin/ioc-config apply <candidate.yml>`. The
 helper performs a side-effect-free YAML syntax check, validates the exact staged

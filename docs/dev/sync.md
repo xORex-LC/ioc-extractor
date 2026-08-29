@@ -100,8 +100,11 @@ preflight до первого I/O.
 - `connect-timeout` ограничивает TCP connect;
 - `request-timeout` ограничивает один SMB request;
 - `idle-timeout` задаёт время жизни неиспользуемого cached client;
-- legacy `encrypt` и `read-timeout` не поддерживаются и получают migration
-  hints.
+- legacy `read-timeout` не поддерживается и получает migration hint;
+- `encrypt` временно принимается как rollback compatibility alias по ADR-0027:
+  `true` разрешается как `required`, `false` — как `disabled`, использование
+  даёт value-free warning, а одновременное задание с `encryption` блокирует
+  startup.
 
 Transport exception нормализуется в `RemoteErrorKind`, после чего application
 выдаёт единый `SYNC.*` diagnostic. Если существует durable work record, сначала

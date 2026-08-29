@@ -309,7 +309,8 @@ failure behavior and value-selection examples.
 | `ioc.sync.endpoints[].smb.domain` | string or null | optional | AD/NTLM domain; omit for local/workgroup accounts. |
 | `ioc.sync.endpoints[].smb.username` | string | required | Prefer `${SMB_USER}`. |
 | `ioc.sync.endpoints[].smb.password` | string | required | Use `${SMB_PASSWORD}`; never commit plaintext. |
-| `ioc.sync.endpoints[].smb.encryption` | `required`, `preferred`, `disabled` | `required` | `required` allows only SMB3 and rejects a session unless encryption is effective; `preferred` explicitly allows an unencrypted fallback. Legacy `encrypt` is rejected with a migration hint. |
+| `ioc.sync.endpoints[].smb.encryption` | `required`, `preferred`, `disabled` | `required` | `required` allows only SMB3 and rejects a session unless encryption is effective; `preferred` explicitly allows an unencrypted fallback. Use this key for every fresh configuration. |
+| `ioc.sync.endpoints[].smb.encrypt` | deprecated boolean alias | absent | Temporary rollback bridge: `true` maps to `required`, `false` to `disabled`, and startup emits a value-free warning. Do not set it together with `encryption`; migrate after the old rollback release is retired. |
 | `ioc.sync.endpoints[].smb.connect-timeout` | positive duration | `10s` | TCP connection establishment timeout. |
 | `ioc.sync.endpoints[].smb.request-timeout` | positive duration | `30s` | Timeout for one SMB request. |
 | `ioc.sync.endpoints[].smb.idle-timeout` | positive duration | `5m` | Close an unused cached client after this period. |

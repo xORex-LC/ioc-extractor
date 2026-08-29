@@ -21,6 +21,7 @@ Composition root и конфигурация. Единственное мест�
 | `IocYamlConfigurationFailureAnalyzer.java` | Ранняя value-free диагностика `CONFIG.YAML_INVALID` для ConfigData parse failures |
 | `IocYamlSyntaxCheck.java`, `IocYamlFailureDetails.java` | Side-effect-free packaged YAML precheck и общий line/column formatter без вывода source line |
 | `IocConfigurationOverrideReporter.java` | Value-free startup report выигравших external `ioc.*` overrides |
+| `ConfigurationCompatibilityAlias.java`, `IocConfigurationMigrationCatalog.java` | Общий bounded expand/contract marker и catalog value-free migration notices для временных aliases |
 | `ConfigRegistryCatalog.java` | Composition-root registry factories/keys для providers, transforms, filters и predicates |
 | `ConfigRegistryPreflight.java` | Eager startup check config→registry ссылок до обработки файла/записи |
 | `ConfigurationDocumentationContractTest` (test tree) | Reflection-based completeness operator guides, production-template binding/preflight и drift hints относительно enum/registry catalogs |

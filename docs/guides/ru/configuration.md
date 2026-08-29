@@ -306,7 +306,8 @@ topology, failure behavior и подбор значений описаны в
 | `ioc.sync.endpoints[].smb.domain` | string или null | опционален | AD/NTLM domain; пропустите для local/workgroup account. |
 | `ioc.sync.endpoints[].smb.username` | string | обязателен | Предпочтительно `${SMB_USER}`. |
 | `ioc.sync.endpoints[].smb.password` | string | обязателен | Используйте `${SMB_PASSWORD}`, не commit plaintext. |
-| `ioc.sync.endpoints[].smb.encryption` | `required`, `preferred`, `disabled` | `required` | `required` допускает только SMB3 и отклоняет session без фактического encryption; `preferred` явно разрешает незашифрованный fallback. Legacy `encrypt` отклоняется с migration hint. |
+| `ioc.sync.endpoints[].smb.encryption` | `required`, `preferred`, `disabled` | `required` | `required` допускает только SMB3 и отклоняет session без фактического encryption; `preferred` явно разрешает незашифрованный fallback. Используйте этот ключ во всех новых конфигурациях. |
+| `ioc.sync.endpoints[].smb.encrypt` | deprecated boolean alias | отсутствует | Временный rollback bridge: `true` преобразуется в `required`, `false` — в `disabled`, startup выдаёт value-free warning. Не задавайте вместе с `encryption`; мигрируйте после вывода старого rollback release. |
 | `ioc.sync.endpoints[].smb.connect-timeout` | positive duration | `10s` | TCP connection establishment timeout. |
 | `ioc.sync.endpoints[].smb.request-timeout` | positive duration | `30s` | Timeout одного SMB request. |
 | `ioc.sync.endpoints[].smb.idle-timeout` | positive duration | `5m` | Закрытие неиспользуемого cached client. |

@@ -18,6 +18,13 @@ packaged application.yml
 `IocConfigurationOverrideReporter` один раз сообщает только
 `ioc.key <- source`; значения никогда не логируются.
 
+Breaking rename через operator-owned config следует bounded expand/contract из
+ADR-0027. Явно помеченный compatibility alias входит в typed shape только на
+период rollback overlap, отсутствует в fresh templates и получает value-free
+`CONFIG.*` warning через общий `IocConfigurationMigrationCatalog`. Raw old/new
+presence сохраняется до semantic preflight: одновременное задание двух ключей
+является ошибкой, а composition получает только resolved current value.
+
 `IOC_*` зарезервирован для `ioc.*`. Environment adaptation теряет исходные
 границы слов, поэтому schema-aware matcher восстанавливает только известную
 форму `IocProperties`; неизвестный `IOC_*` является startup failure, а не
