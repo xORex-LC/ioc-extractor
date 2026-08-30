@@ -321,6 +321,7 @@ publish:
 |---|---|---|
 | Шара недоступна (сеть, ребут сервера) | Операции падают, помечаются как временные (`DEGRADED`), повторяются с нарастающей паузой; следующий плановый цикл пробует снова. Watch-сессия push переподключается бесконечно | Ничего: после восстановления сети всё продолжится само. Смотреть health, если DEGRADED держится долго |
 | Неверный пароль / нет прав | Ошибка классифицируется как постоянная — health уходит в `DOWN`, повторы её не «лечат» | Чинить учётку/ACL. Это единственный класс ошибок, требующий вмешательства всегда |
+| Сервер исчерпал session/share/resource quota | Raw NTSTATUS классифицируется как `RESOURCE_EXHAUSTED`, немедленный retry не раскручивается, `smbTransport` становится `DEGRADED` | Проверить `plannedSteadySessions`, application-owned sessions и серверные current/limit; освободить или увеличить capacity |
 | Рестарт демона посреди скачивания | Недокачанный staging-файл не виден инжесту; журнал не отметил файл как скачанный → после старта файл скачается заново | Ничего |
 | Рестарт посреди доставки среза | Запись в журнале остаётся незавершённой → попадает в повтор. Повтор сначала проверяет удалённый `_SUCCESS`: если прошлая попытка успела докопировать — запись просто закрывается без повторной выкладки | Ничего |
 | Файл на шаре изменили во время скачивания | Скачается «как есть»; изменённая версия — это новая тройка (путь, размер, время) → будет скачана следом отдельно. Дедупликация ниже по конвейеру уберёт повторы данных | Просить производителя использовать rename-конвенцию (см. 2.4) |
@@ -337,6 +338,21 @@ Health-контрибьютор `sync` (daemon actuator, loopback `:8081`, и к
   счётчики сигналов, переподключений и re-arm'ов, длительность последней
   проверки каталога;
 - очередь доставки: `publishPending / publishInProgress / publishFailed`.
+
+Отдельный health-контрибьютор `smbTransport` показывает по logical endpoint:
+
+- `plannedSteadySessions`: расчётная потребность приложения — одна cached
+  transport session на используемый endpoint плюс одна session на каждый
+  включённый `CHANGE_NOTIFY` source;
+- `ownedConnections / ownedSessions / activeTreeConnections`, а также split
+  `pooledSessions / activeWatchSessions`;
+- `openFailures / operationFailures / resourceExhaustions` и время последнего
+  capacity-отказа.
+
+Это только ресурсы данного процесса. Полный current usage и configured limit
+клиентский SMB-протокол не сообщает; их нужно получать на сервере. Поэтому
+`plannedSteadySessions` не является свободным остатком или доказательством
+достаточного capacity.
 
 Правила чтения:
 
@@ -447,6 +463,17 @@ restorecon -Rv /srv/intel
 
 Firewall: `firewall-cmd --add-service=samba --permanent` (или открыть 445/tcp).
 
+Проверка share-level capacity на Samba-сервере (с административными правами):
+
+```bash
+testparm -s --section-name='intel' --parameter-name='max connections'
+sudo smbstatus --shares --json
+```
+
+`max connections = 0` означает отсутствие настроенного Samba share limit.
+`smbstatus` показывает текущие подключения; это operator monitoring, запускать
+его от имени сервисной учётки приложения не требуется.
+
 Проверка с хоста приложения:
 
 ```bash
@@ -488,7 +515,17 @@ icacls D:\intel\out /grant "consumers:(OI)(CI)RX"
 # SMB1 — выключить, подпись — включить
 Set-SmbServerConfiguration -EnableSMB1Protocol $false
 Set-SmbServerConfiguration -RequireSecuritySignature $true
+
+# Server sessions-per-connection и share current/configured limits
+Get-SmbServerConfiguration | Select-Object MaxSessionPerConnection
+Get-SmbShare -Name intel | Select-Object Name, ConcurrentUserLimit, CurrentUsers
+(Get-SmbSession | Measure-Object).Count
 ```
+
+`MaxSessionPerConnection`, share `ConcurrentUserLimit` и общее число
+`Get-SmbSession` — разные величины. Команды требуют server-side прав; для
+удалённого мониторинга используйте отдельную read-only/CIM identity, а не
+расширяйте права SMB service account приложения.
 
 - Сервисной учётке запретите интерактивный вход (secpol: «Deny log on locally»).
 - CHANGE_NOTIFY на Windows работает из коробки, отдельной настройки не требует.
@@ -535,6 +572,7 @@ polling с комфортным интервалом; функционально
 |---|---|---|
 | `DOWN` сразу после старта | Учётка/пароль/права | `smbclient` той же учёткой |
 | `DEGRADED` волнами | Нестабильная сеть, firewall режет idle-соединения | `idle-timeout` vs firewall; логи WARN |
+| `smbTransport=DEGRADED`, растёт `resourceExhaustions` | Исчерпан server/share/session quota или ресурсы SMB-сервера | Сопоставить `plannedSteadySessions` с `Get-Smb*` либо `testparm`/`smbstatus`; не открывать пробные сессии до отказа |
 | Файлы появляются с задержкой = interval, хотя push включён | Уведомления не доходят (NAS, запись в обход Samba) | health: сигналы watch не растут при создании файла; см. 4.1/4.3 |
 | Приложение не стартует с включённым change-notify | Endpoint не поддерживает push | Это fail-fast по построению: выключите `change-notify.enabled` или исправьте endpoint |
 | Скачиваются недописанные файлы | Производитель пишет напрямую в финальное имя | Rename-конвенция; расширить `exclude`; увеличить `debounce` |

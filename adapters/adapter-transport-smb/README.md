@@ -18,13 +18,14 @@ watch-lifecycle); discovery/dedup/ledger-логика
 |---|---|
 | `pom.xml` | Maven module descriptor |
 | `SmbSessionPool` | Общий lazy endpoint-keyed pool для sync и managed import; сериализует endpoint operation и владеет reconnect/idle close |
+| `SmbTransportTelemetry` | Framework-free thread-safe snapshot активных connection/session/tree-connect leases, open/operation failures и resource exhaustion по bounded endpoint/role dimensions |
 | `SmbFileTransport` | `FileTransport`: list/stat/get/delete + `publishAtomically` поверх общего pool |
 | `SmbShareClient` / `SmbjShareClient` (+ `Factory`) | Обёртка над smbj share; открытие/аутентификация/операции |
 | `SmbManagedImportSourceLifecycle` | Positive pre-provisioned namespace probe, server-side claim rename, orphan adoption, write-exclusive claimed-byte access, remote disposition и exact terminal-source purge |
 | `SmbImportChangeSignalSource` | Source-scoped import doorbells поверх transport-neutral watch port |
 | `SmbEndpointSettings` / `SmbEncryptionPolicy` | Настройки соединения (host/share/domain/creds/encryption policy/таймауты); пароль — defensive copy, `<redacted>` в `toString` |
 | `ConnectTimeoutSocketFactory` | Настоящий TCP connect-timeout (smbj его не даёт) |
-| `SmbExceptionMapper` | smbj/IO ошибки → `RemoteTransportException` с `RemoteErrorKind` |
+| `SmbExceptionMapper` | smbj/IO ошибки → `RemoteTransportException` с `RemoteErrorKind`; resource/quota NTSTATUS классифицируются по raw numeric status, включая отсутствующие в enum smbj |
 | `SmbChangeNotifyWatcher` | `RemoteChangeSignalSource`: выделенная watch-сессия, doorbell-callback, re-arm/overflow/lease, capped backoff |
 | `Smb*ChangeNotify{Session,Pending,Result,SessionFactory}` | Тестируемый SPI-seam вокруг `CHANGE_NOTIFY`; `Smbj…` — реализация на smbj |
 | `SmbRemoteEntry` | Внутреннее remote evidence: path, size, last-write time, directory bit и server file ID |
@@ -50,6 +51,11 @@ Encryption policy также остаётся общей для ordinary sync и
 share I/O, `preferred` явно разрешает fallback, `disabled` не запрашивает
 client-preferred encryption. Policy mismatch публикуется как общий
 `SECURITY_POLICY_UNMET`, а SMBJ mechanics не выходят из adapter.
+
+SMB session capacity не discoverable через обычный client protocol. Adapter
+считает только установленные ресурсы, которыми владеет приложение, и переводит
+серверные resource/quota отказы в общий `RESOURCE_EXHAUSTED`. Micrometer и
+Actuator проецируют framework-free snapshot только в bootstrap.
 
 ## Связанные документы
 

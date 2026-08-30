@@ -112,6 +112,13 @@ Transport exception нормализуется в `RemoteErrorKind`, после 
 выдаёт единый `SYNC.*` diagnostic. Если существует durable work record, сначала
 фиксируется failure state, затем публикуется diagnostic.
 
+SMB capacity/resource NTSTATUS нормализуются в transport-neutral
+`RESOURCE_EXHAUSTED` с `RETRY_LATER` и diagnostic
+`SYNC.REMOTE_RESOURCE_EXHAUSTED`. Adapter сравнивает raw numeric status:
+часть значений отсутствует в symbolic enum smbj и иначе деградировала бы в
+неразличимый `TRANSIENT`. Протокол не сообщает configured/current server или
+share limit, поэтому приложение не пытается вычислять remote headroom.
+
 ## Lifecycle и health
 
 Daemon запускает fetch раньше export, publish — после export, retention — после
@@ -123,6 +130,14 @@ retention и состояние keyed executor/watch. Recoverable shed при р
 reconcile видим как degradation signal, но сам по себе не означает потерю
 корректности. Permanent transport/work failure или durable failed delivery
 поднимает более строгий status.
+
+Отдельный daemon contributor `smbTransport` показывает только application-owned
+established connections/sessions/tree connections, роли `pooled_transport` и
+`change_notify`, planned steady demand и capacity failures. Outstanding
+resource exhaustion даёт `DEGRADED` и снимается подтверждённым success того же
+внутреннего owner. Owner не становится metric label: наружу выходят только
+bounded `endpoint` и `role`. Server-wide usage и configured limit принадлежат
+операторскому monitoring/control plane.
 
 CLI `sync fetch`, `sync publish` и `sync all` используют те же application
 контракты. `--dry-run` не меняет inbox, remote storage или ledgers.

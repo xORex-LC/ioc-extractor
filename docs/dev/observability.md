@@ -178,6 +178,21 @@ retry/backlog с сохранённой correctness; contradictory durable evide
 failed startup recovery даёт `DOWN`. Read path использует indexed bounded
 aggregates и не запускает import work.
 
+Daemon Actuator `smbTransport` является read-only projection framework-free
+adapter snapshot. Он показывает configured `plannedSteadySessions`, активные
+application-owned connection/session/tree-connect leases, pooled/watch split,
+open/operation failures и resource-exhaustion state. Непогашенный capacity
+failure даёт `DEGRADED`; успешное открытие или operation того же internal owner
+возвращает `UP`. Ни health, ни метрики не выполняют probe и не утверждают, что
+знают server/share limit.
+
+Micrometer экспортирует `ioc.smb.connections.active`,
+`ioc.smb.sessions.active`, `ioc.smb.tree.connections.active`,
+`ioc.smb.session.opens`, `ioc.smb.operation.failures` и
+`ioc.smb.resource.exhaustions`. Допустимые labels ограничены logical `endpoint`,
+`role` и, только для opens, `outcome`; host/share/path/username/source не
+экспортируются.
+
 Managed dataframe import использует framework-free `DataframeImportObserver` в
 application и logging adapter в bootstrap. События `import_start`,
 `import_claim`, `import_stage`, `import_promote` и `import_complete` создаются

@@ -340,6 +340,7 @@ the administrator's job.
 |---|---|---|
 | Share unavailable (network, server reboot) | Operations fail, get classified as transient (`DEGRADED`), retried with growing pauses; the next scheduled cycle tries again. The push watch session reconnects indefinitely | Nothing: after the network recovers everything resumes on its own. Look at health if DEGRADED persists |
 | Wrong password / no permissions | The error is classified as permanent — health goes `DOWN`, retries do not "heal" it | Fix the account/ACL. This is the only error class that always needs a human |
+| Server session/share/resource quota exhausted | The raw NTSTATUS is classified as `RESOURCE_EXHAUSTED`, immediate retry is suppressed, and `smbTransport` becomes `DEGRADED` | Check `plannedSteadySessions`, application-owned sessions and server-side current/limit; free or increase capacity |
 | Daemon restart mid-download | The unfinished staging file is invisible to ingest; the ledger has not marked the file as fetched → after startup the file is downloaded again | Nothing |
 | Restart mid-delivery | The ledger record stays non-terminal → goes into retry. The retry first checks the remote `_SUCCESS`: if the previous attempt managed to finish copying — the record is simply closed without re-uploading | Nothing |
 | File on the share modified while being downloaded | Downloaded "as is"; the modified version is a new triple (path, size, mtime) → will be downloaded separately right after. Deduplication further down the pipeline removes data duplicates | Ask the producer to follow the rename convention (see 2.4) |
@@ -355,6 +356,20 @@ The `sync` health contributor (daemon actuator, loopback `:8081`, and the
 - push-watch state per source: `ACTIVE / RECONNECTING / DISABLED`, counters of
   signals, reconnects and re-arms, duration of the last directory check;
 - the delivery queue: `publishPending / publishInProgress / publishFailed`.
+
+The separate `smbTransport` health contributor shows per logical endpoint:
+
+- `plannedSteadySessions`: application demand — one cached transport session
+  per used endpoint plus one session per enabled `CHANGE_NOTIFY` source;
+- `ownedConnections / ownedSessions / activeTreeConnections`, split into
+  `pooledSessions / activeWatchSessions`;
+- `openFailures / operationFailures / resourceExhaustions` and the last
+  capacity-failure timestamp.
+
+These are resources owned by this process only. The client SMB protocol does
+not expose total current usage or the configured server/share limit; those must
+be read on the server. `plannedSteadySessions` is therefore neither free
+headroom nor proof that capacity is sufficient.
 
 Reading rules:
 
@@ -466,6 +481,17 @@ restorecon -Rv /srv/intel
 
 Firewall: `firewall-cmd --add-service=samba --permanent` (or open 445/tcp).
 
+Check share-level capacity on the Samba server with administrative access:
+
+```bash
+testparm -s --section-name='intel' --parameter-name='max connections'
+sudo smbstatus --shares --json
+```
+
+`max connections = 0` means that Samba has no configured share limit.
+`smbstatus` shows current connections. This is operator monitoring and does not
+require granting the application service account administrative rights.
+
 Verification from the application host:
 
 ```bash
@@ -507,7 +533,17 @@ Server hygiene:
 # SMB1 — off, signing — on
 Set-SmbServerConfiguration -EnableSMB1Protocol $false
 Set-SmbServerConfiguration -RequireSecuritySignature $true
+
+# Sessions-per-connection and share current/configured limits
+Get-SmbServerConfiguration | Select-Object MaxSessionPerConnection
+Get-SmbShare -Name intel | Select-Object Name, ConcurrentUserLimit, CurrentUsers
+(Get-SmbSession | Measure-Object).Count
 ```
+
+`MaxSessionPerConnection`, share `ConcurrentUserLimit`, and the total returned
+by `Get-SmbSession` are different quantities. These commands require
+server-side rights; use a separate read-only/CIM monitoring identity rather
+than broadening the application's SMB service-account privileges.
 
 - Deny the service account interactive logon (secpol: "Deny log on locally").
 - CHANGE_NOTIFY works out of the box on Windows, no extra setup needed.
@@ -555,6 +591,7 @@ with a comfortable interval; you lose nothing functionally.
 |---|---|---|
 | `DOWN` right after startup | Account/password/permissions | `smbclient` with the same account |
 | `DEGRADED` in waves | Unstable network, firewall dropping idle connections | `idle-timeout` vs the firewall; WARN logs |
+| `smbTransport=DEGRADED`, `resourceExhaustions` grows | Server/share/session quota or SMB server resources are exhausted | Compare `plannedSteadySessions` with `Get-Smb*` or `testparm`/`smbstatus`; do not probe by opening sessions until rejection |
 | Files arrive with a delay equal to the interval although push is enabled | Notifications do not arrive (NAS, writes bypassing Samba) | health: watch signals do not grow on file creation; see 4.1/4.3 |
 | Application does not start with change-notify enabled | The endpoint does not support push | This is fail-fast by design: disable `change-notify.enabled` or fix the endpoint |
 | Half-written files get downloaded | The producer writes directly into the final name | Rename convention; extend `exclude`; raise `debounce` |
