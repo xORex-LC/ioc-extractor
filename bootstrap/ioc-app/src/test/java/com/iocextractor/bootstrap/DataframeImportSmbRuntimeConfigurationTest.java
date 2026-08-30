@@ -4,6 +4,7 @@ import com.iocextractor.adapter.out.transport.smb.SmbChangeNotifyWatcher;
 import com.iocextractor.adapter.out.transport.smb.SmbFileTransport;
 import com.iocextractor.adapter.out.transport.smb.SmbImportChangeSignalSource;
 import com.iocextractor.adapter.out.transport.smb.SmbSessionPool;
+import com.iocextractor.adapter.out.transport.smb.SmbTransportTelemetry;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalog;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -19,6 +20,7 @@ import org.springframework.core.io.ClassPathResource;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -39,7 +41,10 @@ class DataframeImportSmbRuntimeConfigurationTest {
                     assertThat(context).hasSingleBean(SmbSessionPool.class);
                     assertThat(context).hasSingleBean(SmbFileTransport.class);
                     assertThat(context).hasSingleBean(SmbChangeNotifyWatcher.class);
+                    assertThat(context).hasSingleBean(SmbTransportTelemetry.class);
                     assertThat(context).doesNotHaveBean(TransportRegistry.class);
+                    assertThat(SmbSessionDemandPlanner.plan(context.getBean(IocProperties.class)))
+                            .containsExactly(Map.entry("primary", 2));
 
                     var configuration = new DataframeImportRuntimeConfiguration();
                     ManagedImportSourceAdapters adapters = configuration.managedImportSourceAdapters(

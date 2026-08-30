@@ -8,6 +8,7 @@ import com.iocextractor.adapter.out.transport.smb.SmbEndpointSettings;
 import com.iocextractor.adapter.out.transport.smb.SmbEncryptionPolicy;
 import com.iocextractor.adapter.out.transport.smb.SmbFileTransport;
 import com.iocextractor.adapter.out.transport.smb.SmbSessionPool;
+import com.iocextractor.adapter.out.transport.smb.SmbTransportTelemetry;
 import com.iocextractor.application.port.in.sync.ArtifactPublishUseCase;
 import com.iocextractor.application.port.in.sync.RemoteFetchUseCase;
 import com.iocextractor.application.port.in.sync.ValidateSyncSelectionUseCase;
@@ -32,6 +33,7 @@ import com.iocextractor.platform.concurrent.BoundedKeyedSerialExecutor;
 import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
 import com.iocextractor.platform.events.ControlEventObserver;
 import com.iocextractor.platform.events.ControlEventPublisher;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.health.contributor.HealthIndicator;
@@ -86,12 +88,21 @@ public class SyncConfig {
     @Bean(destroyMethod = "close")
     @ConditionalOnExpression("'${ioc.sync.enabled:false}' == 'true' || "
             + "'${ioc.dataframe-import.enabled:false}' == 'true'")
-    public SmbSessionPool smbSessionPool(IocProperties props) {
+    public SmbSessionPool smbSessionPool(
+            IocProperties props,
+            SmbTransportTelemetry telemetry) {
         List<SmbEndpointSettings> settings = props.sync().endpoints().stream()
                 .filter(endpoint -> endpoint.transport() == SyncTransport.SMB)
                 .map(this::smbSettings)
                 .toList();
-        return new SmbSessionPool(settings);
+        return new SmbSessionPool(settings, telemetry);
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.sync.enabled:false}' == 'true' || "
+            + "'${ioc.dataframe-import.enabled:false}' == 'true'")
+    public SmbTransportTelemetry smbTransportTelemetry(Clock clock) {
+        return new SmbTransportTelemetry(clock);
     }
 
     @Bean
@@ -104,12 +115,37 @@ public class SyncConfig {
     @Bean
     @ConditionalOnExpression("'${ioc.sync.enabled:false}' == 'true' || "
             + "'${ioc.dataframe-import.enabled:false}' == 'true'")
-    public SmbChangeNotifyWatcher smbChangeNotifyWatcher(IocProperties props) {
+    public SmbChangeNotifyWatcher smbChangeNotifyWatcher(
+            IocProperties props,
+            SmbTransportTelemetry telemetry) {
         List<SmbEndpointSettings> settings = props.sync().endpoints().stream()
                 .filter(endpoint -> endpoint.transport() == SyncTransport.SMB)
                 .map(this::smbSettings)
                 .toList();
-        return new SmbChangeNotifyWatcher(settings, syncRetryPolicy(props));
+        return new SmbChangeNotifyWatcher(settings, syncRetryPolicy(props), telemetry);
+    }
+
+    @Bean("smbTransportHealthIndicator")
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && ("
+            + "'${ioc.sync.enabled:false}' == 'true' || "
+            + "'${ioc.dataframe-import.enabled:false}' == 'true')")
+    public HealthIndicator smbTransportHealthIndicator(
+            SmbTransportTelemetry telemetry,
+            IocProperties properties) {
+        return new SmbTransportHealthIndicator(
+                telemetry, SmbSessionDemandPlanner.plan(properties));
+    }
+
+    @Bean
+    @ConditionalOnExpression("'${ioc.runtime.mode}' == 'daemon' && ("
+            + "'${ioc.sync.enabled:false}' == 'true' || "
+            + "'${ioc.dataframe-import.enabled:false}' == 'true')")
+    SmbTransportMetrics smbTransportMetrics(
+            MeterRegistry registry,
+            SmbTransportTelemetry telemetry,
+            IocProperties properties) {
+        return new SmbTransportMetrics(
+                registry, telemetry, SmbSessionDemandPlanner.plan(properties));
     }
 
     @Bean
