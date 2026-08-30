@@ -15,20 +15,35 @@ import java.util.function.Function;
 /** Shared endpoint-keyed SMB session pool for sync and managed-import operations. */
 public final class SmbSessionPool implements AutoCloseable {
 
+    private static final String POOL_OWNER = "pool";
+
     private final Map<String, SmbEndpointSettings> endpoints;
     private final SmbShareClientFactory clientFactory;
     private final Clock clock;
+    private final SmbTransportTelemetry telemetry;
     private final Map<String, CachedClient> clients = new ConcurrentHashMap<>();
     private final Map<String, Object> endpointLocks = new HashMap<>();
 
     /** Creates the production pool without opening network connections eagerly. */
     public SmbSessionPool(List<SmbEndpointSettings> endpoints) {
-        this(endpoints, new SmbjShareClientFactory(), Clock.systemUTC());
+        this(endpoints, new SmbTransportTelemetry());
+    }
+
+    /** Creates the production pool with shared adapter telemetry. */
+    public SmbSessionPool(List<SmbEndpointSettings> endpoints, SmbTransportTelemetry telemetry) {
+        this(endpoints, new SmbjShareClientFactory(), Clock.systemUTC(), telemetry);
     }
 
     SmbSessionPool(List<SmbEndpointSettings> endpoints,
                    SmbShareClientFactory clientFactory,
                    Clock clock) {
+        this(endpoints, clientFactory, clock, new SmbTransportTelemetry(clock));
+    }
+
+    SmbSessionPool(List<SmbEndpointSettings> endpoints,
+                   SmbShareClientFactory clientFactory,
+                   Clock clock,
+                   SmbTransportTelemetry telemetry) {
         Objects.requireNonNull(endpoints, "endpoints");
         Map<String, SmbEndpointSettings> indexed = new HashMap<>();
         for (SmbEndpointSettings endpoint : endpoints) {
@@ -41,21 +56,35 @@ public final class SmbSessionPool implements AutoCloseable {
         this.endpoints = Map.copyOf(indexed);
         this.clientFactory = Objects.requireNonNull(clientFactory, "clientFactory");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.telemetry = Objects.requireNonNull(telemetry, "telemetry");
     }
 
     <T> T withClient(String endpoint, String operation, Function<SmbShareClient, T> action) {
         requireEndpointName(endpoint);
         endpoint(endpoint);
         synchronized (endpointLocks.get(endpoint)) {
+            SmbShareClient client;
             try {
-                SmbShareClient client = client(endpoint);
+                client = client(endpoint);
+            } catch (RuntimeException failure) {
+                RemoteTransportException mapped = SmbExceptionMapper.map(failure, operation, endpoint);
+                telemetry.recordOpenFailure(endpoint,
+                        SmbTransportTelemetry.Role.POOLED_TRANSPORT, POOL_OWNER, mapped.kind());
+                throw mapped;
+            }
+            try {
                 T result = action.apply(client);
                 touch(endpoint);
+                telemetry.recordOperationSuccess(
+                        endpoint, SmbTransportTelemetry.Role.POOLED_TRANSPORT, POOL_OWNER);
                 return result;
             } catch (RuntimeException failure) {
                 RemoteTransportException mapped = SmbExceptionMapper.map(failure, operation, endpoint);
+                telemetry.recordOperationFailure(endpoint,
+                        SmbTransportTelemetry.Role.POOLED_TRANSPORT, POOL_OWNER, mapped.kind());
                 if (mapped.kind() == RemoteErrorKind.TRANSIENT
-                        || mapped.kind() == RemoteErrorKind.UNREACHABLE) {
+                        || mapped.kind() == RemoteErrorKind.UNREACHABLE
+                        || mapped.kind() == RemoteErrorKind.RESOURCE_EXHAUSTED) {
                     closeClient(endpoint);
                 }
                 throw mapped;
@@ -97,21 +126,27 @@ public final class SmbSessionPool implements AutoCloseable {
             return cached.client();
         }
         SmbShareClient opened = clientFactory.open(endpoint(endpoint));
-        clients.put(endpoint, new CachedClient(opened, clock.instant()));
+        SmbTransportTelemetry.Lease lease = telemetry.sessionOpened(
+                endpoint, SmbTransportTelemetry.Role.POOLED_TRANSPORT, POOL_OWNER);
+        clients.put(endpoint, new CachedClient(opened, clock.instant(), lease));
         return opened;
     }
 
     private void touch(String endpoint) {
         CachedClient cached = clients.get(endpoint);
         if (cached != null) {
-            clients.put(endpoint, new CachedClient(cached.client(), clock.instant()));
+            clients.put(endpoint, new CachedClient(cached.client(), clock.instant(), cached.lease()));
         }
     }
 
     private void closeClient(String endpoint) {
         CachedClient cached = clients.remove(endpoint);
         if (cached != null) {
-            cached.client().close();
+            try {
+                cached.client().close();
+            } finally {
+                cached.lease().close();
+            }
         }
     }
 
@@ -129,6 +164,9 @@ public final class SmbSessionPool implements AutoCloseable {
         }
     }
 
-    private record CachedClient(SmbShareClient client, Instant lastUsedAt) {
+    private record CachedClient(
+            SmbShareClient client,
+            Instant lastUsedAt,
+            SmbTransportTelemetry.Lease lease) {
     }
 }

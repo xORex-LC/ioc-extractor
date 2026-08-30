@@ -3,6 +3,8 @@ package com.iocextractor.adapter.out.transport.smb;
 import com.iocextractor.application.port.out.sync.RemoteChangeSignalHandler;
 import com.iocextractor.application.port.out.sync.RemoteChangeWatch;
 import com.iocextractor.application.sync.RemoteWatchTarget;
+import com.iocextractor.application.sync.RemoteErrorKind;
+import com.iocextractor.application.sync.RemoteTransportException;
 import com.iocextractor.application.sync.RetryPolicy;
 import org.junit.jupiter.api.Test;
 
@@ -146,6 +148,33 @@ class SmbChangeNotifyWatcherTest {
     }
 
     @Test
+    void recordsCapacityFailureUntilTheWatchReconnects() {
+        FakeSessionFactory factory = new FakeSessionFactory();
+        factory.failures.add(new RemoteTransportException(
+                RemoteErrorKind.RESOURCE_EXHAUSTED, "session limit reached"));
+        SmbTransportTelemetry telemetry = new SmbTransportTelemetry();
+        SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5), telemetry);
+        RecordingHandler handler = new RecordingHandler();
+
+        RemoteChangeWatch watch = watcher.watch(source(), handler);
+        waitUntil(() -> handler.failures.get() == 1 && handler.established.get() == 1);
+
+        assertThat(telemetry.snapshot("primary", SmbTransportTelemetry.Role.CHANGE_NOTIFY))
+                .extracting(
+                        SmbTransportTelemetry.Snapshot::activeSessions,
+                        SmbTransportTelemetry.Snapshot::successfulOpens,
+                        SmbTransportTelemetry.Snapshot::openFailures,
+                        SmbTransportTelemetry.Snapshot::resourceExhaustions,
+                        SmbTransportTelemetry.Snapshot::resourceConstrained)
+                .containsExactly(1, 1L, 1L, 1L, false);
+
+        watch.close();
+
+        assertThat(telemetry.snapshot("primary", SmbTransportTelemetry.Role.CHANGE_NOTIFY)
+                .activeSessions()).isZero();
+    }
+
+    @Test
     void reconnectsAfterPendingFailureAndReportsFailure() {
         FakeSessionFactory factory = new FakeSessionFactory();
         SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5));
@@ -194,13 +223,21 @@ class SmbChangeNotifyWatcherTest {
     }
 
     private static SmbChangeNotifyWatcher watcher(FakeSessionFactory factory, Duration maxSessionAge) {
+        return watcher(factory, maxSessionAge, new SmbTransportTelemetry());
+    }
+
+    private static SmbChangeNotifyWatcher watcher(
+            FakeSessionFactory factory,
+            Duration maxSessionAge,
+            SmbTransportTelemetry telemetry) {
         return new SmbChangeNotifyWatcher(
                 List.of(settings()),
                 new RetryPolicy(3, Duration.ofMillis(5), 1.0d, Duration.ofMillis(5), false),
                 factory,
                 maxSessionAge,
                 Duration.ofMillis(5),
-                Duration.ofSeconds(1));
+                Duration.ofSeconds(1),
+                telemetry);
     }
 
     private static SmbEndpointSettings settings() {

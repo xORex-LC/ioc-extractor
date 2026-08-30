@@ -4,6 +4,7 @@ import com.iocextractor.application.port.out.sync.RemoteChangeSignalHandler;
 import com.iocextractor.application.port.out.sync.RemoteChangeSignalSource;
 import com.iocextractor.application.port.out.sync.RemoteChangeWatch;
 import com.iocextractor.application.sync.RemoteWatchTarget;
+import com.iocextractor.application.sync.RemoteTransportException;
 import com.iocextractor.application.sync.RetryPolicy;
 
 import java.time.Duration;
@@ -32,11 +33,19 @@ public final class SmbChangeNotifyWatcher implements RemoteChangeSignalSource {
     private final Duration maxSessionAge;
     private final Duration pollInterval;
     private final Duration closeTimeout;
+    private final SmbTransportTelemetry telemetry;
 
     /** Creates a production watcher over configured SMB endpoints. */
     public SmbChangeNotifyWatcher(List<SmbEndpointSettings> endpoints, RetryPolicy retryPolicy) {
+        this(endpoints, retryPolicy, new SmbTransportTelemetry());
+    }
+
+    /** Creates a production watcher with shared adapter telemetry. */
+    public SmbChangeNotifyWatcher(List<SmbEndpointSettings> endpoints,
+                                  RetryPolicy retryPolicy,
+                                  SmbTransportTelemetry telemetry) {
         this(endpoints, retryPolicy, new SmbjChangeNotifySessionFactory(),
-                DEFAULT_MAX_SESSION_AGE, DEFAULT_POLL_INTERVAL, DEFAULT_CLOSE_TIMEOUT);
+                DEFAULT_MAX_SESSION_AGE, DEFAULT_POLL_INTERVAL, DEFAULT_CLOSE_TIMEOUT, telemetry);
     }
 
     SmbChangeNotifyWatcher(List<SmbEndpointSettings> endpoints,
@@ -45,6 +54,17 @@ public final class SmbChangeNotifyWatcher implements RemoteChangeSignalSource {
                            Duration maxSessionAge,
                            Duration pollInterval,
                            Duration closeTimeout) {
+        this(endpoints, retryPolicy, sessionFactory,
+                maxSessionAge, pollInterval, closeTimeout, new SmbTransportTelemetry());
+    }
+
+    SmbChangeNotifyWatcher(List<SmbEndpointSettings> endpoints,
+                           RetryPolicy retryPolicy,
+                           SmbChangeNotifySessionFactory sessionFactory,
+                           Duration maxSessionAge,
+                           Duration pollInterval,
+                           Duration closeTimeout,
+                           SmbTransportTelemetry telemetry) {
         Objects.requireNonNull(endpoints, "endpoints");
         Map<String, SmbEndpointSettings> indexed = new HashMap<>();
         for (SmbEndpointSettings endpoint : endpoints) {
@@ -59,6 +79,7 @@ public final class SmbChangeNotifyWatcher implements RemoteChangeSignalSource {
         this.maxSessionAge = requirePositive(maxSessionAge, "maxSessionAge");
         this.pollInterval = requirePositive(pollInterval, "pollInterval");
         this.closeTimeout = requirePositive(closeTimeout, "closeTimeout");
+        this.telemetry = Objects.requireNonNull(telemetry, "telemetry");
     }
 
     @Override
@@ -124,7 +145,19 @@ public final class SmbChangeNotifyWatcher implements RemoteChangeSignalSource {
         }
 
         private void runSession() {
-            try (SmbChangeNotifySession session = sessionFactory.open(endpoint, target.remotePath())) {
+            SmbChangeNotifySession session;
+            try {
+                session = sessionFactory.open(endpoint, target.remotePath());
+            } catch (RuntimeException failure) {
+                RemoteTransportException mapped = SmbExceptionMapper.map(
+                        failure, "watch", endpoint.name());
+                telemetry.recordOpenFailure(endpoint.name(),
+                        SmbTransportTelemetry.Role.CHANGE_NOTIFY, target.sourceId(), mapped.kind());
+                throw mapped;
+            }
+            SmbTransportTelemetry.Lease lease = telemetry.sessionOpened(
+                    endpoint.name(), SmbTransportTelemetry.Role.CHANGE_NOTIFY, target.sourceId());
+            try (lease; session) {
                 currentSession = session;
                 handler.established();
                 long sessionDeadline = System.nanoTime() + maxSessionAge.toNanos();
@@ -144,7 +177,17 @@ public final class SmbChangeNotifyWatcher implements RemoteChangeSignalSource {
                     if (result.get().shouldSignal()) {
                         handler.signal();
                     }
+                    telemetry.recordOperationSuccess(endpoint.name(),
+                            SmbTransportTelemetry.Role.CHANGE_NOTIFY, target.sourceId());
                 }
+            } catch (RuntimeException failure) {
+                RemoteTransportException mapped = SmbExceptionMapper.map(
+                        failure, "watch", endpoint.name());
+                if (!closed) {
+                    telemetry.recordOperationFailure(endpoint.name(),
+                            SmbTransportTelemetry.Role.CHANGE_NOTIFY, target.sourceId(), mapped.kind());
+                }
+                throw mapped;
             } finally {
                 currentPending = null;
                 currentSession = null;
