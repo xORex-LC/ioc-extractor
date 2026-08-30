@@ -56,6 +56,7 @@ Generated from `DiagnosticCatalogs`.
 | `SYNC.PERMISSION_DENIED` | SYNC | ERROR | OPERATION | `sync.permission-denied` | Sync endpoint {endpoint} denied access to {path}: {reason} |
 | `SYNC.REMOTE_NOT_FOUND` | SYNC | WARN | OPERATION | `sync.remote-not-found` | Remote path {path} was not found on sync endpoint {endpoint} |
 | `SYNC.SECURITY_POLICY_UNMET` | SYNC | FATAL | OPERATION | `sync.security-policy-unmet` | Sync endpoint {endpoint} does not satisfy the configured transport security policy: {reason} |
+| `SYNC.REMOTE_RESOURCE_EXHAUSTED` | SYNC | ERROR | OPERATION | `sync.remote-resource-exhausted` | Remote resources are exhausted on sync endpoint {endpoint}: {reason} |
 | `SYNC.TRANSPORT_TRANSIENT` | SYNC | WARN | OPERATION | `sync.transport-transient` | Transient transport failure on sync endpoint {endpoint}: {reason} |
 | `SYNC.PUBLISH_VERIFY_FAILED` | SYNC | ERROR | OPERATION | `sync.publish-verify-failed` | Published slice {sliceId} for target {targetId} failed verification: {reason} |
 | `SYNC.LOCAL_SLICE_INVALID` | SYNC | ERROR | OPERATION | `sync.local-slice-invalid` | Local export slice {profile}/{sliceName} is invalid and was skipped: {reason} |

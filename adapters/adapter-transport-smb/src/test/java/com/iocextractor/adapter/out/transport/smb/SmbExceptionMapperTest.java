@@ -1,7 +1,11 @@
 package com.iocextractor.adapter.out.transport.smb;
 
+import com.hierynomus.mssmb2.SMB2MessageCommandCode;
+import com.hierynomus.mssmb2.SMBApiException;
 import com.iocextractor.application.sync.RemoteErrorKind;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.EOFException;
 import java.net.ConnectException;
@@ -41,5 +45,25 @@ class SmbExceptionMapperTest {
     void mapsUnreachableFailures() {
         assertThat(SmbExceptionMapper.classify(new ConnectException("connection refused")))
                 .isEqualTo(RemoteErrorKind.UNREACHABLE);
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {
+            0xC000009AL,
+            0xC00000CEL,
+            0xC00000D0L,
+            0xC000013DL,
+            0xC0000205L,
+            0xC0000259L
+    })
+    void mapsResourceExhaustionByRawNtStatus(long statusCode) {
+        var failure = new SMBApiException(
+                statusCode,
+                SMB2MessageCommandCode.SMB2_SESSION_SETUP,
+                "server rejected session",
+                null);
+
+        assertThat(SmbExceptionMapper.classify(failure))
+                .isEqualTo(RemoteErrorKind.RESOURCE_EXHAUSTED);
     }
 }

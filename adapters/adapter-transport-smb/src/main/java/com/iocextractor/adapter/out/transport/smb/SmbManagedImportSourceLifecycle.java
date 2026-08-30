@@ -17,6 +17,7 @@ import com.iocextractor.application.port.out.dataframeimport.ImportSnapshotStore
 import com.iocextractor.application.port.out.dataframeimport.ImportTerminalSourceRetention;
 import com.iocextractor.application.port.out.dataframeimport.PurgeImportTerminalSourceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ImportSourceCapability;
+import com.iocextractor.application.sync.RemoteErrorDisposition;
 import com.iocextractor.application.sync.RemoteErrorKind;
 import com.iocextractor.application.sync.RemoteTransportException;
 import com.iocextractor.common.IocExtractorException;
@@ -102,8 +103,7 @@ public final class SmbManagedImportSourceLifecycle
                 return sessions.withClient(source.endpoint(), "import-capability",
                         client -> probe(sourceId, source, client));
             } catch (RemoteTransportException failure) {
-                boolean retry = failure.kind() == RemoteErrorKind.TRANSIENT
-                        || failure.kind() == RemoteErrorKind.UNREACHABLE;
+                boolean retry = failure.kind().disposition() != RemoteErrorDisposition.FAIL;
                 return ImportSourceReadiness.capabilityFailed(sourceId,
                         ImportSourceReadinessPhase.PRIVATE_OBJECT_FLOW, retry);
             } catch (RuntimeException failure) {

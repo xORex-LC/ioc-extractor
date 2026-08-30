@@ -13,6 +13,13 @@ import java.util.Locale;
 
 final class SmbExceptionMapper {
 
+    private static final long STATUS_INSUFFICIENT_RESOURCES = 0xC000009AL;
+    private static final long STATUS_TOO_MANY_SESSIONS = 0xC00000CEL;
+    private static final long STATUS_REQUEST_NOT_ACCEPTED = 0xC00000D0L;
+    private static final long STATUS_REMOTE_RESOURCES = 0xC000013DL;
+    private static final long STATUS_INSUFF_SERVER_RESOURCES = 0xC0000205L;
+    private static final long STATUS_LICENSE_QUOTA_EXCEEDED = 0xC0000259L;
+
     private SmbExceptionMapper() {
     }
 
@@ -31,6 +38,9 @@ final class SmbExceptionMapper {
         Throwable current = failure;
         while (current != null) {
             if (current instanceof SMBApiException smb) {
+                if (isResourceExhaustion(smb.getStatusCode())) {
+                    return RemoteErrorKind.RESOURCE_EXHAUSTED;
+                }
                 RemoteErrorKind kind = classifyToken(statusToken(smb));
                 if (kind != null) {
                     return kind;
@@ -54,6 +64,15 @@ final class SmbExceptionMapper {
             current = current.getCause();
         }
         return RemoteErrorKind.TRANSIENT;
+    }
+
+    private static boolean isResourceExhaustion(long statusCode) {
+        return statusCode == STATUS_INSUFFICIENT_RESOURCES
+                || statusCode == STATUS_TOO_MANY_SESSIONS
+                || statusCode == STATUS_REQUEST_NOT_ACCEPTED
+                || statusCode == STATUS_REMOTE_RESOURCES
+                || statusCode == STATUS_INSUFF_SERVER_RESOURCES
+                || statusCode == STATUS_LICENSE_QUOTA_EXCEEDED;
     }
 
     private static String statusToken(SMBApiException failure) {

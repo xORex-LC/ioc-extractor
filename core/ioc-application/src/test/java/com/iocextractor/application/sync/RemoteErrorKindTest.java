@@ -13,6 +13,8 @@ class RemoteErrorKindTest {
         assertThat(RemoteErrorKind.PERMISSION_DENIED.disposition()).isEqualTo(RemoteErrorDisposition.FAIL);
         assertThat(RemoteErrorKind.NOT_FOUND.disposition()).isEqualTo(RemoteErrorDisposition.FAIL);
         assertThat(RemoteErrorKind.SECURITY_POLICY_UNMET.disposition()).isEqualTo(RemoteErrorDisposition.FAIL);
+        assertThat(RemoteErrorKind.RESOURCE_EXHAUSTED.disposition())
+                .isEqualTo(RemoteErrorDisposition.RETRY_LATER);
         assertThat(RemoteErrorKind.TRANSIENT.disposition()).isEqualTo(RemoteErrorDisposition.RETRY_NOW);
     }
 }

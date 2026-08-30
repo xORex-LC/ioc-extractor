@@ -16,6 +16,8 @@ class SyncOperationalOutcomePolicyTest {
                 .isEqualTo(SyncOperationalStatus.DEGRADED);
         assertThat(policy.classify(failure(RemoteErrorKind.UNREACHABLE)))
                 .isEqualTo(SyncOperationalStatus.DEGRADED);
+        assertThat(policy.classify(failure(RemoteErrorKind.RESOURCE_EXHAUSTED)))
+                .isEqualTo(SyncOperationalStatus.DEGRADED);
     }
 
     @Test

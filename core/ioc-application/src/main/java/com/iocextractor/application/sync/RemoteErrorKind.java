@@ -12,6 +12,7 @@ public enum RemoteErrorKind {
     PERMISSION_DENIED(RemoteErrorDisposition.FAIL),
     NOT_FOUND(RemoteErrorDisposition.FAIL),
     SECURITY_POLICY_UNMET(RemoteErrorDisposition.FAIL),
+    RESOURCE_EXHAUSTED(RemoteErrorDisposition.RETRY_LATER),
     TRANSIENT(RemoteErrorDisposition.RETRY_NOW);
 
     private final RemoteErrorDisposition disposition;
