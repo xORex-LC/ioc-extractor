@@ -1,0 +1,6 @@
+# exact-rule-reference	expected-findings	rationale
+category/java/bestpractices.xml/UnusedAssignment	2	Reviewed data-flow findings where the assigned value is consumed outside PMD's local model
+category/java/errorprone.xml/DoNotThrowExceptionInFinally	1	Reviewed cleanup path preserves the primary failure and throws only when no primary failure exists
+category/java/design.xml/CognitiveComplexity	7	Calibrated maintainability signal; findings require semantic refactoring review
+category/java/design.xml/NPathComplexity	3	Calibrated maintainability signal; findings require semantic refactoring review
+category/java/design.xml/ExcessiveParameterList	8	Calibrated boundary and composition-root design signal

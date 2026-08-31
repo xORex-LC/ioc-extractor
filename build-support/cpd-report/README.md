@@ -15,7 +15,7 @@ published library.
 
 | File/output | Purpose |
 |---|---|
-| `pom.xml` | Explicit production-source universe, report-only `aggregate-cpd` execution and late report-integrity wiring |
+| `pom.xml` | Explicit production-source universe, `aggregate-cpd` execution, reviewed group-count snapshot and late gate wiring |
 | `cpd-scope.tsv` | Fail-closed disposition for every Maven reactor project |
 | `../build-quality/BuildQualityVerifier.java` | Shared JDK-only reactor/source-scope and report-integrity verifier |
 | `target/cpd/cpd.xml` | Generated machine-readable repository report |
@@ -47,8 +47,12 @@ structurally valid XML/HTML and reconciles the XML's unique file paths with
 every current Java file in the analyzed roots.
 
 `minimumTokens=75` is the accepted 0.3.0 baseline after repository calibration.
-Duplicate findings remain report-only. Analyzer errors or missing XML/HTML
-outputs fail the reactor build.
+Every duplicate remains visible and requires semantic interpretation rather
+than automatic refactoring. The `ioc.cpd.expectedDuplications` property is an
+exact reviewed group-count snapshot: growth and reduction both stop `verify`
+until the full report is reviewed and the value is updated in the same change.
+Analyzer errors or missing XML/HTML outputs also fail the reactor build. This
+count ratchet is intentionally not an unstable token-location baseline.
 
 The cross-module lifecycle and semantic review policy are documented in
 [`docs/dev/build-quality.md`](../../docs/dev/build-quality.md).

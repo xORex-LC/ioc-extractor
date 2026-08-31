@@ -66,22 +66,25 @@ Findings остаются advisory: обычный `make verify` и CI не вк
 профиль. Не заменяйте `-DskipTests` на `-Dmaven.test.skip=true`: второе
 отключает компиляцию test bytecode и обедняет анализ scope.
 
-`make pmd-analysis` запускает принятую report-only PMD source policy по 22
-точным rules и 19 production `src/main/java` roots. Команда выбирает
+`make pmd-analysis` запускает принятую blocking/advisory PMD source policy по
+22 точным rules и 19 production `src/main/java` roots. Команда выбирает
 `build-support/pmd-report` и его upstream reactor через `-pl ... -am`, чтобы
 PMD aggregate mojo не конкурировал в parallel build с независимыми JaCoCo,
 SpotBugs и CPD aggregators. XML/HTML появляются в
-`build-support/pmd-report/target/pmd/`; findings advisory, но scope/ruleset/
-engine drift, analyzer errors и отсутствующий либо повреждённый report завершают
-команду ошибкой. Регулярный CI запускает эту же policy отдельным job; обычный
-`make verify` PMD source profile не активирует.
+`build-support/pmd-report/target/pmd/`. Правила вне non-zero snapshot имеют
+zero tolerance; для пяти разобранных advisory rules проверяются точные counts.
+Любой count drift, scope/ruleset/engine drift, analyzer error или отсутствующий
+report завершает команду ошибкой. Успешный policy run сохраняет отдельное
+`last-pmd.env` evidence, которое `make context` показывает как `pmd.fresh`.
+Регулярный CI запускает эту же policy отдельным job; обычный `make verify` PMD
+source profile не активирует.
 
 `make pmd-watchlist` тем же механизмом формирует отдельный отчёт в
 `build-support/pmd-report/target/pmd-watchlist/` только для
 `PreserveStackTrace`, `CloseResource` и `NcssCount`. Watchlist не входит в
 регулярный CI и не является suppressions/baseline: его запускают при изменении
 resource/exception ownership, lifecycle contracts, PMD/JDK или перед повторным
-решением об adoption этих правил.
+решением об adoption этих правил. Watchlist не обновляет PMD policy freshness.
 
 `make pre-push` последовательно выполняет те же leaf scripts, а значит те же
 Maven, shell-contract и offline-documentation gates, что обычный GitHub CI.

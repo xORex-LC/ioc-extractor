@@ -98,10 +98,12 @@ report и bounded Maven `dependency:analyze-only` evaluation. Их introduction
 После пилота conventions фиксируются до масштабирования.
 
 SpotBugs после полного triage и узкого baseline переходит в blocking
-no-new-findings check внутри Maven `verify`. PMD CPD остаётся repository-wide
-report-only control; его существенные findings проходят semantic triage в
-`R030-QUAL`. Tool thresholds не копируются из сторонних проектов и принимаются
-только после измерения текущего repository signal.
+no-new-findings check внутри Maven `verify`. PMD CPD сохраняет полный
+repository-wide diagnostic report и semantic triage в `R030-QUAL`, а его late
+gate блокирует отклонение от reviewed group-count snapshot. PMD source policy
+отдельно блокирует zero-baseline rules и per-rule advisory count drift. Tool
+thresholds не копируются из сторонних проектов и принимаются только после
+измерения текущего repository signal.
 
 Maven dependency analysis не получает `failOnWarning`, пока bytecode-only
 signal и framework/reflection exclusions не подтверждены evidence.

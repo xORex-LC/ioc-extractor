@@ -34,10 +34,11 @@ Run the root-only fail-fast gate with:
 The fixture harnesses never change the checkout. They create temporary
 synthetic reactors and currently verify:
 
-- `BuildQualityVerifier`: 7 happy paths and 48 negative scenarios covering
+- `BuildQualityVerifier`: 7 happy paths and 56 negative scenarios covering
   reactor/manifest drift, packaging and skip policy, report-module ordering,
-  SpotBugs/CPD/PMD scope, exact PMD rulesets/properties, suppressions, stale
-  output cleanup and late XML/HTML integrity;
+  SpotBugs/CPD/PMD scope, exact PMD rulesets/properties, suppressions, PMD
+  per-rule and CPD group-count ratchets, stale output cleanup and late XML/HTML
+  integrity;
 - `SpotBugsBaselineVerifier`: 4 happy paths and 24 negative scenarios covering
   accepted-entry schema, review-trigger quality, selector precision, analyzer
   health, exact raw identity comparison, filtered visibility, module coverage

@@ -14,9 +14,10 @@ language: "en"
 ## 1. Purpose and authority
 
 This temporary worknote records the evidence-based evaluation and P3 adoption
-of PMD rules beyond the already adopted CPD control. Findings remain advisory;
-the adopted control blocks tool-health and contract failures rather than PMD
-violations. This worknote does not replace the authoritative release documents:
+of PMD rules beyond the already adopted CPD control. The adopted policy now
+uses zero/advisory per-rule count enforcement; the separate watchlist remains
+advisory, while analyzer, scope, ruleset and report failures fail closed. This
+worknote does not replace the authoritative release documents:
 
 - contract: [R030-BUILD](goals/R030-BUILD-build-quality.md);
 - current state: [status matrix](status-matrix.md);
@@ -620,6 +621,7 @@ scope/report integrity with no analyzer errors.
 | 2026-08-12 | Adopt a reduced 22-rule PMD source policy in report-only mode | The reduced set retains bounded correctness/dead-code guards and calibrated debt signal without converting 86 reviewed noise/debt occurrences into a suppression baseline |
 | 2026-08-12 | Keep `PreserveStackTrace`, `CloseResource` and `NcssCount` in a separate executable watchlist | The rules retain possible future value, while current ownership assumptions or zero signal do not justify regular CI policy |
 | 2026-08-12 | Run the adopted policy as a separate regular CI job | Selected-reactor Maven `verify` preserves fail-closed scope/ruleset/report checks and avoids the aggregate-mojo contention observed in the full parallel reactor |
+| 2026-09-01 | Add a per-rule count ratchet without finding suppressions | Seventeen zero-result rules can block immediately; five reviewed advisory rules need exact counts, while a SpotBugs-style location baseline would add disproportionate churn |
 
 ## 13. Post-adoption requalification after lifecycle and managed import
 
@@ -665,3 +667,34 @@ The count increase from the P3 snapshot therefore reflects new lifecycle and
 managed-import orchestration, not relaxed policy. Findings stay visible and
 advisory; future changes are still evaluated against the same named rules, and
 the analyzer/scope/ruleset/report contract remains fail-closed.
+
+## 14. Post-P3 enforcement hardening
+
+On 2026-09-01 the requalified policy moved from report-only findings to a
+mixed zero/advisory count ratchet. The ruleset, source scope and complete report
+remain unchanged; enforcement reads the generated XML once and does not invoke
+`aggregate-pmd-check` or a second aggregate analysis.
+
+`pmd-advisory-counts.tsv` is the complete non-zero snapshot. It records the
+five counts from section 13 with a short rationale. All other adopted rules
+have an implicit expected count of zero. The late verifier requires exact
+per-rule equality, so a new zero-rule occurrence, advisory growth and advisory
+reduction all fail with a triage/update diagnostic. A reduction must lower the
+snapshot in the same change; this prevents unused budget. XML and HTML are not
+filtered, and source-local suppressions, class exclusions and accepted-finding
+identities remain forbidden.
+
+The model intentionally accepts one bounded limitation: a removed and a new
+occurrence of the same rule can preserve its count. Location/method identities
+were rejected for this control because ordinary source movement would create
+SpotBugs-like baseline maintenance without equivalent correctness value. The
+decision must be revisited if count replacement causes a demonstrated escaped
+defect.
+
+The existing synthetic-reactor harness now covers count growth, reduction,
+zero-baseline appearance, missing/malformed snapshots and watchlist isolation:
+`7` happy paths and `56` negative scenarios. The current real report passed as
+`blocking=0, advisory=21/21`. A successful `tools/ci/pmd.sh policy` run also
+records independent workspace evidence exposed by `make context` as
+`pmd.result`, `pmd.commit`, `pmd.finished_at` and `pmd.fresh`; watchlist runs do
+not refresh this policy evidence.

@@ -11,7 +11,7 @@ step (`make bootstrap` локально, `tools/dev/bootstrap.sh lychee` в CI).
 | Команда | Gate |
 |---|---|
 | `build.sh` | Полный Maven reactor `verify` + atomic evidence под `.dev/state/` |
-| `pmd.sh policy\|watchlist` | Принятая PMD production-source policy либо отдельный deferred watchlist |
+| `pmd.sh policy\|watchlist` | Ratcheted PMD production-source policy либо отдельный deferred watchlist |
 | `packaging.sh` | ShellCheck + packaging contract tests |
 | `docs.sh` | Offline link check через `lychee` |
 | `dependency-security.sh update|scan|report` | Явное обновление NVD data, offline scan или поиск готового отчёта |
@@ -39,3 +39,8 @@ fingerprint рабочего дерева, временем и результа�
 время проверки, результат получает состояние `invalidated`. Evidence является
 локальным developer context для `make context`, игнорируется Git и не заменяет
 CI check/run как release-доказательство.
+
+`pmd.sh policy` тем же атомарным протоколом сохраняет `last-pmd.env`.
+`make context` показывает его независимо от `last-verify.env`, поэтому полный
+локальный quality claim требует двух fresh passed results. `pmd.sh watchlist`
+намеренно не обновляет regular-policy evidence.

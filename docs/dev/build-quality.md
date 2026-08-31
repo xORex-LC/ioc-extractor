@@ -40,7 +40,7 @@ make verify
        +-- final build-support modules
             JaCoCo aggregate
             raw and filtered SpotBugs aggregates + exact baseline gate
-            repository-wide PMD CPD report + source/report integrity gate
+            repository-wide PMD CPD report + exact group-count ratchet
 
 CI build completion
   -> upload SpotBugs and CPD evidence even when the build failed late
@@ -48,7 +48,7 @@ CI build completion
 regular PMD source-policy job
   -> tools/ci/pmd.sh policy
   -> selected 22-project upstream reactor, tests/analyzers not owned here skipped
-  -> exact adopted ruleset + XML/HTML integrity
+  -> exact adopted ruleset + XML/HTML integrity + per-rule count ratchet
   -> upload PMD source evidence even when analysis failed late
 ```
 
@@ -61,7 +61,7 @@ make pmd-analysis
   -> ./mvnw -Ppmd-analysis -pl build-support/pmd-report -am verify
        compile the selected upstream reactor; skip tests, JaCoCo and SpotBugs
        run one aggregate-pmd-no-fork execution
-       verify exact scope, ruleset, engine and XML/HTML integrity
+       verify exact scope, ruleset, engine, XML/HTML and finding counts
 
 make pmd-watchlist
   -> tools/ci/pmd.sh watchlist
@@ -73,6 +73,12 @@ aggregator from racing the independent JaCoCo, SpotBugs and CPD aggregate mojos
 in the parallel full reactor. The regular policy job complements rather than
 replaces the separate `make verify` release gate. The watchlist is locally
 opt-in and is not a merge gate.
+
+`tools/ci/build.sh` and the regular PMD policy invocation record independent
+workspace fingerprints. `make context` exposes both `verify.fresh` and
+`pmd.fresh`; a complete local quality claim requires both results to be
+`passed` and fresh for the current commit and worktree. Running the watchlist
+does not refresh PMD policy evidence.
 
 Workflow presence and branch enforcement are different contracts. The
 repository owns the jobs and artifacts in `.github/workflows/ci.yml`; whether a
@@ -94,16 +100,17 @@ runs only after the applicable modules.
 | ArchUnit | Compiled production classes | Dependency or package-boundary violation blocks `verify` |
 | JaCoCo | Test execution data and production classes | Report generation is part of `verify`; coverage values are currently diagnostic |
 | SpotBugs | Applicable production bytecode | New, stale, moved or metadata-drifted findings block the exact ratchet; analyzer/report failures also block |
-| PMD CPD | Applicable checked-in production Java sources | Findings are diagnostic; analyzer, scope or report failure blocks |
-| PMD source policy | 22 named rules over applicable checked-in production Java sources | Regular separate CI job, report-only findings; analyzer/scope/ruleset/report failure blocks |
+| PMD CPD | Applicable checked-in production Java sources | Every duplicate stays visible; analyzer/scope/report failure or a change from the reviewed group-count snapshot blocks `verify` |
+| PMD source policy | 22 named rules over applicable checked-in production Java sources | Regular separate CI job; rules outside the advisory-count snapshot have zero tolerance, and any per-rule count drift blocks |
 | PMD source watchlist | Three deferred rules over the same sources | Explicit local review command; findings remain diagnostic and it is not a regular CI gate |
 | Maven dependency analysis | Main and test bytecode | Opt-in advisory report; not part of ordinary `verify` |
 | Dependency-Check | Resolved dependency graph and local vulnerability data | Separate security workflow, deliberately outside ordinary `verify` |
 
-The distinction between a finding policy and tool health is important. CPD
-duplicates do not fail the build, but a missing CPD report does. SpotBugs is
-stricter: both an unhealthy analysis and any raw finding not represented by the
-reviewed exact baseline fail the build.
+The distinction between a finding policy and tool health is important. An
+unhealthy analyzer always fails. CPD and PMD additionally use small count
+snapshots: they force semantic review when signal changes but do not suppress
+historical occurrences. SpotBugs is stricter still: every accepted raw finding
+has an exact reviewed identity rather than a count-only snapshot.
 
 The test lifecycle is intentionally transitional. A class named `*IT` is not
 yet evidence of a Failsafe-owned integration-test phase: the current reactor
@@ -117,7 +124,7 @@ semantics before the lifecycle split can be described as complete.
 |---|---|
 | Versions, inherited plugin executions and root `validate` wiring | Root [`pom.xml`](../../pom.xml) |
 | Stable developer commands | Root [`Makefile`](../../Makefile) |
-| CI Maven invocation and verification fingerprint | [`tools/ci/build.sh`](../../tools/ci/build.sh) |
+| CI Maven invocations and local freshness fingerprints | [`tools/ci/build.sh`](../../tools/ci/build.sh) and [`tools/ci/pmd.sh`](../../tools/ci/pmd.sh) |
 | CI jobs and report retention | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) |
 | Shared scope/report verifier and contract matrices | [`build-support/build-quality/`](../../build-support/build-quality/) |
 | SpotBugs scope, accepted baseline, aggregation and late gate | [`build-support/spotbugs-report/`](../../build-support/spotbugs-report/) |
@@ -306,13 +313,28 @@ Duplicate matches remain diagnostic. A match is a prompt for semantic review,
 not an automatic refactoring instruction: shared tokens do not prove shared
 knowledge, legal dependency direction or a useful abstraction. The threshold
 and language options belong to the CPD report POM and require repository
-calibration before change. A future no-new-duplication ratchet needs a separate
-baseline and enforcement decision.
+calibration before change.
+
+The report POM also owns `ioc.cpd.expectedDuplications`. The late verifier
+requires the number of XML `duplication` groups to equal this reviewed snapshot.
+Both an increase and a decrease stop the build: inspect the complete XML/HTML,
+fix an accidental duplicate or update the one value in the same reviewed
+change. Requiring an update after a decrease prevents unused budget from
+silently admitting later debt.
+
+This is deliberately a group-count ratchet, not an assertion that every token
+match is a defect and not an exact CPD baseline. A new group can replace a
+removed group without changing the count; exact token fingerprints would add
+considerable churn because CPD group boundaries move when surrounding code is
+edited. Introduce that stronger identity only after evidence that the simple
+ratchet repeatedly misses relevant changes. Source-local `CPD-OFF` markers,
+class/pair exclusions and generated accepted-copy registries are not part of
+the contract.
 
 ## PMD source-analysis policy and watchlist
 
-PMD source analysis is a permanent report-only control, separate from the CPD
-report even though both use Maven PMD Plugin. Its
+PMD source analysis is a permanent mixed blocking/advisory control, separate
+from the CPD report even though both use Maven PMD Plugin. Its
 [`pmd-scope.tsv`](../../build-support/pmd-report/pmd-scope.tsv) gives every
 reactor project one disposition, while the report POM owns a positive list of
 production `src/main/java` roots and ordering dependencies.
@@ -321,7 +343,8 @@ The checked-in [`pmd-ruleset.xml`](../../build-support/pmd-report/pmd-ruleset.xm
 is the adopted policy: all 22 rules are named individually. Its calibrated
 properties are `CognitiveComplexity.reportLevel=16` and
 `ExcessiveParameterList.minimum=13`. Category-wide references, ruleset
-exclusions, suppressions and an accepted-findings baseline are forbidden.
+exclusions, suppressions and an accepted-finding identity baseline are
+forbidden.
 Plugin and PMD engine dependencies are pinned independently so an engine
 upgrade cannot silently fall back to the plugin's bundled version.
 
@@ -338,7 +361,7 @@ find code on adoption day:
 
 | Disposition | Meaning | Current rules outside the adopted set |
 |---|---|---|
-| Adopted | Runs in every PMD policy job. A zero-result high-confidence rule remains active and will expose a future occurrence | The 22 exact references in `pmd-ruleset.xml` |
+| Adopted | Runs in every PMD policy job. A rule not listed in the advisory-count snapshot has expected count zero and blocks on its first occurrence | The 22 exact references in `pmd-ruleset.xml` |
 | Watchlist | Still executable with full scope/report integrity, but not regular CI policy | `PreserveStackTrace`, `CloseResource`, `NcssCount` |
 | Dropped | Not executed routinely because repository evidence showed style, framework/state-machine noise or unmeasured optimization advice | `UseTryWithResources`, `CyclomaticComplexity`, `AvoidDeeplyNestedIfStmts`, `AvoidInstantiatingObjectsInLoops`, `ConsecutiveAppendsShouldReuse`, `ConsecutiveLiteralAppends`, `AddEmptyString` |
 | Replaced | Removed deprecated PMD 7 names; the maintained successor is already adopted | `AvoidLosingExceptionInformation`, `UselessOperationOnImmutable` → `UselessPureMethodCall` |
@@ -360,6 +383,21 @@ only the selected stale PMD output first. The policy writes:
 The watchlist writes the same pair under `target/pmd-watchlist/`, so running it
 does not overwrite or validate the policy report accidentally.
 
+[`pmd-advisory-counts.tsv`](../../build-support/pmd-report/pmd-advisory-counts.tsv)
+is the complete non-zero PMD snapshot. Each row names one exact adopted rule,
+its expected finding count and the reason the current signal remains advisory.
+Every adopted rule absent from the file has an implicit expected count of zero.
+The verifier requires exact per-rule equality, so both growth and improvement
+require semantic review and an explicit snapshot update. The file is not a
+suppression: all occurrences remain in XML/HTML, and adding a rule outside the
+adopted ruleset is rejected.
+
+This is a count ratchet, not a finding-identity baseline. Removing one finding
+and introducing another finding of the same rule in the same run leaves the
+count unchanged. The complete XML/HTML remains the review evidence for that
+residual risk; a location- or fingerprint-based PMD baseline should be added
+only if repeated escaped changes justify its maintenance cost.
+
 The integrity verifier reconciles the root reactor, scope registry, report
 dependencies, configured source roots, UTF-8 contract, engine dependencies and
 exact ruleset. It then requires both reports, rejects PMD processing or
@@ -376,19 +414,20 @@ include/exclude patterns and production-source `NOPMD` or
 invisible by deleting the gate or adding an unreviewed local suppression.
 The late verifier also rejects a violation whose rule does not belong to the
 selected policy/watchlist, so the two report paths cannot be substituted for
-one another silently.
+one another silently. For policy reports it then reconciles every per-rule
+count; watchlist findings remain count-unconstrained.
 
-Findings do not fail `make pmd-analysis`; tool-health and contract failures do.
-The regular CI job calls the same repository-owned leaf command and retains the
-policy XML/HTML. Ordinary `make verify` does not activate the profile because
-the selected aggregator previously contended with independent aggregate mojos
-inside the parallel full reactor.
+New zero-tolerance findings or any advisory-count drift fail
+`make pmd-analysis`. The regular CI job calls the same repository-owned leaf
+command and retains the complete policy XML/HTML. Ordinary `make verify` does
+not activate the profile because the selected aggregator previously contended
+with independent aggregate mojos inside the parallel full reactor.
 
-Do not add `pmd:check`, `NOPMD`, annotations, excludes or a baseline to make a
-report green. Review each new occurrence semantically and either fix it, retain
-it as visible advisory evidence with an owned debt item, or revisit the rule's
-adoption disposition. Moving a rule to the watchlist requires evidence and a
-reviewed policy change; it is not a suppression mechanism.
+Do not add `pmd:check`, `NOPMD`, annotations, exclusions or a finding identity
+baseline to make a report green. Review each changed occurrence semantically:
+fix it when appropriate; otherwise update the relevant non-zero count and its
+rationale in the same reviewed change. Moving a rule to the watchlist requires
+evidence and a reviewed policy change; it is not a suppression mechanism.
 
 Run `make pmd-watchlist` when any of these assumptions change:
 
@@ -447,9 +486,11 @@ SpotBugs or CPD code-quality acceptance.
    PMD, the exact production source root to the owning report module.
 4. For a SpotBugs-excluded child project, configure inherited analysis with an
    explicit `skip=true`.
-5. Run full `make verify`; confirm the expected raw/filtered module reports and
-   aggregate membership.
-6. Update the module map and relevant co-located README when the module's role
+5. Run full `make verify` and `make pmd-analysis`; confirm the expected
+   raw/filtered module reports, aggregate membership and count-ratchet results.
+6. Use `make ci`/`make pre-push` for the complete regular local gate and require
+   both `verify.fresh=true` and `pmd.fresh=true` before claiming fresh evidence.
+7. Update the module map and relevant co-located README when the module's role
    or production/test/build-only classification changes.
 
 Never satisfy a new-module failure by weakening registry equality or report
@@ -478,7 +519,8 @@ has different identity, noise and failure semantics.
 - Reactor, plugin versions, phases and inheritance: root
   [`pom.xml`](../../pom.xml).
 - Scope and report topology: SpotBugs, CPD and PMD manifests plus their build-support
-  POMs and co-located READMEs.
+  POMs and co-located READMEs; CPD count policy lives in its POM and PMD non-zero
+  policy counts live in `pmd-advisory-counts.tsv`.
 - Exact SpotBugs identity and acceptance schema:
   [`SpotBugsBaselineVerifier.java`](../../build-support/build-quality/SpotBugsBaselineVerifier.java)
   and its black-box fixture matrix.
@@ -502,6 +544,7 @@ Update this document in the same change when any of these semantics change:
 - raw versus filtered enforcement ownership;
 - accepted-finding identity, review trigger or proposal safety contract;
 - analyzer/report failure policy or blocking versus diagnostic disposition;
+- PMD/CPD count-snapshot format or update procedure;
 - aggregate/report paths exposed to developers or CI;
 - coverage universe, threshold policy or dependency-analysis adoption.
 

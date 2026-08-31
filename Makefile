@@ -57,7 +57,7 @@ help: ## Show this command reference
 		/^[a-zA-Z0-9_.-]+:.*## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 ##@ Environment
-context: ## Print stable key=value project, Git, runtime and verify context
+context: ## Print stable project, Git, runtime, verify and PMD freshness context
 	@tools/dev/context.sh --workspace "$(WORKSPACE)"
 
 doctor: ## Check the complete local developer environment
@@ -106,7 +106,7 @@ test-one: ## Run one test selector; MODULE=... TEST=Class#method
 verify: ## Run the release-quality Maven reactor gate
 	@tools/ci/build.sh
 
-pmd-analysis: ## Run the adopted report-only PMD production-source policy
+pmd-analysis: ## Run the blocking/advisory PMD production-source policy
 	@tools/ci/pmd.sh policy
 
 pmd-watchlist: ## Run the deferred PMD ownership/size watchlist

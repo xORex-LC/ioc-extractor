@@ -65,10 +65,10 @@ analyzer items имеют статус `verified`.
 В 0.3.0 приняты три постоянных control с разной enforcement policy:
 
 - SpotBugs — постоянный reactor-wide bytecode check;
-- PMD CPD — постоянный repository-wide duplicate-code detector, в этом релизе
-  работающий как diagnostic control;
-- PMD source analysis — отдельный repository-wide report-only control по 22
-  поимённым rules, выполняемый регулярным отдельным CI job.
+- PMD CPD — постоянный repository-wide duplicate-code detector с полным
+  diagnostic report и blocking reviewed group-count ratchet;
+- PMD source analysis — отдельный repository-wide mixed blocking/advisory
+  control по 22 поимённым rules, выполняемый регулярным отдельным CI job.
 
 Analyzer controls сначала вводятся в report-only mode. Tool-introduction change
 не смешивается с массовым исправлением legacy findings. Для каждого control
@@ -78,8 +78,9 @@ Analyzer controls сначала вводятся в report-only mode. Tool-intr
 После semantic closure SpotBugs отдельным решением status matrix был открыт
 `BUILD-PMD-06`: bounded evaluation поимённых PMD source-analysis rules. P3
 завершил measurement и принял reduced 22-rule policy; три ownership/size rules
-оставлены в исполняемом opt-in watchlist, а findings обоих наборов остаются
-diagnostic.
+оставлены в исполняемом opt-in watchlist. Follow-up enforcement блокирует
+первое finding любого zero-baseline rule и любое изменение точного per-rule
+count для пяти разобранных advisory rules; watchlist остаётся diagnostic.
 
 ### SpotBugs operating contract
 
@@ -139,18 +140,20 @@ CPD MUST:
 - передавать существенные findings в
   [R030-QUAL](R030-QUAL-code-health.md) для semantic triage.
 
-В 0.3.0 CPD остаётся diagnostic/report-only control: сам факт token match не
-блокирует merge или release. Каждый существенный finding получает
+В 0.3.0 CPD сохраняет diagnostic semantics: сам факт token match не требует
+рефакторинга. При этом late gate требует точного совпадения количества XML
+duplication groups с reviewed snapshot; любое увеличение или уменьшение
+блокирует `verify` до semantic review и явного обновления snapshot. Каждый
+существенный finding получает
 `deduplicate`, `retain` или `defer` на основании shared knowledge, semantics,
 ownership и dependency direction. Нулевое дублирование, сырой процент или
 совпадение tokens сами по себе не являются release требованием и не разрешают
 shared abstraction.
 
-После подтверждения deterministic report и устойчивого baseline MAY быть
-принят отдельный no-new-duplication ratchet. Такой ratchet блокирует только
-новое необъяснённое дублирование и не делает исторический backlog обязательным
-для одного PR. Blocking CPD ratchet не является обязательным deliverable
-0.3.0.
+Принятый count ratchet намеренно не является exact finding baseline: замена
+одной группы другой при неизменном количестве остаётся известным ограничением.
+Token-fingerprint identity допускается только после evidence, что компактная
+модель систематически пропускает релевантные изменения.
 
 ### PMD source-analysis operating contract
 
@@ -169,8 +172,11 @@ Adopted control MUST:
   исключении root/build-only POMs, `ioc-application-tck`, tests и
   generated/vendor sources;
 - формировать machine-readable XML и human-readable HTML;
-- падать при analyzer/ruleset/report failure или неполном scope, но не падать
-  от findings;
+- падать при analyzer/ruleset/report failure или неполном scope;
+- считать adopted rule, отсутствующий в non-zero advisory snapshot,
+  zero-tolerance и блокировать первое finding;
+- требовать точного per-rule count для каждого правила в advisory snapshot,
+  включая явное снижение snapshot после улучшения;
 - запрещать source-local `NOPMD`/PMD suppressions и не создавать accepted-
   findings baseline без отдельного решения;
 - запускать adopted policy регулярным CI job и сохранять reports как evidence;
@@ -293,7 +299,8 @@ Scheduled stability/PIT jobs не блокируют каждый PR в 0.3.0, �
 7. Принять узкие baseline exclusions с rationale.
 8. Для SpotBugs добавить no-new-findings ratchet без снижения качества.
 9. Сделать стабильный SpotBugs check частью `verify` и required CI build.
-10. Для CPD выполнить semantic triage и оставить report-only enforcement.
+10. Для CPD выполнить semantic triage, сохранить полный report и закрепить
+    reviewed group-count ratchet без token-location baseline.
 11. Защитить required statuses branch protection.
 12. Сохранить reports и timing evidence.
 
@@ -336,13 +343,13 @@ Scheduled stability/PIT jobs не блокируют каждый PR в 0.3.0, �
   автоматически заполнить acceptance metadata или изменить tracked baseline;
 - CPD формирует repository-wide production-source report, а существенные
   findings имеют semantic disposition в `R030-QUAL`;
-- CPD остаётся report-only либо отдельное решение о ratchet содержит
-  deterministic baseline и точную enforcement policy;
+- CPD count ratchet содержит deterministic group-count snapshot, полные
+  несокращённые reports и точную процедуру semantic review/update;
 - Maven dependency analysis имеет report и adoption disposition без
   необоснованного `failOnWarning`;
 - PMD source-analysis control имеет поимённый adopted ruleset, отдельный
   watchlist, воспроизводимые reports, signal/noise/cost evidence и явное
-  report-only adoption disposition;
+  zero/advisory per-rule count enforcement;
 - plugin versions pinned;
 - new violations блокируются только для checks, чьё adoption decision явно
   включает blocking/ratchet policy;

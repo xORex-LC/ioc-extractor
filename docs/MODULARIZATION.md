@@ -148,8 +148,8 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `build-quality` (build-support tooling) | Общий JDK-only fail-fast scope/report verifier и synthetic-reactor contract matrix; не является Maven reactor project |
 | `coverage-report` (build-support) | Непубликуемый Maven report-модуль: полный JaCoCo HTML/XML aggregate |
 | `spotbugs-report` (build-support) | Непубликуемый Maven report-модуль: полный SpotBugs XML/HTML aggregate и report-integrity gate для production bytecode reactor |
-| `cpd-report` (build-support) | Непубликуемый Maven report-модуль: repository-wide PMD CPD XML/HTML и report-integrity gate для production Java sources |
-| `pmd-report` (build-support) | Непубликуемый Maven report-модуль: regular report-only PMD source policy, локально opt-in watchlist и fail-closed scope/ruleset/report integrity для production Java sources |
+| `cpd-report` (build-support) | Непубликуемый Maven report-модуль: repository-wide PMD CPD XML/HTML, report-integrity и reviewed group-count ratchet для production Java sources |
+| `pmd-report` (build-support) | Непубликуемый Maven report-модуль: regular zero/advisory count-ratcheted PMD source policy, локально opt-in watchlist и fail-closed scope/ruleset/report integrity для production Java sources |
 
 ## Гранулярность
 

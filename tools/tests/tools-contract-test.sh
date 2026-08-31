@@ -87,6 +87,12 @@ printf '%s\n' \
   "fingerprint=${CURRENT_FINGERPRINT}" \
   'finished_at=2026-01-01T00:00:00Z' \
   > "${CONTEXT_STATE}/last-verify.env"
+printf '%s\n' \
+  'result=passed' \
+  "commit=$(git -C "${REPO_ROOT}" rev-parse --verify HEAD)" \
+  "fingerprint=${CURRENT_FINGERPRINT}" \
+  'finished_at=2026-01-01T00:01:00Z' \
+  > "${CONTEXT_STATE}/last-pmd.env"
 CONTEXT_OUTPUT="$(NO_COLOR=1 DEV_STATE_ROOT="${CONTEXT_STATE}" \
   "${REPO_ROOT}/tools/dev/context.sh" --workspace "${LOG_WORKSPACE}")"
 grep -Eq '^project\.version=[^[:space:]]+$' <<< "${CONTEXT_OUTPUT}" \
@@ -97,6 +103,10 @@ grep -Fqx 'verify.result=passed' <<< "${CONTEXT_OUTPUT}" \
   || fail "developer context did not read verify evidence"
 grep -Fqx 'verify.fresh=true' <<< "${CONTEXT_OUTPUT}" \
   || fail "developer context did not recognize current verify evidence"
+grep -Fqx 'pmd.result=passed' <<< "${CONTEXT_OUTPUT}" \
+  || fail "developer context did not read PMD policy evidence"
+grep -Fqx 'pmd.fresh=true' <<< "${CONTEXT_OUTPUT}" \
+  || fail "developer context did not recognize current PMD policy evidence"
 [[ "${CONTEXT_OUTPUT}" != *$'\033'* ]] \
   || fail "developer context contains ANSI escapes"
 

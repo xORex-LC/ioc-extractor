@@ -55,6 +55,7 @@ public final class BuildQualityVerifier {
     private static final String PMD_POLICY_RULESET = "${project.basedir}/pmd-ruleset.xml";
     private static final String PMD_WATCHLIST_RULESET =
             "${project.basedir}/pmd-watchlist-ruleset.xml";
+    private static final String PMD_ADVISORY_COUNTS_FILE = "pmd-advisory-counts.tsv";
     private static final String CPD_NAMESPACE = "https://pmd-code.org/schema/cpd-report";
     private static final String PMD_REPORT_NAMESPACE =
             "http://pmd.sourceforge.net/report/2.0.0";
@@ -142,7 +143,7 @@ public final class BuildQualityVerifier {
                 PmdReportKind pmdReportKind = requiresPmdReportKind
                         ? PmdReportKind.parse(args[5])
                         : null;
-                verifyReports(control, registry, pmdReportKind);
+                verifyReports(control, registry, pmdReportKind, standardOutput);
             }
             standardOutput.printf(
                     Locale.ROOT,
@@ -432,6 +433,8 @@ public final class BuildQualityVerifier {
                 "watchlist",
                 PMD_WATCHLIST_RULES,
                 Map.of());
+
+        readPmdAdvisoryCounts(reportPom.getParent().resolve(PMD_ADVISORY_COUNTS_FILE));
     }
 
     private static void validatePmdRuleset(
@@ -676,18 +679,21 @@ public final class BuildQualityVerifier {
     private static void verifyReports(
             Control control,
             Registry registry,
-            PmdReportKind pmdReportKind)
+            PmdReportKind pmdReportKind,
+            java.io.PrintStream standardOutput)
             throws Exception {
         if (control == Control.SPOTBUGS) {
             verifySpotBugsReports(registry);
         } else if (control == Control.CPD) {
-            verifyCpdReports(registry);
+            verifyCpdReports(registry, standardOutput);
         } else {
-            verifyPmdReports(registry, pmdReportKind);
+            verifyPmdReports(registry, pmdReportKind, standardOutput);
         }
     }
 
-    private static void verifyCpdReports(Registry registry)
+    private static void verifyCpdReports(
+            Registry registry,
+            java.io.PrintStream standardOutput)
             throws Exception {
         Path reportDirectory = registry.reportModuleDirectory().resolve("target/cpd");
         Path xml = reportDirectory.resolve("cpd.xml");
@@ -703,9 +709,28 @@ public final class BuildQualityVerifier {
                 report.sourceFiles());
         verifyHtml(html);
 
+        int expectedDuplications = readCpdConfiguration(
+                registry.reportModuleDirectory().resolve("pom.xml"))
+                .expectedDuplications();
+        if (report.duplicationCount() != expectedDuplications) {
+            throw new VerificationException(
+                    "CPD duplication-group count differs; expected=" + expectedDuplications
+                            + ", actual=" + report.duplicationCount()
+                            + ". Review cpd.xml semantically and update "
+                            + "ioc.cpd.expectedDuplications in the report POM only in the "
+                            + "same reviewed change");
+        }
+        standardOutput.printf(
+                Locale.ROOT,
+                "[cpd-ratchet] duplication-groups=%d/%d%n",
+                report.duplicationCount(),
+                expectedDuplications);
     }
 
-    private static void verifyPmdReports(Registry registry, PmdReportKind reportKind)
+    private static void verifyPmdReports(
+            Registry registry,
+            PmdReportKind reportKind,
+            java.io.PrintStream standardOutput)
             throws Exception {
         if (reportKind == null) {
             throw new VerificationException("PMD report kind is required");
@@ -717,11 +742,24 @@ public final class BuildQualityVerifier {
         requireNonEmptyReport(html, "PMD HTML");
 
         Set<Path> expectedSources = collectExpectedSources(registry.analyzedSourceRoots());
-        readPmdReport(registry.root(), xml, expectedSources, reportKind.ruleNames());
+        PmdReport report = readPmdReport(
+                registry.root(),
+                xml,
+                expectedSources,
+                reportKind.ruleNames());
         verifyPmdHtml(html);
+
+        if (reportKind == PmdReportKind.POLICY) {
+            verifyPmdPolicyCounts(registry, report, standardOutput);
+        } else {
+            standardOutput.printf(
+                    Locale.ROOT,
+                    "[pmd-watchlist] findings=%d advisory%n",
+                    report.totalFindings());
+        }
     }
 
-    private static void readPmdReport(
+    private static PmdReport readPmdReport(
             Path root,
             Path xml,
             Set<Path> expectedSources,
@@ -749,6 +787,7 @@ public final class BuildQualityVerifier {
                             + ", configuration=" + configurationErrors);
         }
 
+        LinkedHashMap<String, Integer> findingsByRule = new LinkedHashMap<>();
         NodeList violations = report.getElementsByTagNameNS(PMD_REPORT_NAMESPACE, "violation");
         for (int index = 0; index < violations.getLength(); index++) {
             Element violation = (Element) violations.item(index);
@@ -757,6 +796,7 @@ public final class BuildQualityVerifier {
                 throw new VerificationException(
                         "PMD XML contains a rule outside the selected policy: " + rule);
             }
+            findingsByRule.merge(rule, 1, Integer::sum);
         }
 
         NodeList files = report.getElementsByTagNameNS(PMD_REPORT_NAMESPACE, "file");
@@ -777,6 +817,50 @@ public final class BuildQualityVerifier {
                         "PMD XML references a source outside the analyzed inventory: " + source);
             }
         }
+        return new PmdReport(Map.copyOf(findingsByRule), violations.getLength());
+    }
+
+    private static void verifyPmdPolicyCounts(
+            Registry registry,
+            PmdReport report,
+            java.io.PrintStream standardOutput)
+            throws Exception {
+        Map<String, PmdAdvisoryCount> advisoryCounts = readPmdAdvisoryCounts(
+                registry.reportModuleDirectory().resolve(PMD_ADVISORY_COUNTS_FILE));
+        List<String> differences = new ArrayList<>();
+        int advisoryActual = 0;
+        int advisoryExpected = 0;
+        int blockingActual = 0;
+
+        for (String reference : new TreeSet<>(PMD_POLICY_RULES)) {
+            String ruleName = pmdRuleName(reference);
+            PmdAdvisoryCount advisory = advisoryCounts.get(reference);
+            int expected = advisory == null ? 0 : advisory.expectedFindings();
+            int actual = report.findingsByRule().getOrDefault(ruleName, 0);
+            if (actual != expected) {
+                differences.add(ruleName + " expected=" + expected + " actual=" + actual);
+            }
+            if (advisory == null) {
+                blockingActual += actual;
+            } else {
+                advisoryActual += actual;
+                advisoryExpected += expected;
+            }
+        }
+
+        if (!differences.isEmpty()) {
+            throw new VerificationException(
+                    "PMD policy finding counts differ: " + String.join(", ", differences)
+                            + ". Review pmd.xml semantically and update "
+                            + PMD_ADVISORY_COUNTS_FILE
+                            + " only in the same reviewed change; do not add a suppression");
+        }
+        standardOutput.printf(
+                Locale.ROOT,
+                "[pmd-ratchet] blocking=%d advisory=%d/%d%n",
+                blockingActual,
+                advisoryActual,
+                advisoryExpected);
     }
 
     private static void verifyPmdHtml(Path html)
@@ -1011,6 +1095,73 @@ public final class BuildQualityVerifier {
             throw new VerificationException("scope manifest contains no entries");
         }
         return entries;
+    }
+
+    private static Map<String, PmdAdvisoryCount> readPmdAdvisoryCounts(Path countsFile)
+            throws IOException, VerificationException {
+        requireFile(countsFile, "PMD advisory-count snapshot");
+        LinkedHashMap<String, PmdAdvisoryCount> counts = new LinkedHashMap<>();
+        List<String> lines = Files.readAllLines(countsFile, StandardCharsets.UTF_8);
+
+        for (int index = 0; index < lines.size(); index++) {
+            String line = lines.get(index);
+            int lineNumber = index + 1;
+            if (line.isBlank() || line.startsWith("#")) {
+                continue;
+            }
+
+            String[] fields = line.split("\t", -1);
+            if (fields.length != 3) {
+                throw new VerificationException(
+                        "PMD advisory-count line " + lineNumber
+                                + " must contain three tab-separated fields");
+            }
+            String reference = fields[0].trim();
+            if (!reference.equals(fields[0]) || !PMD_POLICY_RULES.contains(reference)) {
+                throw new VerificationException(
+                        "PMD advisory-count line " + lineNumber
+                                + " references a rule outside the adopted policy: " + fields[0]);
+            }
+            int expectedFindings = parseNonNegativeInt(
+                    "PMD advisory expected findings at line " + lineNumber,
+                    fields[1]);
+            if (expectedFindings == 0) {
+                throw new VerificationException(
+                        "PMD advisory-count line " + lineNumber
+                                + " must be omitted when expected findings are zero");
+            }
+            String rationale = fields[2].trim();
+            if (rationale.isEmpty()) {
+                throw new VerificationException(
+                        "PMD advisory-count line " + lineNumber + " has no rationale");
+            }
+            if (counts.putIfAbsent(
+                    reference,
+                    new PmdAdvisoryCount(expectedFindings, rationale)) != null) {
+                throw new VerificationException(
+                        "duplicate PMD advisory-count rule at line " + lineNumber
+                                + ": " + reference);
+            }
+        }
+        return Map.copyOf(counts);
+    }
+
+    private static int parseNonNegativeInt(String subject, String raw)
+            throws VerificationException {
+        String value = raw.trim();
+        if (!value.equals(raw) || !value.matches("0|[1-9][0-9]*")) {
+            throw new VerificationException(
+                    subject + " must be a non-negative decimal integer, found " + raw);
+        }
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            throw new VerificationException(subject + " is outside the supported integer range");
+        }
+    }
+
+    private static String pmdRuleName(String reference) {
+        return reference.substring(reference.lastIndexOf('/') + 1);
     }
 
     private static LinkedHashSet<String> readReactorPaths(Path rootPom)
@@ -1312,6 +1463,16 @@ public final class BuildQualityVerifier {
             throws Exception {
         Document document = parseXml(reportPom);
         Element project = document.getDocumentElement();
+        Element properties = directChild(project, "properties");
+        if (properties == null) {
+            throw new VerificationException("CPD report POM has no policy properties");
+        }
+        int expectedDuplications = parseNonNegativeInt(
+                "CPD expected duplication groups",
+                requiredDirectText(
+                        properties,
+                        "ioc.cpd.expectedDuplications",
+                        reportPom));
         Element build = directChild(project, "build");
         Element plugins = build == null ? null : directChild(build, "plugins");
         if (plugins == null) {
@@ -1388,7 +1549,8 @@ public final class BuildQualityVerifier {
                 requiredDirectText(configuration, "targetDirectory", reportPom),
                 requiredDirectText(configuration, "outputDirectory", reportPom),
                 Set.copyOf(sourceRoots),
-                Set.copyOf(excludes));
+                Set.copyOf(excludes),
+                expectedDuplications);
     }
 
     private static PmdConfiguration readPmdConfiguration(Path reportPom)
@@ -1923,7 +2085,8 @@ public final class BuildQualityVerifier {
             String targetDirectory,
             String outputDirectory,
             Set<String> sourceRoots,
-            Set<String> excludes) {
+            Set<String> excludes,
+            int expectedDuplications) {
     }
 
     private record PmdConfiguration(
@@ -1977,6 +2140,16 @@ public final class BuildQualityVerifier {
     private record CpdReport(
             Set<Path> sourceFiles,
             int duplicationCount) {
+    }
+
+    private record PmdReport(
+            Map<String, Integer> findingsByRule,
+            int totalFindings) {
+    }
+
+    private record PmdAdvisoryCount(
+            int expectedFindings,
+            String rationale) {
     }
 
     private static final class VerificationException extends Exception {

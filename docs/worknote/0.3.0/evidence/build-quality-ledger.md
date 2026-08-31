@@ -25,8 +25,8 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 | Control | Scope 0.3.0 | Начальный режим | Возможный результат |
 |---|---|---|---|
 | SpotBugs | Все применимые production Java modules | Report only | Blocking no-new-findings check в `verify` |
-| PMD CPD | Repository-wide production-source duplication | Report only | Diagnostic control + semantic dispositions |
-| PMD source analysis | 22 поимённых rules в 19 production source roots + отдельный 3-rule watchlist | Report-only policy | Adopted regular CI control; findings advisory |
+| PMD CPD | Repository-wide production-source duplication | Report only | Full diagnostic report + reviewed exact group-count ratchet |
+| PMD source analysis | 22 поимённых rules в 19 production source roots + отдельный 3-rule watchlist | Report-only policy | Regular CI mixed gate: zero-tolerance rules + exact advisory counts |
 | Maven `dependency:analyze-only` | Dependency hygiene evaluation | Report only | `Adopt / Adopt with exclusions / Defer` |
 | PIT | Только `core/ioc-domain`; ведётся в R030-TEST | Diagnostic pilot | `Adopt / Extend / Defer / Reject` |
 
@@ -35,8 +35,8 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 | Control | Version/config | Local command | CI/report artifact | Runtime | Signal/noise | Owner | Stage |
 |---|---|---|---|---:|---|---|---|
 | SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only; exact raw-baseline gate | `make verify` | Per applicable module: raw XML + filtered XML/HTML; raw and filtered aggregates under `build-support/spotbugs-report/target/`; CI artifact `spotbugs-reports-<run>` | `120 s` adoption full-reactor wall; `+12 s` / `+11.1%` against the same-session pre-ratchet `108 s` run | Current requalification: 116 reviewed findings (85 false positives + 31 policy noise), 112 generated narrow selectors, 0 visible | `R030-BUILD` | `blocking` |
-| PMD CPD aggregate | Maven Plugin `3.28.0`, bundled PMD `7.17.0`; Java production sources, `minimumTokens=75`, identifiers/literals/annotations significant | `make clean && make verify` | `build-support/cpd-report/target/cpd/`; CI artifact `cpd-report-<run>` | `95.52 s` adoption clean-reactor wall; CPD module `2.703 s` | Adoption: 11 raw / 10 semantic; current 851-file report: 21 groups after five bounded groups were removed | `R030-BUILD` + `R030-QUAL` | `report-only` |
-| PMD source-analysis policy | Maven Plugin `3.28.0`; explicit PMD `7.26.0`; 22 adopted exact rules + 3-rule watchlist over 19 production roots | `make pmd-analysis`; `make pmd-watchlist` | Separate regular CI policy job uploads `build-support/pmd-report/target/pmd/`; watchlist stays local under `target/pmd-watchlist/` | P3 warm policy `12.26 s` process / `11.127 s` Maven; watchlist `8.97 s` / `7.928 s`; earlier P1 clean cost retained below | Current policy: 21 advisory findings / 16 files; watchlist: 29 / 19 files; no suppressions/baseline | `R030-BUILD` | `report-only adopted` (`P3` complete) |
+| PMD CPD aggregate | Maven Plugin `3.28.0`, bundled PMD `7.17.0`; Java production sources, `minimumTokens=75`, identifiers/literals/annotations significant | `make clean && make verify` | `build-support/cpd-report/target/cpd/`; CI artifact `cpd-report-<run>` | `95.52 s` adoption clean-reactor wall; CPD module `2.703 s` | Adoption: 11 raw / 10 semantic; current 851-file report: 21 visible groups with exact count ratchet | `R030-BUILD` + `R030-QUAL` | `blocking count ratchet` |
+| PMD source-analysis policy | Maven Plugin `3.28.0`; explicit PMD `7.26.0`; 22 adopted exact rules + 3-rule watchlist over 19 production roots | `make pmd-analysis`; `make pmd-watchlist` | Separate regular CI policy job uploads `build-support/pmd-report/target/pmd/`; watchlist stays local under `target/pmd-watchlist/` | P3 warm policy `12.26 s` process / `11.127 s` Maven; watchlist `8.97 s` / `7.928 s`; earlier P1 clean cost retained below | Current policy: 21 visible findings / 16 files; five exact advisory counts, 17 zero-tolerance rules; watchlist 29 / 19 files; no suppressions/identity baseline | `R030-BUILD` | `blocking/advisory ratchet` (`P3` complete) |
 | Maven dependency analysis | Maven Dependency Plugin `3.11.0`; fast direct goal + opt-in full `dependency-analysis` profile; default bytecode analyzer | `make dependency-analysis` | Local console/report ledger; deliberately absent from regular CI | Fast sequential package + analysis observed at `5.313–7.677 s` Maven / `6.75–8.72 s` process; full profile timing below | 14 direct POM mismatches corrected; residual `56 / 34 / 12` candidate occurrences are test-aggregate, starter, SPI and transitive-runtime noise | `R030-BUILD` | `report-only`, blocking adoption deferred |
 
 Допустимые rollout stages: `planned`, `report-only`, `triaged`, `baselined`,
@@ -47,11 +47,11 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 | Work item | Outcome | Mode | Entry dependency | State |
 |---|---|---|---|---|
 | `BUILD-SPOTBUGS-01` | Reproducible reactor-wide production-bytecode report, scope/cost inventory and raw findings | Report only; no mass remediation or merge gate | `R030-BASE` verified | `verified` |
-| `BUILD-CPD-02` | Repository-wide production-source report and evidence-based `minimumTokens` calibration | Diagnostic/report only | `BUILD-SPOTBUGS-01` closed, unless matrix explicitly reorders independent tooling | `verified` |
+| `BUILD-CPD-02` | Repository-wide production-source report and evidence-based `minimumTokens` calibration | Full diagnostic report + exact group-count ratchet | `BUILD-SPOTBUGS-01` closed, unless matrix explicitly reorders independent tooling | `verified` |
 | `BUILD-DEPS-03` | Semantic disposition of the captured dependency candidates and `Adopt / Adopt with exclusions / Defer` decision | Evaluation only | `BUILD-CPD-02` closed | `verified` |
 | `BUILD-SPOTBUGS-04` | Finding triage, immediate-risk fixes, narrow reviewed baseline and deterministic rerun | Triage/baseline | `BUILD-SPOTBUGS-01` report | `verified` (`C0..C5` completed) |
 | `BUILD-SPOTBUGS-05` | Accepted no-new-findings signal wired into canonical Maven `verify` | Blocking ratchet | `BUILD-SPOTBUGS-04` closed | `verified` |
-| `BUILD-PMD-06` | Reduced named PMD source-analysis policy with explicit watchlist and adoption disposition | Report-only findings; regular separate CI tool-health/contract gate | `BUILD-SPOTBUGS-04` closed and explicit status-matrix activation | `verified` (`P0/P1/P2/P3` completed) |
+| `BUILD-PMD-06` | Reduced named PMD source-analysis policy with explicit watchlist and adoption disposition | Regular separate CI count ratchet; watchlist remains diagnostic | `BUILD-SPOTBUGS-04` closed and explicit status-matrix activation | `verified` (`P0/P1/P2/P3` completed; ratcheted 2026-09-01) |
 
 The queue is sequential for operator/agent clarity, not a technical claim that
 the controls depend on each other. A confirmed immediate correctness, resource
@@ -812,9 +812,9 @@ Spring wiring concrete datasource. Hikari разрешён в adapters/bootstrap
   publication admission, or repeated real dependency regressions demonstrate
   that a maintained exclusion registry has better signal than review.
 
-SpotBugs имеет отдельное решение `Adopt` в 0.3.0. CPD остаётся diagnostic
-control с условиями возможного будущего no-new-duplication ratchet; dependency
-analysis по итогам текущего evidence не получает такой ratchet.
+SpotBugs имеет отдельное решение `Adopt` в 0.3.0. CPD сохраняет diagnostic
+interpretation findings, но post-adoption follow-up добавил exact group-count
+ratchet; dependency analysis по итогам текущего evidence ratchet не получает.
 
 ## PMD source-analysis evaluation and adoption
 
@@ -979,6 +979,31 @@ watchlist: `8.97 s` process / `7.928 s` Maven wall, `625,200 KiB` peak RSS.
 Оба прогона использовали PMD `7.26.0`, сформировали XML/HTML и завершились без
 analyzer errors.
 
+### Post-P3 count-ratchet hardening — 2026-09-01
+
+После повторного review enforcement усилен без finding suppressions и без
+копирования SpotBugs identity baseline:
+
+- `pmd-advisory-counts.tsv` хранит только пять non-zero rules и их точные
+  counts: `UnusedAssignment=2`, `DoNotThrowExceptionInFinally=1`,
+  `CognitiveComplexity=7`, `NPathComplexity=3`,
+  `ExcessiveParameterList=8`;
+- остальные 17 adopted rules имеют implicit expected count `0`; первое
+  finding блокирует отдельный `pmd-source-policy` job;
+- любое увеличение или уменьшение одного из пяти counts блокирует policy до
+  semantic review и same-change snapshot update; полный XML/HTML не фильтруется;
+- CPD report POM фиксирует `ioc.cpd.expectedDuplications=21`; late `verify`
+  требует точного group count и тем же образом блокирует рост и снижение;
+- count-only модель намеренно допускает известный residual risk: удалённая и
+  новая запись одного PMD rule либо CPD group могут взаимно компенсироваться.
+  Exact token/location identities отложены до evidence, что этот риск
+  материализуется и перевешивает maintenance churn;
+- `tools/ci/pmd.sh policy` сохраняет независимое `last-pmd.env`; `make context`
+  показывает `pmd.fresh`, а watchlist это evidence не обновляет;
+- реальный existing XML прошёл новый verifier как `PMD blocking=0,
+  advisory=21/21` и `CPD duplication-groups=21/21`; synthetic harness расширен
+  до `7 happy / 56 negative` сценариев.
+
 Полный rules inventory, rationale и checkpoint evidence:
 [BUILD-PMD-06 worknote](../build-pmd-06-worknote.md).
 
@@ -995,9 +1020,9 @@ analyzer errors.
 
 Их отсутствие не является missing evidence текущего `R030-BUILD`.
 
-PMD source analysis принят отдельным `BUILD-PMD-06` report-only control. Это не
-разрешает default/category-wide rules или автоматическое расширение policy:
-новое правило проходит отдельный evidence-based review.
+PMD source analysis принят отдельным `BUILD-PMD-06` mixed count-ratchet
+control. Это не разрешает default/category-wide rules или автоматическое
+расширение policy: новое правило проходит отдельный evidence-based review.
 
 ## Code-quality slice completion
 
@@ -1019,7 +1044,8 @@ PMD source analysis принят отдельным `BUILD-PMD-06` report-only c
 - [x] Maven dependency-analysis report воспроизводим
 - [x] Dynamic/framework false positives проверены
 - [x] Maven dependency-analysis adoption decision принят
-- [x] Adopted ratchets и suppressions документированы (`Defer`: ratchet/suppressions отсутствуют)
+- [x] Adopted SpotBugs identity, PMD per-rule count и CPD group-count ratchets
+  документированы; dependency-analysis enforcement остаётся `Defer`
 - [x] Status matrix обновлена
 
 ## R030-BUILD goal closure dependencies

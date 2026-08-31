@@ -14,7 +14,8 @@ usage() {
 Usage: tools/dev/context.sh [--workspace PATH]
 
 Print stable, color-free key=value context for a cold developer/agent start.
-Missing runtime or verify evidence is reported as state, not as an error.
+Missing runtime, verify or PMD policy evidence is reported as state, not as an
+error.
 EOF
 }
 
@@ -78,21 +79,39 @@ VERIFY_RESULT="unknown"
 VERIFY_COMMIT="unknown"
 VERIFY_FINISHED_AT="unknown"
 VERIFY_FRESH="false"
+PMD_EVIDENCE="${DEV_STATE_ROOT}/last-pmd.env"
+PMD_RESULT="unknown"
+PMD_COMMIT="unknown"
+PMD_FINISHED_AT="unknown"
+PMD_FRESH="false"
 
-evidence_value() { # key
-  sed -n "s/^$1=//p" "${VERIFY_EVIDENCE}" | tail -n 1
+evidence_value() { # file key
+  sed -n "s/^$2=//p" "$1" | tail -n 1
 }
 
 if [[ -f "${VERIFY_EVIDENCE}" && ! -L "${VERIFY_EVIDENCE}" ]]; then
-  VERIFY_RESULT="$(evidence_value result)"
-  VERIFY_COMMIT="$(evidence_value commit)"
-  VERIFY_FINISHED_AT="$(evidence_value finished_at)"
-  VERIFY_FINGERPRINT="$(evidence_value fingerprint)"
+  VERIFY_RESULT="$(evidence_value "${VERIFY_EVIDENCE}" result)"
+  VERIFY_COMMIT="$(evidence_value "${VERIFY_EVIDENCE}" commit)"
+  VERIFY_FINISHED_AT="$(evidence_value "${VERIFY_EVIDENCE}" finished_at)"
+  VERIFY_FINGERPRINT="$(evidence_value "${VERIFY_EVIDENCE}" fingerprint)"
   [[ -n "${VERIFY_RESULT}" ]] || VERIFY_RESULT="unknown"
   [[ -n "${VERIFY_COMMIT}" ]] || VERIFY_COMMIT="unknown"
   [[ -n "${VERIFY_FINISHED_AT}" ]] || VERIFY_FINISHED_AT="unknown"
   if [[ -n "${VERIFY_FINGERPRINT}" && "${VERIFY_FINGERPRINT}" == "${CURRENT_FINGERPRINT}" ]]; then
     VERIFY_FRESH="true"
+  fi
+fi
+
+if [[ -f "${PMD_EVIDENCE}" && ! -L "${PMD_EVIDENCE}" ]]; then
+  PMD_RESULT="$(evidence_value "${PMD_EVIDENCE}" result)"
+  PMD_COMMIT="$(evidence_value "${PMD_EVIDENCE}" commit)"
+  PMD_FINISHED_AT="$(evidence_value "${PMD_EVIDENCE}" finished_at)"
+  PMD_FINGERPRINT="$(evidence_value "${PMD_EVIDENCE}" fingerprint)"
+  [[ -n "${PMD_RESULT}" ]] || PMD_RESULT="unknown"
+  [[ -n "${PMD_COMMIT}" ]] || PMD_COMMIT="unknown"
+  [[ -n "${PMD_FINISHED_AT}" ]] || PMD_FINISHED_AT="unknown"
+  if [[ -n "${PMD_FINGERPRINT}" && "${PMD_FINGERPRINT}" == "${CURRENT_FINGERPRINT}" ]]; then
+    PMD_FRESH="true"
   fi
 fi
 
@@ -111,4 +130,8 @@ printf '%s\n' \
   "verify.result=${VERIFY_RESULT}" \
   "verify.commit=${VERIFY_COMMIT}" \
   "verify.finished_at=${VERIFY_FINISHED_AT}" \
-  "verify.fresh=${VERIFY_FRESH}"
+  "verify.fresh=${VERIFY_FRESH}" \
+  "pmd.result=${PMD_RESULT}" \
+  "pmd.commit=${PMD_COMMIT}" \
+  "pmd.finished_at=${PMD_FINISHED_AT}" \
+  "pmd.fresh=${PMD_FRESH}"

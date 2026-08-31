@@ -192,6 +192,32 @@ public final class BuildQualityVerifierTest {
                         },
                         "unexpected CPD XML root"),
                 new Scenario(
+                        "CPD expected duplication count is invalid",
+                        Control.CPD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceReport(
+                                "<ioc.cpd.expectedDuplications>1</ioc.cpd.expectedDuplications>",
+                                "<ioc.cpd.expectedDuplications>-1</ioc.cpd.expectedDuplications>"),
+                        "CPD expected duplication groups must be a non-negative decimal integer"),
+                new Scenario(
+                        "CPD duplication count grows",
+                        Control.CPD,
+                        Mode.VERIFY_REPORTS,
+                        fixture -> {
+                            fixture.writeValidReports();
+                            fixture.addCpdDuplication();
+                        },
+                        "CPD duplication-group count differs; expected=1, actual=2"),
+                new Scenario(
+                        "CPD duplication count shrinks without ratchet update",
+                        Control.CPD,
+                        Mode.VERIFY_REPORTS,
+                        fixture -> {
+                            fixture.writeValidReports();
+                            fixture.removeCpdDuplicationMarker();
+                        },
+                        "CPD duplication-group count differs; expected=1, actual=0"),
+                new Scenario(
                         "PMD configured source roots drift",
                         Control.PMD,
                         Mode.VALIDATE,
@@ -375,6 +401,21 @@ public final class BuildQualityVerifierTest {
                                 "<id>pmd-watchlist</id><activation/>"),
                         "PMD watchlist profile elements differ"),
                 new Scenario(
+                        "PMD advisory-count snapshot is missing",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> Files.delete(
+                                fixture.root().resolve("report/pmd-advisory-counts.tsv")),
+                        "PMD advisory-count snapshot does not exist"),
+                new Scenario(
+                        "PMD advisory-count snapshot names a non-policy rule",
+                        Control.PMD,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceAdvisoryCounts(
+                                "category/java/bestpractices.xml/UnusedAssignment",
+                                "category/java/errorprone.xml/CloseResource"),
+                        "references a rule outside the adopted policy"),
+                new Scenario(
                         "PMD source introduces a suppression marker",
                         Control.PMD,
                         Mode.VALIDATE,
@@ -452,7 +493,36 @@ public final class BuildQualityVerifierTest {
                                     "rule=\"UnusedLocalVariable\"");
                         },
                         "PMD XML contains a rule outside the selected policy",
-                        "watchlist"));
+                        "watchlist"),
+                new Scenario(
+                        "PMD zero-baseline rule appears",
+                        Control.PMD,
+                        Mode.VERIFY_REPORTS,
+                        fixture -> {
+                            fixture.writeValidReports();
+                            fixture.replacePmdPolicyReport(
+                                    "rule=\"UnusedAssignment\"",
+                                    "rule=\"UnusedLocalVariable\"");
+                        },
+                        "UnusedAssignment expected=1 actual=0"),
+                new Scenario(
+                        "PMD advisory finding count grows",
+                        Control.PMD,
+                        Mode.VERIFY_REPORTS,
+                        fixture -> {
+                            fixture.writeValidReports();
+                            fixture.addPmdPolicyViolation("UnusedAssignment");
+                        },
+                        "UnusedAssignment expected=1 actual=2"),
+                new Scenario(
+                        "PMD advisory finding count shrinks without ratchet update",
+                        Control.PMD,
+                        Mode.VERIFY_REPORTS,
+                        fixture -> {
+                            fixture.writeValidReports();
+                            fixture.removePmdPolicyViolation();
+                        },
+                        "UnusedAssignment expected=1 actual=0"));
 
         runHappyPath(Control.SPOTBUGS, Mode.VALIDATE);
         runHappyPath(Control.CPD, Mode.VALIDATE);
@@ -707,6 +777,11 @@ public final class BuildQualityVerifierTest {
             if (control == Control.PMD) {
                 write("report/pmd-ruleset.xml", pmdRuleset());
                 write("report/pmd-watchlist-ruleset.xml", pmdWatchlistRuleset());
+                write(
+                        "report/pmd-advisory-counts.tsv",
+                        "# exact-rule-reference\texpected-findings\trationale\n"
+                                + "category/java/bestpractices.xml/UnusedAssignment"
+                                + "\t1\tReviewed fixture advisory\n");
             }
         }
 
@@ -740,7 +815,7 @@ public final class BuildQualityVerifierTest {
                         .toAbsolutePath()
                         .normalize()
                         .toString();
-                writePmdReport("report/target/pmd", source, "UnusedLocalVariable");
+                writePmdReport("report/target/pmd", source, "UnusedAssignment");
                 writePmdReport("report/target/pmd-watchlist", source, "CloseResource");
                 return;
             }
@@ -846,6 +921,54 @@ public final class BuildQualityVerifierTest {
         void replaceRuleset(String expected, String replacement)
                 throws IOException {
             replace(root.resolve("report/pmd-ruleset.xml"), expected, replacement);
+        }
+
+        void replaceAdvisoryCounts(String expected, String replacement)
+                throws IOException {
+            replace(root.resolve("report/pmd-advisory-counts.tsv"), expected, replacement);
+        }
+
+        void replacePmdPolicyReport(String expected, String replacement)
+                throws IOException {
+            replace(root.resolve("report/target/pmd/pmd.xml"), expected, replacement);
+        }
+
+        void addPmdPolicyViolation(String rule)
+                throws IOException {
+            replacePmdPolicyReport(
+                    "</file>",
+                    "  <violation rule=\"" + rule + "\" priority=\"3\" "
+                            + "beginline=\"1\" endline=\"1\" begincolumn=\"1\" "
+                            + "endcolumn=\"1\">extra</violation>\n</file>");
+        }
+
+        void removePmdPolicyViolation()
+                throws IOException {
+            Path report = root.resolve("report/target/pmd/pmd.xml");
+            String content = Files.readString(report, StandardCharsets.UTF_8);
+            content = content.replaceAll("(?s)\\s*<violation\\b.*?</violation>", "");
+            Files.writeString(report, content, StandardCharsets.UTF_8);
+        }
+
+        void addCpdDuplication()
+                throws IOException {
+            String source = root.resolve("app/src/main/java/App.java")
+                    .toAbsolutePath()
+                    .normalize()
+                    .toString();
+            replace(
+                    root.resolve("report/target/cpd/cpd.xml"),
+                    "</pmd-cpd>",
+                    "  <duplication lines=\"1\" tokens=\"1\">\n"
+                            + "    <file path=\"" + source + "\"/>\n"
+                            + "  </duplication>\n</pmd-cpd>");
+        }
+
+        void removeCpdDuplicationMarker()
+                throws IOException {
+            Path report = root.resolve("report/target/cpd/cpd.xml");
+            replace(report, "<duplication lines=\"1\" tokens=\"1\">", "<reviewed-copy>");
+            replace(report, "</duplication>", "</reviewed-copy>");
         }
 
         void replaceWatchlistRuleset(String expected, String replacement)
@@ -974,6 +1097,9 @@ public final class BuildQualityVerifierTest {
                     + """
                         <artifactId>report</artifactId>
                         <packaging>pom</packaging>
+                        <properties>
+                          <ioc.cpd.expectedDuplications>1</ioc.cpd.expectedDuplications>
+                        </properties>
                         <dependencies>
                     """
                     + dependency("app")

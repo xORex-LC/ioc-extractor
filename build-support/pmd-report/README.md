@@ -17,6 +17,7 @@ resolution. The analyzed universe is an explicit list of checked-in production
 |---|---|
 | `pom.xml` | `pmd-analysis` and `pmd-watchlist` profile selection, PMD `7.26.0` plugin realm, explicit source universe and report-integrity wiring |
 | `pmd-ruleset.xml` | Exact 22-rule adopted policy with calibrated complexity thresholds |
+| `pmd-advisory-counts.tsv` | Complete non-zero per-rule snapshot; all omitted adopted rules have zero tolerance |
 | `pmd-watchlist-ruleset.xml` | Exact three-rule ownership/size watchlist, excluded from the regular CI policy |
 | `pmd-scope.tsv` | Fail-closed disposition for all Maven reactor projects |
 | `../build-quality/BuildQualityVerifier.java` | Shared JDK-only scope, ruleset and report verifier |
@@ -34,7 +35,7 @@ resolution. The analyzed universe is an explicit list of checked-in production
 
 ## Operation
 
-Run the adopted report-only policy from the repository root:
+Run the adopted blocking/advisory policy from the repository root:
 
 ```bash
 make pmd-analysis
@@ -57,15 +58,20 @@ select this module and its upstream reactor with `-pl build-support/pmd-report
 SpotBugs and CPD aggregate mojos in a parallel full-reactor build. The
 `pmd-analysis` profile runs exactly one `aggregate-pmd-no-fork` execution after
 its 19 ordering dependencies, removes only the selected output directory first
-and fails on analyzer/ruleset/report errors. Findings remain advisory and do not
-fail either invocation.
+and fails on analyzer/ruleset/report errors. The regular policy also reconciles
+every per-rule finding count: rules absent from `pmd-advisory-counts.tsv` must
+stay at zero, while listed rules must match their exact reviewed counts. The
+watchlist remains advisory and count-unconstrained. A successful policy run
+records separate PMD freshness evidence; a watchlist run never overwrites it.
 
 The adopted policy contains 22 exact rule references. `CognitiveComplexity`
 uses `reportLevel=16`; `ExcessiveParameterList` uses PMD's `minimum=13`
 property. The watchlist contains exactly `PreserveStackTrace`, `CloseResource`
 and `NcssCount`. Do not move a rule between these sets, change a threshold or
-add a suppression merely to quiet a report: repeat semantic triage and update
-the build-quality decision evidence.
+add a suppression merely to quiet a report. If a policy count changes, inspect
+the complete XML/HTML and either fix the occurrence or update the exact snapshot
+and rationale in the same reviewed change. Reductions also require an update so
+the snapshot never leaves unused budget.
 
 `core/ioc-application-tck`, tests, generated/vendor sources, the root parent and
 all build-only POMs are outside analysis scope. Root validation rejects PMD
