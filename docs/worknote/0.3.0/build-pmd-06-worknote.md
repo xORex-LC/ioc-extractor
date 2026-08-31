@@ -620,3 +620,48 @@ scope/report integrity with no analyzer errors.
 | 2026-08-12 | Adopt a reduced 22-rule PMD source policy in report-only mode | The reduced set retains bounded correctness/dead-code guards and calibrated debt signal without converting 86 reviewed noise/debt occurrences into a suppression baseline |
 | 2026-08-12 | Keep `PreserveStackTrace`, `CloseResource` and `NcssCount` in a separate executable watchlist | The rules retain possible future value, while current ownership assumptions or zero signal do not justify regular CI policy |
 | 2026-08-12 | Run the adopted policy as a separate regular CI job | Selected-reactor Maven `verify` preserves fail-closed scope/ruleset/report checks and avoids the aggregate-mojo contention observed in the full parallel reactor |
+
+## 13. Post-adoption requalification after lifecycle and managed import
+
+On 2026-08-31 the policy and watchlist were rerun after `DATA-TTL-01` and
+`DATA-IMPORT-01` substantially expanded the production source surface. This is
+a requalification of the adopted policy, not a new ruleset calibration: plugin,
+engine, 22 policy rules, three watchlist rules, thresholds, scope manifest and
+report-only lifecycle are unchanged.
+
+The pre-remediation reports contained 28 policy and 32 watchlist occurrences.
+Review against the current code confirmed small defects or bounded hygiene
+issues at the following boundaries:
+
+- early CLI and null-console writers depended on the host default charset;
+- one private JDBC method retained an unused parameter;
+- a local import watcher swallowed an unexpected runtime failure;
+- `IdStart` and a JDBC duplicate-start diagnostic did not retain their cause;
+- SMB publish/factory cleanup and remote-watch startup needed explicit
+  secondary-failure suppression.
+
+These sites were fixed directly and covered by focused tests where failure
+precedence is material. No PMD suppression, source exclusion, threshold change
+or accepted-findings baseline was introduced.
+
+The resulting policy report contains 21 occurrences in 16 files:
+
+| Rule | Count | Current disposition |
+|---|---:|---|
+| `CognitiveComplexity` | 7 | Review signal for explicit registries, validation chains, classifiers and state machines; no correctness defect established |
+| `NPathComplexity` | 3 | Characterize terminal/import/ingest sagas before decomposition; state and failure precedence are part of their contract |
+| `ExcessiveParameterList` | 8 | Explicit composition/orchestration dependencies; do not replace them with an untyped dependency bag merely to satisfy the metric |
+| `DoNotThrowExceptionInFinally` | 1 | False positive: the primary failure is retained and detach/restore failures are suppressed; the `finally` path throws only after successful body execution |
+| `UnusedAssignment` | 2 | False positives: one volatile write is consumed cross-thread and one post-increment supplies the current offset before advancing it |
+
+The watchlist contains 29 occurrences in 19 files: 25 `CloseResource`, four
+`PreserveStackTrace`, and zero `NcssCount`. Every resource occurrence is an
+ownership transfer to a returned wrapper/session or a lifecycle-managed field.
+Three exception occurrences rethrow the original failure or make it the cause.
+The SMB factory occurrence is also safe after hardening, but PMD does not follow
+the interprocedural `closeAfterFailure` plus `SmbExceptionMapper.map` contract.
+
+The count increase from the P3 snapshot therefore reflects new lifecycle and
+managed-import orchestration, not relaxed policy. Findings stay visible and
+advisory; future changes are still evaluated against the same named rules, and
+the analyzer/scope/ruleset/report contract remains fail-closed.

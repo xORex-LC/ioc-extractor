@@ -34,9 +34,9 @@ Contract: [R030-BUILD](../goals/R030-BUILD-build-quality.md).
 
 | Control | Version/config | Local command | CI/report artifact | Runtime | Signal/noise | Owner | Stage |
 |---|---|---|---|---:|---|---|---|
-| SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only; exact raw-baseline gate | `make verify` | Per applicable module: raw XML + filtered XML/HTML; raw and filtered aggregates under `build-support/spotbugs-report/target/`; CI artifact `spotbugs-reports-<run>` | `120 s` adoption full-reactor wall; `+12 s` / `+11.1%` against the same-session pre-ratchet `108 s` run | Current full-reactor evidence: 65 reviewed findings (47 false positives + 18 policy noise), 61 generated narrow selectors, 0 visible | `R030-BUILD` | `blocking` |
-| PMD CPD aggregate | Maven Plugin `3.28.0`, bundled PMD `7.17.0`; Java production sources, `minimumTokens=75`, identifiers/literals/annotations significant | `make clean && make verify` | `build-support/cpd-report/target/cpd/`; CI artifact `cpd-report-<run>` | `95.52 s` clean reactor wall; CPD module `2.703 s` | 11 raw matches / 10 semantic findings; 7 debt candidates, 3 retained clusters | `R030-BUILD` + `R030-QUAL` | `report-only` |
-| PMD source-analysis policy | Maven Plugin `3.28.0`; explicit PMD `7.26.0`; 22 adopted exact rules + 3-rule watchlist over 19 production roots | `make pmd-analysis`; `make pmd-watchlist` | Separate regular CI policy job uploads `build-support/pmd-report/target/pmd/`; watchlist stays local under `target/pmd-watchlist/` | P3 warm policy `12.26 s` process / `11.127 s` Maven; watchlist `8.97 s` / `7.928 s`; earlier P1 clean cost retained below | Policy: 6 visible advisory findings in 6 files; watchlist: 20 in 13 files; 3 actionable + 3 intentionally ignored-parameter occurrences removed, no suppressions/baseline | `R030-BUILD` | `report-only adopted` (`P3` complete) |
+| SpotBugs | Maven Plugin `4.10.3.0`, engine `4.10.3`; `effort=Max`, `threshold=Low`, production bytecode only; exact raw-baseline gate | `make verify` | Per applicable module: raw XML + filtered XML/HTML; raw and filtered aggregates under `build-support/spotbugs-report/target/`; CI artifact `spotbugs-reports-<run>` | `120 s` adoption full-reactor wall; `+12 s` / `+11.1%` against the same-session pre-ratchet `108 s` run | Current requalification: 116 reviewed findings (85 false positives + 31 policy noise), 112 generated narrow selectors, 0 visible | `R030-BUILD` | `blocking` |
+| PMD CPD aggregate | Maven Plugin `3.28.0`, bundled PMD `7.17.0`; Java production sources, `minimumTokens=75`, identifiers/literals/annotations significant | `make clean && make verify` | `build-support/cpd-report/target/cpd/`; CI artifact `cpd-report-<run>` | `95.52 s` adoption clean-reactor wall; CPD module `2.703 s` | Adoption: 11 raw / 10 semantic; current 851-file report: 21 groups after five bounded groups were removed | `R030-BUILD` + `R030-QUAL` | `report-only` |
+| PMD source-analysis policy | Maven Plugin `3.28.0`; explicit PMD `7.26.0`; 22 adopted exact rules + 3-rule watchlist over 19 production roots | `make pmd-analysis`; `make pmd-watchlist` | Separate regular CI policy job uploads `build-support/pmd-report/target/pmd/`; watchlist stays local under `target/pmd-watchlist/` | P3 warm policy `12.26 s` process / `11.127 s` Maven; watchlist `8.97 s` / `7.928 s`; earlier P1 clean cost retained below | Current policy: 21 advisory findings / 16 files; watchlist: 29 / 19 files; no suppressions/baseline | `R030-BUILD` | `report-only adopted` (`P3` complete) |
 | Maven dependency analysis | Maven Dependency Plugin `3.11.0`; fast direct goal + opt-in full `dependency-analysis` profile; default bytecode analyzer | `make dependency-analysis` | Local console/report ledger; deliberately absent from regular CI | Fast sequential package + analysis observed at `5.313–7.677 s` Maven / `6.75–8.72 s` process; full profile timing below | 14 direct POM mismatches corrected; residual `56 / 34 / 12` candidate occurrences are test-aggregate, starter, SPI and transitive-runtime noise | `R030-BUILD` | `report-only`, blocking adoption deferred |
 
 Допустимые rollout stages: `planned`, `report-only`, `triaged`, `baselined`,
@@ -87,6 +87,96 @@ Codecov не подключён; branch protection/rules не делают CI jo
 Следовательно, все поимённые `BUILD-*` analyzer work items закрыты,
 а `R030-BUILD` как release goal остаётся `in-progress` до shared
 R030-TEST closure.
+
+## Post-import requalification — 2026-08-31
+
+После реализации `DATA-TTL-01` и `DATA-IMPORT-01` production surface заметно
+вырос, поэтому adoption snapshots выше не использовались как утверждение о
+текущем signal. Повторно выполнены `make verify`, `make pmd-analysis` и
+`make pmd-watchlist`; каждый текущий SpotBugs, PMD и CPD finding сопоставлен с
+исходным кодом и ownership/state-machine contracts.
+
+### PMD policy и watchlist
+
+До remediation policy report содержал 28 findings, watchlist — 32. Малые
+подтверждённые проблемы исправлены без `NOPMD`, suppressions или baseline:
+
+- ранний CLI и null-console теперь явно используют UTF-8;
+- неиспользуемый private parameter удалён;
+- parsing/database causes сохраняются в `IdStart` и `JdbcExportRunLedger`;
+- неожиданный runtime failure локального import watcher больше не теряется в
+  пустом `catch`;
+- secondary cleanup failures в SMB publish/factory и remote-watch startup
+  добавляются как suppressed к первичной ошибке и защищены regression tests.
+
+Текущий policy report содержит 21 finding в 16 файлах:
+
+| Rule | Count | Диспозиция |
+|---|---:|---|
+| `CognitiveComplexity` | 7 | Design signal: явные command registries, validation chains, classifiers и lifecycle/import state machines; не доказательство дефекта |
+| `NPathComplexity` | 3 | Debt signal для terminal/import/ingest sagas; декомпозиция требует characterization состояния и failure precedence |
+| `ExcessiveParameterList` | 8 | Явная composition/orchestration wiring surface; скрывать ports в generic dependency bag нецелесообразно |
+| `DoNotThrowExceptionInFinally` | 1 | Analyzer false positive: primary failure сохраняется, detach/restore failures добавляются suppressed; `finally` бросает только при успешном body |
+| `UnusedAssignment` | 2 | Analyzer false positives: volatile publication читается другим потоком; post-increment возвращает текущий offset следующей строке |
+
+Watchlist содержит 29 findings в 19 файлах: 25 `CloseResource` и 4
+`PreserveStackTrace`. Все 25 resource sites передают ownership возвращаемому
+session/wrapper или lifecycle-owned field и закрываются владельцем. Три
+exception sites либо rethrow исходную ошибку, либо сохраняют её cause.
+Четвёртый SMB factory site также сохраняет cause и suppressed cleanup failure,
+но PMD не прослеживает этот межметодный contract через `closeAfterFailure` и
+`SmbExceptionMapper.map`.
+
+### CPD
+
+Scope verifier подтвердил 851 checked-in production Java source file. До
+remediation report содержал 26 duplication groups. Пять групп исчезли после
+четырёх bounded дедупликаций:
+
+- один authoritative config-path/reflection model для environment matcher и
+  unknown-key preflight (`QUAL-CPD-01`);
+- один length-prefixed SHA-256 framing primitive для export fingerprints — две
+  raw groups (`QUAL-CPD-04`);
+- private adapter-local completed-slice traversal seam (`QUAL-CPD-06`);
+- package-private byte-level SHA-256 helper для JDBC import files при
+  сохранении разных operator diagnostics.
+
+Оставшиеся 21 group полностью учтены:
+
+| Группа | Raw groups | Диспозиция |
+|---|---:|---|
+| CLI/daemon extraction diagnostic projection | 1 | Defer: общий inward helper создал бы неверную observability dependency (`QUAL-CPD-02`) |
+| Scheduler/listener lifecycle и event metadata | 7 | Retain/defer: похожая механика имеет разных owners, cadence, state и failure policy (`QUAL-CPD-03`, `QUAL-CPD-08`, `QUAL-CPD-10`) |
+| JDBC query/row-mapping fragments | 6 | Incidental similarity: разные schemas, transition contracts и result shapes; общего policy knowledge нет |
+| Diagnostic enum implementation | 1 | Retain: interface boilerplate при разных code/category/message semantics (`QUAL-CPD-05`) |
+| Два streaming entry point одного CSV reader | 1 | Defer: header-only и record-consumer paths имеют разные result/error contracts; текущий duplication локален и не расходится |
+| `IocProperties` → immutable import-contract mapping | 4 | Intentional boundary mapping; config shape и application contract не должны становиться одной моделью |
+| Legacy ledger parsing | 1 | Retain до retirement старого file-ledger contract (`QUAL-CPD-09`) |
+| **Итого** | **21** | Ни одна оставшаяся группа не подтверждает текущий correctness/resource defect |
+
+### SpotBugs
+
+Raw aggregate содержит 116 exact findings: 85 `false-positive` и 31
+`policy-noise`; generated filter имеет 112 narrow selectors, visible aggregate
+пуст. Полный повторный просмотр охватил 48 SQL findings (quoted allow-listed
+identifiers и bound values), 30 runtime-exception policy findings, 24 immutable
+snapshot/shared-service aliases, 9 NIO direct-child nullability findings, два
+keyed-guard volatile increments и три одиночных policy findings. Новых
+injection, nullability, mutable-alias, serialization или concurrency defects не
+подтверждено.
+
+Первый full-reactor run дошёл до late exact gate и был отклонён только из-за
+четырёх moved anchors с неизменными type/class/method/hash/occurrence. Proposal
+был использован только как delta evidence; вручную обновлены координаты двух
+filesystem findings и двух hardened exception boundaries, без добавления новых
+acceptances или расширения selectors.
+
+Финальный `make verify` прошёл 25/25 reactor projects за `04:44`: 247 suites,
+1178 tests, 0 failures, 0 errors и 8 явных opt-in load/SMB contract skips.
+SpotBugs late gate подтвердил `116 accepted / 0 visible`, CPD source/report
+integrity — 851 files / 21 groups, JaCoCo aggregate и остальные canonical
+`verify` controls завершились успешно. Отдельные свежие `make pmd-analysis`,
+`make pmd-watchlist` и `make docs` также прошли.
 
 ## `BASE-QUALITY-06` — baseline действующих controls
 
@@ -212,8 +302,8 @@ goal `spotbugs-aggregate` в phase `verify`, создаёт общий XML/HTML 
 запускает поздний report-integrity режим общего JDK-only
 `build-support/build-quality/BuildQualityVerifier`. Registry
 `spotbugs-scope.tsv` содержит
-disposition всех 24 reactor projects: 19 `analyzed`, root/TCK/two соседних
-build-only POM как 4 `excluded` и сам `spotbugs-report` как один `aggregate`.
+disposition всех 25 reactor projects: 19 `analyzed`, root/TCK/три соседних
+build-only POM как 5 `excluded` и сам `spotbugs-report` как один `aggregate`.
 Root-only execution того же verifier в phase `validate` требует точного
 равенства registry и root `<modules>`, сверяет artifactId/packaging и явный
 `skip=true` для каждого исключённого child project, а также требует равенства
@@ -531,12 +621,12 @@ filtered XML/HTML и оба aggregate views, 74 accepted / 0 visible.
 официальный goal
 [`aggregate-cpd`](https://maven.apache.org/plugins/maven-pmd-plugin/aggregate-cpd-mojo.html)
 в phase `verify` после 19 production dependencies. Fail-closed
-`cpd-scope.tsv` даёт disposition всем 24 reactor projects; JDK-only verifier
+`cpd-scope.tsv` даёт disposition всем 25 reactor projects; JDK-only verifier
 в root `validate` сверяет registry с root reactor и POM metadata, а analyzed
 set — одновременно с 19 ordering dependencies и 19 configured
 `src/main/java` roots. Положительный
 список анализирует все текущие production Java source paths одним invocation
-(508 в последнем полном report; 499 в adoption snapshot), поэтому
+(851 в requalification report; 499 в adoption snapshot), поэтому
 межмодульные совпадения видны, а `ioc-application-tck`,
 tests, Maven-generated roots, build outputs и build-support POMs не попадают в
 scope. Checked-in vendor/generated trees в repository отсутствуют; явные
@@ -553,13 +643,13 @@ incomplete или scope-drifted report не может завершить `verif
 
 | Finding | Occurrences | Shared knowledge/behavior | Semantic differences | Disposition | Rationale | R030-QUAL finding |
 |---|---|---|---|---|---|---|
-| Config-path tokenization/reflection, 317 tokens | `IocEnvironmentPropertyMatcher`; `IocUnknownConfigurationPreflight` | Одна форма config path, index и reflected element type | Matcher классифицирует env names; preflight проверяет admissible property shape | `deduplicate` | Highest divergence risk: strict binding должен иметь один authoritative path model; реализация требует characterization tests | `QUAL-CPD-01` |
+| Config-path tokenization/reflection, 317 tokens | `IocEnvironmentPropertyMatcher`; `IocUnknownConfigurationPreflight` | Одна форма config path, index и reflected element type | Matcher классифицирует env names; preflight проверяет admissible property shape | `fixed` | `IocConfigurationPropertyShape` стал единственной реализацией grammar/reflection; characterization и binding tests прошли | `QUAL-CPD-01` |
 | Extraction diagnostic fields, 157 tokens | `ExtractCommand`; `FileSourceMessageHandler` | Одинаковая проекция `ExtractionResult` summary в `LogEvent` | CLI и daemon принадлежат разным driving adapters и имеют разные lifecycle/owners | `defer` | Общий inward helper создал бы нежелательную observability dependency; сначала выбрать legal boundary | `QUAL-CPD-02` |
 | Control-event MDC, 107 + 80 tokens | Три bootstrap listeners | Общие event metadata/correlation fields | Handler-specific source, slice, target и endpoint tails | `defer` | Возможен package-private bootstrap helper, но сначала проверить typed ECS contract и читаемость handlers | `QUAL-CPD-03` |
-| SHA-256 length framing, 105 tokens | `ArtifactSchemaFingerprint`; `ExportPlan` | Один length-prefixed digest encoding invariant | Fingerprints покрывают разные export inputs | `deduplicate` | Encoding knowledge должно иметь один application/export owner | `QUAL-CPD-04` |
+| SHA-256 length framing, 105 tokens | `ArtifactSchemaFingerprint`; `ExportPlan` | Один length-prefixed digest encoding invariant | Fingerprints покрывают разные export inputs | `fixed` | `FingerprintFraming` владеет encoding; golden export-plan hashes и focused tests сохранились | `QUAL-CPD-04` |
 | Diagnostic-code enum implementation, 102 tokens | `SchemaDiagnosticCodes`; `StorageDiagnosticCodes` | Общий interface boilerplate | Category, impact, IDs и message semantics различны | `retain` | Java enum boilerplate не является shared policy; abstraction ухудшит локальную явность | `QUAL-CPD-05` |
-| Completed-slice directory traversal, 99 tokens | Два метода `FileSystemCompletedSliceCatalog` | Одинаковая safe profile-directory traversal | Один путь возвращает verified manifests, другой только eligible names | `deduplicate` | Допустима только private adapter-local traversal seam, сохраняющая разные validators/results | `QUAL-CPD-06` |
-| SMB connect/authentication setup, 82 tokens | `SmbjChangeNotifySessionFactory`; `SmbjShareClientFactory` | Одинаковые connect/auth/share и password-wipe mechanics | Factories создают разные higher-level session owners | `deduplicate` | Security/resource-sensitive setup должен расходиться как можно меньше и оставаться внутри SMB adapter | `QUAL-CPD-07` |
+| Completed-slice directory traversal, 99 tokens | Два метода `FileSystemCompletedSliceCatalog` | Одинаковая safe profile-directory traversal | Один путь возвращает verified manifests, другой только eligible names | `fixed` | Private `listProfileChildren` сохраняет разные validators/results и владеет directory/stream lifecycle | `QUAL-CPD-06` |
+| SMB connect/authentication setup, 82 tokens | `SmbjChangeNotifySessionFactory`; `SmbjShareClientFactory` | Одинаковые connect/auth/share и password-wipe mechanics | Factories создают разные higher-level session owners | `fixed` | Общие `connect`/`authenticate`/`requireDiskShare` остались внутри SMB adapter; factory-specific ownership сохранён | `QUAL-CPD-07` |
 | Graceful executor shutdown, 79 tokens | `DaemonExportScheduler`; `PeriodicDaemonCycle` | Один timeout/shutdown/interrupt protocol | Разные scheduling state и recovery responsibilities | `defer` | Выносить только после lifecycle/concurrency review; generic helper не должен скрыть ownership | `QUAL-CPD-08` |
 | Legacy ledger property parsing, 78 tokens | `FileIngestionLedger`; `LegacyLedgerImporter` | Общая legacy serialized shape | Runtime file ledger и one-way JDBC migration имеют разные owners и retirement path | `retain` | Межмодульное извлечение продлит legacy contract; пересмотреть при retirement file ledger | `QUAL-CPD-09` |
 | Maintenance scheduler lifecycle, 75 tokens | `DaemonMaintenanceScheduler`; `DaemonSliceRetentionScheduler` | Малый start/stop scheduling pattern | Разные cadence, operation и failure policy | `retain` | Независимый lifecycle boilerplate; abstraction не уменьшает policy duplication | `QUAL-CPD-10` |
