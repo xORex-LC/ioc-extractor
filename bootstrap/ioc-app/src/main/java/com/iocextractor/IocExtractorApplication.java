@@ -24,8 +24,8 @@ public class IocExtractorApplication {
     public static void main(String[] args) {
         OptionalInt syntaxCheckExit = IocYamlSyntaxCheck.executeIfRequested(
                 args,
-                new PrintWriter(System.out, true),
-                new PrintWriter(System.err, true));
+                new PrintWriter(System.out, true, StandardCharsets.UTF_8),
+                new PrintWriter(System.err, true, StandardCharsets.UTF_8));
         if (syntaxCheckExit.isPresent()) {
             System.exit(syntaxCheckExit.getAsInt());
             return;
@@ -33,8 +33,8 @@ public class IocExtractorApplication {
 
         OptionalInt semanticCheckExit = IocSemanticConfigurationCheck.executeIfRequested(
                 args,
-                new PrintWriter(System.out, true),
-                new PrintWriter(System.err, true));
+                new PrintWriter(System.out, true, StandardCharsets.UTF_8),
+                new PrintWriter(System.err, true, StandardCharsets.UTF_8));
         if (semanticCheckExit.isPresent()) {
             System.exit(semanticCheckExit.getAsInt());
             return;

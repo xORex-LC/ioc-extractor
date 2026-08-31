@@ -15,6 +15,7 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -234,7 +235,8 @@ public final class IocSemanticConfigurationCheck {
         }
 
         private static ConsoleOutputScope suppress() {
-            PrintStream sink = new PrintStream(OutputStream.nullOutputStream());
+            PrintStream sink = new PrintStream(
+                    OutputStream.nullOutputStream(), true, StandardCharsets.UTF_8);
             ConsoleOutputScope scope = new ConsoleOutputScope(System.out, System.err, sink);
             System.setOut(sink);
             System.setErr(sink);
