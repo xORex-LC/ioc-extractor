@@ -1,6 +1,7 @@
 package com.iocextractor;
 
 import com.iocextractor.adapter.in.cli.EarlyCliLauncher;
+import com.iocextractor.bootstrap.IocSemanticConfigurationCheck;
 import com.iocextractor.bootstrap.IocYamlSyntaxCheck;
 import com.iocextractor.bootstrap.RuntimeMode;
 import org.springframework.boot.SpringApplication;
@@ -27,6 +28,15 @@ public class IocExtractorApplication {
                 new PrintWriter(System.err, true));
         if (syntaxCheckExit.isPresent()) {
             System.exit(syntaxCheckExit.getAsInt());
+            return;
+        }
+
+        OptionalInt semanticCheckExit = IocSemanticConfigurationCheck.executeIfRequested(
+                args,
+                new PrintWriter(System.out, true),
+                new PrintWriter(System.err, true));
+        if (semanticCheckExit.isPresent()) {
+            System.exit(semanticCheckExit.getAsInt());
             return;
         }
 

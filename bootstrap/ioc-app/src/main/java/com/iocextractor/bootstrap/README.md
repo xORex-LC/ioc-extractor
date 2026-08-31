@@ -20,6 +20,7 @@ Composition root и конфигурация. Единственное мест�
 | `IocConfigurationFailureAnalyzer.java` | Boot startup analyzer с legacy migration hints и `CONFIG.*` сообщениями |
 | `IocYamlConfigurationFailureAnalyzer.java` | Ранняя value-free диагностика `CONFIG.YAML_INVALID` для ConfigData parse failures |
 | `IocYamlSyntaxCheck.java`, `IocYamlFailureDetails.java` | Side-effect-free packaged YAML precheck и общий line/column formatter без вывода source line |
+| `IocSemanticConfigurationCheck.java` | Internal packaged strict-binding/semantic checker: минимальный Spring context без runtime graph, DB и transports |
 | `IocConfigurationOverrideReporter.java` | Value-free startup report выигравших external `ioc.*` overrides |
 | `ConfigurationCompatibilityAlias.java`, `IocConfigurationMigrationCatalog.java` | Общий bounded expand/contract marker и catalog value-free migration notices для временных aliases |
 | `ConfigRegistryCatalog.java` | Composition-root registry factories/keys для providers, transforms, filters и predicates |

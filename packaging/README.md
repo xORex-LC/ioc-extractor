@@ -157,13 +157,17 @@ layout.
 The privileged phase:
 
 1. verifies the exact jar checksum and release metadata;
-2. stops the active service;
-3. backs up both SQLite databases, including their POSIX ACLs and extended
+2. stages the new immutable release and refreshes packaged helpers/unit files;
+3. runs the new jar's strict binding and semantic preflight as the service
+   account, with the installed environment file and JVM overrides, before the
+   active service is stopped;
+4. stops the active service;
+5. backs up both SQLite databases, including their POSIX ACLs and extended
    attributes, and the previous systemd unit as one recovery point;
-4. installs a new immutable release and atomically switches `current`;
-5. starts the service and checks local actuator health;
-6. restores the previous release, systemd unit and database backup if the gate fails;
-7. retains only the configured number of releases and backups.
+6. atomically switches `current`, starts the service and checks local actuator
+   health;
+7. restores the previous release, systemd unit and database backup if the gate fails;
+8. retains only the configured number of releases and backups.
 
 Remote sync health is deliberately not a deployment gate: an unavailable
 optional SMB server must not roll back a locally healthy application release.
@@ -229,6 +233,12 @@ activation if the supposedly fresh dataframe DB is not empty.
 
 On upgrade, a changed packaged template is written beside the existing file as
 `application.yml.new` or `ioc-extractor.env.new`; it is never silently merged.
+If an older `.new` would itself be overwritten, installation stops with
+`PACKAGING.CONFIG_CANDIDATE_CONFLICT`. The report identifies the live file, old
+candidate and incoming template, includes timestamps and SHA-256 digests, and
+prints ready-to-run `diff` and archive commands without printing configuration
+contents. Compare and reconcile the files, then archive or remove the stale
+candidate before retrying; `--force` is not a reconciliation mechanism.
 
 A breaking key rename that must survive binary rollback follows the bounded
 expand/contract contract in ADR-0027. The overlap release temporarily accepts an
@@ -240,11 +250,13 @@ aliases.
 
 Do not edit the installed YAML in place. Copy it to a separate candidate, edit
 that file, then run `sudo <prefix>/bin/ioc-config apply <candidate.yml>`. The
-helper performs a side-effect-free YAML syntax check, validates the exact staged
-bytes again, atomically replaces the live file and waits for application health.
-If typed or semantic startup fails, it preserves the rejected candidate and
-restores the previous configuration. `check [candidate.yml]` runs only the
-syntax phase and does not open SQLite or initialize transports.
+helper stages service-readable bytes and runs strict unknown-key, binding,
+conversion, semantic and registry checks in a configuration-only Spring context
+with the installed service environment and JVM overrides. It then atomically
+replaces the live file and waits for application health. If startup fails, it
+preserves the rejected candidate and restores the previous configuration.
+`check [candidate.yml]` runs the same side-effect-free semantic phase and does
+not open SQLite, initialize transports or compose the runtime graph.
 
 ### Two-step canonical validity activation
 
@@ -291,9 +303,9 @@ The rendered service:
 - sets the prefix as `WorkingDirectory`;
 - forces daemon mode and the servlet health surface on the command line;
 - loads `etc/application.yml` and `etc/ioc-extractor.env`;
-- syntax-checks YAML in `ExecCondition`; invalid syntax skips activation without
-  entering `Restart=on-failure`, so a deterministic parse error cannot create a
-  restart storm;
+- runs strict binding and semantic configuration validation in `ExecCondition`;
+  invalid configuration skips activation without entering `Restart=on-failure`,
+  so a deterministic configuration error cannot create a restart storm;
 - binds actuator to loopback by default;
 - permits writes only to declared state directories;
 - applies filesystem, privilege, capability, syscall and resource hardening;

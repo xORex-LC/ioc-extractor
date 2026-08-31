@@ -49,6 +49,10 @@ Environment prepared
 - Spring binder владеет shape, conversion и bean validation;
 - `IocYamlSyntaxCheck` предоставляет side-effect-free синтаксическую проверку
   candidate-файла до Spring startup, SQLite и transport initialization;
+- `IocSemanticConfigurationCheck` загружает classpath defaults, один явный YAML
+  overlay и external overrides в минимальный Spring context только с
+  `IocProperties` и config-preflight infrastructure; runtime components не
+  сканируются, а controlled output не содержит property values;
 - `IocYamlConfigurationFailureAnalyzer` переводит ранний SnakeYAML failure в
   value-free `CONFIG.YAML_INVALID` с line/column без вывода самой строки;
 - `IocUnknownConfigurationPreflight` проверяет неизвестные keys по reflection
@@ -64,21 +68,26 @@ Environment prepared
 Validation constructors не должны бросать на operator mistakes: иначе binder
 остановится на первой ошибке и скроет collect-all report.
 
-Для packaged systemd deployment unit запускает syntax check через
-`ExecCondition`. При exit code `78` systemd пропускает activation и не входит в
-`Restart=on-failure`, поэтому детерминированная YAML-ошибка не создаёт restart
-storm. `RestartPreventExitStatus=78` остаётся дополнительной защитой для main
-process. Операторский
-`bin/ioc-config apply` принимает отдельный candidate, повторно проверяет staged
-copy, атомарно заменяет live YAML и восстанавливает previous config, если
-обычный typed/semantic startup не достигает `UP`. Прямое редактирование live
-файла остаётся технически возможным, но не является поддерживаемым workflow.
+Для packaged systemd deployment unit запускает semantic configuration check
+через `ExecCondition`. При exit code `78` systemd пропускает activation и не
+входит в `Restart=on-failure`, поэтому детерминированная config error не создаёт
+restart storm. `RestartPreventExitStatus=78` остаётся дополнительной защитой для
+main process. `deploy-local` дополнительно запускает тот же checker новым staged
+jar от имени service account, с установленным EnvironmentFile/JVM overrides, до
+остановки активного service и backup/activation boundary. Операторский
+`bin/ioc-config apply` принимает отдельный candidate, проверяет service-readable
+staged copy в том же effective environment, атомарно заменяет live YAML и
+восстанавливает previous config, если startup не достигает `UP`. Прямое
+редактирование live файла остаётся технически возможным, но не является
+поддерживаемым workflow.
 
 ## Runtime modes и lazy boundary
 
 `ioc.runtime.mode` выбирает `oneshot` или `daemon`; observability mode выбирает
 профиль вывода, но не заменяет runtime mode. Lightweight root/subcommand help,
-`--version`, health query и syntax errors обслуживаются до Spring startup.
+`--version`, health query и syntax errors обслуживаются до обычного Spring
+startup. Semantic checker использует отдельный минимальный Spring context без
+runtime composition.
 `--version` требует embedded build identity; при её отсутствии CLI возвращает
 однострочную metadata error и exit code `1`, не придумывая fallback и не
 показывая stack trace.
@@ -198,8 +207,8 @@ lookup paths. Изменение identity требует отдельного `e
 - Dataframe import: `DataframeImportConfiguration`,
   `DataframeImportPropertyMapper`, framework-free
   `DataframeImportCatalogCompiler`, `DataframeImportRuntimeConfiguration`.
-- Lifecycle: `ConfigPreflightConfiguration`, `EarlyCliLauncher`,
-  `DaemonWebEnvironmentPostProcessor`.
+- Lifecycle: `ConfigPreflightConfiguration`, `IocSemanticConfigurationCheck`,
+  `EarlyCliLauncher`, `DaemonWebEnvironmentPostProcessor`.
 - Contract tests: `IocPropertiesBindingTest`, unknown-key/preflight/analyzer/
   override reporter tests, `ConfigurationDocumentationContractTest` and
   application context tests.

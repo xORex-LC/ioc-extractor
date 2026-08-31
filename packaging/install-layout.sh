@@ -11,6 +11,36 @@ ioc_layout_error() {
   return 1
 }
 
+ioc_report_config_candidate_conflict() { # incoming-template installed-file
+  local template="$1" installed="$2" candidate archive_stamp archive_path
+  local candidate_mtime candidate_sha template_sha
+  candidate="${installed}.new"
+  archive_stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  archive_path="${candidate}.obsolete-${archive_stamp}"
+  candidate_mtime="$(stat -c '%y' -- "${candidate}")"
+  candidate_sha="$(sha256sum -- "${candidate}" | awk '{print $1}')"
+  template_sha="$(sha256sum -- "${template}" | awk '{print $1}')"
+
+  {
+    printf '\nPACKAGING.CONFIG_CANDIDATE_CONFLICT\n'
+    printf 'Deployment stopped before overwriting an operator-owned configuration candidate.\n\n'
+    printf 'Live operator configuration:\n  %s\n' "${installed}"
+    printf 'Existing unreconciled candidate:\n  %s\n' "${candidate}"
+    printf '  modified: %s\n  sha256: %s\n' "${candidate_mtime}" "${candidate_sha}"
+    printf 'Incoming packaged template:\n  %s\n' "${template}"
+    printf '  sha256: %s\n\n' "${template_sha}"
+    printf 'Reason:\n'
+    printf '  The live file differs from the packaged template, and the existing .new\n'
+    printf '  candidate also differs from the incoming template. The candidate may\n'
+    printf '  contain operator edits, so packaging will not replace it automatically.\n\n'
+    printf 'Compare locally (the diff may contain sensitive operator values):\n  '
+    printf 'sudo diff -u -- %q %q\n\n' "${candidate}" "${template}"
+    printf 'After review, preserve the old candidate and rerun the same command:\n  '
+    printf 'sudo mv -- %q %q\n\n' "${candidate}" "${archive_path}"
+    printf 'Do not use --force only to bypass this conflict; it may overwrite the live configuration.\n\n'
+  } >&2
+}
+
 ioc_validate_prefix() { # requested-prefix
   local requested="${1:-}" normalized
   [[ -n "${requested}" && "${requested}" == /* ]] \

@@ -126,10 +126,15 @@ sudo /opt/ioc-extractor/bin/ioc health
 sudo journalctl -u ioc-extractor -n 100 --no-pager
 ```
 
-Helper проверяет точные staged bytes, атомарно заменяет установленный YAML и
-ожидает health. При startup failure предыдущий файл восстанавливается. Для
-прямого restart остаётся systemd `ExecCondition` syntax guard: exit `78`
-пропускает activation без детерминированного restart loop.
+Helper создаёт service-readable staged copy и проверяет YAML syntax, unknown
+keys, typed binding, conversion, semantic invariants и registry references в
+отдельном configuration-only Spring context. Проверка получает установленный
+service environment и JVM overrides, но не открывает DB, не инициализирует
+transport и не собирает runtime graph. После этого `apply` атомарно заменяет
+установленный YAML и ожидает health; при startup failure предыдущий файл
+восстанавливается. При прямом restart ту же проверку выполняет systemd
+`ExecCondition`: exit `78` пропускает activation без детерминированного restart
+loop.
 
 Health endpoint по умолчанию доступен только на loopback. Healthy local service
 не означает, что optional SMB endpoints уже прошли authentication: sync
@@ -231,6 +236,14 @@ installer создаёт `application.yml.new` или `ioc-extractor.env.new`. �
 файлы, перенесите новые supported properties, сохранив site-specific paths,
 policies и secrets, и удалите `.new` после успешной проверки.
 
+Если старый несогласованный `.new` отличается от нового packaged template,
+deployment останавливается с `PACKAGING.CONFIG_CANDIDATE_CONFLICT`, не
+перезаписывая candidate. Отчёт показывает пути всех трёх файлов, timestamps и
+SHA-256, а также готовые команды `diff` и archive, но не выводит содержимое.
+Запускайте предложенный diff только в trusted terminal: сам diff может раскрыть
+secrets. Согласуйте старый candidate, затем архивируйте или удалите его и
+повторите deployment.
+
 При upgrade на TTL-capable binary оставьте lifecycle mode disabled для первого
 compatibility startup. Последующий cutover на fixed validity destructive для
 legacy active membership и выполняется по отдельной
@@ -258,12 +271,15 @@ file packaged template.
 
 Скрипт отклоняет dirty checkout без явного `--allow-dirty`, выполняет полный
 Maven gate, проверяет, что build не изменил checkout, создаёт release с
-commit/build time, копирует обе SQLite DB, атомарно переключает `current`,
-запускает сервис и выполняет local health gate. При ошибке восстанавливает
-прежний symlink и DB backup. `--port PORT` становится high-precedence значением
-`--server.port` daemon. Это путь для test stand, а не замена reviewed production
-release process. Он bootstrap'ит чистый prefix и обновляет только текущий marked
-release layout; это не команда миграции с 0.1.0.
+commit/build time и проверяет effective installed config новым jar от имени
+service account. При config failure работающий service и SQLite DB остаются
+нетронутыми. Только после этого скрипт копирует обе DB и matching systemd unit,
+атомарно переключает `current`, запускает сервис и выполняет local health gate.
+При ошибке восстанавливает прежний symlink, unit и DB backup. `--port PORT`
+становится high-precedence значением `--server.port` daemon. Это путь для test
+stand, а не замена reviewed production release process. Он bootstrap'ит чистый
+prefix и обновляет только текущий marked release layout; это не команда миграции
+с 0.1.0.
 
 Rollback намеренно ограничен application symlink и двумя SQLite DB. Он не может
 отменить input files, уже перемещённые успевшим запуститься новым daemon,

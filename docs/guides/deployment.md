@@ -126,10 +126,14 @@ sudo /opt/ioc-extractor/bin/ioc health
 sudo journalctl -u ioc-extractor -n 100 --no-pager
 ```
 
-The apply helper stages and syntax-checks the exact bytes, atomically replaces
-the installed YAML and waits for health. A startup failure restores the previous
-file. Direct restarts still have a systemd `ExecCondition` syntax guard; exit
-`78` skips activation without entering a deterministic restart loop.
+The helper stages service-readable bytes and validates YAML syntax, unknown
+keys, typed binding, conversion, semantic invariants and registry references in
+a configuration-only Spring context. It uses the installed service environment
+and JVM overrides but does not open databases, initialize transports or compose
+the runtime graph. `apply` then atomically replaces the installed YAML and waits
+for health; a startup failure restores the previous file. Direct restarts run
+the same validation in systemd `ExecCondition`; exit `78` skips activation
+without entering a deterministic restart loop.
 
 The health endpoint is loopback-only by default. A healthy local service does
 not imply that optional remote SMB endpoints have already authenticated: sync
@@ -232,6 +236,13 @@ Compare the files; merge new supported properties into the operator copy; keep
 site-specific paths, policies and secrets; then remove the `.new` file after
 successful validation.
 
+If an older unreconciled `.new` differs from the incoming template, deployment
+stops with `PACKAGING.CONFIG_CANDIDATE_CONFLICT` before overwriting it. The
+report names all three files, gives timestamps and SHA-256 digests, and prints
+copy-ready `diff` and archive commands without printing their contents. Run the
+suggested diff only in a trusted terminal because the diff itself may expose
+secrets. Reconcile the old candidate, then archive or remove it before retrying.
+
 For a TTL-capable upgrade, keep lifecycle mode disabled for the first
 compatibility start. The later fixed-validity cutover is destructive to legacy
 active membership and follows the separate
@@ -259,12 +270,14 @@ Run this command as an ordinary user:
 
 It rejects a dirty checkout unless `--allow-dirty` is explicit, runs the full
 Maven gate, verifies that the build did not change the checkout, creates a
-release identified by commit and build time, backs up both SQLite databases and
-the previous systemd unit, atomically switches `current`, starts the service and
-runs a local health gate. On failure it restores the previous symlink, unit and
-DB backup, including the database POSIX ACLs and extended attributes. `--port
-PORT` becomes the daemon's high-precedence `--server.port` value, not merely the
-probe address.
+release identified by commit and build time, then uses that new jar to validate
+the effective installed configuration as the service account. A validation
+failure leaves the running service and SQLite databases untouched. Only after
+that gate does deployment back up both databases and the previous systemd unit,
+atomically switch `current`, start the service and run a local health gate. On
+failure it restores the previous symlink, unit and DB backup, including the
+database POSIX ACLs and extended attributes. `--port PORT` becomes the daemon's
+high-precedence `--server.port` value, not merely the probe address.
 
 The build JVM is checked before Maven starts. If the host default is older than
 21, select a JDK 21 installation explicitly for the deployment shell:

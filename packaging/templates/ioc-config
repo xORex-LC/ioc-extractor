@@ -5,6 +5,7 @@ set -Eeuo pipefail
 SERVICE="ioc-extractor"
 PREFIX="@PREFIX@"
 JAVA_BIN="@JAVA_BIN@"
+RUN_USER="@USER@"
 RUN_GROUP="@GROUP@"
 SERVER_PORT="@SERVER_PORT@"
 TARGET="${PREFIX}/etc/application.yml"
@@ -12,6 +13,7 @@ LOCK="/run/lock/ioc-extractor-config.lock"
 HEALTH_ATTEMPTS=40
 HEALTH_INTERVAL=1
 STAGED_FILE=""
+CONFIG_CHECK_SEQUENCE=0
 
 log() { printf '[ioc-config] %s\n' "$*"; }
 die() { printf '[ioc-config] error: %s\n' "$*" >&2; exit 1; }
@@ -22,7 +24,8 @@ Usage:
   sudo ${PREFIX}/bin/ioc-config check [candidate.yml]
   sudo ${PREFIX}/bin/ioc-config apply <candidate.yml>
 
-check validates YAML syntax without starting Spring or touching runtime state.
+check performs strict binding and semantic validation in a configuration-only
+Spring context without composing runtime adapters or touching runtime state.
 apply validates a separate candidate, atomically replaces application.yml,
 restarts the service, and restores the previous file if health does not become UP.
 EOF
@@ -33,10 +36,31 @@ cleanup() {
 }
 trap cleanup EXIT
 
-validate_yaml() {
-  local file="$1"
-  "${JAVA_BIN}" -Xms32m -Xmx128m -Duser.timezone=UTC -Dfile.encoding=UTF-8 \
-    -jar "${PREFIX}/current/ioc-app.jar" "--ioc.validate-yaml=${file}"
+validate_config() {
+  local file="$1" unit
+  CONFIG_CHECK_SEQUENCE=$((CONFIG_CHECK_SEQUENCE + 1))
+  unit="ioc-extractor-config-check-$$-${CONFIG_CHECK_SEQUENCE}"
+  systemd-run --quiet --wait --pipe --collect \
+    --unit="${unit}" \
+    --property=Type=exec \
+    --property="User=${RUN_USER}" \
+    --property="Group=${RUN_GROUP}" \
+    --property="WorkingDirectory=${PREFIX}" \
+    --property="EnvironmentFile=${PREFIX}/etc/ioc-extractor.env" \
+    --property=NoNewPrivileges=true \
+    --property=ProtectSystem=strict \
+    --property=ProtectHome=true \
+    --property=PrivateTmp=true \
+    "${JAVA_BIN}" "\$JAVA_OPTS" -Xms32m -Xmx128m \
+    -Duser.timezone=UTC -Dfile.encoding=UTF-8 \
+    -jar "${PREFIX}/current/ioc-app.jar" "--ioc.validate-config=${file}" \
+    --ioc.runtime.mode=daemon
+}
+
+stage_candidate() {
+  local candidate="$1"
+  STAGED_FILE="$(mktemp "${PREFIX}/etc/.application.yml.candidate.XXXXXX")"
+  install -o root -g "${RUN_GROUP}" -m 0640 "${candidate}" "${STAGED_FILE}"
 }
 
 health_ready() {
@@ -71,7 +95,8 @@ case "$1" in
     candidate="${2:-${TARGET}}"
     [[ -f "${candidate}" && ! -L "${candidate}" ]] \
       || die "candidate must be a regular non-symlink file: ${candidate}"
-    validate_yaml "$(realpath "${candidate}")"
+    stage_candidate "$(realpath "${candidate}")"
+    validate_config "${STAGED_FILE}"
     ;;
   apply)
     [[ $# -eq 2 ]] || die "apply requires exactly one candidate file"
@@ -84,11 +109,8 @@ case "$1" in
 
     exec 9>"${LOCK}"
     flock -n 9 || die "another configuration apply is already running"
-    validate_yaml "${candidate}"
-
-    STAGED_FILE="$(mktemp "${PREFIX}/etc/.application.yml.candidate.XXXXXX")"
-    install -o root -g "${RUN_GROUP}" -m 0640 "${candidate}" "${STAGED_FILE}"
-    validate_yaml "${STAGED_FILE}"
+    stage_candidate "${candidate}"
+    validate_config "${STAGED_FILE}"
 
     stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
     backup="${PREFIX}/etc/application.yml.backup-${stamp}"

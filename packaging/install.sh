@@ -274,7 +274,7 @@ if [[ -f "${UNIT}" ]]; then
 fi
 if [[ "$(ps -p 1 -o comm= 2>/dev/null)" == "systemd" ]]; then
   SYSTEMD_AVAILABLE="true"
-  for command in journalctl systemctl; do
+  for command in journalctl systemctl systemd-run; do
     command -v "${command}" >/dev/null 2>&1 || die "${command} is required on a systemd host"
   done
   if systemctl is-active --quiet "${SERVICE}"; then
@@ -426,7 +426,8 @@ deploy_config() {  # src dst
     log "configuration is current: ${dst}"
   elif [[ -f "${dst}" && "${FORCE}" != "true" ]]; then
     if [[ -f "${dst}.new" ]] && ! cmp -s "${src}" "${dst}.new"; then
-      die "unreconciled configuration candidate would be overwritten: ${dst}.new"
+      ioc_report_config_candidate_conflict "${src}" "${dst}"
+      die "configuration candidate reconciliation is required"
     fi
     install -m 0640 "${src}" "${dst}.new"
     warn "kept existing ${dst}; wrote ${dst}.new (use --force to overwrite)"
@@ -446,6 +447,7 @@ sed -e "s|@PREFIX@|${PREFIX}|g" \
 chmod 0750 "${PREFIX}/bin/ioc"
 sed -e "s|@PREFIX@|${PREFIX}|g" \
     -e "s|@JAVA_BIN@|${JAVA_BIN}|g" \
+    -e "s|@USER@|${RUN_USER}|g" \
     -e "s|@GROUP@|${RUN_GROUP}|g" \
     -e "s|@SERVER_PORT@|${SERVER_PORT}|g" \
     "${SCRIPT_DIR}/templates/ioc-config" > "${PREFIX}/bin/ioc-config"

@@ -43,7 +43,7 @@ done
 
 [[ "${EUID}" -eq 0 ]] || die "privileged activation must run as root"
 for command in awk chmod chown cmp cp curl date find flock getent grep id install journalctl ln \
-    mkdir mktemp mv readlink realpath rm sed sha256sum sleep sort stat systemctl tar; do
+    mkdir mktemp mv readlink realpath rm sed sha256sum sleep sort stat systemctl systemd-run tar; do
   command -v "${command}" >/dev/null 2>&1 || die "required command not found: ${command}"
 done
 ioc_validate_prefix "${PREFIX}" || die "unsafe installation prefix"
@@ -223,7 +223,8 @@ refresh_config_candidate() { # template installed-file
     return
   fi
   if [[ -f "${installed}.new" ]] && ! cmp -s "${template}" "${installed}.new"; then
-    die "unreconciled configuration candidate would be overwritten: ${installed}.new"
+    ioc_report_config_candidate_conflict "${template}" "${installed}"
+    die "configuration candidate reconciliation is required"
   fi
   install -o root -g "${RUN_GROUP}" -m 0640 "${template}" "${installed}.new"
   log "configuration template changed; review ${installed}.new"
@@ -254,6 +255,7 @@ install -o root -g "${RUN_GROUP}" -m 0750 "${PREFIX}/bin/ioc.tmp" "${PREFIX}/bin
 rm -f "${PREFIX}/bin/ioc.tmp"
 sed -e "s|@PREFIX@|${PREFIX}|g" \
     -e "s|@JAVA_BIN@|${JAVA_BIN}|g" \
+    -e "s|@USER@|${RUN_USER}|g" \
     -e "s|@GROUP@|${RUN_GROUP}|g" \
     -e "s|@SERVER_PORT@|${PORT}|g" \
     "${SCRIPT_DIR}/templates/ioc-config" > "${PREFIX}/bin/ioc-config.tmp"
@@ -282,6 +284,27 @@ else
   mv "${STAGING}" "${RELEASE_DIR}"
 fi
 chown -R root:root "${RELEASE_DIR}"
+
+log "validating effective configuration with ${RELEASE_ID}"
+CONFIG_CHECK_UNIT="ioc-extractor-config-check-$$"
+if ! systemd-run --quiet --wait --pipe --collect \
+    --unit="${CONFIG_CHECK_UNIT}" \
+    --property=Type=exec \
+    --property="User=${RUN_USER}" \
+    --property="Group=${RUN_GROUP}" \
+    --property="WorkingDirectory=${PREFIX}" \
+    --property="EnvironmentFile=${PREFIX}/etc/ioc-extractor.env" \
+    --property=NoNewPrivileges=true \
+    --property=ProtectSystem=strict \
+    --property=ProtectHome=true \
+    --property=PrivateTmp=true \
+    "${JAVA_BIN}" "\$JAVA_OPTS" -Xms32m -Xmx128m \
+    -Duser.timezone=UTC -Dfile.encoding=UTF-8 \
+    -jar "${RELEASE_DIR}/ioc-app.jar" \
+    "--ioc.validate-config=${PREFIX}/etc/application.yml" \
+    --ioc.runtime.mode=daemon; then
+  die "new release rejected the effective installed configuration before activation"
+fi
 
 log "stopping ${SERVICE} and backing up SQLite state"
 ROLLBACK_ARMED="true"

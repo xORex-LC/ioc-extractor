@@ -27,6 +27,9 @@ public class DaemonWebEnvironmentPostProcessor implements EnvironmentPostProcess
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
+        if (isSemanticConfigurationCheck(application)) {
+            return;
+        }
         RuntimeMode mode = RuntimeMode.parse(environment.getProperty("ioc.runtime.mode", RuntimeMode.ONESHOT_VALUE));
         if (mode.isDaemon()) {
             environment.getPropertySources().addFirst(new MapPropertySource(
@@ -45,5 +48,11 @@ public class DaemonWebEnvironmentPostProcessor implements EnvironmentPostProcess
     public int getOrder() {
         // After config data processing, so a mode set in application.yml is visible.
         return Ordered.LOWEST_PRECEDENCE;
+    }
+
+    private static boolean isSemanticConfigurationCheck(SpringApplication application) {
+        return application != null
+                && application.getAllSources().contains(
+                        IocSemanticConfigurationCheck.SemanticCheckConfiguration.class);
     }
 }

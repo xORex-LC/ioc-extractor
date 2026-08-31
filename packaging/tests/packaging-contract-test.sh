@@ -32,6 +32,13 @@ assert_contains() { # file literal description
     || fail "${description}: missing '${literal}' in ${file}"
 }
 
+assert_not_contains() { # content literal description
+  local content="$1" literal="$2" description="$3"
+  if grep -Fq -- "${literal}" <<< "${content}"; then
+    fail "${description}: unexpectedly contained '${literal}'"
+  fi
+}
+
 TEMP_ROOT="$(mktemp -d)"
 mkdir -p "${PACKAGING_DIR}/target"
 LINK_TEST_ROOT="$(mktemp -d "${PACKAGING_DIR}/target/packaging-contract.XXXXXX")"
@@ -114,6 +121,27 @@ assert_contains "${PACKAGING_DIR}/install.sh" 'install -m 0640 "${src}" "${dst}.
 assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
   'install -o root -g "${RUN_GROUP}" -m 0640 "${template}" "${installed}.new"' \
   "local deployment lost upgrade configuration preservation"
+
+CONFLICT_TEMPLATE="${TEMP_ROOT}/incoming-application.yml"
+CONFLICT_INSTALLED="${TEMP_ROOT}/application.yml"
+printf 'template-value-must-not-be-printed\n' > "${CONFLICT_TEMPLATE}"
+printf 'live-value-must-not-be-printed\n' > "${CONFLICT_INSTALLED}"
+printf 'candidate-value-must-not-be-printed\n' > "${CONFLICT_INSTALLED}.new"
+CONFLICT_REPORT="$(ioc_report_config_candidate_conflict \
+  "${CONFLICT_TEMPLATE}" "${CONFLICT_INSTALLED}" 2>&1)"
+for expected in PACKAGING.CONFIG_CANDIDATE_CONFLICT \
+    "${CONFLICT_INSTALLED}" "${CONFLICT_INSTALLED}.new" "${CONFLICT_TEMPLATE}" \
+    'Existing unreconciled candidate' 'Incoming packaged template' \
+    'sudo diff -u --' 'sudo mv --' 'sha256:'; do
+  grep -Fq -- "${expected}" <<< "${CONFLICT_REPORT}" \
+    || fail "configuration conflict report omitted '${expected}'"
+done
+assert_not_contains "${CONFLICT_REPORT}" 'template-value-must-not-be-printed' \
+  "configuration conflict report leaked template content"
+assert_not_contains "${CONFLICT_REPORT}" 'live-value-must-not-be-printed' \
+  "configuration conflict report leaked live content"
+assert_not_contains "${CONFLICT_REPORT}" 'candidate-value-must-not-be-printed' \
+  "configuration conflict report leaked candidate content"
 # shellcheck disable=SC2016 # deployment-script variables are matched literally
 assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
   'UNIT_BACKUP="${PREFIX}/backups/${RELEASE_ID}-unit.service"' \
@@ -206,10 +234,10 @@ if grep -q '@[A-Z_][A-Z_]*@' "${RENDERED_UNIT}"; then
 fi
 assert_contains "${RENDERED_UNIT}" 'ExecCondition=' \
   "systemd unit lost the non-restarting YAML condition"
-assert_contains "${RENDERED_UNIT}" '--ioc.validate-yaml=./etc/application.yml' \
-  "systemd unit lost pre-start YAML validation"
-if grep -q '^ExecStartPre=.*--ioc.validate-yaml=' "${RENDERED_UNIT}"; then
-  fail "YAML validation in ExecStartPre can still trigger Restart=on-failure"
+assert_contains "${RENDERED_UNIT}" '--ioc.validate-config=./etc/application.yml' \
+  "systemd unit lost pre-start semantic configuration validation"
+if grep -q '^ExecStartPre=.*--ioc.validate-config=' "${RENDERED_UNIT}"; then
+  fail "configuration validation in ExecStartPre can still trigger Restart=on-failure"
 fi
 assert_contains "${RENDERED_UNIT}" 'RestartPreventExitStatus=78' \
   "systemd unit can restart-loop on deterministic YAML errors"
@@ -220,6 +248,7 @@ fi
 RENDERED_CONFIG_TOOL="${TEMP_ROOT}/ioc-config"
 sed -e "s|@PREFIX@|${RENDER_PREFIX}|g" \
     -e 's|@JAVA_BIN@|/usr/bin/java|g' \
+    -e "s|@USER@|$(id -un)|g" \
     -e "s|@GROUP@|$(id -gn)|g" \
     -e 's|@SERVER_PORT@|19091|g' \
     "${PACKAGING_DIR}/templates/ioc-config" > "${RENDERED_CONFIG_TOOL}"
@@ -230,6 +259,36 @@ assert_contains "${RENDERED_CONFIG_TOOL}" 'edit a separate candidate' \
   "config tool permits unsafe live-file apply"
 assert_contains "${RENDERED_CONFIG_TOOL}" 'atomic_restore' \
   "config tool lost failed-activation rollback"
+assert_contains "${RENDERED_CONFIG_TOOL}" '--ioc.validate-config=' \
+  "config tool still performs syntax-only validation"
+assert_contains "${RENDERED_CONFIG_TOOL}" 'EnvironmentFile=' \
+  "config tool semantic validation lost the installed service environment"
+assert_contains "${RENDERED_CONFIG_TOOL}" 'stage_candidate' \
+  "config tool no longer validates service-readable staged bytes"
+assert_contains "${RENDERED_CONFIG_TOOL}" '--property=ProtectSystem=strict' \
+  "config tool semantic validation lost its read-only filesystem sandbox"
+
+assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
+  'systemd-run --quiet --wait --pipe --collect' \
+  "local deployment lost isolated effective configuration preflight"
+# shellcheck disable=SC2016 # deployment-script variables are matched literally
+assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
+  '--property="EnvironmentFile=${PREFIX}/etc/ioc-extractor.env"' \
+  "local deployment preflight no longer uses the installed service environment"
+# shellcheck disable=SC2016 # deployment-script variables are matched literally
+assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
+  '"--ioc.validate-config=${PREFIX}/etc/application.yml"' \
+  "local deployment preflight no longer validates the live operator YAML"
+assert_contains "${PACKAGING_DIR}/deploy-local-root.sh" \
+  '--property=ProtectSystem=strict' \
+  "local deployment preflight lost its read-only filesystem sandbox"
+CONFIG_CHECK_LINE="$(grep -n 'validating effective configuration' \
+  "${PACKAGING_DIR}/deploy-local-root.sh" | cut -d: -f1)"
+BACKUP_LINE="$(grep -n "stopping \${SERVICE} and backing up SQLite state" \
+  "${PACKAGING_DIR}/deploy-local-root.sh" | cut -d: -f1)"
+[[ -n "${CONFIG_CHECK_LINE}" && -n "${BACKUP_LINE}" \
+    && "${CONFIG_CHECK_LINE}" -lt "${BACKUP_LINE}" ]] \
+  || fail "effective configuration preflight no longer precedes stop/backup/activation"
 bash -n "${RENDERED_CONFIG_TOOL}"
 
 bash -n \
