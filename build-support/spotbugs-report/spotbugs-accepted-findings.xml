@@ -80,7 +80,7 @@
     <finding id="SB04-024" module="adapters/adapter-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="451e8f82803afe99904b550ed37331cc" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
         <class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog" />
         <method name="listCompleted" signature="(Ljava/lang/String;)Ljava/util/List;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/FileSystemCompletedSliceCatalog.java" startLine="68" bytecode="162" />
+        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/FileSystemCompletedSliceCatalog.java" startLine="57" bytecode="88" />
         <suppression>
             <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
             <Class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog" />
@@ -91,7 +91,7 @@
     <finding id="SB04-025" module="adapters/adapter-csv" type="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" hash="b51ce9279deb56aa6c1cb2e9037a8da0" occurrence="0" priority="2" rank="13" category="STYLE" disposition="false-positive" owner="R030-BUILD" evidence="C1-NP-A" review="nio-direct-child-provenance-change">
         <class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog" />
         <method name="listCompletedSliceNames" signature="(Ljava/lang/String;)Ljava/util/List;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/FileSystemCompletedSliceCatalog.java" startLine="95" bytecode="140" />
+        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/FileSystemCompletedSliceCatalog.java" startLine="69" bytecode="66" />
         <suppression>
             <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE" />
             <Class name="com.iocextractor.adapter.out.sink.csv.FileSystemCompletedSliceCatalog" />
@@ -830,13 +830,13 @@
     <finding id="SB04-091" module="adapters/adapter-transport-smb" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="94ece55bd8105af5894ae60a0ce84620" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
         <method name="publish" signature="(Lcom/iocextractor/adapter/out/transport/smb/SmbShareClient;Lcom/iocextractor/application/sync/PublishAtomicallyRequest;)Lcom/iocextractor/application/sync/PublishReceipt;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="172" bytecode="412" />
+        <anchor sourcePath="com/iocextractor/adapter/out/transport/smb/SmbFileTransport.java" startLine="153" bytecode="414" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.adapter.out.transport.smb.SmbFileTransport" />
             <Method name="publish" />
         </suppression>
-        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-B.</rationale>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its runtime failure contract; publish-cleanup failures are attached to the primary failure and pinned by regression evidence under C2-EX-B.</rationale>
     </finding>
     <finding id="DATA-IMPORT-P8-SB-001" module="adapters/adapter-transport-smb" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="dc137b0ff7d60ed5b9f8da8b2502cb0a" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P8-CHANGE-NOTIFY" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.adapter.out.transport.smb.SmbImportChangeSignalSource" />
@@ -1159,13 +1159,13 @@
     <finding id="SB04-094" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="469a442a692cb759cd32c619ab888ca0" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.bootstrap.RemoteChangeWatchLifecycle" />
         <method name="start" signature="()V" />
-        <anchor sourcePath="com/iocextractor/bootstrap/RemoteChangeWatchLifecycle.java" startLine="54" bytecode="106" />
+        <anchor sourcePath="com/iocextractor/bootstrap/RemoteChangeWatchLifecycle.java" startLine="54" bytecode="107" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.bootstrap.RemoteChangeWatchLifecycle" />
             <Method name="start" />
         </suppression>
-        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-B.</rationale>
+        <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its runtime failure contract; partial-start cleanup failures are attached to the registration failure and pinned by regression evidence under C2-EX-B.</rationale>
     </finding>
     <finding id="SB04-095" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="e42c3c0853dd29c53834f3c4cb10de8c" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-C/HARDEN-02" review="event-listener-failure-contract-change">
         <class name="com.iocextractor.bootstrap.SliceCompletedPublishListener" />
