@@ -13,13 +13,11 @@ import com.iocextractor.application.dataframeimport.ImportWorkspaceException;
 import com.iocextractor.application.port.out.dataframeimport.ImportWorkspaceWriter;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
@@ -352,14 +350,7 @@ public final class JdbcImportWorkspace implements ImportWorkspace {
 
     private ImportSha256 digest(Path path) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            try (InputStream input = Files.newInputStream(path);
-                 DigestInputStream hashing = new DigestInputStream(input, digest)) {
-                hashing.transferTo(java.io.OutputStream.nullOutputStream());
-            }
-            return new ImportSha256(HexFormat.of().formatHex(digest.digest()));
-        } catch (NoSuchAlgorithmException failure) {
-            throw new IllegalStateException("SHA-256 is not available", failure);
+            return ImportFileDigests.sha256(path);
         } catch (IOException failure) {
             throw storageFailure("Cannot hash import workspace", failure);
         }

@@ -1,6 +1,7 @@
 package com.iocextractor.application.export;
 
-import java.nio.charset.StandardCharsets;
+import com.iocextractor.application.artifact.FingerprintFraming;
+
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -30,7 +31,7 @@ public final class ArtifactSchemaFingerprint {
         }
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            add(digest, "schema:v1");
+            FingerprintFraming.add(digest, "schema:v1");
             for (int index = 0; index < names.size(); index++) {
                 String name = Objects.requireNonNull(names.get(index), "column");
                 if (name.isBlank()) {
@@ -39,8 +40,8 @@ public final class ArtifactSchemaFingerprint {
                 String sourceType = types.get(index);
                 String type = sourceType == null || sourceType.isBlank()
                         ? "TEXT" : sourceType.trim().toUpperCase(Locale.ROOT);
-                add(digest, name);
-                add(digest, type);
+                FingerprintFraming.add(digest, name);
+                FingerprintFraming.add(digest, type);
             }
             return HexFormat.of().formatHex(digest.digest());
         } catch (NoSuchAlgorithmException e) {
@@ -48,11 +49,4 @@ public final class ArtifactSchemaFingerprint {
         }
     }
 
-    private static void add(MessageDigest digest, String value) {
-        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-        digest.update(Integer.toString(bytes.length).getBytes(StandardCharsets.US_ASCII));
-        digest.update((byte) ':');
-        digest.update(bytes);
-        digest.update((byte) ';');
-    }
 }

@@ -12,7 +12,6 @@ import org.springframework.core.env.EnumerablePropertySource;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
 
-import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
 import java.util.LinkedHashMap;
@@ -136,7 +135,7 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
     }
 
     private boolean isKnownIocProperty(String canonical) {
-        List<String> tokens = tokenize(canonical);
+        List<String> tokens = IocConfigurationPropertyShape.tokens(canonical);
         if (tokens.isEmpty() || !PREFIX.equals(tokens.getFirst())) {
             return false;
         }
@@ -144,7 +143,7 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
     }
 
     private boolean matches(Type type, List<String> tokens, int index) {
-        Class<?> raw = rawClass(type);
+        Class<?> raw = IocConfigurationPropertyShape.rawClass(type);
         if (raw == null) {
             return false;
         }
@@ -174,7 +173,7 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
 
     private RecordComponent recordComponent(Class<?> raw, String token) {
         for (RecordComponent component : raw.getRecordComponents()) {
-            if (token.equals(kebabCase(component.getName()))) {
+            if (token.equals(IocConfigurationPropertyShape.kebabCase(component.getName()))) {
                 return component;
             }
         }
@@ -182,70 +181,14 @@ final class IocUnknownConfigurationPreflight implements BeanFactoryPostProcessor
     }
 
     private boolean matchesList(Type type, List<String> tokens, int index) {
-        return isIndex(tokens.get(index)) && matches(listElementType(type), tokens, index + 1);
+        return IocConfigurationPropertyShape.isIndex(tokens.get(index))
+                && matches(IocConfigurationPropertyShape.listElementType(type), tokens, index + 1);
     }
 
     private boolean matchesMap(List<String> tokens, int index) {
         return index + 1 == tokens.size();
     }
 
-    private List<String> tokenize(String canonical) {
-        List<String> tokens = new java.util.ArrayList<>();
-        for (String part : canonical.split("\\.")) {
-            int bracket = part.indexOf('[');
-            if (bracket < 0) {
-                tokens.add(part);
-                continue;
-            }
-            if (bracket > 0) {
-                tokens.add(part.substring(0, bracket));
-            }
-            int cursor = bracket;
-            while (cursor >= 0 && cursor < part.length()) {
-                int end = part.indexOf(']', cursor);
-                if (end < 0) {
-                    return List.of();
-                }
-                tokens.add(part.substring(cursor, end + 1));
-                cursor = part.indexOf('[', end);
-            }
-        }
-        return tokens;
-    }
-
-    private Type listElementType(Type type) {
-        if (type instanceof ParameterizedType parameterized && parameterized.getActualTypeArguments().length == 1) {
-            return parameterized.getActualTypeArguments()[0];
-        }
-        return Object.class;
-    }
-
-    private Class<?> rawClass(Type type) {
-        if (type instanceof Class<?> clazz) {
-            return clazz;
-        }
-        if (type instanceof ParameterizedType parameterized && parameterized.getRawType() instanceof Class<?> clazz) {
-            return clazz;
-        }
-        return null;
-    }
-
-    private boolean isIndex(String token) {
-        return token.length() > 2 && token.charAt(0) == '[' && token.charAt(token.length() - 1) == ']';
-    }
-
-    private String kebabCase(String value) {
-        StringBuilder result = new StringBuilder();
-        for (int i = 0; i < value.length(); i++) {
-            char current = value.charAt(i);
-            if (Character.isUpperCase(current)) {
-                result.append('-').append(Character.toLowerCase(current));
-            } else {
-                result.append(current);
-            }
-        }
-        return result.toString();
-    }
 
     private Set<ConfigurationProperty> properties(Map<String, String> names) {
         Set<ConfigurationProperty> properties = new LinkedHashSet<>();

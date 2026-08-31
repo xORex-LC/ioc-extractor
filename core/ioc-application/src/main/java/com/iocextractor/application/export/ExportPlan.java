@@ -1,6 +1,7 @@
 package com.iocextractor.application.export;
 
-import java.nio.charset.StandardCharsets;
+import com.iocextractor.application.artifact.FingerprintFraming;
+
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -42,25 +43,25 @@ public record ExportPlan(int manifestVersion,
     public String planHash() {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            add(digest, Integer.toString(manifestVersion));
-            add(digest, profile.name());
-            add(digest, profile.mode().name());
-            add(digest, format.type());
-            add(digest, format.charset());
-            add(digest, format.delimiter());
-            add(digest, format.quote());
-            add(digest, format.nullLiteral());
+            FingerprintFraming.add(digest, Integer.toString(manifestVersion));
+            FingerprintFraming.add(digest, profile.name());
+            FingerprintFraming.add(digest, profile.mode().name());
+            FingerprintFraming.add(digest, format.type());
+            FingerprintFraming.add(digest, format.charset());
+            FingerprintFraming.add(digest, format.delimiter());
+            FingerprintFraming.add(digest, format.quote());
+            FingerprintFraming.add(digest, format.nullLiteral());
             if (artifacts.stream().anyMatch(artifact -> artifact.columns().contains(EXTERNAL_ID_COLUMN))) {
-                add(digest, EXPORT_SLOT_POLICY_VERSION);
+                FingerprintFraming.add(digest, EXPORT_SLOT_POLICY_VERSION);
             }
             for (ExportArtifactSpec artifact : artifacts) {
-                add(digest, artifact.artifactName());
-                add(digest, artifact.fileName());
-                artifact.columns().forEach(column -> add(digest, column));
-                add(digest, Integer.toString(artifact.identityEpoch()));
-                add(digest, artifact.identityHash());
-                add(digest, artifact.schemaHash());
-                add(digest, artifact.mappingHash());
+                FingerprintFraming.add(digest, artifact.artifactName());
+                FingerprintFraming.add(digest, artifact.fileName());
+                artifact.columns().forEach(column -> FingerprintFraming.add(digest, column));
+                FingerprintFraming.add(digest, Integer.toString(artifact.identityEpoch()));
+                FingerprintFraming.add(digest, artifact.identityHash());
+                FingerprintFraming.add(digest, artifact.schemaHash());
+                FingerprintFraming.add(digest, artifact.mappingHash());
             }
             return HexFormat.of().formatHex(digest.digest());
         } catch (NoSuchAlgorithmException e) {
@@ -68,11 +69,4 @@ public record ExportPlan(int manifestVersion,
         }
     }
 
-    private static void add(MessageDigest digest, String value) {
-        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-        digest.update(Integer.toString(bytes.length).getBytes(StandardCharsets.US_ASCII));
-        digest.update((byte) ':');
-        digest.update(bytes);
-        digest.update((byte) ';');
-    }
 }

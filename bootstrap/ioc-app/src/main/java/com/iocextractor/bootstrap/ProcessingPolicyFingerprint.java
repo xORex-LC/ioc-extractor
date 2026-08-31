@@ -1,8 +1,9 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.application.artifact.FingerprintFraming;
+
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.RecordComponent;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.temporal.TemporalAmount;
@@ -100,15 +101,6 @@ final class ProcessingPolicyFingerprint {
     }
 
     private static void add(MessageDigest digest, String value) {
-        if (value == null) {
-            digest.update((byte) 0);
-            return;
-        }
-        digest.update((byte) 1);
-        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-        digest.update(Integer.toString(bytes.length).getBytes(StandardCharsets.US_ASCII));
-        digest.update((byte) ':');
-        digest.update(bytes);
-        digest.update((byte) ';');
+        FingerprintFraming.addNullable(digest, value);
     }
 }

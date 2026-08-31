@@ -8,7 +8,6 @@ import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
 import com.iocextractor.application.artifact.CanonicalRecordMutationKind;
 import com.iocextractor.application.artifact.CanonicalRecordMutationOutcome;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
-import com.iocextractor.application.artifact.lifecycle.ProjectionGeneration;
 import com.iocextractor.application.artifact.lifecycle.RecordValidityPolicy;
 import com.iocextractor.application.artifact.lifecycle.ValidityDecision;
 import com.iocextractor.application.dataframeimport.mapping.ImportMergeResolver;
@@ -26,13 +25,9 @@ import com.iocextractor.common.IocExtractorException;
 
 import javax.sql.DataSource;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.security.DigestInputStream;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -43,7 +38,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -194,7 +188,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             PromotionCounts counts = applyFailurePolicy(connection, stage.header());
             observer.after(JdbcCanonicalImportObserver.Phase.FAILURE_POLICY_PASSED);
             MutationSummary mutations = applyMutations(
-                    connection, command, stage.header(), reservations, asOf, validity);
+                    connection, command, reservations, asOf, validity);
             observer.after(JdbcCanonicalImportObserver.Phase.CANONICAL_MUTATIONS_APPLIED);
 
             List<SlotResolution> slotResolutions = reconcilePreferredSlots(
@@ -753,7 +747,6 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
 
     private MutationSummary applyMutations(Connection connection,
                                            CanonicalImportCommand command,
-                                           StageHeader header,
                                            ReservedIds reservations,
                                            EffectiveTime asOf,
                                            ValidityDecision validity) throws SQLException {
@@ -1175,14 +1168,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
 
     private ImportSha256 digest(Path path) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            try (InputStream input = Files.newInputStream(path);
-                 DigestInputStream hashing = new DigestInputStream(input, digest)) {
-                hashing.transferTo(java.io.OutputStream.nullOutputStream());
-            }
-            return new ImportSha256(HexFormat.of().formatHex(digest.digest()));
-        } catch (NoSuchAlgorithmException failure) {
-            throw new IllegalStateException("SHA-256 is not available", failure);
+            return ImportFileDigests.sha256(path);
         } catch (IOException failure) {
             throw new IocExtractorException("Cannot hash sealed import stage", failure);
         }

@@ -24,6 +24,7 @@ Actuator. Он работает только через ports из `application.
 | `ArtifactWritePlan.java` / `PreparedArtifactRow.java` | Side-effect-free результат mapping с deferred public-id slot |
 | `ArtifactIdSequence.java` / `ArtifactIdReservation.java` | Thread-safe монотонное резервирование непересекающихся id-range перед commit |
 | `StableArtifactId.java` | Результат stable id allocation |
+| `FingerprintFraming.java` | Единый length-prefixed UTF-8 framing для durable application fingerprints |
 | `IngestRun*.java` / `RunLedger`-model | Durable checkpoint model для write→project recovery |
 | `IngestRunRecoveryService.java` | Re-project DB_COMMITTED runs и доставляет advisory projection diagnostics |
 | `lifecycle/` | Canonical record validity, lifecycle identity, activation and projection-work values |

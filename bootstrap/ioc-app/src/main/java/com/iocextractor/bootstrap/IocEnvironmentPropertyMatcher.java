@@ -2,10 +2,8 @@ package com.iocextractor.bootstrap;
 
 import org.springframework.boot.context.properties.source.ConfigurationPropertyName;
 
-import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +36,7 @@ final class IocEnvironmentPropertyMatcher {
         if (adapted == null) {
             return MatchResult.notIoc();
         }
-        List<String> tokens = tokens(adapted.toString());
+        List<String> tokens = IocConfigurationPropertyShape.environmentTokens(adapted.toString());
         if (tokens.size() == 1 || !PREFIX.equals(tokens.getFirst())) {
             return MatchResult.notIoc();
         }
@@ -56,7 +54,7 @@ final class IocEnvironmentPropertyMatcher {
     }
 
     private void match(Type type, List<String> tokens, int index, String path, Set<String> matches) {
-        Class<?> raw = rawClass(type);
+        Class<?> raw = IocConfigurationPropertyShape.rawClass(type);
         if (raw == null) {
             return;
         }
@@ -77,7 +75,7 @@ final class IocEnvironmentPropertyMatcher {
 
     private void matchRecord(Class<?> raw, List<String> tokens, int index, String path, Set<String> matches) {
         for (RecordComponent component : raw.getRecordComponents()) {
-            String componentName = kebabCase(component.getName());
+            String componentName = IocConfigurationPropertyShape.kebabCase(component.getName());
             List<String> componentTokens = List.of(componentName.split("-"));
             if (startsWith(tokens, index, componentTokens)) {
                 match(component.getGenericType(), tokens, index + componentTokens.size(),
@@ -100,67 +98,9 @@ final class IocEnvironmentPropertyMatcher {
 
     private void matchList(Type type, List<String> tokens, int index, String path, Set<String> matches) {
         String token = tokens.get(index);
-        if (isIndex(token)) {
-            match(listElementType(type), tokens, index + 1, path + token, matches);
+        if (IocConfigurationPropertyShape.isIndex(token)) {
+            match(IocConfigurationPropertyShape.listElementType(type), tokens, index + 1, path + token, matches);
         }
-    }
-
-    private List<String> tokens(String canonical) {
-        List<String> tokens = new ArrayList<>();
-        for (String part : canonical.split("\\.")) {
-            int bracket = part.indexOf('[');
-            if (bracket < 0) {
-                tokens.add(part.matches("\\d+") ? "[" + part + "]" : part);
-                continue;
-            }
-            if (bracket > 0) {
-                tokens.add(part.substring(0, bracket));
-            }
-            int cursor = bracket;
-            while (cursor >= 0 && cursor < part.length()) {
-                int end = part.indexOf(']', cursor);
-                if (end < 0) {
-                    return List.of();
-                }
-                tokens.add(part.substring(cursor, end + 1));
-                cursor = part.indexOf('[', end);
-            }
-        }
-        return tokens;
-    }
-
-    private Type listElementType(Type type) {
-        if (type instanceof ParameterizedType parameterized && parameterized.getActualTypeArguments().length == 1) {
-            return parameterized.getActualTypeArguments()[0];
-        }
-        return Object.class;
-    }
-
-    private Class<?> rawClass(Type type) {
-        if (type instanceof Class<?> clazz) {
-            return clazz;
-        }
-        if (type instanceof ParameterizedType parameterized && parameterized.getRawType() instanceof Class<?> clazz) {
-            return clazz;
-        }
-        return null;
-    }
-
-    private boolean isIndex(String token) {
-        return token.length() > 2 && token.charAt(0) == '[' && token.charAt(token.length() - 1) == ']';
-    }
-
-    private String kebabCase(String value) {
-        StringBuilder result = new StringBuilder();
-        for (int i = 0; i < value.length(); i++) {
-            char current = value.charAt(i);
-            if (Character.isUpperCase(current)) {
-                result.append('-').append(Character.toLowerCase(current));
-            } else {
-                result.append(current);
-            }
-        }
-        return result.toString();
     }
 
     record MatchResult(boolean ioc, Set<String> canonicalNames) {

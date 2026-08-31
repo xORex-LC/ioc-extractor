@@ -26,6 +26,7 @@ types to bootstrap; domain/application do not import this package.
 | `JdbcImportDeliveryLedger` | Global import sequence, forward-only checkpoint CAS, retry и head-order authority в service schema v9 |
 | `JdbcImportWorkspace`, `JdbcImportWorkspaceWriter` | Per-delivery SQLite staging, hard limits, deterministic duplicate finalization и sealed-stage verification |
 | `JdbcCanonicalImportWriter` | Read-only stage attach, active-only planning и одна cross-artifact canonical transaction с replay receipt |
+| `ImportFileDigests` | Единый byte-level SHA-256 алгоритм для adapter-owned import files; вызывающие владельцы сохраняют разные operator diagnostics |
 | `JdbcWriterAdmission` | Общая fair same-process admission для canonical confirmation, import, expiry и slot reconciliation |
 | `JdbcSnapshotSliceReader`, `JdbcExportSlotRegistry` | Stable reusable slot reconciliation, generation-safe multi-artifact snapshot и callback-streaming public rows |
 | `*Schema*` | SQLite `user_version` runner, migration support and dataframe reconciler |

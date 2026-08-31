@@ -48,61 +48,47 @@ public final class FileSystemCompletedSliceCatalog implements CompletedSliceCata
     @Override
     public List<CompletedSlice> listCompleted(String profile) {
         String profileSegment = segment(profile, "profile");
-        Path profileDir = root.resolve(profileSegment);
-        if (!Files.exists(profileDir, LinkOption.NOFOLLOW_LINKS)) {
-            return List.of();
-        }
-        try {
-            requirePhysicalDirectory(profileDir);
-        } catch (InvalidSliceException failure) {
-            throw new IocExtractorException(
-                    "Failed to discover completed export slices for profile " + profileSegment, failure);
-        }
-        try (var children = Files.list(profileDir)) {
-            List<Path> paths = children.sorted().toList();
-            List<CompletedSlice> slices = new ArrayList<>(paths.size());
-            for (Path path : paths) {
-                try {
-                    slices.add(verify(profileSegment, path));
-                } catch (InvalidSliceException failure) {
-                    emitInvalidSlice(profileSegment, path.getFileName().toString(), failure);
-                }
+        List<Path> paths = listProfileChildren(profileSegment);
+        List<CompletedSlice> slices = new ArrayList<>(paths.size());
+        for (Path path : paths) {
+            try {
+                slices.add(verify(profileSegment, path));
+            } catch (InvalidSliceException failure) {
+                emitInvalidSlice(profileSegment, path.getFileName().toString(), failure);
             }
-            return List.copyOf(slices);
-        } catch (IOException failure) {
-            throw new IocExtractorException(
-                    "Failed to discover completed export slices for profile " + profileSegment, failure);
         }
+        return List.copyOf(slices);
     }
 
     @Override
     public List<String> listCompletedSliceNames(String profile) {
         String profileSegment = segment(profile, "profile");
-        Path profileDir = root.resolve(profileSegment);
-        if (!Files.exists(profileDir, LinkOption.NOFOLLOW_LINKS)) {
+        List<Path> paths = listProfileChildren(profileSegment);
+        List<String> sliceNames = new ArrayList<>(paths.size());
+        for (Path path : paths) {
+            String sliceName = path.getFileName().toString();
+            try {
+                requirePhysicalDirectory(path);
+                requireSuccessMarker(path);
+                sliceNames.add(sliceName);
+            } catch (InvalidSliceException failure) {
+                emitInvalidSlice(profileSegment, sliceName, failure);
+            }
+        }
+        return List.copyOf(sliceNames);
+    }
+
+    private List<Path> listProfileChildren(String profileSegment) {
+        Path profileDirectory = root.resolve(profileSegment);
+        if (!Files.exists(profileDirectory, LinkOption.NOFOLLOW_LINKS)) {
             return List.of();
         }
         try {
-            requirePhysicalDirectory(profileDir);
-        } catch (InvalidSliceException failure) {
-            throw new IocExtractorException(
-                    "Failed to discover completed export slices for profile " + profileSegment, failure);
-        }
-        try (var children = Files.list(profileDir)) {
-            List<Path> paths = children.sorted().toList();
-            List<String> sliceNames = new ArrayList<>(paths.size());
-            for (Path path : paths) {
-                String sliceName = path.getFileName().toString();
-                try {
-                    requirePhysicalDirectory(path);
-                    requireSuccessMarker(path);
-                    sliceNames.add(sliceName);
-                } catch (InvalidSliceException failure) {
-                    emitInvalidSlice(profileSegment, sliceName, failure);
-                }
+            requirePhysicalDirectory(profileDirectory);
+            try (var children = Files.list(profileDirectory)) {
+                return children.sorted().toList();
             }
-            return List.copyOf(sliceNames);
-        } catch (IOException failure) {
+        } catch (InvalidSliceException | IOException failure) {
             throw new IocExtractorException(
                     "Failed to discover completed export slices for profile " + profileSegment, failure);
         }

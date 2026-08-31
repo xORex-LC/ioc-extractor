@@ -3,6 +3,7 @@ package com.iocextractor.bootstrap;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.CanonicalKeyDefinition;
 import com.iocextractor.application.artifact.CanonicalKeyMode;
+import com.iocextractor.application.artifact.FingerprintFraming;
 import com.iocextractor.application.export.ArtifactSchemaFingerprint;
 import com.iocextractor.application.export.ExportArtifactSpec;
 import com.iocextractor.application.export.ExportFormat;
@@ -16,7 +17,6 @@ import com.iocextractor.diagnostics.codes.ExportDiagnosticCodes;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -247,15 +247,6 @@ public final class ExportPlanCatalog {
     }
 
     private void add(MessageDigest digest, String value) {
-        if (value == null) {
-            digest.update((byte) 0);
-            return;
-        }
-        digest.update((byte) 1);
-        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-        digest.update(Integer.toString(bytes.length).getBytes(StandardCharsets.US_ASCII));
-        digest.update((byte) ':');
-        digest.update(bytes);
-        digest.update((byte) ';');
+        FingerprintFraming.addNullable(digest, value);
     }
 }
