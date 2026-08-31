@@ -9,6 +9,7 @@ import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.dao.DataAccessException;
 
 import java.nio.file.Path;
 import java.time.Clock;
@@ -68,6 +69,22 @@ class JdbcExportRunLedgerTest {
 
             assertThat(reopened.findIncomplete()).containsExactly(active);
             assertThat(reopened.tryStart(started("run-after-crash"))).isEmpty();
+        }
+    }
+
+    @Test
+    void incompatible_reuse_of_run_id_preserves_the_database_conflict() {
+        try (HikariDataSource dataSource = dataSource("duplicate-run-id.db")) {
+            new SqliteUserVersionSchemaMigrator(dataSource, ServiceSchemaMigrations.sqlite()).migrate();
+            var ledger = new JdbcExportRunLedger(dataSource, CLOCK);
+            ExportRun original = started("run-duplicate");
+            ledger.tryStart(original);
+            ExportRun incompatible = ExportRun.started(
+                    original.runId(), original.profile(), "different-slice", PLAN_HASH, NOW);
+
+            assertThatThrownBy(() -> ledger.tryStart(incompatible))
+                    .isInstanceOf(DiagnosticException.class)
+                    .hasCauseInstanceOf(DataAccessException.class);
         }
     }
 

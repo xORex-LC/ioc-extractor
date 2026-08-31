@@ -33,7 +33,7 @@ public sealed interface IdStart permits IdStart.Auto, IdStart.Explicit {
         try {
             return explicit(Long.parseLong(candidate));
         } catch (NumberFormatException ex) {
-            throw invalid(value);
+            throw invalid(value, ex);
         }
     }
 
@@ -45,13 +45,18 @@ public sealed interface IdStart permits IdStart.Auto, IdStart.Explicit {
         try {
             return explicit(Long.parseLong(value.toString()));
         } catch (NumberFormatException ex) {
-            throw invalid(value);
+            throw invalid(value, ex);
         }
     }
 
     private static IllegalArgumentException invalid(Object value) {
         return new IllegalArgumentException("Invalid ioc.sink.artifacts[].id.start value '" + value
                 + "'; use 'auto' or an integer within signed 64-bit range");
+    }
+
+    private static IllegalArgumentException invalid(Object value, NumberFormatException cause) {
+        return new IllegalArgumentException("Invalid ioc.sink.artifacts[].id.start value '" + value
+                + "'; use 'auto' or an integer within signed 64-bit range", cause);
     }
 
     /** Automatic start resolved from {@link com.iocextractor.application.port.out.artifact.ArtifactIdBaseline}. */

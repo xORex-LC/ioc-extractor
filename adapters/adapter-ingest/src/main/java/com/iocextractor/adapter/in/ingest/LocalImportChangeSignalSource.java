@@ -3,6 +3,12 @@ package com.iocextractor.adapter.in.ingest;
 import com.iocextractor.application.dataframeimport.model.ImportSourceId;
 import com.iocextractor.application.port.out.dataframeimport.ImportChangeSignalSource;
 import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.observability.EventAction;
+import com.iocextractor.observability.EventOutcome;
+import com.iocextractor.observability.LogField;
+import com.iocextractor.observability.logging.LogEvents;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.FileSystems;
@@ -19,6 +25,8 @@ import java.util.function.Consumer;
 
 /** NIO WatchService doorbell; event filenames are deliberately discarded. */
 public final class LocalImportChangeSignalSource implements ImportChangeSignalSource {
+
+    private static final Logger log = LoggerFactory.getLogger(LocalImportChangeSignalSource.class);
 
     private final Map<Path, ImportSourceId> sources;
     private final AtomicBoolean running = new AtomicBoolean();
@@ -57,9 +65,9 @@ public final class LocalImportChangeSignalSource implements ImportChangeSignalSo
             }
             thread = Thread.ofPlatform().daemon().name("dataframe-import-watch").start(
                     () -> watch(activeWatchService, keys, signalConsumer));
-        } catch (IOException failure) {
+        } catch (IOException | RuntimeException failure) {
             running.set(false);
-            closeWatchService();
+            closeWatchService(failure);
             throw new IocExtractorException("Failed to start local import watch hints", failure);
         }
     }
@@ -92,7 +100,18 @@ public final class LocalImportChangeSignalSource implements ImportChangeSignalSo
                 Thread.currentThread().interrupt();
                 return;
             } catch (RuntimeException failure) {
-                // Reconcile remains authoritative; a bad hint must not terminate the process.
+                if (!running.get()) {
+                    return;
+                }
+                running.set(false);
+                LogEvents.warn(log)
+                        .action(EventAction.IMPORT_CHANGE_SIGNAL)
+                        .outcome(EventOutcome.FAILURE)
+                        .field(LogField.ERROR_TYPE, failure.getClass().getName())
+                        .message("local managed import change notification stopped; "
+                                + "periodic reconcile remains active")
+                        .log(failure);
+                return;
             }
         }
     }
@@ -106,13 +125,20 @@ public final class LocalImportChangeSignalSource implements ImportChangeSignalSo
     }
 
     private void closeWatchService() {
+        closeWatchService(null);
+    }
+
+    private void closeWatchService(Throwable primaryFailure) {
         if (watchService == null) {
             return;
         }
         try {
             watchService.close();
-        } catch (IOException ignored) {
-            // Best-effort shutdown of a latency-only source.
+        } catch (IOException closeFailure) {
+            if (primaryFailure != null) {
+                primaryFailure.addSuppressed(closeFailure);
+            }
+            // Normal lifecycle shutdown remains best-effort for this latency-only source.
         } finally {
             watchService = null;
         }

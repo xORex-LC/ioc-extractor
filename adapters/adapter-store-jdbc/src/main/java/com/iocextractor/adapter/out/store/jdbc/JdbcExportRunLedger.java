@@ -89,7 +89,7 @@ public final class JdbcExportRunLedger implements ExportRunLedger, ExportRunRead
                     return existing;
                 }
                 throw conflict(startedRun.runId(), ExportRunStatus.STARTED,
-                        ExportRunStatus.STARTED, existing.get().status().name());
+                        ExportRunStatus.STARTED, existing.get().status().name(), conflict);
             }
             if (findActive().isPresent()) {
                 return Optional.empty();
@@ -372,12 +372,23 @@ public final class JdbcExportRunLedger implements ExportRunLedger, ExportRunRead
                                          ExportRunStatus expected,
                                          ExportRunStatus next,
                                          String actual) {
-        Diagnostic diagnostic = diagnosticFactory.create(ExportDiagnosticCodes.STATE_TRANSITION_CONFLICT)
+        return conflict(runId, expected, next, actual, null);
+    }
+
+    private DiagnosticException conflict(String runId,
+                                         ExportRunStatus expected,
+                                         ExportRunStatus next,
+                                         String actual,
+                                         Throwable cause) {
+        var diagnosticBuilder = diagnosticFactory.create(ExportDiagnosticCodes.STATE_TRANSITION_CONFLICT)
                 .with("runId", runId)
                 .with("expectedStatus", expected.name())
                 .with("nextStatus", next.name())
-                .with("actualStatus", actual)
-                .build();
+                .with("actualStatus", actual);
+        if (cause != null) {
+            diagnosticBuilder.cause(cause);
+        }
+        Diagnostic diagnostic = diagnosticBuilder.build();
         diagnosticSink.emit(diagnostic);
         return new DiagnosticException(diagnostic);
     }

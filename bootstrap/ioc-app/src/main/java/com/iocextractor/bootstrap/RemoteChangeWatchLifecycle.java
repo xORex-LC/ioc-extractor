@@ -50,7 +50,7 @@ final class RemoteChangeWatchLifecycle implements SmartLifecycle {
                 watches.put(source.sourceId(), signalSource.watch(RemoteWatchTarget.from(source), new Handler(source)));
             }
         } catch (RuntimeException failure) {
-            closeStartedWatches();
+            closeStartedWatches(failure);
             throw failure;
         }
         running = true;
@@ -93,11 +93,14 @@ final class RemoteChangeWatchLifecycle implements SmartLifecycle {
         return PHASE;
     }
 
-    private void closeStartedWatches() {
+    private void closeStartedWatches(RuntimeException primaryFailure) {
         for (RemoteChangeWatch watch : watches.values()) {
             try {
                 watch.close();
             } catch (RuntimeException closeFailure) {
+                if (closeFailure != primaryFailure) {
+                    primaryFailure.addSuppressed(closeFailure);
+                }
                 log.warn("remote change watch close failed after startup error", closeFailure);
             }
         }

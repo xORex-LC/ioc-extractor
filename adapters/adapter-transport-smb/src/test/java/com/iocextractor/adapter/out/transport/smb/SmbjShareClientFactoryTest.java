@@ -102,6 +102,22 @@ class SmbjShareClientFactoryTest {
                 });
     }
 
+    @Test
+    void cleanupFailureIsSuppressedOnThePrimaryConnectionFailure() {
+        RuntimeException primary = new IllegalStateException("connect failed");
+        RuntimeException cleanup = new IllegalStateException("client close failed");
+        SMBClient client = new SMBClient() {
+            @Override
+            public void close() {
+                throw cleanup;
+            }
+        };
+
+        SmbjShareClientFactory.closeAfterFailure(client, primary);
+
+        assertThat(primary.getSuppressed()).containsExactly(cleanup);
+    }
+
     private SmbEndpointSettings settings() {
         return settings(SmbEncryptionPolicy.REQUIRED);
     }

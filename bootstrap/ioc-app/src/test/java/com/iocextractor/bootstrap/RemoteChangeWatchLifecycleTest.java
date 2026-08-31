@@ -79,6 +79,35 @@ class RemoteChangeWatchLifecycleTest {
         }
     }
 
+    @Test
+    void startupCleanupFailureIsSuppressedOnTheRegistrationFailure() {
+        FakeTransport transport = new FakeTransport();
+        RuntimeException registrationFailure = new IllegalStateException("second watch failed");
+        RuntimeException closeFailure = new IllegalStateException("first watch close failed");
+        AtomicInteger registrations = new AtomicInteger();
+        RemoteChangeSignalSource signals = (target, handler) -> {
+            if (registrations.getAndIncrement() > 0) {
+                throw registrationFailure;
+            }
+            return () -> {
+                throw closeFailure;
+            };
+        };
+        RemoteFetchSource second = new RemoteFetchSource(
+                "incoming-second", "primary", "/send-second", List.of("*"), List.of());
+        try (RemoteFetchDetectionCoordinator coordinator = coordinator(transport);
+             TransportRegistry registry = new TransportRegistry(List.of(new TransportRegistry.Binding(
+                     "primary", transport, transport::closeIdle, transport, signals)))) {
+            RemoteChangeWatchLifecycle lifecycle = new RemoteChangeWatchLifecycle(
+                    List.of(source, second), registry, coordinator);
+
+            assertThatThrownBy(lifecycle::start)
+                    .isSameAs(registrationFailure)
+                    .satisfies(failure -> assertThat(failure.getSuppressed())
+                            .containsExactly(closeFailure));
+        }
+    }
+
     private RemoteFetchDetectionCoordinator coordinator(FakeTransport transport) {
         ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
         return new RemoteFetchDetectionCoordinator(

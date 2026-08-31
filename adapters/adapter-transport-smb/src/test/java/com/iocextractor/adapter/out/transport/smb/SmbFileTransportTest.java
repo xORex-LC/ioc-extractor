@@ -82,6 +82,29 @@ class SmbFileTransportTest {
     }
 
     @Test
+    void cleanupFailureIsSuppressedOnThePrimaryPublishFailure() throws IOException {
+        Path localSlice = localSlice("manifest-sha-1");
+        FakeFactory factory = new FakeFactory();
+        factory.failOnUploadName = "hashes.csv";
+        factory.failDeleteTree = true;
+        SmbFileTransport transport = transport(factory);
+
+        assertThatThrownBy(() -> transport.publishAtomically(new PublishAtomicallyRequest(
+                "primary",
+                "export/profile/slice-1",
+                localSlice,
+                "_SUCCESS")))
+                .isInstanceOf(RemoteTransportException.class)
+                .hasMessageContaining("simulated upload failure")
+                .satisfies(failure -> {
+                    assertThat(failure.getCause()).isNotNull();
+                    assertThat(failure.getCause().getSuppressed())
+                            .extracting(Throwable::getMessage)
+                            .containsExactly("simulated cleanup failure");
+                });
+    }
+
+    @Test
     void matchingRemoteMarkerIsIdempotentSuccessWithoutUpload() throws IOException {
         Path localSlice = localSlice("manifest-sha-1");
         FakeFactory factory = new FakeFactory();
@@ -190,10 +213,12 @@ class SmbFileTransportTest {
         private final List<FakeSmbShareClient> openedClients = new ArrayList<>();
         private FakeSmbShareClient precreated = new FakeSmbShareClient();
         private String failOnUploadName;
+        private boolean failDeleteTree;
 
         @Override
         public SmbShareClient open(SmbEndpointSettings settings) {
             precreated.failOnUploadName = failOnUploadName;
+            precreated.failDeleteTree = failDeleteTree;
             openedClients.add(precreated);
             return precreated;
         }
@@ -207,6 +232,7 @@ class SmbFileTransportTest {
         private final List<String> uploadPaths = new ArrayList<>();
         private final List<String> statPaths = new ArrayList<>();
         private String failOnUploadName;
+        private boolean failDeleteTree;
         private boolean failList;
         private boolean closed;
 
@@ -326,6 +352,9 @@ class SmbFileTransportTest {
 
         @Override
         public void deleteTree(String remotePath) {
+            if (failDeleteTree) {
+                throw new IllegalStateException("simulated cleanup failure");
+            }
             files.keySet().removeIf(path -> path.equals(remotePath) || path.startsWith(remotePath + "/"));
             directories.removeIf(path -> path.equals(remotePath) || path.startsWith(remotePath + "/"));
             operations.add("delete-tree:" + remotePath);

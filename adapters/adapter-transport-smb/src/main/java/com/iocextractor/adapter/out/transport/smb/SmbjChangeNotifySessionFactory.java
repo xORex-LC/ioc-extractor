@@ -60,7 +60,7 @@ final class SmbjChangeNotifySessionFactory implements SmbChangeNotifySessionFact
                     DIRECTORY_OPTIONS);
             return new SmbjChangeNotifySession(settings.name(), client, share, directory);
         } catch (RuntimeException | IOException failure) {
-            client.close();
+            SmbjShareClientFactory.closeAfterFailure(client, failure);
             throw SmbExceptionMapper.map(failure, "watch", settings.name());
         }
     }

@@ -30,8 +30,18 @@ final class SmbjShareClientFactory implements SmbShareClientFactory {
             DiskShare share = requireDiskShare(connectedShare, settings);
             return new SmbjShareClient(client, share);
         } catch (IOException | RuntimeException failure) {
-            client.close();
+            closeAfterFailure(client, failure);
             throw SmbExceptionMapper.map(failure, "connect", settings.name());
+        }
+    }
+
+    static void closeAfterFailure(SMBClient client, Throwable primaryFailure) {
+        try {
+            client.close();
+        } catch (RuntimeException closeFailure) {
+            if (closeFailure != primaryFailure) {
+                primaryFailure.addSuppressed(closeFailure);
+            }
         }
     }
 

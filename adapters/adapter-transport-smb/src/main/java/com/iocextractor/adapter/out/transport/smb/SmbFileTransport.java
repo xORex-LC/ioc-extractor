@@ -149,7 +149,7 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
             }
             return new PublishReceipt(remotePath, "committed marker " + localMarkerValue + ", files=" + files.size());
         } catch (RuntimeException failure) {
-            cleanup(client, temporaryPath);
+            cleanup(client, temporaryPath, failure);
             throw failure;
         }
     }
@@ -209,12 +209,21 @@ public final class SmbFileTransport implements FileTransport, AutoCloseable {
     }
 
     private static void cleanup(SmbShareClient client, String remotePath) {
+        cleanup(client, remotePath, null);
+    }
+
+    private static void cleanup(SmbShareClient client,
+                                String remotePath,
+                                RuntimeException primaryFailure) {
         try {
             if (client.directoryExists(remotePath)) {
                 client.deleteTree(remotePath);
             }
-        } catch (RuntimeException ignored) {
-            // Cleanup is best-effort; the original publish failure remains authoritative.
+        } catch (RuntimeException cleanupFailure) {
+            if (primaryFailure != null && cleanupFailure != primaryFailure) {
+                primaryFailure.addSuppressed(cleanupFailure);
+            }
+            // Preflight cleanup is best-effort; failure cleanup is retained on the primary error.
         }
     }
 
