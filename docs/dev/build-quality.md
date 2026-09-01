@@ -96,7 +96,7 @@ runs only after the applicable modules.
 | Control | Input | Enforcement |
 |---|---|---|
 | Maven Enforcer | Toolchain and POM metadata | Violations block every ordinary build |
-| JUnit/Surefire contracts | Current unit, integration, architecture, golden and documentation suites | All deterministic suites currently run through Surefire and failures block `verify`; Failsafe separation is pending |
+| JUnit/Surefire/Failsafe contracts | Fast, integration, architecture, golden and documentation suites | Surefire owns `*Test`; Failsafe owns `*IT`; failures and lifecycle/report-union drift block `verify` |
 | ArchUnit | Compiled production classes | Dependency or package-boundary violation blocks `verify` |
 | JaCoCo | Test execution data and production classes | Report generation is part of `verify`; coverage values are currently diagnostic |
 | SpotBugs | Applicable production bytecode | New, stale, moved or metadata-drifted findings block the exact ratchet; analyzer/report failures also block |
@@ -112,11 +112,12 @@ snapshots: they force semantic review when signal changes but do not suppress
 historical occurrences. SpotBugs is stricter still: every accepted raw finding
 has an exact reviewed identity rather than a count-only snapshot.
 
-The test lifecycle is intentionally transitional. A class named `*IT` is not
-yet evidence of a Failsafe-owned integration-test phase: the current reactor
-runs deterministic test suites through Surefire. Introducing Failsafe must
-preserve test counts, JaCoCo execution data, report retention and failure
-semantics before the lifecycle split can be described as complete.
+The test lifecycle is documented in [`docs/TESTING.md`](../TESTING.md).
+Surefire owns the fast naming cohort and Failsafe owns the integration naming
+cohort. Root validation checks the accepted taxonomy and source universe; a late
+coverage-module check proves that the disjoint report sets cover the expected
+source union. External suite shells remain explicitly conditioned and their
+skips are not treated as successful provisioned evidence.
 
 ## Ownership boundaries
 
@@ -131,6 +132,7 @@ semantics before the lifecycle split can be described as complete.
 | CPD scope, source universe, aggregation and late gate | [`build-support/cpd-report/`](../../build-support/cpd-report/) |
 | PMD source-policy/watchlist scope, exact rulesets, aggregation and late gate | [`build-support/pmd-report/`](../../build-support/pmd-report/) |
 | JaCoCo aggregate universe | [`build-support/coverage-report/`](../../build-support/coverage-report/) |
+| Test taxonomy, source ratchet and report-union verifier | [`build-support/test-quality/`](../../build-support/test-quality/) |
 
 The `build-support/build-quality` directory is intentionally not a Maven
 module. Root `validate` compiles its dependency-free Java sources directly, so
@@ -444,19 +446,22 @@ drift fail the command.
 
 ## Coverage
 
-The inherited JaCoCo agent records test execution for functional modules.
+The inherited JaCoCo agent records Surefire and Failsafe execution for
+functional modules. When tests are enabled, stale reports and execution data
+are removed during `initialize`; `-DskipTests` analyzer/package runs preserve
+the latest test evidence. The agent then appends both test JVM cohorts to the
+module's one execution-data file.
 Module reports are written under `target/site/jacoco/`; the final build-only
 coverage module combines the applicable production universe under
 `build-support/coverage-report/target/site/jacoco-aggregate/`.
 
 The reusable TCK is not part of the production coverage denominator. The
-current lifecycle generates HTML/XML evidence but does not enforce a numeric
-coverage floor, a project-owned missing-report gate or a coverage ratchet.
-Codecov is not currently wired. Introducing any of these controls requires an
+current lifecycle generates HTML/XML evidence and enforces exact
+Surefire/Failsafe source-to-report ownership. It does not yet enforce a numeric
+coverage floor, a project-owned missing-JaCoCo-report gate or a coverage
+ratchet. Codecov is not currently wired. Introducing those controls requires an
 explicit universe, missing-report policy and measured baseline rather than a
-copied percentage. A future Surefire/Failsafe split must also prove that both
-test lifecycles contribute to the intended JaCoCo data before coverage evidence
-can become blocking.
+copied percentage.
 
 ## Dependency and security analysis
 

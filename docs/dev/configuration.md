@@ -224,7 +224,7 @@ v0.2-only adapter и reporter удаляются. Новые legacy cases не �
   `DataframeImportCatalogCompiler`, `DataframeImportRuntimeConfiguration`.
 - Lifecycle: `ConfigPreflightConfiguration`, `IocSemanticConfigurationCheck`,
   `EarlyCliLauncher`, `DaemonWebEnvironmentPostProcessor`.
-- Contract tests: `IocPropertiesBindingTest`, unknown-key/preflight/analyzer/
+- Contract tests: `IocPropertiesBindingIT`, unknown-key/preflight/analyzer/
   override reporter tests, `ConfigurationDocumentationContractTest` and
   application context tests.
 

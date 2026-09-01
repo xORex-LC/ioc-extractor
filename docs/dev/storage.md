@@ -268,7 +268,7 @@ namespace rows.
 - Module boundary: `adapters/adapter-store-jdbc/README.md`.
 - Managed import staging and recovery:
   [dataframe-import.md](dataframe-import.md), delivery-ledger TCK and
-  `JdbcImportWorkspaceTest`.
+  `JdbcImportWorkspaceIT`.
 
 ## Когда обновлять документ
 

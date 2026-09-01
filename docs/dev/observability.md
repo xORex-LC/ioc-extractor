@@ -130,7 +130,7 @@ observer.
 `event.dataset` в общий key/value stream, после чего делегирует nested rendering
 стандартному Spring Boot formatter-у. Это предотвращает duplicate top-level
 `event`. Представительный regression contract находится в
-`LogbackConfigurationTest`.
+`LogbackConfigurationIT`.
 
 ## Sensitive data
 

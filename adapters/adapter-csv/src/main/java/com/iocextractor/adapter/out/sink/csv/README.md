@@ -116,13 +116,13 @@ anti-join и не перечитывать payload уже известных с�
 
 ## Тесты
 
-`CsvArtifactSliceWriterTest` фиксирует deterministic bytes/tree, порядок marker,
+`CsvArtifactSliceWriterIT` фиксирует deterministic bytes/tree, порядок marker,
 невидимость final до rename, corruption detection, forward recovery,
 идемпотентную inspection/publication, unsupported atomic move и поток из 50 000
 строк без накопления rows внутри writer. Failure-path tests отдельно фиксируют,
 что invalid charset не оставляет открытый/пустой artifact file, и что первое
 создание nested export root принудительно сохраняет directory entries.
-`FileSystemSliceRetentionStoreTest` проверяет целостное удаление каталога,
+`FileSystemSliceRetentionStoreIT` проверяет целостное удаление каталога,
 изоляцию staging и отказ удалять incomplete/corrupt final.
-`FileSystemCompletedSliceCatalogTest` проверяет verified discovery, независимые
+`FileSystemCompletedSliceCatalogIT` проверяет verified discovery, независимые
 profile pools, rejected unsafe paths, staging isolation и surfacing corruption.

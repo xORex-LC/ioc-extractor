@@ -20,6 +20,14 @@ JUnit/AssertJ здесь — **compile-scope** (parent объявляет их �
 его main-bytecode является переиспользуемым тестовым инструментарием, а не
 runtime-кодом приложения.
 
+Пакет `com.iocextractor.application.tck.junit` также экспортирует общие
+composed-аннотации `@IntegrationTest`, `@ContractTest`, `@EndToEndTest`,
+`@ExternalTest` и `@SlowTest`. Абстрактные TCK помечены `@ContractTest`, поэтому
+конкретные наследники получают contract tag автоматически; integration-
+реализация дополнительно помечается `@IntegrationTest` и называется `*IT` для
+исполнения через Failsafe. Полный lifecycle и допустимая taxonomy описаны в
+[`docs/TESTING.md`](../../docs/TESTING.md).
+
 ## Слой
 
 `core` / test-support. Зависит внутрь только на `ioc-application` (порты +

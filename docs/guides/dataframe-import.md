@@ -153,7 +153,7 @@ be unable to traverse or list the private subtree, while the service account
 must pass the capability gate and a producer-created candidate must be claimable.
 The application does not inspect or certify NTFS/Samba ACL policy.
 
-The repository's opt-in `SmbManagedImportHardeningContractTest` performs this
+The repository's opt-in `SmbManagedImportHardeningContractIT` performs this
 two-identity proof against a pre-provisioned fixture. It never creates or
 recursively deletes the namespace; see the SMB adapter README for its value-free
 system-property invocation.

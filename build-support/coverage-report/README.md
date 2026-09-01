@@ -13,7 +13,7 @@ library.
 
 | File/output | Purpose |
 |---|---|
-| `pom.xml` | Explicit production-module universe and JaCoCo `report-aggregate` execution |
+| `pom.xml` | Explicit production-module universe, JaCoCo `report-aggregate` and late test-report union check |
 | `target/site/jacoco-aggregate/index.html` | Generated human-readable aggregate report |
 | `target/site/jacoco-aggregate/jacoco.xml` | Generated machine-readable aggregate report |
 
@@ -27,7 +27,10 @@ library.
 ## Notes
 
 `core/ioc-application-tck` is intentionally outside the production denominator.
-The module defines no JaCoCo threshold or exclusion. SpotBugs aggregation and
-report-integrity validation belong to the sibling `spotbugs-report` module.
-The complete quality lifecycle is documented in
+The module defines no JaCoCo threshold or exclusion. It runs the late
+`TestLifecycleVerifier` check after the production reactor so missing, duplicate
+or wrong-engine Surefire/Failsafe XML cannot be accepted as complete evidence.
+SpotBugs aggregation and its own report-integrity validation belong to the
+sibling `spotbugs-report` module. The complete test and quality lifecycles are
+documented in [`docs/TESTING.md`](../../docs/TESTING.md) and
 [`docs/dev/build-quality.md`](../../docs/dev/build-quality.md).

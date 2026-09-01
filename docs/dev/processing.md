@@ -114,7 +114,7 @@ immutable slice использует strict encoding, потому что bytes 
 - Domain rules: `core/ioc-domain` + `DomainBoundaryTest`.
 - Registry/config contract: `ConfigRegistryCatalog`, `ConfigRegistryPreflight`,
   `application.yml`.
-- Source formats: `TikaSourceReaderFormatContractTest` и charset tests.
+- Source formats: `TikaSourceReaderFormatContractIT` и charset tests.
 - Prepare/checkpoint/commit: `StageContractTest`,
   `ArtifactPolicyCheckpointTest`, `TypedMappingFailurePolicyTest`.
 - Generated reference: `DIAGNOSTICS-CATALOG.md`.

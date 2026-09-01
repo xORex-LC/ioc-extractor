@@ -195,8 +195,12 @@ docs/       project maps, capability guides, ADRs and operator guides
 
 ## Development
 
+The complete test lifecycle, taxonomy, focused commands and report contract are
+documented in [Testing](docs/TESTING.md).
+
 ```bash
 make test
+make test-integration
 make verify
 
 # Focus one module and build its upstream dependencies.
