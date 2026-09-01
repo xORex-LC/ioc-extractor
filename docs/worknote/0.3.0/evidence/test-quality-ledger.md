@@ -24,11 +24,16 @@ their own `R030-TEST` work items.
 maps every baseline test/coverage/consumer gap to an owner without implementing
 it during Wave 0.
 
+The Wave 0 measurements remain historical evidence. The current implementation
+baseline for `R030-TEST` is the clean `cd120a66` refresh recorded below; do not
+use the older 171-suite or pre-DATA coverage values as lifecycle or ratchet
+inputs.
+
 ## Initial work-item queue
 
 | Work item | Scope/outcome | Evidence | Dependency | State |
 |---|---|---|---|---|
-| `TEST-LIFECYCLE-01` | Introduce accepted tags/composed annotations and Surefire/Failsafe selection without losing any of 171 suites | Lifecycle classification and zero-tag inventory below | Global `R030-TEST` Wave 1 | `planned` |
+| `TEST-LIFECYCLE-01` | Introduce accepted tags/composed annotations and Surefire/Failsafe selection without losing the refreshed accepted universe | Verified implementation evidence below | Global `R030-TEST` Wave 1 | `verified` |
 | `TEST-COVERAGE-02` | Add aggregate/per-module no-regression ratchets, then close accepted aggregate/domain/application branch floors | Coverage baseline and hotspots below | Stable lifecycle/reporting | `planned` |
 | `TEST-REGEX-03` | Common RE2/J + JDK engine contract and bootstrap `ioc.engine=jdk` selection test | Risk finding below; 0/9 JDK lines | Regex/bootstrap module wave | `planned` |
 | `TEST-WAITS-04` | Bound async waits, release workers in `finally`, assert termination and add diagnosable safety timeout | Wait/flake inventory below | Module test hardening | `planned` |
@@ -38,7 +43,193 @@ it during Wave 0.
 | `TEST-PUBLICATION-08` | Out-of-reactor compile/runtime contract for an admitted published library | Compatibility/shared-code ledgers | Blocked until `R030-LIB` admission | `waiting-on-library-contract` |
 | `TEST-CONSUMERS-09` | Add exact golden CSV/manifest/log/CLI consumer payload/query fixtures for accepted external surfaces | Compatibility consumer gaps | Per-surface owner decision | `planned` |
 
-## Baseline discovery inventory
+## Current-HEAD inventory refresh — 2026-09-01
+
+The refresh was captured on clean `cd120a66` before lifecycle edits with
+`make clean && make verify`. All 25 reactor projects passed; Maven reported
+`02:28` for `verify`. SpotBugs accepted all 116 reviewed findings with 0
+visible, and the CPD ratchet matched 21/21 groups. `make context` recorded
+`verify.finished_at=2026-09-01T14:18:09Z` and `verify.fresh=true`.
+
+Only modules declared by the root POM are counted. The ignored report under
+the retired, non-reactor `adapters/adapter-lookup-csv/target/` remains excluded;
+this is exactly the stale-output hazard that a project-owned inventory check
+must avoid.
+
+| Module | Source Java | Support Java | Suites | Cases | Skipped | Suite-seconds |
+|---|---:|---:|---:|---:|---:|---:|
+| `platform/platform-errors` | 0 | 0 | 0 | 0 | 0 | 0.000 |
+| `platform/platform-diagnostics` | 11 | 0 | 11 | 34 | 0 | 0.708 |
+| `platform/platform-etl` | 2 | 0 | 2 | 16 | 0 | 0.249 |
+| `platform/platform-events` | 3 | 0 | 3 | 11 | 0 | 0.531 |
+| `platform/platform-concurrency` | 3 | 0 | 3 | 16 | 0 | 0.658 |
+| `platform/platform-observability` | 6 | 0 | 6 | 22 | 0 | 0.565 |
+| `platform/platform-diagnostics-logging` | 4 | 0 | 4 | 37 | 0 | 0.649 |
+| `core/ioc-domain` | 5 | 0 | 5 | 27 | 0 | 2.126 |
+| `core/ioc-application` | 61 | 2 | 59 | 250 | 0 | 1.598 |
+| `core/ioc-application-tck` | 0 | 0 | 0 | 0 | 0 | 0.000 |
+| `adapters/adapter-regex-re2j` | 0 | 0 | 0 | 0 | 0 | 0.000 |
+| `adapters/adapter-psl` | 1 | 0 | 1 | 11 | 0 | 0.726 |
+| `adapters/adapter-source-tika` | 3 | 0 | 3 | 8 | 0 | 9.839 |
+| `adapters/adapter-csv` | 14 | 0 | 14 | 72 | 0 | 5.784 |
+| `adapters/adapter-manifest-json-jackson` | 1 | 0 | 1 | 6 | 0 | 2.710 |
+| `adapters/adapter-store-jdbc` | 27 | 0 | 27 | 187 | 1 | 43.031 |
+| `adapters/adapter-transport-smb` | 17 | 2 | 15 | 79 | 7 | 3.679 |
+| `adapters/adapter-ingest` | 11 | 0 | 11 | 55 | 0 | 3.452 |
+| `adapters/adapter-cli-picocli` | 8 | 0 | 8 | 36 | 0 | 6.791 |
+| `bootstrap/ioc-app` | 75 | 0 | 75 | 319 | 0 | 24.865 |
+| **Reactor total** | **252** | **4** | **248** | **1186** | **8** | **107.961** |
+
+The four support sources are the two previously recorded application helpers
+plus `SmbContractTestSupport` and `TestImportSnapshotStore`. Every other
+top-level test source has a matching Surefire XML suite, and no declared-reactor
+report lacks a matching source. The refresh adds 77 suites and 405 cases over
+the Wave 0 snapshot; the increase is concentrated in DATA-TTL-01 and
+DATA-IMPORT-01 application, JDBC, SMB, ingest and bootstrap coverage.
+
+Current lifecycle and selection signals:
+
+| Signal | Current evidence | Disposition for `TEST-LIFECYCLE-01` |
+|---|---|---|
+| Surefire | `3.5.6`; owns all 248 discovered suites in Maven `test` | Split must preserve coverage data, reports and failure propagation |
+| Failsafe | Version managed, no execution and no reports | Introduce only after lossless selection is executable |
+| Tags/composed annotations | 0 | Accepted vocabulary exists only in the goal contract |
+| Integration naming | No `IT*`, `*IT` or `*ITCase` sources | Rename/move only from the reviewed migration inventory |
+| Conditional suites | 5 suites / 8 cases | Keep provisioned load/SMB evidence outside the deterministic offline union |
+| Regular result | 1178 passed, 8 skipped, 0 failures/errors | The eight skips are unavailable opt-in evidence, not passes |
+| Retry | None | Do not introduce retries as lifecycle migration |
+| CI ownership | One full `tools/ci/build.sh` verify | Test/coverage artifact retention remains missing |
+
+The conditional cases are one managed-import load profile, three managed SMB
+delivery cases, two live SMB `CHANGE_NOTIFY` cases, one SMB encryption case and
+one two-identity SMB hardening case. They are controlled by explicit system
+properties; there are no `@Disabled`, assumption-driven skips or tag filters.
+The accepted deterministic offline universe must therefore be defined
+separately from the five provisioned-only suite shells before proving the fast
+and integration union.
+
+The suite-duration sum is not wall-clock because Maven runs modules in
+parallel. `adapter-store-jdbc` contributes 39.9% and `bootstrap/ioc-app` 23.0%;
+together they account for 62.9%. The slowest suites are
+`JdbcImportWorkspaceTest` (15.913 s), `JdbcLedgerDaemonRuntimeModeTest`
+(5.924 s), `JdbcCanonicalImportWriterContractTest` (5.351 s),
+`TikaSourceReaderDiagnosticTest` (4.704 s) and `JdbcSnapshotSliceReaderTest`
+(4.382 s). The 100k import-workspace case alone contributes 10.862 s and must
+be classified by semantics, not moved merely because it is expensive.
+
+The refreshed static wait inventory finds 6 `Thread.sleep` calls in 5 files,
+60 timed `await` calls, 25 timed `Future.get` calls, 11 bare `await()` calls in
+10 files, 9 timed thread joins and no JUnit `@Timeout` or Surefire fork timeout.
+The additional bare wait is the lifecycle-deadline scheduler worker gate.
+`TEST-WAITS-04` remains separate from lifecycle migration.
+
+## `TEST-LIFECYCLE-01` implementation evidence — 2026-09-02
+
+The reviewed behavior-based inventory was migrated to Maven naming ownership:
+Surefire owns 183 fast `*Test` suites and Failsafe owns 65 `*IT` suites. Five
+of the Failsafe suites are explicitly conditioned external shells, so the
+deterministic offline universe is `183 + (65 - 5) = 243` suites. The two source
+sets are disjoint and their complete union remains the refreshed 248-suite
+reactor universe.
+
+| Cohort | Suites | Cases | Passed | Skipped | Failures/errors | Suite-seconds |
+|---|---:|---:|---:|---:|---:|---:|
+| Surefire fast | 183 | 792 | 792 | 0 | 0 | 29.931 |
+| Failsafe integration, including external shells | 65 | 394 | 386 | 8 | 0 | 83.943 |
+| **Full reactor union** | **248** | **1186** | **1178** | **8** | **0** | **113.874** |
+
+The five external shells and their eight skipped cases are unchanged: one
+managed-import load profile and four SMB suites. Their `@ExternalTest`
+classification composes `integration`, and the lifecycle verifier requires an
+explicit `@EnabledIfSystemProperty` on each shell. They remain discoverable and
+reported but are not counted as successful provisioned evidence.
+
+The shared TCK exports runtime-retained `@IntegrationTest`, `@ContractTest`,
+`@EndToEndTest`, `@ExternalTest` and `@SlowTest` annotations. Repeated contract
+semantics are inherited from the abstract TCK classes; architecture-only core
+tests use direct `@Tag("architecture")` so framework-free modules do not acquire
+an outward test-support dependency. No lifecycle selection uses tag filters.
+
+The JDK-only `build-support/test-quality` verifier runs in root `validate` and
+has 2 happy paths plus 8 negative contract scenarios. It rejects unknown tags,
+invalid composition, executable tests outside both naming conventions,
+wrong-engine ownership, unguarded external suites, lifecycle filters and exact
+source-count drift. The late coverage-module execution additionally compares
+the source sets with generated Surefire/Failsafe XML, rejecting missing,
+unexpected, duplicate or cross-engine suites.
+
+A qualifying `make verify` passed all 25 projects in `02:27`. The late verifier reported
+`fast=183`, `integration=65`, `external=5` and
+`deterministic-offline=243`; SpotBugs remained `116 accepted / 0 visible` and
+CPD remained `21/21`. A first isolated integration run exposed that the
+bootstrap project-version system property was Surefire-only;
+`LogbackConfigurationIT` failed rather than being masked. The property is now
+supplied to Failsafe as well, and a focused rerun passed 2/2 before the full
+gate.
+
+JaCoCo now starts from one cleaned module execution-data file and appends both
+test JVM cohorts before module and aggregate reporting. The post-split
+aggregate is 19162/22389 lines (85.59%) and 5434/8119 branches (66.93%). This is
+9 fewer covered lines and 12 fewer covered branches than the pre-split run even
+though the exact 248-suite/1186-case universe is retained; no coverage ratchet
+exists yet, so the small execution-path variance is recorded rather than
+silently treated as a regression decision. `TEST-COVERAGE-02` must use fresh
+post-split repetitions when accepting numeric ratchets.
+
+CI now retains Surefire XML, Failsafe XML, module JaCoCo and aggregate JaCoCo
+directories for 30 days with `if: always()`. The durable English lifecycle,
+taxonomy, command, external-evidence and flake policy is published in
+[`docs/TESTING.md`](../../../TESTING.md).
+
+### Current aggregate coverage
+
+The 19 groups below come from the reactor aggregate so downstream execution is
+credited. They are refreshed measurements, not yet accepted ratchets.
+
+| Module/scope | Lines covered/total | Line | Branches covered/total | Branch | Missed branches | Release floor/state |
+|---|---:|---:|---:|---:|---:|---|
+| **Reactor aggregate** | **19171/22389** | **85.63%** | **5446/8119** | **67.08%** | **2673** | `75% / 80%`; branch gap |
+| `platform/platform-errors` | 4/4 | 100.00% | 0/0 | N/A | 0 | measured |
+| `platform/platform-diagnostics` | 481/491 | 97.96% | 56/76 | 73.68% | 20 | measured |
+| `platform/platform-etl` | 165/181 | 91.16% | 16/24 | 66.67% | 8 | measured |
+| `platform/platform-events` | 41/41 | 100.00% | 12/14 | 85.71% | 2 | measured |
+| `platform/platform-concurrency` | 197/218 | 90.37% | 48/66 | 72.73% | 18 | measured |
+| `platform/platform-observability` | 327/341 | 95.89% | 69/71 | 97.18% | 2 | measured |
+| `platform/platform-diagnostics-logging` | 56/60 | 93.33% | 20/21 | 95.24% | 1 | measured |
+| `core/ioc-domain` | 229/243 | 94.24% | 86/110 | 78.18% | 24 | `85% / 90%`; branch gap |
+| `core/ioc-application` | 4574/5412 | 84.52% | 1475/2292 | 64.35% | 817 | `85% / 90%`; line and branch gaps |
+| `core/ioc-application-tck` | — | N/A | — | N/A | — | outside production universe |
+| `adapters/adapter-regex-re2j` | 8/18 | 44.44% | 2/4 | 50.00% | 2 | supported-path gap |
+| `adapters/adapter-psl` | 15/17 | 88.24% | 11/12 | 91.67% | 1 | measured |
+| `adapters/adapter-source-tika` | 57/58 | 98.28% | 7/10 | 70.00% | 3 | measured |
+| `adapters/adapter-csv` | 1102/1293 | 85.23% | 391/558 | 70.07% | 167 | measured |
+| `adapters/adapter-manifest-json-jackson` | 82/84 | 97.62% | 5/6 | 83.33% | 1 | measured |
+| `adapters/adapter-store-jdbc` | 5277/6013 | 87.76% | 1286/1858 | 69.21% | 572 | measured |
+| `adapters/adapter-transport-smb` | 813/1096 | 74.18% | 307/510 | 60.20% | 203 | external-path concentration |
+| `adapters/adapter-ingest` | 930/1189 | 78.22% | 269/422 | 63.74% | 153 | measured |
+| `adapters/adapter-cli-picocli` | 415/564 | 73.58% | 114/227 | 50.22% | 113 | measured |
+| `bootstrap/ioc-app` | 4398/5066 | 86.81% | 1272/1838 | 69.21% | 566 | measured |
+
+Compared with Wave 0, the production denominator grew from 10962 to 22389
+lines and from 3998 to 8119 branches. Aggregate line coverage moved from
+87.34% to 85.63%, and branch coverage from 69.38% to 67.08%. Because no numeric
+ratchet was active, this is a refreshed post-DATA baseline rather than a passed
+or failed no-regression decision. `TEST-COVERAGE-02` must establish ratchets
+from this universe and close the fixed-floor gaps: aggregate branch 12.92 pp,
+domain branch 11.82 pp, application line 0.48 pp and application branch
+25.65 pp.
+
+The largest current missed-branch concentrations are
+`DataframeImportCatalogCompiler` (132), `JdbcCanonicalImportWriter` (73),
+`IocConfigPreflight` and `SyncHealthIndicator` (53 each), `AppConfig` (50),
+`JdbcImportWorkspace` (49), `LocalManagedImportSourceLifecycle` (39) and the
+unexecuted live `SmbjShareClient` seam (38). These are triage inputs, not an
+instruction to add percentage-only tests.
+
+## Historical Wave 0 baseline discovery inventory
+
+The remainder of this section preserves the accepted pre-DATA snapshot and its
+original classifications. Use the current-HEAD refresh above for new work.
 
 Captured for `BASE-TESTS-04` from tracked `src/test/**/*.java` files and
 Surefire XML reports produced by the fresh `make verify` baseline. Modules are
@@ -429,12 +620,12 @@ does not infer mutation effectiveness from assertion volume.
 | JaCoCo agent/report | `0.8.15`; inherited `prepare-agent` + module `report` | `make verify` | Clean local reactor evidence below | `report-only` |
 | JaCoCo per-module check | Not configured | N/A | N/A | `deferred-until-baseline` |
 | JaCoCo aggregate check | Not configured | N/A | N/A | `deferred-until-baseline` |
-| Surefire unit lifecycle | `3.5.6`; default includes; bootstrap injects project version | `make test` / `make verify` | 171 mixed-level suites in fresh verify | `existing-mixed` |
-| Failsafe integration lifecycle | `3.5.6` managed only; no project execution | N/A | No `*IT` source or reports | `missing` |
-| JUnit tag convention | No tags, composed annotations or filters | N/A | No selectable cohorts in current CI | `missing` |
+| Surefire fast lifecycle | `3.5.6`; default naming; isolated via `skip.unit.tests` | `make test` / `make test-fast` / `make verify` | 183 suites / 792 cases | `verified` |
+| Failsafe integration lifecycle | `3.5.6`; `integration-test` + `verify`; default IT naming | `make test-integration` / `make verify` | 65 suites / 394 cases / 8 external skips | `verified` |
+| JUnit tag convention | Six accepted tags; five shared composed annotations; no regular filters | root `validate` / `make verify` | Source-count and exact report-union verifier | `verified` |
 | Codecov best-effort upload | TBD | N/A | TBD | `planned` |
 | Codecov project/patch signals | TBD | N/A | TBD | `planned` |
-| Coverage/test artifacts | Module HTML/XML + reactor aggregate HTML/XML | `make verify` | CI artifact retention not implemented in baseline | `local-existing` |
+| Coverage/test artifacts | Surefire/Failsafe XML + module and aggregate JaCoCo HTML/XML | `make verify` | Always-upload artifact, 30-day retention | `verified-retention` |
 
 ### `BASE-COVERAGE-05` tooling and universe decision
 
@@ -587,7 +778,10 @@ retirement evidence in its owning goal.
 
 | Current test/suite | Observed level | Target lifecycle/name | Tags | Action | Evidence | State |
 |---|---|---|---|---|---|---|
-| TBD | TBD | TBD | TBD | TBD | TBD | `planned` |
+| 183 fast suites | Unit/component, architecture, contract and publication | Surefire defaults / `*Test` | Untagged, `architecture` or `contract` as applicable | Retain fast ownership | Exact source/report set and 792 cases | `verified` |
+| 58 ordinary integration suites | DB, filesystem, parsing, serialization, Spring and transport | Failsafe / `*IT` | `integration`, plus `contract` where applicable | Rename reviewed inventory | Exact source/report set | `verified` |
+| 2 deterministic E2E suites | Daemon ingest and golden pipeline | Failsafe / `*IT` | `integration`, `e2e` | Use composed `@EndToEndTest` | Exact source/report set | `verified` |
+| 5 provisioned external suites | SMB and import load evidence | Failsafe / `*IT` | `integration`, `external`; load also `slow` | Keep property-conditioned and outside offline union | 5 reported shells / 8 explicit skips | `verified-offline`; provisioned evidence remains open |
 
 ## Risk и effectiveness findings
 
@@ -606,7 +800,7 @@ Gap type examples: `negative`, `boundary`, `error`, `recovery`,
 
 | Test/suite | Signal | Reproduction/seed | Duration | Owner | Disposition | Exit condition |
 |---|---|---|---:|---|---|---|
-| 9 wait-bearing files listed above | 10 unbounded `await()` calls; no test/fork timeout | Static analysis | N/A | `R030-TEST` | Remediate | Every async path has bounded, diagnosable completion and failure-safe cleanup |
+| 10 wait-bearing files in the current refresh | 11 unbounded `await()` calls; no test/fork timeout | Static analysis | N/A | `R030-TEST` | Remediate | Every async path has bounded, diagnosable completion and failure-safe cleanup |
 | 5 files with fixed sleeps | 6 calls, all locally bounded or semantic | Static analysis | up to 1–10 s by helper/scenario | `R030-TEST` | Review; do not blanket-replace | Each retained sleep has written rationale; observable conditions use deterministic coordination where practical |
 | Scheduler thread tests | 9 timed joins; termination usually not asserted | Static analysis | join bound `1 s` | `R030-TEST` | Remediate with termination assertion/finally cleanup | No test can silently leave a live worker |
 | Two CLI suites | Temporary `System.out` replacement | Current sequential JUnit execution | N/A | `R030-TEST` | Safe in current mode; guard before parallelism | Resource lock or no global mutation before parallel execution |
@@ -653,5 +847,5 @@ universe.
 - [ ] PIT survived mutants классифицированы
 - [ ] PIT runtime cost измерена
 - [ ] Diagnostic pilots have adoption decisions
-- [ ] Published testing documentation matches live build
+- [x] Published testing documentation matches live build
 - [x] Status matrix updated

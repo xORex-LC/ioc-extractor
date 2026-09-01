@@ -1050,7 +1050,9 @@ control. Это не разрешает default/category-wide rules или ав�
 
 ## R030-BUILD goal closure dependencies
 
-- [ ] `TEST-LIFECYCLE-01`: Surefire/Failsafe taxonomy и lifecycle separation
+- [x] `TEST-LIFECYCLE-01`: Surefire/Failsafe taxonomy и lifecycle separation;
+  183 fast + 65 integration suites, exact disjoint report union and appended
+  JaCoCo execution verified by the 2026-09-02 full reactor run
 - [ ] `TEST-COVERAGE-02`: JaCoCo checks/ratchets, explicit universe и
   missing-report enforcement
 - [ ] Codecov best-effort upload и evidence, без required-status semantics
