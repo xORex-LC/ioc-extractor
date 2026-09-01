@@ -1,5 +1,6 @@
 package com.iocextractor;
 
+import com.iocextractor.application.tck.junit.ContractTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.core.io.ClassPathResource;
@@ -11,6 +12,7 @@ import java.time.Instant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+@ContractTest
 class BuildInfoContractTest {
 
     private static final String EXPECTED_PROJECT_VERSION_PROPERTY = "test.project.version";

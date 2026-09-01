@@ -1,5 +1,6 @@
 package com.iocextractor.application.tck.artifact;
 
+import com.iocextractor.application.tck.junit.ContractTest;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityStore;
 import org.junit.jupiter.api.Test;
@@ -10,6 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Reusable identity epoch and drift contract for canonical storage adapters. */
+@ContractTest
 public abstract class CanonicalIdentityStoreContractTest {
 
     /** Creates an isolated store with an empty {@code masks(mask, source)} artifact. */

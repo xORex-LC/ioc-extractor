@@ -21,6 +21,11 @@
             <artifactId>ioc-application</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-application-tck</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>com.hierynomus</groupId>
             <artifactId>smbj</artifactId>
         </dependency>

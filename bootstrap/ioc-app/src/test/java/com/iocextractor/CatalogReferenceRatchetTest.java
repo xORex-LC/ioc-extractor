@@ -6,6 +6,7 @@ import com.iocextractor.observability.EventAction;
 import com.tngtech.archunit.core.domain.JavaFieldAccess;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashSet;
@@ -23,6 +24,7 @@ import static java.util.stream.Collectors.toMap;
  * maps count as references. Reflection-based producers would not be seen, but
  * the project does not use or permit that convention for catalog emission.
  */
+@Tag("architecture")
 class CatalogReferenceRatchetTest {
 
     /** OBS-D1 completed producer migration: every retained catalog constant is live. */

@@ -1,4 +1,4 @@
-# Test profile for GoldenPipelineTest: redirects dataframe storage and sinks to
+# Test profile for GoldenPipelineIT: redirects dataframe storage and sinks to
 # target/golden. Everything else (source, refang, patterns, classify rules) is
 # inherited from the main application.yml.
 ioc:

@@ -1,4 +1,4 @@
-# Test profile for DaemonIngestE2ETest: redirects the dataframe DB and sink
+# Test profile for DaemonIngestE2EIT: redirects the dataframe DB and sink
 # projections to target/daemon-e2e. List properties (sink.artifacts) must be
 # redefined as a whole — Spring Boot replaces, not merges, list overrides.
 ioc:

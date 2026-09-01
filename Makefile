@@ -41,7 +41,7 @@ GITHUB ?= 0
 
 .PHONY: help \
 	doctor doctor-core doctor-dev doctor-ci doctor-security bootstrap \
-	clean package test test-module test-one verify version extract export \
+	clean package test test-fast test-integration test-module test-integration-module test-one verify version extract export \
 	dependency-analysis pmd-analysis pmd-watchlist spotbugs-baseline-proposal \
 	context \
 	run stop runtime-up runtime-down runtime-status runtime-reset submit \
@@ -85,13 +85,29 @@ clean: ## Remove Maven build outputs (developer runtime data is preserved)
 package: ## Build the bootable jar without running tests
 	@$(MAVEN) -DskipTests package
 
-test: ## Run the Maven test phase across the reactor
+test: test-fast ## Run the fast Surefire suite across the reactor
+
+test-fast: ## Run the fast Surefire suite across the reactor
 	@$(MAVEN) test
 
-test-module: ## Test one module and upstream deps; MODULE=core/ioc-domain
+test-integration: ## Run deterministic Failsafe suites and skipped external shells
+	@modules="$$(find platform core adapters bootstrap -path '*/src/test/java/*' -type f \
+		\( -name 'IT*.java' -o -name '*IT.java' -o -name '*ITCase.java' \) -printf '%p\n' \
+		| cut -d/ -f1-2 | sort -u | paste -sd, -)"; \
+		[[ -n "$${modules}" ]] || { echo "no integration-test modules found" >&2; exit 2; }; \
+		$(MAVEN) -pl "$${modules}" -am -Dskip.unit.tests=true verify
+
+test-module: ## Run one module's fast tests and upstream deps; MODULE=core/ioc-domain
 	@[[ -n "$(MODULE)" ]] || { echo "MODULE is required" >&2; exit 2; }
 	@[[ "$(MODULE)" =~ ^[A-Za-z0-9._/-]+$$ && -f "$(MODULE)/pom.xml" ]] || { echo "invalid Maven module: $(MODULE)" >&2; exit 2; }
 	@$(MAVEN) -pl "$(MODULE)" -am test
+
+test-integration-module: ## Run one module's Failsafe suites and upstream deps; MODULE=adapters/adapter-store-jdbc
+	@[[ -n "$(MODULE)" ]] || { echo "MODULE is required" >&2; exit 2; }
+	@[[ "$(MODULE)" =~ ^[A-Za-z0-9._/-]+$$ && -f "$(MODULE)/pom.xml" ]] || { echo "invalid Maven module: $(MODULE)" >&2; exit 2; }
+	@find "$(MODULE)/src/test" -type f \( -name 'IT*.java' -o -name '*IT.java' -o -name '*ITCase.java' \) -print -quit 2>/dev/null \
+		| grep -q . || { echo "module has no Failsafe suites: $(MODULE)" >&2; exit 2; }
+	@$(MAVEN) -pl "$(MODULE)" -am -Dskip.unit.tests=true verify
 
 test-one: ## Run one test selector; MODULE=... TEST=Class#method
 	@[[ -n "$(MODULE)" && -n "$(TEST)" ]] || { echo "MODULE and TEST are required" >&2; exit 2; }
@@ -101,7 +117,14 @@ test-one: ## Run one test selector; MODULE=... TEST=Class#method
 	@selector="$(TEST)"; class="$${selector%%#*}"; simple="$${class##*.}"; \
 		find "$(MODULE)/src/test" -type f -name "$${simple}.java" -print -quit 2>/dev/null \
 		| grep -q . || { echo "test class not found in $(MODULE): $${simple}" >&2; exit 2; }
-	@$(MAVEN) -pl "$(MODULE)" -am test -Dtest="$(TEST)" -Dsurefire.failIfNoSpecifiedTests=false
+	@selector="$(TEST)"; class="$${selector%%#*}"; simple="$${class##*.}"; \
+		if [[ "$${simple}" == IT* || "$${simple}" == *IT || "$${simple}" == *ITCase ]]; then \
+			$(MAVEN) -pl "$(MODULE)" -am -Dskip.unit.tests=true verify \
+				-Dit.test="$(TEST)" -Dfailsafe.failIfNoSpecifiedTests=false; \
+		else \
+			$(MAVEN) -pl "$(MODULE)" -am test -Dtest="$(TEST)" \
+				-Dsurefire.failIfNoSpecifiedTests=false; \
+		fi
 
 verify: ## Run the release-quality Maven reactor gate
 	@tools/ci/build.sh

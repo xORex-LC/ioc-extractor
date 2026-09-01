@@ -1,5 +1,6 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.application.tck.junit.ContractTest;
 import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
 import com.iocextractor.application.dataframeimport.model.ImportDuplicatePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportExistingSlotPolicy;
@@ -53,6 +54,7 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
  * and closed vocabulary, not the semantic accuracy of prose, recommendations or
  * documented defaults; those remain review responsibilities.
  */
+@ContractTest
 class ConfigurationDocumentationContractTest {
 
     private static final Pattern HINT_VALUE = Pattern.compile("\\\"value\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");

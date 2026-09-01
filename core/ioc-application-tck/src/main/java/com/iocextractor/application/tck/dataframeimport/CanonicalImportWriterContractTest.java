@@ -1,5 +1,6 @@
 package com.iocextractor.application.tck.dataframeimport;
 
+import com.iocextractor.application.tck.junit.ContractTest;
 import com.iocextractor.application.dataframeimport.model.ImportPromotionOutcome;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportCommand;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportResult;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Reusable receipt-idempotency baseline for atomic canonical import writers. */
+@ContractTest
 public abstract class CanonicalImportWriterContractTest {
 
     /** @return a clean adapter fixture containing a valid non-empty promotion */

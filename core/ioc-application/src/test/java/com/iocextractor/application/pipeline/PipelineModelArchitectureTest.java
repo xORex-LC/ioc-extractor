@@ -10,6 +10,7 @@ import com.iocextractor.application.pipeline.stage.PrepareArtifactsStage;
 import com.iocextractor.application.pipeline.stage.WriteArtifactsStage;
 import com.iocextractor.platform.etl.Stage;
 import com.iocextractor.platform.etl.StageId;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -17,6 +18,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Tag("architecture")
 class PipelineModelArchitectureTest {
 
     private static final List<Class<?>> STAGES = List.of(

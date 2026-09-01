@@ -1,5 +1,6 @@
 package com.iocextractor.application.tck.dataframeimport;
 
+import com.iocextractor.application.tck.junit.ContractTest;
 import com.iocextractor.application.dataframeimport.model.ImportClaimReservation;
 import com.iocextractor.application.dataframeimport.model.ImportContractFingerprint;
 import com.iocextractor.application.dataframeimport.model.ImportContractId;
@@ -28,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Reusable ordering, idempotency and CAS contract for import delivery ledgers. */
+@ContractTest
 public abstract class ImportDeliveryLedgerContractTest {
 
     private static final Instant DETECTED_AT = Instant.parse("2026-08-23T00:00:00Z");

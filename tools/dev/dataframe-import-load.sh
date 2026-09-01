@@ -84,9 +84,9 @@ fingerprint="$(dev_git_worktree_fingerprint)"
 
 command=(
   "${DEV_REPO_ROOT}/mvnw" -q -ntp -T 1
-  -pl adapters/adapter-store-jdbc -am test
-  -Dtest=JdbcManagedImportLoadProfileTest
-  -Dsurefire.failIfNoSpecifiedTests=false
+  -pl adapters/adapter-store-jdbc -am -Dskip.unit.tests=true verify
+  -Dit.test=JdbcManagedImportLoadProfileIT
+  -Dfailsafe.failIfNoSpecifiedTests=false
   "-DargLine=-Xmx${JVM_MAX_MIB}m"
   -Dioc.import.load.enabled=true
   "-Dioc.import.load.profile=${PROFILE}"

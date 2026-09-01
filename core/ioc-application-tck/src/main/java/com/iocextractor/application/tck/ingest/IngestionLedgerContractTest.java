@@ -1,5 +1,6 @@
 package com.iocextractor.application.tck.ingest;
 
+import com.iocextractor.application.tck.junit.ContractTest;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.SourceKey;
@@ -25,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * it as a {@code test}-scoped dependency and subclass it, with no package-phase
  * coupling, inherited test toolkit, and a clean "only the contract is exported" boundary.
  */
+@ContractTest
 public abstract class IngestionLedgerContractTest {
 
     protected static final Instant DETECTED_AT = Instant.parse("2026-06-22T00:00:00Z");

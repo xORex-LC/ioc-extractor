@@ -25,6 +25,11 @@
             <groupId>com.iocextractor</groupId>
             <artifactId>ioc-application</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-application-tck</artifactId>
+            <scope>test</scope>
+        </dependency>
 
         <!-- Adapters (one technical boundary each) wired by the composition root -->
         <dependency>
@@ -174,6 +179,15 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <test.project.version>${project.version}</test.project.version>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
                 <configuration>
                     <systemPropertyVariables>
                         <test.project.version>${project.version}</test.project.version>

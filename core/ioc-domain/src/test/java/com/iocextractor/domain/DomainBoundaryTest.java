@@ -4,6 +4,7 @@ import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
+import org.junit.jupiter.api.Tag;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
@@ -26,6 +27,7 @@ import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.sli
  * </pre>
  */
 @AnalyzeClasses(packages = "com.iocextractor.domain", importOptions = ImportOption.DoNotIncludeTests.class)
+@Tag("architecture")
 class DomainBoundaryTest {
 
     @ArchTest

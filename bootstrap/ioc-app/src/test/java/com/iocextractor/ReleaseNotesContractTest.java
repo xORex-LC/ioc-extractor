@@ -1,5 +1,6 @@
 package com.iocextractor;
 
+import com.iocextractor.application.tck.junit.ContractTest;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -17,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Pins the mechanical release-notes source contract without pretending to
  * validate the meaning or completeness of maintainer-curated prose.
  */
+@ContractTest
 class ReleaseNotesContractTest {
 
     private static final Pattern SOURCE_NAME = Pattern.compile(

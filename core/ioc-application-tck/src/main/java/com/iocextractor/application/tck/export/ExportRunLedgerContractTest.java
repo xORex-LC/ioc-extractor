@@ -1,5 +1,6 @@
 package com.iocextractor.application.tck.export;
 
+import com.iocextractor.application.tck.junit.ContractTest;
 import com.iocextractor.application.export.ExportProgress;
 import com.iocextractor.application.export.ExportRun;
 import com.iocextractor.application.export.ExportRunStatus;
@@ -21,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * global single-flight and atomic terminal progress. Infrastructure-specific
  * concurrency and migration behavior remains in each adapter's integration tests.
  */
+@ContractTest
 public abstract class ExportRunLedgerContractTest {
 
     protected static final Instant NOW = Instant.parse("2026-06-28T00:00:00Z");

@@ -1,5 +1,6 @@
 package com.iocextractor.application.tck.lifecycle;
 
+import com.iocextractor.application.tck.junit.ContractTest;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.ArtifactRowKey;
 import com.iocextractor.application.artifact.PreparedArtifactRow;
@@ -36,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * bounded expiry and identity non-reuse. Adapter-specific SQL, migration and
  * concurrency evidence remains in the implementing adapter module.
  */
+@ContractTest
 public abstract class CanonicalRecordLifecycleContractTest {
 
     protected static final String ARTIFACT = "masks";

@@ -18,12 +18,14 @@ import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepositor
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.domain.model.IndicatorType;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Tag("contract")
 class StageContractTest {
 
     @Test

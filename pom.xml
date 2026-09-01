@@ -39,6 +39,7 @@
         <pmd.version>7.26.0</pmd.version>
         <maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
         <maven-antrun-plugin.version>3.2.0</maven-antrun-plugin.version>
+        <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
         <commons-csv.version>1.12.0</commons-csv.version>
         <commons-io.version>2.22.0</commons-io.version>
         <guava.version>33.3.1-jre</guava.version>
@@ -100,6 +101,26 @@
             </plugins>
         </pluginManagement>
         <plugins>
+            <!-- Naming owns lifecycle selection; JUnit tags remain descriptive metadata. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven-surefire-plugin.version}</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>${maven-surefire-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>default</id>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <!-- Report-only coverage bootstrap. Thresholds are introduced only after baseline acceptance. -->
             <plugin>
                 <groupId>org.jacoco</groupId>
@@ -111,6 +132,10 @@
                         <goals>
                             <goal>prepare-agent</goal>
                         </goals>
+                        <configuration>
+                            <!-- Surefire and Failsafe use separate JVMs; retain both executions. -->
+                            <append>true</append>
+                        </configuration>
                     </execution>
                     <execution>
                         <id>create-module-coverage-report</id>
@@ -204,11 +229,13 @@
                                 <delete dir="${project.build.directory}/build-quality-verifier"
                                         quiet="true"/>
                                 <mkdir dir="${project.build.directory}/build-quality-verifier"/>
-                                <javac srcdir="${maven.multiModuleProjectDirectory}/build-support/build-quality"
-                                       destdir="${project.build.directory}/build-quality-verifier"
+                                <javac destdir="${project.build.directory}/build-quality-verifier"
                                        release="${java.version}"
                                        encoding="UTF-8"
-                                       includeantruntime="false"/>
+                                       includeantruntime="false">
+                                    <src path="${maven.multiModuleProjectDirectory}/build-support/build-quality"/>
+                                    <src path="${maven.multiModuleProjectDirectory}/build-support/test-quality"/>
+                                </javac>
                                 <java classname="BuildQualityVerifierTest"
                                       fork="true"
                                       failonerror="true">
@@ -222,6 +249,23 @@
                                     <classpath>
                                         <pathelement location="${project.build.directory}/build-quality-verifier"/>
                                     </classpath>
+                                </java>
+                                <java classname="TestLifecycleVerifierTest"
+                                      fork="true"
+                                      failonerror="true">
+                                    <classpath>
+                                        <pathelement location="${project.build.directory}/build-quality-verifier"/>
+                                    </classpath>
+                                </java>
+                                <java classname="TestLifecycleVerifier"
+                                      fork="true"
+                                      failonerror="true">
+                                    <classpath>
+                                        <pathelement location="${project.build.directory}/build-quality-verifier"/>
+                                    </classpath>
+                                    <arg value="validate"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/test-quality/test-lifecycle.properties"/>
                                 </java>
                                 <java classname="BuildQualityVerifier"
                                       fork="true"
@@ -271,6 +315,25 @@
                                     <arg value="${maven.multiModuleProjectDirectory}/build-support/pmd-report/pmd-scope.tsv"/>
                                     <arg value="${maven.multiModuleProjectDirectory}/build-support/pmd-report/pom.xml"/>
                                 </java>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>clean-stale-test-output</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target unless="skipTests">
+                                <delete dir="${project.build.directory}/surefire-reports"
+                                        quiet="true"/>
+                                <delete dir="${project.build.directory}/failsafe-reports"
+                                        quiet="true"/>
+                                <delete file="${project.build.directory}/failsafe-summary.xml"
+                                        quiet="true"/>
+                                <delete file="${project.build.directory}/jacoco.exec"
+                                        quiet="true"/>
                             </target>
                         </configuration>
                     </execution>
@@ -597,6 +660,27 @@
     </dependencyManagement>
 
     <profiles>
+        <!-- Keep the standard -DskipTests behavior intact for analyzer builds. -->
+        <profile>
+            <id>integration-tests-only</id>
+            <activation>
+                <property>
+                    <name>skip.unit.tests</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <skipTests>true</skipTests>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
         <!--
             Bounded dependency-hygiene evaluation. Bytecode-only findings remain
             report-only until framework, SPI, starter and test-aggregate noise
