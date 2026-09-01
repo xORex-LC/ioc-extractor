@@ -265,6 +265,10 @@ assert_contains "${RENDERED_CONFIG_TOOL}" 'EnvironmentFile=' \
   "config tool semantic validation lost the installed service environment"
 assert_contains "${RENDERED_CONFIG_TOOL}" 'stage_candidate' \
   "config tool no longer validates service-readable staged bytes"
+# shellcheck disable=SC2016 # rendered-script variables are matched literally
+assert_contains "${RENDERED_CONFIG_TOOL}" \
+  'mktemp --suffix=.yml "${PREFIX}/etc/.application.candidate.XXXXXX"' \
+  "config tool staged candidate no longer retains a YAML loader suffix"
 assert_contains "${RENDERED_CONFIG_TOOL}" '--property=ProtectSystem=strict' \
   "config tool semantic validation lost its read-only filesystem sandbox"
 

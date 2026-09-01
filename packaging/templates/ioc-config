@@ -59,7 +59,10 @@ validate_config() {
 
 stage_candidate() {
   local candidate="$1"
-  STAGED_FILE="$(mktemp "${PREFIX}/etc/.application.yml.candidate.XXXXXX")"
+  # Spring selects a PropertySourceLoader from the filename extension. Keep a
+  # real YAML suffix on the service-readable staged copy; a random suffix after
+  # `.yml` makes an otherwise valid candidate unrecognizable to the loader.
+  STAGED_FILE="$(mktemp --suffix=.yml "${PREFIX}/etc/.application.candidate.XXXXXX")"
   install -o root -g "${RUN_GROUP}" -m 0640 "${candidate}" "${STAGED_FILE}"
 }
 
