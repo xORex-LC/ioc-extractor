@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 P9 evidence"
 version: "0.3.0"
-status: "Implementation and stand qualification in progress"
+status: "Verified; external SMB H5 breadth deferred"
 document_type: "Implementation evidence"
 source_of_truth: false
 language: "en"
@@ -85,9 +85,9 @@ Packaging, ShellCheck, shell syntax/contracts and documentation links passed;
 the documentation check covered 785 links with zero errors.
 
 The deployed predecessor was a pre-`v0.2.0` snapshot using the later marked
-release layout. This is useful stricter compatibility and rollback evidence,
-but it does not close the exact `v0.2.0` upgrade/rollback gate. A packaged fresh
-installation and exact tagged `v0.2.0` upgrade/rollback remain outstanding.
+release layout. This remains useful stricter compatibility and rollback
+evidence. The exact tagged `v0.2.0` and packaged fresh-install replacement gate
+was subsequently completed on 2026-09-01 as recorded below.
 
 ## 5. Lifecycle activation and external Samba round trip
 
@@ -189,15 +189,55 @@ This closes encrypted transport qualification for this Windows-host stand. It
 does not qualify Samba, production Windows Server or a NAS family, and the
 dirty deployment does not replace a final committed-HEAD release gate.
 
-## 6. Remaining P9 release gates
+## 6. Exact v0.2.0 and fresh-install replacement gate (2026-09-01)
 
-- Run packaged fresh-install and exact `v0.2.0` upgrade/rollback qualification
-  on a disposable systemd host.
+The current candidate was exercised in the production `/srv/ioc-extractor`
+layout on the available Ubuntu 24.04 systemd host with JDK `21.0.12`. The
+official Debian 11/12 platform claim remains an `R030-REL` obligation.
+
+The exact `v0.2.0` baseline produced dataframe/service schemas `3/7`, `246`
+canonical rows and byte-exact mutable projection oracles. The candidate opened
+the same stores as `9/9`, retained the business rows and projections, and
+started in `DISABLED_COMPATIBLE`. A matching binary/config/unit/two-DB rollback
+returned exact `v0.2.0` to health with schemas `3/7`; restoring the candidate
+returned schemas `9/9` and health `UP`.
+
+The explicit activation and repeated lifecycle/export scenarios are detailed
+in the DATA-TTL-01 evidence. They also exercised the shared v9 identity,
+preferred-slot and receipt migrations used by managed import. No managed-import
+or sync worker was enabled during compatibility mutation.
+
+Finally, commit `3c02ba5c126c8afc272493f9395d6d07631bf720` was installed after a
+complete purge. The fresh production template kept managed import and sync
+disabled, created both stores directly at `v9`, and reached aggregate health
+`UP`. A normal golden ingest then proved the shared canonical writer,
+projections, receipts, export progress and restart persistence. The installed
+JAR SHA-256 is
+`4c493d758291a198ddc8c900467979dc0e308e404eb441cd55e330d91f0368c2`.
+
+This closes the local packaged fresh-install and exact `v0.2.0`
+upgrade/rollback P9 gate. It does not manufacture external SMB evidence:
+managed import remains disabled in the fresh preset until an operator has
+qualified the configured source and its two-identity namespace.
+
+## 7. External qualification disposition and final gate
+
 - Qualify any additional production Windows Server/NAS family before claiming
   support beyond the approved Samba implementation; polling remains the
   correctness fallback when notifications are unavailable.
 - Run the encryption contract against the separately approved Samba target;
   the Windows-host result above must not be generalized across server families.
-- Commit the hardening change set and run the final verification gate on that
-  immutable committed `HEAD`; the dirty local deployment is qualification
-  evidence only.
+- The ADR-0025 H5 two-identity hardening contract remains executable but was
+  not run: no approved service/producer credential pair exists on the current
+  fresh stand. On 2026-09-01 this was explicitly deferred to `OPS-8` for the
+  0.3.0 release. Producer denial, exact remote purge and reconnect are therefore
+  not reported as a pass, and no support claim is extended to an unqualified
+  server family. Managed SMB import remains disabled by default and requires
+  deployment-specific two-identity qualification before enablement.
+- The final verification gate passed on immutable commit
+  `b3aee0a34a34514b8941a1f884536c76f8094e4a` at
+  `2026-09-01T12:40:46Z`; `make context` reported `verify.result=passed`, the
+  exact matching `verify.commit` and `verify.fresh=true`.
+
+With that explicit qualification limit, DATA-IMPORT-01 is `verified` for the
+accepted 0.3.0 scope.

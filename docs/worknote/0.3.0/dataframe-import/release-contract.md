@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — release contract"
 version: "0.3.0"
-status: "Approved architecture baseline"
+status: "Verified; external SMB H5 breadth deferred"
 document_type: "Release contract"
 source_of_truth: false
 language: "en"
@@ -200,10 +200,18 @@ DATA-IMPORT-01 is complete only when:
 13. `make verify` passes on the final committed HEAD and `make context` reports
     fresh evidence.
 
+Closure disposition (2026-09-01): item 9 remains the required qualification
+contract for any enabled managed SMB deployment, but the unavailable live
+two-identity H5 fixture is deferred from the 0.3.0 repository/package closure
+to `OPS-8`. This is not a pass and does not claim support for unqualified server
+families. The production template keeps managed import disabled; an operator
+must prove service capability and producer denial before enabling an SMB
+source. Items 1–8 and 10–13 are complete, including the final fresh gate on
+commit `b3aee0a3`.
+
 ## 7. Release accounting
 
 This work is not silently absorbed into the already implemented TTL slices.
-After approval, the release matrix must register a separate blocking work item
-or an explicitly added sub-goal under `R030-DATA`. Until that registration and
-the Definition of Done are complete, the feature and the affected release goal
-remain in progress.
+The release matrix registers this work under `R030-DATA`. Implementation,
+package qualification and the final repository gate are complete; the explicit
+H5 qualification limit above remains visible as deferred `OPS-8` evidence.

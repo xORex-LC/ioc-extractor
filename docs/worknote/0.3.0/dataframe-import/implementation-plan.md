@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — implementation plan"
 version: "0.3.0"
-status: "Approved; P0-P8 implemented"
+status: "Verified; external SMB H5 breadth deferred"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "en"
@@ -249,12 +249,16 @@ Gate:
 
 ### P9 — performance, packaging and publication
 
-Status: **implementation complete; release qualification in progress**. The
+Status: **verified in the accepted 0.3.0 qualification scope; external H5
+server/ACL breadth deferred to OPS-8**. The
 100k/1M load profiles, writer fairness, local smoke, deployed upgrade,
 failure-triggered rollback and external Samba round trip are recorded in
-[p9-evidence.md](p9-evidence.md). Packaged fresh-install, the exact tagged
-`v0.2.0` upgrade/rollback scenario remains an open gate and must not be inferred
-from the older live predecessor test.
+[p9-evidence.md](p9-evidence.md). Packaged fresh-install and the exact tagged
+`v0.2.0` upgrade/rollback replacement scenario completed on 2026-09-01. The
+ADR-0025 two-identity H5 fixture remains unavailable and is recorded as an
+explicit defer, not inferred from the older live predecessor or reported as a
+pass. The final committed-HEAD gate passed on `b3aee0a3` with
+`verify.fresh=true`.
 
 Deliver:
 

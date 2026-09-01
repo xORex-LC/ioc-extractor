@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 P6 lifecycle load profile"
 version: "0.3.0"
-status: "Measured — export-slot correction pending"
+status: "Measured — export-slot identity superseded by P7 evidence"
 document_type: "Performance evidence"
 source_of_truth: false
 language: "en"

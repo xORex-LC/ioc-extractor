@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — verification matrix"
 version: "0.3.0"
-status: "Approved; execution in progress"
+status: "Executed for accepted 0.3.0 scope; external SMB H5 deferred"
 document_type: "Verification plan"
 source_of_truth: false
 language: "en"
@@ -208,4 +208,17 @@ checks appropriate to its scope. Before completion run:
 - final `make context` freshness check on committed HEAD.
 
 External or privileged evidence that is unavailable is recorded as a release
-blocker/skip, never reported as a pass.
+blocker, named skip or explicit scope defer through the release change-control
+process; it is never reported as a pass.
+
+## 11. Execution disposition
+
+The repository, load, local/live Samba baseline, exact-v0.2.0 upgrade/rollback,
+fresh-package and final committed-HEAD gates are complete. Detailed results are
+recorded in the P0-P9 evidence documents, especially
+[p9-evidence.md](p9-evidence.md).
+
+The ADR-0025 H5 two-identity target-deployment contract was not executed and is
+not reported as a pass. Its unavailable fixture was explicitly deferred to
+`OPS-8` for 0.3.0; managed SMB import remains disabled until the configured
+source passes that qualification.

@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 release-note input"
 version: "0.3.0"
-status: "Draft — P7-P9 packaged qualification pending"
+status: "Draft — lifecycle packaged qualification complete"
 document_type: "Release-note input"
 source_of_truth: false
 language: "en"
@@ -35,8 +35,8 @@ artifact checksum or whole-release verification claim.
   each surviving record's stable export slot, releases slots of records absent
   from the active set, and assigns the smallest free slots to new lifecycles.
   Slots are not canonical identities and existing rows are never renumbered to
-  close gaps. Automated P7 migration, race, 100k and immutable-slice evidence
-  has passed; packaged qualification remains pending.
+  close gaps. P7 migration, race, 100k, immutable-slice and packaged
+  qualification evidence has passed.
 - A newly accepted lifecycle produces a new immutable slice and delivery when
   its covered revision advanced, even if reusable slots make the resulting CSV
   byte-identical to an older slice. Equal plan, bytes and covered revisions may

@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 — implementation plan"
 version: "0.3.0"
-status: "Implementation complete — P7-P9 qualification pending"
+status: "Verified"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "ru"
@@ -17,8 +17,9 @@ code на feature branch, но ни один промежуточный резу
 fresh production template и не считается releaseable capability. Activation
 surface и исходное lifecycle evidence были закрыты P6. После уточнения I-22
 проект был переоткрыт: P7 исправил export-slot contract, P8 — решение о
-byte-identical delivery occurrence, P9 — idle reconciliation runtime. Для
-P7–P9 остаются затронутое packaged evidence и финальный freshness gate.
+byte-identical delivery occurrence, P9 — idle reconciliation runtime.
+Повторное затронутое packaged evidence и финальный freshness gate на
+закоммиченном `HEAD` закрыты 2026-09-01.
 
 Отдельный go-ahead после review [architecture project](architecture-project.md),
 [ADR-0020](../../../ADR/0020-canonical-record-expiration-lifecycle.md) и
@@ -41,9 +42,9 @@ P7–P9 остаются затронутое packaged evidence и финаль�
 | `P4` | Expiry, recovery, scheduling and health | production preset unchanged | `complete` |
 | `P5` | Duplicate receipt and explicit upgrade activation UX | opt-in existing installs only | `complete` |
 | `P6` | Fresh preset, docs and release evidence | complete capability | `complete` |
-| `P7` | Stable sparse reusable export slots | corrected export contract | `implementation_complete`; qualification pending |
-| `P8` | Revision-significant identical export delivery | corrected post-hash contract | `implementation_complete`; qualification pending |
-| `P9` | Deadline-aware idle runtime and bounded reconciliation checkpoint | lifecycle operational hardening | `implementation_complete`; qualification pending |
+| `P7` | Stable sparse reusable export slots | corrected export contract | `verified` |
+| `P8` | Revision-significant identical export delivery | corrected post-hash contract | `verified` |
+| `P9` | Deadline-aware idle runtime and bounded reconciliation checkpoint | lifecycle operational hardening | `verified` |
 
 ## P0 — decision and characterization
 
@@ -327,8 +328,9 @@ semantics stay unchanged.
 - `make docs`, targeted tests and fresh full-reactor verification pass on final
   `HEAD`.
 
-**Status:** implementation and automated evidence complete on 2026-08-19;
-packaged qualification and final fresh reactor gate pending. Detailed design:
+**Status:** verified; implementation and automated evidence completed on
+2026-08-19, packaged qualification and final fresh reactor gate on 2026-09-01.
+Detailed design:
 [export-slot-correction.md](export-slot-correction.md).
 
 ## P8 — revision-significant identical export delivery
@@ -360,8 +362,9 @@ unchanged.
 - focused tests, documentation gate, full reactor verification and packaged
   stand evidence pass.
 
-**Status:** implementation and focused automated evidence complete on
-2026-08-22; packaged stand evidence and final fresh reactor gate pending.
+**Status:** verified. Implementation and focused automated evidence completed
+on 2026-08-22; packaged stand evidence and the final fresh reactor gate
+completed on 2026-09-01.
 
 ## P9 — bounded idle lifecycle runtime
 
@@ -395,9 +398,9 @@ correctness bound. The accepted decision is
 - retention backlog is drained in bounded transactions independently of expiry;
 - focused tests, docs validation and `make verify` pass on the final `HEAD`.
 
-**Status:** implementation and automated evidence complete on 2026-08-23;
-packaged stand qualification and a fresh gate on the final committed `HEAD`
-remain pending.
+**Status:** verified; implementation and automated evidence completed on
+2026-08-23, packaged stand qualification and the fresh final committed-HEAD
+gate on 2026-09-01.
 
 ## Required test matrix
 

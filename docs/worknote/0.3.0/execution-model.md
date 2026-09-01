@@ -31,7 +31,7 @@ release + goal + scope + stage + work-item
 | Goal | Execution mode |
 |---|---|
 | `R030-BASE` | Global foundation |
-| `R030-DATA` | Capability slices P0–P6; no partial production activation |
+| `R030-DATA` | Capability-specific P0–P9 slices; no partial production activation |
 | `R030-QUAL` | Per module/capability |
 | `R030-RETIRE` | Global inventory + per-surface removal |
 | `R030-ARCH` | Global rules + per-module package map |

@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — SMB namespace and retention hardening"
 version: "0.3.0"
-status: "H1-H4 implemented; H5 external qualification pending"
+status: "H1-H4 verified; H5 external qualification deferred to OPS-8"
 document_type: "Implementation worknote"
 source_of_truth: false
 language: "en"
@@ -380,7 +380,9 @@ Implementation evidence on 2026-08-27:
 H5 external qualification is deliberately not reported as passed in this
 environment. `SmbManagedImportHardeningContractTest` compiles and is opt-in; it
 was skipped because no approved two-identity live fixture was supplied. Docker
-is installed but its daemon socket is unavailable to the current user. Windows
-Server/NAS targets and packaged fresh-install/upgrade/rollback stands are also
-unavailable and remain explicit skips. The final committed-HEAD `make verify`
-is still required after the implementation commit.
+is installed but its daemon socket is unavailable to the current user, and
+additional Windows Server/NAS families remain explicit skips. The local
+packaged fresh-install/exact-v0.2.0 upgrade/rollback and final committed-HEAD
+gates completed on 2026-09-01. H5 was explicitly deferred to `OPS-8`: managed
+SMB import stays disabled until the target deployment supplies the required
+two-identity qualification.

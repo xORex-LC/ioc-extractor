@@ -3,9 +3,9 @@
 *An ETL pipeline that turns messy documents into durable, ready-to-deliver IOC reputation lists.*
 
 [![CI](https://github.com/xORex-LC/ioc-extractor/actions/workflows/ci.yml/badge.svg)](https://github.com/xORex-LC/ioc-extractor/actions/workflows/ci.yml)
+[![Quality Tooling](https://img.shields.io/badge/Quality%20Tooling-SpotBugs%20%7C%20PMD%20%7C%20CPD-informational)](docs/dev/build-quality.md)
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0-6DB33F)
-![Build](https://img.shields.io/badge/build-Maven%20reactor-C71A36)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 **ioc-extractor** reads documents that contain Indicators of Compromise, refangs

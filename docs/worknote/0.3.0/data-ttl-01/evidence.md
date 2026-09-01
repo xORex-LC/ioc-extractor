@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 — execution evidence"
 version: "0.3.0"
-status: "Implementation complete — P7-P9 qualification pending"
+status: "Verified"
 document_type: "Implementation evidence"
 source_of_truth: false
 language: "ru"
@@ -13,8 +13,9 @@ language: "ru"
 > implemented TTL lifecycle. Their monotonic public-ID assertions characterize
 > the current implementation but do not satisfy the subsequently clarified
 > reusable export-slot contract in I-22/ADR-0021. P7–P9 now provide replacement
-> slot, identical-delivery and bounded-runtime evidence. DATA-TTL-01 remains
-> open for affected packaged qualification and the final committed-HEAD gate.
+> slot, identical-delivery and bounded-runtime evidence. Replacement packaged
+> qualification and the final committed-HEAD repository gate completed on
+> 2026-09-01.
 
 ## P0 — architecture acceptance
 
@@ -581,8 +582,8 @@ performance и packaged assertions для итогового candidate. Общи
 
 ## P7 — reusable export-slot correction
 
-**Статус:** implementation и automated evidence complete; packaged
-qualification/final gate pending.
+**Статус:** verified; implementation, automated evidence, packaged
+qualification и final committed-HEAD gate complete.
 
 Требуемое replacement evidence определено в
 [export-slot-correction.md](export-slot-correction.md#10-p7-acceptance-evidence)
@@ -622,15 +623,14 @@ generation-safe snapshot, migration seeding и bounded 100k allocation.
 | `make verify` | все `25` reactor modules `SUCCESS`; adapter-store-jdbc `132` tests, bootstrap `251` tests, aggregate SpotBugs `99 accepted / 0 visible` |
 | `make spotbugs-baseline-proposal` после triage | `99 observed / 99 accepted / 0 new / 0 stale`; шесть `VA_FORMAT_STRING_USES_NEWLINE` устранены из production code, семь новых registry SQL identities и две изменившиеся snapshot identities приняты точечно как validated/quoted identifier boundaries с bound business values |
 
-До release acceptance остаются: повторный packaged fresh-install/upgrade/rollback
-стенд на P7 candidate, фиксация commit/runtime metadata и повторный freshness
-gate на финальном закоммиченном HEAD. Поэтому прежний P6 packaged result не
-переименован в P7 pass.
+Повторный packaged fresh-install/upgrade/rollback и runtime assertions для P7
+зафиксированы в общей P7–P9 qualification ниже. Финальный freshness gate на
+закоммиченном evidence HEAD `b3aee0a3` прошёл 2026-09-01.
 
 ## P8 — revision-significant identical export delivery
 
-**Статус:** implementation и automated evidence complete; packaged
-qualification/final gate pending.
+**Статус:** verified; implementation, automated evidence, packaged
+qualification и final committed-HEAD gate complete.
 
 ### Реализованный contour (2026-08-22)
 
@@ -658,8 +658,8 @@ qualification/final gate pending.
 
 ## P9 — bounded idle lifecycle runtime
 
-**Статус:** implementation и automated evidence complete;
-packaged qualification/final committed-HEAD gate pending.
+**Статус:** verified; implementation, automated evidence, packaged
+qualification и final committed-HEAD gate complete.
 
 ### Реализованный contour (2026-08-23)
 
@@ -692,3 +692,55 @@ Smoke report: `.dev/lifecycle-smoke/lifecycle-report.md` (ignored generated
 evidence, воспроизводится командой выше). Итоговый `make verify` должен быть
 запущен после всех правок и затем повторён на закоммиченном `HEAD`, поскольку
 verification freshness привязана к commit identity.
+
+## P7–P9 final packaged qualification (2026-09-01)
+
+Квалификация выполнена на единственном доступном systemd-стенде Ubuntu 24.04
+под JDK `21.0.12` и production prefix `/srv/ioc-extractor`. Installer ожидаемо
+сообщил, что официально проверяемыми platform baselines остаются Debian 11/12;
+это ограничение относится к общему `R030-REL`, а не скрывается как Ubuntu pass.
+
+Итоговый packaged JAR соответствует commit
+`3c02ba5c126c8afc272493f9395d6d07631bf720`, SHA-256
+`4c493d758291a198ddc8c900467979dc0e308e404eb441cd55e330d91f0368c2`.
+Lifecycle-owned dataframe migrations остаются `v6`, а service lifecycle
+foundation — `v8`; общий candidate открывает обе базы как `v9/v9`, поскольку
+последующие DATA-IMPORT-01 migrations входят в тот же release artifact.
+
+| Checkpoint | Наблюдаемый результат |
+|---|---|
+| Exact `v0.2.0` baseline | Matching binary/config/unit и schema `3/7`; canonical active set `246`, четыре revisions `1`, mutable projections сохранены как byte-exact rollback oracle |
+| Compatibility upgrade | Current artifact открыл базы как `9/9` и `DISABLED_COMPATIBLE`; legacy rows, revisions и projection bytes сохранились. Exact v0.2 artifact identity разрешилась через узкий versioned compatibility resolver, а оператор получил value-free migration warning |
+| Exact release rollback | Matching v0.2 binary/config/unit и обе schema `3/7` базы восстановлены; `246` active rows и projection bytes совпали с baseline. Затем current `9/9` state был возвращён и снова прошёл health gate |
+| Explicit activation | При отключённом intake явно приняты current artifact identities и stand-only `fixed/2m`, `existing-records: expire`; `246` legacy rows ушли в typed history, active set стал пустым, revisions/export runs не продвинулись |
+| First observation and expiry | Golden document создал exact `20` rows и complete receipt; все deadlines имели delta `120000ms`. Expiry очистил active membership без продвижения revision/export и свёл projections к header-only |
+| Reappearance and slot reuse | Новая source identity для того же IOC set создала lifecycles `267..286`, revision-3 slices и заняла минимальные slots: `hashes=1..2`, `ip_list=1`, `masks=1..8`; ID-less address CSV был доставлен снова отдельным slice |
+| Byte-identical new delivery | Третья source identity создала lifecycles `287..306` и distinct revision-4 slices. CSV bytes и reusable slots совпали с предыдущей delivery, но более новая coverage revision не была ошибочно `SKIPPED`; последующий expiry не продвинул revision/export |
+| Clean installation | После полного purge installer создал новый production layout, schema `9/9`, lifecycle `ACTIVE`, `fixed/12h` + `existing-records: reject`, empty canonical state и два корректных empty startup baseline exports |
+| Fresh ingest and restart | Golden document создал `20` rows, четыре revisions/projection generations `1`, один complete receipt, два revision-1 exports и slots `1..N`. Restart сохранил exact lifecycle identity/timestamp tuples; aggregate health остался `UP` |
+
+Последний fresh stand оставлен активным как
+`releases/3c02ba5c126c-r030-data-fresh`. Read-only повторная проверка показала
+schema `9/9`, lifecycle `ACTIVE`, `20` active rows, `4` completed export runs
+(два startup baseline и два revision-1), `4` progress rows с
+`last_revision=1`, нулевой export lag и общий health `UP`. Pre-fresh
+installation сохранена под
+`/var/tmp/ioc-extractor-r030-data-before-fresh-20260901T120247Z`.
+
+Два обнаруженных отказа qualification harness не были дефектами production
+runtime: первый вариант receipt-check ожидал несуществующее состояние
+`COMPLETED` вместо schema value `COMPLETE`, а первый fresh-check принял два
+empty startup exports за post-ingest runs. Оба условия исправлены на exact
+durable state; fresh-install сценарий также практически доказал автоматическое
+восстановление полного pre-fresh prefix после checker failure.
+
+Packaged qualification для DATA-TTL-01 закрыта. Pre-commit documentation checks
+прошли: `make docs` проверил `801`
+ссылку (`285` unique, `717` OK, `0` errors, `84` excluded),
+`DocumentationConventionTest` — `1/1`, `git diff --check` — clean.
+
+Final committed-HEAD gate затем прошёл на
+`b3aee0a34a34514b8941a1f884536c76f8094e4a`: `make verify` завершился штатно
+`2026-09-01T12:40:46Z`, а повторный `make context` зафиксировал
+`verify.result=passed`, exact matching `verify.commit` и `verify.fresh=true`.
+DATA-TTL-01 имеет статус `verified`.

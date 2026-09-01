@@ -85,7 +85,7 @@ policy и release process.
 | ID | Приоритет | Outcome | Contract |
 |---|---|---|---|
 | `R030-BASE` | MUST | Текущее состояние воспроизводимо и измерено | [Baseline](goals/R030-BASE-baseline.md) |
-| `R030-DATA` | MUST | Canonical records имеют проверяемый expiration lifecycle без частичной activation | [Canonical record lifecycle](data-ttl-01/release-contract.md) |
+| `R030-DATA` | MUST | Canonical records имеют проверяемый expiration lifecycle, а managed dataframe deliveries безопасно попадают в SQLite truth без частичной activation | [Canonical record lifecycle](data-ttl-01/release-contract.md), [managed dataframe import](dataframe-import/release-contract.md) |
 | `R030-QUAL` | MUST | Code-health review конечен и проверяем | [Code health](goals/R030-QUAL-code-health.md) |
 | `R030-RETIRE` | MUST | Dead/unwired code и ненужная compatibility контролируемо устранены | [Retirement](goals/R030-RETIRE-retirement.md) |
 | `R030-ARCH` | MUST | Maven-границы подтверждены, внутри модулей понятная package organization | [Architecture](goals/R030-ARCH-architecture.md) |
@@ -245,4 +245,5 @@ Defer MUST-пункта нельзя скрывать обычным backlog mov
 
 | ID | Изменение и причина | Затронутые goals | Compatibility/evidence impact | Disposition |
 |---|---|---|---|---|
-| `DATA-TTL-01` | Срочный canonical record expiration lifecycle включён как новая business capability | новый MUST `R030-DATA`; gates `R030-TEST`, `R030-DOC`, `R030-REL` | SQLite/read/ID/projection semantics; explicit upgrade activation and rollback; crash/race/100k evidence; release critical path расширен | Принято 2026-08-15, implementation go-ahead получен; P1–P9 реализованы, packaged qualification/final gate pending. Подробности изолированы в [TTL bundle](data-ttl-01/README.md) |
+| `DATA-TTL-01` | Срочный canonical record expiration lifecycle включён как новая business capability | новый MUST `R030-DATA`; gates `R030-TEST`, `R030-DOC`, `R030-REL` | SQLite/read/ID/projection semantics; explicit upgrade activation and rollback; crash/race/100k evidence; release critical path расширен | Принято 2026-08-15, implementation go-ahead получен; P1–P9, packaged qualification и final committed-HEAD gate завершены 2026-09-01. Подробности изолированы в [TTL bundle](data-ttl-01/README.md) |
+| `DATA-IMPORT-H5-DEFER` | Недоступный live two-identity SMB hardening fixture вынесен из repository/package closure в явную target-deployment qualification | `R030-DATA`, `R030-REL`; debt `OPS-8` | H5 не считается pass; support claim не распространяется на непроверенные SMB families, production template сохраняет import disabled, а operator обязан доказать producer denial/service capability до включения source | Принято 2026-09-01 при закрытии R030-DATA; executable opt-in contract и exit condition сохранены в DATA-IMPORT-01 P9/H5 evidence и status matrix |

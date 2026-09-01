@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 — architecture project"
 version: "0.3.0"
-status: "P1-P9 implemented — release qualification pending"
+status: "P1-P9 verified"
 document_type: "Architecture project"
 source_of_truth: false
 language: "en"
@@ -18,7 +18,8 @@ language: "en"
 > stable sparse reusable `export_slot`. P7 is implemented. ADR-0022 adds the
 > revision-significant identical-delivery rule, and ADR-0023 replaces the
 > append-only physical reconcile journal/coupled retention worker. P8/P9 are
-> implemented; packaged qualification and the final committed-HEAD gate remain.
+> implemented; packaged qualification and the final committed-HEAD gate
+> completed on 2026-09-01.
 
 ## 1. Executive decision
 
@@ -989,5 +990,6 @@ the lifecycle work:
 
 P1–P6 implemented and verified the original lifecycle scope. I-22/ADR-0021,
 ADR-0022 and ADR-0023 added the P7–P9 corrections, which are implemented with
-automated evidence. DATA-TTL-01 remains `in-progress` only until the affected
-packaged qualification and final committed-HEAD verification are repeated.
+automated evidence. Affected packaged qualification and final committed-HEAD
+verification were repeated successfully on 2026-09-01; DATA-TTL-01 is
+`verified`.

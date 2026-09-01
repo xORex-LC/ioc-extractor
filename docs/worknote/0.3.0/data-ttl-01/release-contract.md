@@ -3,7 +3,7 @@ title: "R030-DATA / DATA-TTL-01 — canonical record validity lifecycle"
 version: "0.3.0"
 goal_id: "R030-DATA"
 work_item_id: "DATA-TTL-01"
-status: "Implementation complete — release qualification pending"
+status: "Verified"
 document_type: "Release goal and work-item contract"
 source_of_truth: false
 language: "ru"
@@ -22,9 +22,11 @@ history и физически удаляется из active storage. Повто
 surviving rows сохраняют slots, а новые lifecycle получают минимальные slots,
 освободившиеся после исчезновения expired rows.
 
-`R030-DATA` является **MUST** goal и release blocker 0.3.0. Единственный текущий
-work item — `DATA-TTL-01`; он выполняется по
-[implementation plan](implementation-plan.md).
+`R030-DATA` является **MUST** goal и release blocker 0.3.0. Этот contract
+принадлежит исходному work item `DATA-TTL-01`, выполненному по
+[implementation plan](implementation-plan.md). Позднее goal был расширен
+отдельным `DATA-IMPORT-01`; его самостоятельный contract находится в
+[dataframe-import/release-contract.md](../dataframe-import/release-contract.md).
 
 ## Scope
 
@@ -210,7 +212,7 @@ duration запрещены. `ttl=0` никогда не является migrat
 - [x] P9 сохраняет five-second correctness bound без idle full reconciliation:
   empty backstop read-only, post-v5 cycle state constant-cardinality, retention
   independent, успешные no-op reconcile/projection checks silent.
-- [ ] Packaged fresh/upgrade/activation/rollback stand повторён с reusable-slot
+- [x] Packaged fresh/upgrade/activation/rollback stand повторён с reusable-slot
   assertions.
 - [x] Deterministic lifecycle, SQLite race, migration/fault-injection, every-read
   and both-runtime-mode tests проходят.
@@ -223,7 +225,7 @@ duration запрещены. `ttl=0` никогда не является migrat
 - [x] Public schemas/order и `time_first_seen`/`time_last_seen == NULL` сохранены.
 - [x] Affected published docs, generated catalogs, module README, release notes,
   status matrix и compatibility/performance ledgers актуальны.
-- [ ] Targeted tests, documentation checks и fresh full-reactor `make verify`
+- [x] Targeted tests, documentation checks и fresh full-reactor `make verify`
   проходят на финальном `HEAD`.
 
 ## Dependencies
@@ -231,12 +233,13 @@ duration запрещены. `ttl=0` никогда не является migrat
 Требует `R030-BASE`. Получает regression gates от `R030-TEST`, documentation
 closure от `R030-DOC`, packaging/compatibility/performance closure от
 `R030-REL`. Architecture boundary changes проходят существующие `R030-ARCH` и
-build gates. До закрытия `R030-DATA` релиз 0.3.0 не готов.
+build gates. Обязательство `R030-DATA` выполнено; готовность всего релиза всё
+ещё определяется остальными release goals.
 
 ## Current disposition
 
-`in-progress`: P0–P6 remain valid lifecycle evidence. P7–P9 code, migrations,
-automated compatibility/race/100k/runtime evidence and published documentation
-are complete. Repeated packaged fresh/upgrade/activation/rollback assertions
-for the resulting candidate and a freshness gate on the final committed HEAD
-remain release blockers.
+`verified`: P0–P6 remain valid lifecycle evidence. P7–P9 code, migrations,
+automated compatibility/race/100k/runtime evidence, published documentation and
+repeated packaged fresh/upgrade/activation/rollback assertions are complete.
+The final committed-HEAD gate passed on `b3aee0a3` with
+`verify.fresh=true`; no DATA-TTL-01 release blocker remains.

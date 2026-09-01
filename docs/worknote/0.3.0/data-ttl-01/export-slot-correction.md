@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 — stable reusable export slots"
 version: "0.3.0"
-status: "P7 implemented; release qualification pending"
+status: "P7 verified"
 document_type: "Worknote design correction"
 source_of_truth: false
 language: "ru"
@@ -244,7 +244,7 @@ canonical IDs, не поддерживается.
 
 Automated implementation evidence получен 2026-08-19: migration/rollback,
 survivor/hole/high-water/restart/generation/concurrency cases, два 100k
-reconciliation snapshot и три immutable CSV slices прошли. До повторного
-packaged fresh/upgrade/rollback стенда и fresh full-reactor gate DATA-TTL-01
-остаётся `in-progress`. P6 evidence сохраняется как доказательство TTL lifecycle
-и характеристика прежней ID-модели.
+reconciliation snapshot и три immutable CSV slices прошли. Повторные packaged
+fresh/upgrade/rollback проверки и fresh full-reactor gate завершены
+2026-09-01. P6 evidence сохраняется как доказательство TTL lifecycle и
+характеристика прежней ID-модели.

@@ -1,7 +1,7 @@
 ---
 title: "DATA-TTL-01 — рабочий комплект"
 version: "0.3.0"
-status: "Implementation complete — release qualification pending"
+status: "Verified"
 document_type: "Worknote bundle index"
 source_of_truth: false
 language: "ru"
@@ -46,9 +46,11 @@ language: "ru"
 - P9 заменил idle full reconciliation на read-only nearest-deadline refresh,
   ограничил runtime state singleton checkpoint-ом dataframe v6, отделил hourly
   history/receipt cleanup и убрал пустые lifecycle INFO;
-- P7–P9 implementation и automated evidence завершены. До packaged
-  qualification и fresh gate на final committed HEAD `R030-DATA` остаётся
-  `in-progress`.
+- P7–P9 implementation, automated evidence и повторная packaged qualification
+  завершены 2026-09-01 на exact `v0.2.0` upgrade/rollback, explicit activation,
+  reusable-slot/reappearance/byte-identical delivery и clean-install matrix;
+- final repository gate прошёл на commit `b3aee0a3` 2026-09-01;
+  `verify.commit` совпал с `HEAD`, `verify.fresh=true`. DATA-TTL-01 закрыт.
 
 ## Навигация
 

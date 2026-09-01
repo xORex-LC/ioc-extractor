@@ -1,7 +1,7 @@
 ---
 title: "DATA-IMPORT-01 — рабочий комплект"
 version: "0.3.0"
-status: "Architecture approved; P0-P8 implemented; P9 and SMB hardening in progress"
+status: "Verified; external SMB H5 breadth deferred"
 document_type: "Worknote bundle index"
 source_of_truth: false
 language: "ru"
@@ -14,9 +14,9 @@ language: "ru"
 являются изменяемым рабочим контекстом и не заменяют ADR, capability docs,
 operator guides или release contract.
 
-`DATA-IMPORT-01` — предварительный ID work item. Его принадлежность к
-существующему `R030-DATA` либо отдельной release goal будет определена только
-после discovery и formal scope review.
+`DATA-IMPORT-01` зарегистрирован как отдельный work item внутри `R030-DATA`.
+Discovery и formal scope review завершены; итоговая release-диспозиция
+зафиксирована ниже и в [status matrix](../status-matrix.md).
 
 ## Текущий статус
 
@@ -25,11 +25,14 @@ operator guides или release contract.
   P4 durable delivery ledger/sealed staging, P5 local managed intake и P6
   atomic canonical promotion, P7 recovery/finalization/operator UX и P8 SMB
   managed intake реализованы 2026-08-23..2026-08-24; P9 implementation,
-  reference load и основной live-stand qualification завершены, а exact
-  `v0.2.0`/fresh-install packaging gate ещё открыт;
+  reference load, основной live-stand и exact `v0.2.0`/fresh-install packaged
+  qualification завершены;
 - SMB namespace/capability/remote-terminal-retention hardening принят отдельным
-  ADR-0025 2026-08-26; документальный H0 завершён, runtime scopes H1-H5 ещё не
-  реализованы и не входят в прежнее P8 evidence;
+  ADR-0025 2026-08-26; H1-H4 реализованы. Недоступный H5 live contract с
+  раздельными service/producer identities принят 2026-09-01 как явный defer в
+  `OPS-8`: он не считается pass и не расширяет server-family support claim;
+- final committed-HEAD gate прошёл на `b3aee0a3` с `verify.fresh=true`;
+  DATA-IMPORT-01 закрыт в ограниченном qualification scope релиза 0.3.0;
 - discovery interview завершено 2026-08-23: все I-01..I-41 имеют статус
   `DECIDED`;
 - архитектурный проект, release contract, data/persistence/operations contracts,
@@ -137,8 +140,9 @@ operator guides или release contract.
 - I-41 закрыт: default `preserve-existing` сохраняет survivor slot и отдельно
   применяет business-field merge с явным mismatch report; source contract может
   выбрать strict `reject-mismatch`, автоматическая renumber policy запрещена;
-- известных незакрытых business choices не осталось; formal scope, architecture
-  project и P0-P8 foundation/runtime завершены, следующий implementation slice — P9;
+- известных незакрытых business choices не осталось; formal scope,
+  architecture project и P0-P9 foundation/runtime/package scope завершены;
+  внешний H5 qualification contour сохранён как отдельный deferred `OPS-8`;
 - принятый ADR-0015 не редактируется: если новый import contract будет принят,
   потребуется отдельный superseding ADR.
 
