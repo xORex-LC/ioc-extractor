@@ -31,6 +31,19 @@ jobs:
       - name: Build, test & verify boundaries
         run: tools/ci/build.sh
 
+      - name: Upload test and coverage evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-coverage-reports-${{ github.run_number }}
+          path: |
+            **/target/surefire-reports/
+            **/target/failsafe-reports/
+            **/target/site/jacoco/
+            build-support/coverage-report/target/site/jacoco-aggregate/
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Upload SpotBugs reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
