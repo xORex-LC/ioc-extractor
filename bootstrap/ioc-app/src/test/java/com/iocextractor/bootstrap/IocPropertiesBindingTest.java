@@ -755,6 +755,30 @@ class IocPropertiesBindingTest {
     }
 
     @Test
+    void acceptsOnlyTheExactV020IdentityShapesWithoutVersionedDefinitions() {
+        contextRunner(v020ArtifactIdentities())
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(IocProperties.class).artifactIdentity().artifacts())
+                            .allMatch(V020ArtifactIdentityCompatibility::appliesTo);
+                });
+    }
+
+    @Test
+    void rejectsIncompleteIdentityThatOnlyResemblesTheV020Shape() {
+        contextRunner(concat(
+                sinkArtifact(0, "masks", true, "id", "mask", "source"),
+                new String[] {
+                        "ioc.artifact-identity.artifacts[0].name=masks",
+                        "ioc.artifact-identity.artifacts[0].key-columns[0]=mask",
+                        "ioc.artifact-identity.artifacts[0].key-columns[1]=source"
+                }))
+                .run(context -> assertThat(fieldErrors(context.getStartupFailure()))
+                        .extracting(FieldError::getField)
+                        .contains("artifactIdentity.artifacts[0].recordKey"));
+    }
+
+    @Test
     void rejectsDuplicateSinkArtifactNames() {
         contextRunner(concat(
                 sinkArtifact(0, "masks", true, "id", "mask"),
@@ -1023,10 +1047,29 @@ class IocPropertiesBindingTest {
         List<String> values = new ArrayList<>();
         String prefix = "ioc.artifact-identity.artifacts[%d]".formatted(index);
         values.add("%s.name=%s".formatted(prefix, name));
+        values.add("%s.record-key=%s-row-v1".formatted(prefix, name));
         for (int i = 0; i < keyColumns.length; i++) {
             values.add("%s.key-columns[%d]=%s".formatted(prefix, i, keyColumns[i]));
         }
         return values.toArray(String[]::new);
+    }
+
+    private static String[] v020ArtifactIdentities() {
+        return new String[] {
+                "ioc.artifact-identity.artifacts[0].name=masks",
+                "ioc.artifact-identity.artifacts[0].key-columns[0]=mask",
+                "ioc.artifact-identity.artifacts[1].name=ip_list",
+                "ioc.artifact-identity.artifacts[1].key-columns[0]=ip",
+                "ioc.artifact-identity.artifacts[2].name=address_blacklist",
+                "ioc.artifact-identity.artifacts[2].key-columns[0]=forbidden_url",
+                "ioc.artifact-identity.artifacts[2].key-columns[1]=forbidden_ip",
+                "ioc.artifact-identity.artifacts[2].key-mode=first-non-empty",
+                "ioc.artifact-identity.artifacts[3].name=hashes",
+                "ioc.artifact-identity.artifacts[3].key-columns[0]=hash_md5",
+                "ioc.artifact-identity.artifacts[3].key-columns[1]=hash_sha1",
+                "ioc.artifact-identity.artifacts[3].key-columns[2]=hash_sha256",
+                "ioc.artifact-identity.artifacts[3].key-mode=first-non-empty"
+        };
     }
 
     private static String[] artifactWithIdStart(String start) {

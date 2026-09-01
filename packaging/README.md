@@ -248,6 +248,16 @@ active rollback point; after that point is retired, validate and apply a separat
 candidate using the current key. Fresh templates never include compatibility
 aliases.
 
+The 0.3.0 overlap also recognizes the exact four built-in
+`ioc.artifact-identity.artifacts[]` entries shipped by v0.2.0 before versioned
+record and match keys existed. It emits `CONFIG.LEGACY_ARTIFACT_IDENTITY` and
+maps only those unchanged shapes to the current definitions; custom or modified
+entries with missing `record-key` fail validation. Keep the v0.2.0 shape only
+while that binary is a rollback point, then reconcile `application.yml.new`
+through `ioc-config apply`. The v0.2-only adapter and warning reporter are
+removed once direct v0.2.0 upgrade/rollback leaves the supported transition
+matrix; this is not a permanent alternate configuration schema.
+
 Do not edit the installed YAML in place. Copy it to a separate candidate, edit
 that file, then run `sudo <prefix>/bin/ioc-config apply <candidate.yml>`. The
 helper stages service-readable bytes and runs strict unknown-key, binding,

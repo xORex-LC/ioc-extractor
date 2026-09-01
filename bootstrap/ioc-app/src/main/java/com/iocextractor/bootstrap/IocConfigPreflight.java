@@ -244,8 +244,23 @@ final class IocConfigPreflight implements Validator {
             }
             validateIdentityKeyColumns(artifact, i, sinkArtifact, errors);
             validateIdentityMatchKeys(artifact, i, sinkArtifact, errors);
+            validateIdentityDefinition(artifact, i, errors);
         }
         return identityNames;
+    }
+
+    private void validateIdentityDefinition(IocProperties.ArtifactIdentity.Artifact artifact,
+                                            int identityIndex,
+                                            Errors errors) {
+        if (hasText(artifact.recordKey())
+                || V020ArtifactIdentityCompatibility.appliesTo(artifact)) {
+            return;
+        }
+        reject(errors,
+                "artifactIdentity.artifacts[%d].recordKey".formatted(identityIndex),
+                artifact.recordKey(),
+                "ioc.artifact-identity.artifacts[%d].record-key is required; only the exact v0.2.0 built-in artifact shape is accepted without it during the rollback compatibility window"
+                        .formatted(identityIndex));
     }
 
     private void validateIdentityMatchKeys(IocProperties.ArtifactIdentity.Artifact artifact,

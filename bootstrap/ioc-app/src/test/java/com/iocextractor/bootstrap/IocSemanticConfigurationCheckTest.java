@@ -43,6 +43,47 @@ class IocSemanticConfigurationCheckTest {
     }
 
     @Test
+    void acceptsTheExactV020ArtifactIdentityOverlay() throws Exception {
+        Path candidate = candidate("""
+                ioc:
+                  artifact-identity:
+                    artifacts:
+                      - { name: masks, key-columns: [ mask ] }
+                      - { name: ip_list, key-columns: [ ip ] }
+                      - { name: address_blacklist, key-columns: [ forbidden_url, forbidden_ip ], key-mode: first-non-empty }
+                      - { name: hashes, key-columns: [ hash_md5, hash_sha1, hash_sha256 ], key-mode: first-non-empty }
+                """);
+        var output = new StringWriter();
+        var errors = new StringWriter();
+
+        int result = IocSemanticConfigurationCheck.validate(
+                candidate, List.of(), writer(output), writer(errors));
+
+        assertThat(result).isZero();
+        assertThat(output.toString()).contains("CONFIG.SEMANTIC_VALID");
+        assertThat(errors.toString()).isEmpty();
+    }
+
+    @Test
+    void rejectsAnUnapprovedIncompleteArtifactIdentityOverlay() throws Exception {
+        Path candidate = candidate("""
+                ioc:
+                  artifact-identity:
+                    artifacts:
+                      - { name: masks, key-columns: [ mask, source ] }
+                """);
+        var errors = new StringWriter();
+
+        int result = IocSemanticConfigurationCheck.validate(
+                candidate, List.of(), writer(new StringWriter()), writer(errors));
+
+        assertThat(result).isEqualTo(IocSemanticConfigurationCheck.CONFIGURATION_ERROR_EXIT_CODE);
+        assertThat(errors.toString())
+                .contains("CONFIG.SEMANTIC_INVALID", "artifactIdentity.artifacts[0].recordKey")
+                .doesNotContain("source ]");
+    }
+
+    @Test
     void rejectsUnknownIocPropertyWithCanonicalNameAndNoValue(CapturedOutput processOutput) throws Exception {
         Path candidate = candidate("""
                 ioc:

@@ -173,6 +173,17 @@ database is guarded as schema drift.
 | `ioc.artifact-identity.artifacts[].match-keys[].name` | versioned definition name | required | Stable contract reference. |
 | `ioc.artifact-identity.artifacts[].match-keys[].key-columns` | non-empty column list | required | Alternative active-record lookup tuple. |
 
+During the v0.2.0 rollback overlap, the 0.3.0 binary accepts only the four exact
+built-in identity entries from the v0.2.0 packaged template without
+`record-key`, `match-keys`, or `epoch`. It resolves them to the shipped current
+definitions and logs `CONFIG.LEGACY_ARTIFACT_IDENTITY`. A custom or modified
+entry missing `record-key` fails semantic validation. Once v0.2.0 is no longer
+a rollback target, merge the explicit current definitions from
+`application.yml.new` through `ioc-config apply`; do not keep the compatibility
+shape as a template for new artifacts. This adapter is release-transition code,
+not a permanent alternate schema: it is removed once direct v0.2.0
+upgrade/rollback is no longer supported.
+
 ## Managed dataframe import
 
 Managed dataframe import is disabled in both shipped configurations. Enabling it

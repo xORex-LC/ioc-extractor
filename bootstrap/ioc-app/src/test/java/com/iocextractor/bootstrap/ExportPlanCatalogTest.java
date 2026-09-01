@@ -46,6 +46,29 @@ class ExportPlanCatalogTest {
     }
 
     @Test
+    void exactV020IdentityOverlayProducesTheCurrentExportPlans() throws Exception {
+        IocProperties properties = defaults();
+        List<IocProperties.ArtifactIdentity.Artifact> legacyArtifacts = List.of(
+                legacyIdentity("masks", null, "mask"),
+                legacyIdentity("ip_list", null, "ip"),
+                legacyIdentity("address_blacklist", ArtifactKeyMode.FIRST_NON_EMPTY,
+                        "forbidden_url", "forbidden_ip"),
+                legacyIdentity("hashes", ArtifactKeyMode.FIRST_NON_EMPTY,
+                        "hash_md5", "hash_sha1", "hash_sha256"));
+
+        var currentPlans = catalog(properties, new ArrayList<>()).plans();
+        var compatibilityPlans = catalog(
+                withArtifactIdentity(properties, new IocProperties.ArtifactIdentity(legacyArtifacts)),
+                new ArrayList<>()).plans();
+
+        assertThat(compatibilityPlans)
+                .extracting(plan -> plan.profile().name(), plan -> plan.planHash())
+                .containsExactlyElementsOf(currentPlans.stream()
+                        .map(plan -> tuple(plan.profile().name(), plan.planHash()))
+                        .toList());
+    }
+
+    @Test
     void activeMappingChangeInvalidatesPlanWithoutChangingPublicSchema() throws Exception {
         IocProperties properties = defaults();
         var original = catalog(properties, new ArrayList<>()).plans().getFirst();
@@ -221,6 +244,24 @@ class ExportPlanCatalogTest {
                 source.patterns(), source.classify(), source.sink(), source.pipeline(), source.ingestion(),
                 source.artifactIdentity(), source.dataframeImport(), export, source.sync(), source.maintenance(),
                 source.lifecycle(), source.observability());
+    }
+
+    private IocProperties withArtifactIdentity(
+            IocProperties source,
+            IocProperties.ArtifactIdentity artifactIdentity) {
+        return new IocProperties(
+                source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
+                source.patterns(), source.classify(), source.sink(), source.pipeline(), source.ingestion(),
+                artifactIdentity, source.dataframeImport(), source.export(), source.sync(), source.maintenance(),
+                source.lifecycle(), source.observability());
+    }
+
+    private IocProperties.ArtifactIdentity.Artifact legacyIdentity(
+            String name,
+            ArtifactKeyMode keyMode,
+            String... columns) {
+        return new IocProperties.ArtifactIdentity.Artifact(
+                name, List.of(columns), keyMode, null, null, null);
     }
 
     private IocProperties withSinkArtifact(IocProperties source, IocProperties.Sink.Artifact replacement) {

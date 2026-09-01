@@ -169,6 +169,19 @@ transport-а через application port; SMB adapter не владеет local 
 lookup paths. Изменение identity требует отдельного `epoch`/migration решения;
 обычная правка YAML не переписывает populated canonical state.
 
+На время rollback overlap бинарь 0.3.0 принимает четыре точные built-in формы
+из packaged template v0.2.0, в которых ещё нет `record-key`, `match-keys` и
+`epoch`. Временный `V020ArtifactIdentityCompatibility` переводит только эти
+неизменённые tuples в текущие versioned definitions, после чего постоянный
+bootstrap resolver предоставляет один результат export catalog и storage
+composition. Любой custom либо частично изменённый entry без `record-key`
+отклоняется semantic preflight. Обычный startup сообщает
+`CONFIG.LEGACY_ARTIFACT_IDENTITY` по имени artifact без вывода значений. После
+вывода v0.2.0 из rollback window оператор переносит явные current definitions
+из `application.yml.new` через проверяемый config-candidate workflow, а
+v0.2-only adapter и reporter удаляются. Новые legacy cases не добавляются в
+этот класс как универсальный migration registry.
+
 ## Неочевидные инварианты
 
 1. **Unknown keys fail on every channel.** Нельзя добавлять «временно
@@ -180,8 +193,10 @@ lookup paths. Изменение identity требует отдельного `e
 этот index; partial override не гарантирует сохранение остальных полей.
 4. **Секреты не становятся diagnostics/log values.** Failure analysis и
    override report показывают key/source/reason, но не winning value.
-5. **Legacy hints централизованы.** Удалённое свойство остаётся неизвестным key;
-   analyzer лишь объясняет миграцию и не возвращает tombstone в typed model.
+5. **Legacy compatibility ограничена, наблюдаема и удаляема.** Удалённое
+   свойство остаётся неизвестным key; разрешённый alias или exact legacy shape
+   имеет один изолированный adapter, негативные near-match tests, value-free
+   `CONFIG.*` warning и явное retirement condition.
 
 ## Как расширять
 

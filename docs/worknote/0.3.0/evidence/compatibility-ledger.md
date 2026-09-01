@@ -210,6 +210,7 @@ consumer, либо принять явное release-level решение об u
 | `v0.1.0 → v0.2.0` | In-place upgrade не поддержан; clean side-by-side prefix, old prefix остаётся rollback point |
 | `v0.2.0 → current 0.3.0 candidate` | Packaged stand подтвердил compatibility start со schema `4/8`, неизменными 246 active rows/config/projections, explicit TTL activation и matching-state rollback; final RC всё равно повторяет admission после последующих changes |
 | `v0.2.0 → v0.3.0 final` | Должен быть явно declared supported/unsupported после всех changes и проверен на representative durable state |
+| Retirement v0.2 artifact-identity shape | Exact compatibility изолирована в `V020ArtifactIdentityCompatibility`; после исключения direct v0.2.0 upgrade/rollback из transition matrix operator config обязан содержать explicit current definitions, а adapter и reporter удаляются |
 | Binary rollback после DB migration | Предыдущий symlink недостаточен; требуется matching pre-upgrade snapshot обеих SQLite DB |
 | Config rollback | Previous binary получает matching previous config; `*.new` не merge-ится автоматически |
 | External side effects | Inbox file moves, projections, immutable slices и remote operations не отменяются symlink/DB rollback автоматически и требуют reconcile |

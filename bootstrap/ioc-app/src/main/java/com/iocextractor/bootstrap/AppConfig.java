@@ -58,8 +58,6 @@ import com.iocextractor.application.artifact.IngestRunRecoveryService;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.ArtifactIdSequence;
 import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
-import com.iocextractor.application.artifact.CanonicalKeyDefinition;
-import com.iocextractor.application.artifact.CanonicalKeyMode;
 import com.iocextractor.application.artifact.NoopArtifactProjection;
 import com.iocextractor.application.artifact.NoopRunLedger;
 import com.iocextractor.application.artifact.StoredArtifactIdentity;
@@ -1442,24 +1440,8 @@ public class AppConfig {
 
     List<ArtifactIdentityDefinition> artifactIdentityDefinitions(IocProperties props) {
         return props.artifactIdentity().artifacts().stream()
-                .map(this::artifactIdentityDefinition)
+                .map(ArtifactIdentityConfigurationResolver::resolve)
                 .toList();
-    }
-
-    private ArtifactIdentityDefinition artifactIdentityDefinition(
-            IocProperties.ArtifactIdentity.Artifact artifact) {
-        int epoch = artifact.epoch() == null ? 1 : artifact.epoch();
-        var recordKey = new CanonicalKeyDefinition(
-                artifact.recordKey(),
-                artifact.keyMode() == ArtifactKeyMode.FIRST_NON_EMPTY
-                        ? CanonicalKeyMode.FIRST_NON_EMPTY
-                        : CanonicalKeyMode.COMPOSITE,
-                artifact.keyColumns());
-        List<CanonicalKeyDefinition> matchKeys = artifact.matchKeys().stream()
-                .map(match -> new CanonicalKeyDefinition(
-                        match.name(), CanonicalKeyMode.COMPOSITE, match.keyColumns()))
-                .toList();
-        return new ArtifactIdentityDefinition(artifact.name(), recordKey, matchKeys, epoch);
     }
 
     List<ArtifactIdAllocatorDefinition> artifactIdAllocatorDefinitions(

@@ -248,6 +248,11 @@ secrets. Согласуйте старый candidate, затем архивир�
 compatibility startup. Последующий cutover на fixed validity destructive для
 legacy active membership и выполняется по отдельной
 [процедуре canonical lifecycle](canonical-record-lifecycle.md#обновление-существующей-установки).
+На этом startup допустим warning `CONFIG.LEGACY_ARTIFACT_IDENTITY`, если operator
+file всё ещё содержит точный built-in identity list из v0.2.0. Это сигнал
+rollback-overlap, а не разрешение опускать versioned identity fields в custom
+entries. Переносите explicit definitions только после вывода v0.2.0 из rollback
+targets.
 Та же additive dataframe migration устанавливает export-slot registry. Первый
 active export seed-ит текущие внешние IDs без перенумерации survivors; rollback
 поэтому по-прежнему требует matching binary/configuration и backup обеих БД, а

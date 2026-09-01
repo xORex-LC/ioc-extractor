@@ -247,6 +247,11 @@ For a TTL-capable upgrade, keep lifecycle mode disabled for the first
 compatibility start. The later fixed-validity cutover is destructive to legacy
 active membership and follows the separate
 [canonical lifecycle procedure](canonical-record-lifecycle.md#upgrade-an-existing-installation).
+That compatibility start may log `CONFIG.LEGACY_ARTIFACT_IDENTITY` when the
+operator file still contains the exact built-in v0.2.0 identity list. This is an
+expected rollback-overlap warning, not permission to omit versioned identity
+fields from custom entries. Reconcile the explicit definitions only after the
+v0.2.0 rollback point is retired.
 The same additive dataframe migration installs the export-slot registry. Its
 first active export seeds current external IDs without renumbering survivors;
 rollback therefore still requires the matching binary/configuration and both

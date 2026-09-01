@@ -23,6 +23,8 @@ Composition root и конфигурация. Единственное мест�
 | `IocSemanticConfigurationCheck.java` | Internal packaged strict-binding/semantic checker: минимальный Spring context без runtime graph, DB и transports |
 | `IocConfigurationOverrideReporter.java` | Value-free startup report выигравших external `ioc.*` overrides |
 | `ConfigurationCompatibilityAlias.java`, `IocConfigurationMigrationCatalog.java` | Общий bounded expand/contract marker и catalog value-free migration notices для временных aliases |
+| `ArtifactIdentityConfigurationResolver.java` | Постоянный единый config→application resolver явных current identity definitions |
+| `V020ArtifactIdentityCompatibility.java`, `ArtifactIdentityCompatibilityReporter.java` | Изолированное временное compatibility-окно для exact v0.2.0 shape и его наблюдаемый startup warning; удаляется после прекращения direct v0.2.0 upgrade/rollback |
 | `ConfigRegistryCatalog.java` | Composition-root registry factories/keys для providers, transforms, filters и predicates |
 | `ConfigRegistryPreflight.java` | Eager startup check config→registry ссылок до обработки файла/записи |
 | `ConfigurationDocumentationContractTest` (test tree) | Reflection-based completeness operator guides, production-template binding/preflight и drift hints относительно enum/registry catalogs |

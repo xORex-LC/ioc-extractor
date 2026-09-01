@@ -174,6 +174,16 @@ charset или enabled. Schema/identity changes меняют durable contract и
 | `ioc.artifact-identity.artifacts[].match-keys[].name` | versioned definition name | обязателен | Стабильная ссылка из import contract. |
 | `ioc.artifact-identity.artifacts[].match-keys[].key-columns` | непустой список columns | обязателен | Tuple альтернативного active matching. |
 
+На время rollback overlap с v0.2.0 бинарь 0.3.0 принимает без `record-key`,
+`match-keys` и `epoch` только четыре точные built-in identity-записи из packaged
+template v0.2.0. Они преобразуются в поставляемые current definitions, а startup
+пишет `CONFIG.LEGACY_ARTIFACT_IDENTITY`. Custom или изменённая запись без
+`record-key` не проходит semantic validation. После исключения v0.2.0 из
+rollback targets перенесите явные current definitions из `application.yml.new`
+через `ioc-config apply`; compatibility shape не является шаблоном для новых
+artifacts. Этот adapter относится только к переходу между релизами и удаляется,
+когда прямой upgrade/rollback с v0.2.0 больше не поддерживается.
+
 ## Managed dataframe import
 
 Managed import выключен в обоих поставляемых конфигурациях. При включении intake
