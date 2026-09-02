@@ -15,7 +15,7 @@ ioc-adapter-source-tika	57	1	7	3	6	enforced	Small line and branch denominators r
 ioc-adapter-csv	1102	191	391	167	820	observed	Current aggregate-group baseline with downstream execution retained.
 ioc-adapter-manifest-json-jackson	82	2	5	1	9	enforced	Small line and branch denominators require absolute missed context.
 ioc-adapter-store-jdbc	5268	745	1277	581	3352	observed	Conservative repeated-run minimum for conditional recovery paths.
-ioc-adapter-transport-smb	813	283	307	203	1286	observed	Current offline aggregate-group baseline; external paths remain explicit.
+ioc-adapter-transport-smb	813	283	309	201	1282	observed	Deterministic offline error mapping plus downstream integration coverage; external paths remain explicit.
 ioc-adapter-ingest	929	260	268	154	1080	observed	Conservative repeated-run minimum for asynchronous ingest paths.
 ioc-adapter-cli-picocli	415	149	114	113	979	observed	Current aggregate-group baseline with downstream execution retained.
 ioc-app	4397	669	1271	567	2734	observed	Conservative repeated-run minimum for bootstrap scheduling paths.

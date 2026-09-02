@@ -108,17 +108,26 @@ class BoundedKeyedSerialExecutorTest {
     @Test
     void shutdownDrainsAcceptedWorkAndRejectsNewWork() throws InterruptedException {
         BoundedKeyedSerialExecutor executor = executor(1, 8);
+        CountDownLatch firstStarted = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
         CountDownLatch finished = new CountDownLatch(2);
 
-        assertThat(executor.submit(WorkKey.of("endpoint-a"), () -> finished.countDown()).accepted()).isTrue();
-        assertThat(executor.submit(WorkKey.of("endpoint-a"), () -> finished.countDown()).accepted()).isTrue();
+        assertThat(executor.submit(WorkKey.of("endpoint-a"), () -> blockingSignal(
+                firstStarted, releaseFirst, finished)).accepted()).isTrue();
+        assertThat(firstStarted.await(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(executor.submit(WorkKey.of("endpoint-a"), finished::countDown).accepted()).isTrue();
 
         executor.shutdown();
 
         assertThat(executor.submit(WorkKey.of("endpoint-a"), () -> { }).status())
                 .isEqualTo(WorkAdmissionStatus.REJECTED);
-        assertThat(finished.await(1, TimeUnit.SECONDS)).isTrue();
-        assertThat(executor.awaitTermination(Duration.ofSeconds(1))).isTrue();
+        try {
+            releaseFirst.countDown();
+            assertThat(finished.await(1, TimeUnit.SECONDS)).isTrue();
+            assertThat(executor.awaitTermination(Duration.ofSeconds(1))).isTrue();
+        } finally {
+            releaseFirst.countDown();
+        }
     }
 
     @Test
