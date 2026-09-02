@@ -121,7 +121,7 @@
                     </execution>
                 </executions>
             </plugin>
-            <!-- Report-only coverage bootstrap. Thresholds are introduced only after baseline acceptance. -->
+            <!-- Coverage agent/reports; project-owned aggregate ratchets run in coverage-report. -->
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
@@ -234,6 +234,7 @@
                                        encoding="UTF-8"
                                        includeantruntime="false">
                                     <src path="${maven.multiModuleProjectDirectory}/build-support/build-quality"/>
+                                    <src path="${maven.multiModuleProjectDirectory}/build-support/coverage-report"/>
                                     <src path="${maven.multiModuleProjectDirectory}/build-support/test-quality"/>
                                 </javac>
                                 <java classname="BuildQualityVerifierTest"
@@ -257,6 +258,13 @@
                                         <pathelement location="${project.build.directory}/build-quality-verifier"/>
                                     </classpath>
                                 </java>
+                                <java classname="CoverageVerifierTest"
+                                      fork="true"
+                                      failonerror="true">
+                                    <classpath>
+                                        <pathelement location="${project.build.directory}/build-quality-verifier"/>
+                                    </classpath>
+                                </java>
                                 <java classname="TestLifecycleVerifier"
                                       fork="true"
                                       failonerror="true">
@@ -266,6 +274,18 @@
                                     <arg value="validate"/>
                                     <arg value="${maven.multiModuleProjectDirectory}"/>
                                     <arg value="${maven.multiModuleProjectDirectory}/build-support/test-quality/test-lifecycle.properties"/>
+                                </java>
+                                <java classname="CoverageVerifier"
+                                      fork="true"
+                                      failonerror="true">
+                                    <classpath>
+                                        <pathelement location="${project.build.directory}/build-quality-verifier"/>
+                                    </classpath>
+                                    <arg value="validate"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/coverage-report/coverage-scope.tsv"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/coverage-report/coverage-ratchets.tsv"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/coverage-report/pom.xml"/>
                                 </java>
                                 <java classname="BuildQualityVerifier"
                                       fork="true"
@@ -333,6 +353,8 @@
                                 <delete file="${project.build.directory}/failsafe-summary.xml"
                                         quiet="true"/>
                                 <delete file="${project.build.directory}/jacoco.exec"
+                                        quiet="true"/>
+                                <delete dir="${project.reporting.outputDirectory}/jacoco"
                                         quiet="true"/>
                             </target>
                         </configuration>

@@ -375,7 +375,8 @@ public final class TestLifecycleVerifier {
                 "${project.build.directory}/surefire-reports",
                 "${project.build.directory}/failsafe-reports",
                 "${project.build.directory}/failsafe-summary.xml",
-                "${project.build.directory}/jacoco.exec");
+                "${project.build.directory}/jacoco.exec",
+                "${project.reporting.outputDirectory}/jacoco");
         if (!cleanedPaths.equals(expectedPaths)) {
             throw new VerificationException(
                     "test-output cleanup paths differ; expected=" + expectedPaths

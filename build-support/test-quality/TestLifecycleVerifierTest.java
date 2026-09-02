@@ -216,6 +216,7 @@ public final class TestLifecycleVerifierTest {
                               <delete dir="${project.build.directory}/failsafe-reports"/>
                               <delete file="${project.build.directory}/failsafe-summary.xml"/>
                               <delete file="${project.build.directory}/jacoco.exec"/>
+                              <delete dir="${project.reporting.outputDirectory}/jacoco"/>
                             </target></configuration>
                           </execution></executions>
                         </plugin>

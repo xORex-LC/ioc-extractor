@@ -1,0 +1,21 @@
+# scope	line-covered	line-missed	branch-covered	branch-missed	instruction-missed	absolute-instructions	rationale
+reactor	19162	3227	5434	2685	15000	observed	Lowest observation in the repeated post-lifecycle series; fixed release floors remain separate.
+ioc-platform-errors	4	0	0	0	0	enforced	Small branchless production module; downstream coverage is complete.
+ioc-platform-diagnostics	481	10	56	20	63	enforced	Small branch denominator requires ratio and absolute missed context.
+ioc-platform-etl	165	16	16	8	75	enforced	Small branch denominator requires ratio and absolute missed context.
+ioc-platform-events	41	0	12	2	0	enforced	Small line and branch denominators require absolute missed context.
+ioc-platform-concurrency	197	21	48	18	67	enforced	Small branch denominator requires ratio and absolute missed context.
+ioc-platform-observability	327	14	69	2	42	enforced	Small branch denominator requires ratio and absolute missed context.
+ioc-platform-diagnostics-logging	56	4	20	1	9	enforced	Small line and branch denominators require absolute missed context.
+ioc-domain	229	14	86	24	82	observed	Core fixed branch-floor remediation is intentionally deferred.
+ioc-application	4574	838	1475	817	4354	observed	Conservative repeated-run line minimum; fixed floors remain separate.
+ioc-adapter-regex-re2j	8	10	2	2	39	enforced	Small downstream-only module requires absolute missed context.
+ioc-adapter-psl	15	2	11	1	3	enforced	Small line and branch denominators require absolute missed context.
+ioc-adapter-source-tika	57	1	7	3	6	enforced	Small line and branch denominators require absolute missed context.
+ioc-adapter-csv	1102	191	391	167	820	observed	Current aggregate-group baseline with downstream execution retained.
+ioc-adapter-manifest-json-jackson	82	2	5	1	9	enforced	Small line and branch denominators require absolute missed context.
+ioc-adapter-store-jdbc	5268	745	1277	581	3352	observed	Conservative repeated-run minimum for conditional recovery paths.
+ioc-adapter-transport-smb	813	283	307	203	1286	observed	Current offline aggregate-group baseline; external paths remain explicit.
+ioc-adapter-ingest	929	260	268	154	1080	observed	Conservative repeated-run minimum for asynchronous ingest paths.
+ioc-adapter-cli-picocli	415	149	114	113	979	observed	Current aggregate-group baseline with downstream execution retained.
+ioc-app	4397	669	1271	567	2734	observed	Conservative repeated-run minimum for bootstrap scheduling paths.

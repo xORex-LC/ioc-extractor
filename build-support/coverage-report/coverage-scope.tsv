@@ -1,0 +1,26 @@
+# module-path	artifact-id	disposition	local-report	rationale
+.	ioc-extractor-parent	excluded	none	Root parent has no production bytecode.
+platform/platform-errors	ioc-platform-errors	covered	aggregate-only	Production bytecode is exercised only by downstream test JVMs.
+platform/platform-diagnostics	ioc-platform-diagnostics	covered	required	Production platform module with its own test execution data.
+platform/platform-etl	ioc-platform-etl	covered	required	Production platform module with its own test execution data.
+platform/platform-events	ioc-platform-events	covered	required	Production platform module with its own test execution data.
+platform/platform-concurrency	ioc-platform-concurrency	covered	required	Production platform module with its own test execution data.
+platform/platform-observability	ioc-platform-observability	covered	required	Production platform module with its own test execution data.
+platform/platform-diagnostics-logging	ioc-platform-diagnostics-logging	covered	required	Production platform module with its own test execution data.
+core/ioc-domain	ioc-domain	covered	required	Production core module with downstream execution retained by the aggregate.
+core/ioc-application	ioc-application	covered	required	Production core module with downstream execution retained by the aggregate.
+core/ioc-application-tck	ioc-application-tck	excluded	none	Reusable test support is evaluated through its consumer contract executions.
+adapters/adapter-regex-re2j	ioc-adapter-regex-re2j	covered	aggregate-only	Production bytecode is exercised only by downstream test JVMs.
+adapters/adapter-psl	ioc-adapter-psl	covered	required	Production adapter with its own test execution data.
+adapters/adapter-source-tika	ioc-adapter-source-tika	covered	required	Production adapter with its own test execution data.
+adapters/adapter-csv	ioc-adapter-csv	covered	required	Production adapter with its own test execution data.
+adapters/adapter-manifest-json-jackson	ioc-adapter-manifest-json-jackson	covered	required	Production adapter with its own test execution data.
+adapters/adapter-store-jdbc	ioc-adapter-store-jdbc	covered	required	Production adapter with its own test execution data.
+adapters/adapter-transport-smb	ioc-adapter-transport-smb	covered	required	Production adapter with its own test execution data.
+adapters/adapter-ingest	ioc-adapter-ingest	covered	required	Production adapter with its own test execution data.
+adapters/adapter-cli-picocli	ioc-adapter-cli-picocli	covered	required	Production adapter with its own test execution data.
+bootstrap/ioc-app	ioc-app	covered	required	Runnable production composition root with its own test execution data.
+build-support/coverage-report	ioc-coverage-report	aggregate	none	Build-only owner of the authoritative reactor JaCoCo report and gate.
+build-support/spotbugs-report	ioc-spotbugs-report	excluded	none	Build-only SpotBugs report POM has no production bytecode.
+build-support/cpd-report	ioc-cpd-report	excluded	none	Build-only CPD report POM has no production bytecode.
+build-support/pmd-report	ioc-pmd-report	excluded	none	Build-only PMD report POM has no production bytecode.

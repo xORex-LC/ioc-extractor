@@ -142,6 +142,19 @@
                 <artifactId>maven-antrun-plugin</artifactId>
                 <executions>
                     <execution>
+                        <id>clean-stale-aggregate-coverage-output</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target unless="skipTests">
+                                <delete dir="${project.reporting.outputDirectory}/jacoco-aggregate"
+                                        quiet="true"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
                         <id>verify-test-lifecycle-report-union</id>
                         <phase>verify</phase>
                         <goals>
@@ -158,6 +171,29 @@
                                     <arg value="verify-reports"/>
                                     <arg value="${maven.multiModuleProjectDirectory}"/>
                                     <arg value="${maven.multiModuleProjectDirectory}/build-support/test-quality/test-lifecycle.properties"/>
+                                </java>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>verify-coverage-policy</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <java classname="CoverageVerifier"
+                                      fork="true"
+                                      failonerror="true">
+                                    <classpath>
+                                        <pathelement location="${maven.multiModuleProjectDirectory}/target/build-quality-verifier"/>
+                                    </classpath>
+                                    <arg value="verify-reports"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/coverage-report/coverage-scope.tsv"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/coverage-report/coverage-ratchets.tsv"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/coverage-report/pom.xml"/>
                                 </java>
                             </target>
                         </configuration>
