@@ -41,6 +41,20 @@ class NetworkAddressClassifierTest {
                 features("example.com", false, false, false, HostKind.REGISTRABLE))).isFalse();
     }
 
+    @Test
+    void ipv4_type_with_non_ip_host_is_not_bare() {
+        assertThat(NetworkAddressClassifier.isBareIp(
+                indicator("example.com", IndicatorType.IPV4),
+                features("example.com", false, false, false, HostKind.REGISTRABLE))).isFalse();
+    }
+
+    @Test
+    void ipv4_with_query_is_not_bare() {
+        assertThat(NetworkAddressClassifier.isBareIp(
+                indicator("1.2.3.4?source=feed", IndicatorType.IPV4),
+                features("1.2.3.4", false, false, true, HostKind.IP))).isFalse();
+    }
+
     private Indicator indicator(String value, IndicatorType type) {
         return new Indicator(value, type, new SourceContext(null, null));
     }

@@ -1,12 +1,25 @@
 package com.iocextractor.domain.feature;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class DefaultIndicatorNormalizerTest {
 
     private final IndicatorNormalizer normalizer = new DefaultIndicatorNormalizer();
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    void preserves_absent_input(String value) {
+        assertThat(normalizer.normalize(value)).isEqualTo(value);
+    }
+
+    @Test
+    void strips_input_containing_only_boundary_punctuation() {
+        assertThat(normalizer.normalize(" ;,\"'\t\r\n")).isEmpty();
+    }
 
     @Test
     void strips_trailing_semicolon() {

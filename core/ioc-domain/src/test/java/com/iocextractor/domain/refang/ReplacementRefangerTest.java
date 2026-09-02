@@ -43,4 +43,10 @@ class ReplacementRefangerTest {
             assertThat(outcome.decisions()).isEmpty();
         });
     }
+
+    @Test
+    void empty_text_is_an_explicit_noop() {
+        assertThat(refanger.refang(""))
+                .isEqualTo(new RefangOutcome("", List.of()));
+    }
 }

@@ -4,6 +4,8 @@ import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.SourceContext;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -73,5 +75,14 @@ class DefaultIndicatorFeatureExtractorTest {
         assertThat(f.host()).isEqualTo("api.telegram.org");
         assertThat(f.hasPort()).isFalse(); // ':' lives in the path, not the authority
         assertThat(f.hasPath()).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"example.com:", "example.com:not-a-port"})
+    void keeps_empty_or_non_numeric_authority_suffix_in_host(String value) {
+        IndicatorFeatures f = features(value, IndicatorType.DOMAIN);
+
+        assertThat(f.host()).isEqualTo(value);
+        assertThat(f.hasPort()).isFalse();
     }
 }
