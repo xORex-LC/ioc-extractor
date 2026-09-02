@@ -1053,8 +1053,9 @@ control. Это не разрешает default/category-wide rules или ав�
 - [x] `TEST-LIFECYCLE-01`: Surefire/Failsafe taxonomy и lifecycle separation;
   183 fast + 65 integration suites, exact disjoint report union and appended
   JaCoCo execution verified by the 2026-09-02 full reactor run
-- [ ] `TEST-COVERAGE-02`: JaCoCo checks/ratchets, explicit universe и
-  missing-report enforcement
+- [ ] `TEST-COVERAGE-02`: explicit 25-project universe, missing-report
+  enforcement и aggregate/per-module no-regression ratchets реализованы;
+  fixed aggregate/domain/application floors ожидают отдельного gap remediation
 - [ ] Codecov best-effort upload и evidence, без required-status semantics
 - [ ] Required CI branch statuses и финальный closure run при активной
   repository branch policy

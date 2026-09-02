@@ -111,17 +111,36 @@ Generated evidence is written to:
 - `build-support/coverage-report/target/site/jacoco-aggregate/` for aggregate
   HTML/XML coverage.
 
-When tests are enabled, the build deletes stale test reports and JaCoCo
-execution data during `initialize`. A `-DskipTests` analyzer/package run
-preserves the latest test evidence. JaCoCo appends execution data from the
-Surefire and Failsafe JVMs within the clean test lifecycle, so downstream
-integration/E2E execution is retained in the aggregate. CI uploads test and
-coverage directories even when a later step fails.
+When tests are enabled, the build deletes stale test reports, JaCoCo execution
+data, module coverage directories and the aggregate coverage directory during
+`initialize`. A `-DskipTests` analyzer/package run preserves the latest test
+evidence. JaCoCo appends execution data from the Surefire and Failsafe JVMs
+within the clean test lifecycle, so downstream integration/E2E execution is
+retained in the aggregate. CI uploads test and coverage directories even when a
+later step fails.
 
-Coverage reports are currently diagnostic. Numeric floors, per-module ratchets
-and project-owned missing-JaCoCo-report enforcement are owned by the next
-coverage work item; do not infer those controls from lifecycle report integrity.
-Local JaCoCo remains authoritative when Codecov reporting is introduced.
+The aggregate report and its groups are the authoritative release measurement.
+`build-support/coverage-report/coverage-scope.tsv` gives every reactor project
+an explicit disposition. The production denominator is exactly 19 JAR modules;
+the reusable TCK, root and build-only POMs are excluded, with no class or package
+exclusions. Seventeen production modules must generate local XML/HTML reports.
+`ioc-platform-errors` and `ioc-adapter-regex-re2j` have no local test JVM and are
+declared aggregate-only, but their downstream execution must still appear as
+aggregate groups.
+
+`make verify` checks that this complete report topology exists and contains no
+stale or unexpected evidence. It applies the aggregate and per-module baselines
+in `coverage-ratchets.tsv`: line and branch ratios cannot fall, and missed branch
+counts cannot rise. Ratios are compared as integer fractions rather than rounded
+percentages. Small-denominator modules also reject an increase in missed
+instructions; larger scopes retain that absolute value as review context.
+
+The current ratchets prevent regression while aggregate/domain/application
+fixed-floor gaps are remediated. They are not proof that the release floors have
+been reached. Do not lower a baseline, add an exclusion or relabel a local report
+to make a change pass. Review the changed behavior and tests; when a stable
+improvement is accepted, update its exact counters and rationale in the same
+change. Local JaCoCo remains authoritative when Codecov reporting is introduced.
 
 ## Test design and failure policy
 

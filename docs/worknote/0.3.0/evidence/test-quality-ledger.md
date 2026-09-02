@@ -24,8 +24,9 @@ their own `R030-TEST` work items.
 maps every baseline test/coverage/consumer gap to an owner without implementing
 it during Wave 0.
 
-The Wave 0 measurements remain historical evidence. The current implementation
-baseline for `R030-TEST` is the clean `cd120a66` refresh recorded below; do not
+The Wave 0 measurements remain historical evidence. The clean `cd120a66`
+refresh is the current inventory starting point; the lifecycle and accepted
+coverage-ratchet evidence below supersede its execution/coverage values. Do not
 use the older 171-suite or pre-DATA coverage values as lifecycle or ratchet
 inputs.
 
@@ -34,7 +35,7 @@ inputs.
 | Work item | Scope/outcome | Evidence | Dependency | State |
 |---|---|---|---|---|
 | `TEST-LIFECYCLE-01` | Introduce accepted tags/composed annotations and Surefire/Failsafe selection without losing the refreshed accepted universe | Verified implementation evidence below | Global `R030-TEST` Wave 1 | `verified` |
-| `TEST-COVERAGE-02` | Add aggregate/per-module no-regression ratchets, then close accepted aggregate/domain/application branch floors | Coverage baseline and hotspots below | Stable lifecycle/reporting | `planned` |
+| `TEST-COVERAGE-02` | Add aggregate/per-module no-regression ratchets, then close accepted aggregate/domain/application branch floors | Coverage baseline, policy and implementation evidence below | Stable lifecycle/reporting | `in-progress` (universe/integrity/ratchets implemented; fixed floors pending) |
 | `TEST-REGEX-03` | Common RE2/J + JDK engine contract and bootstrap `ioc.engine=jdk` selection test | Risk finding below; 0/9 JDK lines | Regex/bootstrap module wave | `planned` |
 | `TEST-WAITS-04` | Bound async waits, release workers in `finally`, assert termination and add diagnosable safety timeout | Wait/flake inventory below | Module test hardening | `planned` |
 | `TEST-EXTERNAL-05` | Execute live SMB `CHANGE_NOTIFY` contract or record explicit external-evidence release disposition | Two skipped external cases | Provisioned fixture / `R030-REL` | `external-evidence-required` |
@@ -181,41 +182,40 @@ directories for 30 days with `if: always()`. The durable English lifecycle,
 taxonomy, command, external-evidence and flake policy is published in
 [`docs/TESTING.md`](../../../TESTING.md).
 
-### Current aggregate coverage
+### Accepted aggregate-group coverage ratchets
 
 The 19 groups below come from the reactor aggregate so downstream execution is
-credited. They are refreshed measurements, not yet accepted ratchets.
+credited. They are the accepted conservative no-regression boundaries after the
+post-lifecycle repetition described below; fixed release floors remain separate.
 
 | Module/scope | Lines covered/total | Line | Branches covered/total | Branch | Missed branches | Release floor/state |
 |---|---:|---:|---:|---:|---:|---|
-| **Reactor aggregate** | **19171/22389** | **85.63%** | **5446/8119** | **67.08%** | **2673** | `75% / 80%`; branch gap |
-| `platform/platform-errors` | 4/4 | 100.00% | 0/0 | N/A | 0 | measured |
-| `platform/platform-diagnostics` | 481/491 | 97.96% | 56/76 | 73.68% | 20 | measured |
-| `platform/platform-etl` | 165/181 | 91.16% | 16/24 | 66.67% | 8 | measured |
-| `platform/platform-events` | 41/41 | 100.00% | 12/14 | 85.71% | 2 | measured |
-| `platform/platform-concurrency` | 197/218 | 90.37% | 48/66 | 72.73% | 18 | measured |
-| `platform/platform-observability` | 327/341 | 95.89% | 69/71 | 97.18% | 2 | measured |
-| `platform/platform-diagnostics-logging` | 56/60 | 93.33% | 20/21 | 95.24% | 1 | measured |
-| `core/ioc-domain` | 229/243 | 94.24% | 86/110 | 78.18% | 24 | `85% / 90%`; branch gap |
-| `core/ioc-application` | 4574/5412 | 84.52% | 1475/2292 | 64.35% | 817 | `85% / 90%`; line and branch gaps |
+| **Reactor aggregate** | **19162/22389** | **85.59%** | **5434/8119** | **66.93%** | **2685** | ratcheted; `75% / 80%` branch gap |
+| `platform/platform-errors` | 4/4 | 100.00% | 0/0 | N/A | 0 | ratcheted |
+| `platform/platform-diagnostics` | 481/491 | 97.96% | 56/76 | 73.68% | 20 | ratcheted |
+| `platform/platform-etl` | 165/181 | 91.16% | 16/24 | 66.67% | 8 | ratcheted |
+| `platform/platform-events` | 41/41 | 100.00% | 12/14 | 85.71% | 2 | ratcheted |
+| `platform/platform-concurrency` | 197/218 | 90.37% | 48/66 | 72.73% | 18 | ratcheted |
+| `platform/platform-observability` | 327/341 | 95.89% | 69/71 | 97.18% | 2 | ratcheted |
+| `platform/platform-diagnostics-logging` | 56/60 | 93.33% | 20/21 | 95.24% | 1 | ratcheted |
+| `core/ioc-domain` | 229/243 | 94.24% | 86/110 | 78.18% | 24 | ratcheted; `85% / 90%` branch gap |
+| `core/ioc-application` | 4574/5412 | 84.52% | 1475/2292 | 64.35% | 817 | ratcheted; `85% / 90%` line and branch gaps |
 | `core/ioc-application-tck` | — | N/A | — | N/A | — | outside production universe |
-| `adapters/adapter-regex-re2j` | 8/18 | 44.44% | 2/4 | 50.00% | 2 | supported-path gap |
-| `adapters/adapter-psl` | 15/17 | 88.24% | 11/12 | 91.67% | 1 | measured |
-| `adapters/adapter-source-tika` | 57/58 | 98.28% | 7/10 | 70.00% | 3 | measured |
-| `adapters/adapter-csv` | 1102/1293 | 85.23% | 391/558 | 70.07% | 167 | measured |
-| `adapters/adapter-manifest-json-jackson` | 82/84 | 97.62% | 5/6 | 83.33% | 1 | measured |
-| `adapters/adapter-store-jdbc` | 5277/6013 | 87.76% | 1286/1858 | 69.21% | 572 | measured |
-| `adapters/adapter-transport-smb` | 813/1096 | 74.18% | 307/510 | 60.20% | 203 | external-path concentration |
-| `adapters/adapter-ingest` | 930/1189 | 78.22% | 269/422 | 63.74% | 153 | measured |
-| `adapters/adapter-cli-picocli` | 415/564 | 73.58% | 114/227 | 50.22% | 113 | measured |
-| `bootstrap/ioc-app` | 4398/5066 | 86.81% | 1272/1838 | 69.21% | 566 | measured |
+| `adapters/adapter-regex-re2j` | 8/18 | 44.44% | 2/4 | 50.00% | 2 | ratcheted; supported-path gap |
+| `adapters/adapter-psl` | 15/17 | 88.24% | 11/12 | 91.67% | 1 | ratcheted |
+| `adapters/adapter-source-tika` | 57/58 | 98.28% | 7/10 | 70.00% | 3 | ratcheted |
+| `adapters/adapter-csv` | 1102/1293 | 85.23% | 391/558 | 70.07% | 167 | ratcheted |
+| `adapters/adapter-manifest-json-jackson` | 82/84 | 97.62% | 5/6 | 83.33% | 1 | ratcheted |
+| `adapters/adapter-store-jdbc` | 5268/6013 | 87.61% | 1277/1858 | 68.73% | 581 | ratcheted |
+| `adapters/adapter-transport-smb` | 813/1096 | 74.18% | 307/510 | 60.20% | 203 | ratcheted; external-path concentration |
+| `adapters/adapter-ingest` | 929/1189 | 78.13% | 268/422 | 63.51% | 154 | ratcheted |
+| `adapters/adapter-cli-picocli` | 415/564 | 73.58% | 114/227 | 50.22% | 113 | ratcheted |
+| `bootstrap/ioc-app` | 4397/5066 | 86.79% | 1271/1838 | 69.15% | 567 | ratcheted |
 
 Compared with Wave 0, the production denominator grew from 10962 to 22389
-lines and from 3998 to 8119 branches. Aggregate line coverage moved from
-87.34% to 85.63%, and branch coverage from 69.38% to 67.08%. Because no numeric
-ratchet was active, this is a refreshed post-DATA baseline rather than a passed
-or failed no-regression decision. `TEST-COVERAGE-02` must establish ratchets
-from this universe and close the fixed-floor gaps: aggregate branch 12.92 pp,
+lines and from 3998 to 8119 branches. The accepted aggregate ratchet is 85.59%
+lines and 66.93% branches. `TEST-COVERAGE-02` now blocks regression from this
+universe, but still must close the fixed-floor gaps: aggregate branch 13.07 pp,
 domain branch 11.82 pp, application line 0.48 pp and application branch
 25.65 pp.
 
@@ -225,6 +225,43 @@ The largest current missed-branch concentrations are
 `JdbcImportWorkspace` (49), `LocalManagedImportSourceLifecycle` (39) and the
 unexecuted live `SmbjShareClient` seam (38). These are triage inputs, not an
 instruction to add percentage-only tests.
+
+### `TEST-COVERAGE-02` phases 1-3 implementation evidence — 2026-09-02
+
+До установки gate post-lifecycle baseline был повторён на неизменённом
+`dd364a0f`. Серия aggregate результатов составила `19162/22389 + 5434/8119`,
+затем после clean build `19169/22389 + 5444/8119` и ещё два независимых
+`19163/22389 + 5436/8119`. Denominators и 19 groups оставались неизменными;
+вариативность локализована в условных recovery/scheduler paths. Поэтому ratchet
+берёт нижнюю наблюдавшуюся границу, а не удачный максимум или округлённый
+percentage. Per-module minima также выбирались независимо между прогонами и не
+должны арифметически суммироваться в один выдуманный aggregate run.
+
+`coverage-scope.tsv` теперь даёт disposition всем 25 reactor projects:
+19 production JARs входят в aggregate, root, TCK и три соседних report POM
+исключены, а `coverage-report` является единственным aggregate owner. Для 17
+production modules обязательны non-empty local execution data + XML/HTML;
+`platform-errors` и `adapter-regex-re2j` явно отмечены `aggregate-only`, потому
+что их bytecode исполняется downstream tests. Class/package exclusions не
+приняты.
+
+JDK-only `CoverageVerifier` в root `validate` сверяет registry с root reactor,
+POM packaging, aggregate dependencies, ratchet scopes, отсутствие JaCoCo
+filters/skip и точное Maven wiring. Synthetic harness содержит 2 happy paths и
+22 negative scenarios. Late `verify` удаляет старые module/aggregate report
+directories, требует exact 19-group aggregate, проверяет group sums, ожидаемые
+17 local reports и отсутствие output у excluded/downstream-only owners.
+
+`coverage-ratchets.tsv` блокирует снижение line/branch ratio точным integer
+cross-multiplication без decimal rounding и рост absolute missed branches.
+Для small-denominator modules дополнительно блокируется рост missed
+instructions; для остальных это значение сохраняется как review context.
+Первый implementation `make verify` прошёл 25/25 за `02:32`: late gate принял
+`19164/22389` lines и `5436/8119` branches. Повторный final-worktree run также
+прошёл 25/25 за `02:32` с `19162/22389` и `5435/8119`; SpotBugs остался
+`116 accepted / 0 visible`, CPD — `21/21`. Это закрывает universe, report
+integrity и no-regression этапы, но не fixed floors: их remediation и включение
+отложены в отдельную оставшуюся часть `TEST-COVERAGE-02`.
 
 ## Historical Wave 0 baseline discovery inventory
 
@@ -617,9 +654,9 @@ does not infer mutation effectiveness from assertion volume.
 
 | Control | Version/config | Local command | CI evidence | State |
 |---|---|---|---|---|
-| JaCoCo agent/report | `0.8.15`; inherited `prepare-agent` + module `report` | `make verify` | Clean local reactor evidence below | `report-only` |
-| JaCoCo per-module check | Not configured | N/A | N/A | `deferred-until-baseline` |
-| JaCoCo aggregate check | Not configured | N/A | N/A | `deferred-until-baseline` |
+| JaCoCo agent/report | `0.8.15`; inherited `prepare-agent` + module `report` | `make verify` | 17 local report pairs + 19-group aggregate | `blocking-integrity` |
+| JaCoCo per-module check | Exact 19-module line/branch ratio ratchets; absolute missed-branch and small-module instruction context | `make verify` | Project-owned snapshot and late gate | `blocking-ratchet` |
+| JaCoCo aggregate check | Exact ratio/missed-branch ratchet; fixed `75% / 80%` floor not yet enabled | `make verify` | Project-owned aggregate XML/integrity gate | `ratcheted; fixed-floor-pending` |
 | Surefire fast lifecycle | `3.5.6`; default naming; isolated via `skip.unit.tests` | `make test` / `make test-fast` / `make verify` | 183 suites / 792 cases | `verified` |
 | Failsafe integration lifecycle | `3.5.6`; `integration-test` + `verify`; default IT naming | `make test-integration` / `make verify` | 65 suites / 394 cases / 8 external skips | `verified` |
 | JUnit tag convention | Six accepted tags; five shared composed annotations; no regular filters | root `validate` / `make verify` | Source-count and exact report-union verifier | `verified` |
