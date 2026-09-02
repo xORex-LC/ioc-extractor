@@ -127,19 +127,19 @@ The additional bare wait is the lifecycle-deadline scheduler worker gate.
 ## `TEST-LIFECYCLE-01` implementation evidence — 2026-09-02
 
 The reviewed behavior-based inventory was migrated to Maven naming ownership.
-After the fourth coverage-remediation checkpoint, Surefire owns 189 fast
+After the fifth coverage-remediation checkpoint, Surefire owns 190 fast
 `*Test` suites and Failsafe owns 65 `*IT` suites. Five of the Failsafe suites
 are explicitly conditioned external shells, so the deterministic offline
-universe is `189 + (65 - 5) = 249` suites. The two source sets are disjoint and
-their complete union is the current 254-suite reactor universe; the six-suite
+universe is `190 + (65 - 5) = 250` suites. The two source sets are disjoint and
+their complete union is the current 255-suite reactor universe; the seven-suite
 increase is the intentional domain and application contract coverage recorded
 below.
 
 | Cohort | Suites | Cases | Passed | Skipped | Failures/errors | Suite-seconds |
 |---|---:|---:|---:|---:|---:|---:|
-| Surefire fast | 189 | 866 | 866 | 0 | 0 | 66.919 |
-| Failsafe integration, including external shells | 65 | 394 | 386 | 8 | 0 | 176.308 |
-| **Full reactor union** | **254** | **1260** | **1252** | **8** | **0** | **243.227** |
+| Surefire fast | 190 | 879 | 879 | 0 | 0 | 49.325 |
+| Failsafe integration, including external shells | 65 | 394 | 386 | 8 | 0 | 118.024 |
+| **Full reactor union** | **255** | **1273** | **1265** | **8** | **0** | **167.349** |
 
 The five external shells and their eight skipped cases are unchanged: one
 managed-import load profile and four SMB suites. Their `@ExternalTest`
@@ -193,7 +193,7 @@ post-lifecycle repetition described below; fixed release floors remain separate.
 
 | Module/scope | Lines covered/total | Line | Branches covered/total | Branch | Missed branches | Release floor/state |
 |---|---:|---:|---:|---:|---:|---|
-| **Reactor aggregate** | **19389/22389** | **86.60%** | **5653/8119** | **69.63%** | **2466** | ratcheted; `75% / 80%` branch gap |
+| **Reactor aggregate** | **19463/22389** | **86.93%** | **5751/8119** | **70.83%** | **2368** | ratcheted; `75% / 80%` branch gap |
 | `platform/platform-errors` | 4/4 | 100.00% | 0/0 | N/A | 0 | ratcheted |
 | `platform/platform-diagnostics` | 481/491 | 97.96% | 56/76 | 73.68% | 20 | ratcheted |
 | `platform/platform-etl` | 165/181 | 91.16% | 16/24 | 66.67% | 8 | ratcheted |
@@ -202,7 +202,7 @@ post-lifecycle repetition described below; fixed release floors remain separate.
 | `platform/platform-observability` | 327/341 | 95.89% | 69/71 | 97.18% | 2 | ratcheted |
 | `platform/platform-diagnostics-logging` | 56/60 | 93.33% | 20/21 | 95.24% | 1 | ratcheted |
 | `core/ioc-domain` | 239/243 | 98.35% | 108/110 | 98.18% | 2 | ratcheted; fixed `85% / 90%` floors reached |
-| `core/ioc-application` | 4791/5412 | 88.53% | 1671/2292 | 72.91% | 621 | ratcheted; fixed `85%` line floor reached, `90%` branch floor pending |
+| `core/ioc-application` | 4865/5412 | 89.89% | 1769/2292 | 77.18% | 523 | ratcheted; fixed `85%` line floor reached, `90%` branch floor pending |
 | `core/ioc-application-tck` | — | N/A | — | N/A | — | outside production universe |
 | `adapters/adapter-regex-re2j` | 8/18 | 44.44% | 2/4 | 50.00% | 2 | ratcheted; supported-path gap |
 | `adapters/adapter-psl` | 15/17 | 88.24% | 11/12 | 91.67% | 1 | ratcheted |
@@ -367,6 +367,28 @@ line/branch, но оставляет один instruction условного з�
 aggregate `19389/22389 + 5653/8119`, application
 `4791/5412 + 1671/2292`. До aggregate `80%` теперь не хватает `843` covered
 branches, до application `90%` — `392`.
+
+### `TEST-COVERAGE-02` remediation checkpoint 5 — import value contracts
+
+Пятый remediation slice фиксирует fail-closed invariants managed-import data
+boundary. Единая contract suite проверяет все short-circuit границы workspace
+и parser limits, полноту status head, retention age/count/archive policy,
+terminal outcome derivation, точное множество projection generations,
+primary/related slot и match-key ограничения, stage counts, delivery timeline,
+evidence order, terminal/retry CAS metadata, readiness dispositions и
+нормализацию внешних policy tokens и SHA-256 identities.
+
+Новый набор из 13 поведенческих tests поднял application group с `4797/5412`
+до `4871/5412` lines и с `1682/2292` до `1780/2292` branches. Полный
+`make verify` прошёл 25/25 за `03:37`; lifecycle union составил
+`190 fast + 65 integration`, external shells — `5`, deterministic offline
+universe — `250`. Фактический aggregate равен `19468/22389` lines и
+`5765/8119` branches.
+
+Ratchet принимает точную application дельту (`+74` lines, `+98` branches,
+`-368` missed instructions) поверх прежних независимых minima: aggregate
+`19463/22389 + 5751/8119`, application `4865/5412 + 1769/2292`. До aggregate
+`80%` теперь не хватает `745` covered branches, до application `90%` — `294`.
 
 ## Historical Wave 0 baseline discovery inventory
 
@@ -920,7 +942,7 @@ retirement evidence in its owning goal.
 
 | Current test/suite | Observed level | Target lifecycle/name | Tags | Action | Evidence | State |
 |---|---|---|---|---|---|---|
-| 189 fast suites | Unit/component, architecture, contract and publication | Surefire defaults / `*Test` | Untagged, `architecture` or `contract` as applicable | Retain fast ownership | Exact source/report set and 866 cases | `verified` |
+| 190 fast suites | Unit/component, architecture, contract and publication | Surefire defaults / `*Test` | Untagged, `architecture` or `contract` as applicable | Retain fast ownership | Exact source/report set and 879 cases | `verified` |
 | 58 ordinary integration suites | DB, filesystem, parsing, serialization, Spring and transport | Failsafe / `*IT` | `integration`, plus `contract` where applicable | Rename reviewed inventory | Exact source/report set | `verified` |
 | 2 deterministic E2E suites | Daemon ingest and golden pipeline | Failsafe / `*IT` | `integration`, `e2e` | Use composed `@EndToEndTest` | Exact source/report set | `verified` |
 | 5 provisioned external suites | SMB and import load evidence | Failsafe / `*IT` | `integration`, `external`; load also `slow` | Keep property-conditioned and outside offline union | 5 reported shells / 8 explicit skips | `verified-offline`; provisioned evidence remains open |
