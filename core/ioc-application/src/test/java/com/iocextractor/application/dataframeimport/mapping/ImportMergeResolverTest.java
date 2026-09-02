@@ -59,4 +59,32 @@ class ImportMergeResolverTest {
                     .as(policy.name()).isEqualTo(UNCHANGED);
         }
     }
+
+    @Test
+    void evaluatesEveryExistingRecordPolicyAgainstEqualMissingAndChangedValues() {
+        assertThat(resolver.resolve(true, "old", ImportCell.value("new"), ImportMergePolicy.KEEP_EXISTING))
+                .isEqualTo(new ImportMergeResult(UNCHANGED, null));
+
+        assertThat(resolver.resolve(true, null, ImportCell.value("new"), ImportMergePolicy.FILL_MISSING))
+                .isEqualTo(new ImportMergeResult(SET, "new"));
+        assertThat(resolver.resolve(true, "old", ImportCell.value("new"), ImportMergePolicy.FILL_MISSING))
+                .isEqualTo(new ImportMergeResult(UNCHANGED, null));
+        assertThat(resolver.resolve(true, null, ImportCell.nullValue(), ImportMergePolicy.FILL_MISSING))
+                .isEqualTo(new ImportMergeResult(UNCHANGED, null));
+
+        assertThat(resolver.resolve(true, "old", ImportCell.value("old"), ImportMergePolicy.REPLACE_NON_NULL))
+                .isEqualTo(new ImportMergeResult(UNCHANGED, null));
+
+        assertThat(resolver.resolve(true, null, ImportCell.nullValue(), ImportMergePolicy.AUTHORITATIVE))
+                .isEqualTo(new ImportMergeResult(UNCHANGED, null));
+        assertThat(resolver.resolve(true, "old", ImportCell.value("old"), ImportMergePolicy.AUTHORITATIVE))
+                .isEqualTo(new ImportMergeResult(UNCHANGED, null));
+        assertThat(resolver.resolve(true, "old", ImportCell.value("new"), ImportMergePolicy.AUTHORITATIVE))
+                .isEqualTo(new ImportMergeResult(SET, "new"));
+
+        assertThat(resolver.resolve(true, null, ImportCell.nullValue(), ImportMergePolicy.REJECT_CONFLICT))
+                .isEqualTo(new ImportMergeResult(UNCHANGED, null));
+        assertThat(resolver.resolve(true, "old", ImportCell.value("old"), ImportMergePolicy.REJECT_CONFLICT))
+                .isEqualTo(new ImportMergeResult(UNCHANGED, null));
+    }
 }
