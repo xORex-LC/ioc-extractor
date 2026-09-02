@@ -1,5 +1,5 @@
 # scope	line-covered	line-missed	branch-covered	branch-missed	instruction-missed	absolute-instructions	rationale
-reactor	19262	3127	5566	2553	14316	observed	Conservative independent minima after deterministic domain and managed-import catalog remediation; fixed release floors remain separate.
+reactor	19367	3022	5620	2499	13812	observed	Conservative independent minima after deterministic domain and managed-import state-machine remediation; fixed release floors remain separate.
 ioc-platform-errors	4	0	0	0	0	enforced	Small branchless production module; downstream coverage is complete.
 ioc-platform-diagnostics	481	10	56	20	63	enforced	Small branch denominator requires ratio and absolute missed context.
 ioc-platform-etl	165	16	16	8	75	enforced	Small branch denominator requires ratio and absolute missed context.
@@ -8,7 +8,7 @@ ioc-platform-concurrency	197	21	48	18	67	enforced	Small branch denominator requi
 ioc-platform-observability	327	14	69	2	42	enforced	Small branch denominator requires ratio and absolute missed context.
 ioc-platform-diagnostics-logging	56	4	20	1	9	enforced	Small line and branch denominators require absolute missed context.
 ioc-domain	239	4	108	2	20	observed	Behavioral contract remediation exceeds the core line and branch release floors; explicit fixed-floor gates remain separate.
-ioc-application	4664	748	1584	708	3734	observed	Conservative independent minima after deterministic catalog validation remediation; the line floor is reached and the branch floor remains separate.
+ioc-application	4769	643	1638	654	3230	observed	Conservative independent minima after deterministic managed-import state-machine remediation; the line floor is reached and the branch floor remains separate.
 ioc-adapter-regex-re2j	8	10	2	2	39	enforced	Small downstream-only module requires absolute missed context.
 ioc-adapter-psl	15	2	11	1	3	enforced	Small line and branch denominators require absolute missed context.
 ioc-adapter-source-tika	57	1	7	3	6	enforced	Small line and branch denominators require absolute missed context.
