@@ -8,6 +8,7 @@ import com.iocextractor.application.export.SliceDescriptor;
 import com.iocextractor.application.export.SliceManifest;
 import com.iocextractor.application.port.in.sync.ArtifactPublishCommand;
 import com.iocextractor.application.port.in.sync.ArtifactPublishExecutionResult;
+import com.iocextractor.application.port.in.sync.PublishCompletedSliceCommand;
 import com.iocextractor.application.port.out.sync.CompletedSliceCatalog;
 import com.iocextractor.application.port.out.sync.FileTransport;
 import com.iocextractor.application.port.out.sync.PublishLedger;
@@ -345,6 +346,205 @@ class ArtifactPublishServiceTest {
     }
 
     @Test
+    void rejectsUnknownOrContradictoryTargetSelections() throws Exception {
+        CompletedSlice slice = slice("reputation", "slice-one");
+        ArtifactPublishService service = service(
+                catalog(slice), new FakeLedger(), new FakeTransport(),
+                List.of(targetA("reputation"), targetB("other-profile")), diagnostics());
+
+        assertThatThrownBy(() -> service.reconcile(new ArtifactPublishCommand(
+                Optional.of("unknown"), false)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Unknown sync publish profile: unknown");
+        assertThatThrownBy(() -> service.reconcile(new ArtifactPublishCommand(
+                Optional.of("reputation"), Optional.of("target-b"), false)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Selected sync publish target does not belong to profile: reputation");
+        assertThatThrownBy(() -> service.publish(new ArtifactPublishCommand(
+                Optional.empty(), Optional.of("missing-target"), false)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("No sync publish target matches selection");
+    }
+
+    @Test
+    void completedSliceEventValidatesCatalogIdentityAndProfileOwnership() throws Exception {
+        CompletedSlice slice = slice("reputation", "slice-one", "slice-name");
+        PublishCompletedSliceCommand missing = completedCommand(
+                "reputation", "slice-one", "missing", "target-a", "endpoint-a");
+        PublishCompletedSliceCommand rebound = completedCommand(
+                "reputation", "other-id", "slice-name", "target-a", "endpoint-a");
+        PublishCompletedSliceCommand wrongProfile = completedCommand(
+                "other-profile", "slice-one", "slice-name", "target-a", "endpoint-a");
+        ArtifactPublishService service = service(
+                catalog(slice), new FakeLedger(), new FakeTransport(),
+                List.of(targetA("reputation")), diagnostics());
+
+        assertThat(service.publishCompletedSlice(missing))
+                .isEqualTo(ArtifactPublishExecutionResult.empty());
+        assertThatThrownBy(() -> service.publishCompletedSlice(rebound))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Completed slice id does not match requested event");
+
+        CompletedSliceCatalog crossProfileCatalog = new CompletedSliceCatalog() {
+            @Override
+            public List<CompletedSlice> listCompleted(String profile) {
+                return List.of();
+            }
+
+            @Override
+            public Optional<CompletedSlice> find(String profile, String sliceName) {
+                return Optional.of(slice);
+            }
+        };
+        ArtifactPublishService crossProfileService = service(
+                crossProfileCatalog, new FakeLedger(), new FakeTransport(),
+                List.of(targetA("reputation")), diagnostics());
+        assertThatThrownBy(() -> crossProfileService.publishCompletedSlice(wrongProfile))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Selected sync publish target does not belong to profile: other-profile");
+    }
+
+    @Test
+    void publishDryRunNeverQueriesRetryableWorkOrTouchesRemoteState() throws Exception {
+        CompletedSlice slice = slice("reputation", "slice-one");
+        FakeLedger ledger = new FakeLedger();
+        ledger.ensurePending(pending("slice-one", targetA("reputation")));
+        FakeTransport transport = new FakeTransport();
+
+        ArtifactPublishExecutionResult result = service(
+                catalog(slice), ledger, transport, List.of(targetA("reputation")), diagnostics())
+                .publish(new ArtifactPublishCommand(Optional.of("reputation"), true));
+
+        assertThat(result).isEqualTo(ArtifactPublishExecutionResult.empty());
+        assertThat(ledger.findRetryableCalls).isZero();
+        assertThat(transport.published).isEmpty();
+    }
+
+    @Test
+    void reconcileCountsEveryExistingLedgerStateWithoutRediscovery() throws Exception {
+        CompletedSlice slice = slice("reputation", "slice-one");
+        List<PublishTarget> targets = List.of(
+                new PublishTarget("pending", "endpoint", "/pending", "reputation"),
+                new PublishTarget("progress", "endpoint", "/progress", "reputation"),
+                new PublishTarget("succeeded", "endpoint", "/succeeded", "reputation"),
+                new PublishTarget("failed", "endpoint", "/failed", "reputation"),
+                new PublishTarget("abandoned", "endpoint", "/abandoned", "reputation"));
+        FakeLedger ledger = new FakeLedger();
+        for (PublishTarget target : targets) {
+            ledger.ensurePending(pending("slice-one", target));
+        }
+        ledger.forceStatus("slice-one", "progress", PublishStatus.IN_PROGRESS);
+        ledger.forceStatus("slice-one", "succeeded", PublishStatus.SUCCEEDED);
+        ledger.forceStatus("slice-one", "failed", PublishStatus.FAILED);
+        ledger.forceStatus("slice-one", "abandoned", PublishStatus.ABANDONED);
+        FakeCatalog catalog = catalog(slice);
+
+        var result = service(catalog, ledger, new FakeTransport(), targets, diagnostics())
+                .reconcile(new ArtifactPublishCommand(Optional.of("reputation"), false));
+
+        assertThat(result.pending()).isEqualTo(2);
+        assertThat(result.succeeded()).isOne();
+        assertThat(result.failed()).isOne();
+        assertThat(result.abandoned()).isOne();
+        assertThat(catalog.findCalls).isZero();
+    }
+
+    @Test
+    void reconcileIsolatesCorruptAndMissingCatalogEntries() {
+        CompletedSliceCatalog catalog = new CompletedSliceCatalog() {
+            @Override
+            public List<CompletedSlice> listCompleted(String profile) {
+                return List.of();
+            }
+
+            @Override
+            public List<String> listCompletedSliceNames(String profile) {
+                return List.of("corrupt", "missing");
+            }
+
+            @Override
+            public Optional<CompletedSlice> find(String profile, String sliceName) {
+                if (sliceName.equals("corrupt")) {
+                    throw new IllegalStateException("invalid manifest");
+                }
+                return Optional.empty();
+            }
+        };
+
+        var result = service(
+                catalog, new FakeLedger(), new FakeTransport(),
+                List.of(targetA("reputation")), diagnostics())
+                .reconcile(new ArtifactPublishCommand(Optional.of("reputation"), false));
+
+        assertThat(result.failed()).isOne();
+        assertThat(result.pending()).isZero();
+    }
+
+    @Test
+    void missingOrReboundLocalSliceFailsTheBoundLedgerPair() throws Exception {
+        FakeLedger missingLedger = new FakeLedger();
+        missingLedger.ensurePending(pending("missing", targetA("reputation")));
+        CollectingDiagnosticSink missingDiagnostics = diagnostics();
+
+        var missingResult = service(
+                catalog(), missingLedger, new FakeTransport(),
+                List.of(targetA("reputation")), missingDiagnostics)
+                .publish(new ArtifactPublishCommand(Optional.of("reputation"), false));
+
+        assertThat(missingResult.failed()).isOne();
+        assertThat(missingDiagnostics.diagnostics()).singleElement().satisfies(diagnostic ->
+                assertThat(diagnostic.code()).isEqualTo(SyncDiagnosticCodes.LOCAL_SLICE_INVALID));
+
+        CompletedSlice rebound = slice("reputation", "different-id", "ledger-name");
+        FakeLedger reboundLedger = new FakeLedger();
+        reboundLedger.ensurePending(pending("ledger-name", targetA("reputation")));
+        CollectingDiagnosticSink reboundDiagnostics = diagnostics();
+
+        var reboundResult = service(
+                catalog(rebound), reboundLedger, new FakeTransport(),
+                List.of(targetA("reputation")), reboundDiagnostics)
+                .publish(new ArtifactPublishCommand(Optional.of("reputation"), false));
+
+        assertThat(reboundResult.failed()).isOne();
+        assertThat(reboundLedger.find("ledger-name", "target-a"))
+                .hasValueSatisfying(record -> assertThat(record.status()).isEqualTo(PublishStatus.FAILED));
+        assertThat(reboundDiagnostics.diagnostics()).hasSize(1);
+    }
+
+    @Test
+    void markerReadFailuresBecomeBoundedFailedAttempts() throws Exception {
+        CompletedSlice slice = slice("reputation", "slice-one");
+        FakeLedger transportLedger = new FakeLedger();
+        FakeTransport transportFailure = new FakeTransport();
+        transportFailure.markerFailure = new RemoteTransportException(RemoteErrorKind.TRANSIENT, null);
+        CollectingDiagnosticSink transportDiagnostics = diagnostics();
+
+        var transportResult = publishAfterReconcile(
+                service(catalog(slice), transportLedger, transportFailure,
+                        List.of(targetA("reputation")), transportDiagnostics),
+                new ArtifactPublishCommand(Optional.of("reputation"), false));
+
+        assertThat(transportResult.failed()).isOne();
+        assertThat(transportLedger.find("slice-one", "target-a"))
+                .hasValueSatisfying(record -> assertThat(record.lastError())
+                        .isEqualTo("remote publish failed without detail"));
+        assertThat(transportDiagnostics.diagnostics()).singleElement().satisfies(diagnostic ->
+                assertThat(diagnostic.context()).containsEntry("operation", "publish-marker-read"));
+
+        FakeLedger localLedger = new FakeLedger();
+        FakeTransport localFailure = new FakeTransport();
+        localFailure.markerFailure = new IllegalStateException(" ");
+        var localResult = publishAfterReconcile(
+                service(catalog(slice), localLedger, localFailure,
+                        List.of(targetA("reputation")), diagnostics()),
+                new ArtifactPublishCommand(Optional.of("reputation"), false));
+        assertThat(localResult.failed()).isOne();
+        assertThat(localLedger.find("slice-one", "target-a"))
+                .hasValueSatisfying(record -> assertThat(record.lastError())
+                        .isEqualTo("remote publish failed without detail"));
+    }
+
+    @Test
     void retentionGuardBlocksMissingAndNonTerminalPairs() {
         FakeLedger ledger = new FakeLedger();
         var guard = new PublishLedgerSliceRetentionGuard(ledger, targets("reputation"));
@@ -444,11 +644,22 @@ class ArtifactPublishServiceTest {
                 NOW);
     }
 
+    private PublishCompletedSliceCommand completedCommand(
+            String profile,
+            String sliceId,
+            String sliceName,
+            String target,
+            String endpoint) {
+        return new PublishCompletedSliceCommand(
+                profile, sliceId, sliceName, target, endpoint, "corr-1", "event-1");
+    }
+
     private static final class FakeTransport implements FileTransport {
         private final List<String> published = new ArrayList<>();
         private final Map<String, String> remoteMarkers = new LinkedHashMap<>();
         private String failPublishForEndpoint;
         private RuntimeException unexpectedPublishFailure;
+        private RuntimeException markerFailure;
 
         @Override
         public List<RemoteObject> list(String endpoint, String remotePath) {
@@ -457,6 +668,9 @@ class ArtifactPublishServiceTest {
 
         @Override
         public Optional<RemoteObject> stat(String endpoint, String remotePath) {
+            if (markerFailure != null) {
+                throw markerFailure;
+            }
             if (remoteMarkers.containsKey(endpoint + ":" + remotePath)) {
                 return Optional.of(new RemoteObject(remotePath, remoteMarkers.get(endpoint + ":" + remotePath).length(), NOW));
             }
@@ -537,6 +751,7 @@ class ArtifactPublishServiceTest {
         private final Map<String, PublishRecord> records = new LinkedHashMap<>();
         private int findAllCalls;
         private int countByStatusCalls;
+        private int findRetryableCalls;
 
         @Override
         public PublishRecord ensurePending(PublishRecord pending) {
@@ -574,6 +789,7 @@ class ArtifactPublishServiceTest {
 
         @Override
         public List<PublishRecord> findRetryable(Instant staleInProgressBefore) {
+            findRetryableCalls++;
             return records.values().stream()
                     .filter(record -> record.status() == PublishStatus.PENDING
                             || record.status() == PublishStatus.FAILED
