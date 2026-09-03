@@ -127,7 +127,7 @@ The additional bare wait is the lifecycle-deadline scheduler worker gate.
 ## `TEST-LIFECYCLE-01` implementation evidence — 2026-09-02
 
 The reviewed behavior-based inventory was migrated to Maven naming ownership.
-After the ninth coverage-remediation checkpoint, Surefire owns 190 fast
+After the tenth coverage-remediation checkpoint, Surefire owns 190 fast
 `*Test` suites and Failsafe owns 65 `*IT` suites. Five of the Failsafe suites
 are explicitly conditioned external shells, so the deterministic offline
 universe is `190 + (65 - 5) = 250` suites. The two source sets are disjoint and
@@ -137,9 +137,9 @@ below.
 
 | Cohort | Suites | Cases | Passed | Skipped | Failures/errors | Suite-seconds |
 |---|---:|---:|---:|---:|---:|---:|
-| Surefire fast | 190 | 921 | 921 | 0 | 0 | 67.127 |
-| Failsafe integration, including external shells | 65 | 394 | 386 | 8 | 0 | 182.377 |
-| **Full reactor union** | **255** | **1315** | **1307** | **8** | **0** | **249.504** |
+| Surefire fast | 190 | 943 | 943 | 0 | 0 | 57.437 |
+| Failsafe integration, including external shells | 65 | 394 | 386 | 8 | 0 | 148.800 |
+| **Full reactor union** | **255** | **1337** | **1329** | **8** | **0** | **206.237** |
 
 The five external shells and their eight skipped cases are unchanged: one
 managed-import load profile and four SMB suites. Their `@ExternalTest`
@@ -193,7 +193,7 @@ post-lifecycle repetition described below; fixed release floors remain separate.
 
 | Module/scope | Lines covered/total | Line | Branches covered/total | Branch | Missed branches | Release floor/state |
 |---|---:|---:|---:|---:|---:|---|
-| **Reactor aggregate** | **19591/22389** | **87.50%** | **5874/8119** | **72.35%** | **2245** | ratcheted; `75% / 80%` branch gap |
+| **Reactor aggregate** | **19647/22389** | **87.75%** | **5952/8119** | **73.31%** | **2167** | ratcheted; `75% / 80%` branch gap |
 | `platform/platform-errors` | 4/4 | 100.00% | 0/0 | N/A | 0 | ratcheted |
 | `platform/platform-diagnostics` | 481/491 | 97.96% | 56/76 | 73.68% | 20 | ratcheted |
 | `platform/platform-etl` | 165/181 | 91.16% | 16/24 | 66.67% | 8 | ratcheted |
@@ -202,7 +202,7 @@ post-lifecycle repetition described below; fixed release floors remain separate.
 | `platform/platform-observability` | 327/341 | 95.89% | 69/71 | 97.18% | 2 | ratcheted |
 | `platform/platform-diagnostics-logging` | 56/60 | 93.33% | 20/21 | 95.24% | 1 | ratcheted |
 | `core/ioc-domain` | 239/243 | 98.35% | 108/110 | 98.18% | 2 | ratcheted; fixed `85% / 90%` floors reached |
-| `core/ioc-application` | 4992/5412 | 92.24% | 1892/2292 | 82.55% | 400 | ratcheted; fixed `85%` line floor reached, `90%` branch floor pending |
+| `core/ioc-application` | 5048/5412 | 93.27% | 1970/2292 | 85.95% | 322 | ratcheted; fixed `85%` line floor reached, `90%` branch floor pending |
 | `core/ioc-application-tck` | — | N/A | — | N/A | — | outside production universe |
 | `adapters/adapter-regex-re2j` | 8/18 | 44.44% | 2/4 | 50.00% | 2 | ratcheted; supported-path gap |
 | `adapters/adapter-psl` | 15/17 | 88.24% | 11/12 | 91.67% | 1 | ratcheted |
@@ -216,11 +216,11 @@ post-lifecycle repetition described below; fixed release floors remain separate.
 | `bootstrap/ioc-app` | 4397/5066 | 86.79% | 1271/1838 | 69.15% | 567 | ratcheted |
 
 Compared with Wave 0, the production denominator grew from 10962 to 22389
-lines and from 3998 to 8119 branches. The accepted aggregate ratchet is 87.50%
-lines and 72.35% branches. `TEST-COVERAGE-02` now blocks regression from this
+lines and from 3998 to 8119 branches. The accepted aggregate ratchet is 87.75%
+lines and 73.31% branches. `TEST-COVERAGE-02` now blocks regression from this
 universe. Domain remediation has closed both core floors, and catalog
 remediation has closed the application line floor; the remaining fixed gaps
-are aggregate branch 7.65 pp and application branch 7.45 pp.
+are aggregate branch 6.69 pp and application branch 4.05 pp.
 
 The largest current missed-branch concentrations are
 `JdbcCanonicalImportWriter` (73), `IocConfigPreflight` and
@@ -494,6 +494,29 @@ coverage gate обнаружил одноветочное отклонение �
 `make verify` воспроизвёл `309/510`, прошёл 25/25 за `05:10` и квалифицировал
 checkpoint. До aggregate `80%` не хватает `622` covered branches, до
 application `90%` — `171`.
+
+### `TEST-COVERAGE-02` remediation checkpoint 10 — canonical lifecycle/export models
+
+Десятый remediation slice фиксирует пограничные инварианты canonical identity,
+lifecycle admission и immutable export: полное JSON escaping key material,
+уникальность versioned record/match formulas, match cardinality и ID ranges,
+retryable admission callbacks, непротиворечивые retention/reconciliation/write
+counters, active-only snapshots, безопасные slice names, упорядоченные export
+profiles и state-specific manifest/inspection evidence.
+
+Двадцать два новых поведенческих tests подняли application group с
+`5001/5412` до `5057/5412` lines и с `1904/2292` до `1982/2292` branches;
+фактический aggregate равен `19653/22389` lines и `5966/8119` branches.
+Целевые classes дали точные `+56` lines, `+78` branches и `-299` missed
+instructions. Полный `make verify` прошёл 25/25 за `04:12`; lifecycle union
+остался `190 fast + 65 integration`, выполнено `1337` cases (`1329` passed,
+`8` provisioned external skips).
+
+Ratchet принимает эту точную дельту поверх прежних независимых minima:
+aggregate `19647/22389 + 5952/8119`, application
+`5048/5412 + 1970/2292`; instruction minima снижены до `12617` и `2035`
+соответственно. До aggregate `80%` не хватает `544` covered branches, до
+application `90%` — `93`.
 
 ## Historical Wave 0 baseline discovery inventory
 
@@ -1047,7 +1070,7 @@ retirement evidence in its owning goal.
 
 | Current test/suite | Observed level | Target lifecycle/name | Tags | Action | Evidence | State |
 |---|---|---|---|---|---|---|
-| 190 fast suites | Unit/component, architecture, contract and publication | Surefire defaults / `*Test` | Untagged, `architecture` or `contract` as applicable | Retain fast ownership | Exact source/report set and 921 cases | `verified` |
+| 190 fast suites | Unit/component, architecture, contract and publication | Surefire defaults / `*Test` | Untagged, `architecture` or `contract` as applicable | Retain fast ownership | Exact source/report set and 943 cases | `verified` |
 | 58 ordinary integration suites | DB, filesystem, parsing, serialization, Spring and transport | Failsafe / `*IT` | `integration`, plus `contract` where applicable | Rename reviewed inventory | Exact source/report set | `verified` |
 | 2 deterministic E2E suites | Daemon ingest and golden pipeline | Failsafe / `*IT` | `integration`, `e2e` | Use composed `@EndToEndTest` | Exact source/report set | `verified` |
 | 5 provisioned external suites | SMB and import load evidence | Failsafe / `*IT` | `integration`, `external`; load also `slow` | Keep property-conditioned and outside offline union | 5 reported shells / 8 explicit skips | `verified-offline`; provisioned evidence remains open |

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CanonicalArtifactIdentityResolverTest {
 
@@ -61,7 +62,32 @@ class CanonicalArtifactIdentityResolverTest {
         assertThat(single.identityHash()).isNotEqualTo(composite.identityHash());
     }
 
-    private ArtifactRow row(String... pairs) {
+    @Test
+    void canonical_json_escaping_is_stable_for_every_control_character() {
+        assertThat(CanonicalArtifactIdentityResolver.jsonString(
+                "quote=\" slash=\\ back=\b form=\f line=\n return=\r tab=\t low=\u0001"))
+                .isEqualTo("\"quote=\\\" slash=\\\\ back=\\b form=\\f line=\\n "
+                        + "return=\\r tab=\\t low=\\u0001\"");
+    }
+
+    @Test
+    void identity_catalog_rejects_ambiguous_or_missing_definitions() {
+        ArtifactIdentityDefinition masks = new ArtifactIdentityDefinition(
+                "masks", List.of("mask"), false, 1);
+
+        assertThatThrownBy(() -> new CanonicalArtifactIdentityResolver(null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("definitions");
+        assertThatThrownBy(() -> new CanonicalArtifactIdentityResolver(
+                java.util.Arrays.asList(masks, null)))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("definitions element");
+        assertThatThrownBy(() -> new CanonicalArtifactIdentityResolver(List.of(masks, masks)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Duplicate artifact");
+    }
+
+    private static ArtifactRow row(String... pairs) {
         var values = new java.util.LinkedHashMap<String, String>();
         for (int i = 0; i < pairs.length; i += 2) {
             values.put(pairs[i], pairs[i + 1]);

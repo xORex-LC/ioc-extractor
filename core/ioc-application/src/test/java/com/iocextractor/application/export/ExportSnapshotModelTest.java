@@ -104,19 +104,133 @@ class ExportSnapshotModelTest {
                 .hasMessage("schemaHash");
     }
 
-    private SnapshotArtifactMetadata snapshotArtifact() {
+    @Test
+    void export_profile_requires_an_ordered_unique_artifact_set() {
+        ExportProfile profile = new ExportProfile(
+                "default", ExportMode.COMPLETE, List.of("masks", "hashes"));
+        assertThat(profile.artifacts()).containsExactly("masks", "hashes");
+
+        assertThatThrownBy(() -> new ExportProfile(" ", ExportMode.COMPLETE, List.of("masks")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("profile name");
+        assertThatThrownBy(() -> new ExportProfile("default", null, List.of("masks")))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("mode");
+        assertThatThrownBy(() -> new ExportProfile("default", ExportMode.COMPLETE, List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("non-empty names");
+        assertThatThrownBy(() -> new ExportProfile(
+                "default", ExportMode.COMPLETE, Arrays.asList("masks", null)))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new ExportProfile(
+                "default", ExportMode.COMPLETE, List.of("masks", " ")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("non-empty names");
+        assertThatThrownBy(() -> new ExportProfile(
+                "default", ExportMode.COMPLETE, List.of("masks", "masks")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unique");
+    }
+
+    @Test
+    void revision_and_coverage_require_non_negative_consistent_change_markers() {
+        assertThat(new ArtifactRevision("masks", 1, NOW).revision()).isEqualTo(1);
+        assertThatThrownBy(() -> new ArtifactRevision("masks", -1, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("revision");
+        assertThatThrownBy(() -> new ArtifactRevision("masks", 0, NOW))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not have changedAt");
+        assertThatThrownBy(() -> new ArtifactRevision("masks", 1, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires changedAt");
+
+        assertThatThrownBy(() -> new ArtifactCoverage(-1, null, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("negative");
+        assertThatThrownBy(() -> new ArtifactCoverage(0, null, -1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("negative");
+    }
+
+    @Test
+    void slice_inspection_requires_state_specific_integrity_evidence() {
+        SliceManifest manifest = manifest();
+        assertThat(new SliceInspection(
+                "run-1", SliceInspectionState.RECOVERABLE, HASH_A, manifest, null).manifest())
+                .isEqualTo(manifest);
+        assertThat(new SliceInspection(
+                "run-1", SliceInspectionState.MISSING, null, null, null).state())
+                .isEqualTo(SliceInspectionState.MISSING);
+
+        for (SliceInspectionState state : List.of(
+                SliceInspectionState.RECOVERABLE,
+                SliceInspectionState.STAGED,
+                SliceInspectionState.AVAILABLE)) {
+            assertThatThrownBy(() -> new SliceInspection(
+                    "run-1", state, null, manifest, null))
+                    .isInstanceOf(NullPointerException.class)
+                    .hasMessage("manifestSha256");
+            assertThatThrownBy(() -> new SliceInspection(
+                    "run-1", state, HASH_A, null, null))
+                    .isInstanceOf(NullPointerException.class)
+                    .hasMessage("manifest");
+        }
+        for (SliceInspectionState state : List.of(
+                SliceInspectionState.CORRUPT, SliceInspectionState.CONFLICT)) {
+            assertThatThrownBy(() -> new SliceInspection("run-1", state, null, null, " "))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("requires a reason");
+        }
+    }
+
+    @Test
+    void manifest_requires_versioned_non_empty_integrity_entries() {
+        assertThatThrownBy(() -> new SliceManifest(
+                0, "run-1", "run-1", "default", NOW, ExportMode.COMPLETE,
+                HASH_A, format(), List.of(manifestArtifact("masks"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("version");
+        assertThatThrownBy(() -> new SliceManifest(
+                1, "run-1", "run-1", "default", NOW, ExportMode.COMPLETE,
+                HASH_A, format(), List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("at least one artifact");
+
+        assertThatThrownBy(() -> new SliceArtifactManifest(
+                "masks", "masks.csv", -1, new ArtifactCoverage(0, null, 0),
+                1, HASH_A, HASH_A, HASH_A))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("row count");
+        assertThatThrownBy(() -> new SliceArtifactManifest(
+                "masks", "masks.csv", 0, new ArtifactCoverage(0, null, 0),
+                0, HASH_A, HASH_A, HASH_A))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("identity epoch");
+        assertThatThrownBy(() -> new SliceArtifactManifest(
+                "masks", "masks.csv", 0, null, 1, HASH_A, HASH_A, HASH_A))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("coverage");
+        assertThatThrownBy(() -> new SliceArtifactManifest(
+                "masks", "masks.csv", 0, new ArtifactCoverage(0, null, 0),
+                1, HASH_A, HASH_A, "invalid"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("sha256");
+    }
+
+    private static SnapshotArtifactMetadata snapshotArtifact() {
         return new SnapshotArtifactMetadata(
                 "masks", "masks.csv", List.of("id", "mask"),
                 new ArtifactCoverage(1, NOW, 2), 1, HASH_A, HASH_B);
     }
 
-    private SliceArtifactManifest manifestArtifact(String name) {
+    private static SliceArtifactManifest manifestArtifact(String name) {
         return new SliceArtifactManifest(
                 name, name + ".csv", 2, new ArtifactCoverage(1, NOW, 2),
                 1, HASH_A, HASH_B, HASH_A);
     }
 
-    private ExportArtifactSpec artifactSpec(
+    private static ExportArtifactSpec artifactSpec(
             String fileName,
             List<String> columns,
             int identityEpoch,
@@ -125,7 +239,13 @@ class ExportSnapshotModelTest {
                 "masks", fileName, columns, identityEpoch, identityHash, HASH_A, HASH_B);
     }
 
-    private ExportFormat format() {
+    private static ExportFormat format() {
         return new ExportFormat("csv", "UTF-8", ";", "\"", "NULL");
+    }
+
+    private static SliceManifest manifest() {
+        return new SliceManifest(
+                1, "run-1", "run-1", "default", NOW, ExportMode.COMPLETE,
+                HASH_A, format(), List.of(manifestArtifact("masks")));
     }
 }

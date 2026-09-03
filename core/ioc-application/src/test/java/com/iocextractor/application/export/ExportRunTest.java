@@ -51,4 +51,56 @@ class ExportRunTest {
         assertThat(run.manifestSha256()).isNull();
         assertThat(run.startedAt()).isEqualTo(run.updatedAt());
     }
+
+    @Test
+    void run_identity_and_slice_name_must_be_transport_safe() {
+        assertThatThrownBy(() -> ExportRun.started(" ", "default", "slice-1", HASH, NOW))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("runId");
+        assertThatThrownBy(() -> ExportRun.started("run-1", " ", "slice-1", HASH, NOW))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("profile");
+        for (String sliceName : java.util.List.of("nested/slice", "nested\\slice", ".", "..")) {
+            assertThatThrownBy(() -> ExportRun.started(
+                    "run-1", "default", sliceName, HASH, NOW))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("single relative path segment");
+        }
+    }
+
+    @Test
+    void run_timestamps_and_hashes_must_preserve_ledger_ordering() {
+        assertThatThrownBy(() -> ExportRun.started(
+                "run-1", "default", "slice-1", "A".repeat(64), NOW))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("planHash");
+        assertThatThrownBy(() -> new ExportRun(
+                "run-1", "default", ExportRunStatus.STARTED, "slice-1", HASH,
+                null, NOW, NOW.minusSeconds(1), null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not precede");
+        assertThatThrownBy(() -> new ExportRun(
+                "run-1", "default", ExportRunStatus.STARTED, "slice-1", HASH,
+                "invalid", NOW, NOW, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("manifestSha256");
+    }
+
+    @Test
+    void completed_and_failed_runs_require_state_specific_evidence() {
+        ExportRun completed = new ExportRun(
+                "run-1", "default", ExportRunStatus.COMPLETED, "slice-1", HASH,
+                HASH, NOW, NOW.plusSeconds(1), null);
+        ExportRun failed = new ExportRun(
+                "run-2", "default", ExportRunStatus.FAILED, "slice-2", HASH,
+                null, NOW, NOW, "write failed");
+
+        assertThat(completed.manifestSha256()).isEqualTo(HASH);
+        assertThat(failed.reason()).isEqualTo("write failed");
+        assertThatThrownBy(() -> new ExportRun(
+                "run-3", "default", ExportRunStatus.FAILED, "slice-3", HASH,
+                null, NOW, NOW, " "))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires a reason");
+    }
 }
