@@ -286,6 +286,29 @@ class IngestionServiceTest {
     }
 
     @Test
+    void ingestResumesAnExistingClaimedObservationWithoutClaimingItAgain() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.record = new IngestionRecord(
+                key, IngestionStatus.CLAIMED,
+                Path.of("inbox/source.html"), Path.of("processing/source.html"), null,
+                Instant.EPOCH, Instant.EPOCH, null);
+        var lifecycle = new MemoryLifecycle();
+        var service = new IngestionService(
+                ledger,
+                lifecycle,
+                source -> new SourcePreparers(List.of(new CountingPreparer())),
+                extractionFactory());
+
+        IngestSourceResult result = service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source-copy.html"), key, Instant.EPOCH));
+
+        assertThat(result.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
+        assertThat(result.duplicate()).isFalse();
+        assertThat(lifecycle.events).containsExactly("archive");
+    }
+
+    @Test
     void leaves_claimed_source_for_retry_and_rejects_only_after_final_failure() {
         var key = new SourceKey("ABC123");
         var ledger = new MemoryLedger();
@@ -339,6 +362,36 @@ class IngestionServiceTest {
     }
 
     @Test
+    void claimTransitionConflictPreservesDiagnosticAndBothCleanupFailures() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.claimTransition = IngestionLedgerTransition.CONFLICT;
+        var failedTransition = new IllegalStateException("failed transition unavailable");
+        ledger.markFailedFailure = failedTransition;
+        var lifecycle = new MemoryLifecycle();
+        var physicalCleanup = new IllegalStateException("failed move unavailable");
+        lifecycle.failClaimedFailure = physicalCleanup;
+        var service = new IngestionService(
+                ledger, lifecycle, source -> new SourcePreparers(List.of()), extractionFactory());
+
+        assertThatThrownBy(() -> service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source.html"), key, Instant.EPOCH)))
+                .isInstanceOfSatisfying(DiagnosticException.class, failure -> {
+                    assertThat(failure.diagnostic().code())
+                            .isEqualTo(IngestDiagnosticCodes.STATE_TRANSITION_CONFLICT);
+                    assertThat(failure.diagnostic().context())
+                            .containsEntry("operation", "mark-claimed")
+                            .containsEntry("transition", IngestionLedgerTransition.CONFLICT)
+                            .containsEntry("expected", "APPLIED");
+                    assertThat(failure.getSuppressed())
+                            .containsExactly(physicalCleanup, failedTransition);
+                });
+
+        assertThat(ledger.find(key)).isEmpty();
+        assertThat(lifecycle.events).containsExactly("claim", "fail");
+    }
+
+    @Test
     void physicalClaimFailureCarriesExactIngestDiagnosticForFinalRetryBoundary() {
         var key = new SourceKey("ABC123");
         var ledger = new MemoryLedger();
@@ -376,6 +429,170 @@ class IngestionServiceTest {
             assertThat(diagnostic.code()).isEqualTo(IngestDiagnosticCodes.RECOVERY_FAILED);
             assertThat(diagnostic.context()).containsEntry("source", "recovery-scan");
         });
+    }
+
+    @Test
+    void recoverySkipsAnIncompleteSnapshotThatDisappearedBeforeGuardedReload() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.incompleteRecords = List.of(new IngestionRecord(
+                key, IngestionStatus.CLAIMED,
+                Path.of("inbox/source.html"), Path.of("processing/source.html"), null,
+                Instant.EPOCH, Instant.EPOCH, null));
+        var lifecycle = new MemoryLifecycle();
+        var service = new IngestionService(
+                ledger, lifecycle, source -> {
+                    throw new AssertionError("a vanished observation must not restart extraction");
+                }, extractionFactory());
+
+        assertThat(service.recoverIncomplete()).isEmpty();
+        assertThat(lifecycle.events).isEmpty();
+    }
+
+    @Test
+    void recoveryWrapsAnUntypedRecordFailureAtTheRecordBoundary() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.record = new IngestionRecord(
+                key, IngestionStatus.CLAIMED,
+                Path.of("inbox/source.html"), Path.of("processing/source.html"), null,
+                Instant.EPOCH, Instant.EPOCH, null);
+        var diagnostics = new CollectingDiagnosticSink();
+        var service = new IngestionService(
+                ledger,
+                new MemoryLifecycle(),
+                source -> {
+                    throw new IllegalStateException("preparer unavailable");
+                },
+                extractionFactory(),
+                new MemoryRunLedger(),
+                new CollectingProjection(),
+                new RecordingControlEventPublisher(),
+                clock,
+                diagnostics);
+
+        assertThatThrownBy(service::recoverIncomplete)
+                .isInstanceOfSatisfying(DiagnosticException.class, failure -> {
+                    assertThat(failure.diagnostic().code())
+                            .isEqualTo(IngestDiagnosticCodes.RECOVERY_FAILED);
+                    assertThat(failure.diagnostic().context())
+                            .containsEntry("source", "abc123")
+                            .containsEntry("reason", "preparer unavailable");
+                });
+        assertThat(diagnostics.diagnostics()).hasSize(1);
+    }
+
+    @Test
+    void recoveryReclassifiesAPipelineDiagnosticAtTheIngestBoundary() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.record = new IngestionRecord(
+                key, IngestionStatus.CLAIMED,
+                Path.of("inbox/source.html"), Path.of("processing/source.html"), null,
+                Instant.EPOCH, Instant.EPOCH, null);
+        var diagnostics = new CollectingDiagnosticSink();
+        var service = new IngestionService(
+                ledger,
+                new MemoryLifecycle(),
+                source -> new SourcePreparers(List.of(new CountingPreparer())),
+                failingExtractionFactory(),
+                new MemoryRunLedger(),
+                new CollectingProjection(),
+                new RecordingControlEventPublisher(),
+                clock,
+                diagnostics);
+
+        assertThatThrownBy(service::recoverIncomplete)
+                .isInstanceOfSatisfying(DiagnosticException.class, failure -> {
+                    assertThat(failure.diagnostic().code())
+                            .isEqualTo(IngestDiagnosticCodes.RECOVERY_FAILED);
+                    assertThat(failure.diagnostic().context())
+                            .containsEntry("source", "abc123");
+                    assertThat(failure.diagnostic().context().get("reason"))
+                            .asString()
+                            .startsWith("PIPELINE.STAGE_FAILED {")
+                            .contains("stage=READ_SOURCE", "reason=read failed");
+                    assertThat(failure).hasRootCauseMessage("read failed");
+                });
+        assertThat(diagnostics.diagnostics()).hasSize(1);
+    }
+
+    @Test
+    void recoveryPreservesAnIngestTransitionConflictWithoutDoubleReporting() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.record = new IngestionRecord(
+                key, IngestionStatus.CLAIMED,
+                Path.of("inbox/source.html"), Path.of("processing/source.html"), null,
+                Instant.EPOCH, Instant.EPOCH, null);
+        ledger.archiveTransition = IngestionLedgerTransition.CONFLICT;
+        var diagnostics = new CollectingDiagnosticSink();
+        var service = new IngestionService(
+                ledger,
+                new MemoryLifecycle(),
+                source -> new SourcePreparers(List.of(new CountingPreparer())),
+                extractionFactory(),
+                new MemoryRunLedger(),
+                new CollectingProjection(),
+                new RecordingControlEventPublisher(),
+                clock,
+                diagnostics);
+
+        assertThatThrownBy(service::recoverIncomplete)
+                .isInstanceOfSatisfying(DiagnosticException.class, failure -> {
+                    assertThat(failure.diagnostic().code())
+                            .isEqualTo(IngestDiagnosticCodes.STATE_TRANSITION_CONFLICT);
+                    assertThat(failure.diagnostic().context())
+                            .containsEntry("operation", "mark-source-archived");
+                });
+        assertThat(diagnostics.diagnostics()).isEmpty();
+    }
+
+    @Test
+    void recoveryIgnoresAnOrphanThatAlreadyHasLedgerOwnership() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.record = new IngestionRecord(
+                key, IngestionStatus.FAILED,
+                Path.of("inbox/source.html"), Path.of("processing/source.html"), null,
+                Instant.EPOCH, Instant.EPOCH, "already failed");
+        var lifecycle = new MemoryLifecycle();
+        lifecycle.processingSources = List.of(new ArchivedSourceUnit(
+                key, Path.of("processing/source.html"), Instant.EPOCH));
+        var service = new IngestionService(
+                ledger, lifecycle, source -> new SourcePreparers(List.of()), extractionFactory());
+
+        assertThat(service.recoverIncomplete()).isEmpty();
+        assertThat(lifecycle.events).isEmpty();
+    }
+
+    @Test
+    void orphanRecoveryFailureIsAttributedToTheOrphanKey() {
+        var key = new SourceKey("ABC123");
+        var lifecycle = new MemoryLifecycle();
+        lifecycle.processingSources = List.of(new ArchivedSourceUnit(
+                key, Path.of("processing/source.html"), Instant.EPOCH));
+        lifecycle.failRecoveredFailure = new IllegalStateException("failed move unavailable");
+        var diagnostics = new CollectingDiagnosticSink();
+        var service = new IngestionService(
+                new MemoryLedger(),
+                lifecycle,
+                source -> new SourcePreparers(List.of()),
+                extractionFactory(),
+                new MemoryRunLedger(),
+                new CollectingProjection(),
+                new RecordingControlEventPublisher(),
+                clock,
+                diagnostics);
+
+        assertThatThrownBy(service::recoverIncomplete)
+                .isInstanceOfSatisfying(DiagnosticException.class, failure -> {
+                    assertThat(failure.diagnostic().code())
+                            .isEqualTo(IngestDiagnosticCodes.RECOVERY_FAILED);
+                    assertThat(failure.diagnostic().context())
+                            .containsEntry("source", "abc123");
+                });
+        assertThat(diagnostics.diagnostics()).hasSize(1);
     }
 
     @Test
@@ -452,6 +669,61 @@ class IngestionServiceTest {
 
         assertThat(result).isEqualTo(IngestionRejectionResult.REJECTED);
         assertThat(terminal).hasValue(observation);
+    }
+
+    @Test
+    void newRejectionReportsLedgerFailureWithTheExceptionTypeFallback() {
+        var key = new SourceKey("ABC123");
+        var ledger = new MemoryLedger();
+        ledger.markFailedFailure = new IllegalStateException();
+        var service = new IngestionService(
+                ledger, new MemoryLifecycle(), source -> new SourcePreparers(List.of()), extractionFactory());
+
+        assertThatThrownBy(() -> service.reject(key, "invalid source"))
+                .isInstanceOfSatisfying(DiagnosticException.class, failure -> {
+                    assertThat(failure.diagnostic().code())
+                            .isEqualTo(IngestDiagnosticCodes.LEDGER_WRITE_FAILED);
+                    assertThat(failure.diagnostic().context())
+                            .containsEntry("source", "abc123")
+                            .containsEntry("operation", "mark-failed")
+                            .containsEntry("reason", "IllegalStateException");
+                });
+        assertThat(ledger.find(key)).isEmpty();
+    }
+
+    @Test
+    void terminalizationFailureTurnsARejectionIntoADeadLetterFailure() {
+        var key = new SourceKey("ABC123");
+        var observation = new ObservationId("delivery-failed");
+        var lifecycleSupport = new IngestionLifecycleSupport(
+                command -> Optional.empty(),
+                (observationId, completedAt, retention) -> {
+                    throw new IllegalStateException(" ");
+                },
+                () -> EffectiveTime.at(EVENT_TIME),
+                "processing-policy-v1",
+                java.time.Duration.ofDays(30));
+        var service = new IngestionService(
+                new MemoryLedger(),
+                new MemoryLifecycle(),
+                source -> new SourcePreparers(List.of()),
+                extractionFactory(),
+                new MemoryRunLedger(),
+                new CollectingProjection(),
+                new RecordingControlEventPublisher(),
+                clock,
+                NoopDiagnosticSink.INSTANCE,
+                new SynchronousKeyedExecutionGuard(),
+                lifecycleSupport);
+
+        assertThatThrownBy(() -> service.reject(observation, key, "invalid source"))
+                .isInstanceOfSatisfying(DiagnosticException.class, failure -> {
+                    assertThat(failure.diagnostic().code())
+                            .isEqualTo(IngestDiagnosticCodes.DEAD_LETTER_FAILED);
+                    assertThat(failure.diagnostic().context())
+                            .containsEntry("source", "abc123")
+                            .containsEntry("reason", "IllegalStateException");
+                });
     }
 
     @Test
@@ -874,6 +1146,7 @@ class IngestionServiceTest {
         private final List<String> events = new ArrayList<>();
         private List<ArchivedSourceUnit> processingSources = List.of();
         private RuntimeException claimFailure;
+        private RuntimeException failClaimedFailure;
         private RuntimeException findProcessingFailure;
         private RuntimeException failRecoveredFailure;
 
@@ -911,6 +1184,9 @@ class IngestionServiceTest {
         @Override
         public Path fail(SourceUnit unit, String reason) {
             events.add("fail");
+            if (failClaimedFailure != null) {
+                throw failClaimedFailure;
+            }
             return Path.of("failed/" + unit.processingPath().getFileName());
         }
 
@@ -936,6 +1212,8 @@ class IngestionServiceTest {
         private IngestionRecord record;
         private List<IngestionRecord> incompleteRecords;
         private RuntimeException claimFailure;
+        private RuntimeException markFailedFailure;
+        private IngestionLedgerTransition claimTransition;
         private IngestionLedgerTransition archiveTransition;
 
         @Override
@@ -948,6 +1226,9 @@ class IngestionServiceTest {
         public IngestionLedgerTransition markClaimed(SourceUnit unit) {
             if (claimFailure != null) {
                 throw claimFailure;
+            }
+            if (claimTransition != null) {
+                return claimTransition;
             }
             if (record != null) {
                 return record.status() == IngestionStatus.CLAIMED
@@ -984,6 +1265,9 @@ class IngestionServiceTest {
         public IngestionLedgerTransition markFailed(ObservationId observationId,
                                                      SourceKey key,
                                                      String reason) {
+            if (markFailedFailure != null) {
+                throw markFailedFailure;
+            }
             if (record != null && record.status() == IngestionStatus.FAILED) {
                 return IngestionLedgerTransition.ALREADY_APPLIED;
             }
