@@ -183,7 +183,7 @@ public record IocProperties(
 
             public boolean hasPublicIdColumn() {
                 return columns != null && columns.stream()
-                        .anyMatch(column -> "id".equals(column.name()));
+                        .anyMatch(column -> column != null && "id".equals(column.name()));
             }
 
             public record Column(
