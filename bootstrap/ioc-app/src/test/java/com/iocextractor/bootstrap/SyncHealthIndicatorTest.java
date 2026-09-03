@@ -38,6 +38,7 @@ import java.util.Set;
 import java.util.LinkedHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 class SyncHealthIndicatorTest {
 
@@ -236,6 +237,216 @@ class SyncHealthIndicatorTest {
                 .containsEntry("reconnects", 3L)
                 .containsEntry("reconnectingSince", NOW.toString())
                 .containsEntry("reconnectingForMs", 61_000L);
+    }
+
+    @Test
+    void statePreservesCoalescedDetectionAndWatchRecoveryHistory() {
+        SyncHealthState state = new SyncHealthState(Clock.fixed(NOW, ZoneOffset.UTC));
+
+        state.recordFetchDetectionCoalesced("incoming", "primary");
+        state.recordFetchDetection("incoming", "primary", "PERIODIC", -1, Duration.ofMillis(7));
+        state.recordFetchDetectionFailure(
+                "secondary", "backup", "STARTUP",
+                new RemoteTransportException(RemoteErrorKind.TRANSIENT, "temporarily unavailable"),
+                Duration.ofMillis(9));
+        state.recordRemoteChangeWatchSignal("incoming", "primary");
+        state.recordRemoteChangeWatchEstablished("incoming", "primary");
+        state.recordRemoteChangeWatchSignal("incoming", "primary");
+        state.recordRemoteChangeWatchFailure("incoming", "primary", new IllegalStateException());
+        state.recordRemoteChangeWatchEstablished("incoming", "primary");
+        state.recordRemoteChangeWatchDisabled("secondary", "backup");
+
+        assertThat(state.fetchDetectionSnapshots().get("incoming"))
+                .satisfies(snapshot -> {
+                    assertThat(snapshot.reason()).isEqualTo("PERIODIC");
+                    assertThat(snapshot.detectedObjects()).isZero();
+                    assertThat(snapshot.coalescedSignals()).isEqualTo(1);
+                    assertThat(snapshot.duration()).isEqualTo(Duration.ofMillis(7));
+                });
+        assertThat(state.fetchDetectionSnapshots().get("secondary"))
+                .satisfies(snapshot -> {
+                    assertThat(snapshot.status()).isEqualTo(SyncOperationalStatus.DEGRADED);
+                    assertThat(snapshot.error()).isEqualTo("temporarily unavailable");
+                });
+        assertThat(state.remoteChangeWatchSnapshots().get("incoming"))
+                .satisfies(snapshot -> {
+                    assertThat(snapshot.status()).isEqualTo(RemoteChangeWatchStatus.ACTIVE);
+                    assertThat(snapshot.signals()).isEqualTo(2);
+                    assertThat(snapshot.reconnects()).isEqualTo(1);
+                    assertThat(snapshot.reArms()).isEqualTo(1);
+                    assertThat(snapshot.error()).isNull();
+                });
+        assertThat(state.remoteChangeWatchSnapshots().get("secondary").status())
+                .isEqualTo(RemoteChangeWatchStatus.DISABLED);
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> state.recordFetchDetection(
+                        "invalid", "primary", "PERIODIC", 0, Duration.ofNanos(-1)))
+                .withMessage("duration must not be negative");
+    }
+
+    @Test
+    void keyedFailuresMergeAdmissionAndDispatchEvidenceUntilSuccess() {
+        SyncHealthState state = new SyncHealthState(Clock.fixed(NOW, ZoneOffset.UTC));
+        WorkKey first = WorkKey.of("first");
+        WorkKey second = WorkKey.of("second");
+
+        state.recordKeyedFailure(first, new IllegalStateException());
+        state.recordKeyedRejection(WorkAdmission.rejected(first, 4));
+        state.recordKeyedDispatchRejected(first, 2, new IllegalArgumentException());
+        state.recordKeyedDispatchRejected(second, 3, new IllegalStateException("executor stopped"));
+        state.recordKeyedFailure(second, new IllegalStateException("work failed"));
+
+        assertThat(state.keyedExecutorSignals()).containsOnlyKeys("first", "second");
+        assertThat(state.keyedExecutorSignals().get("first"))
+                .satisfies(signal -> {
+                    assertThat(signal.shedToReconcile()).isTrue();
+                    assertThat(signal.rejectedQueuedDepth()).isEqualTo(4);
+                    assertThat(signal.abandonedWork()).isEqualTo(2);
+                    assertThat(signal.lastDispatchFailure()).isEqualTo("IllegalArgumentException");
+                    assertThat(signal.error()).isEqualTo("IllegalStateException");
+                });
+        assertThat(state.keyedExecutorSignals().get("second"))
+                .satisfies(signal -> {
+                    assertThat(signal.lastDispatchFailure()).isEqualTo("executor stopped");
+                    assertThat(signal.error()).isEqualTo("work failed");
+                });
+        assertThat(state.recordKeyedSuccess(first)).isTrue();
+        assertThat(state.recordKeyedSuccess(first)).isFalse();
+    }
+
+    @Test
+    void healthReportsDetectionPublishAndExecutorFailuresPerEndpoint() {
+        SyncHealthState state = new SyncHealthState(Clock.fixed(NOW, ZoneOffset.UTC));
+        state.recordFetchDetectionFailure(
+                "incoming", "primary", "PERIODIC",
+                new RemoteTransportException(RemoteErrorKind.AUTH_FAILED, "access denied"),
+                Duration.ofMillis(3));
+        state.recordPublishFailure(
+                "delivery", "backup", "reputation",
+                new RemoteTransportException(RemoteErrorKind.TRANSIENT, "network busy"));
+        state.recordKeyedFailure(WorkKey.of("worker"), new IllegalStateException("worker failed"));
+        SyncHealthIndicator indicator = new SyncHealthIndicator(
+                List.of(new RemoteFetchSource(
+                        "incoming", "primary", "/in", List.of("*"), List.of())),
+                List.of(new PublishTarget("delivery", "backup", "/out", "reputation")),
+                state, ledger(List.of()), catalog(List.of()),
+                KeyedSerialExecutorSnapshot::empty, descriptor -> false,
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        var health = indicator.health();
+
+        assertThat(health.getStatus()).isEqualTo(Status.DOWN);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> endpoints = (Map<String, Object>) health.getDetails().get("endpoints");
+        assertThat(endpoints).containsEntry("primary", "DOWN").containsEntry("backup", "DEGRADED");
+        @SuppressWarnings("unchecked")
+        Map<String, Map<String, Object>> detections =
+                (Map<String, Map<String, Object>>) health.getDetails().get("fetchDetection");
+        assertThat(detections.get("incoming"))
+                .containsEntry("status", "DOWN")
+                .containsEntry("error", "access denied");
+        @SuppressWarnings("unchecked")
+        Map<String, Map<String, Object>> publishes =
+                (Map<String, Map<String, Object>>) health.getDetails().get("publishTargets");
+        assertThat(publishes.get("delivery"))
+                .containsEntry("status", "DEGRADED")
+                .containsEntry("error", "network busy");
+    }
+
+    @Test
+    void healthClampsNegativeExecutorAgeAndShowsSignalOnlyKeys() {
+        SyncHealthState state = new SyncHealthState(Clock.fixed(NOW, ZoneOffset.UTC));
+        state.recordKeyedRejection(WorkAdmission.rejected(WorkKey.of("signal-only"), 2));
+        WorkKey live = WorkKey.of("live-only");
+        SyncHealthIndicator indicator = new SyncHealthIndicator(
+                List.of(), List.of(), state, ledger(List.of()), catalog(List.of()),
+                () -> new KeyedSerialExecutorSnapshot(List.of(
+                        new KeyedWorkSnapshot(live, 0, false, Duration.ofMillis(-1)))),
+                descriptor -> false, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        var health = indicator.health();
+
+        assertThat(health.getStatus()).isEqualTo(Status.UP);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> keyedExecutor =
+                (Map<String, Object>) health.getDetails().get("keyedExecutor");
+        @SuppressWarnings("unchecked")
+        Map<String, Map<String, Object>> keys =
+                (Map<String, Map<String, Object>>) keyedExecutor.get("keys");
+        assertThat(keys.get("live-only"))
+                .containsEntry("running", false)
+                .containsEntry("queueDepth", 0)
+                .containsEntry("oldestAgeMs", 0L)
+                .containsEntry("shedToReconcile", false);
+        assertThat(keys.get("signal-only"))
+                .containsEntry("running", false)
+                .containsEntry("queueDepth", 0)
+                .containsEntry("shedToReconcile", true);
+    }
+
+    @Test
+    void healthFailsClosedWhenAnyReadModelBoundaryThrows() {
+        SyncHealthIndicator indicator = new SyncHealthIndicator(
+                List.of(), List.of(), new SyncHealthState(Clock.fixed(NOW, ZoneOffset.UTC)),
+                new PublishLedger() {
+                    @Override
+                    public PublishRecord ensurePending(PublishRecord pending) {
+                        throw new UnsupportedOperationException();
+                    }
+
+                    @Override
+                    public Optional<PublishRecord> find(String sliceId, String targetId) {
+                        return Optional.empty();
+                    }
+
+                    @Override
+                    public List<PublishRecord> findBySlice(String sliceId) {
+                        return List.of();
+                    }
+
+                    @Override
+                    public List<PublishRecord> findRetryable() {
+                        return List.of();
+                    }
+
+                    @Override
+                    public List<PublishRecord> findRetryable(Instant staleBefore) {
+                        return List.of();
+                    }
+
+                    @Override
+                    public PublishLedgerStatusCounts countByStatus(
+                            Optional<String> profile,
+                            Optional<String> targetId,
+                            Optional<String> endpoint) {
+                        throw new UnsupportedOperationException();
+                    }
+
+                    @Override
+                    public PublishLedgerHealthSummary healthSummary(Set<String> targets) {
+                        throw new IllegalStateException("database unavailable");
+                    }
+
+                    @Override
+                    public List<PublishRecord> findAll() {
+                        return List.of();
+                    }
+
+                    @Override
+                    public PublishRecord transition(
+                            String sliceId,
+                            String targetId,
+                            PublishStatus expected,
+                            PublishStatus next,
+                            String lastError,
+                            String remoteVerification) {
+                        throw new UnsupportedOperationException();
+                    }
+                },
+                catalog(List.of()), KeyedSerialExecutorSnapshot::empty,
+                descriptor -> false, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        assertThat(indicator.health().getStatus()).isEqualTo(Status.DOWN);
     }
 
     private PublishLedger ledger(List<PublishRecord> records) {

@@ -127,7 +127,7 @@ The additional bare wait is the lifecycle-deadline scheduler worker gate.
 ## `TEST-LIFECYCLE-01` implementation evidence — 2026-09-02
 
 The reviewed behavior-based inventory was migrated to Maven naming ownership.
-After the eleventh coverage-remediation checkpoint, Surefire owns 190 fast
+After the twelfth coverage-remediation checkpoint, Surefire owns 190 fast
 `*Test` suites and Failsafe owns 65 `*IT` suites. Five of the Failsafe suites
 are explicitly conditioned external shells, so the deterministic offline
 universe is `190 + (65 - 5) = 250` suites. The two source sets are disjoint and
@@ -137,9 +137,9 @@ below.
 
 | Cohort | Suites | Cases | Passed | Skipped | Failures/errors | Suite-seconds |
 |---|---:|---:|---:|---:|---:|---:|
-| Surefire fast | 190 | 971 | 971 | 0 | 0 | 55.469 |
-| Failsafe integration, including external shells | 65 | 394 | 386 | 8 | 0 | 147.476 |
-| **Full reactor union** | **255** | **1365** | **1357** | **8** | **0** | **202.945** |
+| Surefire fast | 190 | 976 | 976 | 0 | 0 | 66.188 |
+| Failsafe integration, including external shells | 65 | 394 | 386 | 8 | 0 | 156.748 |
+| **Full reactor union** | **255** | **1370** | **1362** | **8** | **0** | **222.936** |
 
 The five external shells and their eight skipped cases are unchanged: one
 managed-import load profile and four SMB suites. Their `@ExternalTest`
@@ -193,7 +193,7 @@ post-lifecycle repetition described below; fixed release floors remain separate.
 
 | Module/scope | Lines covered/total | Line | Branches covered/total | Branch | Missed branches | Release floor/state |
 |---|---:|---:|---:|---:|---:|---|
-| **Reactor aggregate** | **19706/22389** | **88.02%** | **6033/8119** | **74.31%** | **2086** | ratcheted; `75% / 80%` branch gap |
+| **Reactor aggregate** | **19714/22389** | **88.05%** | **6070/8119** | **74.76%** | **2049** | ratcheted; `75% / 80%` branch gap |
 | `platform/platform-errors` | 4/4 | 100.00% | 0/0 | N/A | 0 | ratcheted |
 | `platform/platform-diagnostics` | 481/491 | 97.96% | 56/76 | 73.68% | 20 | ratcheted |
 | `platform/platform-etl` | 165/181 | 91.16% | 16/24 | 66.67% | 8 | ratcheted |
@@ -213,21 +213,20 @@ post-lifecycle repetition described below; fixed release floors remain separate.
 | `adapters/adapter-transport-smb` | 813/1096 | 74.18% | 309/510 | 60.59% | 201 | ratcheted; external-path concentration |
 | `adapters/adapter-ingest` | 929/1189 | 78.13% | 268/422 | 63.51% | 154 | ratcheted |
 | `adapters/adapter-cli-picocli` | 415/564 | 73.58% | 114/227 | 50.22% | 113 | ratcheted |
-| `bootstrap/ioc-app` | 4397/5066 | 86.79% | 1271/1838 | 69.15% | 567 | ratcheted |
+| `bootstrap/ioc-app` | 4405/5066 | 86.95% | 1308/1838 | 71.16% | 530 | ratcheted |
 
 Compared with Wave 0, the production denominator grew from 10962 to 22389
-lines and from 3998 to 8119 branches. The accepted aggregate ratchet is 87.75%
-lines and 73.31% branches. `TEST-COVERAGE-02` now blocks regression from this
+lines and from 3998 to 8119 branches. The accepted aggregate ratchet is 88.05%
+lines and 74.76% branches. `TEST-COVERAGE-02` now blocks regression from this
 universe. Domain remediation has closed both core floors, and catalog
-remediation has closed the application line floor; the remaining fixed gaps
-are aggregate branch 6.69 pp and application branch 4.05 pp.
+remediation has closed both application floors; the remaining fixed gap is
+aggregate branch 5.24 pp.
 
 The largest current missed-branch concentrations are
-`JdbcCanonicalImportWriter` (73), `IocConfigPreflight` and
-`SyncHealthIndicator` (53 each), `AppConfig` (50), `JdbcImportWorkspace` (49),
-`LocalManagedImportSourceLifecycle` (39) and the unexecuted live
-`SmbjShareClient` seam (38). These are triage inputs, not an instruction to add
-percentage-only tests.
+`JdbcCanonicalImportWriter` (73), `IocConfigPreflight` (53), `AppConfig` (50),
+`JdbcImportWorkspace` (49), `LocalManagedImportSourceLifecycle` (39) and the
+unexecuted live `SmbjShareClient` seam (38). These are triage inputs, not an
+instruction to add percentage-only tests.
 
 ### `TEST-COVERAGE-02` phases 1-3 implementation evidence — 2026-09-02
 
@@ -548,6 +547,32 @@ SMB coverage ratchet (`308/510` вместо `309/510`). Baseline и threshold �
 прогон подтвердил `116 accepted / 0 visible` SpotBugs и повторяемые `309/510`
 SMB branches. До aggregate `80%` по фактическому отчёту остаётся `449` covered
 branches; fixed-floor gate остаётся отдельным финальным slice.
+
+### `TEST-COVERAGE-02` remediation checkpoint 12 — sync health evidence
+
+Двенадцатый remediation slice проверяет накопление и отображение operational
+evidence в `SyncHealthState` и `SyncHealthIndicator`: coalesced detection,
+watch reconnect/re-arm history, admission и dispatch rejection, terminal work
+failure, endpoint-level detection/publish degradation и fail-closed поведение
+при недоступной durable read-model границе. Пять новых tests используют
+публичные state transitions и health response; production-код ради покрытия не
+изменялся.
+
+Свежий полный `make verify` прошёл 25/25 за `04:57`. Lifecycle union остался
+`190 fast + 65 integration`; выполнено `1370` cases (`1362` passed, `8`
+provisioned external skips). Фактический aggregate равен `19721/22389` lines и
+`6085/8119` branches, а `ioc-app` group — `4405/5066` lines и `1308/1838`
+branches.
+
+Два целевых production classes дали точную дельту `+8` lines и `+37` branches:
+`SyncHealthState` теперь имеет `114/114` lines и `81/88` branches,
+`SyncHealthIndicator` — `221/222` lines и `126/157` branches. Ratchet принимает
+только эту причинно связанную дельту поверх прежних независимых minima:
+aggregate `19714/22389 + 6070/8119`, `ioc-app`
+`4405/5066 + 1308/1838`. Дополнительный межпрогонный прирост остаётся запасом,
+а missed-instruction context не ужесточается. До aggregate `80%` по
+фактическому отчёту остаётся `411` covered branches; fixed-floor gate остаётся
+отдельным финальным slice.
 
 ## Historical Wave 0 baseline discovery inventory
 
