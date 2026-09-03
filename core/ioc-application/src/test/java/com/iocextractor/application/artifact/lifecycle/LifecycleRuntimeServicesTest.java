@@ -8,14 +8,17 @@ import com.iocextractor.application.port.out.artifact.lifecycle.ConfirmationRece
 import com.iocextractor.application.port.out.artifact.lifecycle.ExpiredArtifactStore;
 import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleActivationStore;
 import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleControlStore;
+import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleHistoryStore;
 import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleReconciliationStore;
 import com.iocextractor.platform.events.ControlEvent;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.Map;
@@ -106,6 +109,139 @@ class LifecycleRuntimeServicesTest {
         assertThat(projections).hasValue(1);
         assertThat(result.projected()).isZero();
         assertThat(result.stillPending()).isOne();
+    }
+
+    @Test
+    void projectionConvergenceSkipsCleanStateAndAcknowledgesTheObservedGeneration() {
+        List<ProjectionAcknowledgement> acknowledgements = new ArrayList<>();
+        ArtifactProjectionWorkStore work = new ArtifactProjectionWorkStore() {
+            @Override
+            public ArtifactProjectionState load(String artifactName) {
+                return artifactName.equals("clean")
+                        ? state(artifactName, 1, 1)
+                        : state(artifactName, 2, 1);
+            }
+
+            @Override
+            public boolean acknowledge(ProjectionAcknowledgement acknowledgement) {
+                acknowledgements.add(acknowledgement);
+                return true;
+            }
+
+            @Override
+            public boolean recordFailure(
+                    String artifactName,
+                    ProjectionGeneration expectedGeneration,
+                    String failureCode) {
+                throw new AssertionError("successful convergence must not record failure");
+            }
+        };
+        List<ArtifactProjectionCommand> commands = new ArrayList<>();
+        var service = new ArtifactProjectionConvergenceService(
+                List.of("clean", "masks"), work, command -> {
+                    commands.add(command);
+                    return ArtifactProjectionResult.clean(2);
+                });
+
+        ArtifactProjectionConvergenceResult result = service.convergePending();
+
+        assertThat(result.projected()).isOne();
+        assertThat(result.stillPending()).isZero();
+        assertThat(result.projectedArtifacts()).containsExactly("masks");
+        assertThat(commands).singleElement().satisfies(command -> {
+            assertThat(command.runId()).isEqualTo("lifecycle-projection-masks-g2");
+            assertThat(command.artifactName()).isEqualTo("masks");
+        });
+        assertThat(acknowledgements).singleElement().satisfies(acknowledgement ->
+                assertThat(acknowledgement.installedGeneration())
+                        .isEqualTo(new ProjectionGeneration(2)));
+    }
+
+    @Test
+    void projectionConvergencePreservesEveryFailureAndFailureJournalError() {
+        var firstFailure = new IllegalStateException("first projection failed");
+        var secondFailure = new IllegalArgumentException("second projection failed");
+        var journalFailure = new IllegalStateException("failure journal unavailable");
+        List<String> recordedFailures = new ArrayList<>();
+        ArtifactProjectionWorkStore work = new ArtifactProjectionWorkStore() {
+            @Override
+            public ArtifactProjectionState load(String artifactName) {
+                return state(artifactName, artifactName.equals("first") ? 3 : 4, 1);
+            }
+
+            @Override
+            public boolean acknowledge(ProjectionAcknowledgement acknowledgement) {
+                throw new AssertionError("failed projection must not be acknowledged");
+            }
+
+            @Override
+            public boolean recordFailure(
+                    String artifactName,
+                    ProjectionGeneration expectedGeneration,
+                    String failureCode) {
+                recordedFailures.add(artifactName + ":" + expectedGeneration.value() + ":" + failureCode);
+                if (artifactName.equals("second")) {
+                    throw journalFailure;
+                }
+                return true;
+            }
+        };
+        var service = new ArtifactProjectionConvergenceService(
+                List.of("first", "second"), work, command -> {
+                    if (command.artifactName().equals("first")) {
+                        throw firstFailure;
+                    }
+                    throw secondFailure;
+                });
+
+        assertThatThrownBy(service::convergePending)
+                .isSameAs(firstFailure)
+                .satisfies(failure -> {
+                    assertThat(failure.getSuppressed()).containsExactly(secondFailure);
+                    assertThat(secondFailure.getSuppressed()).containsExactly(journalFailure);
+                });
+        assertThat(recordedFailures).containsExactly(
+                "first:3:LIFECYCLE.PROJECTION_FAILED",
+                "second:4:LIFECYCLE.PROJECTION_FAILED");
+    }
+
+    @Test
+    void projectionConvergenceRejectsAnAmbiguousArtifactCatalog() {
+        ArtifactProjectionWorkStore work = new ArtifactProjectionWorkStore() {
+            @Override
+            public ArtifactProjectionState load(String artifactName) {
+                throw new AssertionError();
+            }
+
+            @Override
+            public boolean acknowledge(ProjectionAcknowledgement acknowledgement) {
+                throw new AssertionError();
+            }
+
+            @Override
+            public boolean recordFailure(
+                    String artifactName,
+                    ProjectionGeneration expectedGeneration,
+                    String failureCode) {
+                throw new AssertionError();
+            }
+        };
+        ArtifactProjection projection = command -> {
+            throw new AssertionError();
+        };
+
+        assertThatThrownBy(() -> new ArtifactProjectionConvergenceService(
+                List.of("masks", "masks"), work, projection))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unique non-blank");
+        assertThatThrownBy(() -> new ArtifactProjectionConvergenceService(
+                java.util.Arrays.asList("masks", null), work, projection))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unique non-blank");
+        assertThatThrownBy(() -> new ArtifactProjectionConvergenceService(
+                List.of(" "), work, projection))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unique non-blank");
     }
 
     @Test
@@ -313,6 +449,251 @@ class LifecycleRuntimeServicesTest {
     }
 
     @Test
+    void disabledAndActiveActivationStatesAreIdempotentForTheirConfiguredPolicy() {
+        var activation = noLegacyActivation();
+        new LifecycleActivationService(
+                List.of("masks"),
+                new FixedControlStore(LifecycleControlState.disabledCompatible()),
+                activation,
+                () -> {
+                    throw new AssertionError("disabled validity must not converge projections");
+                },
+                () -> AS_OF,
+                LifecycleActivationPolicy.disabled(),
+                10).resume();
+
+        LifecycleControlState active = LifecycleControlState.disabledCompatible()
+                .beginActivation("record-validity:fixed:v1")
+                .completeActivation(AS_OF);
+        new LifecycleActivationService(
+                List.of("masks"),
+                new FixedControlStore(active),
+                activation,
+                () -> {
+                    throw new AssertionError("active validity must not restart activation");
+                },
+                () -> AS_OF,
+                fixedActivationPolicy(),
+                10).resume();
+
+        assertThatThrownBy(() -> new LifecycleActivationService(
+                List.of("masks"),
+                new FixedControlStore(active),
+                activation,
+                () -> new ArtifactProjectionConvergenceResult(0, 0, List.of()),
+                () -> AS_OF,
+                new LifecycleActivationPolicy(
+                        true, "record-validity:fixed:v2", ExistingRecordsActivationPolicy.EXPIRE),
+                10).resume())
+                .isInstanceOf(LifecyclePolicyMismatchException.class)
+                .hasMessageContaining("incompatible");
+    }
+
+    @Test
+    void activationAdoptsConcurrentBeginAndCompletion() {
+        LifecycleControlStore concurrentBegin = new LifecycleControlStore() {
+            private LifecycleControlState state = LifecycleControlState.disabledCompatible();
+
+            @Override
+            public LifecycleControlState load() {
+                return state;
+            }
+
+            @Override
+            public boolean compareAndSet(LifecycleControlState expected, LifecycleControlState update) {
+                state = update.completeActivation(AS_OF);
+                return false;
+            }
+        };
+        new LifecycleActivationService(
+                List.of("masks"), concurrentBegin, noLegacyActivation(),
+                () -> {
+                    throw new AssertionError("concurrent completion needs no local convergence");
+                },
+                () -> AS_OF,
+                fixedActivationPolicy(),
+                10).resume();
+
+        LifecycleControlState activating = LifecycleControlState.disabledCompatible()
+                .beginActivation("record-validity:fixed:v1");
+        LifecycleControlStore concurrentCompletion = new LifecycleControlStore() {
+            private LifecycleControlState state = activating;
+
+            @Override
+            public LifecycleControlState load() {
+                return state;
+            }
+
+            @Override
+            public boolean compareAndSet(LifecycleControlState expected, LifecycleControlState update) {
+                state = update;
+                return false;
+            }
+        };
+        new LifecycleActivationService(
+                List.of(), concurrentCompletion, noLegacyActivation(),
+                () -> new ArtifactProjectionConvergenceResult(0, 0, List.of()),
+                () -> AS_OF,
+                fixedActivationPolicy(),
+                10).resume();
+
+        MutableControlStore completedDuringProjection = new MutableControlStore(activating);
+        new LifecycleActivationService(
+                List.of(), completedDuringProjection, noLegacyActivation(),
+                () -> {
+                    LifecycleControlState current = completedDuringProjection.load();
+                    completedDuringProjection.compareAndSet(current, current.completeActivation(AS_OF));
+                    return new ArtifactProjectionConvergenceResult(0, 0, List.of());
+                },
+                () -> AS_OF,
+                fixedActivationPolicy(),
+                10).resume();
+        assertThat(completedDuringProjection.load().activationState())
+                .isEqualTo(LifecycleActivationState.ACTIVE);
+    }
+
+    @Test
+    void activationFailsClosedWhenACompletionRaceDoesNotBecomeActive() {
+        LifecycleControlState activating = LifecycleControlState.disabledCompatible()
+                .beginActivation("record-validity:fixed:v1");
+        LifecycleControlStore lostCompletion = new LifecycleControlStore() {
+            @Override
+            public LifecycleControlState load() {
+                return activating;
+            }
+
+            @Override
+            public boolean compareAndSet(LifecycleControlState expected, LifecycleControlState update) {
+                return false;
+            }
+        };
+        var service = new LifecycleActivationService(
+                List.of(), lostCompletion, noLegacyActivation(),
+                () -> new ArtifactProjectionConvergenceResult(0, 0, List.of()),
+                () -> AS_OF,
+                fixedActivationPolicy(),
+                10);
+
+        assertThatThrownBy(service::resume)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("completion lost");
+    }
+
+    @Test
+    void activationRejectsInvalidCatalogAndBatchConfiguration() {
+        var control = new FixedControlStore(LifecycleControlState.disabledCompatible());
+        var activation = noLegacyActivation();
+        var policy = fixedActivationPolicy();
+
+        assertThatThrownBy(() -> new LifecycleActivationService(
+                List.of("masks", "masks"), control, activation,
+                () -> new ArtifactProjectionConvergenceResult(0, 0, List.of()),
+                () -> AS_OF, policy, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unique and non-blank");
+        assertThatThrownBy(() -> new LifecycleActivationService(
+                java.util.Arrays.asList("masks", null), control, activation,
+                () -> new ArtifactProjectionConvergenceResult(0, 0, List.of()),
+                () -> AS_OF, policy, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unique and non-blank");
+        assertThatThrownBy(() -> new LifecycleActivationService(
+                List.of(" "), control, activation,
+                () -> new ArtifactProjectionConvergenceResult(0, 0, List.of()),
+                () -> AS_OF, policy, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unique and non-blank");
+        assertThatThrownBy(() -> new LifecycleActivationService(
+                List.of("masks"), control, activation,
+                () -> new ArtifactProjectionConvergenceResult(0, 0, List.of()),
+                () -> AS_OF, policy, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("batch size");
+    }
+
+    @Test
+    void lifecycleHistoryRetentionPurgesHistoryAndReceiptsIndependently() {
+        Map<String, LifecycleHistoryStore.HistoryPurgeResult> batches = new LinkedHashMap<>();
+        batches.put("masks", new LifecycleHistoryStore.HistoryPurgeResult("masks", 0, false));
+        batches.put("hashes", new LifecycleHistoryStore.HistoryPurgeResult("hashes", 2, true));
+        List<EffectiveTime> cutoffs = new ArrayList<>();
+        LifecycleHistoryStore history = (artifactName, cutoff, batchSize) -> {
+            cutoffs.add(cutoff);
+            assertThat(batchSize).isEqualTo(10);
+            return batches.get(artifactName);
+        };
+
+        LifecycleHistoryRetentionResult historyOnly = new LifecycleHistoryRetentionService(
+                List.of("masks", "hashes"), history, () -> AS_OF, Duration.ofDays(30), 10).run();
+
+        assertThat(historyOnly.purged()).isEqualTo(2);
+        assertThat(historyOnly.moreEligible()).isTrue();
+        assertThat(historyOnly.purgedReceipts()).isZero();
+        assertThat(historyOnly.purgedByArtifact()).containsExactlyEntriesOf(Map.of("hashes", 2));
+        assertThat(cutoffs).containsOnly(EffectiveTime.at(AS_OF.value().minus(Duration.ofDays(30))));
+
+        ConfirmationReceiptStore receipts = new ConfirmationReceiptStore() {
+            @Override
+            public Optional<ConfirmationReceiptSnapshot> findComplete(
+                    String sourceKey, String processingPolicyFingerprint, EffectiveTime asOf) {
+                throw new AssertionError();
+            }
+
+            @Override
+            public PurgeResult purgeExpired(EffectiveTime asOf, int batchSize) {
+                assertThat(asOf).isEqualTo(AS_OF);
+                assertThat(batchSize).isEqualTo(5);
+                return new PurgeResult(3, true);
+            }
+        };
+        LifecycleHistoryRetentionResult withReceipts = new LifecycleHistoryRetentionService(
+                List.of("masks"),
+                (artifactName, cutoff, batchSize) ->
+                        new LifecycleHistoryStore.HistoryPurgeResult(artifactName, 0, false),
+                () -> AS_OF,
+                Duration.ofDays(1),
+                5,
+                receipts).run();
+
+        assertThat(withReceipts.purged()).isEqualTo(3);
+        assertThat(withReceipts.moreEligible()).isTrue();
+        assertThat(withReceipts.purgedReceipts()).isEqualTo(3);
+        assertThat(withReceipts.purgedByArtifact()).isEmpty();
+    }
+
+    @Test
+    void lifecycleHistoryRetentionRejectsUnboundedOrAmbiguousConfiguration() {
+        LifecycleHistoryStore history = (artifactName, cutoff, batchSize) ->
+                new LifecycleHistoryStore.HistoryPurgeResult(artifactName, 0, false);
+
+        assertThatThrownBy(() -> new LifecycleHistoryRetentionService(
+                List.of("masks"), history, () -> AS_OF, Duration.ZERO, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("retention");
+        assertThatThrownBy(() -> new LifecycleHistoryRetentionService(
+                List.of("masks"), history, () -> AS_OF, Duration.ofSeconds(-1), 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("retention");
+        assertThatThrownBy(() -> new LifecycleHistoryRetentionService(
+                List.of("masks"), history, () -> AS_OF, Duration.ofDays(1), 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("batchSize");
+        assertThatThrownBy(() -> new LifecycleHistoryRetentionService(
+                List.of("masks", "masks"), history, () -> AS_OF, Duration.ofDays(1), 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unique non-blank");
+        assertThatThrownBy(() -> new LifecycleHistoryRetentionService(
+                java.util.Arrays.asList("masks", null), history,
+                () -> AS_OF, Duration.ofDays(1), 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unique non-blank");
+        assertThatThrownBy(() -> new LifecycleHistoryRetentionService(
+                List.of(" "), history, () -> AS_OF, Duration.ofDays(1), 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unique non-blank");
+    }
+
+    @Test
     void complete_current_policy_receipt_replays_with_a_new_observation() {
         var priorReceipt = new ConfirmationReceiptSnapshot(
                 new ConfirmationReceiptId("receipt-prior"),
@@ -371,6 +752,28 @@ class LifecycleRuntimeServicesTest {
     private ArtifactProjectionState state(String artifact, long required, long projected) {
         return new ArtifactProjectionState(
                 artifact, new ProjectionGeneration(required), new ProjectionGeneration(projected));
+    }
+
+    private LifecycleActivationPolicy fixedActivationPolicy() {
+        return new LifecycleActivationPolicy(
+                true, "record-validity:fixed:v1", ExistingRecordsActivationPolicy.EXPIRE);
+    }
+
+    private LifecycleActivationStore noLegacyActivation() {
+        return new LifecycleActivationStore() {
+            @Override
+            public boolean hasLegacyRecords() {
+                return false;
+            }
+
+            @Override
+            public LifecycleActivationBatchResult expireLegacyBatch(
+                    String artifactName,
+                    EffectiveTime activationAsOf,
+                    int batchSize) {
+                return new LifecycleActivationBatchResult(artifactName, 0, false);
+            }
+        };
     }
 
     private static final class RecordingCycles implements LifecycleReconciliationStore {

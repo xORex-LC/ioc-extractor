@@ -97,6 +97,55 @@ class LifecycleContractModelsTest {
     }
 
     @Test
+    void lifecycleControlRejectsEveryContradictoryStateShape() {
+        assertThatThrownBy(() -> new LifecycleControlState(
+                -1, LifecycleActivationState.DISABLED_COMPATIBLE,
+                Optional.empty(), Optional.empty()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("version");
+        assertThatThrownBy(() -> new LifecycleControlState(
+                1, LifecycleActivationState.DISABLED_COMPATIBLE,
+                Optional.of("fixed-12h-v1"), Optional.empty()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("cannot carry");
+        assertThatThrownBy(() -> new LifecycleControlState(
+                1, LifecycleActivationState.ACTIVATING,
+                Optional.empty(), Optional.empty()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires only");
+        assertThatThrownBy(() -> new LifecycleControlState(
+                1, LifecycleActivationState.ACTIVATING,
+                Optional.of("fixed-12h-v1"), Optional.of(NOW)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires only");
+        assertThatThrownBy(() -> new LifecycleControlState(
+                1, LifecycleActivationState.ACTIVE,
+                Optional.empty(), Optional.of(NOW)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires policy");
+        assertThatThrownBy(() -> new LifecycleControlState(
+                1, LifecycleActivationState.ACTIVATING,
+                Optional.of(" "), Optional.empty()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("policyFingerprint");
+    }
+
+    @Test
+    void lifecycleControlRejectsInvalidTransitionArguments() {
+        LifecycleControlState disabled = LifecycleControlState.disabledCompatible();
+
+        assertThatThrownBy(() -> disabled.beginActivation(" "))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("fingerprint");
+        assertThatThrownBy(() -> disabled.completeActivation(NOW))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("has not started");
+        assertThatThrownBy(() -> disabled.beginActivation(null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("fingerprint");
+    }
+
+    @Test
     void confirmation_receipt_context_requires_publishable_identity_and_bounds() {
         var id = new ConfirmationReceiptId("receipt-1");
 

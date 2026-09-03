@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,6 +58,52 @@ class ExportSnapshotModelTest {
                 .hasMessageContaining("unique");
     }
 
+    @Test
+    void artifactSpecRejectsMissingOrAmbiguousColumns() {
+        assertThatThrownBy(() -> artifactSpec("masks.csv", List.of(), 1, HASH_A))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("non-empty names");
+        assertThatThrownBy(() -> artifactSpec(
+                "masks.csv", Arrays.asList("id", null), 1, HASH_A))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> artifactSpec("masks.csv", List.of("id", " "), 1, HASH_A))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("non-empty names");
+        assertThatThrownBy(() -> artifactSpec("masks.csv", List.of("id", "id"), 1, HASH_A))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unique");
+    }
+
+    @Test
+    void artifactSpecRequiresALeafFileName() {
+        for (String fileName : List.of("nested/masks.csv", "nested\\masks.csv", ".", "..")) {
+            assertThatThrownBy(() -> artifactSpec(fileName, List.of("id"), 1, HASH_A))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("single relative path segment");
+        }
+        assertThatThrownBy(() -> artifactSpec(" ", List.of("id"), 1, HASH_A))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("fileName");
+    }
+
+    @Test
+    void artifactSpecRequiresVersionedLowerCaseIdentityHashes() {
+        assertThatThrownBy(() -> artifactSpec("masks.csv", List.of("id"), 0, HASH_A))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("identity epoch");
+        assertThatThrownBy(() -> artifactSpec("masks.csv", List.of("id"), 1, "A".repeat(64)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("lower-case SHA-256");
+        assertThatThrownBy(() -> new ExportArtifactSpec(
+                " ", "masks.csv", List.of("id"), 1, HASH_A, HASH_A, HASH_A))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("artifactName");
+        assertThatThrownBy(() -> new ExportArtifactSpec(
+                "masks", "masks.csv", List.of("id"), 1, HASH_A, null, HASH_A))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("schemaHash");
+    }
+
     private SnapshotArtifactMetadata snapshotArtifact() {
         return new SnapshotArtifactMetadata(
                 "masks", "masks.csv", List.of("id", "mask"),
@@ -67,6 +114,15 @@ class ExportSnapshotModelTest {
         return new SliceArtifactManifest(
                 name, name + ".csv", 2, new ArtifactCoverage(1, NOW, 2),
                 1, HASH_A, HASH_B, HASH_A);
+    }
+
+    private ExportArtifactSpec artifactSpec(
+            String fileName,
+            List<String> columns,
+            int identityEpoch,
+            String identityHash) {
+        return new ExportArtifactSpec(
+                "masks", fileName, columns, identityEpoch, identityHash, HASH_A, HASH_B);
     }
 
     private ExportFormat format() {
