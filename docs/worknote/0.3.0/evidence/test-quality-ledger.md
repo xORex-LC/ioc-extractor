@@ -127,7 +127,7 @@ The additional bare wait is the lifecycle-deadline scheduler worker gate.
 ## `TEST-LIFECYCLE-01` implementation evidence — 2026-09-02
 
 The reviewed behavior-based inventory was migrated to Maven naming ownership.
-After the tenth coverage-remediation checkpoint, Surefire owns 190 fast
+After the eleventh coverage-remediation checkpoint, Surefire owns 190 fast
 `*Test` suites and Failsafe owns 65 `*IT` suites. Five of the Failsafe suites
 are explicitly conditioned external shells, so the deterministic offline
 universe is `190 + (65 - 5) = 250` suites. The two source sets are disjoint and
@@ -137,9 +137,9 @@ below.
 
 | Cohort | Suites | Cases | Passed | Skipped | Failures/errors | Suite-seconds |
 |---|---:|---:|---:|---:|---:|---:|
-| Surefire fast | 190 | 943 | 943 | 0 | 0 | 57.437 |
-| Failsafe integration, including external shells | 65 | 394 | 386 | 8 | 0 | 148.800 |
-| **Full reactor union** | **255** | **1337** | **1329** | **8** | **0** | **206.237** |
+| Surefire fast | 190 | 971 | 971 | 0 | 0 | 55.469 |
+| Failsafe integration, including external shells | 65 | 394 | 386 | 8 | 0 | 147.476 |
+| **Full reactor union** | **255** | **1365** | **1357** | **8** | **0** | **202.945** |
 
 The five external shells and their eight skipped cases are unchanged: one
 managed-import load profile and four SMB suites. Their `@ExternalTest`
@@ -193,7 +193,7 @@ post-lifecycle repetition described below; fixed release floors remain separate.
 
 | Module/scope | Lines covered/total | Line | Branches covered/total | Branch | Missed branches | Release floor/state |
 |---|---:|---:|---:|---:|---:|---|
-| **Reactor aggregate** | **19647/22389** | **87.75%** | **5952/8119** | **73.31%** | **2167** | ratcheted; `75% / 80%` branch gap |
+| **Reactor aggregate** | **19706/22389** | **88.02%** | **6033/8119** | **74.31%** | **2086** | ratcheted; `75% / 80%` branch gap |
 | `platform/platform-errors` | 4/4 | 100.00% | 0/0 | N/A | 0 | ratcheted |
 | `platform/platform-diagnostics` | 481/491 | 97.96% | 56/76 | 73.68% | 20 | ratcheted |
 | `platform/platform-etl` | 165/181 | 91.16% | 16/24 | 66.67% | 8 | ratcheted |
@@ -202,7 +202,7 @@ post-lifecycle repetition described below; fixed release floors remain separate.
 | `platform/platform-observability` | 327/341 | 95.89% | 69/71 | 97.18% | 2 | ratcheted |
 | `platform/platform-diagnostics-logging` | 56/60 | 93.33% | 20/21 | 95.24% | 1 | ratcheted |
 | `core/ioc-domain` | 239/243 | 98.35% | 108/110 | 98.18% | 2 | ratcheted; fixed `85% / 90%` floors reached |
-| `core/ioc-application` | 5048/5412 | 93.27% | 1970/2292 | 85.95% | 322 | ratcheted; fixed `85%` line floor reached, `90%` branch floor pending |
+| `core/ioc-application` | 5107/5412 | 94.36% | 2051/2292 | 89.49% | 241 | ratcheted; actual coverage reaches fixed `85% / 90%` floors |
 | `core/ioc-application-tck` | — | N/A | — | N/A | — | outside production universe |
 | `adapters/adapter-regex-re2j` | 8/18 | 44.44% | 2/4 | 50.00% | 2 | ratcheted; supported-path gap |
 | `adapters/adapter-psl` | 15/17 | 88.24% | 11/12 | 91.67% | 1 | ratcheted |
@@ -517,6 +517,37 @@ aggregate `19647/22389 + 5952/8119`, application
 `5048/5412 + 1970/2292`; instruction minima снижены до `12617` и `2035`
 соответственно. До aggregate `80%` не хватает `544` covered branches, до
 application `90%` — `93`.
+
+### `TEST-COVERAGE-02` remediation checkpoint 11 — application evidence contracts
+
+Одиннадцатый remediation slice закрывает fail-closed контракты, которыми
+application layer переносит operator и recovery evidence между lifecycle,
+managed import, export, pipeline и sync границами. Двадцать семь новых tests
+проверяют полноту и непротиворечивость lifecycle receipts/status, import
+validation/recovery/report counters, replay identity, immutable-slice и publish
+evidence, export change/progress, schema fingerprints, pipeline item decisions,
+retained counts и lifecycle-aware canonical write routing. Проверки остаются на
+публичных конструкторах и service boundaries; production-код ради покрытия не
+изменялся.
+
+Свежий полный `make verify` после Maven `javac` rebuild прошёл 25/25 за `04:23`.
+Lifecycle union остался `190 fast + 65 integration`; выполнено `1365` cases
+(`1357` passed, `8` provisioned external skips). Фактический aggregate равен
+`19712/22389` lines и `6047/8119` branches, application group — `5116/5412`
+lines и `2063/2292` branches. Таким образом application впервые фактически
+достиг обоих release floors: `94.53%` lines и `90.01%` branches.
+
+Ratchet принимает точную повторяемую application дельту `+59` lines и `+81`
+branches поверх прежних независимых minima: aggregate `19706/22389 +
+6033/8119`, application `5107/5412 + 2051/2292`. Улучшение missed instructions
+оставлено непринятым, чтобы не связывать независимый minimum с вариативностью
+downstream execution. Первый полный прогон после test additions также обнаружил
+загрязнённые IDE bytecode-имена SpotBugs и одноветочное отклонение существующего
+SMB coverage ratchet (`308/510` вместо `309/510`). Baseline и threshold не
+менялись: `make clean` восстановил Maven `javac` bytecode, а последующий полный
+прогон подтвердил `116 accepted / 0 visible` SpotBugs и повторяемые `309/510`
+SMB branches. До aggregate `80%` по фактическому отчёту остаётся `449` covered
+branches; fixed-floor gate остаётся отдельным финальным slice.
 
 ## Historical Wave 0 baseline discovery inventory
 

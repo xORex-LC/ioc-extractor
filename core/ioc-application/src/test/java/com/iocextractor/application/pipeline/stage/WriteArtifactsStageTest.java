@@ -161,6 +161,108 @@ class WriteArtifactsStageTest {
         });
     }
 
+    @Test
+    void rejectsLifecycleContextThatCannotCoverEveryPreparedArtifact() {
+        var stage = new WriteArtifactsStage(
+                new RecordingRepository(),
+                ignored -> new LifecycleWriteResult(
+                        new ObservationId("observation-1"), "masks",
+                        EffectiveTime.at(StageTestSupport.CLOCK.instant()),
+                        0, 0, 0, 0, new ProjectionGeneration(1), false),
+                (artifact, row) -> Optional.of(new ArtifactRowKey("row-key")),
+                ignored -> ArtifactProjectionResult.clean(0),
+                StageTestSupport.DIAGNOSTICS);
+        var input = StageTestSupport.envelope(
+                        new PreparedArtifacts(1, 1, List.of(plan("masks"))), false)
+                .withMetaAttribute(PipelineMetaAttributes.LIFECYCLE_WRITE_CONTEXT,
+                        lifecycleContext(2));
+
+        assertThatThrownBy(() -> stage.process(input))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Lifecycle receipt artifact count does not match prepared plans");
+    }
+
+    @Test
+    void rejectsUnexpectedOrPartiallyConfiguredLifecycleWriteContext() {
+        var prepared = new PreparedArtifacts(1, 1, List.of(plan("masks")));
+        var legacyStage = new WriteArtifactsStage(
+                new RecordingRepository(), ignored -> ArtifactProjectionResult.clean(0),
+                StageTestSupport.DIAGNOSTICS);
+
+        assertThatThrownBy(() -> legacyStage.process(StageTestSupport.envelope(prepared, false)
+                        .withMetaAttribute(PipelineMetaAttributes.LIFECYCLE_WRITE_CONTEXT, "invalid")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Lifecycle write context has an unexpected type");
+        assertThatThrownBy(() -> legacyStage.process(StageTestSupport.envelope(prepared, false)
+                        .withMetaAttribute(PipelineMetaAttributes.LIFECYCLE_WRITE_CONTEXT,
+                                lifecycleContext(1))))
+                .isInstanceOf(DiagnosticException.class)
+                .hasCauseInstanceOf(IllegalStateException.class)
+                .satisfies(failure -> assertThat(((DiagnosticException) failure).diagnostic().context())
+                        .containsEntry("sink", "canonical")
+                        .containsEntry("reason", "Lifecycle-aware canonical writer is not configured"));
+    }
+
+    @Test
+    void rejectsLifecycleRowsWithoutCanonicalIdentity() {
+        var stage = new WriteArtifactsStage(
+                new RecordingRepository(),
+                ignored -> new LifecycleWriteResult(
+                        new ObservationId("observation-1"), "masks",
+                        EffectiveTime.at(StageTestSupport.CLOCK.instant()),
+                        0, 0, 0, 0, new ProjectionGeneration(1), false),
+                (artifact, row) -> Optional.empty(),
+                ignored -> ArtifactProjectionResult.clean(0),
+                StageTestSupport.DIAGNOSTICS);
+        var input = StageTestSupport.envelope(
+                        new PreparedArtifacts(1, 1, List.of(plan("masks"))), false)
+                .withMetaAttribute(PipelineMetaAttributes.LIFECYCLE_WRITE_CONTEXT,
+                        lifecycleContext(1));
+
+        assertThatThrownBy(() -> stage.process(input))
+                .isInstanceOf(DiagnosticException.class)
+                .hasCauseInstanceOf(IllegalArgumentException.class)
+                .satisfies(failure -> assertThat(((DiagnosticException) failure).diagnostic().context())
+                        .containsEntry("sink", "canonical")
+                        .containsEntry("artifact", "masks")
+                        .containsEntry("reason", "Prepared row has no canonical identity: masks"));
+    }
+
+    @Test
+    void canonicalFailureUsesExceptionTypeWhenMessageIsUnavailable() {
+        CanonicalArtifactRepository failing = new CanonicalArtifactRepository() {
+            @Override
+            public CanonicalArtifact load(String artifactName) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public CanonicalWriteResult write(String artifactName, CanonicalArtifact artifact) {
+                throw new IllegalStateException();
+            }
+        };
+        var stage = new WriteArtifactsStage(
+                failing, ignored -> ArtifactProjectionResult.clean(0), StageTestSupport.DIAGNOSTICS);
+
+        assertThatThrownBy(() -> stage.process(StageTestSupport.envelope(
+                        new PreparedArtifacts(1, 1, List.of(plan("masks"))), false)))
+                .isInstanceOf(DiagnosticException.class)
+                .satisfies(failure -> assertThat(((DiagnosticException) failure).diagnostic().context())
+                        .containsEntry("sink", "canonical")
+                        .containsEntry("reason", "IllegalStateException"));
+    }
+
+    private LifecycleWriteContext lifecycleContext(int expectedArtifacts) {
+        return new LifecycleWriteContext(
+                new ObservationId("observation-1"),
+                "source-key",
+                new ConfirmationReceiptContext(
+                        new ConfirmationReceiptId("receipt-1"),
+                        "processing-v1",
+                        expectedArtifacts,
+                        Duration.ofDays(30)));
+    }
+
     private ArtifactWritePlan plan(String name) {
         return plan(name, new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 10));
     }

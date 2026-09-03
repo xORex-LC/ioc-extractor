@@ -8,6 +8,7 @@ import static com.iocextractor.application.export.ExportFixtures.CONTENT;
 import static com.iocextractor.application.export.ExportFixtures.NOW;
 import static com.iocextractor.application.export.ExportFixtures.OLD_CONTENT;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 class ExportChangeDetectorTest {
 
@@ -45,6 +46,47 @@ class ExportChangeDetectorTest {
                     assertThat(progress.lastRevision()).isEqualTo(4);
                     assertThat(progress.lastSha256()).isEqualTo(CONTENT);
                     assertThat(progress.lastSliceId()).isEqualTo("slice-old");
+                });
+    }
+
+    @Test
+    void preGateRejectsMisalignedArtifactEvidenceEvenWhenCountsMatch() {
+        ArtifactRevision wrongRevision = new ArtifactRevision("hashes", 4, NOW);
+        ExportProgress wrongProgress = new ExportProgress(
+                "reputation", "hashes", 4, CONTENT, "slice-old", plan.planHash(), NOW);
+
+        assertThat(detector.requiresMaterialization(
+                plan, List.of(wrongRevision), List.of(ExportFixtures.progress(
+                        4, CONTENT, "slice-old", plan.planHash())))).isTrue();
+        assertThat(detector.requiresMaterialization(
+                plan, List.of(new ArtifactRevision("masks", 4, NOW)), List.of(wrongProgress))).isTrue();
+    }
+
+    @Test
+    void redundantDecisionRequiresCompleteProgressForEveryManifestArtifact() {
+        SliceManifest unchanged = ExportFixtures.manifest("run-unchanged", 4, CONTENT);
+
+        assertThat(detector.isRedundant(unchanged, List.of())).isFalse();
+        assertThat(detector.isRedundant(unchanged, List.of(new ExportProgress(
+                "reputation", "hashes", 4, CONTENT, "slice-old", plan.planHash(), NOW)))).isFalse();
+        assertThatIllegalArgumentException().isThrownBy(() -> detector.skippedProgress(
+                        unchanged, List.of(ExportFixtures.progress(
+                                5, CONTENT, "slice-old", plan.planHash())), NOW))
+                .withMessage("Skipped progress requires unchanged plan, revisions, and content");
+    }
+
+    @Test
+    void completedProgressUsesTheNewSliceAsDurableCoverageEvidence() {
+        SliceManifest completed = ExportFixtures.manifest("run-new", 9, CONTENT);
+
+        assertThat(detector.completedProgress(completed, NOW))
+                .singleElement()
+                .satisfies(progress -> {
+                    assertThat(progress.artifactName()).isEqualTo("masks");
+                    assertThat(progress.lastRevision()).isEqualTo(9);
+                    assertThat(progress.lastSha256()).isEqualTo(CONTENT);
+                    assertThat(progress.lastSliceId()).isEqualTo("run-new");
+                    assertThat(progress.updatedAt()).isEqualTo(NOW);
                 });
     }
 }

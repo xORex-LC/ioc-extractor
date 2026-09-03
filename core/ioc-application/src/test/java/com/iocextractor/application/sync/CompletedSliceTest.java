@@ -80,4 +80,34 @@ class CompletedSliceTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("sliceName");
     }
+
+    @Test
+    void requiresCompleteVerifiedLocalEvidence() {
+        assertThatThrownBy(() -> new CompletedSlice(
+                " ", "reputation", "slice-one", HASH, Path.of("slice-one"), MANIFEST))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("sliceId");
+        assertThatThrownBy(() -> new CompletedSlice(
+                "slice-one", "reputation", "slice-one", "A".repeat(64),
+                Path.of("slice-one"), MANIFEST))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("lower-case SHA-256");
+        assertThatThrownBy(() -> new CompletedSlice(
+                "slice-one", "reputation", "slice-one", HASH, null, MANIFEST))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("directory");
+        assertThatThrownBy(() -> new CompletedSlice(
+                "slice-one", "reputation", "slice-one", HASH, Path.of("slice-one"), null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("manifest");
+
+        SliceManifest otherProfile = new SliceManifest(
+                1, "slice-one", "slice-one", "other", MANIFEST.createdAt(),
+                MANIFEST.outputMode(), MANIFEST.planHash(), MANIFEST.format(), MANIFEST.artifacts());
+        assertThatThrownBy(() -> new CompletedSlice(
+                "slice-one", "reputation", "slice-one", HASH,
+                Path.of("slice-one"), otherProfile))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("profile");
+    }
 }

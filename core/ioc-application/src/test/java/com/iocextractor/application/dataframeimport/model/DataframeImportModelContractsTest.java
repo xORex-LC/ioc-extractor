@@ -2,7 +2,11 @@ package com.iocextractor.application.dataframeimport.model;
 
 import com.iocextractor.application.artifact.CanonicalKeyMaterial;
 import com.iocextractor.application.maintenance.RetentionAction;
+import com.iocextractor.application.port.in.dataframeimport.RecoverDataframeImportsResult;
+import com.iocextractor.application.port.in.dataframeimport.ReplayDataframeImportCommand;
+import com.iocextractor.application.port.in.dataframeimport.ValidateDataframeImportResult;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportResult;
+import com.iocextractor.application.port.out.dataframeimport.PublishImportReportCommand;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 
@@ -44,6 +48,32 @@ class DataframeImportModelContractsTest {
                 () -> limits(1, 1, 1, 1, 10, 20, 20, 5, 1, inputLimits()),
                 () -> limits(1, 1, 1, 1, 10, 20, 15, 5, 0, inputLimits()),
                 () -> limits(1, 1, 1, 1, 10, 20, 15, 5, 1, null)));
+    }
+
+    @Test
+    void workspaceCapacityRejectsIncompleteOrImpossibleUsageEvidence() {
+        assertThat(new ImportWorkspaceCapacity(
+                0, 1, ImportWorkspaceCapacity.State.ACCEPTING).state())
+                .isEqualTo(ImportWorkspaceCapacity.State.ACCEPTING);
+
+        assertInvalid(List.of(
+                () -> new ImportWorkspaceCapacity(-1, 1, ImportWorkspaceCapacity.State.ACCEPTING),
+                () -> new ImportWorkspaceCapacity(0, 0, ImportWorkspaceCapacity.State.PAUSED),
+                () -> new ImportWorkspaceCapacity(0, 1, null)));
+    }
+
+    @Test
+    void rowIssuesRequireSafeStableEvidence() {
+        assertThat(new ImportRowIssue(1, null, "IMPORT.ROW_INVALID"))
+                .extracting(ImportRowIssue::sourceRowNumber, ImportRowIssue::code)
+                .containsExactly(1L, "IMPORT.ROW_INVALID");
+
+        assertInvalid(List.of(
+                () -> new ImportRowIssue(0, "ip_list", "IMPORT.ROW_INVALID"),
+                () -> new ImportRowIssue(1, "ip_list", " ")));
+        assertThatNullPointerException()
+                .isThrownBy(() -> new ImportRowIssue(1, "ip_list", null))
+                .withMessage("code");
     }
 
     @Test
@@ -344,6 +374,57 @@ class DataframeImportModelContractsTest {
                 () -> ImportMergePolicy.parse("unknown")));
     }
 
+    @Test
+    void validationAndRecoveryResultsRejectImpossibleOperatorCounters() {
+        ValidateDataframeImportResult validation = new ValidateDataframeImportResult(
+                true, Optional.of(new ImportContractFingerprint(DIGEST)), 3, 2, 1,
+                List.of("IMPORT.ROW_REJECTED"));
+        assertThat(validation.diagnosticCodes()).containsExactly("IMPORT.ROW_REJECTED");
+
+        assertInvalid(List.of(
+                () -> new ValidateDataframeImportResult(
+                        false, Optional.empty(), -1, 0, 0, List.of()),
+                () -> new ValidateDataframeImportResult(
+                        false, Optional.empty(), 0, -1, 0, List.of()),
+                () -> new ValidateDataframeImportResult(
+                        false, Optional.empty(), 0, 0, -1, List.of()),
+                () -> new RecoverDataframeImportsResult(-1, 0, 0),
+                () -> new RecoverDataframeImportsResult(0, -1, 0),
+                () -> new RecoverDataframeImportsResult(0, 0, -1),
+                () -> new RecoverDataframeImportsResult(1, 2, 0)));
+        assertThatNullPointerException().isThrownBy(() -> new ValidateDataframeImportResult(
+                false, null, 0, 0, 0, List.of())).withMessage("contractFingerprint");
+        assertThatNullPointerException().isThrownBy(() -> new ValidateDataframeImportResult(
+                false, Optional.empty(), 0, 0, 0, null)).withMessage("diagnosticCodes");
+    }
+
+    @Test
+    void importReportRequestSnapshotsOnlySafeCompleteEvidence() {
+        PublishImportReportCommand command = reportCommand(1, 1, 1, List.of("IMPORT.WARNING"));
+        assertThat(command.affectedArtifacts()).containsExactly("ip_list");
+        assertThat(command.deliveryCodes()).containsExactly("IMPORT.WARNING");
+
+        assertInvalid(List.of(
+                () -> reportCommand(-1, 0, 0, List.of()),
+                () -> reportCommand(0, -1, 0, List.of()),
+                () -> reportCommand(0, 0, -1, List.of()),
+                () -> reportCommand(0, 0, 0, List.of(" "))));
+        assertThatNullPointerException().isThrownBy(() -> reportCommand(
+                0, 0, 0, java.util.Arrays.asList("IMPORT.WARNING", null)));
+    }
+
+    @Test
+    void replayCommandRequiresDistinctTerminalAndNewDeliveryIdentities() {
+        ImportDeliveryId terminal = new ImportDeliveryId("terminal-1");
+        ImportDeliveryId replay = new ImportDeliveryId("replay-1");
+        assertThat(new ReplayDataframeImportCommand(terminal, replay).newDeliveryId())
+                .isEqualTo(replay);
+
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> new ReplayDataframeImportCommand(terminal, terminal))
+                .withMessage("Replay must create a new import delivery identity");
+    }
+
     private ImportWorkspaceLimits limits(
             long maximumSourceRows,
             int maximumBranchesPerRow,
@@ -359,6 +440,17 @@ class DataframeImportModelContractsTest {
                 maximumSourceRows, maximumBranchesPerRow, maximumCellsPerBranch,
                 maximumRowErrors, maximumStageBytes, maximumWorkspaceBytes,
                 pauseAtBytes, resumeAtBytes, transactionBatchRows, inputLimits);
+    }
+
+    private PublishImportReportCommand reportCommand(
+            long accepted,
+            long rejected,
+            long mutations,
+            List<String> codes) {
+        return new PublishImportReportCommand(
+                new ImportDeliveryId("delivery-1"), new ImportSourceId("source-1"),
+                snapshot().reference(), Optional.of(contract()), ImportTerminalOutcome.SUCCEEDED,
+                accepted, rejected, mutations, Set.of("ip_list"), codes, List.of());
     }
 
     private DelimitedInputLimits inputLimits() {

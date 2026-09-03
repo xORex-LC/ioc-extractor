@@ -2,6 +2,9 @@ package com.iocextractor.application.artifact.lifecycle;
 
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.ArtifactRowKey;
+import com.iocextractor.application.artifact.CanonicalArtifactsChanged;
+import com.iocextractor.application.artifact.PreparedArtifactRow;
+import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleHistoryStore;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -371,5 +374,139 @@ class LifecycleContractModelsTest {
                 0, -1, List.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("inconsistent");
+    }
+
+    @Test
+    void canonicalChangeEventRequiresACompleteNonEmptyArtifactSet() {
+        CanonicalArtifactsChanged event = CanonicalArtifactsChanged.from(
+                "operation-1", List.of("masks", "hashes"), NOW.value());
+
+        assertThat(event.metadata().eventType()).isEqualTo(CanonicalArtifactsChanged.EVENT_TYPE);
+        assertThat(event.metadata().correlationId()).isEqualTo("operation-1");
+        assertThat(event.affectedArtifacts()).containsExactly("masks", "hashes");
+        assertThatThrownBy(() -> CanonicalArtifactsChanged.from(" ", List.of("masks"), NOW.value()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("operationId");
+        assertThatThrownBy(() -> CanonicalArtifactsChanged.from("operation", List.of(), NOW.value()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not be empty");
+        assertThatThrownBy(() -> CanonicalArtifactsChanged.from(
+                "operation", java.util.Arrays.asList("masks", null), NOW.value()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("artifactName");
+        assertThatThrownBy(() -> CanonicalArtifactsChanged.from(
+                "operation", List.of("masks"), null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("occurredAt");
+    }
+
+    @Test
+    void confirmationAndReceiptSnapshotsRejectAmbiguousOrIncompleteRows() {
+        ConfirmationReceiptContext context = new ConfirmationReceiptContext(
+                new ConfirmationReceiptId("receipt-1"), "policy-v1", 1, Duration.ofDays(1));
+        PreparedArtifactRow prepared = new PreparedArtifactRow(
+                new ArtifactRow(Map.of("mask", "example.test")), Optional.empty());
+        CanonicalRecordConfirmation record = new CanonicalRecordConfirmation(
+                new ArtifactRowKey("row-1"), prepared);
+
+        assertThat(new CanonicalArtifactConfirmation(
+                new ObservationId("observation-1"), "source-1", context,
+                "masks", List.of("mask"), List.of(record)).records()).containsExactly(record);
+        assertThatThrownBy(() -> new CanonicalArtifactConfirmation(
+                new ObservationId("observation-1"), "source-1", context,
+                "masks", List.of(), List.of(record)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("header");
+        assertThatThrownBy(() -> new CanonicalArtifactConfirmation(
+                new ObservationId("observation-1"), "source-1", context,
+                "masks", List.of("mask"), List.of(record, record)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("duplicate row key");
+
+        ConfirmationReceiptArtifact artifact = new ConfirmationReceiptArtifact(
+                "masks", List.of("mask"), List.of(record));
+        assertThat(new ConfirmationReceiptSnapshot(
+                new ConfirmationReceiptId("receipt-1"), "source-1", "policy-v1",
+                List.of(artifact)).artifacts()).containsExactly(artifact);
+        assertThatThrownBy(() -> new ConfirmationReceiptArtifact(" ", List.of("mask"), List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("identity and header");
+        assertThatThrownBy(() -> new ConfirmationReceiptArtifact("masks", List.of(), List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("identity and header");
+        assertThatThrownBy(() -> new ConfirmationReceiptSnapshot(
+                new ConfirmationReceiptId("receipt-1"), " ", "policy-v1", List.of(artifact)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not be blank or empty");
+        assertThatThrownBy(() -> new ConfirmationReceiptSnapshot(
+                new ConfirmationReceiptId("receipt-1"), "source-1", " ", List.of(artifact)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not be blank or empty");
+        assertThatThrownBy(() -> new ConfirmationReceiptSnapshot(
+                new ConfirmationReceiptId("receipt-1"), "source-1", "policy-v1", List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not be blank or empty");
+    }
+
+    @Test
+    void lifecycleStatusAggregatesCountsAndRejectsNegativeOperatorEvidence() {
+        LifecycleClockSnapshot clock = new LifecycleClockSnapshot(
+                LifecycleClockStatus.SAFE, NOW.value(), NOW, Optional.of(NOW),
+                Duration.ZERO, Duration.ZERO);
+        LifecycleStatusSnapshot status = new LifecycleStatusSnapshot(
+                LifecycleControlState.disabledCompatible(), clock,
+                List.of(
+                        new LifecycleArtifactStatistics("masks", 3, 1, 2),
+                        new LifecycleArtifactStatistics("hashes", 4, 2, 5)),
+                Optional.empty(), Optional.empty(), 1,
+                LifecycleReconcileCycleState.COMPLETED,
+                Optional.of(NOW.value()), Optional.of(NOW.value()), 3,
+                Optional.empty(), Duration.ZERO);
+        assertThat(status.dueRecords()).isEqualTo(3);
+        assertThat(status.historyRecords()).isEqualTo(7);
+
+        for (long[] counters : List.of(
+                new long[] {-1, 0, 0},
+                new long[] {0, -1, 0},
+                new long[] {0, 0, -1})) {
+            assertThatThrownBy(() -> new LifecycleStatusSnapshot(
+                    LifecycleControlState.disabledCompatible(), clock, List.of(),
+                    Optional.empty(), Optional.empty(), counters[0],
+                    LifecycleReconcileCycleState.NEVER_RUN,
+                    Optional.empty(), Optional.empty(), counters[1],
+                    Optional.empty(), Duration.ofSeconds(counters[2])))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("counters");
+        }
+    }
+
+    @Test
+    void clockAndHistoryPoliciesRequireBoundedPositiveValues() {
+        assertThatThrownBy(() -> new LifecycleClockPolicy(Duration.ZERO, Duration.ofSeconds(1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maxBackwardSkew");
+        assertThatThrownBy(() -> new LifecycleClockPolicy(
+                Duration.ofSeconds(1), Duration.ofSeconds(-1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maxClampDuration");
+        assertThatThrownBy(() -> new LifecycleClockSnapshot(
+                LifecycleClockStatus.CLAMPED, NOW.value(), NOW, Optional.of(NOW),
+                Duration.ofSeconds(-1), Duration.ZERO))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("backwardSkew");
+        assertThatThrownBy(() -> new LifecycleClockSnapshot(
+                LifecycleClockStatus.CLAMPED, NOW.value(), NOW, Optional.of(NOW),
+                Duration.ZERO, Duration.ofSeconds(-1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("clampAge");
+
+        assertThat(new LifecycleHistoryStore.HistoryPurgeResult(
+                "masks", 2, true).purged()).isEqualTo(2);
+        assertThatThrownBy(() -> new LifecycleHistoryStore.HistoryPurgeResult(" ", 0, false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("artifactName");
+        assertThatThrownBy(() -> new LifecycleHistoryStore.HistoryPurgeResult("masks", -1, false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("purged");
     }
 }

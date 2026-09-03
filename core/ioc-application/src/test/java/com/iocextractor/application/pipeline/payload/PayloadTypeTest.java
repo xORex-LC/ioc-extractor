@@ -59,6 +59,23 @@ class PayloadTypeTest {
     }
 
     @Test
+    void retained_indicators_reject_impossible_counts() {
+        assertThatThrownBy(() -> new RetainedIndicators(-1, List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("extracted must be non-negative");
+        assertThatThrownBy(() -> new RetainedIndicators(
+                        0, List.of(new ClassifiedIndicator(indicator("example.com"),
+                                new com.iocextractor.domain.classify.ClassificationDecision(
+                                        new com.iocextractor.domain.feature.IndicatorFeatures(
+                                                "example.com", "example.com", false, false, false,
+                                                com.iocextractor.domain.feature.HostKind.REGISTRABLE),
+                                        0, List.of(),
+                                        new com.iocextractor.domain.model.MaskMatch("u:hAS", "h:dAS"))))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("retained size must not exceed extracted count");
+    }
+
+    @Test
     void deduplicated_indicators_copy_retained_list() {
         var indicator = indicator("example.com");
         var indicators = new ArrayList<>(List.of(indicator));

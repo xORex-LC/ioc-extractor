@@ -19,6 +19,8 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class DataframeImportCatalogCompilerValidationTest {
 
@@ -339,6 +341,59 @@ class DataframeImportCatalogCompilerValidationTest {
                         "contract default merge policy exceeds source authority",
                         "contract artifact is outside the source authority allowlist",
                         "artifact or column merge override exceeds source authority");
+    }
+
+    @Test
+    void compilationOutcomeCannotMixCatalogAndViolations() {
+        DataframeImportCatalog catalog = compiler.compile(validDraft(), environment()).catalogOrThrow();
+        ImportContractViolation violation = new ImportContractViolation(
+                "contracts[0]", "contract is invalid");
+
+        assertThatThrownBy(() -> new DataframeImportCatalogCompilation(
+                java.util.Optional.of(catalog), List.of(violation)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("exactly when");
+        assertThatThrownBy(() -> new DataframeImportCatalogCompilation(
+                java.util.Optional.empty(), List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("exactly when");
+
+        DataframeImportCatalogCompilation failed = new DataframeImportCatalogCompilation(
+                java.util.Optional.empty(), List.of(violation));
+        assertThat(failed.valid()).isFalse();
+        assertThatThrownBy(failed::catalogOrThrow)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("contracts[0]: contract is invalid");
+    }
+
+    @Test
+    void safeContractAndParserFailuresRejectUnstableDiagnosticEvidence() {
+        ImportContractViolation violation = new ImportContractViolation(
+                "contracts[0]", "contract is invalid");
+        assertThat(violation.path()).isEqualTo("contracts[0]");
+        assertThatThrownBy(() -> new ImportContractViolation(" ", "contract is invalid"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not be blank");
+        assertThatThrownBy(() -> new ImportContractViolation("contracts[0]", " "))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not be blank");
+        assertThatNullPointerException()
+                .isThrownBy(() -> new ImportContractViolation(null, "contract is invalid"))
+                .withMessage("path");
+        assertThatNullPointerException()
+                .isThrownBy(() -> new ImportContractViolation("contracts[0]", null))
+                .withMessage("message");
+
+        var defaulted = new DelimitedInputReadException(null, "invalid input");
+        var defaultedWithCause = new DelimitedInputReadException(
+                null, "invalid input", new IllegalStateException("decoder failed"));
+        assertThat(defaulted.reason()).isEqualTo(DelimitedInputReadException.Reason.PARSER_FAILURE);
+        assertThat(defaultedWithCause.reason()).isEqualTo(DelimitedInputReadException.Reason.PARSER_FAILURE);
+        assertThat(DelimitedInputReadException.Reason.fromReportCode(
+                DelimitedInputReadException.Reason.HEADER_MISMATCH.reportCode()))
+                .contains(DelimitedInputReadException.Reason.HEADER_MISMATCH);
+        assertThat(DelimitedInputReadException.Reason.fromReportCode("IMPORT.UNKNOWN"))
+                .isEmpty();
     }
 
     private static DataframeImportCatalogDraft validDraft() {

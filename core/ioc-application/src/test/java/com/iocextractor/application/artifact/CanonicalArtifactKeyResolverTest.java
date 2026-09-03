@@ -152,6 +152,21 @@ class CanonicalArtifactKeyResolverTest {
     }
 
     @Test
+    void match_request_requires_a_stable_correlation_identity() {
+        String hash = ArtifactIdentityDefinition.sha256("value");
+        CanonicalKeyMaterial key = new CanonicalKeyMaterial("row-v1", hash, "[\"value\"]");
+        assertThat(new CanonicalMatchRequest("request-1", List.of(key)).keys())
+                .containsExactly(key);
+
+        assertThatThrownBy(() -> new CanonicalMatchRequest(null, List.of(key)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("request id");
+        assertThatThrownBy(() -> new CanonicalMatchRequest(" ", List.of(key)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("request id");
+    }
+
+    @Test
     void match_plan_requires_consistent_cardinality_and_exact_candidate_access() {
         CanonicalMatchCandidate one = new CanonicalMatchCandidate(
                 10, 100, new ArtifactRowKey("row-a"));

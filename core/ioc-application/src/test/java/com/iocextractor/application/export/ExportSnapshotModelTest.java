@@ -1,5 +1,6 @@
 package com.iocextractor.application.export;
 
+import com.iocextractor.application.port.in.export.SliceRetentionResult;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -216,6 +217,24 @@ class ExportSnapshotModelTest {
                 1, HASH_A, HASH_A, "invalid"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("sha256");
+    }
+
+    @Test
+    void retention_result_requires_bounded_non_negative_totals() {
+        assertThat(new SliceRetentionResult(3, 1, 1, java.util.Map.of("default", 1))
+                .deleted()).isEqualTo(1);
+        for (int[] counters : List.of(
+                new int[] {-1, 0, 0},
+                new int[] {0, -1, 0},
+                new int[] {0, 0, -1},
+                new int[] {1, 1, 1})) {
+            assertThatThrownBy(() -> new SliceRetentionResult(
+                    counters[0], counters[1], counters[2], java.util.Map.of()))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("retention counters");
+        }
+        assertThatThrownBy(() -> new SliceRetentionResult(0, 0, 0, null))
+                .isInstanceOf(NullPointerException.class);
     }
 
     private static SnapshotArtifactMetadata snapshotArtifact() {

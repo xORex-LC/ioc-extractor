@@ -1,6 +1,7 @@
 package com.iocextractor.application.sync;
 
 import com.iocextractor.application.port.in.sync.ArtifactPublishCommand;
+import com.iocextractor.application.port.in.sync.ArtifactPublishExecutionResult;
 import com.iocextractor.application.port.in.sync.ArtifactPublishResult;
 import com.iocextractor.application.port.in.sync.PublishCompletedSliceCommand;
 import com.iocextractor.application.port.in.sync.RemoteFetchCommand;
@@ -303,6 +304,26 @@ class SyncValueObjectsTest {
                     counters[0], counters[1], counters[2], counters[3]))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("publish counters");
+        }
+    }
+
+    @Test
+    void publishExecutionResultPreservesActivityAndRecoveryAccounting() {
+        assertThat(ArtifactPublishExecutionResult.empty().hasActivity()).isFalse();
+        assertThat(new ArtifactPublishExecutionResult(
+                3, 2, 1, 1).hasActivity()).isTrue();
+
+        for (int[] counters : List.of(
+                new int[] {-1, 0, 0, 0},
+                new int[] {0, -1, 0, 0},
+                new int[] {0, 0, -1, 0},
+                new int[] {0, 0, 0, -1},
+                new int[] {1, 1, 2, 0},
+                new int[] {1, 1, 0, 1})) {
+            assertThatThrownBy(() -> new ArtifactPublishExecutionResult(
+                    counters[0], counters[1], counters[2], counters[3]))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("counters");
         }
     }
 
