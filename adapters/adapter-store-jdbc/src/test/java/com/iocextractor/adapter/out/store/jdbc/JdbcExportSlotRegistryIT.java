@@ -16,12 +16,14 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @IntegrationTest
@@ -122,6 +124,25 @@ class JdbcExportSlotRegistryIT {
     }
 
     @Test
+    void accepts_an_exact_survivor_and_rejects_an_unassigned_survivor() throws Exception {
+        addActive(1, 101);
+        reconcileOrdinary();
+
+        assertThat(preferred(new PreferredExportSlotRequest(
+                101, 1, false, ImportExistingSlotPolicy.REJECT_MISMATCH)))
+                .containsExactly(new PreferredExportSlotResolution(
+                        101, 1, 1, PreferredExportSlotResolution.Outcome.SURVIVOR_MATCH));
+
+        addActive(2, 102);
+
+        assertThatThrownBy(() -> preferred(new PreferredExportSlotRequest(
+                102, 2, false, ImportExistingSlotPolicy.PRESERVE_EXISTING)))
+                .isInstanceOf(SQLException.class)
+                .hasMessage("Matched survivor has no stable export-slot assignment for reputation/masks");
+        assertThat(assignments()).isEqualTo("101:1");
+    }
+
+    @Test
     void rejects_the_complete_duplicate_request_group_before_registry_mutation() throws Exception {
         addActive(1, 101);
         addActive(2, 102);
@@ -140,6 +161,105 @@ class JdbcExportSlotRegistryIT {
         assertThat(queryLong("SELECT COUNT(*) FROM export_slot_state")).isZero();
         assertThat(queryLong("SELECT COUNT(*) FROM export_slot_assignment")).isZero();
         assertThat(queryLong("SELECT COUNT(*) FROM export_slot_free_range")).isZero();
+    }
+
+    @Test
+    void rejects_duplicate_lifecycle_and_inactive_preferred_requests_before_commit() throws Exception {
+        addActive(1, 101);
+
+        assertThatThrownBy(() -> preferred(
+                request(101, 5, true),
+                request(101, 6, true)))
+                .isInstanceOf(PreferredExportSlotConflictException.class)
+                .satisfies(failure -> {
+                    PreferredExportSlotConflictException conflict =
+                            (PreferredExportSlotConflictException) failure;
+                    assertThat(conflict.reason())
+                            .isEqualTo(PreferredExportSlotConflictException.Reason.DUPLICATE_REQUEST);
+                    assertThat(conflict.lifecycleIds()).containsExactly(101L);
+                });
+
+        assertThatThrownBy(() -> preferred(request(999, 5, true)))
+                .isInstanceOf(SQLException.class)
+                .hasMessage("Preferred export slot requires an active lifecycle in masks");
+        assertThat(queryLong("SELECT COUNT(*) FROM export_slot_state")).isZero();
+        assertThat(queryLong("SELECT COUNT(*) FROM export_slot_assignment")).isZero();
+    }
+
+    @Test
+    void allocates_exact_high_water_and_occupied_fallback_without_free_ranges() throws Exception {
+        addActive(1, 101);
+        reconcileOrdinary();
+        addActive(2, 102);
+
+        assertThat(preferred(request(102, 2, true)))
+                .containsExactly(new PreferredExportSlotResolution(
+                        102, 2, 2, PreferredExportSlotResolution.Outcome.EXACT));
+
+        addActive(3, 103);
+
+        assertThat(preferred(request(103, 1, true)))
+                .containsExactly(new PreferredExportSlotResolution(
+                        103, 1, 3, PreferredExportSlotResolution.Outcome.OCCUPIED_FALLBACK));
+        assertThat(assignments()).isEqualTo("101:1,102:2,103:3");
+        assertThat(queryLong("SELECT next_slot FROM export_slot_state")).isEqualTo(4);
+        assertThat(queryLong("SELECT COUNT(*) FROM export_slot_free_range")).isZero();
+    }
+
+    @Test
+    void rejects_untracked_low_slot_and_exhausted_high_water_without_assigning_lifecycle() throws Exception {
+        addActive(1, 101);
+        reconcileOrdinary();
+        addActive(2, 102);
+        update("UPDATE export_slot_state SET next_slot = 10");
+
+        assertThatThrownBy(() -> preferred(request(102, 2, true)))
+                .isInstanceOf(SQLException.class)
+                .hasMessage("Untracked free export slot for reputation/masks");
+        assertThat(assignments()).isEqualTo("101:1");
+
+        update("UPDATE export_slot_state SET next_slot = " + Long.MAX_VALUE);
+
+        assertThatThrownBy(() -> preferred(request(102, 1, true)))
+                .isInstanceOf(SQLException.class)
+                .hasMessage("Export-slot space is exhausted for reputation/masks");
+        assertThat(assignments()).isEqualTo("101:1");
+    }
+
+    @Test
+    void requires_initialized_and_complete_current_snapshot() throws Exception {
+        try (Connection connection = dataSource.getConnection()) {
+            assertThatThrownBy(() -> registry.requireCurrentSnapshot(
+                    connection, PROFILE, ARTIFACT, NOW))
+                    .isInstanceOf(JdbcExportSlotRegistry.SnapshotChangedException.class)
+                    .hasMessage("Export-slot state is missing for reputation/masks");
+        }
+
+        addActive(1, 101);
+        reconcileOrdinary();
+        try (Connection connection = dataSource.getConnection()) {
+            assertThatNoException().isThrownBy(() -> registry.requireCurrentSnapshot(
+                    connection, PROFILE, ARTIFACT, NOW));
+        }
+
+        addActive(2, 102);
+        try (Connection connection = dataSource.getConnection()) {
+            assertThatThrownBy(() -> registry.requireCurrentSnapshot(
+                    connection, PROFILE, ARTIFACT, NOW))
+                    .isInstanceOf(SQLException.class)
+                    .hasMessage("Export-slot assignments are incomplete for reputation/masks");
+        }
+    }
+
+    @Test
+    void rejects_seed_that_exhausts_the_assignable_slot_space() throws Exception {
+        addActive(Long.MAX_VALUE, 101);
+
+        assertThatThrownBy(this::reconcileOrdinary)
+                .isInstanceOf(SQLException.class)
+                .hasMessage("Export-slot space is exhausted for reputation/masks");
+        assertThat(queryLong("SELECT COUNT(*) FROM export_slot_state")).isZero();
+        assertThat(queryLong("SELECT COUNT(*) FROM export_slot_assignment")).isZero();
     }
 
     @Test
@@ -305,6 +425,13 @@ class JdbcExportSlotRegistryIT {
              var resultSet = statement.executeQuery(sql)) {
             assertThat(resultSet.next()).isTrue();
             return resultSet.getLong(1);
+        }
+    }
+
+    private void update(String sql) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.createStatement()) {
+            statement.executeUpdate(sql);
         }
     }
 
