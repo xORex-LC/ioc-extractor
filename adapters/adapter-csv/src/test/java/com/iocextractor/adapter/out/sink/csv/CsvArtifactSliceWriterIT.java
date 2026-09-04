@@ -247,6 +247,188 @@ class CsvArtifactSliceWriterIT {
         assertThat(tempDir.resolve(".staging/successful-run/_SUCCESS")).isRegularFile();
     }
 
+    @Test
+    void materializationRejectsSnapshotMetadataOutsideTheRunAndPlanIdentity() throws Exception {
+        ExportPlan plan = plan();
+        ExportRun run = started(plan);
+
+        try (CsvSliceMaterialization materialization = materialization(
+                plan, run, tempDir.resolve("identity"), new TestManifestCodec(), new RecordingFileOperations())) {
+            assertThatThrownBy(() -> materialization.begin(new SnapshotMetadata(
+                    "other-profile", plan.planHash(), NOW, snapshot(plan, 0).artifacts())))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("snapshot profile differs from export plan/run");
+            assertThatThrownBy(() -> materialization.begin(new SnapshotMetadata(
+                    plan.profile().name(), HASH_C, NOW, snapshot(plan, 0).artifacts())))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("snapshot plan hash differs from export plan/run");
+            assertThatThrownBy(() -> materialization.begin(new SnapshotMetadata(
+                    plan.profile().name(), plan.planHash(), NOW,
+                    List.of(snapshot(plan, 0).artifacts().getFirst()))))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("snapshot artifact count differs from export plan");
+        }
+    }
+
+    @Test
+    void materializationRejectsOutOfSequenceAndNullCallbacks() throws Exception {
+        ExportPlan plan = oneArtifactPlan();
+        ExportRun run = started(plan);
+        SnapshotMetadata snapshot = snapshot(plan, 0);
+
+        try (CsvSliceMaterialization materialization = materialization(
+                plan, run, tempDir.resolve("sequence"), new TestManifestCodec(), new RecordingFileOperations())) {
+            assertThatThrownBy(() -> materialization.row(null))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("row callback is out of sequence or null");
+            assertThatThrownBy(() -> materialization.begin(null))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("snapshot begin callback is duplicated or null");
+
+            materialization.begin(snapshot);
+
+            assertThatThrownBy(() -> materialization.begin(snapshot))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("snapshot begin callback is duplicated or null");
+            assertThatThrownBy(() -> materialization.beginArtifact(null))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("artifact begin callback is out of sequence");
+            assertThatThrownBy(materialization::endArtifact)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("artifact end callback is out of sequence");
+            assertThatThrownBy(materialization::end)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("snapshot end callback is out of sequence");
+
+            materialization.beginArtifact(snapshot.artifacts().getFirst());
+            assertThatThrownBy(() -> materialization.beginArtifact(snapshot.artifacts().getFirst()))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("artifact begin callback is out of sequence");
+            assertThatThrownBy(() -> materialization.row(null))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("row callback is out of sequence or null");
+            materialization.endArtifact();
+            materialization.end();
+
+            assertThat(materialization.ended()).isTrue();
+            assertThatThrownBy(() -> materialization.beginArtifact(snapshot.artifacts().getFirst()))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("artifact begin callback is out of sequence");
+            assertThatThrownBy(materialization::end)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("snapshot end callback is out of sequence");
+        }
+    }
+
+    @Test
+    void materializationRejectsEveryOrderedArtifactMetadataMismatch() throws Exception {
+        ExportPlan plan = oneArtifactPlan();
+        ExportArtifactSpec expected = plan.artifacts().getFirst();
+        List<SnapshotArtifactMetadata> mismatches = List.of(
+                artifactMetadata("other", expected.fileName(), expected.columns(),
+                        expected.identityEpoch(), expected.identityHash(), expected.schemaHash()),
+                artifactMetadata(expected.artifactName(), "other.csv", expected.columns(),
+                        expected.identityEpoch(), expected.identityHash(), expected.schemaHash()),
+                artifactMetadata(expected.artifactName(), expected.fileName(), List.of("other"),
+                        expected.identityEpoch(), expected.identityHash(), expected.schemaHash()),
+                artifactMetadata(expected.artifactName(), expected.fileName(), expected.columns(),
+                        expected.identityEpoch() + 1, expected.identityHash(), expected.schemaHash()),
+                artifactMetadata(expected.artifactName(), expected.fileName(), expected.columns(),
+                        expected.identityEpoch(), HASH_C, expected.schemaHash()),
+                artifactMetadata(expected.artifactName(), expected.fileName(), expected.columns(),
+                        expected.identityEpoch(), expected.identityHash(), HASH_C));
+
+        for (int index = 0; index < mismatches.size(); index++) {
+            SnapshotArtifactMetadata mismatch = mismatches.get(index);
+            Path staging = tempDir.resolve("metadata-" + index);
+            try (CsvSliceMaterialization materialization = materialization(
+                    plan, started(plan), staging, new TestManifestCodec(), new RecordingFileOperations())) {
+                materialization.begin(new SnapshotMetadata(
+                        plan.profile().name(), plan.planHash(), NOW, List.of(mismatch)));
+
+                assertThatThrownBy(() -> materialization.beginArtifact(mismatch))
+                        .isInstanceOf(IllegalStateException.class)
+                        .hasMessage("snapshot artifact metadata differs from ordered export plan");
+            }
+        }
+    }
+
+    @Test
+    void materializationRejectsUnsupportedCsvFormatsAndUnmappableRows() throws Exception {
+        List<ExportFormat> invalidFormats = List.of(
+                new ExportFormat("json", "UTF-8", ";", "\"", "NULL"),
+                new ExportFormat("csv", "UTF-8", ";;", "\"", "NULL"),
+                new ExportFormat("csv", "UTF-8", ";", "\"\"", "NULL"));
+        for (int index = 0; index < invalidFormats.size(); index++) {
+            ExportPlan plan = plan(invalidFormats.get(index));
+            SnapshotMetadata snapshot = snapshot(plan, 0);
+            try (CsvSliceMaterialization materialization = materialization(
+                    plan, started(plan), tempDir.resolve("format-" + index),
+                    new TestManifestCodec(), new RecordingFileOperations())) {
+                materialization.begin(snapshot);
+
+                assertThatThrownBy(() -> materialization.beginArtifact(snapshot.artifacts().getFirst()))
+                        .isInstanceOf(SliceWriteException.class)
+                        .hasMessageStartingWith("cannot open artifact");
+            }
+        }
+
+        ExportPlan asciiPlan = plan(new ExportFormat("csv", "US-ASCII", ";", "\"", "NULL"));
+        SnapshotMetadata asciiSnapshot = snapshot(asciiPlan, 0);
+        try (CsvSliceMaterialization materialization = materialization(
+                asciiPlan, started(asciiPlan), tempDir.resolve("ascii"),
+                new TestManifestCodec(), new RecordingFileOperations())) {
+            materialization.begin(asciiSnapshot);
+            materialization.beginArtifact(asciiSnapshot.artifacts().getFirst());
+            materialization.row(ArtifactRow.ordered(Map.of("id", "1", "value", "кириллица")));
+
+            assertThatThrownBy(materialization::endArtifact)
+                    .isInstanceOf(SliceWriteException.class)
+                    .hasMessageStartingWith("cannot finish artifact");
+        }
+    }
+
+    @Test
+    void materializationSurfacesDurabilityAndManifestCodecFailures() throws Exception {
+        ExportPlan plan = oneArtifactPlan();
+        SnapshotMetadata snapshot = snapshot(plan, 0);
+        RecordingFileOperations failingOperations = new RecordingFileOperations();
+        failingOperations.forceFileFailure = new IOException("force failed");
+        try (CsvSliceMaterialization materialization = materialization(
+                plan, started(plan), tempDir.resolve("force"), new TestManifestCodec(), failingOperations)) {
+            materialization.begin(snapshot);
+            materialization.beginArtifact(snapshot.artifacts().getFirst());
+
+            assertThatThrownBy(materialization::endArtifact)
+                    .isInstanceOf(SliceWriteException.class)
+                    .hasMessageStartingWith("cannot finish artifact")
+                    .hasRootCauseMessage("force failed");
+        }
+
+        SliceManifestCodec failingCodec = new SliceManifestCodec() {
+            @Override
+            public byte[] encode(SliceManifest manifest) {
+                throw new IllegalStateException("codec failed");
+            }
+
+            @Override
+            public SliceManifest decode(byte[] bytes) {
+                throw new UnsupportedOperationException();
+            }
+        };
+        try (CsvSliceMaterialization materialization = materialization(
+                plan, started(plan), tempDir.resolve("codec"), failingCodec, new RecordingFileOperations())) {
+            materialization.begin(snapshot);
+            materialization.beginArtifact(snapshot.artifacts().getFirst());
+            materialization.endArtifact();
+
+            assertThatThrownBy(materialization::end)
+                    .isInstanceOf(SliceWriteException.class)
+                    .hasMessage("cannot finish slice")
+                    .hasRootCauseMessage("codec failed");
+        }
+    }
+
     private CsvArtifactSliceWriter writer(Path root,
                                           SliceManifestCodec codec,
                                           SliceFileOperations operations,
@@ -328,6 +510,25 @@ class CsvArtifactSliceWriterIT {
         return new SnapshotMetadata(plan.profile().name(), plan.planHash(), NOW, metadata);
     }
 
+    private SnapshotArtifactMetadata artifactMetadata(String artifactName,
+                                                      String fileName,
+                                                      List<String> columns,
+                                                      int identityEpoch,
+                                                      String identityHash,
+                                                      String schemaHash) {
+        return new SnapshotArtifactMetadata(artifactName, fileName, columns,
+                new ArtifactCoverage(1, NOW, 0), identityEpoch, identityHash, schemaHash);
+    }
+
+    private CsvSliceMaterialization materialization(ExportPlan plan,
+                                                    ExportRun run,
+                                                    Path staging,
+                                                    SliceManifestCodec codec,
+                                                    SliceFileOperations operations) throws IOException {
+        Files.createDirectories(staging);
+        return new CsvSliceMaterialization(run, plan, staging, codec, operations);
+    }
+
     private static final class TestManifestCodec implements SliceManifestCodec {
         private final Map<String, SliceManifest> decoded = new ConcurrentHashMap<>();
 
@@ -354,9 +555,13 @@ class CsvArtifactSliceWriterIT {
         private final List<String> atomicMoves = new ArrayList<>();
         private final List<Path> forcedDirectories = new ArrayList<>();
         private boolean atomicMoveSupported = true;
+        private IOException forceFileFailure;
 
         @Override
         public void forceFile(Path file) throws IOException {
+            if (forceFileFailure != null) {
+                throw forceFileFailure;
+            }
             delegate.forceFile(file);
             forcedFiles.add(file.getFileName().toString());
         }

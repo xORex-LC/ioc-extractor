@@ -82,7 +82,8 @@ final class CsvSliceMaterialization implements SnapshotRowConsumer, AutoCloseabl
     @Override
     public void beginArtifact(SnapshotArtifactMetadata artifact) {
         requireOwner();
-        if (metadata == null || currentMetadata != null || ended || artifactIndex >= plan.artifacts().size()) {
+        if (metadata == null || currentMetadata != null || ended || artifact == null
+                || artifactIndex >= plan.artifacts().size()) {
             throw state("artifact begin callback is out of sequence");
         }
         ExportArtifactSpec expected = plan.artifacts().get(artifactIndex);
