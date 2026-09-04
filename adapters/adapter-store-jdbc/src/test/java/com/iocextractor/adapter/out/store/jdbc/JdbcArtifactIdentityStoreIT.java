@@ -6,6 +6,7 @@ import com.iocextractor.application.artifact.CanonicalKeyDefinition;
 import com.iocextractor.application.artifact.CanonicalKeyMode;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityStore;
 import com.iocextractor.application.tck.artifact.CanonicalIdentityStoreContractTest;
+import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.StorageDiagnosticCodes;
 import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import com.zaxxer.hikari.HikariDataSource;
@@ -143,6 +144,122 @@ class JdbcArtifactIdentityStoreIT extends CanonicalIdentityStoreContractTest {
         assertThat(queryString("SELECT group_concat(row_key, ',') FROM masks ORDER BY id"))
                 .isEqualTo("manually-diverged-a,manually-diverged-b");
         assertThat(queryLong("SELECT epoch FROM artifact_identity WHERE artifact = 'masks'"))
+                .isOne();
+        assertThat(queryLong("SELECT COUNT(*) FROM canonical_match_alias")).isZero();
+    }
+
+    @Test
+    void requires_a_non_blank_database_role() {
+        dataSource = dataSource("invalid-role.db");
+        CollectingDiagnosticSink diagnostics = new CollectingDiagnosticSink();
+
+        assertThatThrownBy(() -> new JdbcArtifactIdentityStore(
+                dataSource, CLOCK, diagnostics, new DiagnosticFactory(CLOCK), null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("dbRole is required");
+        assertThatThrownBy(() -> new JdbcArtifactIdentityStore(
+                dataSource, CLOCK, diagnostics, new DiagnosticFactory(CLOCK), " "))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("dbRole is required");
+    }
+
+    @Test
+    void rejects_duplicate_artifacts_before_opening_a_migration_transaction() throws Exception {
+        JdbcArtifactIdentityStore store = store(new CollectingDiagnosticSink());
+        ArtifactIdentityDefinition definition = definition("masks", List.of("mask"), false, 1);
+
+        assertThat(store.ensureAll(List.of())).isEmpty();
+        assertThatThrownBy(() -> store.ensureAll(List.of(definition, definition)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Artifact identity definitions must be unique");
+        assertThat(queryLong("SELECT COUNT(*) FROM artifact_identity")).isZero();
+    }
+
+    @Test
+    void rejects_a_configured_epoch_older_than_the_stored_contract() throws Exception {
+        CollectingDiagnosticSink diagnostics = new CollectingDiagnosticSink();
+        JdbcArtifactIdentityStore store = store(diagnostics);
+        store.ensure(definition("masks", List.of("mask", "source"), false, 2));
+
+        assertThatThrownBy(() -> store.ensure(definition("masks", List.of("mask"), false, 1)))
+                .hasMessageContaining(StorageDiagnosticCodes.IDENTITY_DRIFT.id());
+
+        assertThat(diagnostics.diagnostics().getLast().context())
+                .containsEntry("identityEpoch", 2)
+                .containsEntry("reason", "configured epoch is older than stored epoch");
+        assertThat(queryLong("SELECT epoch FROM artifact_identity WHERE artifact = 'masks'"))
+                .isEqualTo(2);
+    }
+
+    @Test
+    void rejects_mutated_named_record_and_match_definitions() throws Exception {
+        CollectingDiagnosticSink diagnostics = new CollectingDiagnosticSink();
+        JdbcArtifactIdentityStore store = store(diagnostics);
+        ArtifactIdentityDefinition definition = compoundDefinition(2);
+        store.ensure(definition);
+
+        execute("UPDATE artifact_identity SET record_definition_fingerprint = 'corrupt'");
+
+        assertThatThrownBy(() -> store.ensure(definition))
+                .hasMessageContaining(StorageDiagnosticCodes.IDENTITY_DRIFT.id());
+        assertThat(diagnostics.diagnostics().getLast().context())
+                .containsEntry("reason", "named record-key definition is immutable");
+
+        execute("UPDATE artifact_identity SET record_definition_fingerprint = '"
+                + definition.recordKey().fingerprint() + "'");
+        execute("UPDATE canonical_match_definition SET definition_fingerprint = 'corrupt' "
+                + "WHERE artifact = 'masks' AND definition_id = 'mask-v1'");
+
+        assertThatThrownBy(() -> store.ensure(definition))
+                .hasMessageContaining(StorageDiagnosticCodes.IDENTITY_DRIFT.id());
+        assertThat(diagnostics.diagnostics().getLast().context())
+                .containsEntry("reason", "stored match-key definition is immutable");
+    }
+
+    @Test
+    void rejects_a_reserved_migration_key_without_changing_the_stored_epoch() throws Exception {
+        JdbcArtifactIdentityStore store = store(new CollectingDiagnosticSink());
+        store.ensure(definition("masks", List.of("mask"), false, 1));
+        execute("""
+                INSERT INTO masks(id, mask, source, row_key, _created_at)
+                VALUES (61, 'reserved.example', 'feed-a',
+                        '__ioc_identity_v7__:operator-value', '2026-06-24T00:00:00Z')
+                """);
+
+        assertThatThrownBy(() -> store.ensure(compoundDefinition(2)))
+                .hasMessageContaining(StorageDiagnosticCodes.IDENTITY_DRIFT.id())
+                .hasRootCauseMessage("Reserved identity migration row-key prefix is already in use");
+
+        assertThat(queryString("SELECT row_key FROM masks WHERE id = 61"))
+                .isEqualTo("__ioc_identity_v7__:operator-value");
+        assertThat(queryLong("SELECT epoch FROM artifact_identity WHERE artifact = 'masks'"))
+                .isOne();
+    }
+
+    @Test
+    void rebuilds_a_missing_match_definition_and_ignores_rows_without_alias_material() throws Exception {
+        JdbcArtifactIdentityStore store = store(new CollectingDiagnosticSink());
+        ArtifactIdentityDefinition oldDefinition = definition("masks", List.of("mask"), false, 1);
+        store.ensure(oldDefinition);
+        execute("""
+                INSERT INTO masks(id, mask, source, row_key, _created_at, _lifecycle_id)
+                VALUES (71, 'no-lifecycle.example', 'feed-a', 'legacy-71',
+                        '2026-06-24T00:00:00Z', NULL),
+                       (72, NULL, 'source-only', 'legacy-72',
+                        '2026-06-24T00:00:00Z', 902)
+                """);
+        ArtifactIdentityDefinition definition = compoundDefinition(2);
+
+        store.ensure(definition);
+
+        assertThat(queryLong("SELECT COUNT(*) FROM canonical_match_alias")).isZero();
+        execute("DELETE FROM canonical_match_definition "
+                + "WHERE artifact = 'masks' AND definition_id = 'mask-v1'");
+
+        store.ensure(definition);
+
+        assertThat(queryLong("SELECT COUNT(*) FROM canonical_match_definition "
+                + "WHERE artifact = 'masks' AND definition_id = 'mask-v1'"))
                 .isOne();
         assertThat(queryLong("SELECT COUNT(*) FROM canonical_match_alias")).isZero();
     }
