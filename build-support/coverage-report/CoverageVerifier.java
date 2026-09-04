@@ -64,18 +64,20 @@ public final class CoverageVerifier {
 
     static int execute(String[] args, PrintStream standardOutput, PrintStream errorOutput) {
         try {
-            if (args.length != 5) {
+            if (args.length != 6) {
                 throw new VerificationException(
                         "usage: CoverageVerifier <validate|verify-reports> <reactor-root> "
-                                + "<scope-manifest> <ratchet-snapshot> <report-pom>");
+                                + "<scope-manifest> <ratchet-snapshot> <floor-policy> <report-pom>");
             }
             Mode mode = Mode.parse(args[0]);
             Path root = Path.of(args[1]).toAbsolutePath().normalize();
             Path scopeManifest = Path.of(args[2]).toAbsolutePath().normalize();
             Path ratchetSnapshot = Path.of(args[3]).toAbsolutePath().normalize();
-            Path reportPom = Path.of(args[4]).toAbsolutePath().normalize();
+            Path floorPolicy = Path.of(args[4]).toAbsolutePath().normalize();
+            Path reportPom = Path.of(args[5]).toAbsolutePath().normalize();
 
-            Policy policy = validatePolicy(root, scopeManifest, ratchetSnapshot, reportPom);
+            Policy policy = validatePolicy(
+                    root, scopeManifest, ratchetSnapshot, floorPolicy, reportPom);
             if (mode == Mode.VERIFY_REPORTS) {
                 CoverageReport report = verifyReports(policy);
                 Counter lines = report.aggregateCounters().get(CounterType.LINE);
@@ -96,11 +98,12 @@ public final class CoverageVerifier {
                 standardOutput.printf(
                         Locale.ROOT,
                         "[coverage] validate completed: reactor=%d, production=%d, "
-                                + "local-required=%d, downstream-only=%d%n",
+                                + "local-required=%d, downstream-only=%d, fixed-floors=%d%n",
                         policy.entries().size(),
                         policy.coveredEntries().size(),
                         policy.requiredLocalReports(),
-                        policy.aggregateOnlyReports());
+                        policy.aggregateOnlyReports(),
+                        policy.fixedFloorCount());
             }
             return 0;
         } catch (VerificationException e) {
@@ -118,6 +121,7 @@ public final class CoverageVerifier {
             Path root,
             Path scopeManifest,
             Path ratchetSnapshot,
+            Path floorPolicy,
             Path reportPom)
             throws Exception {
         requireDirectory(root, "reactor root");
@@ -125,9 +129,11 @@ public final class CoverageVerifier {
         requireFile(rootPom, "root POM");
         requireFile(scopeManifest, "coverage scope manifest");
         requireFile(ratchetSnapshot, "coverage ratchet snapshot");
+        requireFile(floorPolicy, "coverage fixed-floor policy");
         requireFile(reportPom, "coverage report POM");
         requireUnderRoot(root, scopeManifest, "coverage scope manifest");
         requireUnderRoot(root, ratchetSnapshot, "coverage ratchet snapshot");
+        requireUnderRoot(root, floorPolicy, "coverage fixed-floor policy");
         requireUnderRoot(root, reportPom, "coverage report POM");
 
         LinkedHashMap<String, ScopeEntry> entries = readScope(scopeManifest);
@@ -204,6 +210,11 @@ public final class CoverageVerifier {
                 "coverage ratchet scopes versus aggregate plus production modules",
                 expectedRatchets,
                 ratchets.keySet());
+        LinkedHashMap<String, CoverageFloor> floors = readFloors(floorPolicy);
+        compareSets(
+                "coverage fixed-floor scopes versus aggregate plus production modules",
+                expectedRatchets,
+                floors.keySet());
         validateBuildConfiguration(rootPom, reportPom);
 
         return new Policy(
@@ -211,7 +222,8 @@ public final class CoverageVerifier {
                 reportPom.getParent(),
                 List.copyOf(entries.values()),
                 List.copyOf(coveredEntries),
-                Map.copyOf(ratchets));
+                Map.copyOf(ratchets),
+                Map.copyOf(floors));
     }
 
     private static void validateDisposition(ScopeEntry entry, ProjectModel project)
@@ -297,6 +309,10 @@ public final class CoverageVerifier {
                     group.getKey(),
                     group.getValue(),
                     policy.ratchets().get(group.getKey()));
+        }
+        applyFloor(AGGREGATE_NAME, aggregate.counters(), policy.floors().get(AGGREGATE_NAME));
+        for (Map.Entry<String, Map<CounterType, Counter>> group : aggregate.groups().entrySet()) {
+            applyFloor(group.getKey(), group.getValue(), policy.floors().get(group.getKey()));
         }
         return new CoverageReport(aggregate.counters());
     }
@@ -464,6 +480,49 @@ public final class CoverageVerifier {
         }
     }
 
+    private static void applyFloor(
+            String scope,
+            Map<CounterType, Counter> actualCounters,
+            CoverageFloor floor)
+            throws VerificationException {
+        if (!floor.enabled()) {
+            return;
+        }
+        compareFloor(
+                scope,
+                CounterType.LINE,
+                actualCounters.get(CounterType.LINE),
+                floor.linePercent());
+        compareFloor(
+                scope,
+                CounterType.BRANCH,
+                actualCounters.get(CounterType.BRANCH),
+                floor.branchPercent());
+    }
+
+    private static void compareFloor(
+            String scope,
+            CounterType type,
+            Counter actual,
+            int minimumPercent)
+            throws VerificationException {
+        if (actual.total() == 0) {
+            throw new VerificationException(
+                    "coverage " + type.externalName()
+                            + " counter is absent for fixed-floor scope " + scope);
+        }
+        BigInteger actualScaled = BigInteger.valueOf(actual.covered())
+                .multiply(BigInteger.valueOf(100));
+        BigInteger floorScaled = BigInteger.valueOf(actual.total())
+                .multiply(BigInteger.valueOf(minimumPercent));
+        if (actualScaled.compareTo(floorScaled) < 0) {
+            throw new VerificationException(
+                    "coverage " + type.externalName() + " fixed-floor regression for " + scope
+                            + "; minimum=" + minimumPercent + ".00%, actual=" + actual.display()
+                            + " (" + formatPercentage(actual) + ")");
+        }
+    }
+
     private static LinkedHashMap<String, ScopeEntry> readScope(Path manifest)
             throws IOException, VerificationException {
         LinkedHashMap<String, ScopeEntry> entries = new LinkedHashMap<>();
@@ -574,6 +633,67 @@ public final class CoverageVerifier {
                     "invalid absolute-instructions policy at ratchet line " + lineNumber
                             + ": " + raw);
         };
+    }
+
+    private static LinkedHashMap<String, CoverageFloor> readFloors(Path policy)
+            throws IOException, VerificationException {
+        LinkedHashMap<String, CoverageFloor> floors = new LinkedHashMap<>();
+        List<String> lines = Files.readAllLines(policy, StandardCharsets.UTF_8);
+        for (int index = 0; index < lines.size(); index++) {
+            String line = lines.get(index);
+            int lineNumber = index + 1;
+            if (line.isBlank() || line.startsWith("#")) {
+                continue;
+            }
+            String[] fields = line.split("\\t", -1);
+            if (fields.length != 4) {
+                throw new VerificationException(
+                        "coverage fixed-floor line " + lineNumber
+                                + " must contain four tab-separated fields");
+            }
+            String scope = fields[0].trim();
+            if (!scope.equals(fields[0]) || (!AGGREGATE_NAME.equals(scope)
+                    && !ARTIFACT_ID.matcher(scope).matches())) {
+                throw new VerificationException(
+                        "invalid coverage fixed-floor scope at line " + lineNumber + ": " + fields[0]);
+            }
+            Integer linePercent = parseFloorPercent(fields[1], lineNumber, "line");
+            Integer branchPercent = parseFloorPercent(fields[2], lineNumber, "branch");
+            if ((linePercent == null) != (branchPercent == null)) {
+                throw new VerificationException(
+                        "coverage fixed-floor line " + lineNumber
+                                + " must enable or disable line and branch floors together");
+            }
+            String rationale = fields[3].trim();
+            if (rationale.isEmpty()) {
+                throw new VerificationException(
+                        "coverage fixed-floor line " + lineNumber + " has no rationale");
+            }
+            CoverageFloor floor = new CoverageFloor(linePercent, branchPercent, rationale);
+            if (floors.putIfAbsent(scope, floor) != null) {
+                throw new VerificationException(
+                        "duplicate coverage fixed-floor scope at line " + lineNumber + ": " + scope);
+            }
+        }
+        if (floors.isEmpty()) {
+            throw new VerificationException("coverage fixed-floor policy contains no entries");
+        }
+        return floors;
+    }
+
+    private static Integer parseFloorPercent(String raw, int lineNumber, String type)
+            throws VerificationException {
+        if ("none".equals(raw)) {
+            return null;
+        }
+        long value = parseNonNegativeLong(
+                type + " fixed-floor percent at line " + lineNumber, raw);
+        if (value == 0 || value > 100) {
+            throw new VerificationException(
+                    type + " fixed-floor percent at line " + lineNumber
+                            + " must be in [1, 100] or none: " + raw);
+        }
+        return Math.toIntExact(value);
     }
 
     private static void validateBuildConfiguration(Path rootPom, Path reportPom)
@@ -691,6 +811,7 @@ public final class CoverageVerifier {
                 "${maven.multiModuleProjectDirectory}",
                 "${maven.multiModuleProjectDirectory}/build-support/coverage-report/coverage-scope.tsv",
                 "${maven.multiModuleProjectDirectory}/build-support/coverage-report/coverage-ratchets.tsv",
+                "${maven.multiModuleProjectDirectory}/build-support/coverage-report/coverage-floors.tsv",
                 "${maven.multiModuleProjectDirectory}/build-support/coverage-report/pom.xml");
         List<String> actualArguments = directChildren(javaTask, "arg").stream()
                 .map(argument -> argument.getAttribute("value"))
@@ -1178,6 +1299,16 @@ public final class CoverageVerifier {
             String rationale) {
     }
 
+    private record CoverageFloor(
+            Integer linePercent,
+            Integer branchPercent,
+            String rationale) {
+
+        private boolean enabled() {
+            return linePercent != null;
+        }
+    }
+
     private record ReportDocument(
             Map<CounterType, Counter> counters,
             Map<String, Map<CounterType, Counter>> groups) {
@@ -1191,7 +1322,8 @@ public final class CoverageVerifier {
             Path reportModule,
             List<ScopeEntry> entries,
             List<ScopeEntry> coveredEntries,
-            Map<String, Ratchet> ratchets) {
+            Map<String, Ratchet> ratchets,
+            Map<String, CoverageFloor> floors) {
 
         int requiredLocalReports() {
             return (int) coveredEntries.stream()
@@ -1202,6 +1334,12 @@ public final class CoverageVerifier {
         int aggregateOnlyReports() {
             return (int) coveredEntries.stream()
                     .filter(entry -> entry.localReport() == LocalReport.AGGREGATE_ONLY)
+                    .count();
+        }
+
+        int fixedFloorCount() {
+            return (int) floors.values().stream()
+                    .filter(CoverageFloor::enabled)
                     .count();
         }
     }

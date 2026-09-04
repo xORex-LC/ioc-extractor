@@ -17,8 +17,8 @@ taxonomy и scope находятся только в goal contract.
 
 `BASE-TESTS-04` inventory status: **verified** on evidence commit `5a746bb`.
 `BASE-COVERAGE-05` report-only baseline status: **verified**; detailed metrics
-are captured below. Threshold enforcement and all remediation remain open under
-their own `R030-TEST` work items.
+are captured below. Its successor `TEST-COVERAGE-02` is also **verified** with
+fail-closed report integrity, ratchets and fixed floors.
 
 `BASE-INVENTORIES-09` intake status: **verified**. The initial work queue below
 maps every baseline test/coverage/consumer gap to an owner without implementing
@@ -35,7 +35,7 @@ inputs.
 | Work item | Scope/outcome | Evidence | Dependency | State |
 |---|---|---|---|---|
 | `TEST-LIFECYCLE-01` | Introduce accepted tags/composed annotations and Surefire/Failsafe selection without losing the refreshed accepted universe | Verified implementation evidence below | Global `R030-TEST` Wave 1 | `verified` |
-| `TEST-COVERAGE-02` | Add aggregate/per-module no-regression ratchets, then close accepted aggregate/domain/application branch floors | Coverage baseline, policy and implementation evidence below | Stable lifecycle/reporting | `in-progress` (universe/integrity/ratchets implemented; fixed floors pending) |
+| `TEST-COVERAGE-02` | Add aggregate/per-module no-regression ratchets, then close accepted aggregate/domain/application branch floors | Coverage baseline, policy and implementation evidence below | Stable lifecycle/reporting | `verified` |
 | `TEST-REGEX-03` | Common RE2/J + JDK engine contract and bootstrap `ioc.engine=jdk` selection test | Risk finding below; 0/9 JDK lines | Regex/bootstrap module wave | `planned` |
 | `TEST-WAITS-04` | Bound async waits, release workers in `finally`, assert termination and add diagnosable safety timeout | Wait/flake inventory below | Module test hardening | `planned` |
 | `TEST-EXTERNAL-05` | Execute live SMB `CHANGE_NOTIFY` contract or record explicit external-evidence release disposition | Two skipped external cases | Provisioned fixture / `R030-REL` | `external-evidence-required` |
@@ -127,19 +127,18 @@ The additional bare wait is the lifecycle-deadline scheduler worker gate.
 ## `TEST-LIFECYCLE-01` implementation evidence — 2026-09-02
 
 The reviewed behavior-based inventory was migrated to Maven naming ownership.
-After the twenty-fifth coverage-remediation checkpoint, Surefire owns 191 fast
-`*Test` suites and Failsafe owns 65 `*IT` suites. Five of the Failsafe suites
+After the aggregate-floor remediation checkpoint, Surefire owns 191 fast
+`*Test` suites and Failsafe owns 66 `*IT` suites. Five of the Failsafe suites
 are explicitly conditioned external shells, so the deterministic offline
-universe is `191 + (65 - 5) = 251` suites. The two source sets are disjoint and
-their complete union is the current 256-suite reactor universe; the eight-suite
-increase is the intentional domain and application contract coverage recorded
-below.
+universe is `191 + (66 - 5) = 252` suites. The two source sets are disjoint and
+their complete union is the current 257-suite reactor universe; the added local
+WatchService integration suite is recorded in checkpoint 26 below.
 
 | Cohort | Suites | Cases | Passed | Skipped | Failures/errors | Suite-seconds |
 |---|---:|---:|---:|---:|---:|---:|
-| Surefire fast | 191 | 992 | 992 | 0 | 0 | 52.066 |
-| Failsafe integration, including external shells | 65 | 446 | 438 | 8 | 0 | 128.734 |
-| **Full reactor union** | **256** | **1438** | **1430** | **8** | **0** | **180.800** |
+| Surefire fast | 191 | 994 | 994 | 0 | 0 | 35.795 |
+| Failsafe integration, including external shells | 66 | 462 | 454 | 8 | 0 | 95.748 |
+| **Full reactor union** | **257** | **1456** | **1448** | **8** | **0** | **131.543** |
 
 The five external shells and their eight skipped cases are unchanged: one
 managed-import load profile and four SMB suites. Their `@ExternalTest`
@@ -189,11 +188,13 @@ taxonomy, command, external-evidence and flake policy is published in
 
 The 19 groups below come from the reactor aggregate so downstream execution is
 credited. They are the accepted conservative no-regression boundaries after the
-post-lifecycle repetition described below; fixed release floors remain separate.
+remediation repetitions described below. Fixed release floors are enforced
+separately against the actual report and therefore do not permit these ratchets
+to regress.
 
 | Module/scope | Lines covered/total | Line | Branches covered/total | Branch | Missed branches | Release floor/state |
 |---|---:|---:|---:|---:|---:|---|
-| **Reactor aggregate** | **19849/22390** | **88.65%** | **6393/8125** | **78.68%** | **1861** | ratcheted; `75% / 80%` branch gap |
+| **Reactor aggregate** | **19849/22390** | **88.65%** | **6477/8125** | **79.72%** | **1861** | ratcheted; fixed `75% / 80%` gate enabled against actual report |
 | `platform/platform-errors` | 4/4 | 100.00% | 0/0 | N/A | 0 | ratcheted |
 | `platform/platform-diagnostics` | 481/491 | 97.96% | 56/76 | 73.68% | 20 | ratcheted |
 | `platform/platform-etl` | 165/181 | 91.16% | 16/24 | 66.67% | 8 | ratcheted |
@@ -202,16 +203,16 @@ post-lifecycle repetition described below; fixed release floors remain separate.
 | `platform/platform-observability` | 327/341 | 95.89% | 69/71 | 97.18% | 2 | ratcheted |
 | `platform/platform-diagnostics-logging` | 56/60 | 93.33% | 20/21 | 95.24% | 1 | ratcheted |
 | `core/ioc-domain` | 239/243 | 98.35% | 108/110 | 98.18% | 2 | ratcheted; fixed `85% / 90%` floors reached |
-| `core/ioc-application` | 5107/5412 | 94.36% | 2051/2292 | 89.49% | 241 | ratcheted; actual coverage reaches fixed `85% / 90%` floors |
+| `core/ioc-application` | 5107/5412 | 94.36% | 2067/2292 | 90.18% | 241 | ratcheted; fixed `85% / 90%` floors enabled |
 | `core/ioc-application-tck` | — | N/A | — | N/A | — | outside production universe |
 | `adapters/adapter-regex-re2j` | 8/18 | 44.44% | 2/4 | 50.00% | 2 | ratcheted; supported-path gap |
 | `adapters/adapter-psl` | 15/17 | 88.24% | 11/12 | 91.67% | 1 | ratcheted |
 | `adapters/adapter-source-tika` | 57/58 | 98.28% | 7/10 | 70.00% | 3 | ratcheted |
-| `adapters/adapter-csv` | 1122/1294 | 86.71% | 415/560 | 74.11% | 145 | ratcheted |
+| `adapters/adapter-csv` | 1122/1294 | 86.71% | 424/560 | 75.71% | 145 | ratcheted |
 | `adapters/adapter-manifest-json-jackson` | 82/84 | 97.62% | 5/6 | 83.33% | 1 | ratcheted |
-| `adapters/adapter-store-jdbc` | 5346/6013 | 88.91% | 1443/1858 | 77.66% | 468 | ratcheted |
-| `adapters/adapter-transport-smb` | 813/1096 | 74.18% | 309/510 | 60.59% | 201 | ratcheted; external-path concentration |
-| `adapters/adapter-ingest` | 929/1189 | 78.13% | 312/422 | 73.93% | 135 | ratcheted |
+| `adapters/adapter-store-jdbc` | 5346/6013 | 88.91% | 1461/1858 | 78.63% | 468 | ratcheted |
+| `adapters/adapter-transport-smb` | 813/1096 | 74.18% | 334/510 | 65.49% | 201 | ratcheted; external-path concentration |
+| `adapters/adapter-ingest` | 929/1189 | 78.13% | 328/422 | 77.73% | 135 | ratcheted |
 | `adapters/adapter-cli-picocli` | 415/564 | 73.58% | 140/227 | 61.67% | 113 | ratcheted |
 | `bootstrap/ioc-app` | 4442/5066 | 87.68% | 1371/1842 | 74.43% | 496 | ratcheted |
 
@@ -948,6 +949,35 @@ instruction context сохранены; оставшиеся `26` фактиче
 ветвей не приняты как случайный baseline. Fixed floors теперь можно включить
 отдельным атомарным build-policy slice.
 
+### `TEST-COVERAGE-02` fixed-floor enforcement — 2026-09-04
+
+Project-owned `CoverageVerifier` теперь независимо от ratchet применяет fixed
+release floors к actual aggregate XML. Новый `coverage-floors.tsv` обязан иметь
+явную запись для aggregate и всех 19 production groups: `none/none` означает
+ratchet-only module, `reactor` фиксирует `75%` lines / `80%` branches, а
+`ioc-domain` и `ioc-application` — `85% / 90%`. Сравнение выполняется точными
+целочисленными дробями без округления отображаемого процента. Scope drift,
+неполное включение пары floors, проценты вне `1..100` и отдельные aggregate/
+module line/branch regressions покрыты synthetic harness.
+
+Root `validate` прошёл: coverage harness содержит `2` happy paths и `28`
+negative scenarios, policy reconciliation видит 25 reactor projects, 19
+production groups, 17 required local reports, 2 downstream-only reports и 3
+active fixed-floor scopes. Прямой late-gate check над свежим полным report
+принял `20084/22390` lines (`89.70%`) и `6503/8125` branches (`80.04%`);
+domain равен `239/243 + 108/110`, application —
+`5124/5412 + 2080/2292`. Ratchet и fixed floor остаются независимыми: более
+сильный accepted baseline нельзя снизить до общего floor, а консервативный
+aggregate ratchet не заменяет абсолютный `80%` gate.
+
+Canonical `make verify` с новым Maven wiring прошёл 25/25 за `02:32`; late gate
+принял повторный результат `20085/22390` lines (`89.71%`) и `6504/8125`
+branches (`80.05%`), SpotBugs — `116 accepted / 0 visible`, CPD — `21/21`.
+Дополнительная условно исполненная ветвь не переносится в ratchet. После
+committed-HEAD повтора work item получает состояние `verified`; остальные
+`R030-TEST` items и Codecov/branch-policy зависимости `R030-BUILD` остаются
+отдельными.
+
 ## Historical Wave 0 baseline discovery inventory
 
 The remainder of this section preserves the accepted pre-DATA snapshot and its
@@ -1341,9 +1371,9 @@ does not infer mutation effectiveness from assertion volume.
 |---|---|---|---|---|
 | JaCoCo agent/report | `0.8.15`; inherited `prepare-agent` + module `report` | `make verify` | 17 local report pairs + 19-group aggregate | `blocking-integrity` |
 | JaCoCo per-module check | Exact 19-module line/branch ratio ratchets; absolute missed-branch and small-module instruction context | `make verify` | Project-owned snapshot and late gate | `blocking-ratchet` |
-| JaCoCo aggregate check | Exact ratio/missed-branch ratchet; fixed `75% / 80%` floor not yet enabled | `make verify` | Project-owned aggregate XML/integrity gate | `ratcheted; fixed-floor-pending` |
-| Surefire fast lifecycle | `3.5.6`; default naming; isolated via `skip.unit.tests` | `make test` / `make test-fast` / `make verify` | 183 suites / 792 cases | `verified` |
-| Failsafe integration lifecycle | `3.5.6`; `integration-test` + `verify`; default IT naming | `make test-integration` / `make verify` | 65 suites / 394 cases / 8 external skips | `verified` |
+| JaCoCo aggregate check | Exact ratio/missed-branch ratchet plus fixed `75% / 80%` floor | `make verify` | Project-owned aggregate XML/integrity/floor gate | `blocking` |
+| Surefire fast lifecycle | `3.5.6`; default naming; isolated via `skip.unit.tests` | `make test` / `make test-fast` / `make verify` | 191 suites / 994 cases | `verified` |
+| Failsafe integration lifecycle | `3.5.6`; `integration-test` + `verify`; default IT naming | `make test-integration` / `make verify` | 66 suites / 462 cases / 8 external skips | `verified` |
 | JUnit tag convention | Six accepted tags; five shared composed annotations; no regular filters | root `validate` / `make verify` | Source-count and exact report-union verifier | `verified` |
 | Codecov best-effort upload | TBD | N/A | TBD | `planned` |
 | Codecov project/patch signals | TBD | N/A | TBD | `planned` |

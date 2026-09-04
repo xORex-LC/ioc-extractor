@@ -61,6 +61,30 @@ public final class CoverageVerifierTest {
                                 ""),
                         "coverage ratchet scopes versus aggregate plus production modules differ"),
                 new Scenario(
+                        "fixed-floor scope drift",
+                        "validate",
+                        fixture -> fixture.replace(
+                                "build-support/coverage-report/coverage-floors.tsv",
+                                "leaf\tnone\tnone\tRatchet-only small module.\n",
+                                ""),
+                        "coverage fixed-floor scopes versus aggregate plus production modules differ"),
+                new Scenario(
+                        "partially enabled fixed floor",
+                        "validate",
+                        fixture -> fixture.replace(
+                                "build-support/coverage-report/coverage-floors.tsv",
+                                "leaf\tnone\tnone",
+                                "leaf\t85\tnone"),
+                        "must enable or disable line and branch floors together"),
+                new Scenario(
+                        "invalid fixed-floor percentage",
+                        "validate",
+                        fixture -> fixture.replace(
+                                "build-support/coverage-report/coverage-floors.tsv",
+                                "app\t85\t75",
+                                "app\t101\t75"),
+                        "line fixed-floor percent at line 2 must be in [1, 100] or none"),
+                new Scenario(
                         "JaCoCo exclusion",
                         "validate",
                         fixture -> fixture.replace(
@@ -209,6 +233,39 @@ public final class CoverageVerifierTest {
                         },
                         "coverage branch missed-count regression for reactor"),
                 new Scenario(
+                        "aggregate fixed branch floor regression",
+                        "verify-reports",
+                        fixture -> {
+                            fixture.writeValidReports();
+                            fixture.replace(
+                                    "build-support/coverage-report/coverage-floors.tsv",
+                                    "reactor\t75\t75",
+                                    "reactor\t75\t80");
+                        },
+                        "coverage branch fixed-floor regression for reactor"),
+                new Scenario(
+                        "module fixed line floor regression",
+                        "verify-reports",
+                        fixture -> {
+                            fixture.writeValidReports();
+                            fixture.replace(
+                                    "build-support/coverage-report/coverage-floors.tsv",
+                                    "app\t85\t75",
+                                    "app\t95\t75");
+                        },
+                        "coverage line fixed-floor regression for app"),
+                new Scenario(
+                        "module fixed branch floor regression",
+                        "verify-reports",
+                        fixture -> {
+                            fixture.writeValidReports();
+                            fixture.replace(
+                                    "build-support/coverage-report/coverage-floors.tsv",
+                                    "app\t85\t75",
+                                    "app\t85\t80");
+                        },
+                        "coverage branch fixed-floor regression for app"),
+                new Scenario(
                         "small-module instruction regression",
                         "verify-reports",
                         fixture -> {
@@ -286,6 +343,8 @@ public final class CoverageVerifierTest {
                                 "build-support/coverage-report/coverage-scope.tsv").toString(),
                         fixture.root().resolve(
                                 "build-support/coverage-report/coverage-ratchets.tsv").toString(),
+                        fixture.root().resolve(
+                                "build-support/coverage-report/coverage-floors.tsv").toString(),
                         fixture.root().resolve(
                                 "build-support/coverage-report/pom.xml").toString()
                 },
@@ -416,6 +475,11 @@ public final class CoverageVerifierTest {
                     app\t18\t2\t3\t1\t10\tobserved\tApplication baseline.
                     leaf\t4\t0\t0\t0\t1\tenforced\tSmall module.
                     """);
+            write("build-support/coverage-report/coverage-floors.tsv", """
+                    reactor\t75\t75\tAggregate fixed floor.
+                    app\t85\t75\tApplication fixed floor.
+                    leaf\tnone\tnone\tRatchet-only small module.
+                    """);
         }
 
         void writeValidReports() throws IOException {
@@ -450,6 +514,7 @@ public final class CoverageVerifierTest {
                               <arg value="${maven.multiModuleProjectDirectory}"/>
                               <arg value="${maven.multiModuleProjectDirectory}/build-support/coverage-report/coverage-scope.tsv"/>
                               <arg value="${maven.multiModuleProjectDirectory}/build-support/coverage-report/coverage-ratchets.tsv"/>
+                              <arg value="${maven.multiModuleProjectDirectory}/build-support/coverage-report/coverage-floors.tsv"/>
                               <arg value="${maven.multiModuleProjectDirectory}/build-support/coverage-report/pom.xml"/>
                             </java></target>
                           </configuration></execution>

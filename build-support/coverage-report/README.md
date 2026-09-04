@@ -17,7 +17,8 @@ library.
 | `pom.xml` | Reactor ordering, aggregate generation, stale-output cleanup and late coverage/test gates |
 | `coverage-scope.tsv` | Fail-closed disposition for every one of the 25 reactor projects and local-report expectation |
 | `coverage-ratchets.tsv` | Aggregate and 19 production-module line/branch baselines plus absolute missed context |
-| `CoverageVerifier.java` | JDK-only universe, report-integrity and no-regression gate |
+| `coverage-floors.tsv` | Explicit fixed-floor disposition for the aggregate and every production module |
+| `CoverageVerifier.java` | JDK-only universe, report-integrity, no-regression and fixed-floor gate |
 | `CoverageVerifierTest.java` | Synthetic-reactor happy/negative contract matrix |
 | `target/site/jacoco-aggregate/index.html` | Generated human-readable aggregate report |
 | `target/site/jacoco-aggregate/jacoco.xml` | Generated machine-readable aggregate report |
@@ -43,8 +44,10 @@ Line and branch ratios are compared as exact integer fractions, without decimal
 rounding. Increased missed-branch counts also fail even when denominator growth
 would preserve the ratio. Small modules additionally ratchet absolute missed
 instructions; the snapshot preserves the same context diagnostically for larger
-modules. These are no-regression baselines, not the separate fixed release
-floors still awaiting coverage-gap remediation.
+modules. Independently, `coverage-floors.tsv` enforces `75% / 80%` line/branch
+coverage for the complete production aggregate and `85% / 90%` for both domain
+and application. All other production modules explicitly remain ratchet-only.
+Both ratchets and floors use exact integer-fraction comparisons.
 
 The module also runs the late `TestLifecycleVerifier` check after the production
 reactor so missing, duplicate or wrong-engine Surefire/Failsafe XML cannot be

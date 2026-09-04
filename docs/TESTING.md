@@ -135,10 +135,16 @@ counts cannot rise. Ratios are compared as integer fractions rather than rounded
 percentages. Small-denominator modules also reject an increase in missed
 instructions; larger scopes retain that absolute value as review context.
 
-The current ratchets prevent regression while aggregate/domain/application
-fixed-floor gaps are remediated. They are not proof that the release floors have
-been reached. Do not lower a baseline, add an exclusion or relabel a local report
-to make a change pass. Review the changed behavior and tests; when a stable
+The same project-owned late gate applies `coverage-floors.tsv`. Every aggregate
+or production-module scope has an explicit entry: `none` means ratchet-only,
+while the reactor aggregate enforces `75%` lines / `80%` branches and both
+`ioc-domain` and `ioc-application` enforce `85%` / `90%`. Floor comparisons also
+use exact integer fractions, so a rounded display value cannot make a failing
+ratio pass. Ratchets still protect stronger existing results independently of
+the fixed floors.
+
+Do not lower a floor or baseline, add an exclusion or relabel a local report to
+make a change pass. Review the changed behavior and tests; when a stable
 improvement is accepted, update its exact counters and rationale in the same
 change. Local JaCoCo remains authoritative when Codecov reporting is introduced.
 

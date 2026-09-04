@@ -193,6 +193,7 @@
                                     <arg value="${maven.multiModuleProjectDirectory}"/>
                                     <arg value="${maven.multiModuleProjectDirectory}/build-support/coverage-report/coverage-scope.tsv"/>
                                     <arg value="${maven.multiModuleProjectDirectory}/build-support/coverage-report/coverage-ratchets.tsv"/>
+                                    <arg value="${maven.multiModuleProjectDirectory}/build-support/coverage-report/coverage-floors.tsv"/>
                                     <arg value="${maven.multiModuleProjectDirectory}/build-support/coverage-report/pom.xml"/>
                                 </java>
                             </target>
