@@ -42,11 +42,15 @@ class HealthCommandTest {
     }
 
     private static int run(String[] args, StringBuilder out) {
+        return run(new HealthCommand("127.0.0.1", "8081"), args, out);
+    }
+
+    private static int run(HealthCommand command, String[] args, StringBuilder out) {
         PrintStream original = System.out;
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         try {
             System.setOut(new PrintStream(buffer, true, StandardCharsets.UTF_8));
-            int code = new CommandLine(new HealthCommand("127.0.0.1", "8081")).execute(args);
+            int code = new CommandLine(command).execute(args);
             out.append(buffer.toString(StandardCharsets.UTF_8));
             return code;
         } finally {
@@ -124,6 +128,79 @@ class HealthCommandTest {
                 .contains("remoteChangeWatch")
                 .contains("incoming-ioc")
                 .contains("signals  1");
+    }
+
+    @Test
+    void resolves_default_and_trimmed_host_port_endpoints() throws Exception {
+        AtomicReference<String> requestedPath = new AtomicReference<>();
+        start(200, "{\"status\":\"UP\"}", requestedPath);
+        int serverPort = server.getAddress().getPort();
+        StringBuilder defaultOut = new StringBuilder();
+        StringBuilder overrideOut = new StringBuilder();
+
+        int defaultCode = run(
+                new HealthCommand("127.0.0.1", String.valueOf(serverPort)),
+                new String[]{"--component", " "},
+                defaultOut);
+        int overrideCode = run(
+                new String[]{"--url", " ", "--host", " 127.0.0.1 ", "--port", String.valueOf(serverPort)},
+                overrideOut);
+
+        assertThat(defaultCode).isZero();
+        assertThat(overrideCode).isZero();
+        assertThat(requestedPath).hasValue("/actuator/health");
+        assertThat(defaultOut).contains("http://127.0.0.1:" + serverPort + "/actuator/health");
+        assertThat(overrideOut).contains("http://127.0.0.1:" + serverPort + "/actuator/health");
+    }
+
+    @Test
+    void rejects_malformed_and_statusless_actuator_responses() throws Exception {
+        String malformedUrl = start(502, "{not-json");
+        StringBuilder malformedOut = new StringBuilder();
+
+        int malformedCode = run(new String[]{"--url", malformedUrl}, malformedOut);
+
+        server.stop(0);
+        server = null;
+        String statuslessUrl = start(200, "{\"details\":{}}");
+        StringBuilder statuslessOut = new StringBuilder();
+
+        int statuslessCode = run(new String[]{"--url", statuslessUrl}, statuslessOut);
+
+        assertThat(malformedCode).isEqualTo(2);
+        assertThat(statuslessCode).isEqualTo(2);
+        assertThat(malformedOut).isEmpty();
+        assertThat(statuslessOut).isEmpty();
+    }
+
+    @Test
+    void renders_empty_and_nested_collection_details_and_unknown_components() throws Exception {
+        String url = start(200, "{\"status\":\"UP\",\"components\":{"
+                + "\"emptyMap\":{\"status\":\"UP\",\"details\":{}},"
+                + "\"emptyList\":{\"status\":\"UP\",\"details\":[]},"
+                + "\"tree\":{\"status\":\"UP\",\"details\":{"
+                + "\"values\":[\"one\",{\"nested\":\"two\"},[\"three\"]],"
+                + "\"emptyValues\":[],\"emptyObject\":{}}},"
+                + "\"plain\":\"not-a-component\"}}");
+        StringBuilder out = new StringBuilder();
+
+        int code = run(new String[]{"--url", url}, out);
+
+        assertThat(code).isZero();
+        assertThat(out)
+                .contains("emptyMap", "{}", "emptyList", "[]", "tree", "values")
+                .contains("- one", "nested  two", "- three")
+                .contains("plain", "UNKNOWN");
+    }
+
+    @Test
+    void reports_invalid_request_uri_as_unreachable() {
+        StringBuilder out = new StringBuilder();
+
+        int code = run(new String[]{"--url", ":::"}, out);
+
+        assertThat(code).isEqualTo(2);
+        assertThat(out).isEmpty();
     }
 
     @Test
