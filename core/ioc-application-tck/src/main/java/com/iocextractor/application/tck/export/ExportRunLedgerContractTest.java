@@ -76,6 +76,10 @@ public abstract class ExportRunLedgerContractTest {
         ExportProgress replayProgress = progress(started, 2, NOW.plusSeconds(30));
         assertThat(ledger.finish(started.runId(), ExportRunStatus.AVAILABLE,
                 ExportRunStatus.COMPLETED, List.of(replayProgress))).isEqualTo(completed);
+        assertThat(ledger.transition(started.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.STAGED, MANIFEST_HASH, null)).isEqualTo(completed);
+        assertThat(ledger.transition(started.runId(), ExportRunStatus.STAGED,
+                ExportRunStatus.AVAILABLE, null, null)).isEqualTo(completed);
     }
 
     @Test
@@ -206,6 +210,161 @@ public abstract class ExportRunLedgerContractTest {
                 ExportRunStatus.STAGED, MANIFEST_HASH, null);
         assertThatThrownBy(() -> ledger.transition(staged.runId(), ExportRunStatus.STARTED,
                 ExportRunStatus.STAGED, "d".repeat(64), null))
+                .isInstanceOfSatisfying(DiagnosticException.class,
+                        failure -> assertThat(failure)
+                                .hasMessageContaining("EXPORT.STATE_TRANSITION_CONFLICT"));
+    }
+
+    @Test
+    void validates_start_transition_finish_and_progress_arguments_before_mutation() {
+        LedgerFixture fixture = createFixture();
+        ExportRunLedger ledger = fixture.ledger();
+        ExportRun started = started("run-validation");
+        ExportRun staged = new ExportRun(
+                "not-started", started.profile(), ExportRunStatus.STAGED, "not-started-slice",
+                started.planHash(), MANIFEST_HASH, NOW, NOW, null);
+
+        assertThatThrownBy(() -> ledger.tryStart(staged))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Export ledger accepts only STARTED runs");
+        assertThatThrownBy(() -> ledger.transition(started.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.SKIPPED, null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Terminal progress transitions must use finish");
+        assertThatThrownBy(() -> ledger.transition(started.runId(), ExportRunStatus.AVAILABLE,
+                ExportRunStatus.COMPLETED, null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Terminal progress transitions must use finish");
+        assertThatThrownBy(() -> ledger.finish(started.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.STAGED, List.of(progress(started, 1))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Export finish requires COMPLETED or SKIPPED");
+        assertThatThrownBy(() -> ledger.transition(started.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.STAGED, null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("STAGED transition requires manifestSha256");
+        assertThatThrownBy(() -> ledger.transition(started.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.STAGED, "invalid", null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("manifestSha256 must be a lower-case SHA-256 value");
+        assertThatThrownBy(() -> ledger.transition(started.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.FAILED, null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("FAILED transition requires a reason");
+        assertThatThrownBy(() -> ledger.transition(started.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.FAILED, null, " "))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("FAILED transition requires a reason");
+        assertThatThrownBy(() -> ledger.transition(started.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.STAGED, MANIFEST_HASH, "unexpected"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Only FAILED transition accepts a reason");
+        assertThatThrownBy(() -> ledger.find(" "))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("runId must not be blank");
+
+        assertThat(ledger.findIncomplete()).isEmpty();
+    }
+
+    @Test
+    void rejects_incomplete_or_regressing_terminal_progress_atomically() {
+        LedgerFixture fixture = createFixture();
+        ExportRunLedger ledger = fixture.ledger();
+        ExportRun first = started("run-progress-validation");
+        ledger.tryStart(first);
+
+        assertThatThrownBy(() -> ledger.finish(first.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.SKIPPED, null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("progress");
+        assertThatThrownBy(() -> ledger.finish(first.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.SKIPPED, List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Terminal export progress must not be empty");
+        ExportProgress duplicate = progress(first, 3);
+        assertThatThrownBy(() -> ledger.finish(first.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.SKIPPED, List.of(duplicate, duplicate)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Terminal export progress artifacts must be unique");
+
+        ledger.finish(first.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.SKIPPED, List.of(duplicate));
+        ExportRun second = started("run-progress-regression");
+        ledger.tryStart(second);
+
+        assertThatThrownBy(() -> ledger.finish(second.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.SKIPPED, List.of(progress(second, 2))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Export progress revision must not move backwards: reputation/masks");
+        assertThat(ledger.find(second.runId())).get()
+                .extracting(ExportRun::status)
+                .isEqualTo(ExportRunStatus.STARTED);
+        assertThat(fixture.progressStore().findByProfile(first.profile()))
+                .containsExactly(duplicate);
+    }
+
+    @Test
+    void terminal_replay_requires_exact_persisted_progress_evidence() {
+        LedgerFixture fixture = createFixture();
+        ExportRunLedger ledger = fixture.ledger();
+        ExportRun run = started("run-progress-replay");
+        ledger.tryStart(run);
+        ExportProgress persisted = progress(run, 3);
+        ledger.finish(run.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.SKIPPED, List.of(persisted));
+
+        List<ExportProgress> mismatches = List.of(
+                new ExportProgress("other", persisted.artifactName(), persisted.lastRevision(),
+                        persisted.lastSha256(), persisted.lastSliceId(), persisted.planHash(), NOW),
+                new ExportProgress(persisted.profile(), "other", persisted.lastRevision(),
+                        persisted.lastSha256(), persisted.lastSliceId(), persisted.planHash(), NOW),
+                new ExportProgress(persisted.profile(), persisted.artifactName(), 4,
+                        persisted.lastSha256(), persisted.lastSliceId(), persisted.planHash(), NOW),
+                new ExportProgress(persisted.profile(), persisted.artifactName(), persisted.lastRevision(),
+                        "d".repeat(64), persisted.lastSliceId(), persisted.planHash(), NOW),
+                new ExportProgress(persisted.profile(), persisted.artifactName(), persisted.lastRevision(),
+                        persisted.lastSha256(), "other-slice", persisted.planHash(), NOW),
+                new ExportProgress(persisted.profile(), persisted.artifactName(), persisted.lastRevision(),
+                        persisted.lastSha256(), persisted.lastSliceId(), "e".repeat(64), NOW));
+
+        for (ExportProgress mismatch : mismatches) {
+            assertThatThrownBy(() -> ledger.finish(run.runId(), ExportRunStatus.STARTED,
+                    ExportRunStatus.SKIPPED, List.of(mismatch)))
+                    .isInstanceOfSatisfying(DiagnosticException.class,
+                            failure -> assertThat(failure)
+                                    .hasMessageContaining("EXPORT.STATE_TRANSITION_CONFLICT"));
+        }
+    }
+
+    @Test
+    void duplicate_start_and_failed_replay_require_exact_identity() {
+        LedgerFixture fixture = createFixture();
+        ExportRunLedger ledger = fixture.ledger();
+        ExportRun original = started("run-start-identity");
+        ledger.tryStart(original);
+        List<ExportRun> mismatches = List.of(
+                ExportRun.started(original.runId(), "other", original.sliceName(),
+                        original.planHash(), original.startedAt()),
+                ExportRun.started(original.runId(), original.profile(), "other-slice",
+                        original.planHash(), original.startedAt()),
+                ExportRun.started(original.runId(), original.profile(), original.sliceName(),
+                        "d".repeat(64), original.startedAt()),
+                ExportRun.started(original.runId(), original.profile(), original.sliceName(),
+                        original.planHash(), original.startedAt().plusSeconds(1)));
+
+        for (ExportRun mismatch : mismatches) {
+            assertThatThrownBy(() -> ledger.tryStart(mismatch))
+                    .isInstanceOfSatisfying(DiagnosticException.class,
+                            failure -> assertThat(failure)
+                                    .hasMessageContaining("EXPORT.STATE_TRANSITION_CONFLICT"));
+        }
+
+        ExportRun failed = ledger.transition(original.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.FAILED, null, "first reason");
+        assertThat(ledger.transition(original.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.FAILED, MANIFEST_HASH, "first reason")).isEqualTo(failed);
+        assertThatThrownBy(() -> ledger.transition(original.runId(), ExportRunStatus.STARTED,
+                ExportRunStatus.FAILED, null, "other reason"))
                 .isInstanceOfSatisfying(DiagnosticException.class,
                         failure -> assertThat(failure)
                                 .hasMessageContaining("EXPORT.STATE_TRANSITION_CONFLICT"));
