@@ -229,6 +229,108 @@ class JdbcImportWorkspaceIT {
     }
 
     @Test
+    void adoptsOnlySealedStageWhoseMetadataMatchesPinnedRecoveryEvidence() {
+        JdbcImportWorkspace workspace = workspace(limits(1_000));
+        CreateImportWorkspaceCommand command = command("adopt", ImportDuplicatePolicy.COALESCE);
+
+        assertThat(workspace.adoptSealed(
+                command.deliveryId(), command.snapshot(), command.contract())).isEmpty();
+
+        ImportStage stage;
+        try (ImportWorkspaceWriter writer = workspace.create(command)) {
+            writer.append(row(2, "key-a", Map.of("ip", ImportCell.value("192.0.2.1"))));
+            stage = writer.seal();
+        }
+
+        assertThat(workspace.adoptSealed(
+                command.deliveryId(), command.snapshot(), command.contract())).contains(stage);
+
+        List<AdoptionEvidence> mismatches = List.of(
+                new AdoptionEvidence(new ImportSnapshot(
+                        command.snapshot().reference(), new ImportSha256("c".repeat(64)),
+                        command.snapshot().size()), command.contract()),
+                new AdoptionEvidence(new ImportSnapshot(
+                        command.snapshot().reference(), command.snapshot().digest(),
+                        command.snapshot().size() + 1), command.contract()),
+                new AdoptionEvidence(command.snapshot(), new ImportContractPin(
+                        new ImportContractId("other-v1"), command.contract().version(),
+                        command.contract().fingerprint())),
+                new AdoptionEvidence(command.snapshot(), new ImportContractPin(
+                        command.contract().id(), command.contract().version() + 1,
+                        command.contract().fingerprint())),
+                new AdoptionEvidence(command.snapshot(), new ImportContractPin(
+                        command.contract().id(), command.contract().version(),
+                        new ImportContractFingerprint("c".repeat(64)))));
+        for (AdoptionEvidence mismatch : mismatches) {
+            assertThatThrownBy(() -> workspace.adoptSealed(
+                    command.deliveryId(), mismatch.snapshot(), mismatch.contract()))
+                    .isInstanceOfSatisfying(ImportWorkspaceException.class,
+                            failure -> assertThat(failure.reason()).isEqualTo(
+                                    ImportWorkspaceException.Reason.STAGE_INTEGRITY_FAILED));
+        }
+    }
+
+    @Test
+    void adoptionRejectsNonRegularSealedPath() throws Exception {
+        JdbcImportWorkspace workspace = workspace(limits(1_000));
+        CreateImportWorkspaceCommand command = command("adopt-directory", ImportDuplicatePolicy.COALESCE);
+        try (ImportWorkspaceWriter writer = workspace.create(command)) {
+            writer.seal();
+        }
+        Path sealed = sealedFile();
+        Files.delete(sealed);
+        Files.createDirectory(sealed);
+
+        assertThatThrownBy(() -> workspace.adoptSealed(
+                command.deliveryId(), command.snapshot(), command.contract()))
+                .isInstanceOfSatisfying(ImportWorkspaceException.class,
+                        failure -> assertThat(failure.reason()).isEqualTo(
+                                ImportWorkspaceException.Reason.STAGE_INTEGRITY_FAILED));
+    }
+
+    @Test
+    void discardRemovesScratchAndSealedStateAndAllowsExactRebuild() {
+        JdbcImportWorkspace workspace = workspace(limits(1_000));
+        CreateImportWorkspaceCommand command = command("discard", ImportDuplicatePolicy.COALESCE);
+        try (ImportWorkspaceWriter writer = workspace.create(command)) {
+            writer.append(row(2, "key-a", Map.of("ip", ImportCell.value("192.0.2.1"))));
+        }
+
+        workspace.discard(command.deliveryId());
+        try (ImportWorkspaceWriter writer = workspace.create(command)) {
+            writer.seal();
+        }
+        assertThatThrownBy(() -> workspace.create(command))
+                .isInstanceOfSatisfying(ImportWorkspaceException.class,
+                        failure -> assertThat(failure.reason()).isEqualTo(
+                                ImportWorkspaceException.Reason.INCOMPATIBLE_EXISTING_STAGE));
+
+        workspace.discard(command.deliveryId());
+        workspace.discard(command.deliveryId());
+        assertThat(workspace.adoptSealed(
+                command.deliveryId(), command.snapshot(), command.contract())).isEmpty();
+    }
+
+    @Test
+    void capacityDistinguishesHardExhaustionAndRecoversAfterBytesAreReleased() throws Exception {
+        Path root = tempDir.resolve("exhausted");
+        ImportWorkspaceLimits tiny = new ImportWorkspaceLimits(
+                10, 2, 4, 10, 1, 2, 1, 0, 1, DelimitedInputLimits.defaults());
+        JdbcImportWorkspace workspace = workspace(root, tiny);
+        Files.createDirectories(root);
+        Path occupied = Files.write(root.resolve("occupied"), new byte[]{1, 2});
+
+        assertThat(workspace.capacity().state()).isEqualTo(ImportWorkspaceCapacity.State.EXHAUSTED);
+        assertThatThrownBy(() -> workspace.create(command("capacity-hard", ImportDuplicatePolicy.COALESCE)))
+                .isInstanceOfSatisfying(ImportWorkspaceException.class,
+                        failure -> assertThat(failure.reason()).isEqualTo(
+                                ImportWorkspaceException.Reason.HARD_LIMIT_EXCEEDED));
+
+        Files.delete(occupied);
+        assertThat(workspace.capacity().state()).isEqualTo(ImportWorkspaceCapacity.State.ACCEPTING);
+    }
+
+    @Test
     void hardRowLimitAndSharedCapacityWatermarkFailBeforeUnboundedGrowth() {
         ImportWorkspaceLimits oneRow = limits(1);
         JdbcImportWorkspace workspace = workspace(oneRow);
@@ -374,5 +476,8 @@ class JdbcImportWorkspaceIT {
              var resultSet = connection.createStatement().executeQuery(sql)) {
             return resultSet.next() ? resultSet.getString(1) : null;
         }
+    }
+
+    private record AdoptionEvidence(ImportSnapshot snapshot, ImportContractPin contract) {
     }
 }
