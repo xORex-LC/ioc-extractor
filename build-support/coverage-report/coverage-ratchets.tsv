@@ -1,5 +1,5 @@
 # scope	line-covered	line-missed	branch-covered	branch-missed	instruction-missed	absolute-instructions	rationale
-reactor	19849	2541	6245	1880	12617	observed	Conservative independent minima after import-workspace recovery remediation; fixed release floors remain separate.
+reactor	19849	2541	6264	1861	12617	observed	Conservative independent minima after local managed-import ownership remediation; fixed release floors remain separate.
 ioc-platform-errors	4	0	0	0	0	enforced	Small branchless production module; downstream coverage is complete.
 ioc-platform-diagnostics	481	10	56	20	63	enforced	Small branch denominator requires ratio and absolute missed context.
 ioc-platform-etl	165	16	16	8	75	enforced	Small branch denominator requires ratio and absolute missed context.
@@ -16,6 +16,6 @@ ioc-adapter-csv	1122	172	415	145	820	observed	CSV slice callback, metadata, form
 ioc-adapter-manifest-json-jackson	82	2	5	1	9	enforced	Small line and branch denominators require absolute missed context.
 ioc-adapter-store-jdbc	5346	667	1390	468	3352	observed	Import-workspace adoption, discard and hard-capacity recovery contracts over the conservative repeated-run minimum.
 ioc-adapter-transport-smb	813	283	309	201	1282	observed	Deterministic offline error mapping plus downstream integration coverage; external paths remain explicit.
-ioc-adapter-ingest	929	260	268	154	1080	observed	Conservative repeated-run minimum for asynchronous ingest paths.
+ioc-adapter-ingest	929	260	287	135	1080	observed	Local managed-import claim, disposition, candidate and trust-root contracts over the conservative line minimum.
 ioc-adapter-cli-picocli	415	149	114	113	979	observed	Current aggregate-group baseline with downstream execution retained.
 ioc-app	4442	624	1346	496	2734	observed	Semantic configuration preflight remediation, including the null-safe artifact schema boundary.

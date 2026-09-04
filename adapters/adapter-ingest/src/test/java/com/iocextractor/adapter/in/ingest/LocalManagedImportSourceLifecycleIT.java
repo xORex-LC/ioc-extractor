@@ -2,9 +2,13 @@ package com.iocextractor.adapter.in.ingest;
 
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
+import com.iocextractor.application.dataframeimport.model.ImportManagedObjectId;
 import com.iocextractor.application.dataframeimport.model.ImportSourceCandidate;
 import com.iocextractor.application.dataframeimport.model.ImportSourceId;
+import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
 import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceCommand;
+import com.iocextractor.application.port.out.dataframeimport.DispositionImportSourceCommand;
+import com.iocextractor.application.port.out.dataframeimport.PurgeImportTerminalSourceCommand;
 import com.iocextractor.common.IocExtractorException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -143,7 +147,156 @@ class LocalManagedImportSourceLifecycleIT {
                 .resolve("snapshot.csv")).doesNotExist();
     }
 
+    @Test
+    void claimReplayUsesOwnedSourceWhileChangedAndOversizedCandidatesFailClosed() throws Exception {
+        Fixture replayPaths = fixture(Duration.ZERO);
+        Files.writeString(replayPaths.inbox().resolve("replay.csv"), "stable");
+        ImportSourceCandidate replayCandidate = replayPaths.lifecycle().detect(SOURCE_ID, NOW).getFirst();
+        ClaimImportSourceCommand replayCommand = new ClaimImportSourceCommand(
+                new ImportDeliveryId("delivery-replay"), SOURCE_ID, replayCandidate.candidateToken());
+
+        var first = replayPaths.lifecycle().claim(replayCommand);
+        var replayed = replayPaths.lifecycle().claim(replayCommand);
+
+        assertThat(replayed).isEqualTo(first);
+        assertThat(replayPaths.inbox().resolve("replay.csv")).doesNotExist();
+
+        Fixture changedPaths = fixture(Duration.ZERO);
+        Path changed = Files.writeString(changedPaths.inbox().resolve("changed.csv"), "old");
+        ImportSourceCandidate changedCandidate = changedPaths.lifecycle().detect(SOURCE_ID, NOW).getFirst();
+        Files.writeString(changed, "new-and-longer");
+        assertThatThrownBy(() -> changedPaths.lifecycle().claim(new ClaimImportSourceCommand(
+                new ImportDeliveryId("delivery-changed"), SOURCE_ID, changedCandidate.candidateToken())))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessage("Import candidate changed after detection");
+
+        Fixture oversizedPaths = fixture(Duration.ZERO, 3);
+        Files.writeString(oversizedPaths.inbox().resolve("oversized.csv"), "four");
+        ImportSourceCandidate oversized = oversizedPaths.lifecycle().detect(SOURCE_ID, NOW).getFirst();
+        assertThatThrownBy(() -> oversizedPaths.lifecycle().claim(new ClaimImportSourceCommand(
+                new ImportDeliveryId("delivery-oversized"), SOURCE_ID, oversized.candidateToken())))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessage("Import snapshot exceeds configured byte limit");
+    }
+
+    @Test
+    void dispositionReleasesClaimOnlyAfterCompleteTerminalUnitIsPublished() throws Exception {
+        for (ImportTerminalOutcome outcome : List.of(
+                ImportTerminalOutcome.SUCCEEDED, ImportTerminalOutcome.REJECTED)) {
+            Fixture fixture = fixture(Duration.ZERO);
+            Files.writeString(fixture.inbox().resolve(outcome.name() + ".csv"), "bytes");
+            ImportSourceCandidate candidate = fixture.lifecycle().detect(SOURCE_ID, NOW).getFirst();
+            ImportDeliveryId deliveryId = new ImportDeliveryId("delivery-" + outcome.name().toLowerCase());
+            fixture.lifecycle().claim(new ClaimImportSourceCommand(
+                    deliveryId, SOURCE_ID, candidate.candidateToken()));
+            DispositionImportSourceCommand command = new DispositionImportSourceCommand(
+                    deliveryId, SOURCE_ID, outcome);
+            Path outcomeRoot = outcome == ImportTerminalOutcome.REJECTED
+                    ? fixture.quarantine() : fixture.terminal();
+            Path unit = outcomeRoot.resolve(sha256(deliveryId.value().getBytes(StandardCharsets.UTF_8)));
+
+            assertThatThrownBy(() -> fixture.lifecycle().disposition(command))
+                    .isInstanceOf(IocExtractorException.class)
+                    .hasMessage("Protected import terminal unit is not published");
+            Files.createDirectories(unit);
+            Files.writeString(unit.resolve("source.csv"), "bytes");
+            assertThatThrownBy(() -> fixture.lifecycle().disposition(command))
+                    .isInstanceOf(IocExtractorException.class)
+                    .hasMessage("Protected import terminal unit is not published");
+            Files.writeString(unit.resolve("report.json"), "{}");
+
+            fixture.lifecycle().disposition(command);
+            fixture.lifecycle().disposition(command);
+
+            assertThat(fixture.processing()
+                    .resolve(sha256(deliveryId.value().getBytes(StandardCharsets.UTF_8))))
+                    .doesNotExist();
+        }
+    }
+
+    @Test
+    void capabilityAndPurgeValidateTheConfiguredSourceWithoutTouchingTerminalBytes() throws Exception {
+        Fixture fixture = fixture(Duration.ZERO);
+
+        assertThat(fixture.lifecycle().probe(SOURCE_ID).sourceId()).isEqualTo(SOURCE_ID);
+        fixture.lifecycle().purge(new PurgeImportTerminalSourceCommand(
+                new ImportDeliveryId("delivery-purge"), SOURCE_ID,
+                ImportManagedObjectId.from(new ImportDeliveryId("delivery-purge")),
+                ImportTerminalOutcome.REJECTED));
+        assertThatThrownBy(() -> fixture.lifecycle().probe(new ImportSourceId("unknown")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Unknown local import source: unknown");
+    }
+
+    @Test
+    void malformedCandidateTokensAreRejectedBeforeAnyOwnershipChange() throws Exception {
+        Fixture fixture = fixture(Duration.ZERO);
+        String hash = "a".repeat(64);
+        List<String> malformed = List.of(
+                "v1.too.short",
+                "v2." + encoded("feed.csv") + ".1.1." + hash,
+                "v1." + encoded("feed.csv") + ".1.1.short",
+                "v1.*.1.1." + hash,
+                "v1." + encoded("feed.csv") + ".-1.1." + hash,
+                "v1." + encoded("feed.csv") + ".1.-1." + hash);
+
+        for (String token : malformed) {
+            assertThatThrownBy(() -> fixture.lifecycle().claim(new ClaimImportSourceCommand(
+                    new ImportDeliveryId("delivery-malformed"), SOURCE_ID, token)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Malformed local import candidate token");
+        }
+        try (var processing = Files.list(fixture.processing())) {
+            assertThat(processing).isEmpty();
+        }
+    }
+
+    @Test
+    void constructorRejectsInvalidAndOverlappingTrustRoots() throws Exception {
+        Path root = Files.createDirectories(tempDir.resolve("constructor"));
+        Path inbox = root.resolve("inbox");
+        Path processing = root.resolve("processing");
+        Path snapshots = root.resolve("snapshots");
+        Path terminal = root.resolve("terminal");
+        Path quarantine = root.resolve("quarantine");
+        LocalImportSourceDefinition source = new LocalImportSourceDefinition(SOURCE_ID, inbox);
+
+        assertThatThrownBy(() -> new LocalManagedImportSourceLifecycle(
+                List.of(), processing, snapshots, terminal, quarantine, Duration.ZERO, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("At least one local import source is required");
+        assertThatThrownBy(() -> new LocalManagedImportSourceLifecycle(
+                List.of(source), processing, snapshots, terminal, quarantine, Duration.ofSeconds(-1), 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Import quiet period must not be negative");
+        assertThatThrownBy(() -> new LocalManagedImportSourceLifecycle(
+                List.of(source), processing, snapshots, terminal, quarantine, Duration.ZERO, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Maximum import snapshot bytes must be positive");
+        assertThatThrownBy(() -> new LocalManagedImportSourceLifecycle(
+                List.of(source, new LocalImportSourceDefinition(SOURCE_ID, root.resolve("second-inbox"))),
+                processing, snapshots, terminal, quarantine, Duration.ZERO, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Duplicate local import source ID: local-feed");
+        assertThatThrownBy(() -> new LocalManagedImportSourceLifecycle(
+                List.of(source), processing, processing, terminal, quarantine, Duration.ZERO, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Managed import paths must not overlap");
+
+        Path real = Files.createDirectories(root.resolve("real-processing"));
+        Path link = root.resolve("linked-processing");
+        Files.createSymbolicLink(link, real);
+        assertThatThrownBy(() -> new LocalManagedImportSourceLifecycle(
+                List.of(source), link, snapshots, terminal, quarantine, Duration.ZERO, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("processingRoot must not be a symbolic link");
+    }
+
     private Fixture fixture(Duration quietPeriod) throws IOException {
+        return fixture(quietPeriod, 1024 * 1024);
+    }
+
+    private Fixture fixture(Duration quietPeriod, long maximumSnapshotBytes) throws IOException {
         Path root = Files.createDirectories(tempDir.resolve("fixture-" + java.util.UUID.randomUUID()));
         Path inbox = root.resolve("inbox");
         Path processing = root.resolve("processing");
@@ -152,7 +305,7 @@ class LocalManagedImportSourceLifecycleIT {
         Path quarantine = root.resolve("quarantine");
         var lifecycle = new LocalManagedImportSourceLifecycle(
                 List.of(new LocalImportSourceDefinition(SOURCE_ID, inbox)), processing, snapshots,
-                terminal, quarantine, quietPeriod, 1024 * 1024);
+                terminal, quarantine, quietPeriod, maximumSnapshotBytes);
         return new Fixture(lifecycle, inbox, processing, snapshots, terminal, quarantine);
     }
 
