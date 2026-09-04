@@ -385,6 +385,119 @@ class SyncHealthIndicatorTest {
     }
 
     @Test
+    void hardFetchDetectionAndPublishFailuresEachMakeHealthDown() {
+        RemoteFetchSource source = new RemoteFetchSource(
+                "incoming", "primary", "/in", List.of("*"), List.of());
+        PublishTarget target = new PublishTarget("delivery", "backup", "/out", "reputation");
+
+        SyncHealthState fetch = state();
+        fetch.recordFetchFailure("incoming", "primary",
+                new RemoteTransportException(RemoteErrorKind.AUTH_FAILED, "fetch denied"));
+        SyncHealthState detection = state();
+        detection.recordFetchDetectionFailure(
+                "incoming", "primary", "PERIODIC",
+                new RemoteTransportException(RemoteErrorKind.AUTH_FAILED, "listing denied"),
+                Duration.ofMillis(4));
+        SyncHealthState publish = state();
+        publish.recordPublishFailure("delivery", "backup", "reputation",
+                new RemoteTransportException(RemoteErrorKind.AUTH_FAILED, "publish denied"));
+
+        assertThat(indicator(fetch, List.of(source), List.of()).health().getStatus())
+                .isEqualTo(Status.DOWN);
+        assertThat(indicator(detection, List.of(source), List.of()).health().getStatus())
+                .isEqualTo(Status.DOWN);
+        var publishHealth = indicator(publish, List.of(), List.of(target)).health();
+        assertThat(publishHealth.getStatus()).isEqualTo(Status.DOWN);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> endpoints = (Map<String, Object>) publishHealth.getDetails().get("endpoints");
+        assertThat(endpoints).containsEntry("backup", "DOWN");
+    }
+
+    @Test
+    void transientDetectionAndPublishFailuresEachMakeHealthDegraded() {
+        RemoteFetchSource source = new RemoteFetchSource(
+                "incoming", "primary", "/in", List.of("*"), List.of());
+        PublishTarget target = new PublishTarget("delivery", "backup", "/out", "reputation");
+        SyncHealthState detection = state();
+        detection.recordFetchDetectionFailure(
+                "incoming", "primary", "STARTUP",
+                new RemoteTransportException(RemoteErrorKind.TRANSIENT, "listing busy"),
+                Duration.ofMillis(5));
+        SyncHealthState publish = state();
+        publish.recordPublishFailure("delivery", "backup", "reputation",
+                new RemoteTransportException(RemoteErrorKind.TRANSIENT, "publish busy"));
+
+        var detectionHealth = indicator(detection, List.of(source), List.of()).health();
+        var publishHealth = indicator(publish, List.of(), List.of(target)).health();
+
+        assertThat(detectionHealth.getStatus()).isEqualTo(new Status("DEGRADED"));
+        assertThat(publishHealth.getStatus()).isEqualTo(new Status("DEGRADED"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> detectionEndpoints =
+                (Map<String, Object>) detectionHealth.getDetails().get("endpoints");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> publishEndpoints =
+                (Map<String, Object>) publishHealth.getDetails().get("endpoints");
+        assertThat(detectionEndpoints).containsEntry("primary", "DEGRADED");
+        assertThat(publishEndpoints).containsEntry("backup", "DEGRADED");
+    }
+
+    @Test
+    void acceptedWorkAndDispatchFailuresEachMakeHealthDown() {
+        SyncHealthState workFailure = state();
+        workFailure.recordKeyedFailure(WorkKey.of("work"), new IllegalStateException("work failed"));
+        SyncHealthState dispatchFailure = state();
+        dispatchFailure.recordKeyedDispatchRejected(
+                WorkKey.of("dispatch"), 2, new IllegalStateException("executor stopped"));
+
+        var workHealth = indicator(workFailure, List.of(), List.of()).health();
+        var dispatchHealth = indicator(dispatchFailure, List.of(), List.of()).health();
+
+        assertThat(workHealth.getStatus()).isEqualTo(Status.DOWN);
+        assertThat(dispatchHealth.getStatus()).isEqualTo(Status.DOWN);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> keyedExecutor =
+                (Map<String, Object>) dispatchHealth.getDetails().get("keyedExecutor");
+        @SuppressWarnings("unchecked")
+        Map<String, Map<String, Object>> keys =
+                (Map<String, Map<String, Object>>) keyedExecutor.get("keys");
+        assertThat(keys.get("dispatch"))
+                .containsEntry("lastDispatchFailure", "executor stopped")
+                .containsEntry("abandonedWork", 2);
+    }
+
+    @Test
+    void mixedWatchAndEndpointStatesKeepRunAndNeverRunEndpointsDistinct() {
+        SyncHealthState state = state();
+        state.recordFetch("incoming", "primary", new RemoteFetchResult(1, 0, 0));
+        state.recordRemoteChangeWatchEstablished("incoming", "primary");
+        state.recordRemoteChangeWatchDisabled("secondary", "backup");
+        SyncHealthIndicator indicator = indicator(
+                state,
+                List.of(
+                        new RemoteFetchSource("incoming", "primary", "/in", List.of("*"), List.of()),
+                        new RemoteFetchSource("secondary", "backup", "/in", List.of("*"), List.of()),
+                        new RemoteFetchSource("never", "unused", "/in", List.of("*"), List.of())),
+                List.of());
+
+        var health = indicator.health();
+
+        assertThat(health.getStatus()).isEqualTo(Status.UP);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> endpoints = (Map<String, Object>) health.getDetails().get("endpoints");
+        assertThat(endpoints)
+                .containsEntry("primary", "UP")
+                .containsEntry("backup", "UP")
+                .containsEntry("unused", "UNKNOWN");
+        @SuppressWarnings("unchecked")
+        Map<String, Map<String, Object>> watches =
+                (Map<String, Map<String, Object>>) health.getDetails().get("remoteChangeWatch");
+        assertThat(watches.get("incoming")).containsEntry("status", "ACTIVE");
+        assertThat(watches.get("secondary")).containsEntry("status", "DISABLED");
+        assertThat(watches.get("never")).containsEntry("status", "DISABLED");
+    }
+
+    @Test
     void healthFailsClosedWhenAnyReadModelBoundaryThrows() {
         SyncHealthIndicator indicator = new SyncHealthIndicator(
                 List.of(), List.of(), new SyncHealthState(Clock.fixed(NOW, ZoneOffset.UTC)),
@@ -509,6 +622,19 @@ class SyncHealthIndicatorTest {
                 throw new UnsupportedOperationException();
             }
         };
+    }
+
+    private SyncHealthState state() {
+        return new SyncHealthState(Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    private SyncHealthIndicator indicator(SyncHealthState state,
+                                           List<RemoteFetchSource> sources,
+                                           List<PublishTarget> targets) {
+        return new SyncHealthIndicator(
+                sources, targets, state, ledger(List.of()), catalog(List.of()),
+                KeyedSerialExecutorSnapshot::empty, descriptor -> false,
+                Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private static final class MutableClock extends Clock {
