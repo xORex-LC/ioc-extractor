@@ -44,6 +44,7 @@ import com.iocextractor.application.port.out.dataframeimport.CanonicalImportComm
 import com.iocextractor.application.port.out.dataframeimport.CreateImportWorkspaceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ImportWorkspaceWriter;
 import com.iocextractor.application.tck.dataframeimport.CanonicalImportWriterContractTest;
+import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -52,6 +53,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -445,6 +447,193 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                 """)).isEqualTo("IMPORT.EXISTING_SLOT_MISMATCH");
     }
 
+    @Test
+    void sealedStageIntegrityRejectsMissingOrChangedBytes() throws IOException {
+        Environment missingEnvironment = environment("stage-missing");
+        CanonicalImportCommand missing = missingEnvironment.stage(
+                "delivery-stage-missing", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(missingEnvironment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "missing.example"), OptionalLong.empty()))), List.of());
+        missingEnvironment.deleteStage(missing);
+
+        assertThatThrownBy(() -> missingEnvironment.writer(JdbcCanonicalImportObserver.NOOP).promote(missing))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessage("Pinned import stage is not a regular sealed file");
+
+        Environment changedEnvironment = environment("stage-changed");
+        CanonicalImportCommand changed = changedEnvironment.stage(
+                "delivery-stage-changed", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(changedEnvironment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "changed.example"), OptionalLong.empty()))), List.of());
+        Files.writeString(changedEnvironment.stagePath(changed), "tampered", StandardOpenOption.APPEND);
+
+        assertThatThrownBy(() -> changedEnvironment.writer(JdbcCanonicalImportObserver.NOOP).promote(changed))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessage("Pinned import stage digest does not match sealed bytes");
+    }
+
+    @Test
+    void pinnedStageMetadataRejectsEveryPromotionEvidenceMismatch() {
+        Environment environment = environment("stage-evidence");
+        CanonicalImportCommand command = environment.stage(
+                "delivery-stage-evidence", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "evidence.example"), OptionalLong.empty()))),
+                List.of(new ImportRejectedLogicalRow(3, List.of(
+                        new ImportRowIssue(3, "masks", "IMPORT.INVALID_VALUE")))));
+        ImportSnapshot snapshot = command.snapshot();
+        ImportContractPin contract = command.contract();
+        ImportStage stage = command.stage();
+        List<CanonicalImportCommand> mismatches = List.of(
+                commandWith(command, new ImportSnapshot(
+                        snapshot.reference(), new ImportSha256("c".repeat(64)), snapshot.size()), contract, stage),
+                commandWith(command, new ImportSnapshot(
+                        snapshot.reference(), snapshot.digest(), snapshot.size() + 1), contract, stage),
+                commandWith(command, snapshot, new ImportContractPin(
+                        new ImportContractId("other-v1"), contract.version(), contract.fingerprint()), stage),
+                commandWith(command, snapshot, new ImportContractPin(
+                        contract.id(), contract.version() + 1, contract.fingerprint()), stage),
+                commandWith(command, snapshot, new ImportContractPin(
+                        contract.id(), contract.version(), new ImportContractFingerprint("c".repeat(64))), stage),
+                commandWith(command, snapshot, contract, new ImportStage(
+                        stage.reference(), stage.digest(), stage.sourceRows() + 1,
+                        stage.acceptedRows(), stage.rejectedRows())),
+                commandWith(command, snapshot, contract, new ImportStage(
+                        stage.reference(), stage.digest(), stage.sourceRows(),
+                        stage.acceptedRows() - 1, stage.rejectedRows())),
+                commandWith(command, snapshot, contract, new ImportStage(
+                        stage.reference(), stage.digest(), stage.sourceRows(),
+                        stage.acceptedRows(), stage.rejectedRows() - 1)));
+
+        for (CanonicalImportCommand mismatch : mismatches) {
+            assertThatThrownBy(() -> environment.writer(JdbcCanonicalImportObserver.NOOP).promote(mismatch))
+                    .isInstanceOf(IocExtractorException.class)
+                    .hasMessage("Import stage metadata does not match promotion evidence");
+        }
+        assertThat(environment.count("import_commit")).isZero();
+        assertThat(environment.count("masks")).isZero();
+    }
+
+    @Test
+    void canonicalReceiptRejectsEveryIdentityMismatch() {
+        Environment environment = environment("receipt-identity");
+        CanonicalImportCommand command = environment.stage(
+                "delivery-receipt-identity", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "receipt.example"), OptionalLong.empty()))), List.of());
+        JdbcCanonicalImportWriter writer = environment.writer(JdbcCanonicalImportObserver.NOOP);
+        writer.promote(command);
+        List<ReceiptMutation> mutations = List.of(
+                new ReceiptMutation("sequence_no", command.sequence().value() + 1),
+                new ReceiptMutation("observation_id", "import:other-delivery"),
+                new ReceiptMutation("source_id", "other-source"),
+                new ReceiptMutation("snapshot_sha256", "c".repeat(64)),
+                new ReceiptMutation("snapshot_size", command.snapshot().size() + 1),
+                new ReceiptMutation("contract_id", "other-v1"),
+                new ReceiptMutation("contract_version", command.contract().version() + 1),
+                new ReceiptMutation("contract_fingerprint", "c".repeat(64)),
+                new ReceiptMutation("stage_sha256", "c".repeat(64)));
+
+        for (ReceiptMutation mutation : mutations) {
+            Object original = environment.queryObject(
+                    "SELECT " + mutation.column() + " FROM import_commit");
+            try {
+                environment.updateReceipt(command.deliveryId(), mutation.column(), mutation.value());
+                assertThatThrownBy(() -> writer.promote(command))
+                        .as(mutation.column())
+                        .isInstanceOf(IocExtractorException.class)
+                        .hasMessage("Import delivery identity conflicts with canonical receipt");
+            } finally {
+                environment.updateReceipt(command.deliveryId(), mutation.column(), original);
+            }
+        }
+        assertThat(writer.promote(command).outcome().name()).isEqualTo("ALREADY_COMMITTED");
+        assertThat(environment.count("masks")).isOne();
+    }
+
+    @Test
+    void unchangedRenewalPersistsAndReplaysDeadlineOnlyArtifactEvidence() {
+        Environment environment = environment("deadline-only-evidence");
+        environment.writer(JdbcCanonicalImportObserver.NOOP).promote(environment.stage(
+                "delivery-deadline-seed", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "renew.example"), OptionalLong.empty()))), List.of()));
+        ImportPromotionPolicy renewUnchanged = new ImportPromotionPolicy(
+                ImportRowFailurePolicy.ACCEPT_VALID, true, Optional.empty());
+        CanonicalImportCommand renewal = environment.stage(
+                "delivery-deadline-only", renewUnchanged,
+                List.of(row(3, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "renew.example"), OptionalLong.empty()))), List.of());
+        JdbcCanonicalImportWriter writer = environment.writer(
+                JdbcCanonicalImportObserver.NOOP, NOW.plus(Duration.ofHours(1)));
+
+        var committed = writer.promote(renewal);
+        var replayed = writer.promote(renewal);
+
+        assertThat(committed.publicMutations()).isZero();
+        assertThat(committed.affectedArtifacts()).isEmpty();
+        assertThat(committed.observedArtifacts()).containsExactly("masks");
+        assertThat(committed.projectionGenerations()).isEmpty();
+        assertThat(replayed)
+                .usingRecursiveComparison()
+                .ignoringFields("outcome")
+                .isEqualTo(committed);
+        assertThat(replayed.outcome().name()).isEqualTo("ALREADY_COMMITTED");
+        assertThat(environment.queryObject(
+                """
+                SELECT projection_generation FROM import_commit_artifact
+                WHERE delivery_id = 'delivery-deadline-only'
+                """)).isNull();
+    }
+
+    @Test
+    void constructorRejectsAmbiguousDefinitionsAndNonPositiveReceiptRetention() {
+        Environment environment = environment("writer-configuration");
+        List<ArtifactIdAllocatorDefinition> allocators = List.of(
+                new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 1, 1),
+                new ArtifactIdAllocatorDefinition("hashes", ArtifactIdStrategy.ASCENDING, 1, 1));
+
+        assertThatThrownBy(() -> constructWriter(
+                environment, List.of(schema("masks", "mask"), schema("masks", "mask")),
+                allocators, Duration.ofDays(1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Duplicate dataframe artifact schema: masks");
+        assertThatThrownBy(() -> constructWriter(
+                environment, environment.schemas,
+                List.of(allocators.getFirst(), allocators.getFirst()), Duration.ofDays(1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Duplicate public id allocator definition: masks");
+        assertThatThrownBy(() -> constructWriter(
+                environment, environment.schemas, allocators, Duration.ZERO))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("receiptRetention must be positive");
+        assertThatThrownBy(() -> constructWriter(
+                environment, environment.schemas, allocators, Duration.ofSeconds(-1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("receiptRetention must be positive");
+    }
+
+    private JdbcCanonicalImportWriter constructWriter(
+            Environment environment,
+            List<DataframeArtifactSchema> schemas,
+            List<ArtifactIdAllocatorDefinition> allocators,
+            Duration receiptRetention) {
+        return new JdbcCanonicalImportWriter(
+                environment.dataSource, schemas, allocators, environment.identities,
+                environment.workspaceRoot, ignored -> EffectiveTime.at(NOW),
+                new FixedRecordValidityPolicy(TTL), CLOCK, new JdbcWriterAdmission(),
+                JdbcCanonicalImportObserver.NOOP, receiptRetention);
+    }
+
+    private CanonicalImportCommand commandWith(
+            CanonicalImportCommand command,
+            ImportSnapshot snapshot,
+            ImportContractPin contract,
+            ImportStage stage) {
+        return new CanonicalImportCommand(
+                command.deliveryId(), command.sequence(), command.sourceId(), snapshot, contract, stage);
+    }
+
     private Environment environment(String name) {
         Path database = tempDir.resolve(databases.incrementAndGet() + "-" + name + ".db");
         HikariDataSource dataSource = new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(
@@ -633,11 +822,14 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
 
         private void deleteStage(CanonicalImportCommand command) {
             try {
-                Files.delete(new ImportWorkspaceLayout(workspaceRoot)
-                        .paths(command.deliveryId()).sealed());
+                Files.delete(stagePath(command));
             } catch (IOException failure) {
                 throw new AssertionError("Cannot remove sealed stage for receipt replay test", failure);
             }
+        }
+
+        private Path stagePath(CanonicalImportCommand command) {
+            return new ImportWorkspaceLayout(workspaceRoot).paths(command.deliveryId()).sealed();
         }
 
         private CanonicalImportCommand stage(String delivery,
@@ -692,6 +884,29 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                 throw new AssertionError(failure);
             }
         }
+
+        private Object queryObject(String sql) {
+            try (Connection connection = dataSource.getConnection();
+                 PreparedStatement statement = connection.prepareStatement(sql);
+                 ResultSet row = statement.executeQuery()) {
+                assertThat(row.next()).isTrue();
+                return row.getObject(1);
+            } catch (SQLException failure) {
+                throw new AssertionError(failure);
+            }
+        }
+
+        private void updateReceipt(ImportDeliveryId deliveryId, String column, Object value) {
+            try (Connection connection = dataSource.getConnection();
+                 PreparedStatement statement = connection.prepareStatement(
+                         "UPDATE import_commit SET " + column + " = ? WHERE delivery_id = ?")) {
+                statement.setObject(1, value);
+                statement.setString(2, deliveryId.value());
+                assertThat(statement.executeUpdate()).isOne();
+            } catch (SQLException failure) {
+                throw new AssertionError(failure);
+            }
+        }
     }
 
     private ImportWorkspaceLimits workspaceLimits() {
@@ -707,5 +922,8 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
         private InjectedFailure(JdbcCanonicalImportObserver.Phase phase) {
             super(phase.name());
         }
+    }
+
+    private record ReceiptMutation(String column, Object value) {
     }
 }
