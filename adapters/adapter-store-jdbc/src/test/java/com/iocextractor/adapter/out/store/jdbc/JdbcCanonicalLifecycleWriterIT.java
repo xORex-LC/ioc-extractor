@@ -302,13 +302,14 @@ class JdbcCanonicalLifecycleWriterIT {
 
         writer.confirm(command(
                 "observation-null-times", "masks", receipt("receipt-null-times", 1),
-                row("nullable-times", "example.test")));
+                rowWithIdSlot("nullable-times", "example.test", Optional.of("id"), " ")));
 
         var snapshot = new JdbcActiveArtifactReader(dataSource, schemas)
                 .loadActive("masks", EffectiveTime.at(START));
         assertThat(snapshot.header())
                 .containsExactly("id", "value", "source", "time_first_seen", "time_last_seen");
         assertThat(snapshot.records()).singleElement().satisfies(record -> {
+            assertThat(record.row().value("id")).isEqualTo("1");
             assertThat(record.row().value("time_first_seen")).isNull();
             assertThat(record.row().value("time_last_seen")).isNull();
         });
@@ -340,6 +341,105 @@ class JdbcCanonicalLifecycleWriterIT {
                 .isZero();
     }
 
+    @Test
+    void constructor_rejects_ambiguous_schema_and_public_id_allocator_catalogs() {
+        assertThatThrownBy(() -> new JdbcCanonicalLifecycleWriter(
+                dataSource,
+                List.of(schema("masks"), schema("masks")),
+                List.of(),
+                timeSource,
+                new FixedRecordValidityPolicy(TTL),
+                ALLOCATOR_CLOCK))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Duplicate dataframe artifact schema: masks");
+
+        assertThatThrownBy(() -> new JdbcCanonicalLifecycleWriter(
+                dataSource,
+                schemas,
+                List.of(new ArtifactIdAllocatorDefinition(
+                        "unknown", ArtifactIdStrategy.ASCENDING, 1, 1)),
+                timeSource,
+                new FixedRecordValidityPolicy(TTL),
+                ALLOCATOR_CLOCK))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("does not match an id-bearing artifact: unknown");
+
+        var definition = new ArtifactIdAllocatorDefinition(
+                "masks", ArtifactIdStrategy.ASCENDING, 1, 1);
+        assertThatThrownBy(() -> new JdbcCanonicalLifecycleWriter(
+                dataSource,
+                schemas,
+                List.of(definition, definition),
+                timeSource,
+                new FixedRecordValidityPolicy(TTL),
+                ALLOCATOR_CLOCK))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Duplicate public id allocator definition: masks");
+    }
+
+    @Test
+    void confirmation_rejects_commands_that_violate_the_artifact_schema_contract() {
+        JdbcCanonicalLifecycleWriter writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+
+        assertThatThrownBy(() -> writer.confirm(command(
+                "observation-unknown", "unknown", receipt("receipt-unknown", 1))))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("Unknown dataframe artifact: unknown");
+
+        CanonicalArtifactConfirmation wrongHeader = new CanonicalArtifactConfirmation(
+                new ObservationId("observation-wrong-header"),
+                "source-key",
+                receipt("receipt-wrong-header", 1),
+                "masks",
+                List.of("id", "value"),
+                List.of());
+        assertThatThrownBy(() -> writer.confirm(wrongHeader))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("header does not match artifact schema: masks");
+
+        assertThatThrownBy(() -> writer.confirm(command(
+                "observation-missing-id-slot", "masks", receipt("receipt-missing-id-slot", 1),
+                rowWithIdSlot("missing-id-slot", "value", Optional.empty(), null))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("public-id slot does not match artifact schema: masks");
+
+        assertThatThrownBy(() -> writer.confirm(command(
+                "observation-wrong-id-slot", "masks", receipt("receipt-wrong-id-slot", 1),
+                rowWithIdSlot("wrong-id-slot", "value", Optional.of("value"), null))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("public-id slot does not match artifact schema: masks");
+
+        assertThatThrownBy(() -> writer.confirm(command(
+                "observation-supplied-id", "masks", receipt("receipt-supplied-id", 1),
+                rowWithIdSlot("supplied-id", "value", Optional.of("id"), "7"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Service-owned public id must remain deferred");
+    }
+
+    @Test
+    void observation_identity_cannot_cross_sources_or_resume_after_terminal_state() {
+        JdbcCanonicalLifecycleWriter writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        writer.confirm(command(
+                "observation-owned", "masks", receipt("receipt-owned", 1), row("owned", "value")));
+
+        assertThatThrownBy(() -> writer.confirm(commandForSource(
+                "observation-owned", "another-source", "masks", receipt("receipt-owned-replay", 1),
+                row("owned-replay", "value"))))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("already used for another source");
+
+        new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30)).markTerminal(
+                new ObservationId("observation-owned"),
+                EffectiveTime.at(START),
+                Duration.ofDays(30));
+
+        assertThatThrownBy(() -> writer.confirm(command(
+                "observation-owned", "hashes", receipt("receipt-terminal", 1),
+                row("terminal", "AABB"))))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("Canonical observation identity is not writable");
+    }
+
     private JdbcCanonicalLifecycleWriter writer(JdbcLifecycleTransactionObserver observer) {
         return new JdbcCanonicalLifecycleWriter(
                 dataSource,
@@ -357,9 +457,17 @@ class JdbcCanonicalLifecycleWriterIT {
                                                   String artifact,
                                                   ConfirmationReceiptContext receipt,
                                                   CanonicalRecordConfirmation... records) {
+        return commandForSource(observation, "source-key", artifact, receipt, records);
+    }
+
+    private CanonicalArtifactConfirmation commandForSource(String observation,
+                                                           String sourceKey,
+                                                           String artifact,
+                                                           ConfirmationReceiptContext receipt,
+                                                           CanonicalRecordConfirmation... records) {
         return new CanonicalArtifactConfirmation(
                 new ObservationId(observation),
-                "source-key",
+                sourceKey,
                 receipt,
                 artifact,
                 List.of("id", "value", "source", "time_first_seen", "time_last_seen"),
@@ -376,6 +484,21 @@ class JdbcCanonicalLifecycleWriterIT {
         return new CanonicalRecordConfirmation(
                 new ArtifactRowKey(rowKey),
                 new PreparedArtifactRow(ArtifactRow.ordered(values), Optional.of("id")));
+    }
+
+    private CanonicalRecordConfirmation rowWithIdSlot(String rowKey,
+                                                      String value,
+                                                      Optional<String> idColumn,
+                                                      String id) {
+        LinkedHashMap<String, String> values = new LinkedHashMap<>();
+        values.put("id", id);
+        values.put("value", value);
+        values.put("source", "feed-name");
+        values.put("time_first_seen", null);
+        values.put("time_last_seen", null);
+        return new CanonicalRecordConfirmation(
+                new ArtifactRowKey(rowKey),
+                new PreparedArtifactRow(ArtifactRow.ordered(values), idColumn));
     }
 
     private ConfirmationReceiptContext receipt(String id, int expectedArtifacts) {

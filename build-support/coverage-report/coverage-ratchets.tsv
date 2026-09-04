@@ -1,5 +1,5 @@
 # scope	line-covered	line-missed	branch-covered	branch-missed	instruction-missed	absolute-instructions	rationale
-reactor	19849	2541	6393	1861	12617	observed	Conservative independent minima after sync-health precedence remediation; fixed release floors remain separate.
+reactor	19849	2541	6477	1861	12617	observed	Conservative independent minima after final aggregate-floor boundary remediation; fixed release floors remain separate.
 ioc-platform-errors	4	0	0	0	0	enforced	Small branchless production module; downstream coverage is complete.
 ioc-platform-diagnostics	481	10	56	20	63	enforced	Small branch denominator requires ratio and absolute missed context.
 ioc-platform-etl	165	16	16	8	75	enforced	Small branch denominator requires ratio and absolute missed context.
@@ -8,14 +8,14 @@ ioc-platform-concurrency	197	21	48	18	67	enforced	Small branch denominator requi
 ioc-platform-observability	327	14	69	2	42	enforced	Small branch denominator requires ratio and absolute missed context.
 ioc-platform-diagnostics-logging	56	4	20	1	9	enforced	Small line and branch denominators require absolute missed context.
 ioc-domain	239	4	108	2	20	observed	Behavioral contract remediation exceeds the core line and branch release floors; explicit fixed-floor gates remain separate.
-ioc-application	5107	305	2051	241	2035	observed	Conservative independent minima after application evidence-contract remediation; actual coverage reaches both fixed floors, which remain separate gates.
+ioc-application	5107	305	2067	241	2035	observed	Import catalog authority and malformed-reference contracts over the conservative line minimum.
 ioc-adapter-regex-re2j	8	10	2	2	39	enforced	Small downstream-only module requires absolute missed context.
 ioc-adapter-psl	15	2	11	1	3	enforced	Small line and branch denominators require absolute missed context.
 ioc-adapter-source-tika	57	1	7	3	6	enforced	Small line and branch denominators require absolute missed context.
-ioc-adapter-csv	1122	172	415	145	820	observed	CSV slice callback, metadata, format, encoding and durability failure contracts with downstream execution retained.
+ioc-adapter-csv	1122	172	424	145	820	observed	CSV slice identity, overwrite and incomplete-callback contracts over the conservative line minimum.
 ioc-adapter-manifest-json-jackson	82	2	5	1	9	enforced	Small line and branch denominators require absolute missed context.
-ioc-adapter-store-jdbc	5346	667	1443	468	3352	observed	Publish binding, idempotent replay, conflict and health-selection contracts over the conservative line minimum.
-ioc-adapter-transport-smb	813	283	309	201	1282	observed	Deterministic offline error mapping plus downstream integration coverage; external paths remain explicit.
-ioc-adapter-ingest	929	260	312	135	1080	observed	Local terminal report, replay, archive and retention contracts over the conservative line minimum.
+ioc-adapter-store-jdbc	5346	667	1461	468	3352	observed	Import workspace limits and lifecycle writer fail-closed contracts over the conservative line minimum.
+ioc-adapter-transport-smb	813	283	334	201	1282	observed	Deterministic offline path, object-type and publication-integrity contracts; external paths remain explicit.
+ioc-adapter-ingest	929	260	328	135	1080	observed	Real local WatchService hint lifecycle contracts over the conservative line minimum.
 ioc-adapter-cli-picocli	415	149	140	113	979	observed	Health endpoint selection, failure classification and structured-detail rendering over the conservative line minimum.
 ioc-app	4442	624	1371	496	2734	observed	Sync-health channel precedence, endpoint isolation and keyed-failure evidence over the conservative line minimum.

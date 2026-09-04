@@ -196,6 +196,82 @@ class CsvArtifactSliceWriterIT {
     }
 
     @Test
+    void rejectsRunPlanIdentityDriftAndReservedOrDuplicateArtifactNamesBeforeWriting() {
+        ExportPlan valid = plan();
+        CsvArtifactSliceWriter writer = new CsvArtifactSliceWriter(tempDir, new TestManifestCodec());
+        ExportRun started = started(valid);
+
+        assertThatThrownBy(() -> writer.stage(
+                withStatus(started, ExportRunStatus.STAGED, HASH_A),
+                new SnapshotRequest(valid), reader(valid, 0)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("only a STARTED export run can be staged");
+        assertThatThrownBy(() -> writer.stage(
+                ExportRun.started("profile-drift", "other", "slice-profile", valid.planHash(), NOW),
+                new SnapshotRequest(valid), reader(valid, 0)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("export request plan does not match run identity");
+        assertThatThrownBy(() -> writer.stage(
+                ExportRun.started("hash-drift", valid.profile().name(), "slice-hash", HASH_C, NOW),
+                new SnapshotRequest(valid), reader(valid, 0)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("export request plan does not match run identity");
+
+        List<List<String>> invalidFileNames = List.of(
+                List.of("duplicate.csv", "duplicate.csv"),
+                List.of("manifest.json", "other.csv"),
+                List.of("other.csv", "_SUCCESS"));
+        for (int index = 0; index < invalidFileNames.size(); index++) {
+            ExportPlan invalid = planWithFileNames(invalidFileNames.get(index));
+            ExportRun run = started(invalid, "invalid-files-" + index, "invalid-slice-" + index);
+
+            assertThatThrownBy(() -> writer.stage(
+                    run, new SnapshotRequest(invalid), reader(invalid, 0)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("export artifact file names must be unique and non-reserved");
+        }
+
+        assertThat(tempDir).isEmptyDirectory();
+    }
+
+    @Test
+    void refusesToOverwriteEitherStagingOrPublishedSliceIdentity() {
+        ExportPlan plan = plan();
+        ExportRun run = started(plan);
+        CsvArtifactSliceWriter writer = new CsvArtifactSliceWriter(tempDir, new TestManifestCodec());
+        StagedSlice staged = writer.stage(run, new SnapshotRequest(plan), reader(plan, 0));
+
+        assertThatThrownBy(() -> writer.stage(run, new SnapshotRequest(plan), reader(plan, 0)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("slice path already exists; inspect/recover before staging");
+
+        writer.makeAvailable(withStatus(run, ExportRunStatus.STAGED, staged.manifestSha256()));
+        assertThatThrownBy(() -> writer.stage(run, new SnapshotRequest(plan), reader(plan, 0)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("slice path already exists; inspect/recover before staging");
+    }
+
+    @Test
+    void rejectsSnapshotReaderThatReturnsWithoutEndingMaterialization() {
+        ExportPlan plan = oneArtifactPlan();
+        ExportRun run = started(plan);
+        SnapshotMetadata snapshot = snapshot(plan, 0);
+        SnapshotSliceReader incomplete = (request, consumer) -> {
+            consumer.begin(snapshot);
+            consumer.beginArtifact(snapshot.artifacts().getFirst());
+            consumer.endArtifact();
+            return snapshot;
+        };
+
+        CsvArtifactSliceWriter writer = new CsvArtifactSliceWriter(tempDir, new TestManifestCodec());
+
+        assertThatThrownBy(() -> writer.stage(run, new SnapshotRequest(plan), incomplete))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("snapshot reader returned before end callback");
+        assertThat(tempDir.resolve(".staging/run-1/manifest.json")).doesNotExist();
+    }
+
+    @Test
     void validatesCharsetBeforeOpeningArtifactFile() {
         ExportPlan plan = plan(new ExportFormat("csv", "not-a-charset", ";", "\"", "NULL"));
         ExportRun run = started(plan);
@@ -457,6 +533,15 @@ class CsvArtifactSliceWriterIT {
                 new ExportProfile("complete", ExportMode.COMPLETE, List.of("masks")),
                 new ExportFormat("csv", "UTF-8", ";", "\"", "NULL"),
                 List.of(masks));
+    }
+
+    private ExportPlan planWithFileNames(List<String> fileNames) {
+        ExportArtifactSpec masks = spec("masks", fileNames.get(0), HASH_A, HASH_B);
+        ExportArtifactSpec hashes = spec("hashes", fileNames.get(1), HASH_B, HASH_C);
+        return new ExportPlan(1,
+                new ExportProfile("complete", ExportMode.COMPLETE, List.of("masks", "hashes")),
+                new ExportFormat("csv", "UTF-8", ";", "\"", "NULL"),
+                List.of(masks, hashes));
     }
 
     private ExportArtifactSpec spec(String name, String fileName, String identity, String schema) {

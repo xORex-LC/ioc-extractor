@@ -353,8 +353,94 @@ class JdbcImportWorkspaceIT {
         }
         assertThatThrownBy(() -> paused.create(command("capacity-b", ImportDuplicatePolicy.COALESCE)))
                 .isInstanceOfSatisfying(ImportWorkspaceException.class,
-                        failure -> assertThat(failure.reason()).isEqualTo(
-                                ImportWorkspaceException.Reason.CAPACITY_PAUSED));
+                            failure -> assertThat(failure.reason()).isEqualTo(
+                                    ImportWorkspaceException.Reason.CAPACITY_PAUSED));
+    }
+
+    @Test
+    void acceptsRelatedBranchesBeforePrimaryAndRequiresStrictlyIncreasingSourceRows() {
+        JdbcImportWorkspace workspace = workspace(limits(10));
+        CreateImportWorkspaceCommand command = command("branch-order", ImportDuplicatePolicy.COALESCE);
+
+        try (ImportWorkspaceWriter writer = workspace.create(command)) {
+            writer.append(new ImportLogicalRow(2, List.of(
+                    branch("hashes", ImportArtifactRole.RELATED, "related-a",
+                            Map.of("hash", ImportCell.value("ABC"))),
+                    branch("ip_list", ImportArtifactRole.PRIMARY, "primary-a",
+                            Map.of("ip", ImportCell.value("192.0.2.1"))))));
+
+            assertThatThrownBy(() -> writer.append(
+                    row(2, "primary-b", Map.of("ip", ImportCell.value("192.0.2.2")))))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("Import source rows must be appended in strictly increasing order");
+
+            assertThat(writer.seal().acceptedRows()).isOne();
+        }
+    }
+
+    @Test
+    void rejectsRowsThatExceedBranchOrCellShapeLimits() {
+        ImportWorkspaceLimits oneBranch = limits(10, 1, 4, 10);
+        try (ImportWorkspaceWriter writer = workspace(tempDir.resolve("branch-limit"), oneBranch)
+                .create(command("branch-limit", ImportDuplicatePolicy.COALESCE))) {
+            ImportLogicalRow oversized = new ImportLogicalRow(2, List.of(
+                    branch("ip_list", ImportArtifactRole.PRIMARY, "primary",
+                            Map.of("ip", ImportCell.value("192.0.2.1"))),
+                    branch("hashes", ImportArtifactRole.RELATED, "related",
+                            Map.of("hash", ImportCell.value("ABC")))));
+
+            assertThatThrownBy(() -> writer.append(oversized))
+                    .isInstanceOfSatisfying(ImportWorkspaceException.class,
+                            failure -> assertThat(failure.reason()).isEqualTo(
+                                    ImportWorkspaceException.Reason.HARD_LIMIT_EXCEEDED))
+                    .hasMessage("Import row exceeds the configured branch limit");
+        }
+
+        ImportWorkspaceLimits oneCell = limits(10, 2, 1, 10);
+        try (ImportWorkspaceWriter writer = workspace(tempDir.resolve("cell-limit"), oneCell)
+                .create(command("cell-limit", ImportDuplicatePolicy.COALESCE))) {
+            ImportLogicalRow oversized = row(2, "primary", Map.of(
+                    "ip", ImportCell.value("192.0.2.1"),
+                    "score", ImportCell.value("100")));
+
+            assertThatThrownBy(() -> writer.append(oversized))
+                    .isInstanceOfSatisfying(ImportWorkspaceException.class,
+                            failure -> assertThat(failure.reason()).isEqualTo(
+                                    ImportWorkspaceException.Reason.HARD_LIMIT_EXCEEDED))
+                    .hasMessage("Import branch exceeds the configured cell limit");
+        }
+    }
+
+    @Test
+    void boundsAccumulatedRejectedRowIssues() {
+        ImportWorkspaceLimits oneError = limits(10, 2, 4, 1);
+        try (ImportWorkspaceWriter writer = workspace(tempDir.resolve("error-limit"), oneError)
+                .create(command("error-limit", ImportDuplicatePolicy.COALESCE))) {
+            writer.reject(new ImportRejectedLogicalRow(2, List.of(
+                    new ImportRowIssue(2, "ip_list", "IMPORT.INVALID_VALUE"))));
+
+            assertThatThrownBy(() -> writer.reject(new ImportRejectedLogicalRow(3, List.of(
+                    new ImportRowIssue(3, "ip_list", "IMPORT.INVALID_VALUE")))))
+                    .isInstanceOfSatisfying(ImportWorkspaceException.class,
+                            failure -> assertThat(failure.reason()).isEqualTo(
+                                    ImportWorkspaceException.Reason.HARD_LIMIT_EXCEEDED))
+                    .hasMessage("Import stage exceeds the configured row-error limit");
+        }
+    }
+
+    @Test
+    void closedWriterRejectsFurtherMutationAndCloseIsIdempotent() {
+        JdbcImportWorkspace workspace = workspace(limits(10));
+        ImportWorkspaceWriter writer = workspace.create(
+                command("closed-writer", ImportDuplicatePolicy.COALESCE));
+
+        writer.close();
+        writer.close();
+
+        assertThatThrownBy(() -> writer.append(
+                row(2, "key-a", Map.of("ip", ImportCell.value("192.0.2.1")))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Import workspace writer is closed or sealed");
     }
 
     @Test
@@ -387,8 +473,12 @@ class JdbcImportWorkspaceIT {
     }
 
     private ImportWorkspaceLimits limits(long rows) {
+        return limits(rows, 4, 32, Math.max(rows, 10));
+    }
+
+    private ImportWorkspaceLimits limits(long rows, int branches, int cells, long errors) {
         return new ImportWorkspaceLimits(
-                rows, 4, 32, Math.max(rows, 10),
+                rows, branches, cells, errors,
                 512L * 1024 * 1024,
                 1024L * 1024 * 1024,
                 900L * 1024 * 1024,
@@ -425,6 +515,17 @@ class JdbcImportWorkspaceIT {
                 requestedSlot == null ? OptionalLong.empty() : OptionalLong.of(requestedSlot),
                 Optional.of(material), List.of(material));
         return new ImportLogicalRow(sourceRow, List.of(branch));
+    }
+
+    private ImportArtifactBranch branch(String artifact,
+                                        ImportArtifactRole role,
+                                        String key,
+                                        Map<String, ImportCell> values) {
+        CanonicalKeyMaterial material = new CanonicalKeyMaterial(
+                artifact + "-row-v1", hashFor(key), "[\"" + key + "\"]");
+        return new ImportArtifactBranch(
+                artifact, role, new LinkedHashMap<>(values), OptionalLong.empty(),
+                Optional.of(material), List.of(material));
     }
 
     private String hashFor(String key) {

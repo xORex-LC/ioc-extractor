@@ -164,9 +164,60 @@ class SmbFileTransportIT {
     void rejectsUnsafeRemotePaths() {
         SmbFileTransport transport = transport(new FakeFactory());
 
-        assertThatThrownBy(() -> transport.stat("primary", "../slice"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("remotePath");
+        for (String path : new String[]{null, "", " ", ".", "/", "a/../b", "../slice", "slice/.."}) {
+            assertThatThrownBy(() -> transport.stat("primary", path))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("remotePath");
+        }
+        for (String leaf : new String[]{null, "", " ", ".", "..", "a/b", "a\\b"}) {
+            assertThatThrownBy(() -> SmbFileTransport.join("root", leaf))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("path segment");
+        }
+
+        assertThat(SmbFileTransport.normalizeRemotePath("//remote\\nested///"))
+                .isEqualTo("remote/nested");
+        assertThat(SmbFileTransport.join("/remote//nested/", "file.csv"))
+                .isEqualTo("remote/nested/file.csv");
+    }
+
+    @Test
+    void listAndStatExposeOnlyRegularRemoteObjects() {
+        FakeFactory factory = new FakeFactory();
+        factory.precreated.createDirectories("remote/folder");
+        factory.precreated.putText("remote/file.csv", "content");
+        SmbFileTransport transport = transport(factory);
+
+        assertThat(transport.list("primary", "remote"))
+                .extracting(object -> object.path())
+                .containsExactly("remote/file.csv");
+        assertThat(transport.stat("primary", "remote/file.csv")).isPresent();
+        assertThat(transport.stat("primary", "remote/folder")).isEmpty();
+        assertThat(transport.stat("primary", "remote/missing.csv")).isEmpty();
+    }
+
+    @Test
+    void publishReplacesUncommittedRemoteDirectoryBeforeAtomicRename() throws IOException {
+        FakeFactory factory = new FakeFactory();
+        factory.precreated.createDirectories("export/profile/slice-1");
+        factory.precreated.putText("export/profile/slice-1/stale.csv", "stale");
+        SmbFileTransport transport = transport(factory);
+
+        transport.publishAtomically(new PublishAtomicallyRequest(
+                "primary", "export/profile/slice-1", localSlice("manifest-sha-1"), "_SUCCESS"));
+
+        assertThat(factory.precreated.files).doesNotContainKey("export/profile/slice-1/stale.csv");
+        assertThat(factory.precreated.operations).contains("delete-tree:export/profile/slice-1");
+    }
+
+    @Test
+    void publishVerifiesEveryUploadedFileAndCommittedMarker() throws IOException {
+        assertPublishFailure(client -> client.hideUploadedStat = true, "uploaded file is absent");
+        assertPublishFailure(client -> client.corruptUploadedSize = true, "uploaded file size mismatch");
+        assertPublishFailure(client -> client.removeMarkerAfterRename = true,
+                "remote commit marker is absent after publish");
+        assertPublishFailure(client -> client.replaceMarkerAfterRename = true,
+                "remote commit marker mismatch after publish");
     }
 
     private Path localSlice(String marker) throws IOException {
@@ -175,6 +226,18 @@ class SmbFileTransportIT {
         Files.writeString(slice.resolve("hashes.csv"), "hash,row\n", StandardCharsets.UTF_8);
         Files.writeString(slice.resolve("_SUCCESS"), marker, StandardCharsets.UTF_8);
         return slice;
+    }
+
+    private void assertPublishFailure(java.util.function.Consumer<FakeSmbShareClient> fault,
+                                      String expectedMessage) throws IOException {
+        FakeFactory factory = new FakeFactory();
+        fault.accept(factory.precreated);
+        SmbFileTransport transport = transport(factory);
+
+        assertThatThrownBy(() -> transport.publishAtomically(new PublishAtomicallyRequest(
+                "primary", "export/profile/slice-1", localSlice("manifest-sha-1"), "_SUCCESS")))
+                .isInstanceOf(RemoteTransportException.class)
+                .hasMessageContaining(expectedMessage);
     }
 
     private static SmbFileTransport transport(FakeFactory factory) {
@@ -236,6 +299,10 @@ class SmbFileTransportIT {
         private String failOnUploadName;
         private boolean failDeleteTree;
         private boolean failList;
+        private boolean hideUploadedStat;
+        private boolean corruptUploadedSize;
+        private boolean removeMarkerAfterRename;
+        private boolean replaceMarkerAfterRename;
         private boolean closed;
 
         @Override
@@ -244,22 +311,32 @@ class SmbFileTransportIT {
                 throw new RuntimeException("transport connection reset");
             }
             String prefix = remotePath + "/";
-            return files.entrySet().stream()
-                    .filter(entry -> entry.getKey().startsWith(prefix))
-                    .map(entry -> new SmbRemoteEntry(
-                            entry.getKey(), entry.getValue().length, Instant.EPOCH, false, 0L))
+            return java.util.stream.Stream.concat(
+                            files.entrySet().stream().map(entry -> new SmbRemoteEntry(
+                                    entry.getKey(), entry.getValue().length, Instant.EPOCH, false, 0L)),
+                            directories.stream().map(path -> new SmbRemoteEntry(
+                                    path, 0, Instant.EPOCH, true, 0L)))
+                    .filter(entry -> entry.path().startsWith(prefix))
                     .toList();
         }
 
         @Override
         public Optional<SmbRemoteEntry> stat(String remotePath) {
             statPaths.add(remotePath);
+            if (hideUploadedStat && remotePath.contains(".tmp-")) {
+                return Optional.empty();
+            }
+            if (directories.contains(remotePath)) {
+                return Optional.of(new SmbRemoteEntry(
+                        remotePath, 0, Instant.EPOCH, true, 0L));
+            }
             byte[] content = files.get(remotePath);
             if (content == null) {
                 return Optional.empty();
             }
             return Optional.of(new SmbRemoteEntry(
-                    remotePath, content.length, Instant.EPOCH, false, 0L));
+                    remotePath, content.length + (corruptUploadedSize ? 1 : 0),
+                    Instant.EPOCH, false, 0L));
         }
 
         @Override
@@ -348,6 +425,11 @@ class SmbFileTransportIT {
             directories.removeAll(movedDirectories);
             for (String source : movedDirectories) {
                 directories.add(targetPath + source.substring(sourcePath.length()));
+            }
+            if (removeMarkerAfterRename) {
+                files.remove(targetPath + "/_SUCCESS");
+            } else if (replaceMarkerAfterRename) {
+                putText(targetPath + "/_SUCCESS", "different-marker");
             }
             operations.add("rename:" + sourcePath + "->" + targetPath);
         }

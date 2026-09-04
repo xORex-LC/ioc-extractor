@@ -344,6 +344,88 @@ class DataframeImportCatalogCompilerValidationTest {
     }
 
     @Test
+    void acceptsExplicitlyAuthorizedRelatedRoutingAndMachineFormulaPreservation() {
+        DataframeImportCatalogDraft.Artifact related = new DataframeImportCatalogDraft.Artifact(
+                "hashes", ImportArtifactRole.RELATED, "hash-row-v1", List.of("hash-v1"), null,
+                List.of(new DataframeImportCatalogDraft.Column(
+                        "hash", "hash", List.of("upper"), null)));
+        DataframeImportCatalogDraft.Contract contract = new DataframeImportCatalogDraft.Contract(
+                IP_LIST_CONTRACT, 1, "UTF-8", validDialect(),
+                new DataframeImportCatalogDraft.Recognition(
+                        List.of("ip", "score", "hash"), List.of(), List.of(), Map.of()),
+                ImportProcessingMode.AS_IS, ImportRoutingPolicy.RELATED_ARTIFACTS,
+                ImportRowFailurePolicy.ACCEPT_VALID, ImportDuplicatePolicy.COALESCE, true,
+                ImportFormulaPolicy.MACHINE_ONLY_PRESERVE, ImportMergePolicy.AUTHORITATIVE,
+                List.of(validArtifact("ip_list", ImportArtifactRole.PRIMARY), related), null);
+        DataframeImportCatalogDraft.AuthorityProfile authority =
+                new DataframeImportCatalogDraft.AuthorityProfile(
+                        "standard", List.of("ip_list", "hashes"),
+                        ImportMergePolicy.AUTHORITATIVE, true, true);
+        Map<String, DataframeImportCatalogEnvironment.ArtifactSchema> artifacts = new LinkedHashMap<>(
+                environment().artifacts());
+        artifacts.put("hashes", new DataframeImportCatalogEnvironment.ArtifactSchema(
+                Set.of("hash"), "hash-row-v1", Set.of("hash-v1"), Set.of("reputation-lists"), true));
+        DataframeImportCatalogEnvironment relatedEnvironment = new DataframeImportCatalogEnvironment(
+                artifacts, environment().transforms(), environment().endpoints());
+
+        DataframeImportCatalogCompilation compilation = compiler.compile(
+                new DataframeImportCatalogDraft(
+                        true, List.of(validSource()), List.of(authority), List.of(contract)),
+                relatedEnvironment);
+
+        assertThat(compilation.valid()).isTrue();
+        assertThat(compilation.catalogOrThrow().contracts()).hasSize(1);
+    }
+
+    @Test
+    void validatesReferencedNullCollectionsAndBlankRemoteIdentityWithoutShortCircuiting() {
+        DataframeImportCatalogDraft.Artifact nullCollectionsPrimary =
+                new DataframeImportCatalogDraft.Artifact(
+                        "ip_list", ImportArtifactRole.PRIMARY, "ip-row-v1",
+                        null, ImportMergePolicy.FILL_MISSING, null);
+        DataframeImportCatalogDraft.Artifact missingRole =
+                new DataframeImportCatalogDraft.Artifact(
+                        "ip_list", null, "ip-row-v1", List.of("ip-v1"),
+                        null, List.of());
+        DataframeImportCatalogDraft.Contract malformed = new DataframeImportCatalogDraft.Contract(
+                "referenced-malformed", 1, "UTF-8",
+                new DataframeImportCatalogDraft.Dialect(
+                        ";;", "\"", ImportRecordSeparator.CRLF_OR_LF, true, null),
+                validRecognition(), ImportProcessingMode.AS_IS, ImportRoutingPolicy.TARGET_ONLY,
+                ImportRowFailurePolicy.ACCEPT_VALID, ImportDuplicatePolicy.COALESCE, true,
+                ImportFormulaPolicy.REJECT, ImportMergePolicy.FILL_MISSING,
+                Arrays.asList(null, nullCollectionsPrimary, missingRole),
+                new DataframeImportCatalogDraft.RequestedSlot(
+                        " ", "reputation-lists", ImportExistingSlotPolicy.PRESERVE_EXISTING));
+        DataframeImportCatalogDraft.AuthorityProfile authority =
+                new DataframeImportCatalogDraft.AuthorityProfile(
+                        "null-artifacts", null, ImportMergePolicy.AUTHORITATIVE, false, false);
+        List<DataframeImportCatalogDraft.Source> sources = List.of(
+                new DataframeImportCatalogDraft.Source(
+                        "blank-smb", ImportSourceTransport.SMB, "/incoming", " ",
+                        List.of("referenced-malformed"), "null-artifacts"),
+                new DataframeImportCatalogDraft.Source(
+                        "missing-authority", ImportSourceTransport.LOCAL, "./var/import", null,
+                        List.of("referenced-malformed"), "not-configured"));
+
+        DataframeImportCatalogCompilation compilation = compiler.compile(
+                disabledDraft(sources, List.of(authority), List.of(malformed)), environment());
+
+        assertThat(compilation.violations()).extracting(ImportContractViolation::message)
+                .contains(
+                        "SMB source must reference a configured sync endpoint",
+                        "source must reference a configured authority profile",
+                        "delimiter must contain exactly one Unicode code point",
+                        "null literal list must not be null",
+                        "artifact mapping must be an object",
+                        "artifact role is required",
+                        "at least one match-key definition is required",
+                        "at least one column mapping is required",
+                        "requested slot source must be a mapped recognition column",
+                        "contract artifact is outside the source authority allowlist");
+    }
+
+    @Test
     void compilationOutcomeCannotMixCatalogAndViolations() {
         DataframeImportCatalog catalog = compiler.compile(validDraft(), environment()).catalogOrThrow();
         ImportContractViolation violation = new ImportContractViolation(

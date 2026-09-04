@@ -913,6 +913,41 @@ aggregate `19849/22390 + 6393/8125`, `ioc-app`
 aggregate `80%` по фактическому отчёту остаётся `81` covered branch;
 fixed-floor gate остаётся отдельным финальным slice.
 
+### `TEST-COVERAGE-02` remediation checkpoint 26 — aggregate floor boundary
+
+Финальный remediation slice перед установкой fixed floors закрывает оставшиеся
+ветви на шести реальных границах. CSV integration tests проверяют полную
+идентичность slice plan, duplicate/reserved artifact names, запрет перезаписи
+staging/published identity и незавершённый callback protocol. SQLite tests
+проверяют limits и close-state import workspace, неоднозначные schema/allocator
+catalogs, несовместимые public-ID команды и observation ownership/terminal
+state. SMB fake-client integration покрывает path normalization, regular-object
+listing/stat, replacement uncommitted directory и post-rename marker
+verification. Новый local WatchService integration suite проверяет реальный
+doorbell signal, idempotent start, isolation consumer failure, duplicate roots,
+missing inbox и failure-safe close. Application compiler дополнительно фиксирует
+collect-all malformed-reference validation и разрешённый authority contract для
+related routing/formula preservation. Все сценарии deterministic offline; live
+SMB evidence не подменялось.
+
+Два последовательных полных `make verify` прошли 25/25. Финальный прогон занял
+`02:38`; lifecycle union равен `191 fast + 66 integration`, выполнено `1456`
+reactor cases (`1448` passed, `8` provisioned external skips). Фактический
+aggregate равен `20084/22390` lines и `6503/8125` branches (`80.04%`). Domain
+остался `239/243 + 108/110`, application достиг
+`5124/5412 + 2080/2292` (`90.75%` branches). Целевые adapter groups:
+CSV `1127/1294 + 424/560`, store JDBC `5405/6013 + 1461/1858`, SMB
+`828/1096 + 334/510`, ingest `1041/1189 + 335/422`.
+
+Ratchet принимает только причинные branch deltas: compiler `+16`, CSV `+9`,
+JDBC workspace/writer `+18`, SMB transport `+25` и local watch source `+16`.
+Итого aggregate minimum повышен с `6393` до `6477` covered branches;
+application — до `2067`, CSV — до `424`, store JDBC — до `1461`, SMB — до
+`334`, ingest — до `328`. Консервативные line minima, missed-branch и
+instruction context сохранены; оставшиеся `26` фактически исполненных aggregate
+ветвей не приняты как случайный baseline. Fixed floors теперь можно включить
+отдельным атомарным build-policy slice.
+
 ## Historical Wave 0 baseline discovery inventory
 
 The remainder of this section preserves the accepted pre-DATA snapshot and its
