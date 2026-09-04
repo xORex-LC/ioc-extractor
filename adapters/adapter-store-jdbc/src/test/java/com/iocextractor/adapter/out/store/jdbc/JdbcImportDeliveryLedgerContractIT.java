@@ -49,6 +49,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @IntegrationTest
 @ContractTest
@@ -203,6 +204,21 @@ class JdbcImportDeliveryLedgerContractIT extends ImportDeliveryLedgerContractTes
         assertThat(ledger.findRetentionCandidates(target, NOW, 10))
                 .extracting(ImportDelivery::id)
                 .containsExactly(oldest.id(), outsideCount.id());
+    }
+
+    @Test
+    void retentionConfigurationNormalizesDisabledDeadlinesAndRejectsNegativeDurations() {
+        createLedger();
+
+        assertThat(new JdbcImportDeliveryLedger(dataSource, null, Duration.ZERO)).isNotNull();
+        assertThatThrownBy(() -> new JdbcImportDeliveryLedger(
+                dataSource, Duration.ofSeconds(-1), Duration.ofDays(1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("successRetention must not be negative");
+        assertThatThrownBy(() -> new JdbcImportDeliveryLedger(
+                dataSource, Duration.ofDays(1), Duration.ofSeconds(-1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("nonSuccessRetention must not be negative");
     }
 
     private ImportDelivery terminalRejected(
