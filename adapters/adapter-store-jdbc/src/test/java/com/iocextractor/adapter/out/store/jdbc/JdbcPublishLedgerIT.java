@@ -12,7 +12,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -173,9 +175,142 @@ class JdbcPublishLedgerIT {
         }
     }
 
+    @Test
+    void ensurePendingRejectsNonPendingRecordsAndEveryBindingDrift() {
+        try (HikariDataSource dataSource = dataSource("publish-complete-binding.db")) {
+            migrate(dataSource);
+            JdbcPublishLedger ledger = new JdbcPublishLedger(dataSource, Clock.fixed(NOW, ZoneOffset.UTC));
+            PublishRecord original = pending("slice-1", "target-a");
+            ledger.ensurePending(original);
+
+            assertThatThrownBy(() -> ledger.ensurePending(new PublishRecord(
+                    original.sliceId(), original.targetId(), original.profile(), original.sliceName(),
+                    original.manifestSha256(), original.endpoint(), original.remotePath(),
+                    PublishStatus.IN_PROGRESS, 1, null, null, NOW, NOW)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("ensurePending accepts only PENDING records");
+
+            List<PublishRecord> drifts = List.of(
+                    pendingWith(original, "other-profile", original.sliceName(), HASH, "dist", "/out"),
+                    pendingWith(original, "profile", "other-name", HASH, "dist", "/out"),
+                    pendingWith(original, "profile", original.sliceName(), "c".repeat(64), "dist", "/out"),
+                    pendingWith(original, "profile", original.sliceName(), HASH, "backup", "/out"),
+                    pendingWith(original, "profile", original.sliceName(), HASH, "dist", "/other"));
+
+            assertThat(drifts).allSatisfy(drift ->
+                    assertThatThrownBy(() -> ledger.ensurePending(drift))
+                            .isInstanceOf(IllegalStateException.class)
+                            .hasMessageContaining("different slice/target binding"));
+            assertThat(ledger.findAll()).containsExactly(original);
+        }
+    }
+
+    @Test
+    void transitionReplayIsIdempotentOnlyForCompatibleTerminalEvidence() {
+        try (HikariDataSource dataSource = dataSource("publish-transition-replay.db")) {
+            migrate(dataSource);
+            JdbcPublishLedger ledger = new JdbcPublishLedger(dataSource, Clock.fixed(NOW, ZoneOffset.UTC));
+            ledger.ensurePending(pending("slice-success", "target-a"));
+
+            PublishRecord claimed = ledger.transition(
+                    "slice-success", "target-a", PublishStatus.PENDING, PublishStatus.IN_PROGRESS,
+                    null, null);
+            assertThat(ledger.transition(
+                    "slice-success", "target-a", PublishStatus.PENDING, PublishStatus.IN_PROGRESS,
+                    null, null))
+                    .isEqualTo(claimed);
+            PublishRecord succeeded = ledger.transition(
+                    "slice-success", "target-a", PublishStatus.IN_PROGRESS, PublishStatus.SUCCEEDED,
+                    null, "size-ok");
+            assertThat(ledger.transition(
+                    "slice-success", "target-a", PublishStatus.IN_PROGRESS, PublishStatus.SUCCEEDED,
+                    null, "size-ok"))
+                    .isEqualTo(succeeded);
+            assertThatThrownBy(() -> ledger.transition(
+                    "slice-success", "target-a", PublishStatus.IN_PROGRESS, PublishStatus.SUCCEEDED,
+                    null, "different"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("transition conflict");
+
+            ledger.ensurePending(pending("slice-failure", "target-a"));
+            ledger.transition("slice-failure", "target-a",
+                    PublishStatus.PENDING, PublishStatus.IN_PROGRESS, null, null);
+            PublishRecord failed = ledger.transition("slice-failure", "target-a",
+                    PublishStatus.IN_PROGRESS, PublishStatus.FAILED, "timeout", null);
+            assertThat(ledger.transition("slice-failure", "target-a",
+                    PublishStatus.IN_PROGRESS, PublishStatus.FAILED, "timeout", null))
+                    .isEqualTo(failed);
+            assertThatThrownBy(() -> ledger.transition("slice-failure", "target-a",
+                    PublishStatus.IN_PROGRESS, PublishStatus.FAILED, "different", null))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("transition conflict");
+
+            PublishRecord reclaimed = ledger.transition("slice-failure", "target-a",
+                    PublishStatus.FAILED, PublishStatus.IN_PROGRESS, null, null);
+            PublishRecord abandoned = ledger.transition("slice-failure", "target-a",
+                    PublishStatus.IN_PROGRESS, PublishStatus.ABANDONED, "operator", null);
+
+            assertThat(reclaimed.attempts()).isEqualTo(3);
+            assertThat(abandoned.status()).isEqualTo(PublishStatus.ABANDONED);
+        }
+    }
+
+    @Test
+    void transitionDistinguishesMissingPairsFromStaleWriters() {
+        try (HikariDataSource dataSource = dataSource("publish-missing-transition.db")) {
+            migrate(dataSource);
+            JdbcPublishLedger ledger = new JdbcPublishLedger(dataSource, Clock.fixed(NOW, ZoneOffset.UTC));
+
+            assertThatThrownBy(() -> ledger.transition("missing", "target-a",
+                    PublishStatus.PENDING, PublishStatus.IN_PROGRESS, null, null))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("Publish ledger pair is missing: missing/target-a");
+
+            ledger.ensurePending(pending("slice-1", "target-a"));
+            ledger.transition("slice-1", "target-a",
+                    PublishStatus.PENDING, PublishStatus.IN_PROGRESS, null, null);
+
+            assertThatThrownBy(() -> ledger.transition("slice-1", "target-a",
+                    PublishStatus.PENDING, PublishStatus.ABANDONED, null, null))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("transition conflict");
+        }
+    }
+
+    @Test
+    void emptyHealthSelectionAndBlankLookupInputsAreExplicit() {
+        try (HikariDataSource dataSource = dataSource("publish-input-contract.db")) {
+            migrate(dataSource);
+            JdbcPublishLedger ledger = new JdbcPublishLedger(dataSource, Clock.fixed(NOW, ZoneOffset.UTC));
+
+            assertThat(ledger.healthSummary(Set.of())).isEqualTo(
+                    com.iocextractor.application.sync.PublishLedgerHealthSummary.empty());
+            assertThatThrownBy(() -> ledger.find(null, "target-a"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("sliceId must not be blank");
+            assertThatThrownBy(() -> ledger.find("slice-1", " "))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("targetId must not be blank");
+            assertThatThrownBy(() -> ledger.countByStatus(
+                    Optional.of(" "), Optional.empty(), Optional.empty()))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("profile must not be blank");
+        }
+    }
+
     private PublishRecord pending(String sliceId, String targetId) {
         return PublishRecord.pending(sliceId, targetId, "profile",
                 "20260628T000000Z__" + sliceId, HASH, "dist", "/out", NOW);
+    }
+
+    private PublishRecord pendingWith(PublishRecord original,
+                                      String profile,
+                                      String sliceName,
+                                      String manifestSha256,
+                                      String endpoint,
+                                      String remotePath) {
+        return PublishRecord.pending(original.sliceId(), original.targetId(), profile,
+                sliceName, manifestSha256, endpoint, remotePath, NOW);
     }
 
     private void migrate(HikariDataSource dataSource) {
