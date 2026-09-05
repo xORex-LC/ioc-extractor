@@ -39,7 +39,7 @@ inputs.
 | `TEST-LIFECYCLE-01` | Introduce accepted tags/composed annotations and Surefire/Failsafe selection without losing the refreshed accepted universe | Verified implementation evidence below | Global `R030-TEST` Wave 1 | `verified` |
 | `TEST-COVERAGE-02` | Add aggregate/per-module no-regression ratchets, then close accepted aggregate/domain/application branch floors | Coverage baseline, policy and implementation evidence below | Stable lifecycle/reporting | `verified` |
 | `TEST-REGEX-03` | Common RE2/J + JDK engine contract and bootstrap `ioc.engine=jdk` selection test | Verified implementation evidence below | Regex/bootstrap module wave | `verified` |
-| `TEST-WAITS-04` | Bound async waits, release workers in `finally`, assert termination and add diagnosable safety timeout | Wait/flake inventory below | Module test hardening | `planned` |
+| `TEST-WAITS-04` | Bound async waits, release workers in `finally`, assert termination and add diagnosable safety timeout | Verified implementation evidence below | Module test hardening | `verified` |
 | `TEST-EXTERNAL-05` | Execute live SMB `CHANGE_NOTIFY` contract or record explicit external-evidence release disposition | Two skipped external cases | Provisioned fixture / `R030-REL` | `external-evidence-required` |
 | `TEST-PILOTS-06` | Run PIT/domain, invariant and seeded repeat pilots; triage signal/noise/cost | Diagnostic pilot tables below | Wave 1 profiles/artifacts | `planned` |
 | `TEST-CODECOV-07` | Best-effort non-required upload plus project/patch signals | Codecov table below | Stable JaCoCo XML + CI | `planned` |
@@ -1241,14 +1241,14 @@ performance defects.
 
 ## Wait, isolation and flake baseline
 
-### Static wait inventory
+### Pre-remediation static wait inventory
 
 | Signal | Count/scope | Assessment |
 |---|---|---|
 | `Thread.sleep` | 6 calls in 5 files | All are inside a bounded polling/semantic scenario; no unbounded fixed sleep |
-| Timed latch awaits | 34 calls | Positive bounded coordination |
-| Timed `Future.get` | 2 calls | Positive bounded result wait |
-| Unbounded latch/barrier awaits | 10 calls in 9 files | Failure-path hang/poor-diagnostics risk |
+| Timed await calls | 60 calls | Positive bounded coordination |
+| Timed `Future.get` | 25 calls | Positive bounded result wait |
+| Unbounded latch/barrier awaits | 11 calls in 10 files | Failure-path hang/poor-diagnostics risk |
 | Timed thread joins | 9 calls in 5 files | Only the interruption-specific case explicitly asserts termination |
 | JUnit `@Timeout` / timeout assertions | 0 | No test-level safety net |
 | Surefire fork timeout | Not configured | No project-owned process-level safety net |
@@ -1286,6 +1286,49 @@ worker never reaches the gate, the controller may hang. The remediation must
 combine bounded coordination, `finally` release/cancellation, explicit
 termination assertions and a test-level timeout safety net. A retry is not an
 acceptable fix.
+
+### `TEST-WAITS-04` implementation evidence — 2026-09-05
+
+The remediation preserves the six reviewed sleeps in five files: four offline
+polling loops remain bounded by one- or two-second deadlines, while the live SMB
+contract retains its semantic three-second idle interval and ten-second polling
+deadline. Each polling failure now identifies the condition that did not become
+observable. No retry or lifecycle reclassification was introduced.
+
+The current source inventory has:
+
+- 68 `.await(` call sites, all bounded directly or through the bootstrap test
+  helper;
+- 29 timed `Future.get` calls and no unbounded future result wait; the four
+  unbounded calls in `PipelineDiagnosticMdcTest` and `JdbcExportRunLedgerIT`
+  were an additional live-code gap beyond the original ledger inventory;
+- zero bare latch/barrier `await()` calls;
+- two bounded `Thread.join` operations, both isolated in `AsyncTestSupport` and
+  followed by an explicit worker-liveness assertion;
+- 14 wait-bearing suites with class-level JUnit safety boundaries: 30 seconds
+  for offline suites and 60 seconds for the provisioned SMB contract.
+
+Bootstrap scheduler/coordinator tests use `AsyncTestSupport.Worker` so closing
+the fixture releases its worker gate, performs a bounded join and propagates a
+captured worker failure. JDBC and MDC concurrency tests release gates from
+`finally`, use timed future results and assert executor termination. SMB watcher
+tests close their `RemoteChangeWatch` from try-with-resources even when a polling
+assertion fails; the production watch close contract cancels pending I/O and
+fails if its worker does not terminate within the configured close timeout.
+
+No fixed Surefire/Failsafe fork timeout is adopted for 0.3.0. The fork may own
+multiple suites and explicitly provisioned external work, so a single deadline
+would obscure the responsible test and can kill valid evidence. The accepted
+upper-bound contract is instead local timed coordination plus per-suite JUnit
+timeouts and transport-owned I/O timeouts. A reproducible hang that ignores
+these interruption boundaries is the exit condition for reconsidering a process
+watchdog; this disposition is not permission for an unbounded primitive.
+
+Focused qualification passed 50 bootstrap scheduler/coordinator cases, 4 MDC
+cases, 22 JDBC cases, 11 SMB watcher cases, 3 ingest WatchService cases and the
+10-case bootstrap polling selection. `SmbChangeNotifyContractIT` compiled but
+was not executed without a provisioned live share; that evidence remains owned
+by `TEST-EXTERNAL-05` and is not claimed as a pass here.
 
 ### Isolation inventory
 

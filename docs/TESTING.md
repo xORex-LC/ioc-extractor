@@ -169,6 +169,35 @@ every configured IOC detector and source section marker against both engines.
 Keep configured patterns RE2-compatible; the fallback is not permission to add
 JDK-only look-around or back-references.
 
+## Bounded waits and worker cleanup
+
+Every asynchronous, concurrency, filesystem or transport test must have two
+independent bounds:
+
+- the coordination primitive itself uses a timed latch, barrier, future, join
+  or condition-polling deadline with a description of the expected event;
+- the containing wait-bearing suite uses a JUnit `@Timeout` safety boundary.
+
+Offline wait-bearing suites normally use a five-second coordination bound and a
+30-second suite bound. A test that owns a worker must release or cancel it from
+`finally` or an `AutoCloseable` fixture, then assert bounded termination. Preserve
+the interrupted status when adapting `InterruptedException`. A timeout failure
+must name the awaited event; adding a retry is not a timeout fix.
+
+Short sleeps remain acceptable only inside an explicit polling deadline when no
+latch, future or callback exposes the condition. The live SMB `CHANGE_NOTIFY`
+contract intentionally sleeps for three seconds to prove survival beyond its
+two-second request timeout; its polling deadline is ten seconds and its suite
+boundary is 60 seconds. These waits are protocol evidence, not a model for
+offline tests.
+
+Surefire and Failsafe do not set one fixed fork timeout for 0.3.0. A fork can own
+multiple suites, including explicitly provisioned external work, so a single
+process deadline would provide a less precise owner and could terminate valid
+evidence. Local operation timeouts plus suite-level JUnit boundaries are the
+authoritative policy. Reconsider a fork watchdog if a reproducible hang can
+survive those bounds; do not use it to conceal an unbounded test primitive.
+
 ## Update triggers
 
 Update this document and the lifecycle verifier when changing naming patterns,
