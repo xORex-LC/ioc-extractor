@@ -11,6 +11,7 @@ step (`make bootstrap` локально, `tools/dev/bootstrap.sh lychee` в CI).
 | Команда | Gate |
 |---|---|
 | `build.sh` | Полный Maven reactor `verify` + atomic evidence под `.dev/state/` |
+| `codecov.sh verify-input\|require-report` | Повторная project-owned проверка aggregate JaCoCo evidence либо проверка скачанного CI handoff; без сети |
 | `pmd.sh policy\|watchlist` | Ratcheted PMD production-source policy либо отдельный deferred watchlist |
 | `test-pilots.sh mutation\|stability` | Report-only domain PIT или seeded random-order/repeat stability evidence |
 | `packaging.sh` | ShellCheck + packaging contract tests |
@@ -47,6 +48,15 @@ CI check/run как release-доказательство.
 `make context` показывает его независимо от `last-verify.env`, поэтому полный
 локальный quality claim требует двух fresh passed results. `pmd.sh watchlist`
 намеренно не обновляет regular-policy evidence.
+
+`codecov.sh verify-input` повторно применяет тот же fail-closed
+`CoverageVerifier`, который завершает Maven `verify`. Отсутствующий, устаревший
+или неполный aggregate/module report остаётся ошибкой CI до внешнего шага.
+Отдельный reporting job вызывает `require-report` после artifact handoff.
+Скрипт ничего не загружает: Codecov Action получает только явно указанный
+aggregate XML и работает best-effort отдельно от project-owned gate. OIDC
+`id-token: write` выдан только reporting job, который не запускает Maven или
+код из тестируемого reactor.
 
 `test-pilots.sh mutation` запускает opt-in PIT profile только в
 `core/ioc-domain`, сохраняет стабильные HTML/XML reports под

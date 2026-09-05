@@ -1,0 +1,27 @@
+coverage:
+  status:
+    project:
+      absolute-floor:
+        target: 75%
+        threshold: 0%
+        informational: true
+        if_ci_failed: error
+        only_pulls: false
+      base-ratchet:
+        target: auto
+        threshold: 0.1%
+        informational: true
+        if_ci_failed: error
+        only_pulls: false
+    patch:
+      changed-lines:
+        target: 90%
+        threshold: 0%
+        informational: true
+        if_ci_failed: error
+        only_pulls: true
+
+github_checks:
+  annotations: true
+
+comment: false

@@ -145,6 +145,7 @@ for script in \
     tools/dev/smoke.sh \
     tools/dev/submit.sh \
     tools/ci/build.sh \
+    tools/ci/codecov.sh \
     tools/ci/dependency-security.sh \
     tools/ci/docs.sh \
     tools/ci/packaging.sh \
@@ -177,6 +178,7 @@ grep -Fq 'STOPPED' <<< "${INDEXED_PROPERTY_OUTPUT}" \
 "${REPO_ROOT}/tools/dev/database.sh" --help >/dev/null
 "${REPO_ROOT}/tools/dev/release-notes-context.sh" --help >/dev/null
 "${REPO_ROOT}/tools/ci/dependency-security.sh" --help >/dev/null
+"${REPO_ROOT}/tools/ci/codecov.sh" --help >/dev/null
 "${REPO_ROOT}/tools/ci/pmd.sh" --help >/dev/null
 "${REPO_ROOT}/tools/ci/test-pilots.sh" --help >/dev/null
 if "${REPO_ROOT}/tools/ci/test-pilots.sh" stability \
@@ -230,6 +232,39 @@ if grep -REq '^[[:space:]]*(run:[[:space:]]*)?make([[:space:]]|$)' \
 fi
 grep -Fq 'run: tools/ci/build.sh' "${REPO_ROOT}/.github/workflows/ci.yml" \
   || fail "GitHub CI build does not call the canonical leaf script"
+grep -Fq 'run: tools/ci/codecov.sh verify-input' "${REPO_ROOT}/.github/workflows/ci.yml" \
+  || fail "GitHub CI does not revalidate the project-owned Codecov input"
+grep -Fq 'run: tools/ci/codecov.sh require-report' "${REPO_ROOT}/.github/workflows/ci.yml" \
+  || fail "GitHub CI does not validate the downloaded Codecov input"
+[[ "$(grep -Fc 'continue-on-error: true' "${REPO_ROOT}/.github/workflows/ci.yml")" -eq 1 ]] \
+  || fail "Codecov upload is not explicitly best-effort"
+grep -Fq 'files: build-support/coverage-report/target/site/jacoco-aggregate/jacoco.xml' \
+  "${REPO_ROOT}/.github/workflows/ci.yml" \
+  || fail "Codecov upload does not name the authoritative aggregate XML"
+grep -Fq 'disable_search: true' "${REPO_ROOT}/.github/workflows/ci.yml" \
+  || fail "Codecov upload may discover unintended reports"
+grep -Fq 'disable_telem: true' "${REPO_ROOT}/.github/workflows/ci.yml" \
+  || fail "Codecov uploader telemetry is not explicitly disabled"
+grep -Fq 'plugins: noop' "${REPO_ROOT}/.github/workflows/ci.yml" \
+  || fail "Codecov upload may run unintended report plugins"
+grep -Fq 'use_oidc: true' "${REPO_ROOT}/.github/workflows/ci.yml" \
+  || fail "Codecov upload is not authenticated with GitHub OIDC"
+[[ "$(grep -Fc 'id-token: write' "${REPO_ROOT}/.github/workflows/ci.yml")" -eq 1 ]] \
+  || fail "Codecov reporting job cannot request its scoped OIDC token"
+grep -Fq 'version: v11.3.1' "${REPO_ROOT}/.github/workflows/ci.yml" \
+  || fail "Codecov CLI version is not pinned"
+[[ "$(grep -Fc 'informational: true' "${REPO_ROOT}/codecov.yml")" -eq 3 ]] \
+  || fail "Codecov project/patch statuses are not all informational"
+grep -Fq 'target: 75%' "${REPO_ROOT}/codecov.yml" \
+  || fail "Codecov absolute project floor is missing"
+grep -Fq 'target: auto' "${REPO_ROOT}/codecov.yml" \
+  || fail "Codecov base-relative project ratchet is missing"
+grep -Fq 'threshold: 0.1%' "${REPO_ROOT}/codecov.yml" \
+  || fail "Codecov base-relative tolerance is not 0.1%"
+grep -Fq 'target: 90%' "${REPO_ROOT}/codecov.yml" \
+  || fail "Codecov changed-lines target is missing"
+grep -Fq 'comment: false' "${REPO_ROOT}/codecov.yml" \
+  || fail "Codecov PR comments are not explicitly disabled"
 grep -Fq 'run: tools/ci/pmd.sh policy' "${REPO_ROOT}/.github/workflows/ci.yml" \
   || fail "GitHub CI PMD job does not call the canonical leaf script"
 grep -Fq 'run: tools/ci/test-pilots.sh mutation' \

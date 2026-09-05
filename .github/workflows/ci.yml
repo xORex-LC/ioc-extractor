@@ -31,6 +31,11 @@ jobs:
       - name: Build, test & verify boundaries
         run: tools/ci/build.sh
 
+      # The blocking project-owned gate is deliberately separate from the
+      # best-effort external upload below.
+      - name: Verify Codecov input
+        run: tools/ci/codecov.sh verify-input
+
       - name: Upload test and coverage evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -66,6 +71,40 @@ jobs:
           path: build-support/cpd-report/target/cpd/
           if-no-files-found: warn
           retention-days: 30
+
+  coverage-reporting:
+    name: Codecov advisory
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download verified coverage evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: test-coverage-reports-${{ github.run_number }}
+          path: .
+
+      - name: Verify downloaded Codecov input
+        run: tools/ci/codecov.sh require-report
+
+      - name: Upload aggregate coverage to Codecov
+        continue-on-error: true
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          use_oidc: true
+          files: build-support/coverage-report/target/site/jacoco-aggregate/jacoco.xml
+          disable_search: true
+          disable_telem: true
+          plugins: noop
+          fail_ci_if_error: false
+          handle_no_reports_found: false
+          name: reactor-aggregate
+          report_type: coverage
+          version: v11.3.1
 
   pmd-source-policy:
     runs-on: ubuntu-latest
