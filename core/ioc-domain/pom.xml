@@ -62,4 +62,49 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Diagnostic only: full domain mutation pilot, never a regular lifecycle gate. -->
+        <profile>
+            <id>mutation-pilot</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-maven</artifactId>
+                        <version>${pitest.version}</version>
+                        <dependencies>
+                            <dependency>
+                                <groupId>org.pitest</groupId>
+                                <artifactId>pitest-junit5-plugin</artifactId>
+                                <version>${pitest-junit5-plugin.version}</version>
+                            </dependency>
+                        </dependencies>
+                        <configuration>
+                            <targetClasses>
+                                <param>com.iocextractor.domain.*</param>
+                            </targetClasses>
+                            <targetTests>
+                                <param>com.iocextractor.domain.*</param>
+                            </targetTests>
+                            <mutators>
+                                <mutator>DEFAULTS</mutator>
+                            </mutators>
+                            <outputFormats>
+                                <param>HTML</param>
+                                <param>XML</param>
+                            </outputFormats>
+                            <timestampedReports>false</timestampedReports>
+                            <exportLineCoverage>true</exportLineCoverage>
+                            <threads>1</threads>
+                            <mutationThreshold>0</mutationThreshold>
+                            <coverageThreshold>0</coverageThreshold>
+                            <testStrengthThreshold>0</testStrengthThreshold>
+                            <failWhenNoMutations>true</failWhenNoMutations>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
