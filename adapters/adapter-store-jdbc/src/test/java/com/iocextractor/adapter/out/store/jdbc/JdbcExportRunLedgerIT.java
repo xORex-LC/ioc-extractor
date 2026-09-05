@@ -9,6 +9,7 @@ import com.iocextractor.diagnostics.codes.ExportDiagnosticCodes;
 import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.dao.DataAccessException;
 
@@ -23,16 +24,19 @@ import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @IntegrationTest
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 class JdbcExportRunLedgerIT {
 
     private static final Instant NOW = Instant.parse("2026-06-28T00:00:00Z");
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
     private static final String PLAN_HASH = "a".repeat(64);
+    private static final long WAIT_TIMEOUT_SECONDS = 5;
 
     @TempDir
     Path tempDir;
@@ -43,18 +47,32 @@ class JdbcExportRunLedgerIT {
             new SqliteUserVersionSchemaMigrator(dataSource, ServiceSchemaMigrations.sqlite()).migrate();
             var ready = new CountDownLatch(2);
             var start = new CountDownLatch(1);
-            try (var executor = Executors.newFixedThreadPool(2)) {
+            var executor = Executors.newFixedThreadPool(2);
+            try {
                 Future<Optional<ExportRun>> first = executor.submit(() -> attemptStart(
                         dataSource, started("run-concurrent-1"), ready, start));
                 Future<Optional<ExportRun>> second = executor.submit(() -> attemptStart(
                         dataSource, started("run-concurrent-2"), ready, start));
-                ready.await();
-                start.countDown();
+                try {
+                    assertThat(ready.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+                            .as("both export start contenders should become ready")
+                            .isTrue();
+                } finally {
+                    start.countDown();
+                }
 
-                assertThat(List.of(first.get(), second.get()))
+                assertThat(List.of(
+                        first.get(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS),
+                        second.get(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)))
                         .filteredOn(optional -> optional.isPresent())
                         .hasSize(1);
                 assertThat(new JdbcExportRunLedger(dataSource, CLOCK).findIncomplete()).hasSize(1);
+            } finally {
+                start.countDown();
+                executor.shutdownNow();
+                assertThat(executor.awaitTermination(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+                        .as("concurrent export start workers should terminate")
+                        .isTrue();
             }
         }
     }
@@ -161,7 +179,9 @@ class JdbcExportRunLedgerIT {
                                              CountDownLatch ready,
                                              CountDownLatch start) throws InterruptedException {
         ready.countDown();
-        start.await();
+        if (!start.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            throw new AssertionError("Timed out waiting to start concurrent export ledger attempt");
+        }
         return new JdbcExportRunLedger(dataSource, CLOCK).tryStart(run);
     }
 

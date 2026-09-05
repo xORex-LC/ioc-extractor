@@ -22,6 +22,7 @@ import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
@@ -41,12 +42,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @IntegrationTest
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 class JdbcSnapshotSliceReaderIT {
 
     private static final Instant NOW = Instant.parse("2026-06-28T00:00:00Z");
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
     private static final String HASH_A = "a".repeat(64);
     private static final String HASH_B = "b".repeat(64);
+    private static final long WAIT_TIMEOUT_SECONDS = 5;
 
     @TempDir
     Path tempDir;
@@ -101,20 +104,28 @@ class JdbcSnapshotSliceReaderIT {
         var release = new CountDownLatch(1);
         BlockingConsumer consumer = new BlockingConsumer(began, release);
 
-        try (var executor = Executors.newSingleThreadExecutor()) {
+        var executor = Executors.newSingleThreadExecutor();
+        try {
             var current = executor.submit(() -> fixture.reader()
                     .stream(new SnapshotRequest(fixture.plan()), consumer));
-            assertThat(began.await(5, TimeUnit.SECONDS)).isTrue();
-
             try {
+                assertThat(began.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+                        .as("snapshot consumer should enter before the concurrent write")
+                        .isTrue();
                 fixture.write("hashes", row("id", "2", "hash", "BBBB"));
             } finally {
                 release.countDown();
             }
-            SnapshotMetadata currentMetadata = current.get(5, TimeUnit.SECONDS);
+            SnapshotMetadata currentMetadata = current.get(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
             assertThat(consumer.rowsByArtifact.get("hashes")).containsExactly("1");
             assertThat(currentMetadata.artifacts().get(1).coverage().revision()).isEqualTo(1);
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+                    .as("snapshot reader worker should terminate")
+                    .isTrue();
         }
 
         RecordingConsumer next = new RecordingConsumer();
@@ -831,7 +842,9 @@ class JdbcSnapshotSliceReaderIT {
             super.begin(metadata);
             began.countDown();
             try {
-                release.await();
+                if (!release.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                    throw new AssertionError("Timed out waiting to release snapshot consumer");
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("Interrupted while holding snapshot", e);

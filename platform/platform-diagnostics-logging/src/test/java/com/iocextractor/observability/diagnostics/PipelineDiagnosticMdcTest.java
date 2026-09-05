@@ -14,18 +14,25 @@ import com.iocextractor.platform.etl.PipelineRunner;
 import com.iocextractor.platform.etl.Stage;
 import com.iocextractor.platform.etl.StageId;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.slf4j.MDC;
 
 import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 class PipelineDiagnosticMdcTest {
+
+    private static final long WAIT_TIMEOUT_SECONDS = 5;
 
     @Test
     void emits_diagnostic_inside_the_stage_mdc_scope() {
@@ -88,12 +95,18 @@ class PipelineDiagnosticMdcTest {
                 new DiagnosticFactory(clock));
         var pipeline = Pipeline.<String>start().then(new ConcurrentDiagnosticStage(clock, barrier));
 
-        try (var executor = Executors.newFixedThreadPool(2)) {
+        var executor = Executors.newFixedThreadPool(2);
+        try {
             var first = executor.submit(() -> runAndCaptureRemainingMdc(runner, pipeline, clock, "run-a"));
             var second = executor.submit(() -> runAndCaptureRemainingMdc(runner, pipeline, clock, "run-b"));
 
-            assertThat(first.get()).isNullOrEmpty();
-            assertThat(second.get()).isNullOrEmpty();
+            assertThat(first.get(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isNullOrEmpty();
+            assertThat(second.get(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isNullOrEmpty();
+        } finally {
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+                    .as("concurrent MDC workers should terminate")
+                    .isTrue();
         }
         assertThat(observedRunIds).containsExactlyInAnyOrderEntriesOf(Map.of(
                 "run-a", "run-a",
@@ -165,8 +178,11 @@ class PipelineDiagnosticMdcTest {
 
         private void awaitPeer() {
             try {
-                barrier.await();
-            } catch (Exception failure) {
+                barrier.await(WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted while synchronizing test runs", interrupted);
+            } catch (BrokenBarrierException | TimeoutException failure) {
                 throw new IllegalStateException("Failed to synchronize test runs", failure);
             }
         }
