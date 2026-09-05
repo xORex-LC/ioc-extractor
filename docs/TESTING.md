@@ -96,6 +96,14 @@ its XML reports, and CI retains those reports as release evidence. Non-secret
 fixture selectors (`host`, `port`, `share`, `remotePath`, encryption policy)
 remain explicit system properties so the qualified target can be identified.
 
+This is currently a bring-your-own-fixture boundary rather than a centralized
+environment-management platform. The capability-driven suite registry,
+provisioning/lease lifecycle, exact executed-count gate, result classification,
+evidence bundle and verified cleanup required before more external integration
+families are added are tracked as [`TOOL-4`](KNOWN-ISSUES.md#9-developer-tooling--build-tool).
+That follow-up does not turn an offline skip into live evidence or reopen an
+already target-qualified run.
+
 ## Integrity checks and reports
 
 Root `validate` runs the JDK-only verifier in `build-support/test-quality`. It

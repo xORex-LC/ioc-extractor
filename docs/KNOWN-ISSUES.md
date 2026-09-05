@@ -94,6 +94,30 @@
 | TOOL-1 | **Test taxonomy и affected-test accelerator.** Сначала классифицировать существующие тесты и закрепить минимальный JUnit 5 contract: unit по умолчанию, явные `integration`/`e2e` и только при необходимости ортогональный `slow`. После этого добавить быстрые category targets и безопасный `test-affected`, который учитывает staged/unstaged/untracked paths, upstream и downstream reactor closure, а при root/shared/unknown change откатывается к полному test gate. Это только inner-loop accelerator; `verify` остаётся merge/release gate. **Триггер:** отдельный test-taxonomy review или измеримый рост стоимости полного локального цикла. | seam | M | tools facade review 2026-07-22 |
 | TOOL-2 | **Детерминированный Java formatting contract.** Выбрать formatter по пробному repo-wide diff, добавить mutating `fmt` и read-only `fmt-check` через единый parent Maven plugin; после чистого baseline включить check в `verify`. Не смешивать с SAST: SpotBugs/FindSecBugs уже отслеживается как `SEC-VER-1` и требует отдельного non-blocking baseline/noise triage. **Триггер:** отдельный post-0.2.0 hygiene slice; массовый mechanical diff не включать в release stabilization. | seam | M | tools facade review 2026-07-22; [SECURITY-ENGINEERING](SECURITY-ENGINEERING.md) |
 | TOOL-3 | **Воспроизводимый manual load-smoke.** Замкнуть deterministic fixture → isolated oneshot → стабильный отчёт времени, input/unique/committed rows и diagnostics; daemon mode и thresholds добавлять только после baseline measurements. Не включать в обычный CI/pre-push и не смешивать с malformed/fuzz/parser-bomb корпусом (`SEC-VER-3`, `SRC-2`). **Триггер:** необходимость сравнивать производительность релизов или расследовать эксплуатационную деградацию. | seam | M | tools facade review 2026-07-22; `GenerateIocFixture` |
+| TOOL-4 | **Централизованный external-test harness.** Сейчас provisioned suites являются bring-your-own-fixture тестами: вызывающая сторона задаёт endpoint/selectors и credentials, обычный `verify` видит только ожидаемые skips, а target fingerprint, полнота исполнения и cleanup evidence квалифицируются отдельно. Нужен единый capability-driven control plane для SMB и будущих feed/Prometheus/Elasticsearch интеграций без объединения их assertions в mega-E2E suite. **Триггер:** до добавления следующего семейства внешних интеграций либо до превращения external evidence в регулярный/обязательный CI status. | seam | L | `R030-TEST` / [TEST-EXTERNAL-05](worknote/0.3.0/evidence/test-quality-ledger.md), design review 2026-09-05 |
+
+### Критерии закрытия `TOOL-4`
+
+- Репозиторий содержит единый registry suites с lifecycle, required
+  capabilities, expected test count, timeout, owner, cadence и gate policy.
+- Provisioner или адаптер уже существующего стенда выдаёт secret-free environment
+  descriptor с run ID, provider family/version и доступными capabilities;
+  credentials поступают через централизованный secret boundary и не попадают в
+  CLI, Maven properties, логи или retained reports.
+- До тестов выполняются readiness и capability preflight. Эмулятор или один
+  provider family не считаются доказательством поддержки другого family.
+- Каждый запуск получает изолированный namespace/lease; failure-safe cleanup,
+  cleanup verification и bounded janitor закрывают остатки после аварии runner-а.
+- Result verifier доказывает `expected == executed`, запрещает тихий skip в
+  provisioned run и различает product failure, environment blocked, missing
+  capability, cleanup failure и inconclusive result.
+- Evidence bundle связывает Git commit, suite/runner revision, redacted target
+  fingerprint, provider/image revision, test counts, JUnit/Failsafe reports,
+  diagnostics и cleanup outcome.
+- Стабильный Make/CI facade запускает отдельные suites и provider matrix;
+  deterministic offline `verify` остаётся независимым. Закрытие подтверждается
+  миграцией SMB suite и хотя бы одной второй интеграционной семьи на общий
+  контракт, а не только реализацией абстракций.
 
 ---
 

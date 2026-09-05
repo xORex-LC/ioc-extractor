@@ -1422,6 +1422,16 @@ contradiction of this separately provisioned result. This work item claims only
 the two `CHANGE_NOTIFY` cases. Encryption-only, two-identity hardening and load
 profile evidence keep their independent owners and dispositions.
 
+This target-scoped result closes `TEST-EXTERNAL-05`; it does not claim that the
+current bring-your-own SMB fixture is a general external-environment platform.
+The capability-driven suite registry, provisioning/lease lifecycle, exact
+executed-count gate, failure classification, evidence bundle and verified
+cleanup needed before adding feed, Prometheus, Elasticsearch or other external
+families are tracked separately as
+[`TOOL-4`](../../../KNOWN-ISSUES.md#9-developer-tooling--build-tool). That
+post-release seam neither reopens this evidence nor changes the next accepted
+`R030-TEST` queue item.
+
 ## Coarse effectiveness baseline
 
 This gate is a navigation/risk review, not coverage or mutation measurement.
