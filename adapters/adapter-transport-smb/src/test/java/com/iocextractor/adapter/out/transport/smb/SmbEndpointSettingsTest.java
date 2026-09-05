@@ -54,11 +54,11 @@ class SmbEndpointSettingsTest {
 
     @Test
     void liveContractSelectsOneCompleteEnvironmentCredentialPair() {
-        assertThat(SmbContractTestSupport.serviceCredentialProfile(Map.of(
+        assertThat(SmbContractTestSupport.contractCredentialProfile(Map.of(
                 "SMB_USER", "sync-user",
                 "SMB_PASSWORD", "sync-password")))
                 .isEqualTo(SmbContractTestSupport.CredentialProfile.STANDARD);
-        assertThat(SmbContractTestSupport.serviceCredentialProfile(Map.of(
+        assertThat(SmbContractTestSupport.contractCredentialProfile(Map.of(
                 "SMB_SERVICE_USER", "service-user",
                 "SMB_SERVICE_PASSWORD", "service-password")))
                 .isEqualTo(SmbContractTestSupport.CredentialProfile.SERVICE);
@@ -66,7 +66,7 @@ class SmbEndpointSettingsTest {
 
     @Test
     void liveContractRejectsPartialCredentialsInsteadOfMixingProfiles() {
-        assertThatThrownBy(() -> SmbContractTestSupport.serviceCredentialProfile(Map.of(
+        assertThatThrownBy(() -> SmbContractTestSupport.contractCredentialProfile(Map.of(
                 "SMB_USER", "sync-user",
                 "SMB_SERVICE_USER", "service-user",
                 "SMB_SERVICE_PASSWORD", "service-password")))
@@ -74,6 +74,16 @@ class SmbEndpointSettingsTest {
                 .hasMessageContaining("SMB_USER", "SMB_PASSWORD")
                 .hasMessageNotContaining("sync-user")
                 .hasMessageNotContaining("service-password");
+    }
+
+    @Test
+    void hardeningContractSelectsExplicitServiceIdentity() {
+        assertThat(SmbContractTestSupport.hardeningServiceCredentialProfile(Map.of(
+                "SMB_USER", "sync-user",
+                "SMB_PASSWORD", "sync-password",
+                "SMB_SERVICE_USER", "service-user",
+                "SMB_SERVICE_PASSWORD", "service-password")))
+                .isEqualTo(SmbContractTestSupport.CredentialProfile.SERVICE);
     }
 
     private static SmbEndpointSettings endpoint(char[] password) {

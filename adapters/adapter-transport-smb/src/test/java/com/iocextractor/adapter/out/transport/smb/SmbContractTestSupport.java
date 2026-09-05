@@ -15,47 +15,22 @@ final class SmbContractTestSupport {
 
     static SmbEndpointSettings settings(Duration requestTimeout) {
         Map<String, String> environment = System.getenv();
-        CredentialProfile credentials = serviceCredentialProfile(environment);
-        char[] password = credentials.password(environment).toCharArray();
-        try {
-            return new SmbEndpointSettings(
-                    "contract",
-                    requireSystemProperty("ioc.smb.host"),
-                    port(),
-                    requireSystemProperty("ioc.smb.share"),
-                    credentials.domain(environment),
-                    credentials.username(environment),
-                    password,
-                    encryptionPolicy(),
-                    Duration.ofSeconds(5),
-                    requestTimeout,
-                    Duration.ofMinutes(1));
-        } finally {
-            Arrays.fill(password, '\0');
-        }
+        CredentialProfile credentials = contractCredentialProfile(environment);
+        return createSettings("contract", requestTimeout, credentials, environment);
     }
 
     static SmbEndpointSettings producerSettings() {
         Map<String, String> environment = System.getenv();
         CredentialProfile credentials = requireCompleteProfile(
                 environment, CredentialProfile.PRODUCER);
-        char[] password = credentials.password(environment).toCharArray();
-        try {
-            return new SmbEndpointSettings(
-                    "producer-contract",
-                    requireSystemProperty("ioc.smb.host"),
-                    port(),
-                    requireSystemProperty("ioc.smb.share"),
-                    credentials.domain(environment),
-                    credentials.username(environment),
-                    password,
-                    encryptionPolicy(),
-                    Duration.ofSeconds(5),
-                    Duration.ofSeconds(30),
-                    Duration.ofMinutes(1));
-        } finally {
-            Arrays.fill(password, '\0');
-        }
+        return createSettings(
+                "producer-contract", Duration.ofSeconds(30), credentials, environment);
+    }
+
+    static SmbEndpointSettings hardeningServiceSettings() {
+        Map<String, String> environment = System.getenv();
+        CredentialProfile credentials = hardeningServiceCredentialProfile(environment);
+        return createSettings("contract", Duration.ofSeconds(30), credentials, environment);
     }
 
     static SmbEncryptionPolicy encryptionPolicy() {
@@ -81,9 +56,38 @@ final class SmbContractTestSupport {
         throw new IllegalArgumentException("live contract requires an SMBJ share client");
     }
 
-    static CredentialProfile serviceCredentialProfile(Map<String, String> environment) {
+    static CredentialProfile contractCredentialProfile(Map<String, String> environment) {
         return requireCompleteProfile(
                 environment, CredentialProfile.STANDARD, CredentialProfile.SERVICE);
+    }
+
+    static CredentialProfile hardeningServiceCredentialProfile(
+            Map<String, String> environment) {
+        return requireCompleteProfile(environment, CredentialProfile.SERVICE);
+    }
+
+    private static SmbEndpointSettings createSettings(
+            String name,
+            Duration requestTimeout,
+            CredentialProfile credentials,
+            Map<String, String> environment) {
+        char[] password = credentials.password(environment).toCharArray();
+        try {
+            return new SmbEndpointSettings(
+                    name,
+                    requireSystemProperty("ioc.smb.host"),
+                    port(),
+                    requireSystemProperty("ioc.smb.share"),
+                    credentials.domain(environment),
+                    credentials.username(environment),
+                    password,
+                    encryptionPolicy(),
+                    Duration.ofSeconds(5),
+                    requestTimeout,
+                    Duration.ofMinutes(1));
+        } finally {
+            Arrays.fill(password, '\0');
+        }
     }
 
     private static CredentialProfile requireCompleteProfile(

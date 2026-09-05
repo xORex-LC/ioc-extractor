@@ -38,7 +38,7 @@ class SmbManagedImportHardeningContractIT {
     @Test
     void preProvisionedNamespaceSupportsCapabilityReconnectAndExactRetention()
             throws Exception {
-        SmbEndpointSettings service = SmbContractTestSupport.settings();
+        SmbEndpointSettings service = SmbContractTestSupport.hardeningServiceSettings();
         SmbEndpointSettings producer = SmbContractTestSupport.producerSettings();
         String root = require("ioc.smb.hardening.remotePath");
         String privateRoot = SmbFileTransport.join(root, ".ioc-managed-import");
