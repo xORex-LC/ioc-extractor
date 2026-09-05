@@ -44,15 +44,20 @@ write_common_summary() { # file mode result started elapsed
 }
 
 archive_test_reports() { # destination
-  local destination="$1" report relative target
-  while IFS= read -r -d '' report; do
-    relative="${report#"${REPO_ROOT}"/}"
-    target="${destination}/${relative}"
-    mkdir -p -- "$(dirname -- "${target}")"
-    cp -- "${report}" "${target}"
-  done < <(find platform core adapters bootstrap -type f \
-    \( -path '*/target/surefire-reports/TEST-*.xml' \
-      -o -path '*/target/failsafe-reports/TEST-*.xml' \) -print0)
+  local destination="$1" module
+  local report relative target
+  while IFS=$'\t' read -r module _; do
+    [[ "${module}" != "." && "${module}" != \#* && "${module}" != build-support/* ]] \
+      || continue
+    while IFS= read -r -d '' report; do
+      relative="${report#"${REPO_ROOT}"/}"
+      target="${destination}/${relative}"
+      mkdir -p -- "$(dirname -- "${target}")"
+      cp -- "${report}" "${target}"
+    done < <(find "${module}/target" -type f \
+      \( -path '*/surefire-reports/TEST-*.xml' \
+        -o -path '*/failsafe-reports/TEST-*.xml' \) -print0 2>/dev/null)
+  done < build-support/coverage-report/coverage-scope.tsv
 }
 
 run_mutation() {
