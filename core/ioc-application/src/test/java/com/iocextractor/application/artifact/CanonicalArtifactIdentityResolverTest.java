@@ -63,6 +63,17 @@ class CanonicalArtifactIdentityResolverTest {
     }
 
     @Test
+    void row_identity_is_independent_of_input_map_iteration_order() {
+        var resolver = new CanonicalArtifactIdentityResolver(List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask", "source"), false, 1)));
+        ArtifactRow first = row("mask", "example.test", "source", "feed-a");
+        ArtifactRow reversed = row("source", "feed-a", "mask", "example.test");
+
+        assertThat(resolver.keyOf("masks", first))
+                .isEqualTo(resolver.keyOf("masks", reversed));
+    }
+
+    @Test
     void canonical_json_escaping_is_stable_for_every_control_character() {
         assertThat(CanonicalArtifactIdentityResolver.jsonString(
                 "quote=\" slash=\\ back=\b form=\f line=\n return=\r tab=\t low=\u0001"))

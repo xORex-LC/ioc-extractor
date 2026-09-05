@@ -27,6 +27,11 @@ class DefaultIndicatorNormalizerTest {
     }
 
     @Test
+    void strips_a_leading_semicolon_without_touching_the_value() {
+        assertThat(normalizer.normalize(";voffice.top")).isEqualTo("voffice.top");
+    }
+
+    @Test
     void strips_surrounding_quotes_and_whitespace() {
         assertThat(normalizer.normalize("  \"x.com\" ")).isEqualTo("x.com");
     }

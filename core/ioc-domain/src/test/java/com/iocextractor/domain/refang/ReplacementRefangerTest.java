@@ -49,4 +49,27 @@ class ReplacementRefangerTest {
         assertThat(refanger.refang(""))
                 .isEqualTo(new RefangOutcome("", List.of()));
     }
+
+    @Test
+    void counts_every_literal_replacement() {
+        assertThat(refanger.refang("a[.]b[.]c"))
+                .satisfies(outcome -> {
+                    assertThat(outcome.text()).isEqualTo("a.b.c");
+                    assertThat(outcome.decisions())
+                            .extracting(RefangDecision::ruleIndex, RefangDecision::replacements)
+                            .containsExactly(tuple(2, 2));
+                });
+    }
+
+    @Test
+    void empty_literal_has_explicit_java_replacement_semantics() {
+        Refanger emptyLiteral = new ReplacementRefanger(List.of(new RefangRule("", "_")));
+
+        assertThat(emptyLiteral.refang("ab"))
+                .isEqualTo(new RefangOutcome(
+                        "_a_b_",
+                        List.of(new RefangDecision(0, new RefangRule("", "_"), 3))));
+        assertThat(emptyLiteral.refang(""))
+                .isEqualTo(new RefangOutcome("", List.of()));
+    }
 }
