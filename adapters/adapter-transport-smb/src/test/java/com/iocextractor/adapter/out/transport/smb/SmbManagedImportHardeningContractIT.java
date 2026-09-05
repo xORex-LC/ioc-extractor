@@ -18,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -40,7 +39,7 @@ class SmbManagedImportHardeningContractIT {
     void preProvisionedNamespaceSupportsCapabilityReconnectAndExactRetention()
             throws Exception {
         SmbEndpointSettings service = SmbContractTestSupport.settings();
-        SmbEndpointSettings producer = producerSettings();
+        SmbEndpointSettings producer = SmbContractTestSupport.producerSettings();
         String root = require("ioc.smb.hardening.remotePath");
         String privateRoot = SmbFileTransport.join(root, ".ioc-managed-import");
         String producerPath = SmbFileTransport.join(
@@ -128,26 +127,6 @@ class SmbManagedImportHardeningContractIT {
             client.deleteRegularFile(producerPath);
             client.deleteRegularFile(processing);
             client.deleteRegularFile(terminal);
-        }
-    }
-
-    private static SmbEndpointSettings producerSettings() {
-        char[] password = require("ioc.smb.producer.password").toCharArray();
-        try {
-            return new SmbEndpointSettings(
-                    "producer-contract",
-                    require("ioc.smb.host"),
-                    SmbContractTestSupport.port(),
-                    require("ioc.smb.share"),
-                    System.getProperty("ioc.smb.producer.domain", ""),
-                    require("ioc.smb.producer.username"),
-                    password,
-                    SmbContractTestSupport.encryptionPolicy(),
-                    Duration.ofSeconds(5),
-                    Duration.ofSeconds(30),
-                    Duration.ofMinutes(1));
-        } finally {
-            Arrays.fill(password, '\0');
         }
     }
 

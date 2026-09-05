@@ -78,14 +78,18 @@ substitution/mutation, orphan adoption, disposition и shared-session reuse.
 Пять базовых opt-in контрактных сценариев против живого SMB-сервера проверяют
 managed claim/disposition/restart и `CHANGE_NOTIFY`:
 
+Credentials читаются тестовым fixture напрямую из `SMB_USER`/`SMB_PASSWORD`
+(`SMB_DOMAIN` optional). Не передавайте пароль через `-D`: Failsafe включает
+JVM system properties в XML evidence.
+
 ```bash
-./mvnw -pl adapters/adapter-transport-smb -am test \
+./mvnw -pl adapters/adapter-transport-smb -am -Dskip.unit.tests=true verify \
+  -Dit.test=SmbManagedImportContractIT,SmbChangeNotifyContractIT \
+  -Dfailsafe.failIfNoSpecifiedTests=false \
   -Dioc.smb.contract=true \
   -Dioc.smb.host=127.0.0.1 \
   -Dioc.smb.port="${SMB_PORT:-445}" \
   -Dioc.smb.share=test-share \
-  -Dioc.smb.username="$SMB_USER" \
-  -Dioc.smb.password="$SMB_PASSWORD" \
   -Dioc.smb.encryption=required \
   -Dioc.smb.remotePath=import
 ```
@@ -98,16 +102,18 @@ identity. Он не создаёт/не удаляет каталоги и пр�
 missing namespace, producer denial, claim, reconnect, disposition и exact
 retention:
 
+Service credentials задаются через `SMB_SERVICE_USER`/
+`SMB_SERVICE_PASSWORD`, producer credentials — через `SMB_PRODUCER_USER`/
+`SMB_PRODUCER_PASSWORD`; соответствующие `*_DOMAIN` optional.
+
 ```bash
-./mvnw -pl adapters/adapter-transport-smb -am test \
+./mvnw -pl adapters/adapter-transport-smb -am -Dskip.unit.tests=true verify \
+  -Dit.test=SmbManagedImportHardeningContractIT \
+  -Dfailsafe.failIfNoSpecifiedTests=false \
   -Dioc.smb.hardening.contract=true \
   -Dioc.smb.host=files.example.test \
   -Dioc.smb.port="${SMB_PORT:-445}" \
   -Dioc.smb.share=intel \
-  -Dioc.smb.username="$SMB_SERVICE_USER" \
-  -Dioc.smb.password="$SMB_SERVICE_PASSWORD" \
-  -Dioc.smb.producer.username="$SMB_PRODUCER_USER" \
-  -Dioc.smb.producer.password="$SMB_PRODUCER_PASSWORD" \
   -Dioc.smb.encryption=required \
   -Dioc.smb.hardening.remotePath=managed-import/inbox
 ```
@@ -115,13 +121,13 @@ retention:
 Отдельный live-contract доказывает именно fail-closed encryption negotiation:
 
 ```bash
-./mvnw -pl adapters/adapter-transport-smb -am test \
+./mvnw -pl adapters/adapter-transport-smb -am -Dskip.unit.tests=true verify \
+  -Dit.test=SmbEncryptionContractIT \
+  -Dfailsafe.failIfNoSpecifiedTests=false \
   -Dioc.smb.encryption.contract=true \
   -Dioc.smb.host=files.example.test \
   -Dioc.smb.port="${SMB_PORT:-445}" \
   -Dioc.smb.share=intel \
-  -Dioc.smb.username="$SMB_SERVICE_USER" \
-  -Dioc.smb.password="$SMB_SERVICE_PASSWORD" \
   -Dioc.smb.encryption=required \
   -Dioc.smb.remotePath=managed-import/inbox
 ```

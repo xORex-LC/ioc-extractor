@@ -3,6 +3,7 @@ package com.iocextractor.adapter.out.transport.smb;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -49,6 +50,30 @@ class SmbEndpointSettingsTest {
         assertThatThrownBy(() -> endpoint("secret".toCharArray(), 65_536))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("port");
+    }
+
+    @Test
+    void liveContractSelectsOneCompleteEnvironmentCredentialPair() {
+        assertThat(SmbContractTestSupport.serviceCredentialProfile(Map.of(
+                "SMB_USER", "sync-user",
+                "SMB_PASSWORD", "sync-password")))
+                .isEqualTo(SmbContractTestSupport.CredentialProfile.STANDARD);
+        assertThat(SmbContractTestSupport.serviceCredentialProfile(Map.of(
+                "SMB_SERVICE_USER", "service-user",
+                "SMB_SERVICE_PASSWORD", "service-password")))
+                .isEqualTo(SmbContractTestSupport.CredentialProfile.SERVICE);
+    }
+
+    @Test
+    void liveContractRejectsPartialCredentialsInsteadOfMixingProfiles() {
+        assertThatThrownBy(() -> SmbContractTestSupport.serviceCredentialProfile(Map.of(
+                "SMB_USER", "sync-user",
+                "SMB_SERVICE_USER", "service-user",
+                "SMB_SERVICE_PASSWORD", "service-password")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("SMB_USER", "SMB_PASSWORD")
+                .hasMessageNotContaining("sync-user")
+                .hasMessageNotContaining("service-password");
     }
 
     private static SmbEndpointSettings endpoint(char[] password) {

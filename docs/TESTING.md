@@ -89,6 +89,13 @@ provisioned suite ran or received an explicit disposition. External tests must
 not silently enter the deterministic offline cohort. The `slow` tag alone does
 not disable or move a test.
 
+Live SMB credentials are read directly from environment pairs such as
+`SMB_USER`/`SMB_PASSWORD` or `SMB_SERVICE_USER`/`SMB_SERVICE_PASSWORD`. Never
+forward a password through `-D`: Failsafe serializes JVM system properties into
+its XML reports, and CI retains those reports as release evidence. Non-secret
+fixture selectors (`host`, `port`, `share`, `remotePath`, encryption policy)
+remain explicit system properties so the qualified target can be identified.
+
 ## Integrity checks and reports
 
 Root `validate` runs the JDK-only verifier in `build-support/test-quality`. It
