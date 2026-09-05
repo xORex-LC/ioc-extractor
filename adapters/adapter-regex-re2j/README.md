@@ -13,9 +13,10 @@ RE2J and a JDK fallback.
 |---|---|
 | `pom.xml` | Maven module descriptor |
 | `src/main/java/com/iocextractor/adapter/out/regex/` | Regex engine implementations |
+| `src/test/java/com/iocextractor/adapter/out/regex/` | Shared executable `PatternEngine` contract |
 
 ## Зависимости
 
-**Зависит от:** `ioc-domain`, RE2J.
+**Зависит от:** `ioc-domain`, RE2J; test scope uses `ioc-application-tck`.
 
 **Не импортируется:** application, bootstrap, other adapters.

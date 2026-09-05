@@ -1,5 +1,5 @@
 # scope	line-covered	line-missed	branch-covered	branch-missed	instruction-missed	absolute-instructions	rationale
-reactor	19849	2541	6477	1861	12617	observed	Conservative independent minima after final aggregate-floor boundary remediation; fixed release floors remain separate.
+reactor	19859	2541	6479	1861	12617	observed	Shared two-engine regex contract over the conservative independent aggregate minima; fixed release floors remain separate.
 ioc-platform-errors	4	0	0	0	0	enforced	Small branchless production module; downstream coverage is complete.
 ioc-platform-diagnostics	481	10	56	20	63	enforced	Small branch denominator requires ratio and absolute missed context.
 ioc-platform-etl	165	16	16	8	75	enforced	Small branch denominator requires ratio and absolute missed context.
@@ -9,7 +9,7 @@ ioc-platform-observability	327	14	69	2	42	enforced	Small branch denominator requ
 ioc-platform-diagnostics-logging	56	4	20	1	9	enforced	Small line and branch denominators require absolute missed context.
 ioc-domain	239	4	108	2	20	observed	Behavioral contract remediation exceeds the core line and branch release floors; explicit fixed-floor gates remain separate.
 ioc-application	5107	305	2067	241	2035	observed	Import catalog authority and malformed-reference contracts over the conservative line minimum.
-ioc-adapter-regex-re2j	8	10	2	2	39	enforced	Small downstream-only module requires absolute missed context.
+ioc-adapter-regex-re2j	18	0	4	0	0	enforced	Shared RE2/J and JDK contract completely exercises both small adapter implementations.
 ioc-adapter-psl	15	2	11	1	3	enforced	Small line and branch denominators require absolute missed context.
 ioc-adapter-source-tika	57	1	7	3	6	enforced	Small line and branch denominators require absolute missed context.
 ioc-adapter-csv	1122	172	424	145	820	observed	CSV slice identity, overwrite and incomplete-callback contracts over the conservative line minimum.

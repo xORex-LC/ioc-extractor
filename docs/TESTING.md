@@ -123,10 +123,9 @@ The aggregate report and its groups are the authoritative release measurement.
 `build-support/coverage-report/coverage-scope.tsv` gives every reactor project
 an explicit disposition. The production denominator is exactly 19 JAR modules;
 the reusable TCK, root and build-only POMs are excluded, with no class or package
-exclusions. Seventeen production modules must generate local XML/HTML reports.
-`ioc-platform-errors` and `ioc-adapter-regex-re2j` have no local test JVM and are
-declared aggregate-only, but their downstream execution must still appear as
-aggregate groups.
+exclusions. Eighteen production modules must generate local XML/HTML reports.
+`ioc-platform-errors` has no local test JVM and is declared aggregate-only, but
+its downstream execution must still appear as an aggregate group.
 
 `make verify` checks that this complete report topology exists and contains no
 stale or unexpected evidence. It applies the aggregate and per-module baselines

@@ -21,6 +21,11 @@
             <artifactId>ioc-domain</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-application-tck</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>com.google.re2j</groupId>
             <artifactId>re2j</artifactId>
         </dependency>

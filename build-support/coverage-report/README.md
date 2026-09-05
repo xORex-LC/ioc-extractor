@@ -36,8 +36,8 @@ library.
 No class or package exclusion is accepted. The root `validate` phase reconciles
 the complete scope registry, report-module dependencies, report topology and
 ratchet scopes before child projects run. The late verifier then requires the
-aggregate XML/HTML, its exact 19-group production universe, 17 module-local
-XML/HTML pairs and two declared downstream-only groups. Missing, stale or
+aggregate XML/HTML, its exact 19-group production universe, 18 module-local
+XML/HTML pairs and one declared downstream-only group. Missing, stale or
 unexpected execution/report files fail the build.
 
 Line and branch ratios are compared as exact integer fractions, without decimal
