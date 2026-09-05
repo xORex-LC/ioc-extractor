@@ -199,7 +199,40 @@ the fixed floors.
 Do not lower a floor or baseline, add an exclusion or relabel a local report to
 make a change pass. Review the changed behavior and tests; when a stable
 improvement is accepted, update its exact counters and rationale in the same
-change. Local JaCoCo remains authoritative when Codecov reporting is introduced.
+change. Local JaCoCo remains authoritative; Codecov reporting is advisory.
+
+## Codecov reporting
+
+The successful CI build revalidates the complete aggregate with
+`tools/ci/codecov.sh verify-input` before retaining it as an artifact. A separate
+`Codecov advisory` job downloads that already verified evidence and requires the
+expected aggregate XML to be present before invoking the external uploader. It
+does not rerun tests or generate a second coverage universe.
+
+Repository `codecov.yml` defines three informational status contexts:
+
+| Context | Target | Tolerance | Scope |
+|---|---:|---:|---|
+| `codecov/project/absolute-floor` | `75%` | `0%` | Complete production aggregate |
+| `codecov/project/base-ratchet` | Base (`auto`) | `0.1%` | Complete production aggregate |
+| `codecov/patch/changed-lines` | `90%` | `0%` | Pull-request changed lines |
+
+All three use Codecov informational mode and are not required merge or release
+gates. GitHub Checks annotations are enabled, while the mutable PR comment is
+disabled. Review still requires meaningful positive, negative and boundary
+outcomes for changed behavior; a patch percentage is not a substitute.
+
+The reporting job receives OIDC permission without exposing it to the Maven
+build job. Its Action and CLI versions are pinned in the workflow. Automatic
+report search, uploader plugins and telemetry are disabled, and the only
+coverage payload named for upload is
+`build-support/coverage-report/target/site/jacoco-aggregate/jacoco.xml`.
+
+Missing, stale or malformed project-owned coverage evidence fails Maven or the
+pre-upload handoff. The Codecov Action alone is `continue-on-error`: an outage,
+authentication failure, rate limit or missing remote status remains visible as
+an external reporting failure but cannot turn a failed local coverage check
+green or block an otherwise valid release.
 
 ## Test design and failure policy
 

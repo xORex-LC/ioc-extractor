@@ -45,7 +45,7 @@ inputs.
 | `TEST-WAITS-04` | Bound async waits, release workers in `finally`, assert termination and add diagnosable safety timeout | Verified implementation evidence below | Module test hardening | `verified` |
 | `TEST-EXTERNAL-05` | Execute live SMB `CHANGE_NOTIFY` contract or record explicit external-evidence release disposition | Verified live Windows-host contract evidence below | Provisioned fixture / `R030-REL` | `verified` |
 | `TEST-PILOTS-06` | Run PIT/domain, invariant and seeded repeat pilots; triage signal/noise/cost | Verified diagnostic pilot tables below | Wave 1 profiles/artifacts | `verified` |
-| `TEST-CODECOV-07` | Best-effort non-required upload plus project/patch signals | Codecov table below | Stable JaCoCo XML + CI | `planned` |
+| `TEST-CODECOV-07` | Best-effort non-required upload plus project/patch signals | Codecov table below | Stable JaCoCo XML + CI | `implemented; operational run pending` |
 | `TEST-PUBLICATION-08` | Out-of-reactor compile/runtime contract for an admitted published library | Compatibility/shared-code ledgers | Blocked until `R030-LIB` admission | `waiting-on-library-contract` |
 | `TEST-CONSUMERS-09` | Add exact golden CSV/manifest/log/CLI consumer payload/query fixtures for accepted external surfaces | Compatibility consumer gaps | Per-surface owner decision | `planned` |
 
@@ -1706,12 +1706,54 @@ Gap type examples: `negative`, `boundary`, `error`, `recovery`,
 
 ## Codecov
 
+### `TEST-CODECOV-07` configuration checkpoint — 2026-09-06
+
+Commit `8f73af54` adds the repository `codecov.yml`, an explicit pre-upload leaf
+and a separate `Codecov advisory` CI job. The blocking path remains entirely
+project-owned: Maven first checks the 19-module aggregate, ratchets and fixed
+floors; `tools/ci/codecov.sh verify-input` repeats the exact
+`CoverageVerifier verify-reports` contract; the artifact handoff then requires
+the downloaded aggregate XML to be non-empty. Only the subsequent external
+Action step uses `continue-on-error`.
+
+The Action is pinned to Codecov Action `v7.0.0` commit
+`fb8b3582c8e4def4969c97caa2f19720cb33a72f`, and its downloaded CLI is pinned to
+`v11.3.1`. Upload authentication uses GitHub OIDC; `id-token: write` exists only
+on the reporting job, which does not execute Maven or reactor code. The Action
+receives only
+`build-support/coverage-report/target/site/jacoco-aggregate/jacoco.xml` with
+automatic search, plugins and telemetry disabled. Repository secrets are not
+required; fork uploads may use Codecov's public-repository tokenless path and
+remain advisory if that external policy rejects them.
+
+The official `https://api.codecov.io/validate` endpoint accepted the exact
+repository YAML (`HTTP 200`, `Valid!`). It defines informational contexts
+`codecov/project/absolute-floor`, `codecov/project/base-ratchet` and
+`codecov/patch/changed-lines`; GitHub annotations are enabled and the mutable PR
+comment is disabled. Local preflight on the implementation worktree revalidated
+19 production groups and 18 local reports at `20099/22390` lines and
+`6508/8125` branches; `tools-contract-test.sh` also passed.
+
+External GitHub policy was inspected on 2026-09-06. The repository exposes only
+the active release-tag immutability ruleset; `main` returns no applicable branch
+rules and no classic protection configuration. Therefore no Codecov context is
+currently required. This is point-in-time external evidence, not a repository
+guarantee, and must be rechecked for release closure. The branch still needs an
+upstream run before upload, head-report and remote status behavior can be marked
+operational.
+
+The current development branch has no pull request, and ordinary pushes to it
+do not match the workflow's `main` / `release-*` push filter. Operational proof
+therefore requires publishing these commits and opening a PR (or later running
+the same workflow from an eligible ref); that external mutation is not inferred
+from local implementation work.
+
 | Check | Expected signal | Run/status evidence | Branch protection | State |
 |---|---|---|---|---|
-| Project floor | `75%`, threshold `0%` | TBD | not required | `planned` |
-| Project ratchet | `auto`, threshold `<= 0.1%` | TBD | not required | `planned` |
-| Patch changed lines | target `90%`, threshold `0%` | TBD | not required | `planned` |
-| Missing Codecov report/upload | external reporting failure | TBD | not required | `planned` |
+| Project floor | `75%`, threshold `0%` | Config validated; first remote status pending | Verified not required 2026-09-06 | `configured` |
+| Project ratchet | `auto`, threshold `0.1%` | Config validated; base report requires upstream history | Verified not required 2026-09-06 | `configured` |
+| Patch changed lines | target `90%`, threshold `0%` | Config validated; PR status pending | Verified not required 2026-09-06 | `configured` |
+| Missing Codecov report/upload | external reporting failure | Action alone is `continue-on-error`; project XML/handoff remains blocking | Verified not required 2026-09-06 | `configured; failure path awaiting CI evidence` |
 
 ## Diagnostic pilots
 
@@ -1747,7 +1789,7 @@ PIT signal сообщает 107 detected mutants.
 - [x] Coverage universe and exclusions accepted
 - [x] Fixed floors and per-module ratchets enforced
 - [ ] Codecov signal operational либо имеет external-unavailability disposition
-- [ ] Codecov status подтверждён как non-required
+- [x] Codecov status подтверждён как non-required (GitHub policy snapshot 2026-09-06)
 - [x] Risk-based gaps have disposition
 - [x] Flake/wait/duration findings have disposition
 - [x] PIT command/profile и reports воспроизводимы
