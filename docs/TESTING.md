@@ -72,6 +72,42 @@ make test-one MODULE=adapters/adapter-cli-picocli TEST=SpringCommandConstruction
 developer command, not a replacement for `make verify`. Selecting tags manually
 is diagnostic only and does not prove release completeness.
 
+## Diagnostic pilots
+
+Mutation and stability pilots are opt-in diagnostics, not ordinary PR or
+release gates:
+
+```bash
+# Mutate the complete core/ioc-domain production scope with one sequential worker.
+make mutation-pilot
+
+# Run the complete functional test universe three times with seeds 42, 43 and 44.
+make stability-pilot
+
+# Reproduce or extend a stability observation explicitly.
+make stability-pilot SEED=73 REPEAT=1
+```
+
+The `mutation-pilot` Maven profile exists only in `core/ioc-domain`. It uses the
+default PIT mutators with zero score thresholds: a broken test or tool remains a
+failure, while a survived mutant requires review rather than automatically
+blocking a release. Stable HTML/XML reports are written to
+`core/ioc-domain/target/pit-reports/`; the wrapper summary is written under
+`target/test-pilots/`.
+
+The `stability-pilot` profile randomizes Surefire/Failsafe class order and JUnit
+class/method order from the same published seed. The wrapper advances the seed
+by one for each repetition, runs all 20 functional JAR modules sequentially,
+and verifies the exact source/report union after every pass. It archives each
+pass under `target/test-pilots/stability/run-N-seed-S/` before the next Maven
+lifecycle deletes current reports. The first failure stops the pilot and keeps
+its seed and partial XML evidence; there is no automatic retry.
+
+The scheduled/manual `Test Diagnostics` workflow publishes both pilot bundles
+for 30 days. It is intentionally absent from push and pull-request triggers.
+PIT and stability remain scheduled/manual diagnostics unless a later reviewed
+decision adopts a narrower blocking policy.
+
 ## External and slow evidence
 
 External suites remain discoverable by Failsafe but are disabled unless their

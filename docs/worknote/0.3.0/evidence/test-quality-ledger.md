@@ -44,7 +44,7 @@ inputs.
 | `TEST-REGEX-03` | Common RE2/J + JDK engine contract and bootstrap `ioc.engine=jdk` selection test | Verified implementation evidence below | Regex/bootstrap module wave | `verified` |
 | `TEST-WAITS-04` | Bound async waits, release workers in `finally`, assert termination and add diagnosable safety timeout | Verified implementation evidence below | Module test hardening | `verified` |
 | `TEST-EXTERNAL-05` | Execute live SMB `CHANGE_NOTIFY` contract or record explicit external-evidence release disposition | Verified live Windows-host contract evidence below | Provisioned fixture / `R030-REL` | `verified` |
-| `TEST-PILOTS-06` | Run PIT/domain, invariant and seeded repeat pilots; triage signal/noise/cost | Diagnostic pilot tables below | Wave 1 profiles/artifacts | `planned` |
+| `TEST-PILOTS-06` | Run PIT/domain, invariant and seeded repeat pilots; triage signal/noise/cost | Verified diagnostic pilot tables below | Wave 1 profiles/artifacts | `verified` |
 | `TEST-CODECOV-07` | Best-effort non-required upload plus project/patch signals | Codecov table below | Stable JaCoCo XML + CI | `planned` |
 | `TEST-PUBLICATION-08` | Out-of-reactor compile/runtime contract for an admitted published library | Compatibility/shared-code ledgers | Blocked until `R030-LIB` admission | `waiting-on-library-contract` |
 | `TEST-CONSUMERS-09` | Add exact golden CSV/manifest/log/CLI consumer payload/query fixtures for accepted external surfaces | Compatibility consumer gaps | Per-surface owner decision | `planned` |
@@ -1504,9 +1504,10 @@ expected before the library extraction goal, but `R030-LIB`/`R030-TEST` must
 provide the standalone consumer described by the release contract once public
 library coordinates are finalized.
 
-The accepted invariant-oriented and mutation pilots have not yet been run.
-Existing example tests are useful seeds, not pilot evidence; `BASE-TESTS-04`
-does not infer mutation effectiveness from assertion volume.
+`TEST-PILOTS-06` подтвердил invariant-oriented tests отдельным domain PIT и
+seeded random-order/repeat прогоном. Итоговые signal/noise/cost и adoption
+решения находятся в разделе Diagnostic pilots; `BASE-TESTS-04` по-прежнему не
+выводит mutation effectiveness из количества assertions.
 
 ## Instrumentation
 
@@ -1515,9 +1516,11 @@ does not infer mutation effectiveness from assertion volume.
 | JaCoCo agent/report | `0.8.15`; inherited `prepare-agent` + module `report` | `make verify` | 17 local report pairs + 19-group aggregate | `blocking-integrity` |
 | JaCoCo per-module check | Exact 19-module line/branch ratio ratchets; absolute missed-branch and small-module instruction context | `make verify` | Project-owned snapshot and late gate | `blocking-ratchet` |
 | JaCoCo aggregate check | Exact ratio/missed-branch ratchet plus fixed `75% / 80%` floor | `make verify` | Project-owned aggregate XML/integrity/floor gate | `blocking` |
-| Surefire fast lifecycle | `3.5.6`; default naming; isolated via `skip.unit.tests` | `make test` / `make test-fast` / `make verify` | 191 suites / 994 cases | `verified` |
+| Surefire fast lifecycle | `3.5.6`; default naming; isolated via `skip.unit.tests` | `make test` / `make test-fast` / `make verify` | 195 suites / 1022 cases | `verified` |
 | Failsafe integration lifecycle | `3.5.6`; `integration-test` + `verify`; default IT naming | `make test-integration` / `make verify` | 66 suites / 462 cases / 8 external skips | `verified` |
 | JUnit tag convention | Six accepted tags; five shared composed annotations; no regular filters | root `validate` / `make verify` | Source-count and exact report-union verifier | `verified` |
+| PIT domain pilot | `pitest-maven 1.30.0`; JUnit 5 plugin `1.2.3`; `DEFAULTS`, one thread, zero score thresholds | `make mutation-pilot` | Stable domain HTML/XML + machine-readable summary; weekly/manual workflow | `verified-diagnostic` |
+| Seeded stability pilot | Surefire/Failsafe/JUnit random class/method order; base seed `42`, three sequential functional-reactor repeats | `make stability-pilot` | Per-seed XML + exact report-union result; weekly/manual workflow | `verified-diagnostic` |
 | Codecov best-effort upload | TBD | N/A | TBD | `planned` |
 | Codecov project/patch signals | TBD | N/A | TBD | `planned` |
 | Coverage/test artifacts | Surefire/Failsafe XML + module and aggregate JaCoCo HTML/XML | `make verify` | Always-upload artifact, 30-day retention | `verified-retention` |
@@ -1685,7 +1688,7 @@ retirement evidence in its owning goal.
 | JDK pattern engine lacked a behavioral consumer | Shared contract covers both implementations; live configuration corpus is equivalent and `ioc.engine=jdk` selects the JDK adapter; regex module is `18/18` lines and `4/4` branches | `contract`, `compatibility` | Supported alternate engine could drift or wire incorrectly without detection | Shared two-engine contract + bootstrap bean-selection test | Closed and verified 2026-09-05 | `TEST-REGEX-03` |
 | Live SMB `CHANGE_NOTIFY` execution | External transport signal and idle-survival behavior | `contract`, `external` | Offline suite cannot prove live server semantics | Provisioned execution or explicit release disposition | Closed by 2/2 live cases on commit `404ab5f3`; target-specific boundary retained | `TEST-EXTERNAL-05` |
 | No standalone published-library consumer yet | Future extracted library coordinates and public API | `contract`, `publication` | Reactor-relative resolution can hide publication/POM defects | Out-of-reactor compile + runtime contract using published coordinates | Required when library API is finalized | `R030-LIB` / `R030-TEST` |
-| Invariant/PIT pilots not executed | Refang, normalization, classification, deduplication, identity | `assertion-quality` | Example assertions may miss semantically important mutations/invariants | Reproducible pilots with triaged results | Planned, no baseline inference | `R030-TEST` |
+| Invariant/PIT pilots | Refang, extraction/attribution, normalization, classification, deduplication, identity | `assertion-quality` | Initial domain-only PIT exposed downstream-dependent oracles and 41 undetected mutants | 16 focused invariant cases plus final PIT triage | Closed: final `NO_COVERAGE=0`, eight survived mutants classified | `TEST-PILOTS-06` |
 | No-op sink test has implicit oracle | `NoopDiagnosticSink` valid emission | `assertion-quality` | Very low; intent is less explicit | Explicit no-throw assertion if touched | Opportunistic | `R030-TEST` module review |
 
 Gap type examples: `negative`, `boundary`, `error`, `recovery`,
@@ -1699,7 +1702,7 @@ Gap type examples: `negative`, `boundary`, `error`, `recovery`,
 | 5 files with fixed sleeps | 6 calls, all locally bounded or semantic | Static analysis | up to 1–10 s by helper/scenario | `R030-TEST` | Review; do not blanket-replace | Each retained sleep has written rationale; observable conditions use deterministic coordination where practical |
 | Scheduler thread tests | 9 timed joins; termination usually not asserted | Static analysis | join bound `1 s` | `R030-TEST` | Remediate with termination assertion/finally cleanup | No test can silently leave a live worker |
 | Two CLI suites | Temporary `System.out` replacement | Current sequential JUnit execution | N/A | `R030-TEST` | Safe in current mode; guard before parallelism | Resource lock or no global mutation before parallel execution |
-| Selected 15-suite repeat | No failure reproduced in 5 fixed-order runs | 5 independent runs; no seed/retry | about 13 s/run | `R030-TEST` | Weak green signal | Scheduled seeded random-order/repeat pilot still required |
+| Full functional-reactor repeat | No failure reproduced in three random-order runs; exact report union passed every time | Seeds `42`, `43`, `44`; no retry | `147 s`, `135 s`, `157 s`; `453 s` wrapper | `R030-TEST` | Adopt weekly/manual diagnostic | Reproduce a failure with its published seed; keep outside PR gate until new evidence justifies promotion |
 
 ## Codecov
 
@@ -1714,19 +1717,28 @@ Gap type examples: `negative`, `boundary`, `error`, `recovery`,
 
 | Pilot | Scope | Command/config | Report artifact | Signal/noise | Runtime cost | Decision | Evidence |
 |---|---|---|---|---|---:|---|---|
-| PIT | `core/ioc-domain` | TBD | HTML/XML: TBD | TBD | TBD | TBD | TBD |
-| Random order/repeat | scheduled selected/full suites | TBD | TBD | TBD | TBD | TBD | TBD |
-| Invariant-oriented tests | selected domain rules | TBD | TBD | TBD | TBD | TBD | TBD |
+| PIT | Complete `core/ioc-domain` production scope | `make mutation-pilot`; opt-in module profile, `DEFAULTS`, one thread, zero thresholds | `core/ioc-domain/target/pit-reports/{index.html,mutations.xml,linecoverage.xml}` + wrapper summary | Initial 74/115 detected and 28 no-coverage mutations exposed real local-oracle gaps; final 107/115 detected, eight low-signal survivors, `NO_COVERAGE=0`, test strength `93%` | `53 s`; peak RSS about `337 MiB` | `Adopt` as weekly/manual domain diagnostic; no PR mutation threshold | Final wrapper summary plus repeatable HTML/XML; scheduled/manual artifact workflow |
+| Random order/repeat | All 20 functional JAR modules; exact 195 fast / 66 integration report union per run | `make stability-pilot`; seeds advance from explicit `SEED`, default `42/43/44`, no retry | Per-seed Surefire/Failsafe XML and summaries under `target/test-pilots/stability/` | Three green seeds, no order-dependent failure; each run retained the exact 261-suite XML union and excluded stale non-reactor targets | `453 s` total; runs `147/135/157 s`; peak RSS about `935 MiB` | `Adopt` as weekly/manual report-only diagnostic; cost does not justify per-PR use | Final scoped-archive worktree run based on `8df66cf5`; scheduled/manual artifact workflow |
+| Invariant-oriented tests | Refang, extraction/attribution, normalization, classification, deduplication and identity | Existing JUnit 5 + AssertJ stack; no property framework | Ordinary Surefire XML and PIT response | 14 domain and 2 application cases close observable boundaries; existing classification contract already killed its relevant mutants | Domain suite `66/66`; focused application `11/11` | `Adopt` in deterministic offline suite | Root lifecycle verifier accepts 195 fast suites and 256 deterministic-offline suites |
 
 ### PIT survived-mutant triage
 
 | Mutant/location | Critical rule | Classification | Test/work item | Rationale | State |
 |---|---|---|---|---|---|
-| TBD | TBD | `test-gap / equivalent-noise / non-critical / investigate` | TBD | TBD | TBD |
+| `DefaultIndicatorFeatureExtractor:29,30,33,36,44,55` | Slash/query/port/scheme delimiters are interpreted after a supported host-bearing indicator | `non-critical` | None for 0.3.0 | All six boundary mutants differ only when the delimiter begins the whole normalized value (`/`, `?`, `:`, `://` at index zero). Such values are outside the configured IOC extractor corpus; locking malformed parser output would weaken the supported-input contract. | Reviewed |
+| `RegexIndicatorExtractor:35` empty shortcut | Empty input yields no indicators or decisions | `equivalent/noise` | None | Removing only the `isEmpty()` shortcut produces the same empty outcome for every accepted configured pattern; null handling is independently killed. | Reviewed |
+| `DefaultIndicatorNormalizer:14` empty shortcut | Empty input remains empty | `equivalent/noise` | None | Without the shortcut both trim loops are skipped and `substring(0, 0)` returns the same value; null handling is independently killed. | Reviewed |
 
 Если полный domain pilot разделён на package/capability profiles, evidence MUST
 показывать, что profiles непересекаются и вместе покрывают принятый mutation
 universe.
+
+Pilot не разделялся: измеренные ~53 секунды и читаемый единый HTML/XML report не
+оправдывают package profiles. Два дополнительных detected mutants имеют
+`TIMED_OUT`: удаление empty-token guard и замена положительного шага поиска на
+вычитание создают non-terminating loop, который PIT корректно ограничивает.
+Поэтому XML содержит `105 KILLED + 2 TIMED_OUT + 8 SURVIVED = 115`, а итоговый
+PIT signal сообщает 107 detected mutants.
 
 ## Completion
 
@@ -1738,9 +1750,9 @@ universe.
 - [ ] Codecov status подтверждён как non-required
 - [x] Risk-based gaps have disposition
 - [x] Flake/wait/duration findings have disposition
-- [ ] PIT command/profile и reports воспроизводимы
-- [ ] PIT survived mutants классифицированы
-- [ ] PIT runtime cost измерена
-- [ ] Diagnostic pilots have adoption decisions
+- [x] PIT command/profile и reports воспроизводимы
+- [x] PIT survived mutants классифицированы
+- [x] PIT runtime cost измерена
+- [x] Diagnostic pilots have adoption decisions
 - [x] Published testing documentation matches live build
 - [x] Status matrix updated
