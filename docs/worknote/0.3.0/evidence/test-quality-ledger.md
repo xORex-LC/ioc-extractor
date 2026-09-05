@@ -45,7 +45,7 @@ inputs.
 | `TEST-WAITS-04` | Bound async waits, release workers in `finally`, assert termination and add diagnosable safety timeout | Verified implementation evidence below | Module test hardening | `verified` |
 | `TEST-EXTERNAL-05` | Execute live SMB `CHANGE_NOTIFY` contract or record explicit external-evidence release disposition | Verified live Windows-host contract evidence below | Provisioned fixture / `R030-REL` | `verified` |
 | `TEST-PILOTS-06` | Run PIT/domain, invariant and seeded repeat pilots; triage signal/noise/cost | Verified diagnostic pilot tables below | Wave 1 profiles/artifacts | `verified` |
-| `TEST-CODECOV-07` | Best-effort non-required upload plus project/patch signals | Codecov table below | Stable JaCoCo XML + CI | `implemented; operational run pending` |
+| `TEST-CODECOV-07` | Best-effort non-required upload plus project/patch signals | Codecov table below | Stable JaCoCo XML + CI | `verified-with-external-status-disposition` |
 | `TEST-PUBLICATION-08` | Out-of-reactor compile/runtime contract for an admitted published library | Compatibility/shared-code ledgers | Blocked until `R030-LIB` admission | `waiting-on-library-contract` |
 | `TEST-CONSUMERS-09` | Add exact golden CSV/manifest/log/CLI consumer payload/query fixtures for accepted external surfaces | Compatibility consumer gaps | Per-surface owner decision | `planned` |
 
@@ -1521,8 +1521,8 @@ seeded random-order/repeat прогоном. Итоговые signal/noise/cost 
 | JUnit tag convention | Six accepted tags; five shared composed annotations; no regular filters | root `validate` / `make verify` | Source-count and exact report-union verifier | `verified` |
 | PIT domain pilot | `pitest-maven 1.30.0`; JUnit 5 plugin `1.2.3`; `DEFAULTS`, one thread, zero score thresholds | `make mutation-pilot` | Stable domain HTML/XML + machine-readable summary; weekly/manual workflow | `verified-diagnostic` |
 | Seeded stability pilot | Surefire/Failsafe/JUnit random class/method order; base seed `42`, three sequential functional-reactor repeats | `make stability-pilot` | Per-seed XML + exact report-union result; weekly/manual workflow | `verified-diagnostic` |
-| Codecov best-effort upload | TBD | N/A | TBD | `planned` |
-| Codecov project/patch signals | TBD | N/A | TBD | `planned` |
+| Codecov best-effort upload | Action `v7.0.0` full-SHA pin; CLI `v11.3.1`; OIDC; explicit aggregate XML; no search/plugins/telemetry | CI `Codecov advisory` after successful build | Run `33980664036`: one report accepted and commit completed | `verified-upload` |
+| Codecov project/patch signals | Informational absolute `75%`, base-relative `auto` / `0.1%`, PR patch `90%`; comments off | `codecov.yml` + remote commit/status inspection | First report seeded history; GitHub received no `codecov/*` context, and no PR existed for patch evidence | `external-status-unavailable` |
 | Coverage/test artifacts | Surefire/Failsafe XML + module and aggregate JaCoCo HTML/XML | `make verify` | Always-upload artifact, 30-day retention | `verified-retention` |
 
 ### `BASE-COVERAGE-05` tooling and universe decision
@@ -1734,26 +1734,43 @@ comment is disabled. Local preflight on the implementation worktree revalidated
 19 production groups and 18 local reports at `20099/22390` lines and
 `6508/8125` branches; `tools-contract-test.sh` also passed.
 
-External GitHub policy was inspected on 2026-09-06. The repository exposes only
-the active release-tag immutability ruleset; `main` returns no applicable branch
-rules and no classic protection configuration. Therefore no Codecov context is
-currently required. This is point-in-time external evidence, not a repository
-guarantee, and must be rechecked for release closure. The branch still needs an
-upstream run before upload, head-report and remote status behavior can be marked
-operational.
+External GitHub policy was re-inspected on 2026-09-06 for
+`release-0.3.0`. The branch has no applicable repository rules and the classic
+protection endpoint returns `Branch not protected`; the only active repository
+ruleset is release-tag immutability. Therefore no Codecov context is currently
+required. This is point-in-time external evidence, not a repository guarantee,
+and must be rechecked for release closure.
 
-The current development branch has no pull request, and ordinary pushes to it
-do not match the workflow's `main` / `release-*` push filter. Operational proof
-therefore requires publishing these commits and opening a PR (or later running
-the same workflow from an eligible ref); that external mutation is not inferred
-from local implementation work.
+Push run
+[`33980664036`](https://github.com/xORex-LC/ioc-extractor/actions/runs/33980664036)
+on exact commit `9d05b56d` completed all five jobs successfully. The build
+verified the exact 19-group/18-local-report universe at `20108/22390` JaCoCo
+covered lines (`89.81%`) and `6514/8125` branches (`80.17%`), retained the
+`test-coverage-reports-90` artifact, and the dependent reporting job downloaded
+and revalidated it. The pinned Action obtained an OIDC token, found exactly one
+named aggregate XML and queued a 472091-byte upload. Codecov then exposed the
+same commit as `complete`, `ci_passed=true`, one session, 685 files and 22390
+lines. Its displayed `84.65%` is not the Maven gate value: Codecov reports 18954
+fully hit, 1153 partially hit and 2283 missed lines, while JaCoCo counts a
+partially covered source line as covered for the local line counter.
+
+No `codecov/*` GitHub check-run or commit status appeared after Codecov marked
+the report complete. The official Codecov onboarding contract requires the
+Codecov GitHub App to communicate results back to GitHub; the available GitHub
+credential cannot inspect app-installation administration. Missing remote
+contexts are therefore recorded as an external status-publication
+unavailability, not silently treated as a pass. The upload/history path is
+operational and remains best-effort; an owner/admin must verify or install/sync
+the Codecov GitHub App before project and PR signals can be observed. There was
+no pull request in this run, so the `only_pulls` patch context is intentionally
+not claimed as executed.
 
 | Check | Expected signal | Run/status evidence | Branch protection | State |
 |---|---|---|---|---|
-| Project floor | `75%`, threshold `0%` | Config validated; first remote status pending | Verified not required 2026-09-06 | `configured` |
-| Project ratchet | `auto`, threshold `0.1%` | Config validated; base report requires upstream history | Verified not required 2026-09-06 | `configured` |
-| Patch changed lines | target `90%`, threshold `0%` | Config validated; PR status pending | Verified not required 2026-09-06 | `configured` |
-| Missing Codecov report/upload | external reporting failure | Action alone is `continue-on-error`; project XML/handoff remains blocking | Verified not required 2026-09-06 | `configured; failure path awaiting CI evidence` |
+| Project floor | `75%`, threshold `0%` | Report complete at Codecov `84.65%`; GitHub context unavailable | Verified not required 2026-09-06 | `verified-upload; external-status-disposition` |
+| Project ratchet | `auto`, threshold `0.1%` | First history point accepted; no base comparator or GitHub context yet | Verified not required 2026-09-06 | `seeded; external-status-disposition` |
+| Patch changed lines | target `90%`, threshold `0%` | No PR in run; GitHub status integration unavailable | Verified not required 2026-09-06 | `configured; not-exercised` |
+| Missing Codecov report/upload | external reporting failure | Action alone is `continue-on-error`; project XML/handoff remains blocking | Verified not required 2026-09-06 | `verified-contract` |
 
 ## Diagnostic pilots
 
@@ -1788,7 +1805,8 @@ PIT signal сообщает 107 detected mutants.
 - [x] Per-module and aggregate baseline captured
 - [x] Coverage universe and exclusions accepted
 - [x] Fixed floors and per-module ratchets enforced
-- [ ] Codecov signal operational либо имеет external-unavailability disposition
+- [x] Codecov upload/history operational; отсутствующие GitHub status contexts
+  имеют явную external-unavailability disposition
 - [x] Codecov status подтверждён как non-required (GitHub policy snapshot 2026-09-06)
 - [x] Risk-based gaps have disposition
 - [x] Flake/wait/duration findings have disposition

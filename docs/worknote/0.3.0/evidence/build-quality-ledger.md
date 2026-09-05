@@ -1056,7 +1056,9 @@ control. Это не разрешает default/category-wide rules или ав�
 - [x] `TEST-COVERAGE-02`: explicit 25-project universe, missing-report
   enforcement, aggregate/per-module no-regression ratchets и project-owned
   fixed aggregate/domain/application floors реализованы и проверены
-- [ ] Codecov best-effort upload configured with project-owned input checks and
-  non-required status evidence; first upstream upload/status run remains
+- [x] Codecov best-effort upload verified on upstream run `33980664036` with
+  project-owned input checks and non-required policy evidence; upload/history
+  is operational, while absent GitHub contexts have an explicit external
+  GitHub-App/status-publication disposition
 - [ ] Required CI branch statuses и финальный closure run при активной
   repository branch policy
