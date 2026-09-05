@@ -161,6 +161,14 @@ behavior belongs behind an explicit external provision, while deterministic
 database, filesystem and framework integrations remain part of ordinary
 `verify`.
 
+The regex adapter runs one shared fast contract against both the default RE2/J
+and JDK fallback implementations. It verifies stable engine identity,
+compile-once reuse and exact ordered half-open spans. A bootstrap contract binds
+the live classpath configuration, verifies `ioc.engine=jdk` selection and runs
+every configured IOC detector and source section marker against both engines.
+Keep configured patterns RE2-compatible; the fallback is not permission to add
+JDK-only look-around or back-references.
+
 ## Update triggers
 
 Update this document and the lifecycle verifier when changing naming patterns,

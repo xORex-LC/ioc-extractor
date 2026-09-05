@@ -19,6 +19,8 @@ taxonomy и scope находятся только в goal contract.
 `BASE-COVERAGE-05` report-only baseline status: **verified**; detailed metrics
 are captured below. Its successor `TEST-COVERAGE-02` is also **verified** with
 fail-closed report integrity, ratchets and fixed floors.
+`TEST-REGEX-03` is **verified** with a shared two-engine contract, live
+configuration-corpus compatibility checks and bootstrap selection evidence.
 
 `BASE-INVENTORIES-09` intake status: **verified**. The initial work queue below
 maps every baseline test/coverage/consumer gap to an owner without implementing
@@ -36,7 +38,7 @@ inputs.
 |---|---|---|---|---|
 | `TEST-LIFECYCLE-01` | Introduce accepted tags/composed annotations and Surefire/Failsafe selection without losing the refreshed accepted universe | Verified implementation evidence below | Global `R030-TEST` Wave 1 | `verified` |
 | `TEST-COVERAGE-02` | Add aggregate/per-module no-regression ratchets, then close accepted aggregate/domain/application branch floors | Coverage baseline, policy and implementation evidence below | Stable lifecycle/reporting | `verified` |
-| `TEST-REGEX-03` | Common RE2/J + JDK engine contract and bootstrap `ioc.engine=jdk` selection test | Risk finding below; 0/9 JDK lines | Regex/bootstrap module wave | `planned` |
+| `TEST-REGEX-03` | Common RE2/J + JDK engine contract and bootstrap `ioc.engine=jdk` selection test | Verified implementation evidence below | Regex/bootstrap module wave | `verified` |
 | `TEST-WAITS-04` | Bound async waits, release workers in `finally`, assert termination and add diagnosable safety timeout | Wait/flake inventory below | Module test hardening | `planned` |
 | `TEST-EXTERNAL-05` | Execute live SMB `CHANGE_NOTIFY` contract or record explicit external-evidence release disposition | Two skipped external cases | Provisioned fixture / `R030-REL` | `external-evidence-required` |
 | `TEST-PILOTS-06` | Run PIT/domain, invariant and seeded repeat pilots; triage signal/noise/cost | Diagnostic pilot tables below | Wave 1 profiles/artifacts | `planned` |
@@ -127,18 +129,19 @@ The additional bare wait is the lifecycle-deadline scheduler worker gate.
 ## `TEST-LIFECYCLE-01` implementation evidence — 2026-09-02
 
 The reviewed behavior-based inventory was migrated to Maven naming ownership.
-After the aggregate-floor remediation checkpoint, Surefire owns 191 fast
+After `TEST-REGEX-03`, Surefire owns 193 fast
 `*Test` suites and Failsafe owns 66 `*IT` suites. Five of the Failsafe suites
 are explicitly conditioned external shells, so the deterministic offline
-universe is `191 + (66 - 5) = 252` suites. The two source sets are disjoint and
-their complete union is the current 257-suite reactor universe; the added local
-WatchService integration suite is recorded in checkpoint 26 below.
+universe is `193 + (66 - 5) = 254` suites. The two source sets are disjoint and
+their complete union is the current 259-suite reactor universe; the added local
+WatchService integration suite is recorded in checkpoint 26 below and the two
+regex suites are recorded in the `TEST-REGEX-03` evidence below.
 
 | Cohort | Suites | Cases | Passed | Skipped | Failures/errors | Suite-seconds |
 |---|---:|---:|---:|---:|---:|---:|
-| Surefire fast | 191 | 994 | 994 | 0 | 0 | 35.795 |
-| Failsafe integration, including external shells | 66 | 462 | 454 | 8 | 0 | 95.748 |
-| **Full reactor union** | **257** | **1456** | **1448** | **8** | **0** | **131.543** |
+| Surefire fast | 193 | 1002 | 1002 | 0 | 0 | 34.247 |
+| Failsafe integration, including external shells | 66 | 462 | 454 | 8 | 0 | 91.625 |
+| **Full reactor union** | **259** | **1464** | **1456** | **8** | **0** | **125.872** |
 
 The five external shells and their eight skipped cases are unchanged: one
 managed-import load profile and four SMB suites. Their `@ExternalTest`
@@ -194,7 +197,7 @@ to regress.
 
 | Module/scope | Lines covered/total | Line | Branches covered/total | Branch | Missed branches | Release floor/state |
 |---|---:|---:|---:|---:|---:|---|
-| **Reactor aggregate** | **19849/22390** | **88.65%** | **6477/8125** | **79.72%** | **1861** | ratcheted; fixed `75% / 80%` gate enabled against actual report |
+| **Reactor aggregate** | **19860/22390** | **88.70%** | **6480/8125** | **79.75%** | **1861** | ratcheted; fixed `75% / 80%` gate enabled against actual report |
 | `platform/platform-errors` | 4/4 | 100.00% | 0/0 | N/A | 0 | ratcheted |
 | `platform/platform-diagnostics` | 481/491 | 97.96% | 56/76 | 73.68% | 20 | ratcheted |
 | `platform/platform-etl` | 165/181 | 91.16% | 16/24 | 66.67% | 8 | ratcheted |
@@ -205,7 +208,7 @@ to regress.
 | `core/ioc-domain` | 239/243 | 98.35% | 108/110 | 98.18% | 2 | ratcheted; fixed `85% / 90%` floors reached |
 | `core/ioc-application` | 5107/5412 | 94.36% | 2067/2292 | 90.18% | 241 | ratcheted; fixed `85% / 90%` floors enabled |
 | `core/ioc-application-tck` | — | N/A | — | N/A | — | outside production universe |
-| `adapters/adapter-regex-re2j` | 8/18 | 44.44% | 2/4 | 50.00% | 2 | ratcheted; supported-path gap |
+| `adapters/adapter-regex-re2j` | 18/18 | 100.00% | 4/4 | 100.00% | 0 | ratcheted; local shared-engine contract |
 | `adapters/adapter-psl` | 15/17 | 88.24% | 11/12 | 91.67% | 1 | ratcheted |
 | `adapters/adapter-source-tika` | 57/58 | 98.28% | 7/10 | 70.00% | 3 | ratcheted |
 | `adapters/adapter-csv` | 1122/1294 | 86.71% | 424/560 | 75.71% | 145 | ratcheted |
@@ -214,16 +217,15 @@ to regress.
 | `adapters/adapter-transport-smb` | 813/1096 | 74.18% | 334/510 | 65.49% | 201 | ratcheted; external-path concentration |
 | `adapters/adapter-ingest` | 929/1189 | 78.13% | 328/422 | 77.73% | 135 | ratcheted |
 | `adapters/adapter-cli-picocli` | 415/564 | 73.58% | 140/227 | 61.67% | 113 | ratcheted |
-| `bootstrap/ioc-app` | 4442/5066 | 87.68% | 1371/1842 | 74.43% | 496 | ratcheted |
+| `bootstrap/ioc-app` | 4443/5066 | 87.70% | 1372/1842 | 74.48% | 496 | ratcheted; JDK engine selection covered |
 
-Compared with Wave 0, the production denominator grew from 10962 to 22389
-lines and from 3998 to 8125 branches. The accepted aggregate ratchet is 88.65%
-lines and 78.68% branches. `TEST-COVERAGE-02` now blocks regression from this
-universe. Domain remediation has closed both core floors, and catalog
-remediation has closed both application floors; the remaining fixed gap is
-aggregate branch 1.32 pp.
+Compared with Wave 0, the production denominator grew from 10962 to 22390
+lines and from 3998 to 8125 branches. The accepted aggregate ratchet is 88.70%
+lines and 79.75% branches. `TEST-COVERAGE-02` blocks regression from this
+universe while the independent fixed gate enforces aggregate `75% / 80%` and
+domain/application `85% / 90%` floors against the actual report.
 
-The largest current missed-branch concentrations are `AppConfig` (50),
+The largest current missed-branch concentrations are `AppConfig` (49),
 `JdbcCanonicalImportWriter` (44), the unexecuted live `SmbjShareClient` seam
 (38), `IocConfigPreflight` (32), `SmbFileTransport` (31) and
 `SmbManagedImportSourceLifecycle` (30). These are triage inputs, not an instruction to add
@@ -242,18 +244,17 @@ percentage. Per-module minima также выбирались независим
 
 `coverage-scope.tsv` теперь даёт disposition всем 25 reactor projects:
 19 production JARs входят в aggregate, root, TCK и три соседних report POM
-исключены, а `coverage-report` является единственным aggregate owner. Для 17
+исключены, а `coverage-report` является единственным aggregate owner. Для 18
 production modules обязательны non-empty local execution data + XML/HTML;
-`platform-errors` и `adapter-regex-re2j` явно отмечены `aggregate-only`, потому
-что их bytecode исполняется downstream tests. Class/package exclusions не
-приняты.
+`platform-errors` явно отмечен `aggregate-only`, потому что его bytecode
+исполняется downstream tests. Class/package exclusions не приняты.
 
 JDK-only `CoverageVerifier` в root `validate` сверяет registry с root reactor,
 POM packaging, aggregate dependencies, ratchet scopes, отсутствие JaCoCo
 filters/skip и точное Maven wiring. Synthetic harness содержит 2 happy paths и
 22 negative scenarios. Late `verify` удаляет старые module/aggregate report
 directories, требует exact 19-group aggregate, проверяет group sums, ожидаемые
-17 local reports и отсутствие output у excluded/downstream-only owners.
+18 local reports и отсутствие output у excluded/downstream-only owners.
 
 `coverage-ratchets.tsv` блокирует снижение line/branch ratio точным integer
 cross-multiplication без decimal rounding и рост absolute missed branches.
@@ -962,7 +963,7 @@ module line/branch regressions покрыты synthetic harness.
 
 Root `validate` прошёл: coverage harness содержит `2` happy paths и `28`
 negative scenarios, policy reconciliation видит 25 reactor projects, 19
-production groups, 17 required local reports, 2 downstream-only reports и 3
+production groups, 18 required local reports, 1 downstream-only report и 3
 active fixed-floor scopes. Прямой late-gate check над свежим полным report
 принял `20084/22390` lines (`89.70%`) и `6503/8125` branches (`80.04%`);
 domain равен `239/243 + 108/110`, application —
@@ -977,6 +978,36 @@ branches (`80.05%`), SpotBugs — `116 accepted / 0 visible`, CPD — `21/21`.
 committed-HEAD повтора work item получает состояние `verified`; остальные
 `R030-TEST` items и Codecov/branch-policy зависимости `R030-BUILD` остаются
 отдельными.
+
+## `TEST-REGEX-03` implementation evidence — 2026-09-05
+
+Коммит `5d477fb3` добавляет локальный `@ContractTest` в
+`adapter-regex-re2j` и исполняет единый контракт против `Re2jPatternEngine` и
+`JdkRegexPatternEngine`. Контракт фиксирует стабильные engine IDs, compile-once
+reuse, поддержку `CharSequence`, упорядоченные exact half-open spans и пустой
+результат без совпадения. Модуль теперь сам владеет JaCoCo evidence вместо
+downstream-only disposition; его actual и ratchet равны `18/18` lines и `4/4`
+branches, missed instructions — `0`.
+
+Коммит `51180ff3` добавляет bootstrap contract. Он связывает живой classpath
+`application.yml`, подтверждает default `re2j` и override `ioc.engine=jdk`, а
+также прогоняет все шесть настроенных IOC patterns и оба Unicode section-marker
+patterns через оба движка с положительными и отрицательными fixtures и exact
+spans. Таким образом corpus остаётся RE2-compatible и не вводит JDK-only
+синтаксис. Ветка `AppConfig.patternEngine` теперь покрыта полностью (`2/2`), а
+консервативные minima подняты только на причинные `+1` line / `+1` branch для
+aggregate и `ioc-app`.
+
+Committed-HEAD `make verify` прошёл 25/25 за `02:26`. Lifecycle verifier
+подтвердил `193 fast`, `66 integration`, `5 external` и `254 deterministic
+offline` suites; выполнено `1464` cases (`1456` passed, `8` provisioned
+external skips). Late coverage gate принял 18 local reports и aggregate
+`20096/22390` lines (`89.75%`) плюс `6506/8125` branches (`80.07%`). `ioc-app`
+равен `4444/5066 + 1375/1842`; SpotBugs остался `116 accepted / 0 visible`,
+CPD — `21/21`. Production Java не менялся. Оба compiled implementations
+переиспользуемы, а matcher state создаётся внутри каждого `findAll`; новый
+shared mutable state, worker lifecycle или performance-sensitive loop не
+появились, поэтому отдельные concurrency/timing tests не обоснованы.
 
 ## Historical Wave 0 baseline discovery inventory
 
@@ -1539,7 +1570,7 @@ retirement evidence in its owning goal.
 
 | Finding | Scope/behavior | Gap type | Risk | Required evidence | Disposition | Work item |
 |---|---|---|---|---|---|---|
-| JDK pattern engine lacks behavioral consumer | `JdkRegexPatternEngine` and `ioc.engine=jdk` selection; aggregate confirms 0/9 lines and 0/2 branches for JDK versus 8/9 and 2/2 for RE2/J | `contract`, `compatibility` | Supported alternate engine may drift or wire incorrectly without detection | Shared two-engine contract + bootstrap bean-selection test | Close in 0.3.0 | `R030-TEST` adapter/bootstrap hardening |
+| JDK pattern engine lacked a behavioral consumer | Shared contract covers both implementations; live configuration corpus is equivalent and `ioc.engine=jdk` selects the JDK adapter; regex module is `18/18` lines and `4/4` branches | `contract`, `compatibility` | Supported alternate engine could drift or wire incorrectly without detection | Shared two-engine contract + bootstrap bean-selection test | Closed and verified 2026-09-05 | `TEST-REGEX-03` |
 | Live SMB `CHANGE_NOTIFY` not executed | External transport signal and idle-survival behavior | `contract`, `external` | Offline suite cannot prove live server semantics | Provisioned execution or explicit release disposition | Open external evidence | `R030-TEST` / `R030-REL` |
 | No standalone published-library consumer yet | Future extracted library coordinates and public API | `contract`, `publication` | Reactor-relative resolution can hide publication/POM defects | Out-of-reactor compile + runtime contract using published coordinates | Required when library API is finalized | `R030-LIB` / `R030-TEST` |
 | Invariant/PIT pilots not executed | Refang, normalization, classification, deduplication, identity | `assertion-quality` | Example assertions may miss semantically important mutations/invariants | Reproducible pilots with triaged results | Planned, no baseline inference | `R030-TEST` |
@@ -1590,7 +1621,7 @@ universe.
 - [x] Test inventory and lifecycle classification complete
 - [x] Per-module and aggregate baseline captured
 - [x] Coverage universe and exclusions accepted
-- [ ] Fixed floors and per-module ratchets enforced
+- [x] Fixed floors and per-module ratchets enforced
 - [ ] Codecov signal operational либо имеет external-unavailability disposition
 - [ ] Codecov status подтверждён как non-required
 - [x] Risk-based gaps have disposition
