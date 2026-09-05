@@ -106,7 +106,10 @@ its seed and partial XML evidence; there is no automatic retry.
 The scheduled/manual `Test Diagnostics` workflow publishes both pilot bundles
 for 30 days. It is intentionally absent from push and pull-request triggers.
 PIT and stability remain scheduled/manual diagnostics unless a later reviewed
-decision adopts a narrower blocking policy.
+decision adopts a narrower blocking policy. Evidence-driven PIT expansion to
+other production modules is tracked separately as
+[`TOOL-5`](KNOWN-ISSUES.md#9-developer-tooling--build-tool); it is not part of
+the 0.3.0 mutation universe.
 
 ## External and slow evidence
 

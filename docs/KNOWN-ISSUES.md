@@ -95,6 +95,7 @@
 | TOOL-2 | **Детерминированный Java formatting contract.** Выбрать formatter по пробному repo-wide diff, добавить mutating `fmt` и read-only `fmt-check` через единый parent Maven plugin; после чистого baseline включить check в `verify`. Не смешивать с SAST: SpotBugs/FindSecBugs уже отслеживается как `SEC-VER-1` и требует отдельного non-blocking baseline/noise triage. **Триггер:** отдельный post-0.2.0 hygiene slice; массовый mechanical diff не включать в release stabilization. | seam | M | tools facade review 2026-07-22; [SECURITY-ENGINEERING](SECURITY-ENGINEERING.md) |
 | TOOL-3 | **Воспроизводимый manual load-smoke.** Замкнуть deterministic fixture → isolated oneshot → стабильный отчёт времени, input/unique/committed rows и diagnostics; daemon mode и thresholds добавлять только после baseline measurements. Не включать в обычный CI/pre-push и не смешивать с malformed/fuzz/parser-bomb корпусом (`SEC-VER-3`, `SRC-2`). **Триггер:** необходимость сравнивать производительность релизов или расследовать эксплуатационную деградацию. | seam | M | tools facade review 2026-07-22; `GenerateIocFixture` |
 | TOOL-4 | **Централизованный external-test harness.** Сейчас provisioned suites являются bring-your-own-fixture тестами: вызывающая сторона задаёт endpoint/selectors и credentials, обычный `verify` видит только ожидаемые skips, а target fingerprint, полнота исполнения и cleanup evidence квалифицируются отдельно. Нужен единый capability-driven control plane для SMB и будущих feed/Prometheus/Elasticsearch интеграций без объединения их assertions в mega-E2E suite. **Триггер:** до добавления следующего семейства внешних интеграций либо до превращения external evidence в регулярный/обязательный CI status. | seam | L | `R030-TEST` / [TEST-EXTERNAL-05](worknote/0.3.0/evidence/test-quality-ledger.md), design review 2026-09-05 |
+| TOOL-5 | **Поэтапное расширение PIT за пределы `core/ioc-domain`.** Текущий воспроизводимый pilot осознанно ограничен чистой domain-логикой; для остальных production-модулей нет admission matrix, измеренных baseline и adoption decisions. Нужно оценивать модули по risk/signal/noise/cost, начиная с чистых `ioc-application`/platform scopes; integration-heavy adapters и bootstrap не включать по умолчанию. Repository-wide score и PIT на каждый PR не вводить без отдельного reviewed policy; differential mutation analysis оценить отдельно после стабилизации baseline и plugin/licensing model. **Триггер:** post-0.3.0 test-quality slice или доказанный assertion-quality gap в critical модуле. | seam | L | [R030-TEST mutation pilot](worknote/0.3.0/goals/R030-TEST-test-quality.md#mutation-pilot); [pilot evidence](worknote/0.3.0/evidence/test-quality-ledger.md#diagnostic-pilots), 2026-09-06 |
 
 ### Критерии закрытия `TOOL-4`
 
@@ -118,6 +119,27 @@
   deterministic offline `verify` остаётся независимым. Закрытие подтверждается
   миграцией SMB suite и хотя бы одной второй интеграционной семьи на общий
   контракт, а не только реализацией абстракций.
+
+### Критерии закрытия `TOOL-5`
+
+- Для 19 production-analysis модулей зафиксирована admission matrix:
+  `adopt`, `defer` или `reject` с конкретными critical rules, test consumers и
+  причиной решения; `ioc-application-tck` не попадает в production
+  mutation denominator.
+- Каждый admitted scope имеет явные production packages и test consumers,
+  воспроизводимый Maven/Make command, stable HTML/XML artifacts и
+  worktree/commit fingerprint; scopes не пересекаются и не оставляют тихих
+  gaps в принятом mutation universe.
+- Для каждого pilot измерены runtime, peak memory, mutation/test-strength
+  signal, `NO_COVERAGE` и survived-mutant noise; actionable survivors связаны с
+  test-hardening item, остальные имеют reviewed disposition.
+- По каждому admitted scope принята cadence/gate policy. Числовой
+  ratchet или required PR status вводится только после нескольких
+  стабильных прогонов и отдельного reviewed decision; ordinary `make verify`
+  не заменяется diagnostic pilot.
+- Для differential PR analysis зафиксировано отдельное `adopt` или
+  `reject` решение после проверки incremental correctness, baseline/cache
+  behavior и plugin/licensing model.
 
 ---
 
