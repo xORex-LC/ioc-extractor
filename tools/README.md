@@ -40,6 +40,8 @@ make bootstrap  # repo-local static-musl lychee, если его нет в PATH
 make dependency-analysis
 make pmd-analysis
 make pmd-watchlist
+make mutation-pilot
+make stability-pilot SEED=42 REPEAT=3
 make spotbugs-baseline-proposal  # после SpotBugs ratchet failure
 make release-notes-context PREVIOUS_TAG=v0.1.0
 make pre-push

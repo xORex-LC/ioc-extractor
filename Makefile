@@ -22,6 +22,7 @@ PROFILE ?= reputation-lists
 IMPORT_PROFILE ?= insert
 SIZE ?= 1000
 SEED ?= 42
+REPEAT ?= 3
 FORMAT ?= html
 OUTPUT ?=
 MANIFEST ?=
@@ -42,7 +43,7 @@ GITHUB ?= 0
 .PHONY: help \
 	doctor doctor-core doctor-dev doctor-ci doctor-security bootstrap \
 	clean package test test-fast test-integration test-module test-integration-module test-one verify version extract export \
-	mutation-pilot \
+	mutation-pilot stability-pilot \
 	dependency-analysis pmd-analysis pmd-watchlist spotbugs-baseline-proposal \
 	context \
 	run stop runtime-up runtime-down runtime-status runtime-reset submit \
@@ -128,8 +129,10 @@ test-one: ## Run one test selector; MODULE=... TEST=Class#method
 		fi
 
 mutation-pilot: ## Run the report-only PIT pilot for core/ioc-domain
-	@$(MAVEN_SEQUENTIAL) -pl core/ioc-domain -Pmutation-pilot \
-		test-compile org.pitest:pitest-maven:mutationCoverage
+	@tools/ci/test-pilots.sh mutation
+
+stability-pilot: ## Run reproducible random-order repetitions; override SEED/REPEAT
+	@tools/ci/test-pilots.sh stability --seed "$(SEED)" --repeat "$(REPEAT)"
 
 verify: ## Run the release-quality Maven reactor gate
 	@tools/ci/build.sh

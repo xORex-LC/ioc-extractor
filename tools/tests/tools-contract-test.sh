@@ -149,6 +149,7 @@ for script in \
     tools/ci/docs.sh \
     tools/ci/packaging.sh \
     tools/ci/pmd.sh \
+    tools/ci/test-pilots.sh \
     tools/tests/tools-contract-test.sh; do
   bash -n "${REPO_ROOT}/${script}"
 done
@@ -177,6 +178,11 @@ grep -Fq 'STOPPED' <<< "${INDEXED_PROPERTY_OUTPUT}" \
 "${REPO_ROOT}/tools/dev/release-notes-context.sh" --help >/dev/null
 "${REPO_ROOT}/tools/ci/dependency-security.sh" --help >/dev/null
 "${REPO_ROOT}/tools/ci/pmd.sh" --help >/dev/null
+"${REPO_ROOT}/tools/ci/test-pilots.sh" --help >/dev/null
+if "${REPO_ROOT}/tools/ci/test-pilots.sh" stability \
+    --seed invalid --repeat 1 >/dev/null 2>&1; then
+  fail "stability pilot accepted a non-numeric seed"
+fi
 RELEASE_CONTEXT="$("${REPO_ROOT}/tools/dev/release-notes-context.sh" \
   --previous-tag v0.1.0 --target HEAD)"
 grep -Fq '# Release notes context' <<< "${RELEASE_CONTEXT}" \
@@ -214,6 +220,10 @@ make --no-print-directory -s -C "${REPO_ROOT}" help \
   | grep -q 'lifecycle-load' || fail "Make help lost the lifecycle load command"
 make --no-print-directory -s -C "${REPO_ROOT}" help \
   | grep -q 'dataframe-import-smoke' || fail "Make help lost the managed import smoke command"
+make --no-print-directory -s -C "${REPO_ROOT}" help \
+  | grep -q 'mutation-pilot' || fail "Make help lost the mutation pilot command"
+make --no-print-directory -s -C "${REPO_ROOT}" help \
+  | grep -q 'stability-pilot' || fail "Make help lost the stability pilot command"
 if grep -REq '^[[:space:]]*(run:[[:space:]]*)?make([[:space:]]|$)' \
     "${REPO_ROOT}/.github/workflows"; then
   fail "GitHub workflow depends on the developer-facing Make facade"
@@ -222,6 +232,12 @@ grep -Fq 'run: tools/ci/build.sh' "${REPO_ROOT}/.github/workflows/ci.yml" \
   || fail "GitHub CI build does not call the canonical leaf script"
 grep -Fq 'run: tools/ci/pmd.sh policy' "${REPO_ROOT}/.github/workflows/ci.yml" \
   || fail "GitHub CI PMD job does not call the canonical leaf script"
+grep -Fq 'run: tools/ci/test-pilots.sh mutation' \
+  "${REPO_ROOT}/.github/workflows/test-pilots.yml" \
+  || fail "Test Diagnostics workflow does not call the mutation pilot leaf script"
+grep -Fq 'run: tools/ci/test-pilots.sh stability --seed 42 --repeat 3' \
+  "${REPO_ROOT}/.github/workflows/test-pilots.yml" \
+  || fail "Test Diagnostics workflow does not call the stability pilot leaf script"
 grep -Fq 'tools/ci/dependency-security.sh update' \
   "${REPO_ROOT}/.github/workflows/dependency-security.yml" \
   || fail "Dependency Security workflow does not update the NVD database explicitly"

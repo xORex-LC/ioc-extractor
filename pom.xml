@@ -706,6 +706,47 @@
                 </plugins>
             </build>
         </profile>
+        <!-- Report-only stability pilot; never active in ordinary test/verify. -->
+        <profile>
+            <id>stability-pilot</id>
+            <properties>
+                <stability.seed>42</stability.seed>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <runOrder>random</runOrder>
+                            <runOrderRandomSeed>${stability.seed}</runOrderRandomSeed>
+                            <properties>
+                                <configurationParameters>
+                                    junit.jupiter.testclass.order.default=org.junit.jupiter.api.ClassOrderer$Random
+                                    junit.jupiter.testmethod.order.default=org.junit.jupiter.api.MethodOrderer$Random
+                                    junit.jupiter.execution.order.random.seed=${stability.seed}
+                                </configurationParameters>
+                            </properties>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <runOrder>random</runOrder>
+                            <runOrderRandomSeed>${stability.seed}</runOrderRandomSeed>
+                            <properties>
+                                <configurationParameters>
+                                    junit.jupiter.testclass.order.default=org.junit.jupiter.api.ClassOrderer$Random
+                                    junit.jupiter.testmethod.order.default=org.junit.jupiter.api.MethodOrderer$Random
+                                    junit.jupiter.execution.order.random.seed=${stability.seed}
+                                </configurationParameters>
+                            </properties>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
         <!--
             Bounded dependency-hygiene evaluation. Bytecode-only findings remain
             report-only until framework, SPI, starter and test-aggregate noise

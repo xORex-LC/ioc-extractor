@@ -12,6 +12,7 @@ step (`make bootstrap` локально, `tools/dev/bootstrap.sh lychee` в CI).
 |---|---|
 | `build.sh` | Полный Maven reactor `verify` + atomic evidence под `.dev/state/` |
 | `pmd.sh policy\|watchlist` | Ratcheted PMD production-source policy либо отдельный deferred watchlist |
+| `test-pilots.sh mutation\|stability` | Report-only domain PIT или seeded random-order/repeat stability evidence |
 | `packaging.sh` | ShellCheck + packaging contract tests |
 | `docs.sh` | Offline link check через `lychee` |
 | `dependency-security.sh update|scan|report` | Явное обновление NVD data, offline scan или поиск готового отчёта |
@@ -33,6 +34,8 @@ step (`make bootstrap` локально, `tools/dev/bootstrap.sh lychee` в CI).
 | `make ci` / `make pre-push` | Все регулярные gates последовательно |
 | `make security-update` | Обновить локальную NVD data (network + API key) |
 | `make security-scan` | Быстро проверить reactor по имеющейся локальной data |
+| `make mutation-pilot` | Полный PIT diagnostic только для `core/ioc-domain` |
+| `make stability-pilot` | Seeded random-order прогоны без retry (`SEED`/`REPEAT` настраиваются) |
 
 `build.sh` сохраняет `last-verify.env` после завершения Maven с commit,
 fingerprint рабочего дерева, временем и результатом. Если дерево изменилось во
@@ -44,3 +47,16 @@ CI check/run как release-доказательство.
 `make context` показывает его независимо от `last-verify.env`, поэтому полный
 локальный quality claim требует двух fresh passed results. `pmd.sh watchlist`
 намеренно не обновляет regular-policy evidence.
+
+`test-pilots.sh mutation` запускает opt-in PIT profile только в
+`core/ioc-domain`, сохраняет стабильные HTML/XML reports под
+`core/ioc-domain/target/pit-reports/` и машинно-читаемый итог под
+`target/test-pilots/`. Нулевые mutation thresholds сохраняют pilot
+диагностическим: Maven/test/tool failure остаётся ошибкой, но survived mutant
+не превращается в PR gate.
+
+`test-pilots.sh stability` последовательно запускает весь набор functional JAR
+modules с random Surefire/Failsafe и JUnit class/method order. Каждый повтор
+получает явный seed, проходит exact source/report-union verifier и архивирует
+XML до следующей очистки lifecycle. Первый failure останавливает pilot без
+retry; seed и частичные reports остаются под `target/test-pilots/stability/`.
