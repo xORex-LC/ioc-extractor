@@ -63,8 +63,9 @@ class RemoteFetchDetectionCoordinatorTest {
             coordinator.trigger(source("one"), RemoteFetchDetectionReason.PERIODIC);
 
             waitUntil(() -> !publisher.events().isEmpty()
-                    && healthState.fetchDetectionSnapshots().containsKey("one")
-                    && closeIdleCalls.get() == 1);
+                            && healthState.fetchDetectionSnapshots().containsKey("one")
+                            && closeIdleCalls.get() == 1,
+                    "periodic remote detection to publish, update health and close idle transport");
             assertThat(publisher.events()).singleElement()
                     .isInstanceOfSatisfying(RemoteChangeBatchDetected.class, event ->
                             assertThat(event.objects()).containsExactly(object));
@@ -86,7 +87,8 @@ class RemoteFetchDetectionCoordinatorTest {
 
             coordinator.trigger(source("one"), RemoteFetchDetectionReason.WATCH_ESTABLISHED);
 
-            waitUntil(() -> healthState.fetchDetectionSnapshots().containsKey("one"));
+            waitUntil(() -> healthState.fetchDetectionSnapshots().containsKey("one"),
+                    "watch-established trigger to run detection");
             assertThat(healthState.fetchDetectionSnapshots().get("one").reason())
                     .isEqualTo("WATCH_ESTABLISHED");
         }
@@ -109,7 +111,8 @@ class RemoteFetchDetectionCoordinatorTest {
             coordinator.trigger(source("one"), RemoteFetchDetectionReason.PUSH);
             release.countDown();
 
-            waitUntil(() -> transport.listCalls.size() == 2);
+            waitUntil(() -> transport.listCalls.size() == 2,
+                    "coalesced push trigger to run one trailing detection");
             assertThat(transport.listCalls).containsExactly("endpoint-one:/one", "endpoint-one:/one");
             assertThat(healthState.fetchDetectionSnapshots().get("one").coalescedSignals())
                     .isGreaterThanOrEqualTo(2);
@@ -127,7 +130,8 @@ class RemoteFetchDetectionCoordinatorTest {
 
             coordinator.trigger(source("one"), RemoteFetchDetectionReason.PERIODIC);
 
-            waitUntil(() -> healthState.fetchDetectionSnapshots().containsKey("one"));
+            waitUntil(() -> healthState.fetchDetectionSnapshots().containsKey("one"),
+                    "detection to update health despite publisher failure");
             assertThat(healthState.fetchDetectionSnapshots().get("one").status())
                     .isEqualTo(SyncOperationalStatus.UP);
         }
@@ -145,7 +149,8 @@ class RemoteFetchDetectionCoordinatorTest {
             coordinator.recordWatchEstablished(source("one"));
 
             waitUntil(() -> healthState.remoteChangeWatchSnapshots().get("one").status()
-                    == RemoteChangeWatchStatus.ACTIVE);
+                            == RemoteChangeWatchStatus.ACTIVE,
+                    "remote change watch health to become active");
             assertThat(healthState.remoteChangeWatchSnapshots().get("one"))
                     .extracting(snapshot -> snapshot.status(), snapshot -> snapshot.reconnects(),
                             snapshot -> snapshot.reArms())
@@ -162,7 +167,8 @@ class RemoteFetchDetectionCoordinatorTest {
 
             coordinator.trigger(source("one"), RemoteFetchDetectionReason.WATCH_ESTABLISHED);
 
-            waitUntil(() -> !transport.listThreadNames.isEmpty());
+            waitUntil(() -> !transport.listThreadNames.isEmpty(),
+                    "remote detection to execute on its owned worker");
             assertThat(transport.listThreadNames).singleElement()
                     .satisfies(name -> assertThat(name)
                             .contains("ioc-sync-fetch-detection", "one", "endpoint-one"));
@@ -242,7 +248,7 @@ class RemoteFetchDetectionCoordinatorTest {
         return new RemoteObject(path, size, NOW);
     }
 
-    private static void waitUntil(BooleanCondition condition) {
+    private static void waitUntil(BooleanCondition condition, String description) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         while (System.nanoTime() < deadline) {
             if (condition.matches()) {
@@ -255,7 +261,9 @@ class RemoteFetchDetectionCoordinatorTest {
                 throw new IllegalStateException(interrupted);
             }
         }
-        assertThat(condition.matches()).isTrue();
+        assertThat(condition.matches())
+                .as("timed out waiting for %s", description)
+                .isTrue();
     }
 
     @FunctionalInterface

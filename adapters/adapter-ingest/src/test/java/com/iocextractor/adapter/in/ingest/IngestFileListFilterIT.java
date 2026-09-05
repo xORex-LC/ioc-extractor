@@ -2,6 +2,7 @@ package com.iocextractor.adapter.in.ingest;
 
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
@@ -18,11 +19,13 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @IntegrationTest
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 class IngestFileListFilterIT {
 
     @TempDir

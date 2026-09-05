@@ -7,6 +7,7 @@ import com.iocextractor.application.port.out.sync.RemoteChangeWatch;
 import com.iocextractor.application.sync.RemoteWatchTarget;
 import com.iocextractor.application.sync.RetryPolicy;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -25,6 +26,7 @@ import static com.iocextractor.adapter.out.transport.smb.SmbContractTestSupport.
 @EnabledIfSystemProperty(named = "ioc.smb.contract", matches = "true")
 @ExternalTest
 @ContractTest
+@Timeout(value = 60, unit = TimeUnit.SECONDS)
 class SmbChangeNotifyContractIT {
 
     @TempDir
@@ -46,10 +48,12 @@ class SmbChangeNotifyContractIT {
 
         try (RemoteChangeWatch watch = watcher.watch(source, handler);
              SmbShareClient client = new SmbjShareClientFactory().open(settings)) {
-            waitUntil(() -> handler.established.get() > 0);
+            waitUntil(() -> handler.established.get() > 0,
+                    "live SMB change-notify watch to become established");
             client.upload(localFile, remoteFile);
 
-            waitUntil(() -> handler.signals.get() > 0);
+            waitUntil(() -> handler.signals.get() > 0,
+                    "live SMB file creation to emit a change signal");
         } finally {
             try (SmbShareClient client = new SmbjShareClientFactory().open(settings)) {
                 client.delete(remoteFile);
@@ -76,7 +80,8 @@ class SmbChangeNotifyContractIT {
 
         try (RemoteChangeWatch watch = watcher.watch(source, handler);
              SmbShareClient client = new SmbjShareClientFactory().open(settings)) {
-            waitUntil(() -> handler.established.get() > 0);
+            waitUntil(() -> handler.established.get() > 0,
+                    "live SMB idle watch to become established");
             Thread.sleep(Duration.ofSeconds(3));
 
             assertThat(handler.established).hasValue(1);
@@ -86,7 +91,8 @@ class SmbChangeNotifyContractIT {
             client.upload(localFile, remoteFile);
             uploaded = true;
 
-            waitUntil(() -> handler.signals.get() > 0);
+            waitUntil(() -> handler.signals.get() > 0,
+                    "live SMB post-idle file creation to emit a change signal");
         } finally {
             if (uploaded) {
                 try (SmbShareClient client = new SmbjShareClientFactory().open(settings)) {
@@ -98,7 +104,7 @@ class SmbChangeNotifyContractIT {
         assertThat(handler.failures).hasValue(0);
     }
 
-    private static void waitUntil(BooleanCondition condition) {
+    private static void waitUntil(BooleanCondition condition, String description) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (System.nanoTime() < deadline) {
             if (condition.matches()) {
@@ -111,7 +117,9 @@ class SmbChangeNotifyContractIT {
                 throw new IllegalStateException(interrupted);
             }
         }
-        assertThat(condition.matches()).isTrue();
+        assertThat(condition.matches())
+                .as("timed out waiting for %s", description)
+                .isTrue();
     }
 
     @FunctionalInterface

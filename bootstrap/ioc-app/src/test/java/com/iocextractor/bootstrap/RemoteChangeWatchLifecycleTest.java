@@ -21,6 +21,7 @@ import com.iocextractor.application.sync.SyncDiagnosticReporter;
 import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import com.iocextractor.platform.events.RecordingControlEventPublisher;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.nio.file.Path;
 import java.time.Clock;
@@ -37,6 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 class RemoteChangeWatchLifecycleTest {
 
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-07-02T00:00:00Z"), ZoneOffset.UTC);
@@ -53,11 +55,14 @@ class RemoteChangeWatchLifecycleTest {
             RemoteChangeWatchLifecycle lifecycle = new RemoteChangeWatchLifecycle(
                     List.of(source), registry, coordinator);
 
-            lifecycle.start();
-            signals.handler.signal();
-
-            waitUntil(() -> transport.listCalls.get() == 1);
-            lifecycle.stop();
+            try {
+                lifecycle.start();
+                signals.handler.signal();
+                waitUntil(() -> transport.listCalls.get() == 1,
+                        "remote change signal to trigger detection");
+            } finally {
+                lifecycle.stop();
+            }
 
             assertThat(signals.target).isEqualTo(RemoteWatchTarget.from(source));
             assertThat(signals.closed).isTrue();
@@ -125,7 +130,7 @@ class RemoteChangeWatchLifecycleTest {
                 executor);
     }
 
-    private static void waitUntil(BooleanCondition condition) {
+    private static void waitUntil(BooleanCondition condition, String description) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         while (System.nanoTime() < deadline) {
             if (condition.matches()) {
@@ -138,7 +143,9 @@ class RemoteChangeWatchLifecycleTest {
                 throw new IllegalStateException(interrupted);
             }
         }
-        assertThat(condition.matches()).isTrue();
+        assertThat(condition.matches())
+                .as("timed out waiting for %s", description)
+                .isTrue();
     }
 
     @FunctionalInterface

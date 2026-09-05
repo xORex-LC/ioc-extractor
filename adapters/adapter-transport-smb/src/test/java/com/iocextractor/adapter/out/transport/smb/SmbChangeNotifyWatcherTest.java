@@ -7,6 +7,7 @@ import com.iocextractor.application.sync.RemoteErrorKind;
 import com.iocextractor.application.sync.RemoteTransportException;
 import com.iocextractor.application.sync.RetryPolicy;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.time.Duration;
 import java.util.ArrayDeque;
@@ -19,6 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 class SmbChangeNotifyWatcherTest {
 
     @Test
@@ -27,13 +29,14 @@ class SmbChangeNotifyWatcherTest {
         SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5));
         RecordingHandler handler = new RecordingHandler();
 
-        RemoteChangeWatch watch = watcher.watch(source(), handler);
-        FakeSession session = waitForSession(factory, 0);
-        FakePending first = waitForPending(session, 0);
-        first.complete(new SmbChangeNotifyResult(1, false));
-
-        waitUntil(() -> handler.signals.get() == 1 && session.watchCalls.get() >= 2);
-        watch.close();
+        FakeSession session;
+        try (RemoteChangeWatch ignored = watcher.watch(source(), handler)) {
+            session = waitForSession(factory, 0);
+            FakePending first = waitForPending(session, 0);
+            first.complete(new SmbChangeNotifyResult(1, false));
+            waitUntil(() -> handler.signals.get() == 1 && session.watchCalls.get() >= 2,
+                    "completed notification to signal and rearm");
+        }
 
         assertThat(handler.established).hasValue(1);
         assertThat(session.closed).isTrue();
@@ -45,13 +48,13 @@ class SmbChangeNotifyWatcherTest {
         SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5));
         RecordingHandler handler = new RecordingHandler();
 
-        RemoteChangeWatch watch = watcher.watch(source(), handler);
-        FakeSession session = waitForSession(factory, 0);
-        FakePending first = waitForPending(session, 0);
-        first.complete(new SmbChangeNotifyResult(0, true));
-
-        waitUntil(() -> handler.signals.get() == 1 && session.watchCalls.get() >= 2);
-        watch.close();
+        try (RemoteChangeWatch ignored = watcher.watch(source(), handler)) {
+            FakeSession session = waitForSession(factory, 0);
+            FakePending first = waitForPending(session, 0);
+            first.complete(new SmbChangeNotifyResult(0, true));
+            waitUntil(() -> handler.signals.get() == 1 && session.watchCalls.get() >= 2,
+                    "overflow notification to signal and rearm");
+        }
 
         assertThat(handler.established).hasValue(1);
         assertThat(handler.failures).hasValue(0);
@@ -63,13 +66,13 @@ class SmbChangeNotifyWatcherTest {
         SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5));
         RecordingHandler handler = new RecordingHandler();
 
-        RemoteChangeWatch watch = watcher.watch(source(), handler);
-        FakeSession session = waitForSession(factory, 0);
-        FakePending first = waitForPending(session, 0);
-        first.complete(new SmbChangeNotifyResult(0, false));
-
-        waitUntil(() -> session.watchCalls.get() >= 2);
-        watch.close();
+        try (RemoteChangeWatch ignored = watcher.watch(source(), handler)) {
+            FakeSession session = waitForSession(factory, 0);
+            FakePending first = waitForPending(session, 0);
+            first.complete(new SmbChangeNotifyResult(0, false));
+            waitUntil(() -> session.watchCalls.get() >= 2,
+                    "empty notification to rearm without a signal");
+        }
 
         assertThat(handler.signals).hasValue(0);
         assertThat(handler.failures).hasValue(0);
@@ -81,12 +84,13 @@ class SmbChangeNotifyWatcherTest {
         SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5));
         RecordingHandler handler = new RecordingHandler();
 
-        RemoteChangeWatch watch = watcher.watch(source(), handler);
-        FakeSession session = waitForSession(factory, 0);
-        FakePending pending = waitForPending(session, 0);
-
-        waitUntil(() -> pending.awaitCalls.get() >= 3);
-        watch.close();
+        FakeSession session;
+        try (RemoteChangeWatch ignored = watcher.watch(source(), handler)) {
+            session = waitForSession(factory, 0);
+            FakePending pending = waitForPending(session, 0);
+            waitUntil(() -> pending.awaitCalls.get() >= 3,
+                    "idle pending watch to complete multiple bounded awaits");
+        }
 
         assertThat(handler.established).hasValue(1);
         assertThat(handler.signals).hasValue(0);
@@ -101,14 +105,16 @@ class SmbChangeNotifyWatcherTest {
         SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5));
         RecordingHandler handler = new RecordingHandler();
 
-        RemoteChangeWatch watch = watcher.watch(source(), handler);
-        FakeSession session = waitForSession(factory, 0);
-        FakePending pending = waitForPending(session, 0);
-        waitUntil(() -> pending.awaitCalls.get() >= 3);
-
-        pending.complete(new SmbChangeNotifyResult(1, false));
-        waitUntil(() -> handler.signals.get() == 1 && session.watchCalls.get() >= 2);
-        watch.close();
+        FakeSession session;
+        try (RemoteChangeWatch ignored = watcher.watch(source(), handler)) {
+            session = waitForSession(factory, 0);
+            FakePending pending = waitForPending(session, 0);
+            waitUntil(() -> pending.awaitCalls.get() >= 3,
+                    "idle pending watch to complete multiple bounded awaits");
+            pending.complete(new SmbChangeNotifyResult(1, false));
+            waitUntil(() -> handler.signals.get() == 1 && session.watchCalls.get() >= 2,
+                    "post-idle notification to signal without reconnecting");
+        }
 
         assertThat(handler.established).hasValue(1);
         assertThat(handler.failures).hasValue(0);
@@ -121,10 +127,10 @@ class SmbChangeNotifyWatcherTest {
         SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofMillis(40));
         RecordingHandler handler = new RecordingHandler();
 
-        RemoteChangeWatch watch = watcher.watch(source(), handler);
-
-        waitUntil(() -> handler.established.get() >= 2 && factory.sessions.size() >= 2);
-        watch.close();
+        try (RemoteChangeWatch ignored = watcher.watch(source(), handler)) {
+            waitUntil(() -> handler.established.get() >= 2 && factory.sessions.size() >= 2,
+                    "watch lease to reopen");
+        }
 
         assertThat(handler.signals).hasValue(0);
         assertThat(factory.sessions).hasSizeGreaterThanOrEqualTo(2);
@@ -138,10 +144,10 @@ class SmbChangeNotifyWatcherTest {
         SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5));
         RecordingHandler handler = new RecordingHandler();
 
-        RemoteChangeWatch watch = watcher.watch(source(), handler);
-
-        waitUntil(() -> handler.failures.get() == 1 && handler.established.get() == 1);
-        watch.close();
+        try (RemoteChangeWatch ignored = watcher.watch(source(), handler)) {
+            waitUntil(() -> handler.failures.get() == 1 && handler.established.get() == 1,
+                    "watch to recover after an open failure");
+        }
 
         assertThat(factory.sessions).hasSize(1);
         assertThat(handler.lastFailure).hasMessageContaining("connect denied");
@@ -156,19 +162,19 @@ class SmbChangeNotifyWatcherTest {
         SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5), telemetry);
         RecordingHandler handler = new RecordingHandler();
 
-        RemoteChangeWatch watch = watcher.watch(source(), handler);
-        waitUntil(() -> handler.failures.get() == 1 && handler.established.get() == 1);
+        try (RemoteChangeWatch ignored = watcher.watch(source(), handler)) {
+            waitUntil(() -> handler.failures.get() == 1 && handler.established.get() == 1,
+                    "capacity failure to recover with an established watch");
 
-        assertThat(telemetry.snapshot("primary", SmbTransportTelemetry.Role.CHANGE_NOTIFY))
-                .extracting(
-                        SmbTransportTelemetry.Snapshot::activeSessions,
-                        SmbTransportTelemetry.Snapshot::successfulOpens,
-                        SmbTransportTelemetry.Snapshot::openFailures,
-                        SmbTransportTelemetry.Snapshot::resourceExhaustions,
-                        SmbTransportTelemetry.Snapshot::resourceConstrained)
-                .containsExactly(1, 1L, 1L, 1L, false);
-
-        watch.close();
+            assertThat(telemetry.snapshot("primary", SmbTransportTelemetry.Role.CHANGE_NOTIFY))
+                    .extracting(
+                            SmbTransportTelemetry.Snapshot::activeSessions,
+                            SmbTransportTelemetry.Snapshot::successfulOpens,
+                            SmbTransportTelemetry.Snapshot::openFailures,
+                            SmbTransportTelemetry.Snapshot::resourceExhaustions,
+                            SmbTransportTelemetry.Snapshot::resourceConstrained)
+                    .containsExactly(1, 1L, 1L, 1L, false);
+        }
 
         assertThat(telemetry.snapshot("primary", SmbTransportTelemetry.Role.CHANGE_NOTIFY)
                 .activeSessions()).isZero();
@@ -180,13 +186,13 @@ class SmbChangeNotifyWatcherTest {
         SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5));
         RecordingHandler handler = new RecordingHandler();
 
-        RemoteChangeWatch watch = watcher.watch(source(), handler);
-        FakeSession firstSession = waitForSession(factory, 0);
-        FakePending first = waitForPending(firstSession, 0);
-        first.fail(new RuntimeException("delete pending"));
-
-        waitUntil(() -> handler.failures.get() == 1 && handler.established.get() == 2);
-        watch.close();
+        try (RemoteChangeWatch ignored = watcher.watch(source(), handler)) {
+            FakeSession firstSession = waitForSession(factory, 0);
+            FakePending first = waitForPending(firstSession, 0);
+            first.fail(new RuntimeException("delete pending"));
+            waitUntil(() -> handler.failures.get() == 1 && handler.established.get() == 2,
+                    "watch to reconnect after pending notification failure");
+        }
 
         assertThat(handler.signals).hasValue(0);
         assertThat(handler.lastFailure).hasMessageContaining("delete pending");
@@ -199,9 +205,9 @@ class SmbChangeNotifyWatcherTest {
         SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5));
         RecordingHandler handler = new RecordingHandler();
 
-        RemoteChangeWatch watch = watcher.watch(source(), handler);
-        waitForSession(factory, 0);
-        watch.close();
+        try (RemoteChangeWatch ignored = watcher.watch(source(), handler)) {
+            waitForSession(factory, 0);
+        }
 
         assertThat(factory.lastOpenThreadDaemon).isTrue();
     }
@@ -212,11 +218,12 @@ class SmbChangeNotifyWatcherTest {
         SmbChangeNotifyWatcher watcher = watcher(factory, Duration.ofSeconds(5));
         RecordingHandler handler = new RecordingHandler();
 
-        RemoteChangeWatch watch = watcher.watch(source(), handler);
-        FakeSession session = waitForSession(factory, 0);
-        FakePending pending = waitForPending(session, 0);
-
-        watch.close();
+        FakeSession session;
+        FakePending pending;
+        try (RemoteChangeWatch ignored = watcher.watch(source(), handler)) {
+            session = waitForSession(factory, 0);
+            pending = waitForPending(session, 0);
+        }
 
         assertThat(pending.cancelled).isTrue();
         assertThat(session.closed).isTrue();
@@ -259,16 +266,16 @@ class SmbChangeNotifyWatcherTest {
     }
 
     private static FakeSession waitForSession(FakeSessionFactory factory, int index) {
-        waitUntil(() -> factory.sessions.size() > index);
+        waitUntil(() -> factory.sessions.size() > index, "SMB watch session " + index + " to open");
         return factory.sessions.get(index);
     }
 
     private static FakePending waitForPending(FakeSession session, int index) {
-        waitUntil(() -> session.pendings.size() > index);
+        waitUntil(() -> session.pendings.size() > index, "SMB pending watch " + index + " to arm");
         return session.pendings.get(index);
     }
 
-    private static void waitUntil(BooleanCondition condition) {
+    private static void waitUntil(BooleanCondition condition, String description) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
         while (System.nanoTime() < deadline) {
             if (condition.matches()) {
@@ -281,7 +288,9 @@ class SmbChangeNotifyWatcherTest {
                 throw new IllegalStateException(interrupted);
             }
         }
-        assertThat(condition.matches()).isTrue();
+        assertThat(condition.matches())
+                .as("timed out waiting for %s", description)
+                .isTrue();
     }
 
     @FunctionalInterface
