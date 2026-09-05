@@ -21,6 +21,9 @@ are captured below. Its successor `TEST-COVERAGE-02` is also **verified** with
 fail-closed report integrity, ratchets and fixed floors.
 `TEST-REGEX-03` is **verified** with a shared two-engine contract, live
 configuration-corpus compatibility checks and bootstrap selection evidence.
+`TEST-WAITS-04` is **verified** with bounded coordination and failure-safe
+worker cleanup. `TEST-EXTERNAL-05` is **verified** by the provisioned live SMB
+`CHANGE_NOTIFY` execution recorded below.
 
 `BASE-INVENTORIES-09` intake status: **verified**. The initial work queue below
 maps every baseline test/coverage/consumer gap to an owner without implementing
@@ -40,7 +43,7 @@ inputs.
 | `TEST-COVERAGE-02` | Add aggregate/per-module no-regression ratchets, then close accepted aggregate/domain/application branch floors | Coverage baseline, policy and implementation evidence below | Stable lifecycle/reporting | `verified` |
 | `TEST-REGEX-03` | Common RE2/J + JDK engine contract and bootstrap `ioc.engine=jdk` selection test | Verified implementation evidence below | Regex/bootstrap module wave | `verified` |
 | `TEST-WAITS-04` | Bound async waits, release workers in `finally`, assert termination and add diagnosable safety timeout | Verified implementation evidence below | Module test hardening | `verified` |
-| `TEST-EXTERNAL-05` | Execute live SMB `CHANGE_NOTIFY` contract or record explicit external-evidence release disposition | Two skipped external cases | Provisioned fixture / `R030-REL` | `external-evidence-required` |
+| `TEST-EXTERNAL-05` | Execute live SMB `CHANGE_NOTIFY` contract or record explicit external-evidence release disposition | Verified live Windows-host contract evidence below | Provisioned fixture / `R030-REL` | `verified` |
 | `TEST-PILOTS-06` | Run PIT/domain, invariant and seeded repeat pilots; triage signal/noise/cost | Diagnostic pilot tables below | Wave 1 profiles/artifacts | `planned` |
 | `TEST-CODECOV-07` | Best-effort non-required upload plus project/patch signals | Codecov table below | Stable JaCoCo XML + CI | `planned` |
 | `TEST-PUBLICATION-08` | Out-of-reactor compile/runtime contract for an admitted published library | Compatibility/shared-code ledgers | Blocked until `R030-LIB` admission | `waiting-on-library-contract` |
@@ -1363,6 +1366,62 @@ fixture was used. This is a limited non-reproduction signal only; it does not
 close the static bounded-wait findings and is not the scheduled random-order
 pilot required by `R030-TEST`.
 
+### `TEST-EXTERNAL-05` live SMB evidence — 2026-09-05
+
+The focused Failsafe execution ran `SmbChangeNotifyContractIT` from commit
+`404ab5f35fd39c6d515c6de0b0cff830a61094d1` against the provisioned Windows-host
+SMB service reached from WSL through `127.0.0.1:445`, share `test-share`, root
+`import`. The server reported OS version `10.0`; the client used
+`encryption=required`. This identifies the tested stand but does not qualify a
+production Windows Server or NAS family and does not change the separate
+ADR-0025 H5/`OPS-8` disposition.
+
+The exact selection was:
+
+```text
+./mvnw -pl adapters/adapter-transport-smb -am \
+  -Dskip.unit.tests=true \
+  -Dit.test=SmbChangeNotifyContractIT \
+  -Dfailsafe.failIfNoSpecifiedTests=false \
+  -Dioc.smb.contract=true \
+  -Dioc.smb.host=127.0.0.1 \
+  -Dioc.smb.port=445 \
+  -Dioc.smb.share=test-share \
+  -Dioc.smb.encryption=required \
+  -Dioc.smb.remotePath=import \
+  verify
+```
+
+Credentials were supplied only through the process environment and are absent
+from the command and reports. The result was:
+
+| Case | Result | Duration | Contract evidence |
+|---|---|---:|---|
+| `watcherSurvivesIdleLongerThanRequestTimeoutBeforeSignal` | passed | 4.432 s | One established watch survived the 3 s idle interval beyond its 2 s request timeout, emitted no premature signal/failure and signalled after upload |
+| `watcherSignalsWhenFileIsCreatedOnLiveShare` | passed | 1.045 s | An established live directory watch signalled after the UUID-qualified file upload and reported no failure |
+| **Suite** | **2 passed, 0 failed/errors/skips** | **5.498 s** | 60 s suite boundary and 10 s diagnosable polling deadlines remained in force |
+
+The generated Failsafe XML SHA-256 captured before the next offline run was
+`6101d11eb6178f554b307c842ac3e7bacc03372d8f686c0325a9207123842f23`.
+It contained no `ioc.smb.username`, `ioc.smb.password` or SMB credential
+environment-variable markers. A post-run encrypted listing found no
+`codex-change-notify-*` leftovers under the remote root.
+
+Before the qualifying run, the external test fixture was hardened so credentials
+are resolved from complete environment pairs and never forwarded through Maven
+`-D` properties, because Failsafe serializes JVM properties into retained XML.
+Three focused resolver cases and all 58 fast SMB-module cases passed. The durable
+SMB runbook now uses the Failsafe `verify` lifecycle and exact `-Dit.test`
+selectors; its former `test` phase could not execute `*IT` suites after
+`TEST-LIFECYCLE-01`.
+
+The five external suite shells remain explicitly property-conditioned and
+outside the deterministic offline cohort. A normal release `verify` is therefore
+expected to report their eight skips; that remains lifecycle evidence, not a
+contradiction of this separately provisioned result. This work item claims only
+the two `CHANGE_NOTIFY` cases. Encryption-only, two-identity hardening and load
+profile evidence keep their independent owners and dispositions.
+
 ## Coarse effectiveness baseline
 
 This gate is a navigation/risk review, not coverage or mutation measurement.
@@ -1607,14 +1666,14 @@ retirement evidence in its owning goal.
 | 190 fast suites | Unit/component, architecture, contract and publication | Surefire defaults / `*Test` | Untagged, `architecture` or `contract` as applicable | Retain fast ownership | Exact source/report set and 943 cases | `verified` |
 | 58 ordinary integration suites | DB, filesystem, parsing, serialization, Spring and transport | Failsafe / `*IT` | `integration`, plus `contract` where applicable | Rename reviewed inventory | Exact source/report set | `verified` |
 | 2 deterministic E2E suites | Daemon ingest and golden pipeline | Failsafe / `*IT` | `integration`, `e2e` | Use composed `@EndToEndTest` | Exact source/report set | `verified` |
-| 5 provisioned external suites | SMB and import load evidence | Failsafe / `*IT` | `integration`, `external`; load also `slow` | Keep property-conditioned and outside offline union | 5 reported shells / 8 explicit skips | `verified-offline`; provisioned evidence remains open |
+| 5 provisioned external suites | SMB and import load evidence | Failsafe / `*IT` | `integration`, `external`; load also `slow` | Keep property-conditioned and outside offline union | 5 reported shells / 8 explicit offline skips; `CHANGE_NOTIFY` 2/2 passed separately on the provisioned stand | `verified-offline`; `TEST-EXTERNAL-05` verified, other provisioned evidence remains per owner |
 
 ## Risk и effectiveness findings
 
 | Finding | Scope/behavior | Gap type | Risk | Required evidence | Disposition | Work item |
 |---|---|---|---|---|---|---|
 | JDK pattern engine lacked a behavioral consumer | Shared contract covers both implementations; live configuration corpus is equivalent and `ioc.engine=jdk` selects the JDK adapter; regex module is `18/18` lines and `4/4` branches | `contract`, `compatibility` | Supported alternate engine could drift or wire incorrectly without detection | Shared two-engine contract + bootstrap bean-selection test | Closed and verified 2026-09-05 | `TEST-REGEX-03` |
-| Live SMB `CHANGE_NOTIFY` not executed | External transport signal and idle-survival behavior | `contract`, `external` | Offline suite cannot prove live server semantics | Provisioned execution or explicit release disposition | Open external evidence | `R030-TEST` / `R030-REL` |
+| Live SMB `CHANGE_NOTIFY` execution | External transport signal and idle-survival behavior | `contract`, `external` | Offline suite cannot prove live server semantics | Provisioned execution or explicit release disposition | Closed by 2/2 live cases on commit `404ab5f3`; target-specific boundary retained | `TEST-EXTERNAL-05` |
 | No standalone published-library consumer yet | Future extracted library coordinates and public API | `contract`, `publication` | Reactor-relative resolution can hide publication/POM defects | Out-of-reactor compile + runtime contract using published coordinates | Required when library API is finalized | `R030-LIB` / `R030-TEST` |
 | Invariant/PIT pilots not executed | Refang, normalization, classification, deduplication, identity | `assertion-quality` | Example assertions may miss semantically important mutations/invariants | Reproducible pilots with triaged results | Planned, no baseline inference | `R030-TEST` |
 | No-op sink test has implicit oracle | `NoopDiagnosticSink` valid emission | `assertion-quality` | Very low; intent is less explicit | Explicit no-throw assertion if touched | Opportunistic | `R030-TEST` module review |
