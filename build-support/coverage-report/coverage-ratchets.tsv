@@ -1,5 +1,5 @@
 # scope	line-covered	line-missed	branch-covered	branch-missed	instruction-missed	absolute-instructions	rationale
-reactor	19859	2541	6479	1861	12617	observed	Shared two-engine regex contract over the conservative independent aggregate minima; fixed release floors remain separate.
+reactor	19860	2541	6480	1861	12617	observed	Regex contract and bootstrap selection evidence over the conservative independent aggregate minima; fixed release floors remain separate.
 ioc-platform-errors	4	0	0	0	0	enforced	Small branchless production module; downstream coverage is complete.
 ioc-platform-diagnostics	481	10	56	20	63	enforced	Small branch denominator requires ratio and absolute missed context.
 ioc-platform-etl	165	16	16	8	75	enforced	Small branch denominator requires ratio and absolute missed context.
@@ -18,4 +18,4 @@ ioc-adapter-store-jdbc	5346	667	1461	468	3352	observed	Import workspace limits a
 ioc-adapter-transport-smb	813	283	334	201	1282	observed	Deterministic offline path, object-type and publication-integrity contracts; external paths remain explicit.
 ioc-adapter-ingest	929	260	328	135	1080	observed	Real local WatchService hint lifecycle contracts over the conservative line minimum.
 ioc-adapter-cli-picocli	415	149	140	113	979	observed	Health endpoint selection, failure classification and structured-detail rendering over the conservative line minimum.
-ioc-app	4442	624	1371	496	2734	observed	Sync-health channel precedence, endpoint isolation and keyed-failure evidence over the conservative line minimum.
+ioc-app	4443	624	1372	496	2734	observed	JDK regex engine selection over the conservative bootstrap line and branch minima.
