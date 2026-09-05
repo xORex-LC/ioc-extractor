@@ -2,6 +2,7 @@ package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.port.in.export.SliceRetentionResult;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.time.Duration;
 import java.util.Map;
@@ -11,6 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 class DaemonSliceRetentionSchedulerTest {
 
     @Test
@@ -34,18 +36,19 @@ class DaemonSliceRetentionSchedulerTest {
             int attempt = attempts.incrementAndGet();
             if (attempt == 1) {
                 entered.countDown();
-                await(release);
+                AsyncTestSupport.awaitOrFail(release, "release of blocked retention cycle");
                 throw new IllegalStateException("transient");
             }
             return result(1);
         });
-        Thread first = new Thread(scheduler::runOnce);
 
-        first.start();
-        assertThat(entered.await(1, TimeUnit.SECONDS)).isTrue();
-        scheduler.runOnce();
-        release.countDown();
-        first.join(1000);
+        try (var first = AsyncTestSupport.startWorker(
+                "slice-retention-overlap", scheduler::runOnce, release::countDown)) {
+            assertThat(AsyncTestSupport.await(entered))
+                    .as("first retention cycle should enter the use case")
+                    .isTrue();
+            scheduler.runOnce();
+        }
         scheduler.runOnce();
 
         assertThat(attempts).hasValue(2);
@@ -59,14 +62,5 @@ class DaemonSliceRetentionSchedulerTest {
 
     private SliceRetentionResult result(int deleted) {
         return new SliceRetentionResult(deleted, deleted, 0, Map.of("profile", deleted));
-    }
-
-    private static void await(CountDownLatch latch) {
-        try {
-            latch.await();
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(interrupted);
-        }
     }
 }

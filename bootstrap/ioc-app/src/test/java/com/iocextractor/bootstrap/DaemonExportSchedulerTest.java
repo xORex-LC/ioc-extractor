@@ -19,6 +19,7 @@ import com.iocextractor.application.port.in.export.ExportArtifactsResult;
 import com.iocextractor.application.port.out.export.ArtifactRevisionReader;
 import com.iocextractor.application.port.out.export.ExportProgressStore;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -46,6 +47,7 @@ import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 class DaemonExportSchedulerTest {
 
     private static final Instant START = Instant.parse("2026-06-28T00:00:00Z");
@@ -136,16 +138,17 @@ class DaemonExportSchedulerTest {
                 List.of(plan("one")), Map.of("one", alwaysDue()), () -> 0, command -> {
                     attempts.incrementAndGet();
                     entered.countDown();
-                    await(release);
+                    AsyncTestSupport.awaitOrFail(release, "release of blocked export cycle");
                     return completed(command.profile());
                 });
-        Thread first = new Thread(scheduler::runOnce);
 
-        first.start();
-        assertThat(entered.await(1, TimeUnit.SECONDS)).isTrue();
-        scheduler.runOnce();
-        release.countDown();
-        first.join(1000);
+        try (var first = AsyncTestSupport.startWorker(
+                "daemon-export-overlap", scheduler::runOnce, release::countDown)) {
+            assertThat(AsyncTestSupport.await(entered))
+                    .as("first export cycle should enter the use case")
+                    .isTrue();
+            scheduler.runOnce();
+        }
 
         assertThat(attempts).hasValue(1);
     }
@@ -372,18 +375,19 @@ class DaemonExportSchedulerTest {
                 () -> 0, command -> {
                     attempts.incrementAndGet();
                     entered.countDown();
-                    await(release);
+                    AsyncTestSupport.awaitOrFail(release, "release of blocked nudged export check");
                     return completed(command.profile());
                 },
                 Duration.ofSeconds(7), () -> executor);
         scheduler.start();
-        Thread first = new Thread(scheduler::runOnce);
 
-        first.start();
-        assertThat(entered.await(1, TimeUnit.SECONDS)).isTrue();
-        executor.runNextDelayed();
-        release.countDown();
-        first.join(1000);
+        try (var first = AsyncTestSupport.startWorker(
+                "daemon-export-nudge", scheduler::runOnce, release::countDown)) {
+            assertThat(AsyncTestSupport.await(entered))
+                    .as("periodic export should enter before the nudged check")
+                    .isTrue();
+            executor.runNextDelayed();
+        }
 
         assertThat(attempts).hasValue(1);
         assertThat(executor.delayedTasks).hasSize(1);
@@ -549,15 +553,6 @@ class DaemonExportSchedulerTest {
     private ExportArtifactsResult completed(String profile) {
         return new ExportArtifactsResult(
                 "run-1", profile, ExportRunStatus.COMPLETED, "slice-1");
-    }
-
-    private void await(CountDownLatch latch) {
-        try {
-            latch.await();
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(interrupted);
-        }
     }
 
     private static final class ManualExecutor implements ScheduledExecutorService {

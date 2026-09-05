@@ -15,6 +15,7 @@ import com.iocextractor.platform.concurrent.KeyedSerialExecutor;
 import com.iocextractor.platform.concurrent.WorkAdmission;
 import com.iocextractor.platform.concurrent.WorkKey;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.nio.file.Path;
 import java.time.Clock;
@@ -32,6 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 class DaemonPublishSchedulerTest {
 
     @Test
@@ -90,7 +92,7 @@ class DaemonPublishSchedulerTest {
             public ArtifactPublishExecutionResult publish(ArtifactPublishCommand command) {
                 attempts.incrementAndGet();
                 entered.countDown();
-                await(release);
+                AsyncTestSupport.awaitOrFail(release, "release of blocked publish cycle");
                 return emptyExecution();
             }
 
@@ -102,13 +104,14 @@ class DaemonPublishSchedulerTest {
         DaemonPublishScheduler scheduler = new DaemonPublishScheduler(
                 List.of(target("one")), publisher, registry(), healthState(),
                 new DirectKeyedExecutor(), Duration.ofHours(1));
-        Thread first = new Thread(scheduler::runOnce);
 
-        first.start();
-        assertThat(entered.await(1, TimeUnit.SECONDS)).isTrue();
-        scheduler.runOnce();
-        release.countDown();
-        first.join(1000);
+        try (var first = AsyncTestSupport.startWorker(
+                "daemon-publish-overlap", scheduler::runOnce, release::countDown)) {
+            assertThat(AsyncTestSupport.await(entered))
+                    .as("first publish cycle should enter the publisher")
+                    .isTrue();
+            scheduler.runOnce();
+        }
 
         assertThat(attempts).hasValue(1);
     }
@@ -150,25 +153,30 @@ class DaemonPublishSchedulerTest {
         CountDownLatch releaseExistingWork = new CountDownLatch(1);
         RecordingPublisher publisher = new RecordingPublisher();
         publisher.countDownOnPublish = new CountDownLatch(1);
-        BoundedKeyedSerialExecutor executor = new BoundedKeyedSerialExecutor(
-                Executors.newSingleThreadExecutor(), 10);
+        ExecutorService workers = Executors.newSingleThreadExecutor();
+        BoundedKeyedSerialExecutor executor = new BoundedKeyedSerialExecutor(workers, 10);
         DaemonPublishScheduler scheduler = new DaemonPublishScheduler(
                 List.of(target("one")), publisher, registry(), healthState(),
                 executor, Duration.ofHours(1));
         executor.submit(WorkKey.of("endpoint-one"), () -> {
             existingWorkEntered.countDown();
-            await(releaseExistingWork);
+            AsyncTestSupport.awaitOrFail(releaseExistingWork, "release of existing endpoint work");
         });
-        assertThat(existingWorkEntered.await(1, TimeUnit.SECONDS)).isTrue();
-        Thread schedulerThread = new Thread(scheduler::runOnce);
-
-        schedulerThread.start();
-
-        assertThat(publisher.countDownOnPublish.await(150, TimeUnit.MILLISECONDS)).isFalse();
-        releaseExistingWork.countDown();
-        schedulerThread.join(1000);
-        executor.shutdown();
-        assertThat(executor.awaitTermination(Duration.ofSeconds(1))).isTrue();
+        try {
+            assertThat(AsyncTestSupport.await(existingWorkEntered))
+                    .as("existing endpoint work should start")
+                    .isTrue();
+            try (var schedulerThread = AsyncTestSupport.startWorker(
+                    "daemon-publish-keyed", scheduler::runOnce, releaseExistingWork::countDown)) {
+                assertThat(publisher.countDownOnPublish.await(150, TimeUnit.MILLISECONDS))
+                        .as("publisher should remain queued behind existing endpoint work")
+                        .isFalse();
+            }
+        } finally {
+            releaseExistingWork.countDown();
+            executor.shutdown();
+            AsyncTestSupport.shutdownAndAwaitTermination(workers, "publish keyed executor");
+        }
         assertThat(publisher.operations).containsExactly("reconcile:profile-one", "publish:one");
     }
 
@@ -190,12 +198,19 @@ class DaemonPublishSchedulerTest {
         DaemonPublishScheduler scheduler = new DaemonPublishScheduler(
                 List.of(target("one")), new RecordingPublisher(), registry(), healthState(),
                 new AcceptingButNeverRunningExecutor(accepted), Duration.ofHours(1));
-        Thread schedulerThread = new Thread(scheduler::runOnce);
+        Thread schedulerThread = Thread.ofPlatform()
+                .name("daemon-publish-interrupted")
+                .unstarted(scheduler::runOnce);
 
         schedulerThread.start();
-        assertThat(accepted.await(1, TimeUnit.SECONDS)).isTrue();
-        schedulerThread.interrupt();
-        schedulerThread.join(1000);
+        try {
+            assertThat(AsyncTestSupport.await(accepted))
+                    .as("publish work should be accepted before interrupt")
+                    .isTrue();
+        } finally {
+            AsyncTestSupport.interruptAndAwaitTermination(
+                    schedulerThread, "scheduler waiting for abandoned accepted work");
+        }
 
         assertThat(schedulerThread.isAlive()).isFalse();
         assertThat(schedulerThread.isInterrupted()).isTrue();
@@ -211,14 +226,18 @@ class DaemonPublishSchedulerTest {
         DaemonPublishScheduler scheduler = new DaemonPublishScheduler(
                 List.of(target("one"), target("two")), publisher, registry(), healthState(),
                 executor, Duration.ofHours(1));
-        Thread schedulerThread = new Thread(scheduler::runOnce);
-
-        schedulerThread.start();
-        assertThat(bothRunning.await(1, TimeUnit.SECONDS)).isTrue();
-        release.countDown();
-        schedulerThread.join(1000);
-        executor.shutdown();
-        assertThat(executor.awaitTermination(Duration.ofSeconds(1))).isTrue();
+        try {
+            try (var schedulerThread = AsyncTestSupport.startWorker(
+                    "daemon-publish-concurrent", scheduler::runOnce, release::countDown)) {
+                assertThat(AsyncTestSupport.await(bothRunning))
+                        .as("publish work for both endpoints should run concurrently")
+                        .isTrue();
+            }
+        } finally {
+            release.countDown();
+            executor.shutdown();
+            AsyncTestSupport.shutdownAndAwaitTermination(workers, "concurrent publish workers");
+        }
 
         assertThat(publisher.maxConcurrent()).isEqualTo(2);
     }
@@ -257,15 +276,6 @@ class DaemonPublishSchedulerTest {
 
     private static ArtifactPublishExecutionResult emptyExecution() {
         return ArtifactPublishExecutionResult.empty();
-    }
-
-    private static void await(CountDownLatch latch) {
-        try {
-            latch.await();
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(interrupted);
-        }
     }
 
     private static final class RecordingPublisher implements ArtifactPublishUseCase {
@@ -328,7 +338,7 @@ class DaemonPublishSchedulerTest {
             maxConcurrent.accumulateAndGet(current, Math::max);
             bothRunning.countDown();
             try {
-                await(release);
+                AsyncTestSupport.awaitOrFail(release, "release of concurrent endpoint publishers");
                 return emptyExecution();
             } finally {
                 running.decrementAndGet();

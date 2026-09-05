@@ -11,6 +11,7 @@ import com.iocextractor.application.port.out.artifact.lifecycle.ExpiredArtifactS
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -28,6 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 class LifecycleDeadlineSchedulerTest {
 
     private static final Instant START = Instant.parse("2026-08-16T02:00:00Z");
@@ -160,11 +162,8 @@ class LifecycleDeadlineSchedulerTest {
                 () -> {
                     reconciliations.incrementAndGet();
                     entered.countDown();
-                    try {
-                        release.await();
-                    } catch (InterruptedException interrupted) {
-                        Thread.currentThread().interrupt();
-                    }
+                    AsyncTestSupport.awaitOrFail(
+                            release, "release of blocked lifecycle reconciliation");
                     return new LifecycleReconciliationResult(
                             new LifecycleReconcileCycleId(1), EffectiveTime.at(START), 0, 0, List.of());
                 },
@@ -174,10 +173,15 @@ class LifecycleDeadlineSchedulerTest {
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var first = executor.submit(scheduler::runOnce);
-            assertThat(entered.await(1, TimeUnit.SECONDS)).isTrue();
-            var racing = executor.submit(scheduler::runOnce);
-            racing.get(1, TimeUnit.SECONDS);
-            release.countDown();
+            try {
+                assertThat(AsyncTestSupport.await(entered))
+                        .as("first lifecycle reconciliation should enter the use case")
+                        .isTrue();
+                var racing = executor.submit(scheduler::runOnce);
+                racing.get(AsyncTestSupport.WAIT_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            } finally {
+                release.countDown();
+            }
             first.get(1, TimeUnit.SECONDS);
         }
 

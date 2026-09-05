@@ -19,6 +19,7 @@ import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import com.iocextractor.platform.events.ControlEventPublisher;
 import com.iocextractor.platform.events.RecordingControlEventPublisher;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.nio.file.Path;
 import java.time.Clock;
@@ -43,6 +44,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 class RemoteFetchDetectionCoordinatorTest {
 
     private static final Instant NOW = Instant.parse("2026-06-28T00:00:00Z");
@@ -313,12 +315,7 @@ class RemoteFetchDetectionCoordinatorTest {
         }
 
         private void await(CountDownLatch latch) {
-            try {
-                latch.await();
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException(interrupted);
-            }
+            AsyncTestSupport.awaitOrFail(latch, "release of blocked remote listing");
         }
     }
 

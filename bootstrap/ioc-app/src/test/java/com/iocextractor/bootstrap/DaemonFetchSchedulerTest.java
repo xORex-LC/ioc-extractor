@@ -2,6 +2,7 @@ package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.sync.RemoteFetchSource;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -11,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 class DaemonFetchSchedulerTest {
 
     @Test
@@ -47,13 +49,14 @@ class DaemonFetchSchedulerTest {
         RecordingDetection detection = new RecordingDetection(entered, release);
         DaemonFetchScheduler scheduler = new DaemonFetchScheduler(
                 List.of(source("one")), detection, Duration.ofHours(1));
-        Thread first = new Thread(scheduler::runOnce);
 
-        first.start();
-        assertThat(entered.await(1, TimeUnit.SECONDS)).isTrue();
-        scheduler.runOnce();
-        release.countDown();
-        first.join(1000);
+        try (var first = AsyncTestSupport.startWorker(
+                "daemon-fetch-overlap", scheduler::runOnce, release::countDown)) {
+            assertThat(AsyncTestSupport.await(entered))
+                    .as("first fetch cycle should enter detection")
+                    .isTrue();
+            scheduler.runOnce();
+        }
 
         assertThat(detection.triggers).containsExactly("one:" + RemoteFetchDetectionReason.PERIODIC);
     }
@@ -96,16 +99,7 @@ class DaemonFetchSchedulerTest {
             triggers.add(source.sourceId() + ":" + reason);
             if (entered != null) {
                 entered.countDown();
-                await(release);
-            }
-        }
-
-        private void await(CountDownLatch latch) {
-            try {
-                latch.await();
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException(interrupted);
+                AsyncTestSupport.awaitOrFail(release, "release of blocked fetch detection");
             }
         }
     }

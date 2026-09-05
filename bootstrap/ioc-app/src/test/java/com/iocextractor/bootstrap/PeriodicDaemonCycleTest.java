@@ -1,6 +1,7 @@
 package com.iocextractor.bootstrap;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
@@ -9,6 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Timeout(value = 30, unit = TimeUnit.SECONDS)
 class PeriodicDaemonCycleTest {
 
     @Test
@@ -19,15 +21,16 @@ class PeriodicDaemonCycleTest {
         PeriodicDaemonCycle cycle = new PeriodicDaemonCycle("test-cycle", Duration.ofHours(1), () -> {
             calls.incrementAndGet();
             entered.countDown();
-            await(release);
+            AsyncTestSupport.awaitOrFail(release, "release of blocked periodic cycle");
         });
-        Thread first = new Thread(cycle::runOnce);
 
-        first.start();
-        assertThat(entered.await(1, TimeUnit.SECONDS)).isTrue();
-        cycle.runOnce();
-        release.countDown();
-        first.join(1000);
+        try (var first = AsyncTestSupport.startWorker(
+                "periodic-cycle-overlap", cycle::runOnce, release::countDown)) {
+            assertThat(AsyncTestSupport.await(entered))
+                    .as("first periodic cycle should enter its work")
+                    .isTrue();
+            cycle.runOnce();
+        }
 
         assertThat(calls).hasValue(1);
     }
@@ -56,14 +59,5 @@ class PeriodicDaemonCycleTest {
         cycle.runOnce();
 
         assertThat(calls).hasValue(2);
-    }
-
-    private static void await(CountDownLatch latch) {
-        try {
-            latch.await();
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(interrupted);
-        }
     }
 }
