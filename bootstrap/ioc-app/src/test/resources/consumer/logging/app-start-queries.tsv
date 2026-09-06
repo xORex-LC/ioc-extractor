@@ -1,0 +1,12 @@
+# JSON Pointer	type	expected value
+/ecs/version	string	8.11
+/service/name	string	ioc-extractor
+/service/version	string	<VERSION>
+/event/dataset	string	ioc-extractor
+/event/action	string	app_start
+/event/outcome	string	success
+/event/duration	integer	18324056
+/ioc/rows	integer	58
+/ioc/sync/shed_to_reconcile	boolean	true
+/ioc/run/id	string	00017
+/ioc/mode	string	daemon

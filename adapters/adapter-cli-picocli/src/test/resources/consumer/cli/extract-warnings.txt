@@ -1,0 +1,4 @@
+Run=<RUN_ID>, completion=COMPLETED_WITH_WARNINGS
+Diagnostics: total=1, suppressed=0
+  WARN=1
+Extracted=2, retained=1

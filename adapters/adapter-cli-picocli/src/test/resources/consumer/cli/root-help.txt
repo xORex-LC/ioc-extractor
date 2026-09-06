@@ -1,0 +1,12 @@
+Usage: ioc [-hV] [COMMAND]
+IOC extraction toolkit.
+  -h, --help      Show this help message and exit.
+  -V, --version   Print version information and exit.
+Commands:
+  extract  Extract, refang and normalize IOCs from a source document into
+             reputation artifacts.
+  export   Export one configured artifact profile as an immutable local slice.
+  import   Validate, inspect or replay managed dataframe deliveries.
+  sync     Synchronize IOC inputs and completed export slices with remote
+             storage.
+  health   Show the running daemon's health (queries its actuator endpoint).

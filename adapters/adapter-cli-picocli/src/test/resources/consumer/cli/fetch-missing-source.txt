@@ -1,0 +1,10 @@
+Missing required parameter for option '--source' (<source>)
+Usage: ioc sync fetch [-hV] [--dry-run] [--endpoint=<endpoint>]
+                      [--source=<source>]
+Fetch configured remote source files into the ingestion inbox.
+      --dry-run           List prospective work without inbox or ledger writes.
+      --endpoint=<endpoint>
+                          Configured endpoint name.
+  -h, --help              Show this help message and exit.
+      --source=<source>   Configured fetch source name.
+  -V, --version           Print version information and exit.

@@ -1,5 +1,6 @@
 package com.iocextractor.observability;
 
+import com.iocextractor.application.tck.junit.ContractTest;
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
@@ -16,13 +17,18 @@ import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.io.ClassPathResource;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @IntegrationTest
+@ContractTest
 class LogbackConfigurationIT {
 
     private static final String EXPECTED_PROJECT_VERSION_PROPERTY = "test.project.version";
@@ -41,7 +47,7 @@ class LogbackConfigurationIT {
     }
 
     @Test
-    void boot_ecs_encoder_preserves_json_scalar_types_and_string_correlation() throws IOException {
+    void boot_ecs_encoder_matches_exact_payload_and_consumer_queries() throws IOException {
         var configuredVersion = new YamlPropertySourceLoader()
                 .load("application", new ClassPathResource("application.yml"))
                 .getFirst()
@@ -63,22 +69,17 @@ class LogbackConfigurationIT {
         context.stop();
 
         assertThat(logFile).exists();
-        var json = new ObjectMapper().readTree(Files.readString(logFile));
-        assertThat(json.path("ecs").path("version").asText()).isEqualTo("8.11");
-        assertThat(json.path("service").path("name").asText()).isEqualTo("ioc-extractor");
-        assertThat(json.path("service").path("version").asText()).isEqualTo(buildVersion);
-        assertThat(json.path("event").path("dataset").asText()).isEqualTo("ioc-extractor");
-        assertThat(json.path("event").path("action").asText()).isEqualTo(EventAction.APP_START.value());
-        assertThat(json.path("event").path("outcome").asText()).isEqualTo(EventOutcome.SUCCESS.value());
-        assertThat(json.path("event").path("duration").isIntegralNumber()).isTrue();
-        assertThat(json.path("event").path("duration").longValue()).isEqualTo(18_324_056L);
-        assertThat(json.path("ioc").path("rows").isIntegralNumber()).isTrue();
-        assertThat(json.path("ioc").path("rows").longValue()).isEqualTo(58L);
-        assertThat(json.path("ioc").path("sync").path("shed_to_reconcile").isBoolean()).isTrue();
-        assertThat(json.path("ioc").path("sync").path("shed_to_reconcile").booleanValue()).isTrue();
-        assertThat(json.path("ioc").path("run").path("id").isTextual()).isTrue();
-        assertThat(json.path("ioc").path("run").path("id").asText()).isEqualTo("00017");
-        assertThat(json.path("ioc").path("mode").asText()).isEqualTo("daemon");
+        String normalizedPayload = Files.readString(logFile)
+                .replace("\"version\":\"" + buildVersion + "\"", "\"version\":\"<VERSION>\"");
+        assertThat(normalizedPayload).isEqualTo(resource("consumer/logging/app-start.json"));
+
+        var json = new ObjectMapper().readTree(normalizedPayload);
+        for (String query : resourceLines("consumer/logging/app-start-queries.tsv")) {
+            if (query.isBlank() || query.startsWith("#")) {
+                continue;
+            }
+            assertQuery(json, query);
+        }
     }
 
     private StructuredLogEncoder ecsEncoder(LoggerContext context) {
@@ -97,7 +98,7 @@ class LogbackConfigurationIT {
         event.setLevel(Level.INFO);
         event.setMessage("daemon event");
         event.setThreadName("main");
-        event.setTimeStamp(System.currentTimeMillis());
+        event.setTimeStamp(Instant.parse("2026-09-06T00:00:00Z").toEpochMilli());
         event.setMDCPropertyMap(Map.of(
                 LogField.IOC_RUN_ID.key(), "00017",
                 LogField.IOC_MODE.key(), "daemon"));
@@ -115,5 +116,39 @@ class LogbackConfigurationIT {
                 "logging.structured.ecs.service.name", "ioc-extractor",
                 "logging.structured.ecs.service.version", buildVersion)));
         return environment;
+    }
+
+    private void assertQuery(com.fasterxml.jackson.databind.JsonNode json, String query) {
+        String[] columns = query.split("\t", -1);
+        assertThat(columns).as("query fixture row").hasSize(3);
+        var value = json.at(columns[0]);
+        switch (columns[1]) {
+            case "string" -> {
+                assertThat(value.isTextual()).as(columns[0] + " scalar type").isTrue();
+                assertThat(value.textValue()).as(columns[0]).isEqualTo(columns[2]);
+            }
+            case "integer" -> {
+                assertThat(value.isIntegralNumber()).as(columns[0] + " scalar type").isTrue();
+                assertThat(value.longValue()).as(columns[0]).isEqualTo(Long.parseLong(columns[2]));
+            }
+            case "boolean" -> {
+                assertThat(value.isBoolean()).as(columns[0] + " scalar type").isTrue();
+                assertThat(value.booleanValue()).as(columns[0]).isEqualTo(Boolean.parseBoolean(columns[2]));
+            }
+            default -> throw new IllegalArgumentException("Unknown query fixture type: " + columns[1]);
+        }
+    }
+
+    private String resource(String name) throws IOException {
+        try (InputStream input = getClass().getClassLoader().getResourceAsStream(name)) {
+            if (input == null) {
+                throw new IllegalStateException("Missing consumer fixture: " + name);
+            }
+            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private List<String> resourceLines(String name) throws IOException {
+        return resource(name).lines().toList();
     }
 }

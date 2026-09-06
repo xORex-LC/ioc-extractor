@@ -27,9 +27,8 @@ class EarlyCliLauncherTest {
         OptionalInt result = launcher.executeIfHandled("--help");
 
         assertThat(result).hasValue(0);
-        assertThat(out.toString())
-                .contains("Usage: ioc")
-                .contains("extract", "export", "sync", "health");
+        assertThat(out.toString()).isEqualTo(CliGolden.text("root-help.txt"));
+        assertThat(err.toString()).isEmpty();
     }
 
     @Test
@@ -37,10 +36,7 @@ class EarlyCliLauncherTest {
         OptionalInt result = launcher.executeIfHandled("--version");
 
         assertThat(result).hasValue(0);
-        assertThat(out.toString())
-                .contains("ioc-extractor 9.8.7-test")
-                .contains("built: 2026-07-19T10:30:00Z")
-                .doesNotContain("unknown");
+        assertThat(out.toString()).isEqualTo(CliGolden.text("version.txt"));
         assertThat(err.toString()).isEmpty();
     }
 
@@ -49,7 +45,7 @@ class EarlyCliLauncherTest {
         OptionalInt result = launcher.executeIfHandled("-V");
 
         assertThat(result).hasValue(0);
-        assertThat(out.toString()).contains("ioc-extractor 9.8.7-test");
+        assertThat(out.toString()).isEqualTo(CliGolden.text("version.txt"));
         assertThat(err.toString()).isEmpty();
     }
 
@@ -89,9 +85,8 @@ class EarlyCliLauncherTest {
         OptionalInt result = launcher.executeIfHandled("sync", "fetch", "--source");
 
         assertThat(result).hasValue(2);
-        assertThat(err.toString())
-                .contains("Missing required parameter")
-                .contains("Usage: ioc sync fetch");
+        assertThat(err.toString()).isEqualTo(CliGolden.text("fetch-missing-source.txt"));
+        assertThat(out.toString()).isEmpty();
     }
 
     @Test

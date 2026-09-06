@@ -47,7 +47,7 @@ class SyncCommandTest {
             assertThat(actual.endpoint()).contains("share");
             assertThat(actual.dryRun()).isTrue();
         });
-        assertThat(output.toString()).contains("Fetch dry-run: fetched=2 skipped=3 failed=0");
+        assertThat(output.toString()).isEqualTo(CliGolden.text("fetch-dry-run.txt"));
     }
 
     @Test
@@ -63,7 +63,7 @@ class SyncCommandTest {
 
         assertThat(exit).isOne();
         assertThat(validator.calls).containsExactly("publish:reputation:backup:share:false");
-        assertThat(output.toString()).contains("Publish: attempted=4 succeeded=2 recovered=0 failed=1");
+        assertThat(output.toString()).isEqualTo(CliGolden.text("publish-failed.txt"));
     }
 
     @Test

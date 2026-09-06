@@ -1,0 +1,1 @@
+Publish: attempted=4 succeeded=2 recovered=0 failed=1

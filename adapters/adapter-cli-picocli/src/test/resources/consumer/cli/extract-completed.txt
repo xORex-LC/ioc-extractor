@@ -1,0 +1,3 @@
+Run=<RUN_ID>, completion=COMPLETED
+Diagnostics: total=0, suppressed=0
+Extracted=2, retained=1

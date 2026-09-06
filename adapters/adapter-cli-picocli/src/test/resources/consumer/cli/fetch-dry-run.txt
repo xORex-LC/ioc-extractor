@@ -1,0 +1,1 @@
+Fetch dry-run: fetched=2 skipped=3 failed=0

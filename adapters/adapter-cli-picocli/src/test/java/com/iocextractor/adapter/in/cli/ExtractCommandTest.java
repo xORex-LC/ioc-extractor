@@ -30,7 +30,7 @@ class ExtractCommandTest {
             CompletionStatus status,
             DiagnosticSummary summary,
             int expectedExit,
-            String expectedSeverityLine) {
+            String goldenResource) {
         var capturedCommand = new AtomicReference<ExtractionCommand>();
         ExtractIocsUseCase extractor = command -> {
             capturedCommand.set(command);
@@ -53,25 +53,34 @@ class ExtractCommandTest {
         String runId = capturedCommand.get().runId();
         assertThat(runId).isNotBlank();
         assertThat(exit).isEqualTo(expectedExit);
-        assertThat(output.toString(StandardCharsets.UTF_8))
-                .contains("Run=" + runId + ", completion=" + status)
-                .contains("Diagnostics: total=" + summary.total()
-                        + ", suppressed=" + summary.suppressed())
-                .contains(expectedSeverityLine)
-                .contains("Extracted=2, retained=1");
+        assertThat(completionPayload(output.toString(StandardCharsets.UTF_8), runId)
+                .replace(runId, "<RUN_ID>"))
+                .isEqualTo(CliGolden.text(goldenResource));
+    }
+
+    private String completionPayload(String output, String runId) {
+        String lineSeparator = System.lineSeparator();
+        int start = output.indexOf("Run=" + runId + ", completion=");
+        int retained = output.indexOf("Extracted=2, retained=1", start);
+        assertThat(start).as("completion summary start").isGreaterThanOrEqualTo(0);
+        assertThat(retained).as("completion summary end line").isGreaterThanOrEqualTo(start);
+        int newline = output.indexOf(lineSeparator, retained);
+        assertThat(newline).as("completion summary terminating newline").isGreaterThan(retained);
+        int end = newline + lineSeparator.length();
+        return output.substring(start, end);
     }
 
     private static Stream<Arguments> completionOutcomes() {
         return Stream.of(
                 Arguments.of(CompletionStatus.COMPLETED, DiagnosticSummary.empty(), 0,
-                        "Diagnostics: total=0, suppressed=0"),
+                        "extract-completed.txt"),
                 Arguments.of(CompletionStatus.COMPLETED_WITH_WARNINGS,
                         new DiagnosticSummary(1, 0, Map.of(DiagnosticSeverity.WARN, 1L)),
-                        0, "WARN=1"),
+                        0, "extract-warnings.txt"),
                 Arguments.of(CompletionStatus.COMPLETED_WITH_ERRORS,
                         new DiagnosticSummary(3, 1, Map.of(
                                 DiagnosticSeverity.ERROR, 2L,
                                 DiagnosticSeverity.WARN, 1L)),
-                        3, "ERROR=2"));
+                        3, "extract-errors.txt"));
     }
 }
