@@ -47,7 +47,7 @@ inputs.
 | `TEST-PILOTS-06` | Run PIT/domain, invariant and seeded repeat pilots; triage signal/noise/cost | Verified diagnostic pilot tables below | Wave 1 profiles/artifacts | `verified` |
 | `TEST-CODECOV-07` | Best-effort non-required upload plus project/patch signals | Codecov table below | Stable JaCoCo XML + CI | `verified-with-external-status-disposition` |
 | `TEST-PUBLICATION-08` | Out-of-reactor compile/runtime contract for an admitted published library | Compatibility/shared-code ledgers | Blocked until `R030-LIB` admission | `waiting-on-library-contract` |
-| `TEST-CONSUMERS-09` | Add exact golden CSV/manifest/log/CLI consumer payload/query fixtures for accepted external surfaces | Compatibility consumer gaps | Per-surface owner decision | `planned` |
+| `TEST-CONSUMERS-09` | Add exact golden CSV/manifest/log/CLI consumer payload/query fixtures for accepted external surfaces | Verified implementation evidence below | Per-surface owner decision | `verified` |
 
 ## Current-HEAD inventory refresh — 2026-09-01
 
@@ -1772,6 +1772,44 @@ not claimed as executed.
 | Patch changed lines | target `90%`, threshold `0%` | No PR in run; GitHub status integration unavailable | Verified not required 2026-09-06 | `configured; not-exercised` |
 | Missing Codecov report/upload | external reporting failure | Action alone is `continue-on-error`; project XML/handoff remains blocking | Verified not required 2026-09-06 | `verified-contract` |
 
+## `TEST-CONSUMERS-09` implementation evidence — 2026-09-06
+
+Commit `b0cca6ee` adds a test-only reference artifact consumer that deliberately
+does not use production manifest records, codecs or CSV model classes. It
+strictly consumes UTF-8/CRLF/semicolon CSV with exact headers and a complete v1
+slice with exact member set, row counts, SHA-256 bindings and `_SUCCESS`
+visibility. A committed full-slice fixture proves the happy path and checksum/
+marker drift failures. `GoldenPipelineIT` now compares all four mutable
+projections byte-for-byte and reparses their exact schemas; the on-demand
+export E2E applies the independent consumer to both local and published copies.
+
+Commit `e3d78aa4` replaces partial CLI assertions with exact golden stdout and
+stderr for root help, version, missing-option usage, fetch/publish summaries and
+all extraction completion outcomes. Only the generated extraction run ID is
+normalized, and ambient application logs are not mistaken for the documented
+completion payload. The same commit adds an exact ECS JSON fixture plus a
+JSON-pointer query corpus that verifies field paths, scalar types and values;
+only the build version is represented by an explicit token. The first complete
+reactor fork exposed that `Map.of` made the test's MDC input order unstable;
+commit `e87ec857` pins that fixture order with a `LinkedHashMap`, and the
+isolated fork plus subsequent complete reactor run passed.
+
+The final implementation-HEAD `make verify` passed 25/25 projects in `02:45`.
+The report union is `196 fast + 66 integration`, with `5` external suites and
+`257` deterministic-offline suites. It contains `262` suite reports and `1485`
+cases (`1477` passed, `8` explicitly provisioned external skips). The late
+coverage gate accepted all 19 production groups and 18 local reports at
+`20100/22390` lines (`89.77%`) and `6509/8125` branches (`80.11%`); no ratchet,
+floor or exclusion changed. SpotBugs remained `116 accepted / 0 visible`, CPD
+remained `21/21`, and the separate PMD policy passed with `0` blocking and
+`21/21` reviewed advisory findings. Production Java and analyzer scope were not
+changed, so no finding intersects changed production code.
+
+These repository reference consumers close the producer-side regression gap;
+they do not register a named automation, reader or log collector and do not
+claim deployed-consumer acceptance. `TEST-PUBLICATION-08` remains independently
+blocked until `R030-LIB` admits a publication unit.
+
 ## Diagnostic pilots
 
 | Pilot | Scope | Command/config | Report artifact | Signal/noise | Runtime cost | Decision | Evidence |
@@ -1814,5 +1852,6 @@ PIT signal сообщает 107 detected mutants.
 - [x] PIT survived mutants классифицированы
 - [x] PIT runtime cost измерена
 - [x] Diagnostic pilots have adoption decisions
+- [x] Exact CSV/manifest/log/CLI reference-consumer fixtures are enforced
 - [x] Published testing documentation matches live build
 - [x] Status matrix updated

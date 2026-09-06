@@ -192,10 +192,10 @@ consumer-visible slice.
 | Consumer/role | State | Что подтверждено | Чего baseline не утверждает |
 |---|---|---|---|
 | Operator/admin | `confirmed` | CLI, configuration, health, packaging, SQLite backup/restore и runbooks имеют operator contract | Конкретная production installation не инвентаризирована |
-| CLI automation | `role-confirmed`, `unknown-consumer` | Документированы automation-suitable exit codes/output | Нет списка scripts/jobs и owner |
-| CSV/export reader | `role-confirmed`, `unknown-consumer` | Artifacts и immutable slices предназначены downstream consumers | Нет имени, версии или acceptance fixture реального reader |
+| CLI automation | `role-confirmed`, `unknown-consumer` | Exact repository fixtures фиксируют help/version, usage errors, sync summaries, extraction completion payloads и exit semantics | Нет списка реальных scripts/jobs и owner; reference fixture не доказывает их acceptance |
+| CSV/export reader | `role-confirmed`, `unknown-consumer` | Независимый test-only consumer принимает exact mutable CSV и complete v1 slice, включая manifest/member/checksum/marker contracts | Нет имени и версии реально развёрнутого reader; repository witness не является его acceptance run |
 | SMB producer/publish target | `role-confirmed`, `environment-specific` | Fetch/publish contracts и endpoint configuration существуют | Нет provisioned fixture в baseline; live `CHANGE_NOTIFY` cases skipped |
-| Log/diagnostic collector | `role-confirmed`, `unknown-consumer` | Stable diagnostic/action/field/scalar contracts опубликованы | Нет имени SIEM/Elasticsearch/dashboard и сохранённого consumer query corpus |
+| Log/diagnostic collector | `role-confirmed`, `unknown-consumer` | Exact ECS JSON fixture и JSON-pointer query corpus фиксируют paths, scalar types и значения | Нет имени SIEM/Elasticsearch/dashboard и execution evidence его реальных queries |
 | In-reactor module/TCK consumer | `confirmed-internal` | Maven graph и reusable TCK выполняются внутри reactor | Это не внешний published Maven consumer |
 | Future `feeds-collector` | `planned` | Ближайший отдельный service рассматривается как consumer shared platform libraries | Service, coordinates и standalone dependency resolution ещё не существуют |
 
@@ -257,10 +257,10 @@ runtime-state и rollback assertions.
 
 | Gap | Impact | Owner/exit condition |
 |---|---|---|
-| Именованные automation, artifact и log consumers не зарегистрированы | Нельзя доказать consumer acceptance только repository tests | `R030-DOC`/`R030-REL`: consumer/owner и representative contract fixture либо explicit unsupported disposition |
+| Именованные automation, artifact и log consumers не зарегистрированы | Repository reference fixtures защищают producer contract, но не доказывают acceptance развёрнутого consumer | `R030-DOC`/`R030-REL`: consumer/owner и его acceptance evidence либо explicit unsupported disposition |
 | Standalone published-library consumer отсутствует | Нельзя заявить external Maven compatibility | `R030-LIB` + `R030-TEST`: admitted coordinates, flattened POM и out-of-reactor consumer test |
 | Live SMB fixture отсутствует | Два `SmbChangeNotifyContractTest` cases недоступны; live endpoint contract не подтверждён | `R030-TEST`/`R030-REL`: provisioned fixture либо explicit external-evidence disposition |
-| Representative real consumer payload/query corpus отсутствует | Wire/schema regression может пройти только producer-side tests | `R030-TEST`: exact golden payload/query/CSV/manifest consumer contracts для принятых surfaces |
+| Repository reference consumer corpus | Exact golden CSV/manifest/log/CLI corpus добавлен; deployed acceptance остаётся отдельным gap | `TEST-CONSUMERS-09` verified; именованные consumers остаются у `R030-DOC`/`R030-REL` |
 
 ## Gate conclusion
 
