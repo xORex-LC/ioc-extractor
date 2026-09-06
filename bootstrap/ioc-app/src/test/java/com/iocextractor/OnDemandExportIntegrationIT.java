@@ -37,6 +37,7 @@ import com.iocextractor.application.sync.RetryPolicy;
 import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
 import com.iocextractor.bootstrap.ExportPlanCatalog;
 import com.iocextractor.bootstrap.LazyServiceStorage;
+import com.iocextractor.consumer.ReferenceArtifactConsumer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -55,6 +56,7 @@ import java.time.Clock;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -70,6 +72,11 @@ class OnDemandExportIntegrationIT {
 
     private static final Path TEST_ROOT = Path.of("target", "export-e2e-" + UUID.randomUUID());
     private static final Path EXPORT_ROOT = TEST_ROOT.resolve("export");
+    private static final List<String> MASKS_HEADER = List.of(
+            "id", "mask", "url_match", "host_match", "score", "time_last_seen",
+            "time_first_seen", "threat_type", "source", "description");
+
+    private final ReferenceArtifactConsumer consumer = new ReferenceArtifactConsumer();
 
     @DynamicPropertySource
     static void paths(DynamicPropertyRegistry registry) {
@@ -151,10 +158,17 @@ class OnDemandExportIntegrationIT {
             assertThat(entry.rows()).isEqualTo(1);
             assertThat(entry.coverage().revision()).isEqualTo(1);
         });
-        assertThat(Files.readString(slice.resolve("masks_list_generated.csv")))
-                .isEqualTo(golden("golden/expected-export-masks.csv"));
+        assertThat(Files.readAllBytes(slice.resolve("masks_list_generated.csv")))
+                .containsExactly(goldenCsvBytes("golden/expected-export-masks.csv"));
         assertThat(Files.readString(slice.resolve("_SUCCESS"), StandardCharsets.US_ASCII))
                 .isEqualTo(sha256(manifestBytes) + "\n");
+        var consumed = consumer.readSlice(slice, Map.of("masks", MASKS_HEADER));
+        assertThat(consumed.profile()).isEqualTo("e2e-reputation");
+        assertThat(consumed.artifacts().get("masks").rows())
+                .singleElement()
+                .satisfies(row -> assertThat(row)
+                        .containsEntry("id", "1")
+                        .containsEntry("mask", "example.org"));
 
         publishSliceIsIdempotentAndReleasesRetention(slice, manifest);
 
@@ -248,6 +262,8 @@ class OnDemandExportIntegrationIT {
                 .isEqualTo(Files.readAllBytes(slice.resolve("masks_list_generated.csv")));
         assertThat(Files.readString(remoteSlice.resolve("_SUCCESS"), StandardCharsets.US_ASCII))
                 .isEqualTo(Files.readString(slice.resolve("_SUCCESS"), StandardCharsets.US_ASCII));
+        assertThat(consumer.readSlice(remoteSlice, Map.of("masks", MASKS_HEADER)).sliceId())
+                .isEqualTo(manifest.sliceId());
     }
 
     private void writeMask(ExportPlan plan, String id, String mask) {
@@ -265,13 +281,17 @@ class OnDemandExportIntegrationIT {
                 request, new BlockingConsumer(consumer, began, release));
     }
 
-    private String golden(String resource) throws Exception {
+    private byte[] goldenCsvBytes(String resource) throws Exception {
         try (var input = getClass().getClassLoader().getResourceAsStream(resource)) {
             if (input == null) {
                 throw new IllegalStateException("Missing golden resource: " + resource);
             }
-            String expected = new String(input.readAllBytes(), StandardCharsets.UTF_8);
-            return expected.replace("\n", "\r\n");
+            String expected = new String(input.readAllBytes(), StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n");
+            if (!expected.endsWith("\n")) {
+                expected += "\n";
+            }
+            return expected.replace("\n", "\r\n").getBytes(StandardCharsets.UTF_8);
         }
     }
 

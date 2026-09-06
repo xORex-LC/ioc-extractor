@@ -1,0 +1,32 @@
+{
+  "manifest_version" : 1,
+  "slice_id" : "consumer-fixture-1",
+  "run_id" : "consumer-run-1",
+  "profile" : "reputation-lists",
+  "created_at" : "2026-09-06T00:00:00Z",
+  "output_mode" : "complete",
+  "plan_hash" : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "format" : {
+    "type" : "csv",
+    "charset" : "UTF-8",
+    "delimiter" : ";",
+    "quote" : "\"",
+    "null_literal" : "NULL"
+  },
+  "artifacts" : [
+    {
+      "artifact" : "masks",
+      "file" : "masks_list_generated.csv",
+      "rows" : 1,
+      "coverage" : {
+        "revision" : 7,
+        "changed_at" : "2026-09-06T00:00:00Z",
+        "upper_id" : 42
+      },
+      "identity_epoch" : 1,
+      "identity_hash" : "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "schema_hash" : "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "sha256" : "fb8edeba978b591a8f7c24280bd6ae297adc6cc411cab0d69221ed595f466fc7"
+    }
+  ]
+}

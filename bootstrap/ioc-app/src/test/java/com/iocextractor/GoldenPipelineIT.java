@@ -3,6 +3,7 @@ package com.iocextractor;
 import com.iocextractor.application.tck.junit.EndToEndTest;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.in.ExtractionCommand;
+import com.iocextractor.consumer.ReferenceArtifactConsumer;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,6 +50,24 @@ class GoldenPipelineIT {
             "ip_list", Path.of("target/golden/ip-list.csv"),
             "address_blacklist", Path.of("target/golden/address-blacklist.csv"),
             "hashes", Path.of("target/golden/hashes.csv"));
+    private static final Map<String, String> GOLDEN_RESOURCES = Map.of(
+            "masks", "golden/expected-masks.csv",
+            "ip_list", "golden/expected-ip-list.csv",
+            "address_blacklist", "golden/expected-address-blacklist.csv",
+            "hashes", "golden/expected-hashes.csv");
+    private static final Map<String, List<String>> HEADERS = Map.of(
+            "masks", List.of(
+                    "id", "mask", "url_match", "host_match", "score", "time_last_seen",
+                    "time_first_seen", "threat_type", "source", "description"),
+            "ip_list", List.of(
+                    "id", "ip", "score", "time_last_seen", "time_first_seen",
+                    "threat_type", "source", "description"),
+            "address_blacklist", List.of("forbidden_url", "forbidden_ip"),
+            "hashes", List.of(
+                    "id", "hash_md5", "hash_sha256", "hash_sha1", "score",
+                    "time_last_seen", "time_first_seen", "threat_type", "source", "description"));
+
+    private final ReferenceArtifactConsumer consumer = new ReferenceArtifactConsumer();
 
     @Autowired
     ExtractIocsUseCase useCase;
@@ -81,14 +100,15 @@ class GoldenPipelineIT {
         useCase.extract(new ExtractionCommand(
                 "golden-first", Path.of("src/test/resources/golden/source.html"), false));
 
-        assertThat(normalize(Files.readString(Path.of("target/golden/masks.csv"))))
-                .isEqualTo(goldenResource("golden/expected-masks.csv"));
-        assertThat(normalize(Files.readString(Path.of("target/golden/ip-list.csv"))))
-                .isEqualTo(goldenResource("golden/expected-ip-list.csv"));
-        assertThat(normalize(Files.readString(Path.of("target/golden/address-blacklist.csv"))))
-                .isEqualTo(goldenResource("golden/expected-address-blacklist.csv"));
-        assertThat(normalize(Files.readString(Path.of("target/golden/hashes.csv"))))
-                .isEqualTo(goldenResource("golden/expected-hashes.csv"));
+        for (String artifact : ARTIFACTS) {
+            Path projection = PROJECTIONS.get(artifact);
+            assertThat(Files.readAllBytes(projection))
+                    .as("exact public CSV bytes for %s", artifact)
+                    .containsExactly(goldenCsvBytes(GOLDEN_RESOURCES.get(artifact)));
+            assertThat(consumer.readCsv(projection, HEADERS.get(artifact)).rows())
+                    .as("reference consumer rows for %s", artifact)
+                    .isNotEmpty();
+        }
 
         Map<String, String> firstProjection = projectionContent();
         Map<String, Long> firstRows = publicRowCounts();
@@ -104,15 +124,18 @@ class GoldenPipelineIT {
         assertOccurrencesIncrementedByOne(firstOccurrences, sourceOccurrences());
     }
 
-    private String goldenResource(String resource) throws Exception {
+    private byte[] goldenCsvBytes(String resource) throws Exception {
         try (InputStream in = getClass().getClassLoader().getResourceAsStream(resource)) {
-            return normalize(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+            if (in == null) {
+                throw new IllegalStateException("Missing golden resource: " + resource);
+            }
+            String logicalFixture = new String(in.readAllBytes(), StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n");
+            if (!logicalFixture.endsWith("\n")) {
+                logicalFixture += "\n";
+            }
+            return logicalFixture.replace("\n", "\r\n").getBytes(StandardCharsets.UTF_8);
         }
-    }
-
-    /** Line-ending and trailing-whitespace insensitive comparison. */
-    private String normalize(String content) {
-        return content.replace("\r\n", "\n").strip();
     }
 
     private Map<String, String> projectionContent() throws Exception {
