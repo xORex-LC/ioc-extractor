@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -99,9 +100,10 @@ class LogbackConfigurationIT {
         event.setMessage("daemon event");
         event.setThreadName("main");
         event.setTimeStamp(Instant.parse("2026-09-06T00:00:00Z").toEpochMilli());
-        event.setMDCPropertyMap(Map.of(
-                LogField.IOC_RUN_ID.key(), "00017",
-                LogField.IOC_MODE.key(), "daemon"));
+        var mdc = new LinkedHashMap<String, String>();
+        mdc.put(LogField.IOC_MODE.key(), "daemon");
+        mdc.put(LogField.IOC_RUN_ID.key(), "00017");
+        event.setMDCPropertyMap(mdc);
         event.addKeyValuePair(new KeyValuePair(LogField.EVENT_ACTION.key(), EventAction.APP_START.value()));
         event.addKeyValuePair(new KeyValuePair(LogField.EVENT_OUTCOME.key(), EventOutcome.SUCCESS.value()));
         event.addKeyValuePair(new KeyValuePair(LogField.EVENT_DURATION.key(), 18_324_056L));
