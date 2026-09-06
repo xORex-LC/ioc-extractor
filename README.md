@@ -3,6 +3,7 @@
 *An ETL pipeline that turns messy documents into durable, ready-to-deliver IOC reputation lists.*
 
 [![CI](https://github.com/xORex-LC/ioc-extractor/actions/workflows/ci.yml/badge.svg)](https://github.com/xORex-LC/ioc-extractor/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/xORex-LC/ioc-extractor/branch/release-0.3.0/graph/badge.svg?precision=2)](https://app.codecov.io/gh/xORex-LC/ioc-extractor/tree/release-0.3.0)
 [![Quality Tooling](https://img.shields.io/badge/Quality%20Tooling-SpotBugs%20%7C%20PMD%20%7C%20CPD-informational)](docs/dev/build-quality.md)
 ![Java](https://img.shields.io/badge/Java-21-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0-6DB33F)
