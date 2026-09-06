@@ -23,7 +23,11 @@ fail-closed report integrity, ratchets and fixed floors.
 configuration-corpus compatibility checks and bootstrap selection evidence.
 `TEST-WAITS-04` is **verified** with bounded coordination and failure-safe
 worker cleanup. `TEST-EXTERNAL-05` is **verified** by the provisioned live SMB
-`CHANGE_NOTIFY` execution recorded below.
+`CHANGE_NOTIFY` execution recorded below. `TEST-PILOTS-06`,
+`TEST-CODECOV-07` and `TEST-CONSUMERS-09` are also verified with the stated
+diagnostic/external dispositions. The only remaining global work item is
+`TEST-PUBLICATION-08`; it cannot start until `R030-LIB` admits publication
+coordinates and a public API.
 
 `BASE-INVENTORIES-09` intake status: **verified**. The initial work queue below
 maps every baseline test/coverage/consumer gap to an owner without implementing
@@ -1815,8 +1819,8 @@ blocked until `R030-LIB` admits a publication unit.
 | Pilot | Scope | Command/config | Report artifact | Signal/noise | Runtime cost | Decision | Evidence |
 |---|---|---|---|---|---:|---|---|
 | PIT | Complete `core/ioc-domain` production scope | `make mutation-pilot`; opt-in module profile, `DEFAULTS`, one thread, zero thresholds | `core/ioc-domain/target/pit-reports/{index.html,mutations.xml,linecoverage.xml}` + wrapper summary | Initial 74/115 detected and 28 no-coverage mutations exposed real local-oracle gaps; final 107/115 detected, eight low-signal survivors, `NO_COVERAGE=0`, test strength `93%` | `53 s`; peak RSS about `337 MiB` | `Adopt` as weekly/manual domain diagnostic; no PR mutation threshold | Final wrapper summary plus repeatable HTML/XML; scheduled/manual artifact workflow |
-| Random order/repeat | All 20 functional JAR modules; exact 195 fast / 66 integration report union per run | `make stability-pilot`; seeds advance from explicit `SEED`, default `42/43/44`, no retry | Per-seed Surefire/Failsafe XML and summaries under `target/test-pilots/stability/` | Three green seeds, no order-dependent failure; each run retained the exact 261-suite XML union and excluded stale non-reactor targets | `453 s` total; runs `147/135/157 s`; peak RSS about `935 MiB` | `Adopt` as weekly/manual report-only diagnostic; cost does not justify per-PR use | Final scoped-archive worktree run based on `8df66cf5`; scheduled/manual artifact workflow |
-| Invariant-oriented tests | Refang, extraction/attribution, normalization, classification, deduplication and identity | Existing JUnit 5 + AssertJ stack; no property framework | Ordinary Surefire XML and PIT response | 14 domain and 2 application cases close observable boundaries; existing classification contract already killed its relevant mutants | Domain suite `66/66`; focused application `11/11` | `Adopt` in deterministic offline suite | Root lifecycle verifier accepts 195 fast suites and 256 deterministic-offline suites |
+| Random order/repeat | All 20 functional JAR modules; pilot-time exact 195 fast / 66 integration report union per run | `make stability-pilot`; seeds advance from explicit `SEED`, default `42/43/44`, no retry | Per-seed Surefire/Failsafe XML and summaries under `target/test-pilots/stability/` | Three green seeds, no order-dependent failure; each run retained the then-current exact 261-suite XML union and excluded stale non-reactor targets | `453 s` total; runs `147/135/157 s`; peak RSS about `935 MiB` | `Adopt` as weekly/manual report-only diagnostic; cost does not justify per-PR use | Final scoped-archive worktree run based on `8df66cf5`; scheduled/manual artifact workflow; consumer additions later moved the accepted universe to 196/66 |
+| Invariant-oriented tests | Refang, extraction/attribution, normalization, classification, deduplication and identity | Existing JUnit 5 + AssertJ stack; no property framework | Ordinary Surefire XML and PIT response | 14 domain and 2 application cases close observable boundaries; existing classification contract already killed its relevant mutants | Domain suite `66/66`; focused application `11/11` | `Adopt` in deterministic offline suite | Current root lifecycle verifier accepts 196 fast suites and 257 deterministic-offline suites |
 
 ### PIT survived-mutant triage
 
@@ -1839,6 +1843,23 @@ PIT signal сообщает 107 detected mutants.
 
 ## Completion
 
+Final synchronization audit on clean commit `34beafa3` confirmed that the
+live Make/Maven/CI configuration and `docs/TESTING.md` agree on lifecycle,
+taxonomy, report ownership, coverage gates, external provisioning and
+diagnostic pilots. `make context` reported fresh `make verify` and PMD evidence
+for that commit. The full reactor accepted 196 fast + 66 integration suites,
+257 deterministic-offline suites and 1485 cases (1477 passed, 8 expected
+external skips); aggregate coverage was `20099/22390` lines (`89.77%`) and
+`6508/8125` branches (`80.10%`). All 19 aggregate groups, 18 required local
+reports, fixed floors and ratchets passed.
+
+The remaining boundaries are explicit: `TEST-PUBLICATION-08` waits on
+`R030-LIB`; centralized external-environment control is `TOOL-4`; PIT expansion
+beyond domain is `TOOL-5`; named deployed consumer acceptance remains with
+`R030-DOC`/`R030-REL`; and the absent Codecov GitHub contexts retain their
+non-required external-status disposition while `R030-BUILD` awaits actual
+required-status policy and its closure run.
+
 - [x] Test inventory and lifecycle classification complete
 - [x] Per-module and aggregate baseline captured
 - [x] Coverage universe and exclusions accepted
@@ -1855,3 +1876,10 @@ PIT signal сообщает 107 detected mutants.
 - [x] Exact CSV/manifest/log/CLI reference-consumer fixtures are enforced
 - [x] Published testing documentation matches live build
 - [x] Status matrix updated
+- [ ] `TEST-PUBLICATION-08` passes for an admitted `R030-LIB` publication unit
+
+Therefore the implemented R030-TEST controls are synchronized and verified,
+but the global-controls row correctly remains `in-progress` until the
+publication consumer dependency is available and executed. Goal-level closure
+also remains subject to the applicable per-module hardening cells in the status
+matrix; this checklist does not mark those still-planned cells as verified.

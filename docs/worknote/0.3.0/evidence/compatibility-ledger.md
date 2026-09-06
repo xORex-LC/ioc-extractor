@@ -189,12 +189,16 @@ consumer-visible slice.
 
 ## Consumer register
 
+Таблица ниже отражает текущее candidate-состояние поверх исходного baseline;
+последний столбец сохраняет границы того, чего ни baseline, ни последующее
+repository evidence не доказывают.
+
 | Consumer/role | State | Что подтверждено | Чего baseline не утверждает |
 |---|---|---|---|
 | Operator/admin | `confirmed` | CLI, configuration, health, packaging, SQLite backup/restore и runbooks имеют operator contract | Конкретная production installation не инвентаризирована |
 | CLI automation | `role-confirmed`, `unknown-consumer` | Exact repository fixtures фиксируют help/version, usage errors, sync summaries, extraction completion payloads и exit semantics | Нет списка реальных scripts/jobs и owner; reference fixture не доказывает их acceptance |
 | CSV/export reader | `role-confirmed`, `unknown-consumer` | Независимый test-only consumer принимает exact mutable CSV и complete v1 slice, включая manifest/member/checksum/marker contracts | Нет имени и версии реально развёрнутого reader; repository witness не является его acceptance run |
-| SMB producer/publish target | `role-confirmed`, `environment-specific` | Fetch/publish contracts и endpoint configuration существуют | Нет provisioned fixture в baseline; live `CHANGE_NOTIFY` cases skipped |
+| SMB producer/publish target | `role-confirmed`, `target-qualified` | Fetch/publish contracts и endpoint configuration существуют; `TEST-EXTERNAL-05` выполнил 2/2 live `CHANGE_NOTIFY` cases на зафиксированном Windows-host target | Один target не квалифицирует production Windows Server/NAS families и не закрывает отдельную two-identity H5 breadth (`OPS-8`) |
 | Log/diagnostic collector | `role-confirmed`, `unknown-consumer` | Exact ECS JSON fixture и JSON-pointer query corpus фиксируют paths, scalar types и значения | Нет имени SIEM/Elasticsearch/dashboard и execution evidence его реальных queries |
 | In-reactor module/TCK consumer | `confirmed-internal` | Maven graph и reusable TCK выполняются внутри reactor | Это не внешний published Maven consumer |
 | Future `feeds-collector` | `planned` | Ближайший отдельный service рассматривается как consumer shared platform libraries | Service, coordinates и standalone dependency resolution ещё не существуют |
@@ -223,18 +227,18 @@ consumer, либо принять явное release-level решение об u
 
 DATA-TTL-01 является принятым observable scope change относительно baseline.
 Его lifecycle foundation завершает dataframe schema v6 и service schema v8;
-текущее repository candidate состояние имеет dataframe schema v7 после
-DATA-IMPORT-01 P2. Миграции additive, но включение validity для существующей
+после DATA-IMPORT-01 текущее repository candidate состояние имеет schema
+`v9/v9`. Миграции additive, но включение validity для существующей
 dataframe DB является явной one-way activation, а не automatic upgrade side
 effect.
 
 | Surface | Candidate disposition |
 |---|---|
 | Configuration | Добавлен strict `ioc.lifecycle.*`; classpath/upgrade default `disabled`, fresh packaging template `fixed/12h`; изменившийся template сохраняется как `application.yml.new` |
-| Durable state | Dataframe DB хранит lifecycle/history/receipt/control state, v5 export-slot registry, v6 singleton reconcile checkpoint и v7 versioned canonical match definitions/active aliases; legacy `lifecycle_reconcile_cycle` после v6 заморожен. Service DB хранит observation-oriented ingest ledger; rollback после activation требует matching pre-activation config и обе DB |
+| Durable state | Dataframe DB хранит lifecycle/history/receipt/control state, v5 export-slot registry, v6 singleton reconcile checkpoint, v7 versioned canonical match definitions/active aliases, v8 sparse free-slot ranges и v9 managed-import commit receipt; legacy `lifecycle_reconcile_cycle` после v6 заморожен. Service DB хранит observation-oriented ingest и managed-import delivery coordination through v9; rollback после activation требует matching pre-activation config и обе DB |
 | Mutable CSV | Column order/types сохраняются; expired rows исключаются, `time_first_seen`/`time_last_seen` остаются `NULL`, `valid_until` не публикуется |
 | Immutable export | Expiry не меняет insert-driven revision и не создаёт slice; следующий new-row export читает только active membership. Более новая covered revision создаёт новую delivery occurrence даже при byte-identical CSV; `SKIPPED` требует равенства plan/bytes/revisions |
-| Internal и export identities | Internal row/lifecycle identities не переиспользуются. Внешний `id` реализован как `(profile, artifact)` export slot: survivors сохраняют mapping, vanished rows освобождают slots при eligible export, новые lifecycle получают минимальные holes без compaction; source-owned ID остаётся business field. Automated P7 evidence complete, packaged qualification pending |
+| Internal и export identities | Internal row/lifecycle identities не переиспользуются. Внешний `id` реализован как `(profile, artifact)` export slot: survivors сохраняют mapping, vanished rows освобождают slots при eligible export, новые lifecycle получают минимальные holes без compaction; source-owned ID остаётся business field. Automated P7 evidence и packaged exact-v0.2/fresh qualification завершены |
 | Health/observability | Aggregate lifecycle component не содержит IOC/source identifiers; clock failure может перевести readiness в `DEGRADED`/`DOWN`. Empty deadline refresh read-only, успешные no-op reconcile/projection checks не создают INFO |
 
 Operator migration и rollback опубликованы в
@@ -247,11 +251,12 @@ byte-exact projections, activation архивировал их с `LEGACY_ACTIVA
 consistent activation rollback и полный release rollback восстановили
 соответственно compatible schema `4/8` и исходное v0.2 schema `3/7` состояния.
 Отдельная fresh installation завершилась healthy `ACTIVE` состоянием с
-production `fixed/12h`. Final `R030-REL` admission повторяет этот сценарий, если
-release candidate изменится после зафиксированного commit. Эти результаты не
-проверяли итоговые P7–P9 corrections: обязательны packaged upgrade seeding,
-survivor/no-compaction, smallest-hole, byte-identical redelivery, bounded
-runtime-state и rollback assertions.
+production `fixed/12h`. Последующая финальная DATA qualification на commit
+`b3aee0a3` уже повторила packaged exact-v0.2/fresh paths после P7-P9 и закрыла
+upgrade seeding, survivor/no-compaction, smallest-hole, byte-identical
+redelivery, bounded runtime-state и rollback assertions. `R030-REL` повторяет
+admission только для итогового release candidate, если он изменится после этого
+зафиксированного subject.
 
 ## Missing evidence и handoff
 
@@ -259,7 +264,7 @@ runtime-state и rollback assertions.
 |---|---|---|
 | Именованные automation, artifact и log consumers не зарегистрированы | Repository reference fixtures защищают producer contract, но не доказывают acceptance развёрнутого consumer | `R030-DOC`/`R030-REL`: consumer/owner и его acceptance evidence либо explicit unsupported disposition |
 | Standalone published-library consumer отсутствует | Нельзя заявить external Maven compatibility | `R030-LIB` + `R030-TEST`: admitted coordinates, flattened POM и out-of-reactor consumer test |
-| Live SMB fixture отсутствует | Два `SmbChangeNotifyContractTest` cases недоступны; live endpoint contract не подтверждён | `R030-TEST`/`R030-REL`: provisioned fixture либо explicit external-evidence disposition |
+| Дополнительная SMB family/two-identity hardening breadth не квалифицирована | `TEST-EXTERNAL-05` подтвердил 2/2 `CHANGE_NOTIFY` cases только на одном target; это не доказывает producer/service ACL separation и другие SMB families | `OPS-8`/`R030-REL`: выполнить opt-in H5 contract перед включением managed SMB source или заявлением поддержки конкретного family |
 | Repository reference consumer corpus | Exact golden CSV/manifest/log/CLI corpus добавлен; deployed acceptance остаётся отдельным gap | `TEST-CONSUMERS-09` verified; именованные consumers остаются у `R030-DOC`/`R030-REL` |
 
 ## Gate conclusion
@@ -271,7 +276,7 @@ deployment. Эти surfaces должны участвовать в каждом 
 non-regression review.
 
 P6 stand подтвердил TTL lifecycle compatibility `v0.2.0 → v0.3.0` для
-зафиксированного commit и representative two-DB state. После I-22 он не является
-полным candidate admission: P7 изменил dataframe migration/export mapping, а
-P8/P9 уточнили delivery и runtime state, поэтому требуется повторный stand. Это
-evidence также не закрывает отдельное external-consumer evidence.
+зафиксированного commit и representative two-DB state. Финальная DATA
+qualification на `b3aee0a3` повторила admission после P7-P9 и закрыла принятый
+repository/package scope. Это evidence не закрывает `OPS-8`, именованных
+external consumers или отдельный out-of-reactor Maven publication consumer.

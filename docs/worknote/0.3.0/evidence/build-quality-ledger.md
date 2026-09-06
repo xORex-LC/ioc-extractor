@@ -1051,8 +1051,9 @@ control. Это не разрешает default/category-wide rules или ав�
 ## R030-BUILD goal closure dependencies
 
 - [x] `TEST-LIFECYCLE-01`: Surefire/Failsafe taxonomy и lifecycle separation;
-  183 fast + 65 integration suites, exact disjoint report union and appended
-  JaCoCo execution verified by the 2026-09-02 full reactor run
+  первоначальный 2026-09-02 migration gate доказал lossless separation, а
+  текущий verifier принимает 196 fast + 66 integration suites, exact disjoint
+  report union and appended JaCoCo execution
 - [x] `TEST-COVERAGE-02`: explicit 25-project universe, missing-report
   enforcement, aggregate/per-module no-regression ratchets и project-owned
   fixed aggregate/domain/application floors реализованы и проверены
