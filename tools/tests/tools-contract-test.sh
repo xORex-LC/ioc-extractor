@@ -212,20 +212,21 @@ if env -u NVD_API_KEY DEPENDENCY_CHECK_DATA="${WORKSPACE}/odc-update" \
     "${REPO_ROOT}/tools/ci/dependency-security.sh" update >/dev/null 2>&1; then
   fail "security update accepted a missing NVD_API_KEY"
 fi
-make --no-print-directory -s -C "${REPO_ROOT}" help \
-  | grep -q 'test-one' || fail "Make help lost the targeted-test command"
-make --no-print-directory -s -C "${REPO_ROOT}" help \
-  | grep -q 'context' || fail "Make help lost the cold-start context command"
-make --no-print-directory -s -C "${REPO_ROOT}" help \
-  | grep -q 'release-notes-context' || fail "Make help lost the release-notes context command"
-make --no-print-directory -s -C "${REPO_ROOT}" help \
-  | grep -q 'lifecycle-load' || fail "Make help lost the lifecycle load command"
-make --no-print-directory -s -C "${REPO_ROOT}" help \
-  | grep -q 'dataframe-import-smoke' || fail "Make help lost the managed import smoke command"
-make --no-print-directory -s -C "${REPO_ROOT}" help \
-  | grep -q 'mutation-pilot' || fail "Make help lost the mutation pilot command"
-make --no-print-directory -s -C "${REPO_ROOT}" help \
-  | grep -q 'stability-pilot' || fail "Make help lost the stability pilot command"
+MAKE_HELP_OUTPUT="$(make --no-print-directory -s -C "${REPO_ROOT}" help)"
+grep -q 'test-one' <<< "${MAKE_HELP_OUTPUT}" \
+  || fail "Make help lost the targeted-test command"
+grep -q 'context' <<< "${MAKE_HELP_OUTPUT}" \
+  || fail "Make help lost the cold-start context command"
+grep -q 'release-notes-context' <<< "${MAKE_HELP_OUTPUT}" \
+  || fail "Make help lost the release-notes context command"
+grep -q 'lifecycle-load' <<< "${MAKE_HELP_OUTPUT}" \
+  || fail "Make help lost the lifecycle load command"
+grep -q 'dataframe-import-smoke' <<< "${MAKE_HELP_OUTPUT}" \
+  || fail "Make help lost the managed import smoke command"
+grep -q 'mutation-pilot' <<< "${MAKE_HELP_OUTPUT}" \
+  || fail "Make help lost the mutation pilot command"
+grep -q 'stability-pilot' <<< "${MAKE_HELP_OUTPUT}" \
+  || fail "Make help lost the stability pilot command"
 if grep -REq '^[[:space:]]*(run:[[:space:]]*)?make([[:space:]]|$)' \
     "${REPO_ROOT}/.github/workflows"; then
   fail "GitHub workflow depends on the developer-facing Make facade"
