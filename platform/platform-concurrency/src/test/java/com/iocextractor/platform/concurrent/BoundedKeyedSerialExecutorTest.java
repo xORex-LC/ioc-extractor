@@ -2,8 +2,14 @@ package com.iocextractor.platform.concurrent;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -13,18 +19,37 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Timeout(30)
 class BoundedKeyedSerialExecutorTest {
 
     private ExecutorService workers;
+    private BoundedKeyedSerialExecutor keyedExecutor;
+    private final List<CountDownLatch> releases = new ArrayList<>();
 
     @AfterEach
-    void tearDown() {
-        if (workers != null) {
-            workers.shutdownNow();
+    void tearDown() throws InterruptedException {
+        releases.forEach(CountDownLatch::countDown);
+        try {
+            if (keyedExecutor != null) {
+                keyedExecutor.shutdown();
+                assertThat(keyedExecutor.awaitTermination(Duration.ofSeconds(5))).isTrue();
+            }
+        } finally {
+            if (workers != null) {
+                workers.shutdownNow();
+                assertThat(workers.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+            }
         }
+    }
+
+    private CountDownLatch releaseLatch() {
+        var latch = new CountDownLatch(1);
+        releases.add(latch);
+        return latch;
     }
 
     @Test
@@ -32,7 +57,7 @@ class BoundedKeyedSerialExecutorTest {
         BoundedKeyedSerialExecutor executor = executor(2, 8);
         WorkKey key = WorkKey.of("endpoint-a");
         CountDownLatch firstStarted = new CountDownLatch(1);
-        CountDownLatch releaseFirst = new CountDownLatch(1);
+        CountDownLatch releaseFirst = releaseLatch();
         CountDownLatch finished = new CountDownLatch(2);
         AtomicInteger running = new AtomicInteger();
         AtomicInteger maxRunning = new AtomicInteger();
@@ -68,7 +93,7 @@ class BoundedKeyedSerialExecutorTest {
     void runsDifferentKeysConcurrently() throws InterruptedException {
         BoundedKeyedSerialExecutor executor = executor(2, 8);
         CountDownLatch bothStarted = new CountDownLatch(2);
-        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch release = releaseLatch();
         CountDownLatch finished = new CountDownLatch(2);
 
         executor.submit(WorkKey.of("endpoint-a"), () -> blockingSignal(bothStarted, release, finished));
@@ -84,7 +109,7 @@ class BoundedKeyedSerialExecutorTest {
         RecordingObserver observer = new RecordingObserver();
         BoundedKeyedSerialExecutor executor = executor(2, 1, observer);
         CountDownLatch firstStarted = new CountDownLatch(1);
-        CountDownLatch releaseFirst = new CountDownLatch(1);
+        CountDownLatch releaseFirst = releaseLatch();
         CountDownLatch acceptedOtherKey = new CountDownLatch(1);
         CountDownLatch sameKeyFinished = new CountDownLatch(2);
 
@@ -109,7 +134,7 @@ class BoundedKeyedSerialExecutorTest {
     void shutdownDrainsAcceptedWorkAndRejectsNewWork() throws InterruptedException {
         BoundedKeyedSerialExecutor executor = executor(1, 8);
         CountDownLatch firstStarted = new CountDownLatch(1);
-        CountDownLatch releaseFirst = new CountDownLatch(1);
+        CountDownLatch releaseFirst = releaseLatch();
         CountDownLatch finished = new CountDownLatch(2);
 
         assertThat(executor.submit(WorkKey.of("endpoint-a"), () -> blockingSignal(
@@ -137,7 +162,7 @@ class BoundedKeyedSerialExecutorTest {
         WorkKey key = WorkKey.of("endpoint-a");
         RuntimeException failure = new IllegalStateException("work failed");
         CountDownLatch firstStarted = new CountDownLatch(1);
-        CountDownLatch releaseFirst = new CountDownLatch(1);
+        CountDownLatch releaseFirst = releaseLatch();
         CountDownLatch secondFinished = new CountDownLatch(1);
 
         executor.submit(key, () -> {
@@ -172,7 +197,7 @@ class BoundedKeyedSerialExecutorTest {
         BoundedKeyedSerialExecutor executor = executor(1, 8);
         WorkKey key = WorkKey.of("endpoint-a");
         CountDownLatch firstStarted = new CountDownLatch(1);
-        CountDownLatch releaseFirst = new CountDownLatch(1);
+        CountDownLatch releaseFirst = releaseLatch();
         CountDownLatch finished = new CountDownLatch(2);
 
         executor.submit(key, () -> blockingSignal(firstStarted, releaseFirst, finished));
@@ -195,10 +220,11 @@ class BoundedKeyedSerialExecutorTest {
     void abandonsAndObservesQueuedWorkWhenWorkerRejectsDuringDrain() throws InterruptedException {
         RecordingObserver observer = new RecordingObserver();
         workers = new RejectingAfterFirstExecuteExecutorService();
-        try (BoundedKeyedSerialExecutor executor = new BoundedKeyedSerialExecutor(workers, 8, observer)) {
+        keyedExecutor = new BoundedKeyedSerialExecutor(workers, 8, observer);
+        try (BoundedKeyedSerialExecutor executor = keyedExecutor) {
             WorkKey key = WorkKey.of("endpoint-a");
             CountDownLatch firstStarted = new CountDownLatch(1);
-            CountDownLatch releaseFirst = new CountDownLatch(1);
+            CountDownLatch releaseFirst = releaseLatch();
             CountDownLatch firstFinished = new CountDownLatch(1);
 
             assertThat(executor.submit(key, () -> blockingSignal(
@@ -220,6 +246,120 @@ class BoundedKeyedSerialExecutorTest {
         }
     }
 
+    @Test
+    void oldestAgeIncludesQueueWaitAfterNextTaskStarts() throws InterruptedException {
+        var clock = new MutableClock();
+        workers = Executors.newSingleThreadExecutor();
+        keyedExecutor = new BoundedKeyedSerialExecutor(
+                workers, 1, NoopKeyedSerialExecutorObserver.INSTANCE, clock);
+        var key = WorkKey.of("age");
+        var firstStarted = new CountDownLatch(1);
+        var secondStarted = new CountDownLatch(1);
+        var releaseFirst = releaseLatch();
+        var releaseSecond = releaseLatch();
+        keyedExecutor.submit(key, () -> {
+            firstStarted.countDown();
+            await(releaseFirst);
+        });
+        assertThat(firstStarted.await(5, TimeUnit.SECONDS)).isTrue();
+        clock.now.set(Instant.EPOCH.plusSeconds(1));
+        assertThat(keyedExecutor.submit(key, () -> {
+            secondStarted.countDown();
+            await(releaseSecond);
+        }).accepted()).isTrue();
+
+        clock.now.set(Instant.EPOCH.plusSeconds(61));
+        assertThat(keyedExecutor.snapshot().keys()).singleElement()
+                .extracting(KeyedWorkSnapshot::oldestAge).isEqualTo(Duration.ofSeconds(61));
+        releaseFirst.countDown();
+        assertThat(secondStarted.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(keyedExecutor.snapshot().keys()).singleElement().satisfies(lane -> {
+            assertThat(lane.oldestAge()).isEqualTo(Duration.ofSeconds(60));
+            assertThat(lane.queuedDepth()).isZero();
+            assertThat(lane.running()).isTrue();
+        });
+    }
+
+    @Test
+    void zeroQueueBoundStillAdmitsOneDispatchedTaskPerKey() throws InterruptedException {
+        var executor = executor(1, 0);
+        var firstStarted = new CountDownLatch(1);
+        var release = releaseLatch();
+        var secondFinished = new CountDownLatch(1);
+        var firstKey = WorkKey.of("a");
+        var secondKey = WorkKey.of("b");
+        assertThat(executor.submit(firstKey, () -> {
+            firstStarted.countDown();
+            await(release);
+        }).accepted()).isTrue();
+        assertThat(firstStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+        assertThat(executor.submit(firstKey, () -> { }).accepted()).isFalse();
+        assertThat(executor.submit(secondKey, secondFinished::countDown).accepted()).isTrue();
+        assertThat(executor.submit(secondKey, () -> { }).accepted()).isFalse();
+        assertThat(executor.snapshot().keys()).hasSize(2).allSatisfy(lane -> {
+            assertThat(lane.running()).isTrue();
+            assertThat(lane.queuedDepth()).isZero();
+        });
+        assertThat(secondFinished.getCount()).isOne();
+        release.countDown();
+        assertThat(secondFinished.await(5, TimeUnit.SECONDS)).isTrue();
+    }
+
+    @Test
+    void firstDispatchRejectionRemovesLaneAndReportsOnlyDispatchFailure() {
+        var observer = new RecordingObserver();
+        var executor = executor(1, 1, observer);
+        // Fault injection: an unavailable backing pool must explicitly reject execution.
+        workers.shutdown();
+        var key = WorkKey.of("rejected");
+
+        assertThat(executor.submit(key, () -> {
+            throw new AssertionError("rejected work must not run");
+        }).accepted()).isFalse();
+
+        assertThat(executor.snapshot().keys()).isEmpty();
+        assertThat(observer.rejections).isEmpty();
+        assertThat(observer.dispatchRejections).singleElement().satisfies(rejection -> {
+            assertThat(rejection.key()).isEqualTo(key);
+            assertThat(rejection.abandonedWork()).isOne();
+        });
+    }
+
+    @Test
+    void observerRuntimeFailuresDoNotPreventProgressOrRejection() throws InterruptedException {
+        var observer = new ThrowingObserver();
+        var executor = executor(1, 1, observer);
+        var key = WorkKey.of("observer");
+        var firstStarted = new CountDownLatch(1);
+        var release = releaseLatch();
+        var secondFinished = new CountDownLatch(1);
+        executor.submit(key, () -> {
+            firstStarted.countDown();
+            await(release);
+            throw new IllegalStateException("work failed");
+        });
+        assertThat(firstStarted.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(executor.submit(key, secondFinished::countDown).accepted()).isTrue();
+        assertThat(executor.submit(key, () -> { }).accepted()).isFalse();
+        release.countDown();
+        assertThat(secondFinished.await(5, TimeUnit.SECONDS)).isTrue();
+        executor.shutdown();
+        assertThat(executor.awaitTermination(Duration.ofSeconds(5))).isTrue();
+        assertThat(observer.calls).containsExactly("rejected", "failed", "completed");
+    }
+
+    @Test
+    void dispatchObserverRuntimeFailureDoesNotPreventRejectionOrShutdown() {
+        var observer = new ThrowingObserver();
+        var executor = executor(1, 1, observer);
+        workers.shutdown();
+
+        assertThat(executor.submit(WorkKey.of("rejected"), () -> { }).accepted()).isFalse();
+        assertThat(executor.snapshot().keys()).isEmpty();
+        assertThat(observer.calls).containsExactly("dispatchRejected");
+    }
+
     private BoundedKeyedSerialExecutor executor(int workerCount, int maxQueuedPerKey) {
         return executor(workerCount, maxQueuedPerKey, NoopKeyedSerialExecutorObserver.INSTANCE);
     }
@@ -228,7 +368,8 @@ class BoundedKeyedSerialExecutorTest {
                                                int maxQueuedPerKey,
                                                KeyedSerialExecutorObserver observer) {
         workers = Executors.newFixedThreadPool(workerCount);
-        return new BoundedKeyedSerialExecutor(workers, maxQueuedPerKey, observer);
+        keyedExecutor = new BoundedKeyedSerialExecutor(workers, maxQueuedPerKey, observer);
+        return keyedExecutor;
     }
 
     private void trackedBlockingWork(AtomicInteger running,
@@ -275,6 +416,54 @@ class BoundedKeyedSerialExecutorTest {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new AssertionError(interrupted);
+        }
+    }
+
+    private static final class MutableClock extends Clock {
+        private final AtomicReference<Instant> now = new AtomicReference<>(Instant.EPOCH);
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return Clock.fixed(instant(), zone);
+        }
+
+        @Override
+        public Instant instant() {
+            return now.get();
+        }
+    }
+
+    private static final class ThrowingObserver implements KeyedSerialExecutorObserver {
+        private final List<String> calls = new CopyOnWriteArrayList<>();
+
+        @Override
+        public void completed(WorkKey key) {
+            fail("completed");
+        }
+
+        @Override
+        public void rejected(WorkAdmission admission) {
+            fail("rejected");
+        }
+
+        @Override
+        public void failed(WorkKey key, RuntimeException failure) {
+            fail("failed");
+        }
+
+        @Override
+        public void dispatchRejected(WorkKey key, int abandonedWork, RejectedExecutionException failure) {
+            fail("dispatchRejected");
+        }
+
+        private void fail(String callback) {
+            calls.add(callback);
+            throw new IllegalStateException("observer failed");
         }
     }
 

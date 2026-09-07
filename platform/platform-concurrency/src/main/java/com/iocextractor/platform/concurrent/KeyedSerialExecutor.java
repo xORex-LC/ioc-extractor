@@ -3,7 +3,9 @@ package com.iocextractor.platform.concurrent;
 import java.time.Duration;
 
 /**
- * Executes accepted work with per-key single-flight semantics.
+ * Executes accepted work serially in admission order for each key within one executor instance.
+ * Concurrent submissions are ordered by admission, not by caller start time. Repeated
+ * submissions are separate tasks: equal keys do not deduplicate or coalesce work.
  *
  * <p>Implementations are in-memory coordination primitives. They do not provide durable delivery,
  * acknowledgements, redelivery or dead-letter queues.</p>
@@ -15,7 +17,7 @@ import java.time.Duration;
  */
 public interface KeyedSerialExecutor extends AutoCloseable {
 
-    /** Attempts to submit one unit of work for the given key. */
+    /** Attempts admission; acceptance is not a promise of completion or durable retention. */
     WorkAdmission submit(WorkKey key, Runnable work);
 
     /** Returns a read-only point-in-time snapshot for health/diagnostics. */
@@ -26,9 +28,10 @@ public interface KeyedSerialExecutor extends AutoCloseable {
     /** Stops accepting new work and lets already accepted work drain. */
     void shutdown();
 
-    /** Waits for drained work and worker shutdown. */
+    /** Waits for drained work and worker shutdown; does not initiate shutdown or cancel work on timeout. */
     boolean awaitTermination(Duration timeout) throws InterruptedException;
 
+    /** Initiates orderly shutdown without waiting; use {@link #awaitTermination(Duration)} to join. */
     @Override
     void close();
 }

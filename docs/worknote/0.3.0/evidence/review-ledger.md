@@ -144,3 +144,11 @@ Categories include:
 | CPD-retained clusters | Accepted | Diagnostic enums, legacy migration parsing and independent maintenance schedulers have different owners/reasons to change; token equality alone does not justify abstraction | `R030-QUAL` / `R030-RETIRE` | Revisit on the finding-specific conditions above |
 | CPD debt clusters | Debt intake | Three original candidates remain deferred (`QUAL-CPD-02`, `03`, `08`); `01`, `04`, `06`, `07` are fixed and retained clusters remain intentional | `R030-QUAL` / related goals | Schedule only with the finding-specific legal boundary and characterization |
 | PMD complexity hotspots | Debt intake | The seven P2 hotspots remain historical intake; post-import requalification added characterized import/lifecycle seams and explicitly accepted auditable registry/guard/classifier/composition shapes. Metrics authorize review, not mechanical extraction | `R030-QUAL` / `R030-ARCH` / `R030-TEST` | Schedule only the finding-specific debt entries with characterization; accepted shapes reopen on their stated trigger |
+
+## LIB-1 — Concurrency pilot
+
+`LIB-1-HARDEN-01`: [разбор и dispositions](../lib-1-concurrency-worknote.md).
+Находки `LIB-1-01..07` охватывают возраст очереди, reentrant telemetry,
+FIFO/exclusion, ограничения worker pool, ёмкость, lifecycle и bounded tests.
+Исправления текущего модуля не закрывают автоматически полный module review
+или admission внешней библиотеки.

@@ -280,3 +280,12 @@ P6 stand подтвердил TTL lifecycle compatibility `v0.2.0 → v0.3.0` д
 qualification на `b3aee0a3` повторила admission после P7-P9 и закрыла принятый
 repository/package scope. Это evidence не закрывает `OPS-8`, именованных
 external consumers или отдельный out-of-reactor Maven publication consumer.
+
+## LIB-1 — Уточнение concurrency telemetry
+
+`LIB-1-HARDEN-01` сохраняет Java signatures и health schema. `oldestAge`
+теперь включает время ожидания после перехода задачи к выполнению; вложенный
+синхронный вызов больше не превращает активного внешнего caller в waiting.
+FIFO относится только к async admission; synchronous guard гарантирует
+исключение без порядка ожидания. Внешняя публикация ещё не выполнена.
+Подробности и границы: [execution record](../lib-1-concurrency-worknote.md).

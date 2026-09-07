@@ -1,42 +1,96 @@
 # platform/platform-concurrency
 
-## Назначение
+## Purpose and boundary
 
-Framework-free примитивы конкуренции для платформенной координации: keyed
-single-flight, admission и lifecycle/shutdown контракты.
+JDK-only, in-process keyed execution. The module has no runtime dependencies on
+Spring, events, IOC types, persistence or transport. Its Maven coordinates in
+this reactor are `com.iocextractor:ioc-platform-concurrency:0.3.0-SNAPSHOT`;
+external publication is a separate release step.
 
-**Правило слоя:** модуль не знает о событиях, IOC-предметке, Spring lifecycle,
-transport adapters или durable delivery. Это общий concurrency toolkit, а не
-часть event model.
+## Tools and contracts
 
-`KeyedSerialExecutor` гарантирует no-overlap/FIFO только для принятой in-memory
-работы. Он не является durable queue: вызывающий код обязан обрабатывать ошибки
-самой работы, переводить `REJECTED` admission в reconcile/backstop путь и
-использовать `KeyedSerialExecutorObserver` как telemetry hook для деградаций
-(`rejected`, `failed`, `dispatchRejected`). High/low-water hysteresis остаётся
-расширением поверх этого seam, когда появится реальная нагрузочная политика.
-
-`SynchronousKeyedExecutionGuard` решает другой случай: вызов остаётся в потоке
-caller, сохраняет обычный return/throw contract и ждёт только ранее допущенную
-работу с тем же ключом. Разные ключи не разделяют глобальную блокировку. Его
-aggregate snapshot не раскрывает значения ключей и пригоден для health/telemetry.
-Счётчик пользователей ключа меняется только внутри `ConcurrentHashMap.compute`
-для этого ключа; `volatile` обеспечивает видимость snapshot, а не атомарность
-compound mutation. Если внутренний release-инвариант нарушается после ошибки
-пользовательской работы, release failure добавляется как suppressed и не
-заменяет primary failure.
-
-## Структура
-
-| Подпапка / файл | Назначение |
+| Tool | Consumer contract |
 |---|---|
-| `pom.xml` | Maven module descriptor |
-| `src/main/java/com/iocextractor/platform/concurrent/` | Async `KeyedSerialExecutor`, synchronous keyed guard, snapshots, observer hook and admission value objects |
-| `src/test/java/com/iocextractor/platform/concurrent/` | Concurrency tests |
+| `KeyedSerialExecutor` / `BoundedKeyedSerialExecutor` | Asynchronous FIFO execution per key, per-key waiting-queue bound, explicit admission, orderly shutdown |
+| `KeyedExecutionGuard` / `SynchronousKeyedExecutionGuard` | Mutual exclusion per key in the calling thread, preserving return values and thrown failures |
+| `WorkKey` | Exact, nonblank string identity; no trimming or normalization |
+| `WorkAdmission` / `WorkAdmissionStatus` | Acceptance or rejection of one submission, with queue depth at admission |
+| `KeyedSerialExecutorObserver` / `NoopKeyedSerialExecutorObserver` | Optional completion, runtime-failure, admission-rejection and dispatch-rejection telemetry |
+| `KeyedSerialExecutorSnapshot` / `KeyedWorkSnapshot` | Immutable per-lane telemetry |
+| `KeyedExecutionGuardSnapshot` | Approximate aggregate guard telemetry without key values |
 
-## Зависимости
+### Asynchronous execution
 
-**Зависит от:** JDK.
+Equal keys serialize only within the same executor instance. FIFO follows
+admission order, which need not match concurrent callers' start times. Every
+accepted submission is a separate task; keys do not deduplicate or coalesce it.
+Different keys can run concurrently when worker capacity is available.
 
-**Не импортируется:** Spring, broker/queue libraries, `core`, `adapters`,
-`bootstrap`.
+`maxQueuedPerKey` excludes the dispatched task. Zero permits one outstanding
+task per key. There is no global key-count or worker-queue bound. Current sync
+and managed-import consumers use finite configured endpoint/source catalogs;
+other consumers must bound their key space or own global admission control.
+
+The supplied `ExecutorService` transfers exclusive lifecycle ownership to the
+keyed executor. Use a dedicated asynchronous pool, such as
+`Executors.newFixedThreadPool(workerCount)` with its default abort policy.
+`execute` must dispatch or throw `RejectedExecutionException`. Silent discard,
+discard-oldest, caller-runs and direct execution are unsupported. Generic
+executor implementations cannot be validated for this contract automatically.
+Do not reconfigure, stop or share the supplied pool with unrelated work.
+
+Acceptance is not a completion guarantee. A dispatch rejection abandons the
+lane's outstanding in-memory work and reports its count through
+`dispatchRejected`. An initial dispatch rejection also returns `REJECTED`;
+`rejected` is reserved for admission/shutdown rejection. Runtime failures in
+work are reported through `failed`, and the next task proceeds. Errors are not
+reported by that callback; lane progression still runs in `finally`.
+
+Observers execute synchronously outside the lane-state lock and must return
+promptly. Their runtime exceptions are ignored; errors are not contained.
+The default observer is silent. Retry, durable idempotency, reconcile,
+cancellation, task results and context propagation belong to consumers.
+
+`shutdown()` and `close()` stop admission and initiate draining without waiting.
+Once lanes drain, the executor shuts down its worker service. Call
+`awaitTermination(timeout)` separately and handle `false`; it neither starts
+shutdown nor cancels tasks. Never wait for termination from an owned worker.
+Unbounded or stuck work can prevent termination.
+
+Snapshot `running` means the lane has a dispatched task, including one waiting
+in the worker queue; it is not a count of threads executing user code.
+`queuedDepth` excludes that task. `oldestAge` includes the outstanding head
+task's queue wait and uses the supplied wall clock; negative ages are clamped
+to zero. Snapshots are telemetry, not admission or completion predicates.
+
+### Synchronous exclusion
+
+The guard owns no threads. It uses a non-fair, non-interruptible per-key lock:
+there is no FIFO, timeout or cancellation promise. Same-thread, same-key nesting
+is supported. Consumers nesting different keys must use a consistent ordering
+to avoid deadlock. Different keys do not share a work-execution lock, and idle
+key state is removed after all callers leave.
+
+Snapshots count a nested same-key execution once and exclude its nested frames
+from waiting callers. Counts are approximate during concurrent entry/exit.
+The user count changes inside same-key `ConcurrentHashMap.compute`; `volatile`
+provides snapshot visibility, not mutation atomicity. If cleanup fails after
+work throws, cleanup failure is suppressed onto the original failure.
+
+## Structure and consumers
+
+| Path | Responsibility |
+|---|---|
+| `pom.xml` | Plain Maven JAR; inherited test dependencies only |
+| `src/main/java/com/iocextractor/platform/concurrent/` | Execution interfaces, implementations and value types |
+| `src/test/java/com/iocextractor/platform/concurrent/` | Observable concurrency contracts with bounded coordination and worker cleanup |
+
+`ioc-application` uses the synchronous guard for ingestion and the async
+interface for managed-import coordination. `adapter-ingest` guards file-ledger
+transitions. `bootstrap/ioc-app` composes dedicated worker pools for remote
+sync and managed import, and bridges observations into service health.
+
+See [event coordination](../../docs/dev/event-coordination.md) for the
+consumer-owned durable recovery model and [module map](../../docs/MODULARIZATION.md)
+for dependency direction. No broker, distributed locking or service business
+policy belongs in this module.

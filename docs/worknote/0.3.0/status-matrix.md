@@ -20,7 +20,7 @@ language: "ru"
 | `R030-BUILD` | `in-progress` | [build-quality ledger](evidence/build-quality-ledger.md) | Lifecycle separation, CI retention, coverage gates and Codecov upload/history are verified; absent external Codecov contexts have a non-blocking disposition, while required build-status policy and its final closure run still remain |
 | `R030-TEST` global controls | `in-progress` | [test-quality ledger](evidence/test-quality-ledger.md) | `TEST-LIFECYCLE-01` through `TEST-CODECOV-07` and `TEST-CONSUMERS-09` are verified; only the out-of-reactor `TEST-PUBLICATION-08` remains, waiting on `R030-LIB` admission |
 | `R030-SEC` | `planned` | — | Security gap analysis |
-| `R030-LIB` | `planned` | [shared-code inventory](evidence/shared-code-inventory.md) | `LIB-1` concurrency-library admission record |
+| `R030-LIB` | `in-progress` | [shared-code inventory](evidence/shared-code-inventory.md), [LIB-1 hardening](lib-1-concurrency-worknote.md) | Bounded existing-module hardening; independent-consumer and publication admission remain open |
 | `R030-DOC` | `planned` | — | Translation inventory |
 | `R030-REL` | `planned` | — | All prerequisite goals |
 
@@ -34,7 +34,7 @@ language: "ru"
 | `platform/platform-diagnostics` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `platform/platform-etl` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `platform/platform-events` | `planned` | `planned` | `planned` | `planned` | `planned` |
-| `platform/platform-concurrency` | `planned` | `planned` | `planned` | `planned` | `planned` |
+| `platform/platform-concurrency` | `in-progress` | `planned` | `in-progress` | `in-progress` | `in-progress` |
 | `platform/platform-observability` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `platform/platform-diagnostics-logging` | `planned` | `planned` | `planned` | `planned` | `planned` |
 | `core/ioc-domain` | `planned` | `planned` | `planned` | `planned` | `planned` |
@@ -64,6 +64,11 @@ language: "ru"
 | `BUILD-SPOTBUGS-05` | `R030-BUILD` | Same 19 production JAR modules; current baseline has 116 exact accepted identities (85 false positives + 31 policy noise), 112 generated narrow selectors, test bytecode still excluded | One raw analysis per module; root validates the structured baseline and concrete review-trigger catalog, then materializes the filter; late gate blocks new/stale/moved/metadata drift and analyzer/report/aggregate failures. Proposal-only tooling emits a non-accepting delta under `target/` and cannot populate acceptance metadata or edit the tracked baseline. Post-import requalification reviewed every current category and location; cleanup-precedence fixes were pinned by tests and the aggregate remains 0 visible findings with no analyzer errors/missing classes | AI agent | `verified` | [blocking-ratchet worknote](build-spotbugs-05-worknote.md) |
 | `BUILD-PMD-06` | `R030-BUILD` | Same fail-closed 25-project disposition and 19 production `src/main/java` roots as CPD; root, TCK, tests, generated/vendor sources and build-only POMs excluded | P3 adopted a reduced 22-rule policy with calibrated `CognitiveComplexity=16` and `ExcessiveParameterList.minimum=13`; a separate executable 3-rule watchlist preserves ownership/size signal without regular-CI adoption. Post-import requalification removed bounded defects; 21 policy findings in 16 files and 29 watchlist findings in 19 files remain visible. Follow-up enforcement gives 17 omitted-from-snapshot rules zero tolerance and requires exact counts for five reviewed advisory rules; no finding suppression/identity baseline. Harness: 7 happy / 56 negative scenarios | AI agent | `verified` (`P0/P1/P2/P3` completed; requalified 2026-08-31; ratcheted 2026-09-01) | [PMD adoption worknote](build-pmd-06-worknote.md) |
 | `ING-10 / SB04-116` | `R030-QUAL` | Single-daemon ingestion startup, recovery/poller ordering, per-source-key execution and file/JDBC ledger transitions | Five checkpoints implemented the startup barrier, shared keyed guard, fresh-state recovery, monotonic CAS transitions, lifecycle health and exact-1 configuration guard; restart/watched-inbox and observability regressions passed, and `SB04-116` is absent from current reports | AI agent | `verified` | [ING-10 execution worknote](ing-10-ingestion-lifecycle-hardening.md) |
+
+`LIB-1-HARDEN-01`: [ограниченный hardening concurrency](lib-1-concurrency-worknote.md)
+проверен по подтверждённым текущим consumers (23 module tests, полный verify,
+PMD policy/watchlist и docs). Это не полное закрытие
+module cells и не publication admission.
 
 ## 4. Deferred, blocked и queue decisions
 

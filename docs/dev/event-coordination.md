@@ -55,6 +55,21 @@ work -> durable idempotency ledger / authoritative state
   source-scoped detection hint в тот же bounded admission path; они не являются
   delivery identity, ordering или ownership evidence.
 
+## Контракт keyed execution
+
+Точный API описан в [platform-concurrency](../../platform/platform-concurrency/README.md).
+Async executor сериализует принятые задачи одного ключа в порядке admission,
+но не объединяет повторные hints. Ограничение очереди действует на ключ,
+без глобального ограничения числа ключей. Bootstrap передаёт выделенный pool
+с явным отказом через exception и передаёт executor-у владение его shutdown.
+`close()` запускает drain без ожидания; bounded join принадлежит lifecycle owner.
+
+Health `running` означает занятую lane, включая ожидание worker thread;
+`oldestAge` включает ожидание текущей задачи в очереди. Синхронный guard,
+используемый ingestion и file ledger, работает в caller thread без гарантии
+FIFO; вложенные вызовы одного ключа учитываются как одно выполнение.
+Snapshot служит наблюдению, а не основанием для admission или durable recovery.
+
 ## Реализованные потоки
 
 ### Remote detection → fetch

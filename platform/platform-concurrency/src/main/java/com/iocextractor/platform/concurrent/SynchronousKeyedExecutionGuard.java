@@ -8,6 +8,8 @@ import java.util.function.Supplier;
 /**
  * In-process keyed exclusion that preserves synchronous return and exception
  * semantics while allowing different keys to execute concurrently.
+ * Reentrant calls on the same thread are supported; lock acquisition is non-fair
+ * and non-interruptible. Callers nesting different keys must use a consistent key order.
  */
 public final class SynchronousKeyedExecutionGuard implements KeyedExecutionGuard {
 
@@ -26,13 +28,13 @@ public final class SynchronousKeyedExecutionGuard implements KeyedExecutionGuard
         state.lock.lock();
         Throwable primaryFailure = null;
         try {
-            state.executing = true;
+            state.executionDepth = state.lock.getHoldCount();
             return work.get();
         } catch (RuntimeException | Error failure) {
             primaryFailure = failure;
             throw failure;
         } finally {
-            state.executing = false;
+            state.executionDepth = state.lock.getHoldCount() - 1;
             release(key, state, primaryFailure);
         }
     }
@@ -60,11 +62,11 @@ public final class SynchronousKeyedExecutionGuard implements KeyedExecutionGuard
         int executing = 0;
         int waiting = 0;
         for (KeyState state : states.values()) {
-            boolean running = state.executing;
-            if (running) {
+            int depth = state.executionDepth;
+            if (depth > 0) {
                 executing++;
             }
-            waiting += Math.max(0, state.users - (running ? 1 : 0));
+            waiting += Math.max(0, state.users - depth);
         }
         return new KeyedExecutionGuardSnapshot(states.size(), executing, waiting);
     }
@@ -73,6 +75,7 @@ public final class SynchronousKeyedExecutionGuard implements KeyedExecutionGuard
         private final ReentrantLock lock = new ReentrantLock();
         // Mutated only inside same-key states.compute; volatile serves snapshot visibility.
         private volatile int users;
-        private volatile boolean executing;
+        // Written while holding the per-key lock; nested calls are not waiting callers.
+        private volatile int executionDepth;
     }
 }

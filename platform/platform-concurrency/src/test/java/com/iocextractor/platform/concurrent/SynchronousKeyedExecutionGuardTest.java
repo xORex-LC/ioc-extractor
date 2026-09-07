@@ -1,6 +1,7 @@
 package com.iocextractor.platform.concurrent;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.lang.reflect.Field;
 import java.time.Duration;
@@ -12,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@Timeout(30)
 class SynchronousKeyedExecutionGuardTest {
 
     @Test
@@ -21,7 +23,8 @@ class SynchronousKeyedExecutionGuardTest {
         var releaseFirst = new CountDownLatch(1);
         var secondEntered = new CountDownLatch(1);
 
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        var executor = Executors.newVirtualThreadPerTaskExecutor();
+        try {
             var first = executor.submit(() -> guard.execute(WorkKey.of("same"), () -> {
                 firstEntered.countDown();
                 await(releaseFirst);
@@ -44,6 +47,8 @@ class SynchronousKeyedExecutionGuardTest {
             assertThat(second.get(5, TimeUnit.SECONDS)).isEqualTo("second");
         } finally {
             releaseFirst.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
         }
 
         assertThat(guard.snapshot()).isEqualTo(KeyedExecutionGuardSnapshot.empty());
@@ -55,7 +60,8 @@ class SynchronousKeyedExecutionGuardTest {
         var bothEntered = new CountDownLatch(2);
         var release = new CountDownLatch(1);
 
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        var executor = Executors.newVirtualThreadPerTaskExecutor();
+        try {
             var first = executor.submit(() -> guard.execute(WorkKey.of("first"), () -> {
                 bothEntered.countDown();
                 await(release);
@@ -76,7 +82,45 @@ class SynchronousKeyedExecutionGuardTest {
             second.get(5, TimeUnit.SECONDS);
         } finally {
             release.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
         }
+    }
+
+    @Test
+    void nestedSameKeyCallsKeepOuterExecutionVisible() {
+        var guard = new SynchronousKeyedExecutionGuard();
+        var key = WorkKey.of("nested");
+        var occupied = new KeyedExecutionGuardSnapshot(1, 1, 0);
+
+        assertThat(guard.execute(key, () -> {
+            assertThat(guard.execute(key, () -> {
+                assertThat(guard.snapshot()).isEqualTo(occupied);
+                return "inner";
+            })).isEqualTo("inner");
+            assertThat(guard.snapshot()).isEqualTo(occupied);
+            return "outer";
+        })).isEqualTo("outer");
+
+        assertThat(guard.snapshot()).isEqualTo(KeyedExecutionGuardSnapshot.empty());
+    }
+
+    @Test
+    void nestedFailureLeavesOuterExecutionVisibleAndAllowsReuse() {
+        var guard = new SynchronousKeyedExecutionGuard();
+        var key = WorkKey.of("nested-failure");
+        var failure = new IllegalStateException("inner failed");
+
+        guard.execute(key, () -> {
+            assertThatThrownBy(() -> guard.execute(key, () -> {
+                throw failure;
+            })).isSameAs(failure);
+            assertThat(guard.snapshot()).isEqualTo(new KeyedExecutionGuardSnapshot(1, 1, 0));
+            return null;
+        });
+
+        assertThat(guard.snapshot()).isEqualTo(KeyedExecutionGuardSnapshot.empty());
+        assertThat(guard.execute(key, () -> "reused")).isEqualTo("reused");
     }
 
     @Test

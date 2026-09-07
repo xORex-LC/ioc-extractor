@@ -1,10 +1,11 @@
 package com.iocextractor.platform.concurrent;
 
 /**
- * Aggregate runtime state of a synchronous keyed execution guard.
+ * Approximate aggregate runtime state of a synchronous keyed execution guard.
+ * Counts can reflect different instants during concurrent entry or exit.
  *
  * @param activeKeys keys with executing or waiting callers
- * @param executing executions currently inside their guarded work
+ * @param executing keys currently executing guarded work, counting nested same-key calls once
  * @param waiting callers waiting to enter guarded work
  */
 public record KeyedExecutionGuardSnapshot(int activeKeys, int executing, int waiting) {

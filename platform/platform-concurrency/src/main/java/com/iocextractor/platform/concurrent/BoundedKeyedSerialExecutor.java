@@ -19,6 +19,17 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>The queue is in-memory and intentionally non-durable. Callers must use an idempotent
  * backstop/reconcile path for correctness.</p>
+ *
+ * <p>The supplied worker service is exclusively owned by this executor. It must dispatch
+ * asynchronously or throw {@link RejectedExecutionException}, never silently discard work
+ * or execute it in the submitting thread. A dedicated fixed thread pool with the default
+ * abort policy meets this contract. Caller-runs and discard policies are unsupported;
+ * arbitrary worker implementations cannot be checked for these properties at construction.
+ * Do not shut down, reconfigure or submit unrelated work to the worker service.</p>
+ *
+ * <p>The bound limits waiting work per key, excluding the dispatched task. Zero allows
+ * one outstanding task per key. It does not limit the number of keys or the worker queue.
+ * Callers must bound their key space or provide separate global admission control.</p>
  */
 public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
 
@@ -174,7 +185,7 @@ public final class BoundedKeyedSerialExecutor implements KeyedSerialExecutor {
                 shutdownWorkersIfIdle();
                 return;
             }
-            state.runningSince = clock.instant();
+            state.runningSince = next.submittedAt();
         }
         if (!dispatch(key, next.work())) {
             shutdownIfIdle();

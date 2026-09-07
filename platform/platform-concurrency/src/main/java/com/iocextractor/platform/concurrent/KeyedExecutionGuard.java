@@ -9,10 +9,10 @@ import java.util.function.Supplier;
  */
 public interface KeyedExecutionGuard {
 
-    /** Executes work after all earlier work for the same key has exited. */
+    /** Executes work with mutual exclusion between threads using the same key and guard instance. */
     <T> T execute(WorkKey key, Supplier<T> work);
 
-    /** Returns an aggregate point-in-time view without exposing key values. */
+    /** Returns an approximate aggregate view without exposing key values; not a coordination predicate. */
     default KeyedExecutionGuardSnapshot snapshot() {
         return KeyedExecutionGuardSnapshot.empty();
     }

@@ -5,7 +5,7 @@ goal_id: "R030-LIB"
 status: "Baseline intake ready"
 document_type: "Evidence ledger"
 source_of_truth: false
-language: "ru"
+language: "en"
 ---
 
 # R030-LIB — Shared-code inventory
@@ -26,7 +26,7 @@ not a current publication test.
 | `platform/platform-diagnostics` | Mixed service-shared / candidate platform | Diagnostic/result/policy/sink mechanics plus category catalogs | ETL, application, diagnostics bridge, four adapters, bootstrap | Medium/high: IOC capability code catalogs and `platform-errors` closure | Genericity split/admission required |
 | `platform/platform-etl` | Candidate cross-service platform | Framework-free Pipes-and-Filters execution model | application, observability | Medium: diagnostics/error result semantics and only one business consumer | Defer until second consumer and closure review |
 | `platform/platform-events` | Candidate cross-service platform, local only | In-process publish-only control-event mechanics | application, bootstrap | Low in API shape; current use remains service-local and explicitly non-wire | Defer publication; preserve anti-broker boundary |
-| `platform/platform-concurrency` | Cross-service platform candidate | Bounded keyed serial/single-flight execution | bootstrap | Low: no project-owned dependency closure and no IOC types | Priority admission candidate `LIB-1` |
+| `platform/platform-concurrency` | Cross-service platform candidate | Keyed asynchronous serialization and synchronous exclusion | application, adapter-ingest, bootstrap | Low: no project-owned dependency closure and no IOC types | Priority admission candidate `LIB-1` |
 | `platform/platform-observability` | Mixed service-shared / candidate platform | Structured logging, MDC, value typing, sanitization, pipeline observer | diagnostics bridge, five adapters, bootstrap | Medium/high: IOC actions/fields and ETL observer dependency | Genericity split/admission required |
 | `platform/platform-diagnostics-logging` | Service-shared bridge | Diagnostics-to-observability rendering/redaction/resilience | bootstrap | Inherits both diagnostics catalogs and observability vocabulary | Publish only after both API contracts are admitted |
 
@@ -34,16 +34,18 @@ not a current publication test.
 
 | ID | Candidate | Category | Owner | Consumers | Dependency closure | State |
 |---|---|---|---|---|---|---|
-| `LIB-1` | `platform-concurrency` | Cross-service platform | Platform coordination | Current bootstrap + planned `feeds-collector` | No project-owned dependencies | `screening-ready` |
+| `LIB-1` | `platform-concurrency` | Cross-service platform | Platform coordination | Current application/adapter-ingest/bootstrap; planned Java + Spring Boot `feeds-collector`, execution policy undecided | No runtime dependencies beyond JDK | `hardening-verified`; publication admission open |
 | `LIB-2` | Generic diagnostics model/result/sink subset | Cross-service platform | Diagnostics | Current reactor consumers + planned `feeds-collector` | Must remove service exception/catalog coupling or explicitly version it | `genericity-review` |
 | `LIB-3` | Generic observability/MDC/value typing subset | Cross-service platform | Observability | Current adapters/bootstrap + planned service | ETL observer and IOC action/field vocabulary must be excluded or separated | `genericity-review` |
 | `LIB-4` | `platform-etl` | Cross-service platform | ETL | Current `ioc-application`; nearest consumer planned only | diagnostics + errors + their accepted publication closure | `deferred-second-consumer` |
 | `LIB-5` | `platform-events` local control API | Cross-service platform, non-wire | Event coordination | Current application/bootstrap; nearest consumer planned only | None | `deferred-second-consumer` |
 
-`LIB-1` is a screening priority, not an admission decision. Before
-implementation it still needs API minimization, ownership/versioning,
-repository/credentials ADR, consumer-resolvable POM, sources/Javadoc and a
-standalone consumer contract.
+`LIB-1-HARDEN-01` implements bounded hardening of the existing module. Its
+[execution record](../lib-1-concurrency-worknote.md) documents real consumers,
+alternatives, proposed API and compatibility boundaries. It does not complete
+publication admission: independent-consumer semantics, repository/credentials
+ADR, consumer-resolvable POM, sources/Javadoc and standalone resolution remain
+open.
 
 ## Admission record template
 

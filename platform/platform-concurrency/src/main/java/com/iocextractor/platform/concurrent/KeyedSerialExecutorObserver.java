@@ -7,6 +7,10 @@ import java.util.concurrent.RejectedExecutionException;
  *
  * <p>The observer is telemetry only. It must not implement retry, durable redelivery or
  * business recovery; callers still own idempotency and reconcile/backstop routing.</p>
+ *
+ * <p>Callbacks run synchronously on submitting or worker threads, outside the lane-state
+ * lock, and must return promptly. Runtime exceptions from callbacks are ignored; errors
+ * are not contained. Work failures reported here are runtime exceptions, not errors.</p>
  */
 public interface KeyedSerialExecutorObserver {
 

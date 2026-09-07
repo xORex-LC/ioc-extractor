@@ -128,7 +128,7 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 | `platform-diagnostics` | Diagnostics (модель, каталог, порты, sinks/renderer); может зависеть на `platform-errors` для `DiagnosticException` |
 | `platform-etl` | Generic ETL kernel: `Envelope`, `Stage`, `Pipeline`, `PipelineRunner`, `PipelineObserver` |
 | `platform-events` | Framework-free publish-only control-event contracts и observers; без broker/durable delivery mechanics |
-| `platform-concurrency` | Keyed single-flight execution, bounded admission и health snapshots |
+| `platform-concurrency` | Async FIFO по ключу с bounded admission; synchronous exclusion без FIFO; [контракты и health snapshots](../platform/platform-concurrency/README.md) |
 | `platform-observability` | Observability/logging: MdcScope, LogEvent, logging taxonomy, `LoggingPipelineObserver` |
 | `platform-diagnostics-logging` | Bridge `DiagnosticSink` → LogEvent/SLF4J (`LoggingDiagnosticSink`); зависит на `platform-diagnostics` + `platform-observability` |
 | `platform-errors` | базовые ошибки/common-типы и трансляция; нижний слой для `DiagnosticException` |
