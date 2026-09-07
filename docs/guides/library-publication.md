@@ -48,12 +48,19 @@ changes explicitly. Publish the public key to a supported keyserver and verify
 that Central can retrieve it. Never put private keys or token values in Git,
 workflow inputs, command-line properties or evidence attachments.
 
-Use default-branch protection and configure environment reviewers/release access
-as appropriate for the repository. GitHub requires the workflow file to exist
-on the default branch before it can be dispatched manually. Select the matching
-`release-X.Y.Z` branch when running it; `main` and development branches fail
-admission. The exact protection rules and credential validity still need live
-qualification. GitHub
+Before the first live run, configure `LIBRARY PUBLISHING` with required reviewer
+`xORex-LC` and **Selected branches and tags** matching `release-*`. Keep
+prevent-self-review disabled while there is only one maintainer; otherwise the
+person starting the run cannot approve it. Revisit that setting when a second
+trusted maintainer joins. Do not select **Protected branches only** while the
+repository has no branch-protection rules: GitHub treats that state as allowing
+all branches. Environment secrets remain unavailable until its review passes.
+
+Use default-branch protection as the project governance permits. GitHub requires
+the workflow file to exist on the default branch before it can be dispatched
+manually. Select the matching `release-X.Y.Z` branch when running it; `main` and
+development branches also fail workflow admission. Credential validity and the
+first protected run still need live qualification. GitHub
 publishing uses the repository's `GITHUB_TOKEN` with `packages: write`; a separate
 publishing PAT is unnecessary. Existing `SECURITY CHECKS` remains independent.
 

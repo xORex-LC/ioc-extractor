@@ -220,5 +220,16 @@ must not receive unfinished 0.3.0 work just to publish the library. The proposed
 next workflow change uses component-specific tags such as
 `ioc-platform-concurrency-v0.3.0-rc.1` while retaining the shared version line.
 ADR 0029 and the workflow update implement this branch/tag decision. The
-default branch still needs the discovery workflow commit, and the release branch
-still needs the implementation merge before live qualification.
+local default-branch discovery commit is prepared separately, and the local
+release branch is fast-forwarded to this implementation. Both still need their
+corresponding remote updates before live qualification.
+
+## GitHub protection audit — 2026-09-08
+
+Read-only GitHub API checks found no branch-protection rule on `main` or
+`release-0.3.0`. Environment `LIBRARY PUBLISHING` exists, but currently has no
+protection rules and no deployment branch policy. Secret names and values were
+not read. Before live validation, configure required reviewer `xORex-LC`, allow
+self-review while this is a single-maintainer repository, and restrict selected
+deployment branches to `release-*`. The workflow's own exact branch/tag checks
+remain defense in depth; they do not replace environment access control.
