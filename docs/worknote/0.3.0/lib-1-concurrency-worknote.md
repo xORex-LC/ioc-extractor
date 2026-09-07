@@ -252,5 +252,16 @@ Packages upload or external consumer resolution.
 
 No component release tag has been created and the publication workflow has not
 been dispatched. The next live checkpoint is the reviewed annotated
-`ioc-platform-concurrency-v0.3.0-rc.1` tag on `0a0bdf17`, followed by the
-workflow's `validate` operation from `release-0.3.0`.
+`ioc-platform-concurrency-v0.3.0-rc.1` tag on the final reviewed
+`release-0.3.0` head, followed by the workflow's `validate` operation from that
+branch.
+
+The first CI run after this evidence update exposed a pre-existing race in the
+tools contract: under `pipefail`, `grep -q` could close a `make help` pipeline
+early and make `make` fail with `Broken pipe`. Commit `4e3cdad9` captures the
+help output once and checks all required commands against the complete value.
+The full local packaging/tools contract passed, and the subsequent remote CI
+run `34144807293` completed successfully on that commit, including the fixed
+`packaging-contracts` job and all jobs listed above. The current proposed RC tag
+target is therefore `4e3cdad9`, subject to the final evidence-only commit made
+from this note.
