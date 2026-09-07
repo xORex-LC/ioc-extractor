@@ -11,7 +11,95 @@
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
+    <groupId>io.github.xorex-lc</groupId>
     <artifactId>ioc-platform-concurrency</artifactId>
     <name>ioc-platform-concurrency</name>
     <description>Framework-free concurrency primitives for platform coordination</description>
+    <url>https://github.com/xORex-LC/ioc-extractor</url>
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/license/mit/</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+    <developers>
+        <developer>
+            <id>xORex-LC</id>
+            <name>Misyurkeev Denis</name>
+            <email>denismisyurkeev461@gmail.com</email>
+            <url>https://github.com/xORex-LC</url>
+        </developer>
+    </developers>
+    <scm>
+        <connection>scm:git:https://github.com/xORex-LC/ioc-extractor.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/xORex-LC/ioc-extractor.git</developerConnection>
+        <url>https://github.com/xORex-LC/ioc-extractor</url>
+        <tag>HEAD</tag>
+    </scm>
+    <build>
+        <resources>
+            <resource>
+                <directory>${project.basedir}/../..</directory>
+                <targetPath>META-INF</targetPath>
+                <includes><include>LICENSE</include></includes>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <version>1.7.3</version>
+                <configuration>
+                    <flattenMode>ossrh</flattenMode>
+                    <outputDirectory>${project.build.directory}</outputDirectory>
+                    <flattenedPomFilename>publication.pom</flattenedPomFilename>
+                    <updatePomFile>true</updatePomFile>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>consumer-pom</id>
+                        <phase>process-resources</phase>
+                        <goals><goal>flatten</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+    <profiles>
+        <profile>
+            <id>library-publication</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>3.4.0</version>
+                        <executions>
+                            <execution>
+                                <id>publication-sources</id>
+                                <goals><goal>jar-no-fork</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>3.12.0</version>
+                        <configuration>
+                            <notimestamp>true</notimestamp>
+                            <detectJavaApiLink>false</detectJavaApiLink>
+                            <doclint>all,-missing</doclint>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>publication-javadoc</id>
+                                <goals><goal>jar</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

@@ -44,6 +44,8 @@
 | `0026-fail-closed-smb-encryption-policy.md` | Неоднозначный `encrypt: boolean` заменён closed policy `required|preferred|disabled`: secure default разрешает только SMB3 и проверяет effective session encryption до share I/O; policy mismatch получает общий terminal `SECURITY_POLICY_UNMET`, SMBJ остаётся в adapter. Узко supersede'ит encryption-конфигурацию ADR-0011. **Принято 2026-08-28; candidate реализован, live qualification pending.** |
 | `0027-rollback-safe-configuration-evolution.md` | Breaking configuration rename через shared operator-owned config проходит bounded expand/contract: typed compatibility alias, value-free warning, dual-key semantic rejection и удаление только после retirement старого rollback point. Узко supersede'ит immediate `encrypt` rejection из ADR-0026 и уточняет tombstone rule ADR-0016. **Принято 2026-08-29; первый overlap реализован для SMB encryption selector.** |
 
+| `0028-pilot-library-publication.md` | Пилотная JDK-only concurrency-библиотека: отдельные Maven-координаты, независимый consumer POM, Central и GitHub Packages, однократная сборка/подпись и восстановление публикации из неизменного bundle. **Принято 2026-09-07; live qualification pending.** |
+
 ## Формат
 
 `Статус` · `Контекст` · `Решения` (выбор + обоснование + отклонённые варианты) ·

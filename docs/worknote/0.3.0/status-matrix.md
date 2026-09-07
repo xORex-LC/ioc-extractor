@@ -20,7 +20,7 @@ language: "ru"
 | `R030-BUILD` | `in-progress` | [build-quality ledger](evidence/build-quality-ledger.md) | Lifecycle separation, CI retention, coverage gates and Codecov upload/history are verified; absent external Codecov contexts have a non-blocking disposition, while required build-status policy and its final closure run still remain |
 | `R030-TEST` global controls | `in-progress` | [test-quality ledger](evidence/test-quality-ledger.md) | `TEST-LIFECYCLE-01` through `TEST-CODECOV-07` and `TEST-CONSUMERS-09` are verified; only the out-of-reactor `TEST-PUBLICATION-08` remains, waiting on `R030-LIB` admission |
 | `R030-SEC` | `planned` | — | Security gap analysis |
-| `R030-LIB` | `in-progress` | [shared-code inventory](evidence/shared-code-inventory.md), [LIB-1 hardening](lib-1-concurrency-worknote.md) | Bounded existing-module hardening; independent-consumer and publication admission remain open |
+| `R030-LIB` | `in-progress` | [shared-code inventory](evidence/shared-code-inventory.md), [LIB-1 hardening](lib-1-concurrency-worknote.md) | Hardening and local publication preparation verified; ADR 0028, immutable bundle workflow and standalone consumer implemented. Real signing/repository validation and consumers remain open |
 | `R030-DOC` | `planned` | — | Translation inventory |
 | `R030-REL` | `planned` | — | All prerequisite goals |
 
@@ -82,3 +82,11 @@ module cells и не publication admission.
 Matrix обновляется после каждого analysis или implementation work item.
 `verified` требует goal-specific DoD; наличие merged PR само по себе
 недостаточно.
+
+### LIB-1 publication preparation — 2026-09-07
+
+Implemented ADR 0028, the GitHub namespace coordinate, standalone POM and
+source/Javadoc packaging, publication recovery tooling and protected workflow.
+The separate consumer passed against the local bundle. `R030-LIB` and
+`TEST-PUBLICATION-08` remain open until real signing/repository validation and
+cold consumption from Central and GitHub Packages are recorded.

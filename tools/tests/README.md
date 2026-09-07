@@ -16,3 +16,8 @@ tools/tests/tools-contract-test.sh
 Lifecycle correctness/load smoke выполняется через
 `tools/dev/lifecycle-smoke.sh`; contract suite проверяет только его syntax/help
 boundary, а не запускает долгий daemon scenario.
+
+`python3 tools/tests/library-publication-test.py` проверяет offline-контракты
+неизменности bundle, отказ при конфликте артефактов, частичную публикацию и
+повторное использование Central deployment. Подпись проверяется реальным GnuPG с одноразовым тестовым ключом.
+Сеть и рабочие секреты не используются.

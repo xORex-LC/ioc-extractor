@@ -28,6 +28,22 @@ public final class BuildQualityVerifierTest {
     public static void main(String[] args) throws Exception {
         List<Scenario> scenarios = List.of(
                 new Scenario(
+                        "foreign group cannot impersonate reactor app",
+                        Control.SPOTBUGS,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceReport(
+                                dependency("app"),
+                                dependency("app").replace("com.iocextractor", "io.github.xorex-lc")),
+                        "SpotBugs ordering dependency must be a compile-scope reactor JAR"),
+                new Scenario(
+                        "old library group is not admitted",
+                        Control.SPOTBUGS,
+                        Mode.VALIDATE,
+                        fixture -> fixture.replaceReport(
+                                dependency("app"),
+                                dependency("ioc-platform-concurrency")),
+                        "SpotBugs ordering dependency must be a compile-scope reactor JAR"),
+                new Scenario(
                         "new reactor module without disposition",
                         Control.SPOTBUGS,
                         Mode.VALIDATE,

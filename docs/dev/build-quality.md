@@ -613,3 +613,11 @@ individual accepted finding unless the mechanism itself changes.
   — CPD report-module reference.
 - [`build-support/pmd-report/README.md`](../../build-support/pmd-report/README.md)
   — adopted PMD source-policy and watchlist report-module reference.
+
+## Published library coordinates
+
+Report membership admits `io.github.xorex-lc` only for
+`ioc-platform-concurrency`; other reactor JARs must retain `com.iocextractor`.
+The exact module universe, scopes and all reviewed analyzer/coverage ratchets
+remain unchanged. Verifier negative fixtures reject both a foreign group for
+an ordinary module and the retired group for the admitted library.

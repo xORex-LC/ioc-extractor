@@ -26,6 +26,22 @@ public final class CoverageVerifierTest {
 
         List<Scenario> scenarios = List.of(
                 new Scenario(
+                        "foreign group cannot impersonate reactor app",
+                        "validate",
+                        fixture -> fixture.replace(
+                                "build-support/coverage-report/pom.xml",
+                                dependency("app"),
+                                dependency("app").replace("com.iocextractor", "io.github.xorex-lc")),
+                        "coverage ordering dependency must be a compile-scope reactor JAR"),
+                new Scenario(
+                        "old library group is not admitted",
+                        "validate",
+                        fixture -> fixture.replace(
+                                "build-support/coverage-report/pom.xml",
+                                dependency("app"),
+                                dependency("ioc-platform-concurrency")),
+                        "coverage ordering dependency must be a compile-scope reactor JAR"),
+                new Scenario(
                         "new reactor module without disposition",
                         "validate",
                         fixture -> {

@@ -986,7 +986,9 @@ public final class CoverageVerifier {
             String type = optionalDirectText(dependency, "type", "jar");
             String scope = optionalDirectText(dependency, "scope", "compile");
             String optional = optionalDirectText(dependency, "optional", "false");
-            if (!PROJECT_GROUP.equals(groupId)
+            String expectedGroup = "ioc-platform-concurrency".equals(artifactId)
+                    ? "io.github.xorex-lc" : PROJECT_GROUP;
+            if (!expectedGroup.equals(groupId)
                     || !"jar".equals(type)
                     || !"compile".equals(scope)
                     || !"false".equals(optional)

@@ -60,11 +60,13 @@ and method signatures stay unchanged. The no-op enum remains public for source
 compatibility; splitting it into another artifact has no dependency benefit.
 
 Runtime dependency closure is JDK 21 only. JUnit and AssertJ are inherited
-**test** dependencies. Root parent resolution is still a publication concern;
-JDK-only bytecode does not make the current POM independently resolvable.
+**test** dependencies. The publication implementation flattens the consumer POM so neither the
+root parent nor inherited test dependencies must resolve for consumers.
 
-Proposed first-pilot coordinates retain
+The hardening step provisionally retained the reactor coordinates
 `com.iocextractor:ioc-platform-concurrency` with the product's lockstep version.
+The publication namespace selected below supersedes that provisional external
+coordinate proposal; the reactor POMs now use the selected GitHub namespace.
 This step adds no independent version train, BOM, Spring starter or JPMS module.
 Public FIFO/exclusion, queue admission, exception and shutdown semantics must
 be contract-tested before a public release. Business schemas, configuration,
@@ -116,16 +118,90 @@ No analyzer suppression, coverage floor or test-lifecycle exception is added.
   pre-commit worktree run rather than claiming publication or stand evidence.
 - External publication and provisioned service evidence: not performed.
 
+## Publication setup supplied by the owner
+
+The following values were supplied by the owner after the hardening commit.
+Account verification and secret presence are **owner-reported**, not evidence
+of successful CI authentication, signing, public-key retrieval or publication.
+No secret values are recorded here.
+
+| Setting | Selected or reported value |
+|---|---|
+| Release repositories | Maven Central as the primary public distribution channel; GitHub Packages as a second destination for the same release |
+| Central namespace | `io.github.xorex-lc`; owner reports `Verified` |
+| Proposed publication coordinates | `io.github.xorex-lc:ioc-platform-concurrency:0.3.0` for the first final product release; Java package names remain unchanged |
+| GitHub repository | `xORex-LC/ioc-extractor` |
+| GitHub Environment | **`LIBRARY PUBLISHING`** — use this exact configured name, including the space, instead of the earlier suggested `library-publishing` |
+| Central credentials | Environment secrets `MAVEN_CENTRAL_USERNAME` and `MAVEN_CENTRAL_PASSWORD` reported present |
+| Signing credentials | Environment secrets `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` reported present |
+| Public GPG fingerprint | `F69BA7E0F7494982E6E1B483DF54073D8BBFA9F9` |
+| Signing-key expiration | `2027-03-06T20:39:38+08:00` (`2027-03-06T12:39:38Z`), as reported by the owner |
+| Central token expiration | `2027-03-07`, as displayed by the portal; time zone/time of day not supplied |
+| Developer identifier | `xORex-LC` |
+| Proposed developer display name | `Misyurkeev Denis`, matching the existing MIT license attribution; full legal name is not needed for the POM display field |
+| Public developer email | `denismisyurkeev461@gmail.com`, explicitly supplied for publication metadata |
+| License | Existing MIT license |
+
+Release publication will build and verify one artifact set, then upload the
+same JAR/POM/sources/Javadoc bytes to both destinations. Per-destination status
+and checksums must support recovery from a partial publication without rebuild
+or overwriting an existing version. Each destination requires an isolated
+consumer-resolution check so the local cache or the other repository cannot
+mask missing artifacts. GitHub Packages publication will use the workflow's
+`GITHUB_TOKEN` with narrowly scoped `packages: write`; no additional personal
+publishing token was requested.
+
+Snapshot destination/cadence remains a separate decision. This setup does not
+change the unresolved future feeds execution policy or establish a real second
+service's semantics. Environment protection rules, key availability on a public
+keyserver, correspondence of the uploaded private key to the fingerprint,
+credential validity and the first publication remain to be verified.
+
 ## Remaining publication work
 
-`R030-LIB` and `TEST-PUBLICATION-08` remain open. Full admission still needs a
-concrete independent-consumer contract, repository/access choice and the ADR
-covering coordinates, ownership and compatibility. Then configure a
-consumer-resolvable POM, sources/Javadoc artifacts, protected snapshot/release
-publication, immutable artifact identity and a standalone consumer that resolves
-from the chosen repository. Local `install` is not publication evidence.
+`R030-LIB` and `TEST-PUBLICATION-08` remain open for live qualification.
+ADR 0028 now records the selected coordinates, repositories, ownership and
+compatibility policy. The reactor uses the new group for this library only;
+consumer POM flattening, sources/Javadoc, immutable bundle tooling, protected
+manual publication and an independent consumer are implemented.
+
+The consumer has passed against a local file repository with empty settings and
+cache, resolving all four primary artifacts. This is packaging/API evidence,
+not published-coordinate evidence. Offline publication tests cover altered and
+extra files, symlinks/path escape, unsigned/snapshot rejection, conflicting
+remote bytes, missing-file recovery and Central deployment identity/reuse.
+No real signing credentials or repository writes were used locally. Snapshot
+publication remains deferred. First live Central validation, signing-key
+retrieval, environment protections, GitHub registry behavior and both public
+repository consumers must still be qualified through the manual workflow.
 
 Authoritative mechanics: [module reference](../../../platform/platform-concurrency/README.md)
 and [event coordination](../../dev/event-coordination.md).
 Release tracking: [shared-code inventory](evidence/shared-code-inventory.md),
 [review ledger](evidence/review-ledger.md), [status matrix](status-matrix.md).
+
+## Publication implementation qualification — 2026-09-07
+
+- Focused packaging passed for `0.3.0-SNAPSHOT` and `0.3.0-rc.1`, including
+  flattened POM identity, real sources/Javadoc, embedded matching Maven metadata,
+  Java 21 bytecode and the MIT distribution license. No RC tag was created.
+- Independent snapshot and RC consumers passed with fresh caches and all four
+  primary artifacts checked. Neither
+  file-repository run is external publication evidence.
+- Thirteen offline publication contracts passed, including real signing and
+  verification with a disposable test key. No owner signing key was used.
+- Full reactor `make verify` passed (25 projects). Build-quality verifier:
+  7 happy / 58 negative scenarios; coverage verifier: 2 happy / 30 negative.
+  Test universe unchanged: 196 fast, 66 integration, 5 external suites;
+  257 deterministic-offline suites. Aggregate coverage: 89.79% / 80.13%.
+- Raw SpotBugs: 116 accepted, zero visible. The guard's two reviewed
+  `VO_VOLATILE_INCREMENT` findings remain unchanged. CPD: 21 groups. PMD:
+  21 findings in 16 files. Reports inspected; no production Java changes,
+  ratchet reductions, exclusions or suppression updates.
+- `make lint-shell` passed both packaging and tools contracts; `make docs`
+  passed; actionlint 1.7.12 accepted both changed workflows. `git diff --check`
+  passed. A complete local JDK was assembled in an ignored directory for
+  Javadoc checks because the host runtime installation lacked JDK tools.
+- These are worktree qualification results. Final committed-HEAD verification
+  and PMD freshness are recorded by `make context` after the commit. Real
+  Central/GitHub signing, uploads and consumers remain pending.

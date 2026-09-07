@@ -4,8 +4,12 @@
 
 JDK-only, in-process keyed execution. The module has no runtime dependencies on
 Spring, events, IOC types, persistence or transport. Its Maven coordinates in
-this reactor are `com.iocextractor:ioc-platform-concurrency:0.3.0-SNAPSHOT`;
-external publication is a separate release step.
+this reactor are `io.github.xorex-lc:ioc-platform-concurrency:0.3.0-SNAPSHOT`;
+external publication is a separate release step. The `library-publication` profile
+attaches sources and Javadoc. The installed/published consumer POM is flattened
+without the reactor parent or test dependencies. See the
+[publication guide](../../docs/guides/library-publication.md) and
+[ADR 0028](../../docs/ADR/0028-pilot-library-publication.md).
 
 ## Tools and contracts
 

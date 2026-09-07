@@ -506,3 +506,11 @@ claims:
 
 They should be activated when a real consumer or support requirement justifies
 their lifecycle cost.
+
+## Pilot library publication
+
+The concurrency library uses a separate protected manual workflow and an immutable
+artifact bundle. See the [publication guide](guides/library-publication.md) and
+[ADR 0028](ADR/0028-pilot-library-publication.md). Application release automation
+does not publish Maven packages. Local packaging does not close live repository
+qualification.

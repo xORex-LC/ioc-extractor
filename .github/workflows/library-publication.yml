@@ -1,0 +1,212 @@
+name: Library publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Annotated tag on main: vX.Y.Z or vX.Y.Z-rc.N'
+        required: true
+        type: string
+      operation:
+        description: 'Validate stages in Central; publish releases the same bundle to both repositories'
+        type: choice
+        options: [validate, publish]
+        default: validate
+      resume_run_id:
+        description: 'Original run containing signed-library (required after a staging run or partial failure)'
+        type: string
+      central_deployment_id:
+        description: 'Existing Central deployment ID (required for resume; recover from evidence or Portal)'
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: library-publication-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  admission:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.identity.outputs.commit }}
+      version: ${{ steps.identity.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Admit immutable release identity and recovery provenance
+        id: identity
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+          DEPLOYMENT_ID: ${{ inputs.central_deployment_id }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess, urllib.request
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          tag = os.environ['RELEASE_TAG']
+          assert re.fullmatch(r'v\d+\.\d+\.\d+(?:-rc\.\d+)?', tag), 'Invalid release tag'
+          assert git('cat-file', '-t', 'refs/tags/' + tag) == 'tag', 'Annotated tag required'
+          commit = git('rev-parse', 'refs/tags/' + tag + '^{commit}')
+          subprocess.run(['git', 'merge-base', '--is-ancestor', commit, 'origin/' + os.environ['DEFAULT_BRANCH']], check=True)
+          resume = os.environ['RESUME_RUN_ID']
+          if resume:
+              assert re.fullmatch(r'\d+', resume), 'Invalid recovery run'
+              assert re.fullmatch(r'[a-fA-F0-9-]{36}', os.environ['DEPLOYMENT_ID']), 'Recovery needs Central deployment ID'
+              url = 'https://api.github.com/repos/' + os.environ['GITHUB_REPOSITORY'] + '/actions/runs/' + resume
+              request = urllib.request.Request(url, headers={'Authorization': 'Bearer ' + os.environ['GITHUB_TOKEN']})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  run = json.load(response)
+              assert run['path'] == '.github/workflows/library-publication.yml', 'Wrong workflow'
+              assert run['event'] == 'workflow_dispatch' and run['status'] == 'completed', 'Wrong run state'
+              assert run['head_branch'] == os.environ['DEFAULT_BRANCH'], 'Untrusted recovery branch'
+          else:
+              assert not os.environ['DEPLOYMENT_ID'], 'Deployment recovery requires original signed bundle'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('commit=' + commit + '\nversion=' + tag[1:] + '\n')
+          PY
+
+  build:
+    needs: admission
+    if: inputs.resume_run_id == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.admission.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build and qualify once without publishing credentials
+        env:
+          LIBRARY_VERSION: ${{ needs.admission.outputs.version }}
+        run: |
+          ./mvnw -B -ntp -Plibrary-publication -Drevision="$LIBRARY_VERSION" \
+            -Dproject.build.outputTimestamp="$(git show -s --format=%cI HEAD)" clean verify
+          python3 tools/ci/library-publication.py prepare --bundle .dev/library-bundle --version "$LIBRARY_VERSION"
+          python3 tools/tests/library-publication-test.py
+          python3 tools/ci/library-publication.py consume --bundle .dev/library-bundle
+          ./mvnw -B -ntp -Drevision="$LIBRARY_VERSION" -DskipTests -Djacoco.skip=true -Dspotbugs.skip=true -Ppmd-analysis -pl build-support/pmd-report -am verify
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unsigned-library
+          path: .dev/library-bundle/
+          if-no-files-found: error
+          retention-days: 90
+
+  publish:
+    needs: [admission, build]
+    if: >-
+      always() && needs.admission.result == 'success' &&
+      (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.resume_run_id != ''))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: LIBRARY PUBLISHING
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    steps:
+      # Privileged scripts come from the dispatch commit on the default branch.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Download original bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.resume_run_id != '' && 'signed-library' || 'unsigned-library' }}
+          run-id: ${{ inputs.resume_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+          path: .dev/library-bundle
+      - name: Check bundle identity
+        env:
+          LIBRARY_VERSION: ${{ needs.admission.outputs.version }}
+          LIBRARY_COMMIT: ${{ needs.admission.outputs.commit }}
+        run: python3 tools/ci/library-publication.py check --bundle .dev/library-bundle --version "$LIBRARY_VERSION" --commit "$LIBRARY_COMMIT"
+      - name: Sign original build once
+        if: inputs.resume_run_id == ''
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: python3 tools/ci/library-publication.py sign --bundle .dev/library-bundle
+      - name: Retain immutable signed bundle before any repository write
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signed-library
+          path: .dev/library-bundle/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Stage or publish Central
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          OPERATION: ${{ inputs.operation }}
+          DEPLOYMENT_ID: ${{ inputs.central_deployment_id }}
+        run: |
+          args=()
+          if [[ "$OPERATION" == publish ]]; then args+=(--publish); fi
+          python3 tools/ci/library-publication.py central --bundle .dev/library-bundle \
+            --deployment-id "$DEPLOYMENT_ID" "${args[@]}"
+      - name: Mirror exact files to GitHub Packages
+        if: inputs.operation == 'publish'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 tools/ci/library-publication.py github --bundle .dev/library-bundle
+      - name: Retain deployment recovery evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: central-deployment
+          path: .dev/library-bundle/central-deployment-id.txt
+          if-no-files-found: warn
+          retention-days: 90
+
+  qualify:
+    needs: publish
+    if: inputs.operation == 'publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: signed-library
+          path: .dev/library-bundle
+      - name: Qualify each repository with a separate cold consumer
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 tools/ci/library-publication.py consume --bundle .dev/library-bundle --repository central 2>&1 | tee .dev/central-consumer.log
+          python3 tools/ci/library-publication.py consume --bundle .dev/library-bundle --repository github 2>&1 | tee .dev/github-consumer.log
+      - name: Retain consumer evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: repository-consumers
+          path: .dev/*-consumer.log
+          if-no-files-found: warn
+          retention-days: 90

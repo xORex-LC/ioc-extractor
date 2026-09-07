@@ -10,6 +10,7 @@ step (`make bootstrap` локально, `tools/dev/bootstrap.sh lychee` в CI).
 
 | Команда | Gate |
 |---|---|
+| `library-publication.py` | Подготовка/подпись неизменного Maven bundle, публикация и отдельные consumers; Python 3, см. [руководство](../../docs/guides/library-publication.md) |
 | `build.sh` | Полный Maven reactor `verify` + atomic evidence под `.dev/state/` |
 | `codecov.sh verify-input\|require-report` | Повторная project-owned проверка aggregate JaCoCo evidence либо проверка скачанного CI handoff; без сети |
 | `pmd.sh policy\|watchlist` | Ratcheted PMD production-source policy либо отдельный deferred watchlist |

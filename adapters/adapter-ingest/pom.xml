@@ -38,7 +38,7 @@
             <artifactId>ioc-platform-observability</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.iocextractor</groupId>
+            <groupId>io.github.xorex-lc</groupId>
             <artifactId>ioc-platform-concurrency</artifactId>
         </dependency>
 

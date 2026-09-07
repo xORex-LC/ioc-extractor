@@ -113,3 +113,11 @@ Native macOS и Windows не являются поддерживаемыми с�
 использовать WSL, Linux VM или container, не заменяя GNU-команды несовместимыми
 алиасами. Цвет developer-сообщений включается только для соответствующего TTY;
 переменная `NO_COLOR` отключает его явно.
+
+## Пилотная библиотека
+
+`make library-bundle`, `make library-consumer` и `make library-publication-test`
+проверяют независимую упаковку и публичные контракты. Изолированный проект
+расположен в [fixtures](fixtures/README.md), процедура публикации — в
+[руководстве](../docs/guides/library-publication.md). Требуются полный JDK 21
+с `javadoc`, Python 3, GnuPG 2 и сеть для зависимостей пустого Maven-кэша.

@@ -34,7 +34,7 @@ not a current publication test.
 
 | ID | Candidate | Category | Owner | Consumers | Dependency closure | State |
 |---|---|---|---|---|---|---|
-| `LIB-1` | `platform-concurrency` | Cross-service platform | Platform coordination | Current application/adapter-ingest/bootstrap; planned Java + Spring Boot `feeds-collector`, execution policy undecided | No runtime dependencies beyond JDK | `hardening-verified`; publication admission open |
+| `LIB-1` | `platform-concurrency` | Cross-service platform | Platform coordination | Current application/adapter-ingest/bootstrap; planned Java + Spring Boot `feeds-collector`, execution policy undecided | No runtime dependencies beyond JDK | `publication-prepared`; live repository qualification open |
 | `LIB-2` | Generic diagnostics model/result/sink subset | Cross-service platform | Diagnostics | Current reactor consumers + planned `feeds-collector` | Must remove service exception/catalog coupling or explicitly version it | `genericity-review` |
 | `LIB-3` | Generic observability/MDC/value typing subset | Cross-service platform | Observability | Current adapters/bootstrap + planned service | ETL observer and IOC action/field vocabulary must be excluded or separated | `genericity-review` |
 | `LIB-4` | `platform-etl` | Cross-service platform | ETL | Current `ioc-application`; nearest consumer planned only | diagnostics + errors + their accepted publication closure | `deferred-second-consumer` |
@@ -42,10 +42,14 @@ not a current publication test.
 
 `LIB-1-HARDEN-01` implements bounded hardening of the existing module. Its
 [execution record](../lib-1-concurrency-worknote.md) documents real consumers,
-alternatives, proposed API and compatibility boundaries. It does not complete
-publication admission: independent-consumer semantics, repository/credentials
-ADR, consumer-resolvable POM, sources/Javadoc and standalone resolution remain
-open.
+alternatives, proposed API and compatibility boundaries. ADR 0028 and the publication implementation now add the admitted API,
+consumer-resolvable POM, sources/Javadoc and standalone local resolution.
+Live repository qualification and future feeds business semantics remain open.
+The owner has selected Maven Central plus GitHub Packages and reported the
+`io.github.xorex-lc` namespace verified and the required secrets configured in
+`LIBRARY PUBLISHING`; exact public setup and the unverified operational checks
+are recorded in the execution record. This is setup evidence, not publication
+evidence.
 
 ## Admission record template
 
@@ -94,3 +98,11 @@ open.
 | Entire `platform-observability` unchanged | `reject-as-is` | IOC actions/fields and ETL observer broaden public API beyond generic logging mechanics | Observability owner | Reconsider a deliberately smaller admitted API |
 | `platform-diagnostics-logging` first | `defer` | Bridge cannot have a smaller stable closure than both of its upstream contracts | Diagnostics/observability owners | Upstream publication units are admitted |
 | Umbrella `commons`/`shared` JAR | `reject` | No cohesive owner/API/lifecycle and explicitly forbidden by goal contract | `R030-LIB` | New architecture decision with evidence, not duplication pressure |
+
+### LIB-1 publication implementation (2026-09-07)
+
+The pilot now uses `io.github.xorex-lc:ioc-platform-concurrency` in the reactor.
+ADR 0028, a flattened consumer POM, sources/Javadoc, immutable signed-bundle
+workflow and separate empty-cache consumer are implemented. Local file-repository
+consumption is verified; no external coordinate is claimed published. Public
+repository qualification remains open for both selected destinations.

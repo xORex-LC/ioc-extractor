@@ -4,6 +4,12 @@
 adapters и bootstrap собираются как отдельные Maven-модули с явными
 зависимостями.
 
+Пилотная библиотека `platform-concurrency` использует Maven groupId
+`io.github.xorex-lc`; остальные модули сохраняют `com.iocextractor`. Публикуемый
+POM библиотеки не зависит от parent реактора. Политика —
+[ADR 0028](ADR/0028-pilot-library-publication.md), процедура —
+[руководство по публикации](guides/library-publication.md).
+
 > Статус: **реализовано на этапе 9**. Фактическая структура ниже. Границы
 > модулей подкрепляются Maven-зависимостями, Maven Enforcer и ArchUnit
 > ([boundaries.md](BOUNDARIES.md)).
