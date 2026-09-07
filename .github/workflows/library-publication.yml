@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Annotated tag on main: vX.Y.Z or vX.Y.Z-rc.N'
+        description: 'Annotated component tag: ioc-platform-concurrency-vX.Y.Z[-rc.N]'
         required: true
         type: string
       operation:
@@ -29,11 +29,11 @@ concurrency:
 
 jobs:
   admission:
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     outputs:
       commit: ${{ steps.identity.outputs.commit }}
       version: ${{ steps.identity.outputs.version }}
+      release_branch: ${{ steps.identity.outputs.release_branch }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -43,7 +43,7 @@ jobs:
         id: identity
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_BRANCH: ${{ github.ref_name }}
           RESUME_RUN_ID: ${{ inputs.resume_run_id }}
           DEPLOYMENT_ID: ${{ inputs.central_deployment_id }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -53,10 +53,20 @@ jobs:
           def git(*args):
               return subprocess.check_output(['git', *args], text=True).strip()
           tag = os.environ['RELEASE_TAG']
-          assert re.fullmatch(r'v\d+\.\d+\.\d+(?:-rc\.\d+)?', tag), 'Invalid release tag'
+          branch = os.environ['RELEASE_BRANCH']
+          tag_match = re.fullmatch(
+              r'ioc-platform-concurrency-v(\d+\.\d+\.\d+(?:-rc\.\d+)?)', tag)
+          branch_match = re.fullmatch(r'release-(\d+\.\d+\.\d+)', branch)
+          assert tag_match, 'Invalid concurrency component tag'
+          assert branch_match, 'Select a release-X.Y.Z branch, not main or a development branch'
+          version = tag_match.group(1)
+          assert re.sub(r'-rc\.\d+$', '', version) == branch_match.group(1), \
+              'Component version does not match selected release branch'
           assert git('cat-file', '-t', 'refs/tags/' + tag) == 'tag', 'Annotated tag required'
           commit = git('rev-parse', 'refs/tags/' + tag + '^{commit}')
-          subprocess.run(['git', 'merge-base', '--is-ancestor', commit, 'origin/' + os.environ['DEFAULT_BRANCH']], check=True)
+          subprocess.run(
+              ['git', 'merge-base', '--is-ancestor', commit, 'origin/' + branch],
+              check=True)
           resume = os.environ['RESUME_RUN_ID']
           if resume:
               assert re.fullmatch(r'\d+', resume), 'Invalid recovery run'
@@ -67,11 +77,13 @@ jobs:
                   run = json.load(response)
               assert run['path'] == '.github/workflows/library-publication.yml', 'Wrong workflow'
               assert run['event'] == 'workflow_dispatch' and run['status'] == 'completed', 'Wrong run state'
-              assert run['head_branch'] == os.environ['DEFAULT_BRANCH'], 'Untrusted recovery branch'
+              assert run['head_branch'] == branch, 'Recovery run used another release branch'
           else:
               assert not os.environ['DEPLOYMENT_ID'], 'Deployment recovery requires original signed bundle'
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write('commit=' + commit + '\nversion=' + tag[1:] + '\n')
+              output.write(
+                  'commit=' + commit + '\nversion=' + version
+                  + '\nrelease_branch=' + branch + '\n')
           PY
 
   build:
@@ -118,9 +130,10 @@ jobs:
       actions: read
       packages: write
     steps:
-      # Privileged scripts come from the dispatch commit on the default branch.
+      # Privileged scripts and artifacts come from the admitted immutable tag.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.admission.outputs.commit }}
           persist-credentials: false
       - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
         with:
@@ -177,7 +190,7 @@ jobs:
           retention-days: 90
 
   qualify:
-    needs: publish
+    needs: [admission, publish]
     if: inputs.operation == 'publish'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -187,6 +200,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.admission.outputs.commit }}
           persist-credentials: false
       - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
         with:

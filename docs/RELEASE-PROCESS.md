@@ -511,6 +511,8 @@ their lifecycle cost.
 
 The concurrency library uses a separate protected manual workflow and an immutable
 artifact bundle. See the [publication guide](guides/library-publication.md) and
-[ADR 0028](ADR/0028-pilot-library-publication.md). Application release automation
-does not publish Maven packages. Local packaging does not close live repository
-qualification.
+[ADR 0028](ADR/0028-pilot-library-publication.md), refined by
+[ADR 0029](ADR/0029-release-branch-library-publication.md). It retains the
+product version but uses a component tag and matching release branch.
+Application release automation does not publish Maven packages. Local packaging
+does not close live repository qualification.

@@ -45,6 +45,7 @@
 | `0027-rollback-safe-configuration-evolution.md` | Breaking configuration rename через shared operator-owned config проходит bounded expand/contract: typed compatibility alias, value-free warning, dual-key semantic rejection и удаление только после retirement старого rollback point. Узко supersede'ит immediate `encrypt` rejection из ADR-0026 и уточняет tombstone rule ADR-0016. **Принято 2026-08-29; первый overlap реализован для SMB encryption selector.** |
 
 | `0028-pilot-library-publication.md` | Пилотная JDK-only concurrency-библиотека: отдельные Maven-координаты, независимый consumer POM, Central и GitHub Packages, однократная сборка/подпись и восстановление публикации из неизменного bundle. **Принято 2026-09-07; live qualification pending.** |
+| `0029-release-branch-library-publication.md` | Публикация concurrency-библиотеки из `release-X.Y.Z` по отдельному component-тегу при общей версии с продуктом; default branch содержит workflow только для регистрации ручного запуска. Узко supersede'ит branch/tag selection из ADR-0028. **Принято 2026-09-08; live qualification pending.** |
 
 ## Формат
 

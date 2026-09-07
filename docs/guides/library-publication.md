@@ -2,8 +2,10 @@
 
 The pilot artifact is `io.github.xorex-lc:ioc-platform-concurrency`, Java 21,
 with no runtime dependencies. Maven Central is primary; GitHub Packages is a
-second destination for the identical release. See [ADR 0028](../ADR/0028-pilot-library-publication.md)
-and the [API reference](../../platform/platform-concurrency/README.md).
+second destination for the identical release. See
+[ADR 0028](../ADR/0028-pilot-library-publication.md), its release-branch
+[ADR 0029](../ADR/0029-release-branch-library-publication.md), and the
+[API reference](../../platform/platform-concurrency/README.md).
 No version is claimed published until the repository checks below pass.
 
 ## Local packaging qualification
@@ -47,31 +49,40 @@ that Central can retrieve it. Never put private keys or token values in Git,
 workflow inputs, command-line properties or evidence attachments.
 
 Use default-branch protection and configure environment reviewers/release access
-as appropriate for the repository. The workflow only admits dispatches from the
-default branch and annotated release tags reachable from that branch. The exact
-protection rules and credential validity still need live qualification. GitHub
+as appropriate for the repository. GitHub requires the workflow file to exist
+on the default branch before it can be dispatched manually. Select the matching
+`release-X.Y.Z` branch when running it; `main` and development branches fail
+admission. The exact protection rules and credential validity still need live
+qualification. GitHub
 publishing uses the repository's `GITHUB_TOKEN` with `packages: write`; a separate
 publishing PAT is unnecessary. Existing `SECURITY CHECKS` remains independent.
 
 ## First release
 
-1. Merge the implementation and pass the normal CI gates. Choose the release
-   version and create an annotated `vX.Y.Z` or `vX.Y.Z-rc.N` tag on the reviewed
-   default-branch commit. The first final candidate is `0.3.0`; an RC tag must
-   use a distinct RC version. Do not move a tag after preparing a bundle.
-2. Dispatch **Library publication** from the default branch, select that tag,
-   and keep `operation=validate`. Leave recovery inputs empty. The job builds
+1. Merge the implementation into `release-X.Y.Z` and pass its normal CI gates.
+   Add the publication workflow file to `main` so GitHub registers the manual
+   workflow; this does not move application code into `main`.
+2. Create an annotated `ioc-platform-concurrency-vX.Y.Z` or
+   `ioc-platform-concurrency-vX.Y.Z-rc.N` tag on the reviewed release-branch
+   commit. The first proposed RC is
+   `ioc-platform-concurrency-v0.3.0-rc.1`. Do not move a tag after preparing a
+   bundle. Library and product versions remain aligned even though their tags
+   and release moments are separate.
+3. Dispatch **Library publication**, select the corresponding
+   `release-X.Y.Z` branch, enter that component tag, and keep
+   `operation=validate`. Leave recovery inputs empty. The job builds
    and verifies without publishing credentials, runs the independent consumer,
    signs once, and retains `signed-library` before contacting either repository.
-3. Download and preserve `signed-library` and `central-deployment` artifacts.
+4. Download and preserve `signed-library` and `central-deployment` artifacts.
    Record the source SHA, run ID, manifest hashes and Central deployment ID.
    `VALIDATED` means staged successfully; it does not mean publicly released.
-4. Dispatch again with the same tag, `operation=publish`, the original
-   `resume_run_id` and `central_deployment_id`. The workflow verifies recovery
-   provenance and source/version identity, reuses the signed bundle, publishes
-   Central, mirrors missing files to GitHub Packages, then resolves each
-   repository separately using fresh consumer caches.
-5. Retain both repository URLs, the successful consumer logs and artifact hashes
+5. Dispatch again against the same release branch with the same tag,
+   `operation=publish`, the original `resume_run_id` and
+   `central_deployment_id`. The workflow verifies recovery provenance and
+   source/version identity, reuses the signed bundle, publishes Central,
+   mirrors missing files to GitHub Packages, then resolves each repository
+   separately using fresh consumer caches.
+6. Retain both repository URLs, the successful consumer logs and artifact hashes
    in release evidence. Only these live downloads close publication qualification.
 
 A direct `operation=publish` without recovery inputs is supported for an
@@ -85,7 +96,7 @@ original signed artifact and Central deployment ID. Artifacts expire after
 90 days in Actions, so preserve them externally with the release evidence.
 A normal rerun of the old job is not the recovery interface: dispatch a new run
 with recovery inputs. A failed run is an acceptable artifact source if it is
-from this workflow on the default branch and has completed.
+from this workflow on the same release branch and has completed.
 
 If Central accepted an upload but the response was lost, find the deployment in
 Portal by the artifact/version/manifest-hash name before retrying. If validation

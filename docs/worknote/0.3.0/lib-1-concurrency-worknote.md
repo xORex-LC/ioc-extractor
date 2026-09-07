@@ -205,3 +205,20 @@ Release tracking: [shared-code inventory](evidence/shared-code-inventory.md),
 - These are worktree qualification results. Final committed-HEAD verification
   and PMD freshness are recorded by `make context` after the commit. Real
   Central/GitHub signing, uploads and consumers remain pending.
+
+## Owner clarification — 2026-09-08
+
+The owner explicitly selected shared product/library versioning (lockstep) for
+now. Independent library versions are a future option, not current implementation
+scope. This supersedes the assistant's interim recommendation to introduce an
+independent concurrency version immediately. Keep the shared Maven version;
+revisit independent versioning when actual consumer/release needs justify it.
+
+Release identity and scheduling are separate concerns. The requested release
+integration branch is `release-0.3.0`; `main` remains at the 0.2.0 release and
+must not receive unfinished 0.3.0 work just to publish the library. The proposed
+next workflow change uses component-specific tags such as
+`ioc-platform-concurrency-v0.3.0-rc.1` while retaining the shared version line.
+ADR 0029 and the workflow update implement this branch/tag decision. The
+default branch still needs the discovery workflow commit, and the release branch
+still needs the implementation merge before live qualification.
