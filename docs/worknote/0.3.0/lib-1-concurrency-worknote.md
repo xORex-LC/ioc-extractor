@@ -220,9 +220,8 @@ must not receive unfinished 0.3.0 work just to publish the library. The proposed
 next workflow change uses component-specific tags such as
 `ioc-platform-concurrency-v0.3.0-rc.1` while retaining the shared version line.
 ADR 0029 and the workflow update implement this branch/tag decision. The
-local default-branch discovery commit is prepared separately, and the local
-release branch is fast-forwarded to this implementation. Both still need their
-corresponding remote updates before live qualification.
+default-branch discovery commit is published separately on `main`, and the
+publication implementation is published on `release-0.3.0`.
 
 ## GitHub protection audit — 2026-09-08
 
@@ -233,3 +232,25 @@ not read. Before live validation, configure required reviewer `xORex-LC`, allow
 self-review while this is a single-maintainer repository, and restrict selected
 deployment branches to `release-*`. The workflow's own exact branch/tag checks
 remain defense in depth; they do not replace environment access control.
+
+## GitHub publication readiness — 2026-09-08
+
+A follow-up read-only GitHub API check confirmed that `LIBRARY PUBLISHING` now
+requires reviewer `xORex-LC`, permits self-review for the current sole
+maintainer, and uses a custom deployment branch policy with the single branch
+pattern `release-*`. Secret names and values were not read. The environment
+configuration now matches the first-publication prerequisite above.
+
+The default-branch workflow-discovery commit `c4f65e57` is present on remote
+`main`, and publication commit `0a0bdf17` is present on remote
+`release-0.3.0`. Their push-triggered CI runs completed successfully. The
+release run included successful `build`, `pmd-source-policy`, `doc-links`,
+`packaging-contracts`, `library-consumer` and advisory Codecov jobs. This proves
+the branch integration and offline publication contracts; it does not prove
+owner-key signing, repository authentication, Central acceptance, GitHub
+Packages upload or external consumer resolution.
+
+No component release tag has been created and the publication workflow has not
+been dispatched. The next live checkpoint is the reviewed annotated
+`ioc-platform-concurrency-v0.3.0-rc.1` tag on `0a0bdf17`, followed by the
+workflow's `validate` operation from `release-0.3.0`.
