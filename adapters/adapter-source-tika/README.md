@@ -23,5 +23,5 @@ Outbound source adapter implementing `SourceReader` with Apache Tika.
 **Не импортируется:** bootstrap and other adapters.
 
 Версия Tika задаётся только parent `dependencyManagement`; текущая baseline —
-`3.3.1`. Транзитивные POI/PDFBox остаются деталями этого адаптера и не
+`3.3.2`. Транзитивные POI/PDFBox остаются деталями этого адаптера и не
 используются тестами или application-кодом напрямую.
