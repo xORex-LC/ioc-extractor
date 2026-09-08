@@ -85,7 +85,7 @@ git diff --quiet v0.2.0..HEAD -- <selected-contract-implementation-paths>
 | Remote SMB fetch/publish | Configured endpoint/source/target names; ledger idempotency; completed-slice publication | `supported-external`; producer/publish roles подтверждены, endpoints operator-specific | Preserve polling/reconcile correctness, path/filter semantics, idempotency и marker-last delivery; push остаётся latency hint | Проверить against provisioned endpoint и reconcile pending ledgers | Остановить operations, вернуть binary/config/DB snapshot и явно reconcile внешние side effects | `R030-TEST`, `R030-REL` |
 | Installer/deployment interfaces | `install.sh`, `deploy-local.sh`, `uninstall.sh`, installed `bin/ioc`, systemd unit и marked prefix layout | `supported-external`; Debian 11/12 operators | Сохранять documented flags/layout/config ownership/immutable activation/health gate либо дать operator migration | Verified artifact, DB backup, config `*.new` reconciliation, atomic activation | Previous release symlink + matching two-DB snapshot; input moves, projections, slices и remote effects отдельно reconcile-ятся | `R030-DOC`, `R030-REL` |
 | Reactor Java/Maven types | One lockstep reactor; modules не публикуются отдельно | `internal`; только reactor-local dependencies и TCK consumers | `public` visibility сама по себе не создаёт external API; refactoring допустим при сохранении boundaries и внешних surfaces | Не применимо как published-library upgrade | Не применимо | `R030-ARCH`, `R030-QUAL` |
-| Candidate shared libraries | Coordinates/repository/API/lifecycle ещё не приняты | `planned-external`; будущий `feeds-collector`, не существующий current consumer | До admission не обещать compatibility. Publication требует selected API, owner, versioning, flattened consumer POM и standalone out-of-reactor test | Определяется отдельным publication ADR/contract | Определяется отдельным publication ADR/contract | `R030-LIB`, `R030-TEST`, `R030-REL` |
+| `ioc-platform-concurrency` candidate library | `io.github.xorex-lc:ioc-platform-concurrency:0.3.0-rc.1`; API, ownership, lockstep versioning и dual-repository lifecycle приняты ADR 0028/0029; Central deployment validated | `admitted-external`; текущие reactor consumers и будущий `feeds-collector`; публичные repository consumers ещё не квалифицированы | Двенадцать документированных public types и observable behavior проходят compatibility review перед релизом; в 0.x breaking change требует нового minor и migration notes, patch сохраняет contract | Использовать новый component tag/version, immutable signed bundle и отдельный cold consumer для каждого repository | Release не перезаписывается: восстановление только из исходного signed bundle/deployment; несовместимость требует новой версии | `R030-LIB`, `R030-TEST`, `R030-REL` |
 | Local control events | `platform-events` publish-only in-process contracts, без broker/wire schema | `internal`; bootstrap/application listeners внутри reactor | Не превращать в broker/public wire API без реального external transport и отдельного решения | Не применимо | Не применимо | `R030-ARCH`, `R030-LIB` |
 
 ## Exact baseline details
@@ -263,7 +263,7 @@ admission только для итогового release candidate, если о�
 | Gap | Impact | Owner/exit condition |
 |---|---|---|
 | Именованные automation, artifact и log consumers не зарегистрированы | Repository reference fixtures защищают producer contract, но не доказывают acceptance развёрнутого consumer | `R030-DOC`/`R030-REL`: consumer/owner и его acceptance evidence либо explicit unsupported disposition |
-| Standalone published-library consumer отсутствует | Нельзя заявить external Maven compatibility | `R030-LIB` + `R030-TEST`: admitted coordinates, flattened POM и out-of-reactor consumer test |
+| Standalone consumer ещё не выполнен из опубликованных Central и GitHub Packages coordinates | Нельзя заявить public repository compatibility по одной staging validation или local file repository | `R030-LIB` + `R030-TEST`: опубликовать исходный validated bundle и выполнить раздельный empty-cache consumer для каждого repository |
 | Дополнительная SMB family/two-identity hardening breadth не квалифицирована | `TEST-EXTERNAL-05` подтвердил 2/2 `CHANGE_NOTIFY` cases только на одном target; это не доказывает producer/service ACL separation и другие SMB families | `OPS-8`/`R030-REL`: выполнить opt-in H5 contract перед включением managed SMB source или заявлением поддержки конкретного family |
 | Repository reference consumer corpus | Exact golden CSV/manifest/log/CLI corpus добавлен; deployed acceptance остаётся отдельным gap | `TEST-CONSUMERS-09` verified; именованные consumers остаются у `R030-DOC`/`R030-REL` |
 
@@ -287,5 +287,7 @@ external consumers или отдельный out-of-reactor Maven publication co
 теперь включает время ожидания после перехода задачи к выполнению; вложенный
 синхронный вызов больше не превращает активного внешнего caller в waiting.
 FIFO относится только к async admission; synchronous guard гарантирует
-исключение без порядка ожидания. Внешняя публикация ещё не выполнена.
+исключение без порядка ожидания. Protected owner-key signing и Central staging
+validation выполнены в run `34222437897`; публичная Central/GitHub Packages
+публикация и repository consumers ещё не выполнены.
 Подробности и границы: [execution record](../lib-1-concurrency-worknote.md).

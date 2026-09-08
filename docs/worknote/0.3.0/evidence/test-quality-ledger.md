@@ -26,8 +26,8 @@ worker cleanup. `TEST-EXTERNAL-05` is **verified** by the provisioned live SMB
 `CHANGE_NOTIFY` execution recorded below. `TEST-PILOTS-06`,
 `TEST-CODECOV-07` and `TEST-CONSUMERS-09` are also verified with the stated
 diagnostic/external dispositions. The only remaining global work item is
-`TEST-PUBLICATION-08`; it cannot start until `R030-LIB` admits publication
-coordinates and a public API.
+`TEST-PUBLICATION-08`; its coordinates and public API are now admitted, and its
+execution waits for the validated bundle to be published to both repositories.
 
 `BASE-INVENTORIES-09` intake status: **verified**. The initial work queue below
 maps every baseline test/coverage/consumer gap to an owner without implementing
@@ -50,7 +50,7 @@ inputs.
 | `TEST-EXTERNAL-05` | Execute live SMB `CHANGE_NOTIFY` contract or record explicit external-evidence release disposition | Verified live Windows-host contract evidence below | Provisioned fixture / `R030-REL` | `verified` |
 | `TEST-PILOTS-06` | Run PIT/domain, invariant and seeded repeat pilots; triage signal/noise/cost | Verified diagnostic pilot tables below | Wave 1 profiles/artifacts | `verified` |
 | `TEST-CODECOV-07` | Best-effort non-required upload plus project/patch signals | Codecov table below | Stable JaCoCo XML + CI | `verified-with-external-status-disposition` |
-| `TEST-PUBLICATION-08` | Out-of-reactor compile/runtime contract for an admitted published library | Compatibility/shared-code ledgers | Blocked until `R030-LIB` admission | `waiting-on-library-contract` |
+| `TEST-PUBLICATION-08` | Out-of-reactor compile/runtime contract for an admitted published library | Compatibility/shared-code ledgers | Validated `R030-LIB` bundle must be published to Central and GitHub Packages | `waiting-on-library-publication` |
 | `TEST-CONSUMERS-09` | Add exact golden CSV/manifest/log/CLI consumer payload/query fixtures for accepted external surfaces | Verified implementation evidence below | Per-surface owner decision | `verified` |
 
 ## Current-HEAD inventory refresh — 2026-09-01
@@ -1811,8 +1811,9 @@ changed, so no finding intersects changed production code.
 
 These repository reference consumers close the producer-side regression gap;
 they do not register a named automation, reader or log collector and do not
-claim deployed-consumer acceptance. `TEST-PUBLICATION-08` remains independently
-blocked until `R030-LIB` admits a publication unit.
+claim deployed-consumer acceptance. `TEST-PUBLICATION-08` now has an admitted
+and Central-validated publication unit, but remains open until the exact bundle
+is publicly released and consumed separately from both repositories.
 
 ## Diagnostic pilots
 

@@ -265,3 +265,31 @@ run `34144807293` completed successfully on that commit, including the fixed
 `packaging-contracts` job and all jobs listed above. The current proposed RC tag
 target is therefore `4e3cdad9`, subject to the final evidence-only commit made
 from this note.
+
+## Live Central validation — 2026-09-08
+
+Annotated tag `ioc-platform-concurrency-v0.3.0-rc.1` resolves to reviewed commit
+`c0f0f12f74a01615605b11b74e7b523bbc116cf5`. Protected workflow run
+[`34222437897`](https://github.com/xORex-LC/ioc-extractor/actions/runs/34222437897)
+admitted that exact identity, completed the clean full build and local
+standalone consumer, and used the `LIBRARY PUBLISHING` approval gate before
+accessing credentials.
+
+The workflow matched the CI private key to fingerprint
+`F69BA7E0F7494982E6E1B483DF54073D8BBFA9F9`, signed the original bundle once,
+verified its signatures and retained it before the first repository write.
+Central accepted and validated USER_MANAGED deployment
+`84d86a68-9402-4181-a587-772d004ad8c6`; publication was not requested. As
+designed for `operation=validate`, GitHub Packages upload and public-repository
+consumer qualification were skipped.
+
+Downloaded recovery evidence confirms `dirty=false`, `signed=true`, version
+`0.3.0-rc.1`, the admitted commit and 20 manifest entries. The SHA-256 of
+`identity.json` is
+`be2311c54f06420cf86a8e6943658214e240853620b78f184ca425a20cca371e`.
+GitHub records the retained `signed-library` artifact digest as
+`sha256:118956d1281f7065e779452380fe8756f8a475d420b028f1a4c9bd828751f45f`;
+the workflow artifacts expire on 2026-12-07. The next run must use the same
+tag, original run ID and Central deployment ID. `R030-LIB` and
+`TEST-PUBLICATION-08` remain open until explicit publication and separate cold
+consumers from Central and GitHub Packages succeed.
