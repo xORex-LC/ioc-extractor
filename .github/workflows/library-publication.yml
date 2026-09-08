@@ -130,10 +130,12 @@ jobs:
       actions: read
       packages: write
     steps:
-      # Privileged scripts and artifacts come from the admitted immutable tag.
+      # A first attempt runs privileged scripts from the immutable tag. Recovery
+      # may use a reviewed fix from the selected release branch while the signed
+      # bundle remains bound to the original tag commit and is checked below.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.admission.outputs.commit }}
+          ref: ${{ inputs.resume_run_id != '' && github.sha || needs.admission.outputs.commit }}
           persist-credentials: false
       - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
         with:
@@ -200,7 +202,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.admission.outputs.commit }}
+          ref: ${{ inputs.resume_run_id != '' && github.sha || needs.admission.outputs.commit }}
           persist-credentials: false
       - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
         with:

@@ -159,14 +159,30 @@ def sign(bundle):
     read_bundle(bundle, signed=True)
 
 
-class NoRedirect(urllib.request.HTTPRedirectHandler):
+class SafeReadRedirect(urllib.request.HTTPRedirectHandler):
+    """Follow repository read redirects without forwarding credentials."""
+
+    @staticmethod
+    def origin(url):
+        parsed = urllib.parse.urlparse(url)
+        port = parsed.port or (443 if parsed.scheme.lower() == 'https' else 80)
+        return parsed.scheme.lower(), (parsed.hostname or '').lower(), port
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
+        target = urllib.parse.urlparse(newurl)
+        if req.get_method() not in ('GET', 'HEAD') or target.scheme.lower() != 'https' \
+                or target.username is not None or target.password is not None:
+            raise urllib.error.HTTPError(req.full_url, code, msg, headers, fp)
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if self.origin(req.full_url) != self.origin(newurl):
+            redirected.remove_header('Authorization')
+        return redirected
 
 
 def request(url, method='GET', data=None, headers=None, missing_ok=False):
-    # Do not forward credentials to redirect targets or print response bodies.
-    opener = urllib.request.build_opener(NoRedirect())
+    # Repository downloads may redirect to external blob storage. Follow only
+    # read redirects over HTTPS and never forward credentials across origins.
+    opener = urllib.request.build_opener(SafeReadRedirect())
     try:
         with opener.open(urllib.request.Request(url, data=data, headers=headers or {}, method=method), timeout=60) as response:
             return response.read()

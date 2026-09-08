@@ -9,6 +9,8 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+import urllib.error
+import urllib.request
 
 sys.dont_write_bytecode = True
 
@@ -131,6 +133,26 @@ class PublicationTest(unittest.TestCase):
         with patch.object(PUB, 'authorization', return_value={}), patch.object(PUB, 'request', side_effect=remote):
             PUB.publish_github(self.bundle)
         self.assertEqual(writes, [(missing, (self.bundle / 'repository' / missing).read_bytes())])
+
+    def test_repository_read_redirect_drops_cross_origin_authorization(self):
+        original = urllib.request.Request(
+            PUB.GITHUB + '/artifact.pom', headers={'Authorization': 'Basic secret'})
+        redirected = PUB.SafeReadRedirect().redirect_request(
+            original, None, 302, 'Found', {},
+            'https://mavenregistryv2prod.blob.core.windows.net/container/artifact.pom?signature=value')
+        self.assertEqual(redirected.get_method(), 'GET')
+        self.assertNotIn('Authorization', dict(redirected.header_items()))
+
+    def test_repository_redirect_rejects_write_and_https_downgrade(self):
+        write = urllib.request.Request(
+            PUB.GITHUB + '/artifact.pom', data=b'artifact', method='PUT')
+        with self.assertRaises(urllib.error.HTTPError):
+            PUB.SafeReadRedirect().redirect_request(
+                write, None, 302, 'Found', {}, 'https://uploads.github.com/artifact.pom')
+        read = urllib.request.Request(PUB.GITHUB + '/artifact.pom')
+        with self.assertRaises(urllib.error.HTTPError):
+            PUB.SafeReadRedirect().redirect_request(
+                read, None, 302, 'Found', {}, 'http://maven.pkg.github.com/artifact.pom')
 
     def test_partial_central_visibility_does_not_create_deployment(self):
         self.signed()

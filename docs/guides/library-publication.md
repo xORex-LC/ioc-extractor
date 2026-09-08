@@ -105,15 +105,27 @@ A normal rerun of the old job is not the recovery interface: dispatch a new run
 with recovery inputs. A failed run is an acceptable artifact source if it is
 from this workflow on the same release branch and has completed.
 
+The first attempt executes publication tooling from the immutable component
+tag. A recovery dispatch may need a transport fix discovered only by the live
+registry. In that case, the privileged jobs execute the tooling frozen at the
+selected release-branch SHA after the `LIBRARY PUBLISHING` approval, while the
+downloaded signed bundle must still match the original tag commit, version and
+manifest. Recovery never rebuilds, resigns or moves the component tag. Review
+and pass normal branch CI for any such tooling fix before approving the run.
+
 If Central accepted an upload but the response was lost, find the deployment in
 Portal by the artifact/version/manifest-hash name before retrying. If validation
 failed, inspect Portal diagnostics and retain the deployment. If bytes must
 change, prepare a new version/tag rather than replacing a released version.
 A partially visible Central release stops until propagation completes; matching
 published bytes are skipped. GitHub upload compares existing files first and
-only sends missing files; any mismatch stops the operation. A successful upload
-without both consumers is still incomplete qualification. The first live run
-must establish registry behavior, signing acceptance and package visibility.
+only sends missing files; any mismatch stops the operation. GitHub artifact
+downloads can redirect to external HTTPS blob storage; the client follows only
+read redirects, strips authorization on an origin change and verifies the
+downloaded bytes against the signed manifest. Write redirects remain rejected.
+A successful upload without both consumers is still incomplete qualification.
+The first live run must establish registry behavior, signing acceptance and
+package visibility.
 
 ## Consumption
 
