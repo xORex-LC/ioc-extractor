@@ -1,21 +1,22 @@
 ---
-title: "LIB-1 concurrency pilot hardening"
+title: "LIB-1 concurrency pilot"
 version: "0.3.0"
 goal_id: "R030-LIB"
-status: "Verified (hardening only)"
+status: "Published and qualified"
 document_type: "Execution worknote"
 source_of_truth: false
 language: "en"
 ---
 
-# LIB-1 concurrency pilot hardening
+# LIB-1 concurrency pilot
 
 ## Scope and admission boundary
 
 Work item: `0.3.0 / R030-LIB / platform/platform-concurrency / hardening /
 LIB-1-HARDEN-01`. Review base: `8444ea92e3d21895935ef0f417edc0b81c18f9f1`.
 Implementation authorized on 2026-09-07, including logical commits. This is an
-existing module's bounded hardening step, not full publication admission.
+existing module's bounded hardening step; later sections record admission and
+the completed publication qualification.
 
 Owner: Platform coordination. Category: candidate cross-service platform.
 Responsibility: in-process keyed serialization and synchronous exclusion.
@@ -153,27 +154,25 @@ publishing token was requested.
 
 Snapshot destination/cadence remains a separate decision. This setup does not
 change the unresolved future feeds execution policy or establish a real second
-service's semantics. Environment protection rules, key availability on a public
-keyserver, correspondence of the uploaded private key to the fingerprint,
-credential validity and the first publication remain to be verified.
+service's semantics. The protected validation and publication runs subsequently
+verified the environment gate, key/fingerprint correspondence, Central
+credentials, signatures and both release repositories.
 
-## Remaining publication work
+## Publication scope and qualification
 
-`R030-LIB` and `TEST-PUBLICATION-08` remain open for live qualification.
 ADR 0028 now records the selected coordinates, repositories, ownership and
 compatibility policy. The reactor uses the new group for this library only;
 consumer POM flattening, sources/Javadoc, immutable bundle tooling, protected
 manual publication and an independent consumer are implemented.
 
-The consumer has passed against a local file repository with empty settings and
-cache, resolving all four primary artifacts. This is packaging/API evidence,
-not published-coordinate evidence. Offline publication tests cover altered and
-extra files, symlinks/path escape, unsigned/snapshot rejection, conflicting
-remote bytes, missing-file recovery and Central deployment identity/reuse.
-No real signing credentials or repository writes were used locally. Snapshot
-publication remains deferred. First live Central validation, signing-key
-retrieval, environment protections, GitHub registry behavior and both public
-repository consumers must still be qualified through the manual workflow.
+The consumer first passed against a local file repository with empty settings
+and cache, resolving all four primary artifacts. Offline publication tests
+cover altered and extra files, symlinks/path escape, unsigned/snapshot
+rejection, conflicting remote bytes, missing-file recovery and Central
+deployment identity/reuse. Protected runs then exercised the owner signing key,
+Central and GitHub Packages, followed by isolated public-repository consumers.
+That evidence is recorded below and closes `R030-LIB` plus
+`TEST-PUBLICATION-08`. Snapshot publication remains deferred.
 
 Authoritative mechanics: [module reference](../../../platform/platform-concurrency/README.md)
 and [event coordination](../../dev/event-coordination.md).
@@ -290,6 +289,60 @@ Downloaded recovery evidence confirms `dirty=false`, `signed=true`, version
 GitHub records the retained `signed-library` artifact digest as
 `sha256:118956d1281f7065e779452380fe8756f8a475d420b028f1a4c9bd828751f45f`;
 the workflow artifacts expire on 2026-12-07. The next run must use the same
-tag, original run ID and Central deployment ID. `R030-LIB` and
-`TEST-PUBLICATION-08` remain open until explicit publication and separate cold
-consumers from Central and GitHub Packages succeed.
+tag, original run ID and Central deployment ID. At this validation checkpoint,
+`R030-LIB` and `TEST-PUBLICATION-08` remained open pending explicit publication
+and separate cold consumers from Central and GitHub Packages.
+
+## Live dual-repository publication — 2026-09-08
+
+The approved publication preserved the immutable recovery contract throughout
+a partial-release failure. Run
+[`34229094758`](https://github.com/xORex-LC/ioc-extractor/actions/runs/34229094758)
+published Central successfully, then GitHub Packages verification failed on an
+HTTP 302 response. Central could not be overwritten or rolled back, so recovery
+continued from validation run `34222437897`, its signed bundle and deployment
+`84d86a68-9402-4181-a587-772d004ad8c6`.
+
+Three bounded recovery fixes were committed and independently passed the full
+CI workflow:
+
+- `fa5e5a8f` accepts only safe HTTPS read redirects and strips authorization
+  across origins; CI run `34231003678` passed;
+- `26e58cef` allows qualification after the intentionally skipped recovery
+  build and preserves an already-known Central deployment ID; CI run
+  `34232060476` passed;
+- `46510880` stores consumer logs outside a hidden directory and makes missing
+  evidence a hard failure; CI run `34233119093` passed.
+
+Final protected recovery run
+[`34233605995`](https://github.com/xORex-LC/ioc-extractor/actions/runs/34233605995)
+completed admission, reused the original signed artifact without rebuilding,
+confirmed Central and GitHub Packages contain the exact bundle, and ran two
+separate empty-cache consumers. Both consumers resolved all primary artifacts,
+compiled and executed successfully. Direct Central comparison found all 20
+manifest entries with no missing or mismatched file.
+
+The final run retains:
+
+| Evidence | Artifact ID | GitHub SHA-256 digest | Expires |
+|---|---:|---|---|
+| Signed library bundle | `10058869990` | `753de2d5feb7fd6637265f10dc400e4da8935ef13ea67f7a94f0e91787f6448e` | 2026-12-07 |
+| Central deployment identity | `10058880886` | `ec7da392d73ac381087761a4f7b55754430d76d68d2fa47e87547e1367810296` | 2026-12-07 |
+| Central and GitHub consumer logs | `10058905999` | `d7f04cede9cf8d4a2048f108a910ad6f06126ec2e22f589afecda7a0764e4be3` | 2026-12-07 |
+
+Downloaded evidence preserves identity SHA-256
+`be2311c54f06420cf86a8e6943658214e240853620b78f184ca425a20cca371e`.
+Local GPG verification reported `GOODSIG` for key
+`DF54073D8BBFA9F9` and `VALIDSIG` for the admitted fingerprint
+`F69BA7E0F7494982E6E1B483DF54073D8BBFA9F9`.
+
+The key UID contains `denismisurkeev461@gmail.com`, while the POM publication
+metadata contains the owner-supplied `denismisyurkeev461@gmail.com`. This does
+not invalidate the signature, fingerprint or published coordinates, but the
+owner should align the UID on the next signing-key rotation if the spelling is
+unintentional.
+
+`R030-LIB` and `TEST-PUBLICATION-08` are now verified. The real
+`feeds-collector` remains a future named consumer whose execution/coalescing
+semantics must be decided from its use case. Independent library versioning and
+snapshot publication also remain future policy decisions.

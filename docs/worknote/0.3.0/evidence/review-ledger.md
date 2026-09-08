@@ -25,7 +25,7 @@ Contract: [R030-QUAL](../goals/R030-QUAL-code-health.md).
 | `platform/platform-diagnostics` | `planned` | `R030-QUAL` / `R030-LIB` | Generic result/sink mechanics coexist with IOC capability catalogs and `platform-errors` dependency |
 | `platform/platform-etl` | `planned` | `R030-QUAL` / `R030-LIB` | Framework-free ETL kernel; genericity is constrained by diagnostics/error closure |
 | `platform/platform-events` | `planned` | `R030-QUAL` / `R030-ARCH` | Thin local publish-only control-event API; anti-broker boundary is supported |
-| `platform/platform-concurrency` | `admitted; publication pending` | `R030-QUAL` / `R030-LIB` | Framework-free keyed execution; API/ownership/compatibility accepted, owner-key signing and Central validation passed; public dual-repository consumers remain |
+| `platform/platform-concurrency` | `admitted; published and qualified` | `R030-QUAL` / `R030-LIB` | Framework-free keyed execution; API/ownership/compatibility accepted; exact signed bytes and separate Central/GitHub Packages consumers passed |
 | `platform/platform-observability` | `planned` | `R030-QUAL` / `R030-LIB` | Generic logging mechanics coexist with IOC actions/fields and ETL observer dependency |
 | `platform/platform-diagnostics-logging` | `planned` | `R030-QUAL` / `R030-LIB` | Bridge inherits diagnostics and observability coupling; not an independent first publication unit |
 | `core/ioc-domain` | `planned` | `R030-QUAL` | Pure domain boundary passes; 24 missed branches and accepted PIT/invariant pilot scope |
@@ -152,5 +152,6 @@ Categories include:
 FIFO/exclusion, ограничения worker pool, ёмкость, lifecycle и bounded tests.
 Hardening сам по себе не закрывал admission. ADR 0028/0029, publication
 packaging, component tag и protected Central validation run `34222437897`
-теперь закрывают admission и pre-publication validation. Публичный release и
-два repository consumers остаются отдельным gate.
+закрыли admission и pre-publication validation. Recovery run `34233605995`
+опубликовал тот же signed bundle и успешно выполнил два изолированных
+repository consumer; publication gate закрыт.

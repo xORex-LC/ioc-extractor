@@ -18,9 +18,9 @@ language: "ru"
 | `R030-BASE` | `verified` | [baseline](evidence/baseline.md), [compatibility ledger](evidence/compatibility-ledger.md) | Closed; re-baseline only by explicit scope/contract decision |
 | `R030-DATA` | `verified` | [TTL evidence](data-ttl-01/evidence.md), [export-slot correction](data-ttl-01/export-slot-correction.md), [TTL release contract](data-ttl-01/release-contract.md), [import architecture](dataframe-import/architecture-project.md), [import P0 evidence](dataframe-import/p0-evidence.md), [import P1 evidence](dataframe-import/p1-evidence.md), [import P2 evidence](dataframe-import/p2-evidence.md), [import P3 evidence](dataframe-import/p3-evidence.md), [import P4 evidence](dataframe-import/p4-evidence.md), [import P5 evidence](dataframe-import/p5-evidence.md), [import P6 evidence](dataframe-import/p6-evidence.md), [import P7 evidence](dataframe-import/p7-evidence.md), [import P8 evidence](dataframe-import/p8-evidence.md), [import P9 evidence](dataframe-import/p9-evidence.md), [ADR-0024](../../ADR/0024-managed-dataframe-import.md) | Closed on `b3aee0a3`: packaged exact-v0.2/fresh qualification and fresh full-reactor gate passed. External ADR-0025 H5 breadth is explicitly deferred to `OPS-8`, is not a pass, and does not extend support to unqualified SMB families |
 | `R030-BUILD` | `in-progress` | [build-quality ledger](evidence/build-quality-ledger.md) | Lifecycle separation, CI retention, coverage gates and Codecov upload/history are verified; absent external Codecov contexts have a non-blocking disposition, while required build-status policy and its final closure run still remain |
-| `R030-TEST` global controls | `in-progress` | [test-quality ledger](evidence/test-quality-ledger.md) | `TEST-LIFECYCLE-01` through `TEST-CODECOV-07` and `TEST-CONSUMERS-09` are verified; only the out-of-reactor `TEST-PUBLICATION-08` remains, waiting on the validated `R030-LIB` bundle to be published and consumed from both repositories |
+| `R030-TEST` global controls | `verified` | [test-quality ledger](evidence/test-quality-ledger.md) | All global work items, including separate out-of-reactor Central and GitHub Packages consumers in run `34233605995`, are verified. Applicable per-module hardening cells remain independently tracked below |
 | `R030-SEC` | `planned` | — | Security gap analysis |
-| `R030-LIB` | `in-progress` | [shared-code inventory](evidence/shared-code-inventory.md), [LIB-1 hardening](lib-1-concurrency-worknote.md) | RC identity, protected owner-key signing and Central validation are verified in run `34222437897`. Public Central/GitHub Packages release and separate cold consumers remain open |
+| `R030-LIB` | `verified` | [shared-code inventory](evidence/shared-code-inventory.md), [LIB-1 hardening](lib-1-concurrency-worknote.md) | `ioc-platform-concurrency:0.3.0-rc.1` was published from the immutable validated bundle and separately consumed from Central and GitHub Packages in protected run `34233605995` |
 | `R030-DOC` | `planned` | — | Translation inventory |
 | `R030-REL` | `planned` | — | All prerequisite goals |
 
@@ -87,9 +87,10 @@ Matrix обновляется после каждого analysis или implemen
 
 Implemented ADR 0028, the GitHub namespace coordinate, standalone POM and
 source/Javadoc packaging, publication recovery tooling and protected workflow.
-The separate consumer passed against the local bundle. `R030-LIB` and
-`TEST-PUBLICATION-08` remain open until real signing/repository validation and
-cold consumption from Central and GitHub Packages are recorded.
+The separate consumer passed against the local bundle. At this preparation
+checkpoint, `R030-LIB` and `TEST-PUBLICATION-08` remained open pending real
+signing/repository validation and cold consumption from Central and GitHub
+Packages.
 
 ### LIB-1 protected validation — 2026-09-08
 
@@ -101,3 +102,14 @@ GitHub Packages was not contacted in validation mode. The next gate is an
 explicitly approved recovery publication from that exact run/deployment,
 followed by independent cold resolution and execution against Central and
 GitHub Packages.
+
+### LIB-1 protected publication — 2026-09-08
+
+Partial run `34229094758` published Central but exposed an HTTP redirect defect
+in GitHub Packages verification. Recovery fixes passed complete CI, and final
+protected run
+[`34233605995`](https://github.com/xORex-LC/ioc-extractor/actions/runs/34233605995)
+reused the original signed bundle, confirmed exact bytes at both repositories
+and passed two isolated cold consumers. This closes `R030-LIB` and the global
+`TEST-PUBLICATION-08` control; it does not close the separate module-hardening
+cells.

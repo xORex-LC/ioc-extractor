@@ -2,7 +2,7 @@
 title: "0.3.0 test-quality evidence"
 version: "0.3.0"
 goal_id: "R030-TEST"
-status: "In progress"
+status: "Global controls verified; module waves active"
 document_type: "Evidence ledger"
 source_of_truth: false
 language: "ru"
@@ -25,9 +25,10 @@ configuration-corpus compatibility checks and bootstrap selection evidence.
 worker cleanup. `TEST-EXTERNAL-05` is **verified** by the provisioned live SMB
 `CHANGE_NOTIFY` execution recorded below. `TEST-PILOTS-06`,
 `TEST-CODECOV-07` and `TEST-CONSUMERS-09` are also verified with the stated
-diagnostic/external dispositions. The only remaining global work item is
-`TEST-PUBLICATION-08`; its coordinates and public API are now admitted, and its
-execution waits for the validated bundle to be published to both repositories.
+diagnostic/external dispositions. `TEST-PUBLICATION-08` is also **verified**:
+the admitted immutable bundle was published and consumed separately from
+Central and GitHub Packages in protected run `34233605995`. All global work
+items are complete; per-module hardening remains independently tracked.
 
 `BASE-INVENTORIES-09` intake status: **verified**. The initial work queue below
 maps every baseline test/coverage/consumer gap to an owner without implementing
@@ -50,7 +51,7 @@ inputs.
 | `TEST-EXTERNAL-05` | Execute live SMB `CHANGE_NOTIFY` contract or record explicit external-evidence release disposition | Verified live Windows-host contract evidence below | Provisioned fixture / `R030-REL` | `verified` |
 | `TEST-PILOTS-06` | Run PIT/domain, invariant and seeded repeat pilots; triage signal/noise/cost | Verified diagnostic pilot tables below | Wave 1 profiles/artifacts | `verified` |
 | `TEST-CODECOV-07` | Best-effort non-required upload plus project/patch signals | Codecov table below | Stable JaCoCo XML + CI | `verified-with-external-status-disposition` |
-| `TEST-PUBLICATION-08` | Out-of-reactor compile/runtime contract for an admitted published library | Compatibility/shared-code ledgers | Validated `R030-LIB` bundle must be published to Central and GitHub Packages | `waiting-on-library-publication` |
+| `TEST-PUBLICATION-08` | Out-of-reactor compile/runtime contract for an admitted published library | Protected run `34233605995`; retained Central/GitHub consumer logs | Exact immutable `R030-LIB` bundle published to both repositories | `verified` |
 | `TEST-CONSUMERS-09` | Add exact golden CSV/manifest/log/CLI consumer payload/query fixtures for accepted external surfaces | Verified implementation evidence below | Per-surface owner decision | `verified` |
 
 ## Current-HEAD inventory refresh — 2026-09-01
@@ -1691,7 +1692,7 @@ retirement evidence in its owning goal.
 |---|---|---|---|---|---|---|
 | JDK pattern engine lacked a behavioral consumer | Shared contract covers both implementations; live configuration corpus is equivalent and `ioc.engine=jdk` selects the JDK adapter; regex module is `18/18` lines and `4/4` branches | `contract`, `compatibility` | Supported alternate engine could drift or wire incorrectly without detection | Shared two-engine contract + bootstrap bean-selection test | Closed and verified 2026-09-05 | `TEST-REGEX-03` |
 | Live SMB `CHANGE_NOTIFY` execution | External transport signal and idle-survival behavior | `contract`, `external` | Offline suite cannot prove live server semantics | Provisioned execution or explicit release disposition | Closed by 2/2 live cases on commit `404ab5f3`; target-specific boundary retained | `TEST-EXTERNAL-05` |
-| No standalone published-library consumer yet | Future extracted library coordinates and public API | `contract`, `publication` | Reactor-relative resolution can hide publication/POM defects | Out-of-reactor compile + runtime contract using published coordinates | Required when library API is finalized | `R030-LIB` / `R030-TEST` |
+| Standalone published-library consumers | Published library coordinates and public API | `contract`, `publication` | Reactor-relative resolution could hide publication/POM defects | Separate out-of-reactor compile + runtime contract for Central and GitHub Packages | Closed by both cold consumers in protected run `34233605995` | `TEST-PUBLICATION-08` |
 | Invariant/PIT pilots | Refang, extraction/attribution, normalization, classification, deduplication, identity | `assertion-quality` | Initial domain-only PIT exposed downstream-dependent oracles and 41 undetected mutants | 16 focused invariant cases plus final PIT triage | Closed: final `NO_COVERAGE=0`, eight survived mutants classified | `TEST-PILOTS-06` |
 | No-op sink test has implicit oracle | `NoopDiagnosticSink` valid emission | `assertion-quality` | Very low; intent is less explicit | Explicit no-throw assertion if touched | Opportunistic | `R030-TEST` module review |
 
@@ -1811,9 +1812,10 @@ changed, so no finding intersects changed production code.
 
 These repository reference consumers close the producer-side regression gap;
 they do not register a named automation, reader or log collector and do not
-claim deployed-consumer acceptance. `TEST-PUBLICATION-08` now has an admitted
-and Central-validated publication unit, but remains open until the exact bundle
-is publicly released and consumed separately from both repositories.
+claim deployed-consumer acceptance. `TEST-PUBLICATION-08` is separately closed
+by protected run `34233605995`: the exact admitted bundle was publicly released
+and two isolated empty-cache consumers compiled and executed it from Central
+and GitHub Packages.
 
 ## Diagnostic pilots
 
@@ -1854,12 +1856,16 @@ external skips); aggregate coverage was `20099/22390` lines (`89.77%`) and
 `6508/8125` branches (`80.10%`). All 19 aggregate groups, 18 required local
 reports, fixed floors and ratchets passed.
 
-The remaining boundaries are explicit: `TEST-PUBLICATION-08` waits on
-`R030-LIB`; centralized external-environment control is `TOOL-4`; PIT expansion
-beyond domain is `TOOL-5`; named deployed consumer acceptance remains with
-`R030-DOC`/`R030-REL`; and the absent Codecov GitHub contexts retain their
-non-required external-status disposition while `R030-BUILD` awaits actual
-required-status policy and its closure run.
+Protected publication run `34233605995` additionally closes
+`TEST-PUBLICATION-08`: separate empty-cache consumers resolved, compiled and
+executed `io.github.xorex-lc:ioc-platform-concurrency:0.3.0-rc.1` from Central
+and GitHub Packages, and their logs are retained as artifact `10058905999`.
+
+The remaining boundaries are explicit: centralized external-environment
+control is `TOOL-4`; PIT expansion beyond domain is `TOOL-5`; named deployed
+consumer acceptance remains with `R030-DOC`/`R030-REL`; and the absent Codecov
+GitHub contexts retain their non-required external-status disposition while
+`R030-BUILD` awaits actual required-status policy and its closure run.
 
 - [x] Test inventory and lifecycle classification complete
 - [x] Per-module and aggregate baseline captured
@@ -1877,10 +1883,9 @@ required-status policy and its closure run.
 - [x] Exact CSV/manifest/log/CLI reference-consumer fixtures are enforced
 - [x] Published testing documentation matches live build
 - [x] Status matrix updated
-- [ ] `TEST-PUBLICATION-08` passes for an admitted `R030-LIB` publication unit
+- [x] `TEST-PUBLICATION-08` passes for an admitted `R030-LIB` publication unit
 
-Therefore the implemented R030-TEST controls are synchronized and verified,
-but the global-controls row correctly remains `in-progress` until the
-publication consumer dependency is available and executed. Goal-level closure
-also remains subject to the applicable per-module hardening cells in the status
-matrix; this checklist does not mark those still-planned cells as verified.
+Therefore the implemented R030-TEST global controls are synchronized and
+verified. Goal-level execution still includes the independently applicable
+per-module hardening cells in the status matrix; this checklist does not mark
+those still-planned cells as verified.

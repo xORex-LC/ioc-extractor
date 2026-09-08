@@ -2,7 +2,7 @@
 title: "0.3.0 shared-code inventory"
 version: "0.3.0"
 goal_id: "R030-LIB"
-status: "Pilot validated; publication pending"
+status: "LIB-1 published and qualified"
 document_type: "Evidence ledger"
 source_of_truth: false
 language: "en"
@@ -34,7 +34,7 @@ not a current publication test.
 
 | ID | Candidate | Category | Owner | Consumers | Dependency closure | State |
 |---|---|---|---|---|---|---|
-| `LIB-1` | `platform-concurrency` | Cross-service platform | Platform coordination | Current application/adapter-ingest/bootstrap; planned Java + Spring Boot `feeds-collector`, execution policy undecided | No runtime dependencies beyond JDK | `central-validated`; public release and repository consumers open |
+| `LIB-1` | `platform-concurrency` | Cross-service platform | Platform coordination | Current application/adapter-ingest/bootstrap; planned Java + Spring Boot `feeds-collector`, execution policy undecided | No runtime dependencies beyond JDK | `published-qualified`; Central and GitHub Packages cold consumers passed |
 | `LIB-2` | Generic diagnostics model/result/sink subset | Cross-service platform | Diagnostics | Current reactor consumers + planned `feeds-collector` | Must remove service exception/catalog coupling or explicitly version it | `genericity-review` |
 | `LIB-3` | Generic observability/MDC/value typing subset | Cross-service platform | Observability | Current adapters/bootstrap + planned service | ETL observer and IOC action/field vocabulary must be excluded or separated | `genericity-review` |
 | `LIB-4` | `platform-etl` | Cross-service platform | ETL | Current `ioc-application`; nearest consumer planned only | diagnostics + errors + their accepted publication closure | `deferred-second-consumer` |
@@ -44,13 +44,14 @@ not a current publication test.
 [execution record](../lib-1-concurrency-worknote.md) documents real consumers,
 alternatives, proposed API and compatibility boundaries. ADR 0028 and the publication implementation now add the admitted API,
 consumer-resolvable POM, sources/Javadoc and standalone local resolution.
-Protected signing and Central staging validation now pass; public repository
-qualification and future feeds business semantics remain open.
+Protected signing, immutable recovery publication and separate Central/GitHub
+Packages consumers now pass. Future feeds business semantics remain open and
+are not inferred from the publication consumer.
 The owner has selected Maven Central plus GitHub Packages and reported the
 `io.github.xorex-lc` namespace verified and the required secrets configured in
-`LIBRARY PUBLISHING`; exact public setup and the unverified operational checks
-are recorded in the execution record. This is setup evidence, not publication
-evidence.
+`LIBRARY PUBLISHING`; the protected runs subsequently verified the credentials,
+signing identity and both repository paths. Exact evidence is recorded in the
+execution record.
 
 ## Admission record template
 
@@ -88,7 +89,7 @@ evidence.
 
 | Artifact/version | Protected workflow | POM | Sources | Javadoc | Checksum | Standalone consumer |
 |---|---|---|---|---|---|---|
-| `io.github.xorex-lc:ioc-platform-concurrency:0.3.0-rc.1` | Protected validation run `34222437897` passed; Central deployment `84d86a68-9402-4181-a587-772d004ad8c6` is `VALIDATED`, not published | Flattened POM signed and accepted in the validated bundle | Signed and accepted in the validated bundle | Signed and accepted in the validated bundle | Signed MD5/SHA-1/SHA-256 set retained with the immutable bundle | Local cold consumer passed in the protected build; Central and GitHub Packages cold consumers wait for publication |
+| `io.github.xorex-lc:ioc-platform-concurrency:0.3.0-rc.1` | Validation run `34222437897`; recovery publication and qualification run [`34233605995`](https://github.com/xORex-LC/ioc-extractor/actions/runs/34233605995) passed against the same signed bundle and Central deployment `84d86a68-9402-4181-a587-772d004ad8c6` | Published and resolved from Central and GitHub Packages | Published and resolved from Central and GitHub Packages | Published and resolved from Central and GitHub Packages | All 20 signed/checksummed repository files matched the retained manifest; Central comparison reported 20/20 | Separate empty-cache Central and GitHub Packages consumers compiled and executed successfully; logs retained as artifact `10058905999` |
 
 ## Rejected/deferred candidates
 
@@ -106,7 +107,7 @@ The pilot now uses `io.github.xorex-lc:ioc-platform-concurrency` in the reactor.
 ADR 0028, a flattened consumer POM, sources/Javadoc, immutable signed-bundle
 workflow and separate empty-cache consumer are implemented. Local file-repository
 consumption is verified; no external coordinate is claimed published. Public
-repository qualification remains open for both selected destinations.
+repository qualification remained open at this implementation checkpoint.
 
 ### LIB-1 protected validation (2026-09-08)
 
@@ -114,5 +115,26 @@ Annotated component tag `ioc-platform-concurrency-v0.3.0-rc.1` fixes source
 commit `c0f0f12f`. Protected run `34222437897` passed admission, full build,
 owner-key signing and Central USER_MANAGED validation. Its immutable signed
 bundle is retained for recovery; no public Central release or GitHub Packages
-upload has occurred. Publication must resume from that run and deployment,
-after which each repository still requires a separate empty-cache consumer.
+upload had occurred at this validation checkpoint. Publication therefore had to
+resume from that run and deployment before each repository's separate
+empty-cache consumer could execute.
+
+### LIB-1 protected publication and qualification (2026-09-08)
+
+The first publication run `34229094758` released the validated deployment to
+Central, then failed on an HTTP 302 while verifying GitHub Packages. Recovery
+fixes `fa5e5a8f`, `26e58cef` and `46510880` added constrained read redirects,
+made qualification run after a skipped recovery build, preserved Central
+deployment evidence and retained consumer logs. Their complete CI runs
+`34231003678`, `34232060476` and `34233119093` passed.
+
+Final protected recovery run
+[`34233605995`](https://github.com/xORex-LC/ioc-extractor/actions/runs/34233605995)
+used the original signed artifact rather than rebuilding it. Central and GitHub
+Packages both matched the exact bundle, then isolated empty-cache consumers
+resolved, compiled and ran against each repository. Retained artifacts are
+`signed-library` `10058869990`, `central-deployment` `10058880886` and
+`repository-consumers` `10058905999`; all expire on 2026-12-07. The published
+unit therefore satisfies the `R030-LIB` definition of done and closes
+`TEST-PUBLICATION-08`. Snapshot policy and real `feeds-collector` execution
+semantics remain separate future decisions.
