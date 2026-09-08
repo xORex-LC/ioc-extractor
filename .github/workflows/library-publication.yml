@@ -218,13 +218,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python3 tools/ci/library-publication.py consume --bundle .dev/library-bundle --repository central 2>&1 | tee .dev/central-consumer.log
-          python3 tools/ci/library-publication.py consume --bundle .dev/library-bundle --repository github 2>&1 | tee .dev/github-consumer.log
+          mkdir -p library-consumer-evidence
+          python3 tools/ci/library-publication.py consume --bundle .dev/library-bundle --repository central 2>&1 | tee library-consumer-evidence/central.log
+          python3 tools/ci/library-publication.py consume --bundle .dev/library-bundle --repository github 2>&1 | tee library-consumer-evidence/github.log
       - name: Retain consumer evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: repository-consumers
-          path: .dev/*-consumer.log
-          if-no-files-found: warn
+          path: library-consumer-evidence/*.log
+          if-no-files-found: error
           retention-days: 90
