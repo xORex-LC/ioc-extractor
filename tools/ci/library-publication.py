@@ -232,6 +232,9 @@ def publish_github(bundle):
 def publish_central(bundle, publish, deployment_id):
     metadata = read_bundle(bundle, signed=True)
     version_check(metadata['version'], release=True)
+    if deployment_id:
+        require(re.fullmatch('[a-fA-F0-9-]{36}', deployment_id), 'invalid deployment identifier')
+        (bundle / 'central-deployment-id.txt').write_text(deployment_id + '\n')
     missing = compare_remote(bundle, CENTRAL)
     if not missing:
         print('Central already contains the exact bundle')

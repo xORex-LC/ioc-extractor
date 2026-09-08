@@ -161,6 +161,14 @@ class PublicationTest(unittest.TestCase):
                 PUB.publish_central(self.bundle, False, '')
             request.assert_not_called()
 
+    def test_published_central_recovery_retains_supplied_deployment_id(self):
+        self.signed()
+        deployment_id = '12345678-1234-1234-1234-123456789abc'
+        with patch.object(PUB, 'compare_remote', return_value=[]):
+            PUB.publish_central(self.bundle, True, deployment_id)
+        self.assertEqual(
+            (self.bundle / 'central-deployment-id.txt').read_text(), deployment_id + '\n')
+
     def test_central_resume_validates_without_reupload_or_release(self):
         metadata = self.signed()
         deployment_id = '12345678-1234-1234-1234-123456789abc'

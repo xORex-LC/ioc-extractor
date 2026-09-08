@@ -193,7 +193,9 @@ jobs:
 
   qualify:
     needs: [admission, publish]
-    if: inputs.operation == 'publish'
+    if: >-
+      always() && inputs.operation == 'publish' &&
+      needs.admission.result == 'success' && needs.publish.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

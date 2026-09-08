@@ -288,6 +288,13 @@ if grep -Fq 'deployment: false' \
   fail "Dependency Security workflow uses unsupported environment.deployment"
 fi
 
+LIBRARY_WORKFLOW="${REPO_ROOT}/.github/workflows/library-publication.yml"
+grep -Fq "always() && inputs.operation == 'publish' &&" "${LIBRARY_WORKFLOW}" \
+  || fail "library recovery can skip repository qualification after its build job is skipped"
+grep -Fq "needs.admission.result == 'success' && needs.publish.result == 'success'" \
+  "${LIBRARY_WORKFLOW}" \
+  || fail "library qualification does not require successful admission and publication"
+
 RELEASE_WORKFLOW="${REPO_ROOT}/.github/workflows/release.yml"
 # shellcheck disable=SC2016 # GitHub expression must remain literal.
 RECOVERY_SOURCE_REF='${{ github.event_name == '\''workflow_dispatch'\'' && inputs.create_draft && inputs.release_tag || github.ref }}'
