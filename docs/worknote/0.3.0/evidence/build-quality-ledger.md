@@ -1063,3 +1063,26 @@ control. Это не разрешает default/category-wide rules или ав�
   GitHub-App/status-publication disposition
 - [ ] Required CI branch statuses и финальный closure run при активной
   repository branch policy
+
+### Required status policy activation — 2026-09-12
+
+GitHub branch-protection API initially reported both `main` and
+`release-0.3.0` as unprotected. Repository-admin configuration now enforces
+strict required checks for administrators as well as other actors, disables
+force-push and deletion, and binds every required context to the GitHub Actions
+App (`app_id=15368`):
+
+- `main`: `build`, `packaging-contracts`, `doc-links`;
+- `release-0.3.0`: `build`, `pmd-source-policy`, `packaging-contracts`,
+  `doc-links`, `library-consumer`.
+
+`Codecov advisory` remains intentionally non-required. Pull-request approval
+is not part of this build-quality control: the repository currently has one
+collaborator, so mandatory independent review belongs to the remaining
+`R030-SEC` governance analysis rather than this closure slice.
+
+Push [run 34679592409](https://github.com/xORex-LC/ioc-extractor/actions/runs/34679592409)
+confirmed the selected release-branch jobs before activation. It does not close
+this goal because the policy was not active when that push occurred. A
+subsequent pull request must pass all five required checks under the active
+policy before the final checkbox and goal state can change to `verified`.
