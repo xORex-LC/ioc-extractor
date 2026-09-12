@@ -24,10 +24,25 @@ This evidence does not substitute for a scan of the 0.3.0 reactor.
 
 ## Qualification
 
-Focused parser and bootstrap integration tests, dependency graph review,
-`make verify`, `make pmd-analysis` and exact-commit security scan are required.
-Local results and remote run links will be retained in the execution report.
-No new suppressions or analyzer-baseline relaxations are authorized.
+The qualified commit is `3307d1e2846890773bfca35f14c2097e8df20077`.
+
+- focused parser and bootstrap integration tests passed;
+- the effective dependency graph and analyzer output were reviewed;
+- `make verify` passed fresh on the qualified commit;
+- `make pmd-analysis` passed with zero blocking findings and the accepted
+  `21/21` advisory counts;
+- [CI run 34374281499](https://github.com/xORex-LC/ioc-extractor/actions/runs/34374281499)
+  passed on the same commit;
+- [Dependency Security run 34374294199](https://github.com/xORex-LC/ioc-extractor/actions/runs/34374294199)
+  passed on the same commit with 129 dependencies, zero unsuppressed findings
+  and the existing two reviewed JBIG2 suppressions; report artifact
+  `dependency-check-report-16` has ID `10113370027`;
+- no new suppression or analyzer-baseline relaxation was introduced.
+
+Local command evidence is retained under `.dev/security-0.3.0/`. It is ignored
+scratch evidence; the commit and linked CI runs above are the reviewable record.
+This qualification applies to the exact commit. A later 0.3.0 release candidate
+requires a new exact-commit scan after its final changes.
 
 R030-SEC remains in progress. Repository governance, broader source security,
 publication controls and other goal requirements are outside this dependency slice.
