@@ -2,7 +2,7 @@
 title: "0.3.0 build-quality evidence"
 version: "0.3.0"
 goal_id: "R030-BUILD"
-status: "In progress — code-quality controls verified"
+status: "Verified"
 document_type: "Evidence ledger"
 source_of_truth: false
 language: "ru"
@@ -1061,5 +1061,32 @@ control. Это не разрешает default/category-wide rules или ав�
   project-owned input checks and non-required policy evidence; upload/history
   is operational, while absent GitHub contexts have an explicit external
   GitHub-App/status-publication disposition
-- [ ] Required CI branch statuses и финальный closure run при активной
+- [x] Required CI branch statuses и финальный closure run при активной
   repository branch policy
+
+### Required status policy activation — 2026-09-12
+
+GitHub branch-protection API initially reported both `main` and
+`release-0.3.0` as unprotected. Repository-admin configuration now enforces
+strict required checks for administrators as well as other actors, disables
+force-push and deletion, and binds every required context to the GitHub Actions
+App (`app_id=15368`):
+
+- `main`: `build`, `packaging-contracts`, `doc-links`;
+- `release-0.3.0`: `build`, `pmd-source-policy`, `packaging-contracts`,
+  `doc-links`, `library-consumer`.
+
+`Codecov advisory` remains intentionally non-required. Pull-request approval
+is not part of this build-quality control: the repository currently has one
+collaborator, so mandatory independent review belongs to the remaining
+`R030-SEC` governance analysis rather than this closure slice.
+
+Push [run 34679592409](https://github.com/xORex-LC/ioc-extractor/actions/runs/34679592409)
+confirmed the selected release-branch jobs before activation; it is retained as
+pre-activation evidence only. Closure pull request
+[#10](https://github.com/xORex-LC/ioc-extractor/pull/10) then exercised the
+active policy. [Run 34679847573](https://github.com/xORex-LC/ioc-extractor/actions/runs/34679847573)
+passed `build`, `pmd-source-policy`, `packaging-contracts`, `doc-links` and
+`library-consumer` on commit `3c724fb0`; GitHub reported all five required
+checks satisfied. The Definition of Done is therefore complete and
+`R030-BUILD` is `verified`.
