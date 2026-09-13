@@ -417,3 +417,201 @@ Conclusion: enough evidence to retain the boundary proposal and move the
 interview to another existing capability. No production extraction or prototype
 was performed; previous focused tests cover existing code only. Admission,
 compiled consumer and runtime migration evidence remain future work.
+
+## 11. Existing capability: unknown configuration names
+
+**Code inspected:** `IocUnknownConfigurationPreflight`, its leaf-type test,
+and its calls to `IocEnvironmentPropertyMatcher`/configuration shape helpers.
+
+**Current behavior:** Before binding, the preflight examines enumerable property
+sources, handles environment names separately and checks names within `ioc.*`
+against IocProperties. It skips the aggregate `configurationProperties` source.
+Unknown names are collected and currently cause a startup exception. This
+detects misspelled settings that might otherwise leave a default value active.
+It is not value validation, a YAML parser or a universal scanner of arbitrary
+non-enumerable property sources.
+
+**Reuse projection:** Another service could supply its own reserved prefix and
+record schema to reuse name checking. Prefix/schema generalization and returning
+problems separately from startup-wide rejection are extraction adaptations;
+the current implementation does not already offer that reusable API or isolate
+individual connections. Caller-owned failure scope follows interview answer 1.
+
+**Question asked:** Should unknown parameter names inside a service's own
+configuration namespace be reported as configuration errors, even when the
+service could use a default value and otherwise continue running?
+
+**Owner answer:** No mandatory error classification; the approach must be
+individual to the situation.
+
+**Conclusion/proposal:** Separate name recognition findings from severity and
+reaction. A shared checker could return unknown names; the caller decides
+whether to reject, warn or ignore. These choices are proposed examples, not
+three required library modes or an agreed default. The answer does not yet
+confirm that every future service needs the checker.
+
+**Current-code seam:** `postProcessBeanFactory` collects unknown names and then
+throws unconditionally. Extracting detection from that enforcement is necessary
+for reuse. Preserve strict IOC startup policy locally; this answer does not
+authorize weakening the current service or implementing configurable enforcement.
+
+## 12. Existing capability: configuration override provenance
+
+**Code inspected:** `IocConfigurationOverrideReporter.reportOverrides` and
+`effectiveOverrides`.
+
+**Current behavior:** Walks enumerable property sources in their supplied order,
+skips baseline and aggregate sources, canonicalizes names and retains the first
+source label for each external key. At startup it logs names and source labels,
+not values. Its migration warnings use the product migration catalog.
+
+**Reuse projection:** Other Boot services could expose which external source
+supplied a setting, helping diagnose a file value overridden by the environment
+or command line. The ordered source traversal/name normalization is reusable;
+the fixed prefix, logging text, startup hook and migration catalog stay separate.
+It is a name/source report, not proof of full bound-object provenance for complex
+list/map overrides. Do not build another binding/precedence engine.
+
+**Question asked:** Would future services benefit from reporting which source
+supplied each externally overridden setting, without exposing its value?
+
+**Owner answer:** Yes, it will be useful.
+
+**Conclusion:** Value-free external-setting provenance is a confirmed reuse
+need. Assess the existing traversal and canonicalization together with name
+checking; keep product logging/migration messages outside the candidate.
+This does not confirm exact provenance for every nested bound value or authorize
+new binding behavior.
+
+## 13. Existing capability: named handler references
+
+**Code inspected:** `ConfigRegistryPreflight` methods
+`validateClassifyPredicates`, `validateSinkArtifacts`, `validateColumnTransforms`
+and `rejectUnknown`.
+
+**Current behavior:** Configuration selects predicates, providers, filters and
+transforms by name. Preflight compares them with registered names, accumulates
+errors with indexed configuration paths and fails startup after the checks.
+Transform specifications use the product's `name:arg` convention. The same class
+also checks product-specific deferred ID column rules.
+
+**Assessment:** Entire class stays product-specific. The generic membership
+check alone is small and does not justify a standalone library. A possible
+reuse seam exists only if other services also select registered handlers through
+configuration and share the validation/reporting needs. Do not create a plugin
+loader, generic rules engine or shared registry framework from this example.
+Its current messages include supplied names and allowed values; it must not be
+marketed as universally value-free validation.
+
+**Question asked:** Will future services choose processing handlers by names
+in configuration, as IOC Extractor chooses filters/transforms, or will handler
+selection normally be fixed in service code? The question establishes whether
+the existing registry-reference validation pattern has another consumer.
+
+**Owner answer:** Such a mechanism may be useful.
+
+**Conclusion:** Potential reuse acknowledged, not a confirmed second concrete
+consumer or admission of a registry framework. Retain as a conditional helper
+candidate within configuration review. Product registries, traversal rules and
+handler execution remain local. Membership checking alone does not justify
+another artifact.
+
+## 14. Existing capability: configuration-only validation
+
+**Code inspected:** `IocConfigPreflight.validate` and
+`IocSemanticConfigurationCheck.validate`.
+
+**Current behavior:** Semantic checks use Spring Validator/Errors to collect
+multiple problems in bound IocProperties; the rules themselves concern product
+storage, lifecycle, sync, ingestion and import. The configuration-only entry
+point validates a candidate in a restricted context without normal service
+startup. This is separate from runtime reload or live endpoint qualification.
+
+**Assessment:** Do not extract the product validator or recreate Spring's error
+collector. Evaluate whether the restricted configuration-check entry pattern
+has independent consumer demand; product schema, validators, command wiring
+and its current exit/error conventions remain explicit migration seams.
+Configuration-only checking does not prove credentials or endpoint reachability.
+
+**Question asked:** Would future services need a separate command to check
+configuration and report problems without launching normal work or connecting
+to their targets, as IOC Extractor already supports?
+
+**Owner answer:** Yes, it will be useful.
+
+**Conclusion:** Configuration-only command behavior is a confirmed reuse need.
+This does not by itself admit the entire checker as an embeddable library.
+Keep schema, semantic rules, command/exit policy and startup composition owned
+by each service. Preserve IOC's current restricted validation behavior.
+
+**Additional code review:** `SemanticCheckConfiguration` explicitly binds
+IocProperties and imports ConfigPreflightConfiguration. The checker also filters
+Spring listeners/arguments and temporarily replaces process-wide System.out/err
+inside a static synchronized block. That lock serializes checker calls, not
+unrelated output from other threads. This design belongs to an isolated command
+path; copying it into a generic in-process validator could suppress unrelated
+service output. Do not generalize it unchanged or infer live reload support.
+
+## 15. Boundary review: Spring Boot dependency
+
+**Existing evidence:** Property-name canonicalization uses Spring Boot types;
+source traversal uses Spring Environment; semantic checks use Spring Validator;
+the separate command builds a restricted Boot context. Only lexical/reflection
+shape primitives are already JDK-only. This candidate differs from diagnostics.
+
+**Assessment/proposal:** If the intended consumers use Boot, prefer a narrow
+Boot-specific integration module over an invented independent configuration
+framework. Extract a separate framework-free core only when real reusable code
+and a concrete non-Boot consumer justify it. No module split is admitted yet.
+
+**Question asked:** Are the intended consumers of these configuration helpers
+Spring Boot services, or is reuse by plain Java applications without Spring
+also an actual planned need?
+
+**Owner answer:** Spring is definitely required; no non-Spring consumer need
+was identified. In the context of the question, proceed with Spring Boot as
+the target integration environment.
+
+**Conclusion:** A Boot-dependent configuration integration module is appropriate
+for further review. Do not create an independent configuration engine or split
+out a JDK-only core solely for hypothetical non-Spring consumers. This answer
+does not add Spring dependencies to the separate JDK-only diagnostics proposal
+or relax IOC application/domain framework boundaries.
+
+## Configuration interview checkpoint
+
+The current answers support preparing a concrete existing-code boundary:
+
+- value-free reporting of external configuration sources: confirmed useful;
+- separate configuration-only check command: confirmed useful, with command
+  isolation and service-owned composition;
+- unknown-name recognition: individual severity/reaction required, not a
+  mandatory shared rejection policy; universal consumer need not inferred;
+- named-handler reference checking: potentially useful, conditional helper;
+- Spring Boot integration: selected context; no independent config framework;
+- schema, semantic rules, templates, migration hints and final failure scope:
+  remain service-owned; reload remains out of scope.
+
+**Design checkpoint, 2026-09-13:** The
+[configuration boundary proposal](configuration-library-design.md) records the
+existing-type review, supported naming/source limitations, proposed API and
+dependency direction, diagnostics integration, command isolation, publication
+tooling gaps and implementation slices. Recommendation: one Boot adapter library
+for name inspection and ordered source observations; service policy, validators
+and command composition remain local. The reporter does not establish final
+bound-value provenance. Existing publication tooling needs dependency-aware
+qualification before it can admit this library.
+
+**C0 checkpoint, 2026-09-13:** The owner clarified that no second configuration
+exists and accepted a synthetic schema as a technical probe, not as design of a
+future service. The requested [C0 analysis](configuration-c0-analysis.md) reproduced
+54 scenarios against Boot 4.0.8. It confirms a useful independent mechanism but
+rejects extracting the classes unchanged: relaxed-name mismatches, unsupported
+schema/source cases and inaccurate effective-provenance claims require explicit
+correction or scope limits. The fixture is not evidence of a second real consumer.
+
+**Workflow clarification:** The owner asked whether the work had moved into
+implementation. Diagnostics and configuration are both at the design-proposal
+stage; C0 was additional configuration research, not extraction. The owner then
+agreed to continue examining other existing mechanisms. C1 remains a future
+implementation option, not the active task. No extraction/publication is underway.

@@ -10,3 +10,8 @@ These are release worknotes, not accepted architecture or publication admission.
 
 - [Diagnostics boundary proposal](lib-2-diagnostics-design.md): type disposition,
   proposed API, migration seams and validation requirements.
+- [Spring Boot configuration proposal](configuration-library-design.md): existing
+  mechanics, supported-contract limits, service ownership, extraction slices and
+  publication-tooling prerequisites.
+- [C0 qualification results](configuration-c0-analysis.md): 54 synthetic scenarios,
+  actual Boot binding, extraction blockers and revised v1 support requirements.
