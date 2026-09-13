@@ -1,0 +1,24 @@
+{
+  "head": "0df7183fcc02cfd010104733c3608e710b059be9",
+  "source_sha256": {
+    "IocConfigurationPropertyShape": "f43ed55499cb000a02de4b52f324b83d73a5f72095ba7830f42128c9ae7a875e",
+    "IocEnvironmentPropertyMatcher": "0176ca41808477bcacda52272942542405745e00194bdca0f99f31b92143d02e",
+    "IocUnknownConfigurationPreflight": "c5e1b9d9ae572ebb6d1ce492106b10b3044f8531a1022b1c10be9b6f85522721",
+    "IocConfigurationOverrideReporter": "3a839e2f0135cadeab36e4dda38dd95788939aef40ddac8601d838f57b92db51",
+    "IocConfigurationMigrationCatalog": "3e03164f0a2657e1e17e40f824788c51286dac954e231ea0da3a98706190ca68"
+  },
+  "java": "openjdk 21.0.11 2026-04-21 LTS",
+  "dependencies": {
+    "jcl-over-slf4j-2.0.18.jar": "ec5c36d57d2dbe100f84878f944575cb7871da32c7a115b8d7e0721277045d67",
+    "spring-aop-7.0.9.jar": "b8c5d6bfcb1f4993f2cc124f7ab7fac40edf5256b9e43c2f7250a733cb5510e9",
+    "spring-context-7.0.9.jar": "7552a2fcfa30cea53eb14d7a65a7a8e1b1dd82e832a7164fb7e6fb105f438858",
+    "spring-beans-7.0.9.jar": "ff218b827a25c9e8929b0cd56dfb56916cea9d5b669ed97dc7cb262508ff548b",
+    "spring-boot-4.0.8.jar": "ef1a4917ff5dfd41de20b7441a7830eaeae0a01229998c3aa2f471b96bc2b38f",
+    "snakeyaml-2.5.jar": "e6682acf1ace77508ef13649cbf4f8d09d2cf5457bdb61d25ffb6ac0233d78dd",
+    "jspecify-1.0.1.jar": "070d75f261fe4c5b8202508366715f7f2d4660f88c8ef7e6d3575e48c9683b66",
+    "spring-expression-7.0.9.jar": "046434c40f43819729b9b1db0e6c659dfa68184c1c2c2efa5f7b3a5b27c4e2e2",
+    "slf4j-api-2.0.18.jar": "44508fd1576500688c790b190acdd16fec4f8c79a3e0b900afd70503cf055f55",
+    "spring-core-7.0.9.jar": "5195f4722699b39878d99a832549fe65df2890b159d063b88fff31b1ca65ae36"
+  },
+  "rows": 54
+}
