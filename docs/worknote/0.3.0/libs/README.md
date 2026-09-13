@@ -15,3 +15,5 @@ These are release worknotes, not accepted architecture or publication admission.
   publication-tooling prerequisites.
 - [C0 qualification results](configuration-c0-analysis.md): 54 synthetic scenarios,
   actual Boot binding, extraction blockers and revised v1 support requirements.
+- [LIB-3 logging proposal](lib-3-logging-design.md): SLF4J comparison, generic
+  field/scope contracts, explicit masking, IOC migration and publication plan.

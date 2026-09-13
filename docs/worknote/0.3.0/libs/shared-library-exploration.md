@@ -615,3 +615,206 @@ implementation. Diagnostics and configuration are both at the design-proposal
 stage; C0 was additional configuration research, not extraction. The owner then
 agreed to continue examining other existing mechanisms. C1 remains a future
 implementation option, not the active task. No extraction/publication is underway.
+
+## 16. Next candidate: operational logging and execution context
+
+**Evidence refreshed:** `platform-observability` production helpers, module POM
+and README, current bootstrap event-listener usages, and the shared-code inventory
+at commit `0df7183fcc02cfd010104733c3608e710b059be9`.
+
+**Recommendation:** Examine the existing LIB-3 candidate next. Its small logging
+mechanics have immediate cross-service applicability and are close enough to
+the diagnostics boundary to clarify their responsibilities. This is a candidate
+review, not approval to publish the entire module.
+
+Existing mechanisms to discuss separately:
+
+- `MdcScope`: temporarily adds or hides operation metadata in the current thread's
+  logging context, supports nested scopes and restores touched keys on close.
+  Current bootstrap fetch/publish/export listeners establish scopes from event
+  metadata. It does not itself propagate context between worker threads or services.
+- `LogEvent` / `LogValueNormalizer`: validates structured field scalar types,
+  writes event-local fields through SLF4J and temporarily hides matching MDC keys
+  so one event does not carry competing contextual values.
+- `SensitiveLogValueSanitizer`: removes URL user-info and query content. It
+  preserves fragments and is not a general secret scrubber; independent reuse
+  needs its precise policy reviewed.
+
+**Coupling:** `MdcScope` and `LogEvent` expose the IOC `LogField` enum; LogEvent
+also accepts `EventAction`/`EventOutcome`. `LoggingPipelineObserver` creates the
+module's ETL dependency. Keep the IOC field/action catalog, pipeline observer,
+message text and runtime logging configuration outside a prospective generic
+subset. Main code uses SLF4J; Logback is a test dependency in this module.
+Compare the custom behavior with framework facilities before admitting wrappers.
+
+**Why this before ETL/events:** ETL needs a demonstrated common processing
+contract and has diagnostics/error dependencies; the event module is deliberately
+a local publish-only port, not a transport between services. Logging scopes and
+typed event fields can be assessed without inventing future business workflows.
+
+**First discussion point:** Would future services benefit from setting task and
+connection identifiers once around an operation so its log entries can carry
+that context, with previous context restored afterwards? This asks about the
+existing scope behavior, not distributed tracing or a new logging platform.
+
+**Owner answer:** Yes, useful. The owner asked whether this behavior is really
+specific to logging.
+
+**Clarification:** An operation's context is broader than logging. The existing
+`MdcScope`, however, is specifically a scoped adapter over SLF4J MDC and accepts
+the logging field catalog. In `RemoteChangeFetchListener`, business inputs travel
+explicitly in the event and fetch command; a separate scope copies selected event
+metadata into MDC inside the worker. The logging context is not the source of
+business inputs and is not an automatic cross-thread context carrier. Assess the
+existing logging adapter for extraction; do not infer a generic execution-context
+library from its utility. Other existing context carriers can be reviewed on
+their own contracts. No new implementation or publication work is authorized.
+
+**Owner reconfirmation:** After the logging-versus-operation-context distinction
+was explained, the owner confirmed that the existing logging scope is useful.
+This confirms reuse interest, not a broader execution-context API.
+
+## 17. Structured log fields and declared scalar types
+
+**Existing evidence:** `LogEvent.field` delegates to `LogValueNormalizer` before
+writing fields through SLF4J. `LogValueType` supports STRING, LONG and BOOLEAN.
+Integral Byte/Short/Integer/Long values become Long; a numeric string is rejected
+for a LONG field. Null omits a field. Current import and ingestion observers use
+this mechanism for counts, durations, identifiers and outcomes. Existing
+`LogEventTest` asserts typed values and rejection of a numeric string; the tests
+were read, not rerun for this interview step.
+
+**Reuse assessment:** A service-owned field definition (name plus declared type)
+could feed the same normalization/logging mechanism. The existing closed IOC
+`LogField` enum is a coupling seam; its product vocabulary should stay local.
+The library must not infer units, redact arbitrary values or claim that unrelated
+services' field catalogs agree merely because each checks its own types.
+
+**Current behavior to retain as a separate design question:** Mismatched values
+throw IllegalArgumentException during event construction, even if that log level
+would later be disabled. A usefulness answer does not automatically approve this
+failure policy for every future consumer.
+
+**Question asked:** Would a shared mechanism that checks declared log-field types
+be useful, with each service owning its own field names and definitions?
+
+**Owner answer:** Confirmed. Each service defines its fields and their types,
+then uses the library's tools for the shared processing/logging mechanics.
+The product field catalog is not part of the generic library contract.
+
+## 18. Reaction to an invalid structured log value
+
+**Existing evidence:** `LogEvent.field` calls `LogValueNormalizer.normalize`
+without containment. A mismatched value throws IllegalArgumentException before
+`log()` checks whether the log level is enabled. This exception reaches the
+caller; whether it interrupts business work depends on that caller's containment.
+The producer code, not the operator's configuration, normally supplies the field
+value. This is therefore ordinarily a programming error.
+
+**Decision to discuss:** Should this exception remain visible to calling code,
+or should an invalid log field be contained so the surrounding task can continue?
+The latter requires an explicitly designed behavior change; it is not already
+implemented by this helper. Do not infer either policy from agreement on typed
+fields, or implement a new fallback during the interview.
+
+**Owner answer:** Improving containment would be useful, but is unnecessary now.
+Record technical debt and retain developer responsibility for the current behavior.
+
+**Decision:** Keep the existing strict throwing contract for the initial library
+proposal; service developers own correct field values and exception handling.
+The deferred improvement is tracked as
+[OBS-6 in the debt registry](../../../KNOWN-ISSUES.md#4-наблюдаемость-obs).
+It is not a prerequisite for initial extraction and does not authorize a new
+fallback policy or production changes during this interview.
+
+## 19. Explicit URL redaction before logging
+
+**Existing evidence:** `SensitiveLogValueSanitizer.sanitize(String)` is a JDK-only
+helper with no IOC type dependency. `LoggingPipelineDecisionTracer` calls it for
+item values; `RedactingDiagnosticContextFormatter` uses it on selected text/raw
+values allowed by its separate rendering policy. `LogEvent` does not invoke it
+automatically. Source and the three existing tests were read for this checkpoint;
+no tests were run or changed.
+
+**Actual contract:** Mask URL user-info identified after `://` and mask the whole
+query, without URI parsing/normalization; accept partial strings and null. The
+remaining host/path and trailing fragment are preserved. This is neither a
+general secret detector nor automatic sanitation of log messages/exceptions.
+
+**Proposed reuse boundary:** A deliberately named, explicitly called URL helper;
+the service chooses which values require it. Do not infer a new security library,
+automatic scanning of all fields, or configurable redaction rules. Its exact
+partial-input behavior still needs qualification before any public guarantee.
+
+**Question asked:** Would future services benefit from this explicit helper for
+masking URL credentials and query contents before writing selected values to logs?
+
+**Owner answer:** Yes, and the intended need includes tokens, hashes and other
+selected sensitive values, not only addresses. Do not restrict the requirement
+to URL processing or assume every hash/identifier is sensitive in every service.
+
+## 20. Selected sensitive values beyond URLs
+
+**Additional existing evidence:** `RedactingDiagnosticContextFormatter` selects
+the IOC context keys INDICATOR, ITEM and VALUE. At INFO/WARN/ERROR/FATAL it replaces
+their text with `[redacted:sha256:<12 hex characters>]`, derived from the first
+six SHA-256 digest bytes. It also replaces exact occurrences of those known raw
+values in other rendered context values. At DEBUG/TRACE it instead allows raw
+values after URL sanitation. This is an IOC diagnostic-rendering policy, not
+automatic detection of tokens/hashes or a generic guarantee for every log channel.
+The sink passes diagnostic causes separately; context rendering does not sanitize
+arbitrary exception text. These source paths were read, not modified.
+
+**Proposed boundary:** The service identifies sensitive fields/values and selects
+their rendering policy; shared tools may supply narrowly specified transformations.
+Existing URL masking and selected-value fingerprint replacement are extraction
+candidates. A universal secret detector and new field annotations are not implied.
+The diagnostic key catalog and severity-dependent raw-value allowance remain local;
+do not generalize DEBUG/TRACE disclosure as suitable for credentials. Full generic
+value masking outside URLs would be a small extension, not an existing public API.
+
+**Next discussion point:** Is correlation of repeated hidden values useful (the
+existing fingerprint behavior), or should sensitive fields use a constant mask
+without a value-derived identifier? These are different disclosure policies.
+An unkeyed truncated hash is not a guarantee of anonymity or safe credential
+representation. Record demand before choosing a shared API or extending behavior.
+
+**Owner answer:** A full constant mask is sufficient. Repeated-value correlation
+through fingerprints is not required for the shared sensitive-value tool.
+
+**Decision:** The service selects sensitive fields/values; the proposed shared
+tool replaces an entire selected value with a constant mask, without retaining
+prefixes/suffixes, length or a value-derived fingerprint. The exact marker spelling
+is not yet a public contract. This is a small required extension to the extraction
+proposal, not a capability already present as a generic public helper. Do not
+extract fingerprint generation merely because the current diagnostic formatter
+contains it. Existing IOC diagnostic rendering remains unchanged; its migration
+must be assessed separately. Keep the URL-component sanitizer as a distinct,
+previously confirmed tool: preserving parts of a URL is not full-value masking.
+No production changes or automatic detection of secrets are authorized here.
+
+## 21. LIB-3 design checkpoint
+
+The owner requested code analysis and a plan-proposal using system-design,
+java-code-review, multi-module-maven, architecture-review and SOLID guidance.
+The [logging library proposal](lib-3-logging-design.md) records the completed
+review and stages L3-0 through L3-4.
+
+Recommendation: one SLF4J API-dependent JAR for scope restoration, typed fields
+and explicit redaction helpers; IOC taxonomy, renderers, pipeline observers and
+runtime backend configuration stay local. SLF4J already supplies fluent builders
+and dispatch. The proposed added value is declared type checking, restoration of
+previous MDC values and event/MDC collision handling, not another logging engine.
+
+The design resolves the mask/type seam without weakening field types: a textual
+mask needs a STRING log representation. It also records duplicate descriptor
+identity, null omission versus ambient hiding, same-thread/LIFO scope ownership,
+resource acquisition and provider-output limits. Full masking is the requested
+small extension; existing diagnostic fingerprints remain service policy. OBS-6
+remains deferred and does not block extraction.
+
+Existing observability and diagnostics-logging module tests passed: 22 and 37
+local tests respectively, no failures/errors/skips. This is existing-behavior
+evidence, not qualification of the proposed API or publication. Production/build
+code is unchanged. Diagnostics, configuration and logging now all have design
+proposals; no automatic move to implementation is implied.
