@@ -818,3 +818,51 @@ local tests respectively, no failures/errors/skips. This is existing-behavior
 evidence, not qualification of the proposed API or publication. Production/build
 code is unchanged. Diagnostics, configuration and logging now all have design
 proposals; no automatic move to implementation is implied.
+
+## 22. LIB-4 ETL exploration checkpoint
+
+The owner agreed to review `platform-etl`, while questioning whether its actual
+instruments would be useful beyond IOC extraction. Existing data processing is
+not sufficient evidence of a second consumer. The [assessment](lib-4-etl-analysis.md)
+records source/test/dependency review on `edca8d69` and the current alternatives.
+
+The shared mechanism is sequential synchronous stage execution with diagnostics,
+stop policy and observation. Payload transformations, transactions, remote work,
+retry/recovery and scheduling remain service-owned. Managed import already
+reuses processing rules without this runner. The existing application and its
+logging observer are one business flow, not two independent consumers.
+
+Review reproduced three external-contract weaknesses: public construction can
+bypass the typed chain, bounded reporting can alter a custom policy decision,
+and the append-only guard can accept/discard a severity replacement because of
+current diagnostic equality. Initial-diagnostic timing and scope/callback failure
+semantics also need explicit contracts. Current fluent IOC wiring/built-in
+policies do not demonstrate the custom-consumer failures as production incidents.
+
+Recommendation: retain **deferred-second-consumer**; no standalone-library plan
+or implementation yet. The existing LIB-2 equality/exception/suppression choices
+must be reconciled before ETL could be published. No new framework is proposed.
+
+Focused tests passed: 16 ETL and 34 upstream diagnostics, no failures/errors/skips.
+Five temporary probe observations reproduced the public-contract limits; they
+are not publication admission. No production/build changes or full verify/PMD.
+Documentation validation: `make docs` and `git diff --check` passed; all relative
+file links in the new assessment resolve.
+
+**Next question (not answered):** Would another multi-stage operation benefit
+from common execution/reporting conventions while the service defines all
+transformations, or should this orchestration remain local until a concrete
+second flow appears?
+
+**Owner answer:** No corresponding multi-stage operation is currently expected
+in adjacent services. The owner agrees to defer ETL extraction. Reusable data
+processing tools would be useful where existing code adds specific capabilities
+beyond established public libraries.
+
+**Decision:** Close this ETL exploration with `deferred-second-consumer`; keep
+the module internal and preserve the recorded findings for a future concrete
+consumer. The suggested next screening area is existing indicator-text cleanup,
+ordered refanging and network-value feature extraction. Assess their added value
+against standard/established tools before proposing any library; no general
+`data-utils` artifact or new processing functionality is implied. Conduct that
+separate analysis in its own task branch.

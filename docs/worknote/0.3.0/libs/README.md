@@ -17,3 +17,6 @@ These are release worknotes, not accepted architecture or publication admission.
   actual Boot binding, extraction blockers and revised v1 support requirements.
 - [LIB-3 logging proposal](lib-3-logging-design.md): SLF4J comparison, generic
   field/scope contracts, explicit masking, IOC migration and publication plan.
+
+- [LIB-4 ETL assessment](lib-4-etl-analysis.md): existing runner capabilities,
+  consumer evidence, contract limits and reasons to defer extraction.
