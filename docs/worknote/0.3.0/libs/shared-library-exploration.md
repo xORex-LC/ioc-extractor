@@ -866,3 +866,89 @@ ordered refanging and network-value feature extraction. Assess their added value
 against standard/established tools before proposing any library; no general
 `data-utils` artifact or new processing functionality is implied. Conduct that
 separate analysis in its own task branch.
+
+**Owner response to the suggested next area:** Do not pursue a separate library
+for text cleanup/refanging/network-value parsing. The owner sees no added reuse
+value over the Java libraries already used for these operations.
+
+**Disposition:** Drop this proposed screening task. No independent comparison
+or extraction analysis was performed, and this decision does not assert that
+every current helper is implemented by a third-party library. Do not create a
+new branch, utility artifact or replacement implementation for this candidate.
+The next recommendation is to consolidate the existing diagnostics,
+configuration and logging proposals and choose an implementation priority;
+that choice and implementation remain pending owner direction.
+
+## 23. Evidence-based correction of the data-tools recommendation
+
+The owner challenged the assistant's unverified agreement and requested an
+analysis before accepting or rejecting a candidate. This section supersedes the
+previous screening disposition's rationale. ETL remains deferred; this is a
+bounded correction to the candidate discussion, not an extraction design.
+
+**Live code inspection on edca8d69:**
+
+| Capability | Actual implementation | Added semantics / extraction assessment |
+|---|---|---|
+| Public suffix classification | `PslHostClassifier` delegates to Guava `InternetDomainName` and maps results to local `HostKind` | Mature external mechanism with local policy; no new PSL engine to extract |
+| Text-edge cleanup | `DefaultIndicatorNormalizer` manually trims a fixed character set | Small standard operation plus product-selected punctuation; weak standalone value |
+| Refanging | `ReplacementRefanger` loops over configured literal rules using JDK `String.replace`; returns per-rule occurrence counts | Ordered transformations and an explicit report are existing added semantics, though their cross-service demand is unconfirmed |
+| Address feature extraction | `DefaultIndicatorFeatureExtractor` uses custom string scanning, then calls `HostClassifier` | Handles the product's scheme-less host/path/query inputs; not a general URI parser and currently coupled to `Indicator`/`IndicatorFeatures` |
+
+Sources: `core/ioc-domain/src/main/java/com/iocextractor/domain/{refang,feature}`,
+`adapters/adapter-psl/src/main/java/com/iocextractor/adapter/out/psl/PslHostClassifier.java`,
+`bootstrap/.../AppConfig.java:227-243`, and the refanger/feature-extractor tests.
+The claim that ready-made libraries already implement all these behaviors is
+incorrect. The opposite claim that these behaviors are absent from public Java
+libraries is also unproven; no exhaustive ecosystem survey was performed.
+
+**Primary-source comparison, checked 2026-09-15:**
+
+- [Guava InternetDomainName](https://guava.dev/releases/33.4.0-jre/api/docs/com/google/common/net/InternetDomainName.html)
+  provides public-suffix/domain operations used by the adapter. This is API
+  reference evidence, not a recommendation to change the resolved version.
+- [Apache Commons Lang StringUtils](https://commons.apache.org/proper/commons-lang/apidocs/org/apache/commons/lang3/StringUtils.html)
+  already supports stripping a supplied character set and multiple replacements.
+  `replaceEach` is not an exact substitute for our sequential rule loop: its
+  documented example does not reprocess replacement output, whereas our next
+  rule receives the previous rule's output. It does not return our per-rule
+  report. This establishes a contract distinction, not a novel algorithm or a
+  reason to add Commons Lang to the framework-free domain.
+- [JDK URI](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/net/URI.html)
+  provides URI parsing/normalization. Bare host-like strings can be relative URI
+  paths; our feature parser assigns domain-specific host/path meanings. Replacing
+  it requires an input-contract comparison, not a mechanical method swap. Its
+  current custom implementation must not be advertised as a complete URI parser.
+
+**Practice assessment:** A reusable layer over existing libraries is legitimate
+when it owns meaningful shared conventions, adaptation or maintenance policy.
+[Microservice Chassis](https://microservices.io/patterns/microservice-chassis.html)
+explicitly composes existing frameworks for cross-cutting behavior. This supports
+shared integration as a category; it does not justify a broad chassis artifact
+for this project. [Anti-Corruption Layer](https://learn.microsoft.com/en-us/azure/architecture/patterns/anti-corruption-layer)
+also explains the value of adapting external semantics, and allows a local
+component. An adapter boundary is not automatically a publication boundary.
+
+[YAGNI](https://martinfowler.com/bliki/Yagni.html) argues against paying for
+speculative capabilities before they are needed. Applied here, the additional
+capability is a supported external API/release lifecycle, even if the underlying
+implementation already exists. Existing modular code can remain easy to extract
+later without publishing it today.
+
+**Revised judgment:** Keep these helpers local for now because the reviewed
+subset has limited demonstrated shared value and no confirmed consumer for its
+specific contracts, not because it is all third-party code or inherently useless.
+Refanging with ordered rules and reporting is the most plausible narrowly scoped
+candidate if real demand appears. Novel algorithms are not a prerequisite for a
+useful library; consistent behavior can itself be the product. Conversely,
+several wrappers alone do not establish a worthwhile independent artifact.
+
+For all candidates, distinguish (1) behavior provided by existing dependencies,
+(2) our added contract, (3) who needs that exact contract, and (4) publication and
+compatibility cost. The diagnostics/config/logging proposals must meet the same
+criterion; their approved design direction is not proof of completed admission.
+No automatic move to diagnostics implementation follows from this correction.
+
+Validation: source/test inspection and primary documentation comparison only;
+no runtime claims, dependency substitutions or production changes. Tests and
+full verify/PMD were not rerun for this discussion correction.
