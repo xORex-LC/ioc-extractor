@@ -818,3 +818,82 @@ local tests respectively, no failures/errors/skips. This is existing-behavior
 evidence, not qualification of the proposed API or publication. Production/build
 code is unchanged. Diagnostics, configuration and logging now all have design
 proposals; no automatic move to implementation is implied.
+
+## LIB-5 local event exploration checkpoint — 2026-09-16
+
+The owner requested review of `platform-events` before advancing diagnostics.
+The [assessment](lib-5-events-analysis.md) records the initial code/dependency
+review and comparison with Spring and CloudEvents on `edca8d69`.
+
+The existing module offers a framework-free publication port and shared event
+metadata, with no runtime dependencies. Six IOC application event types support
+multiple local coordination flows. Delivery, listeners, diagnostics adapters,
+work admission and reconcile remain outside it. Its current fire-and-observe
+semantics permit loss recovered from authoritative state; they are not a durable
+remote command contract.
+
+Recommendation: keep it under discussion as a small shared contract, with the
+inventory's deferred-second-consumer status unchanged. Size is not the objection;
+shared metadata and failure behavior must have a confirmed consumer. Public API
+qualification must make publication failure/partial delivery semantics explicit.
+No subscription framework, broker, wire protocol or new feature is proposed.
+
+Validation: module tests passed, 11 tests with no failures/errors/skips. Spring
+adapter tests were read, not rerun. Production/build code is unchanged.
+
+**Next owner question:** Is common metadata and a framework-free way to announce
+facts inside each future service useful, with payloads/recovery owned by that
+service, or is the intended need specifically communication between services?
+The two needs can coexist; an answer about networking alone does not admit the
+current local contract as a delivery library.
+
+**Owner answer:** The described local-event scenario will be useful in future
+services. This confirms interest in shared local event conventions; it does not
+request inter-service delivery or establish an implemented second consumer.
+
+**Next contract question:** Current `SpringControlEventPublisher` observes and
+absorbs runtime publication failures so they do not turn an already completed
+producer operation into a failure. Reconcile belongs to the consuming service,
+not the events module. Is this best-effort notification behavior appropriate for
+the shared local-event use case? Losing the hint is acceptable only when recovery
+exists or the reaction is optional. No new recovery mechanism is proposed.
+
+**Owner answer on publication failure:** Failure of a notification does not have
+to turn a successful producer operation into a failure. This confirms support
+for the existing best-effort scenario, not mandatory suppression of every error
+by every possible adapter. Keep failure observation and service-owned recovery
+explicit; no configurable multi-policy mechanism is requested.
+
+**Next existing instrument:** `ControlEventMetadata` already distinguishes the
+event's own id, a required correlation id for related work, and an optional
+causation id naming the triggering event/command. Services supply these values;
+there is no automatic propagation or history store. Confirm whether keeping
+both operation grouping and an optional immediate-cause reference is useful
+in the shared contract.
+
+**Owner answer on correlation/causation:** Both the common operation identifier
+and optional immediate event/command cause are useful. Preserve these distinct
+concepts; services still assign and propagate the identifiers.
+
+**Next extraction-boundary question:** The already implemented
+`SpringControlEventPublisher` resides in bootstrap and owns guarded publication
+and observer notification. Publishing only the current events module would not
+share that behavior. Should the reusable scope include this Spring adapter,
+while framework-free contracts stay independently usable and IOC event types,
+logging observer and bean composition remain service-owned? This concerns moving
+existing integration code, not adding a broker, starter or auto-configuration.
+
+**Owner answer on Spring integration:** Reusing the existing Spring publisher
+adapter is useful. Include it in the extraction candidate scope, while keeping
+framework-free contracts independently usable. This confirms scope, not module
+creation, publication, a starter or automatic bean registration.
+
+**Discussion checkpoint:** The owner has confirmed local-event use, operation
+correlation and optional causation, best-effort notifications as a supported
+scenario, and reusable Spring integration. The next step is technical design
+and contract qualification rather than more general usefulness questions.
+Dependency review finds no IOC types in `SpringControlEventPublisher`: it uses
+the events contracts, Spring `ApplicationEventPublisher`, SLF4J and JDK. The
+concrete IOC logging observer and composition root stay service-owned. The
+existing fallback logger is part of the adapter's observer-failure handling;
+it is not grounds for pulling in platform-observability or the proposed LIB-3.

@@ -17,3 +17,6 @@ These are release worknotes, not accepted architecture or publication admission.
   actual Boot binding, extraction blockers and revised v1 support requirements.
 - [LIB-3 logging proposal](lib-3-logging-design.md): SLF4J comparison, generic
   field/scope contracts, explicit masking, IOC migration and publication plan.
+
+- [LIB-5 local events assessment](lib-5-events-analysis.md): metadata and publisher
+  reuse, Spring delivery semantics and the boundary with inter-service messaging.
