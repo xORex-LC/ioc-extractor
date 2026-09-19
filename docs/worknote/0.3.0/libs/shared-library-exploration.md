@@ -819,6 +819,140 @@ evidence, not qualification of the proposed API or publication. Production/build
 code is unchanged. Diagnostics, configuration and logging now all have design
 proposals; no automatic move to implementation is implied.
 
+## 22. LIB-4 ETL exploration checkpoint
+
+The owner agreed to review `platform-etl`, while questioning whether its actual
+instruments would be useful beyond IOC extraction. Existing data processing is
+not sufficient evidence of a second consumer. The [assessment](lib-4-etl-analysis.md)
+records source/test/dependency review on `edca8d69` and the current alternatives.
+
+The shared mechanism is sequential synchronous stage execution with diagnostics,
+stop policy and observation. Payload transformations, transactions, remote work,
+retry/recovery and scheduling remain service-owned. Managed import already
+reuses processing rules without this runner. The existing application and its
+logging observer are one business flow, not two independent consumers.
+
+Review reproduced three external-contract weaknesses: public construction can
+bypass the typed chain, bounded reporting can alter a custom policy decision,
+and the append-only guard can accept/discard a severity replacement because of
+current diagnostic equality. Initial-diagnostic timing and scope/callback failure
+semantics also need explicit contracts. Current fluent IOC wiring/built-in
+policies do not demonstrate the custom-consumer failures as production incidents.
+
+Recommendation: retain **deferred-second-consumer**; no standalone-library plan
+or implementation yet. The existing LIB-2 equality/exception/suppression choices
+must be reconciled before ETL could be published. No new framework is proposed.
+
+Focused tests passed: 16 ETL and 34 upstream diagnostics, no failures/errors/skips.
+Five temporary probe observations reproduced the public-contract limits; they
+are not publication admission. No production/build changes or full verify/PMD.
+Documentation validation: `make docs` and `git diff --check` passed; all relative
+file links in the new assessment resolve.
+
+**Next question (not answered):** Would another multi-stage operation benefit
+from common execution/reporting conventions while the service defines all
+transformations, or should this orchestration remain local until a concrete
+second flow appears?
+
+**Owner answer:** No corresponding multi-stage operation is currently expected
+in adjacent services. The owner agrees to defer ETL extraction. Reusable data
+processing tools would be useful where existing code adds specific capabilities
+beyond established public libraries.
+
+**Decision:** Close this ETL exploration with `deferred-second-consumer`; keep
+the module internal and preserve the recorded findings for a future concrete
+consumer. The suggested next screening area is existing indicator-text cleanup,
+ordered refanging and network-value feature extraction. Assess their added value
+against standard/established tools before proposing any library; no general
+`data-utils` artifact or new processing functionality is implied. Conduct that
+separate analysis in its own task branch.
+
+**Owner response to the suggested next area:** Do not pursue a separate library
+for text cleanup/refanging/network-value parsing. The owner sees no added reuse
+value over the Java libraries already used for these operations.
+
+**Disposition:** Drop this proposed screening task. No independent comparison
+or extraction analysis was performed, and this decision does not assert that
+every current helper is implemented by a third-party library. Do not create a
+new branch, utility artifact or replacement implementation for this candidate.
+The next recommendation is to consolidate the existing diagnostics,
+configuration and logging proposals and choose an implementation priority;
+that choice and implementation remain pending owner direction.
+
+## 23. Evidence-based correction of the data-tools recommendation
+
+The owner challenged the assistant's unverified agreement and requested an
+analysis before accepting or rejecting a candidate. This section supersedes the
+previous screening disposition's rationale. ETL remains deferred; this is a
+bounded correction to the candidate discussion, not an extraction design.
+
+**Live code inspection on edca8d69:**
+
+| Capability | Actual implementation | Added semantics / extraction assessment |
+|---|---|---|
+| Public suffix classification | `PslHostClassifier` delegates to Guava `InternetDomainName` and maps results to local `HostKind` | Mature external mechanism with local policy; no new PSL engine to extract |
+| Text-edge cleanup | `DefaultIndicatorNormalizer` manually trims a fixed character set | Small standard operation plus product-selected punctuation; weak standalone value |
+| Refanging | `ReplacementRefanger` loops over configured literal rules using JDK `String.replace`; returns per-rule occurrence counts | Ordered transformations and an explicit report are existing added semantics, though their cross-service demand is unconfirmed |
+| Address feature extraction | `DefaultIndicatorFeatureExtractor` uses custom string scanning, then calls `HostClassifier` | Handles the product's scheme-less host/path/query inputs; not a general URI parser and currently coupled to `Indicator`/`IndicatorFeatures` |
+
+Sources: `core/ioc-domain/src/main/java/com/iocextractor/domain/{refang,feature}`,
+`adapters/adapter-psl/src/main/java/com/iocextractor/adapter/out/psl/PslHostClassifier.java`,
+`bootstrap/.../AppConfig.java:227-243`, and the refanger/feature-extractor tests.
+The claim that ready-made libraries already implement all these behaviors is
+incorrect. The opposite claim that these behaviors are absent from public Java
+libraries is also unproven; no exhaustive ecosystem survey was performed.
+
+**Primary-source comparison, checked 2026-09-15:**
+
+- [Guava InternetDomainName](https://guava.dev/releases/33.4.0-jre/api/docs/com/google/common/net/InternetDomainName.html)
+  provides public-suffix/domain operations used by the adapter. This is API
+  reference evidence, not a recommendation to change the resolved version.
+- [Apache Commons Lang StringUtils](https://commons.apache.org/proper/commons-lang/apidocs/org/apache/commons/lang3/StringUtils.html)
+  already supports stripping a supplied character set and multiple replacements.
+  `replaceEach` is not an exact substitute for our sequential rule loop: its
+  documented example does not reprocess replacement output, whereas our next
+  rule receives the previous rule's output. It does not return our per-rule
+  report. This establishes a contract distinction, not a novel algorithm or a
+  reason to add Commons Lang to the framework-free domain.
+- [JDK URI](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/net/URI.html)
+  provides URI parsing/normalization. Bare host-like strings can be relative URI
+  paths; our feature parser assigns domain-specific host/path meanings. Replacing
+  it requires an input-contract comparison, not a mechanical method swap. Its
+  current custom implementation must not be advertised as a complete URI parser.
+
+**Practice assessment:** A reusable layer over existing libraries is legitimate
+when it owns meaningful shared conventions, adaptation or maintenance policy.
+[Microservice Chassis](https://microservices.io/patterns/microservice-chassis.html)
+explicitly composes existing frameworks for cross-cutting behavior. This supports
+shared integration as a category; it does not justify a broad chassis artifact
+for this project. [Anti-Corruption Layer](https://learn.microsoft.com/en-us/azure/architecture/patterns/anti-corruption-layer)
+also explains the value of adapting external semantics, and allows a local
+component. An adapter boundary is not automatically a publication boundary.
+
+[YAGNI](https://martinfowler.com/bliki/Yagni.html) argues against paying for
+speculative capabilities before they are needed. Applied here, the additional
+capability is a supported external API/release lifecycle, even if the underlying
+implementation already exists. Existing modular code can remain easy to extract
+later without publishing it today.
+
+**Revised judgment:** Keep these helpers local for now because the reviewed
+subset has limited demonstrated shared value and no confirmed consumer for its
+specific contracts, not because it is all third-party code or inherently useless.
+Refanging with ordered rules and reporting is the most plausible narrowly scoped
+candidate if real demand appears. Novel algorithms are not a prerequisite for a
+useful library; consistent behavior can itself be the product. Conversely,
+several wrappers alone do not establish a worthwhile independent artifact.
+
+For all candidates, distinguish (1) behavior provided by existing dependencies,
+(2) our added contract, (3) who needs that exact contract, and (4) publication and
+compatibility cost. The diagnostics/config/logging proposals must meet the same
+criterion; their approved design direction is not proof of completed admission.
+No automatic move to diagnostics implementation follows from this correction.
+
+Validation: source/test inspection and primary documentation comparison only;
+no runtime claims, dependency substitutions or production changes. Tests and
+full verify/PMD were not rerun for this discussion correction.
+
 ## LIB-5 local event exploration checkpoint — 2026-09-16
 
 The owner requested review of `platform-events` before advancing diagnostics.
@@ -897,3 +1031,27 @@ the events contracts, Spring `ApplicationEventPublisher`, SLF4J and JDK. The
 concrete IOC logging observer and composition root stay service-owned. The
 existing fallback logger is part of the adapter's observer-failure handling;
 it is not grounds for pulling in platform-observability or the proposed LIB-3.
+
+## Library work branch consolidation — 2026-09-19
+
+The owner requested one shared branch, `r030-libraries`, for all ongoing library
+analysis, design and extraction work, replacing the earlier per-task branch
+arrangement for this workstream. Release/main merges still require an explicit
+owner instruction; this consolidation does not authorize candidate implementation
+or publication by itself.
+
+Preserve the original commits and combine these library branches:
+
+- `dev/packages/decomposition` at `ab91d44e`: concurrency extraction and
+  publication tooling/evidence, already included in the release baseline.
+- `r030-library-designs` at `4e663569`: diagnostics, configuration/C0 and logging
+  proposals, already included through release merge `edca8d69`.
+- `r030-etl-analysis` at `a0748b8c`: deferred ETL assessment and the evidence-based
+  data-tooling correction.
+- `r030-events-analysis` at `dc34abe8`: local-event assessment and confirmed
+  reusable Spring adapter scope.
+
+The owner also requested removal of the superseded branches. Delete their local
+and remote references only after their tips are verified as ancestors of the
+published shared branch. Historical branch names and qualification baselines in
+prior notes remain historical evidence. Library component tags remain intact.
