@@ -129,6 +129,15 @@ runtime JDBC drivers.
 - Service schema v9 adds `JdbcImportDeliveryLedger`: one global monotonic import
   sequence, forward-only expected-state/version CAS, state-specific immutable
   checkpoints, durable retry time and a head query that forbids overtaking.
+- Dataframe schema v10 owns the observation-order namespace, monotonic
+  registration sequence and field-origin tables. `JdbcObservationRegistrationStore`
+  allocates or resumes one rank in a short dataframe transaction and refuses
+  namespace drift, missing recovery rows and overflow.
+- Service schema v10 adds CAS journals for document admission and managed-import
+  registration references. Terminal retention deletes the finalized service
+  reference first, then attempts exact dataframe-registration cleanup; canonical
+  field-origin foreign references keep the registration alive. The two databases
+  are never locked in one transaction.
 - `JdbcImportWorkspace` keeps bulk import rows outside the service/dataframe
   stores in one opaque per-delivery SQLite file. Batched staging is bounded by
   parser, row/error, per-stage and aggregate watermarks; sealing checkpoints and

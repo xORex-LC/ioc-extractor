@@ -90,6 +90,22 @@ tri-state cells (`0=ABSENT`, `1=NULL`, `2=VALUE`), match keys и safe row errors
 после sealing он checkpoint-ится, atomically переименовывается и проверяется
 read-only по pinned digest и metadata.
 
+Dataframe schema v10 добавляет независимый namespace и монотонный
+`admission_order` для delivery observations, а также отдельные lifecycle/compat
+таблицы происхождения изменяемых полей. Service schema v10 хранит только
+recoverable document-admission journal и ссылку managed-import delivery на
+dataframe registration. Между service и dataframe DB нет общей транзакции:
+application выполняет короткие локальные транзакции и завершает terminal
+handshake через reconcile. Retention сначала удаляет finalized service/file
+reference и только затем пытается удалить точную terminal registration; строка
+с canonical field-origin остаётся в dataframe DB.
+
+Эти таблицы являются foundation для ordered artifact policies. Их наличие не
+включает новый artifact или новую mutation policy. Переход на schema v10 также
+означает, что старый binary корректно откажется открывать более новую БД;
+coordinated backup/restore остаётся обязательной частью rollout-плана до
+production activation.
+
 ### Lifecycle-aware storage path (dataframe v4; explicit activation)
 
 V4 размещает все lifecycle facts рядом с business rows именно в dataframe DB,

@@ -175,7 +175,7 @@ class DataframeSchemaReconcilerIT {
                 dataSource,
                 DataframeFormatMigrations.sqlite()).migrate();
 
-        assertThat(result.currentVersion()).isEqualTo(9);
+        assertThat(result.currentVersion()).isEqualTo(10);
         assertThat(tableExists("dataframe_schema_format")).isTrue();
         assertThat(tableExists("artifact_identity")).isTrue();
         assertThat(tableExists("artifact_revision")).isTrue();
@@ -198,6 +198,10 @@ class DataframeSchemaReconcilerIT {
         assertThat(tableExists("import_commit_artifact")).isTrue();
         assertThat(tableExists("import_row_rejection")).isTrue();
         assertThat(tableExists("import_slot_resolution")).isTrue();
+        assertThat(tableExists("observation_order_control")).isTrue();
+        assertThat(tableExists("registered_observation")).isTrue();
+        assertThat(tableExists("canonical_lifecycle_field_origin")).isTrue();
+        assertThat(tableExists("canonical_compat_field_origin")).isTrue();
         try (Connection connection = dataSource.getConnection();
              var statement = connection.createStatement();
              var resultSet = statement.executeQuery("SELECT value FROM dataframe_schema_format WHERE name = 'format'")) {
@@ -220,8 +224,8 @@ class DataframeSchemaReconcilerIT {
         SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
 
         assertThat(result.previousVersion()).isEqualTo(2);
-        assertThat(result.currentVersion()).isEqualTo(9);
-        assertThat(result.appliedVersions()).containsExactly(3, 4, 5, 6, 7, 8, 9);
+        assertThat(result.currentVersion()).isEqualTo(10);
+        assertThat(result.appliedVersions()).containsExactly(3, 4, 5, 6, 7, 8, 9, 10);
         assertThat(tableExists("artifact_revision")).isTrue();
         assertThat(tableExists("canonical_lifecycle_control")).isTrue();
         try (Connection connection = dataSource.getConnection();
@@ -241,8 +245,8 @@ class DataframeSchemaReconcilerIT {
         SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
 
         assertThat(result.previousVersion()).isEqualTo(4);
-        assertThat(result.currentVersion()).isEqualTo(9);
-        assertThat(result.appliedVersions()).containsExactly(5, 6, 7, 8, 9);
+        assertThat(result.currentVersion()).isEqualTo(10);
+        assertThat(result.appliedVersions()).containsExactly(5, 6, 7, 8, 9, 10);
         assertThat(tableExists("export_slot_assignment")).isTrue();
         assertThat(tableExists("export_slot_free_range")).isTrue();
         assertThat(tableExists("export_slot_free")).isFalse();
@@ -269,8 +273,8 @@ class DataframeSchemaReconcilerIT {
         SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
 
         assertThat(result.previousVersion()).isEqualTo(5);
-        assertThat(result.currentVersion()).isEqualTo(9);
-        assertThat(result.appliedVersions()).containsExactly(6, 7, 8, 9);
+        assertThat(result.currentVersion()).isEqualTo(10);
+        assertThat(result.appliedVersions()).containsExactly(6, 7, 8, 9, 10);
         assertThat(queryString("""
                 SELECT state FROM lifecycle_reconcile_state WHERE singleton_id = 1
                 """)).isEqualTo("COMPLETED");
@@ -312,8 +316,8 @@ class DataframeSchemaReconcilerIT {
         SchemaMigrationResult result = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
 
         assertThat(result.previousVersion()).isEqualTo(7);
-        assertThat(result.currentVersion()).isEqualTo(9);
-        assertThat(result.appliedVersions()).containsExactly(8, 9);
+        assertThat(result.currentVersion()).isEqualTo(10);
+        assertThat(result.appliedVersions()).containsExactly(8, 9, 10);
         assertThat(tableExists("export_slot_free")).isFalse();
         assertThat(queryString("""
                 SELECT group_concat(range_start || '-' || range_end, ',')

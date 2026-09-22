@@ -73,8 +73,8 @@ class JdbcLifecycleStorageFoundationIT {
         SchemaMigrationResult migration = new SqliteUserVersionSchemaMigrator(dataSource, migrations).migrate();
 
         assertThat(migration.previousVersion()).isEqualTo(3);
-        assertThat(migration.currentVersion()).isEqualTo(9);
-        assertThat(migration.appliedVersions()).containsExactly(4, 5, 6, 7, 8, 9);
+        assertThat(migration.currentVersion()).isEqualTo(10);
+        assertThat(migration.appliedVersions()).containsExactly(4, 5, 6, 7, 8, 9, 10);
         assertThat(queryString("SELECT state FROM canonical_lifecycle_control WHERE singleton_id = 1"))
                 .isEqualTo("DISABLED_COMPATIBLE");
         assertThat(queryLong("SELECT id FROM masks WHERE row_key = 'legacy-row'"))

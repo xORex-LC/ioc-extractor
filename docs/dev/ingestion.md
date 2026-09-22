@@ -118,6 +118,15 @@ STARTED -> DB_COMMITTED -> PROJECTION_COMPLETED -> COMPLETED
        \------------------------------------------> FAILED
 ```
 
+Для artifact policy с приоритетом по моменту поступления application содержит
+отдельный admission state machine `RESERVED -> ORDERED -> CLAIMED -> LINKED ->
+TERMINAL`. Dataframe DB назначает order; JDBC service journal либо отдельный
+fsync-backed file journal сохраняет recovery reference. После token-only atomic
+claim адаптер создаёт private sealed copy до hashing: producer, который держит
+старый file descriptor открытым, больше не может изменить обрабатываемый inode.
+Обычный daemon flow остаётся прежним, пока ordered policy не собрана в bootstrap
+в рамках активации конкретного artifact.
+
 На старте recovery действует по durable состоянию, а не по одному наличию
 файла:
 

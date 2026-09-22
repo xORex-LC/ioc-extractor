@@ -298,6 +298,9 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
     }
 
     private SourceUnit claim(IngestSourceCommand command) {
+        if (command.claimedSourceOptional().isPresent()) {
+            return command.claimedSourceOptional().orElseThrow();
+        }
         try {
             return sourceLifecycle.claim(
                     command.source(), command.observationId(), command.key(), command.detectedAt());

@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.in.ingest;
 
 import com.iocextractor.application.ingest.ArchivedSourceUnit;
+import com.iocextractor.application.ingest.ClaimedSource;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.SourceUnit;
@@ -8,10 +9,14 @@ import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.common.IocExtractorException;
 
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
-import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
@@ -49,6 +54,66 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
         Path target = processingDir.resolve(fileName(observationId, key, source));
         move(source, target);
         return new SourceUnit(observationId, key, source, target, detectedAt);
+    }
+
+    @Override
+    public ClaimedSource claimBeforeHash(Path source,
+                                         ObservationId observationId,
+                                         Instant detectedAt) {
+        Path target = prehashClaimPath(source, observationId);
+        move(source, target);
+        return new ClaimedSource(observationId, source, target, detectedAt);
+    }
+
+    @Override
+    public Path prehashClaimPath(Path source, ObservationId observationId) {
+        return processingDir.resolve(prehashFileName(observationId, source));
+    }
+
+    @Override
+    public ClaimedSource sealClaim(ClaimedSource claimed) {
+        Objects.requireNonNull(claimed, "claimed");
+        Path source = claimed.processingPath();
+        Path sealed = source.resolveSibling(source.getFileName() + ".sealed");
+        Path temporary = source.resolveSibling(source.getFileName() + ".sealing");
+        try {
+            if (Files.isRegularFile(sealed)) {
+                Files.deleteIfExists(source);
+                Files.deleteIfExists(temporary);
+                forceDirectory(sealed.getParent());
+                return sealedClaim(claimed, sealed);
+            }
+            if (!Files.isRegularFile(source)) {
+                throw new IocExtractorException("Claimed ingest source is missing: " + source);
+            }
+            Files.deleteIfExists(temporary);
+            Files.copy(source, temporary, StandardCopyOption.COPY_ATTRIBUTES);
+            try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
+                channel.force(true);
+            }
+            Files.move(temporary, sealed, StandardCopyOption.ATOMIC_MOVE);
+            forceDirectory(sealed.getParent());
+            Files.delete(source);
+            forceDirectory(sealed.getParent());
+            return sealedClaim(claimed, sealed);
+        } catch (AtomicMoveNotSupportedException failure) {
+            deleteTemporary(temporary, failure);
+            throw new IocExtractorException("Atomic claim sealing is not supported", failure);
+        } catch (IocExtractorException failure) {
+            throw failure;
+        } catch (IOException failure) {
+            deleteTemporary(temporary, failure);
+            throw new IocExtractorException("Failed to seal claimed ingest source", failure);
+        }
+    }
+
+    @Override
+    public SourceUnit adoptClaim(ClaimedSource claimed, SourceKey key) {
+        if (!Files.isRegularFile(claimed.processingPath())) {
+            throw new IocExtractorException(
+                    "Claimed ingest source is missing: " + claimed.processingPath());
+        }
+        return SourceLifecycle.super.adoptClaim(claimed, key);
     }
 
     @Override
@@ -116,6 +181,12 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
         return original.startsWith(prefix) ? original : prefix + original;
     }
 
+    private String prehashFileName(ObservationId observationId, Path source) {
+        Path sourceFileName = source.getFileName();
+        String original = sourceFileName == null ? "source" : sourceFileName.toString();
+        return observationToken(observationId) + "__pending__" + original;
+    }
+
     private void move(Path source, Path target) {
         ownership.claim(source, target);
     }
@@ -126,6 +197,25 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
             Files.writeString(sidecar, reason == null ? "" : reason);
         } catch (IOException e) {
             throw new IocExtractorException("Failed to write ingest error sidecar: " + sidecar, e);
+        }
+    }
+
+    private ClaimedSource sealedClaim(ClaimedSource claimed, Path sealed) {
+        return new ClaimedSource(claimed.observationId(), claimed.originalPath(), sealed,
+                claimed.detectedAt());
+    }
+
+    private void forceDirectory(Path directory) throws IOException {
+        try (FileChannel channel = FileChannel.open(directory, StandardOpenOption.READ)) {
+            channel.force(true);
+        }
+    }
+
+    private void deleteTemporary(Path temporary, Exception failure) {
+        try {
+            Files.deleteIfExists(temporary);
+        } catch (IOException cleanupFailure) {
+            failure.addSuppressed(cleanupFailure);
         }
     }
 

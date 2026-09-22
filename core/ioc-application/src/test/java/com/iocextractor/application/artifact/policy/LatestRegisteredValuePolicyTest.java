@@ -1,6 +1,8 @@
 package com.iocextractor.application.artifact.policy;
 
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
+import com.iocextractor.application.observation.ObservationOrder;
+import com.iocextractor.application.observation.OccurrencePosition;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -67,7 +69,8 @@ class LatestRegisteredValuePolicyTest {
     }
 
     private static FieldValueOrigin origin(long order, String id) {
-        return new FieldValueOrigin(order, 0, new ObservationId(id));
+        return new FieldValueOrigin(
+                new ObservationOrder(order), new OccurrencePosition(0), new ObservationId(id));
     }
 
     private record Candidate(String name, String value) {

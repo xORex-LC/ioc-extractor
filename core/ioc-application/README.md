@@ -72,6 +72,15 @@ Terminal retention использует общую семантику
 сначала очищает transport-managed terminal source, затем local terminal unit,
 snapshot/stage/receipt и только последним CAS удаляет ledger row.
 
+Ordered field policies используют framework-free `ObservationOrder`,
+`OccurrencePosition` и `FieldValueOrigin`. `DocumentAdmissionService`,
+`ManagedImportObservationAdmission` и `ObservationOrderedExtractionDecorator`
+координируют dataframe registration с transport/service recovery references
+короткими последовательными операциями, без cross-database transaction.
+Recovery всегда вызывает `resume` с сохранённым namespace и не имеет права
+выделить новый rank. Terminal retention сначала удаляет recovery reference и
+только затем запрашивает точное удаление незадействованной registration.
+
 ## Зависимости
 
 **Зависит внутрь от:** domain и framework-free platform contracts для ETL,

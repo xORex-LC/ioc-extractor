@@ -81,7 +81,7 @@ class JdbcIngestionLedgerIT extends IngestionLedgerContractTest {
         ObservationId current = new ObservationId("observation-current");
 
         assertThat(result.previousVersion()).isEqualTo(7);
-        assertThat(result.appliedVersions()).containsExactly(8, 9);
+        assertThat(result.appliedVersions()).containsExactly(8, 9, 10);
         assertThat(ledger.find(ObservationId.legacy(content.value()))).isPresent();
         assertThat(ledger.markClaimed(new SourceUnit(
                 current,

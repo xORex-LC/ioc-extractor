@@ -79,7 +79,7 @@ class DataframeStorageDaemonRuntimeModeIT {
                 .containsOnlyKeys("jdbcStorageHealthIndicator", "dataframeStorageHealthIndicator");
         assertThat(context.containsBean("ingestRunRecoveryService")).isTrue();
 
-        assertThat(userVersion()).isEqualTo(9);
+        assertThat(userVersion()).isEqualTo(10);
         assertThat(tableExists("masks")).isTrue();
         assertThat(tableExists("masks_sources")).isTrue();
         assertThat(tableExists("masks_history")).isTrue();

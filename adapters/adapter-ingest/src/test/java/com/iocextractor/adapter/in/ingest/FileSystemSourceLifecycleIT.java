@@ -2,14 +2,28 @@ package com.iocextractor.adapter.in.ingest;
 
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
+import com.iocextractor.application.ingest.ClaimedSource;
 import com.iocextractor.application.ingest.SourceKey;
+import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
+import com.iocextractor.application.observation.ObservationOrder;
+import com.iocextractor.application.observation.ObservationOrigin;
+import com.iocextractor.application.observation.RegisteredObservation;
+import com.iocextractor.application.port.out.observation.ObservationRegistrationStore;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.StandardOpenOption;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -138,5 +152,87 @@ class FileSystemSourceLifecycleIT {
                 .hasMessageContaining("not supported");
 
         assertThat(source).exists();
+    }
+
+    @Test
+    void sealedClaimIsUnaffectedByProducerOpenFileDescriptor() throws Exception {
+        var lifecycle = new FileSystemSourceLifecycle(
+                tempDir.resolve("processing"), tempDir.resolve("done"), tempDir.resolve("failed"));
+        ObservationId observationId = new ObservationId("delivery-open-writer");
+        Path source = Files.writeString(tempDir.resolve("source-open.html"), "original");
+        ClaimedSource claimed = lifecycle.claimBeforeHash(source, observationId, Instant.EPOCH);
+
+        try (FileChannel producerHandle = FileChannel.open(claimed.processingPath(), StandardOpenOption.WRITE)) {
+            ClaimedSource sealed = lifecycle.sealClaim(claimed);
+            producerHandle.position(0);
+            producerHandle.write(ByteBuffer.wrap("mutated!".getBytes(StandardCharsets.UTF_8)));
+            producerHandle.force(true);
+
+            assertThat(sealed.processingPath()).hasContent("original");
+            assertThat(claimed.processingPath()).doesNotExist();
+            assertThat(lifecycle.sealClaim(claimed).processingPath()).isEqualTo(sealed.processingPath());
+        }
+    }
+
+    @Test
+    void fileJournalRestartAdoptsTheSameSealedOccurrenceAndOrder() throws Exception {
+        Path processing = tempDir.resolve("processing");
+        var lifecycle = new FileSystemSourceLifecycle(
+                processing, tempDir.resolve("done"), tempDir.resolve("failed"));
+        var registrations = new MemoryRegistrationStore();
+        Clock clock = Clock.fixed(Instant.parse("2026-09-22T12:00:00Z"), ZoneOffset.UTC);
+        Path journalPath = tempDir.resolve("admission-journal");
+        var firstHandler = handler(journalPath, lifecycle, registrations, clock);
+        Path source = Files.writeString(tempDir.resolve("restart.html"), "ioc-data");
+
+        var admitted = firstHandler.admit(source, new ObservationId("delivery-restart"), clock.instant());
+        var recovered = handler(journalPath, lifecycle, registrations, clock).recover(10);
+
+        assertThat(recovered).singleElement().satisfies(value -> {
+            assertThat(value.registration()).isEqualTo(admitted.registration());
+            assertThat(value.source().key()).isEqualTo(admitted.source().key());
+            assertThat(value.source().processingPath()).isEqualTo(admitted.source().processingPath());
+        });
+        assertThat(registrations.nextOrder).isEqualTo(2);
+    }
+
+    private OrderedDocumentAdmissionHandler handler(Path journalPath,
+                                                    FileSystemSourceLifecycle lifecycle,
+                                                    ObservationRegistrationStore registrations,
+                                                    Clock clock) {
+        return new OrderedDocumentAdmissionHandler(
+                new DocumentAdmissionService(
+                        new FileDocumentAdmissionJournal(journalPath), registrations, clock),
+                lifecycle, new FileDocumentCandidateEvidenceReader(), new FileSourceHasher());
+    }
+
+    private static final class MemoryRegistrationStore implements ObservationRegistrationStore {
+        private static final String NAMESPACE = "0123456789abcdef0123456789abcdef";
+        private final Map<ObservationId, RegisteredObservation> values = new LinkedHashMap<>();
+        private long nextOrder = 1;
+
+        @Override
+        public RegisteredObservation registerNew(ObservationId id, ObservationOrigin origin) {
+            return values.computeIfAbsent(id, ignored -> new RegisteredObservation(
+                    id, NAMESPACE, new ObservationOrder(nextOrder++), origin));
+        }
+
+        @Override
+        public RegisteredObservation resume(ObservationId id, String expectedNamespace) {
+            if (!NAMESPACE.equals(expectedNamespace) || !values.containsKey(id)) {
+                throw new IllegalStateException("Missing registered observation on recovery");
+            }
+            return values.get(id);
+        }
+
+        @Override
+        public void markTerminal(ObservationId id, String expectedNamespace) {
+            resume(id, expectedNamespace);
+        }
+
+        @Override
+        public boolean purgeTerminal(RegisteredObservation registration) {
+            return values.remove(registration.observationId(), registration);
+        }
     }
 }

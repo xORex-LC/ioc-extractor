@@ -27,6 +27,8 @@ public final class DataframeFormatMigrations {
             "com/iocextractor/adapter/out/store/jdbc/dataframe/v8__coalesced_export_slot_ranges.sql";
     private static final String V9 =
             "com/iocextractor/adapter/out/store/jdbc/dataframe/v9__managed_import_commit.sql";
+    private static final String V10 =
+            "com/iocextractor/adapter/out/store/jdbc/dataframe/v10__registered_observation_order.sql";
 
     private DataframeFormatMigrations() {
     }
@@ -41,7 +43,8 @@ public final class DataframeFormatMigrations {
                 new SqliteSchemaMigration(6, "bounded lifecycle reconciliation state", resource(V6)),
                 new SqliteSchemaMigration(7, "canonical match aliases", resource(V7)),
                 new SqliteSchemaMigration(8, "coalesced export slot ranges", resource(V8)),
-                new SqliteSchemaMigration(9, "managed dataframe import commit", resource(V9)));
+                new SqliteSchemaMigration(9, "managed dataframe import commit", resource(V9)),
+                new SqliteSchemaMigration(10, "registered observation order", resource(V10)));
     }
 
     private static String resource(String name) {

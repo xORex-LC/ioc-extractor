@@ -76,5 +76,11 @@ concurrency, Spring Integration file support.
   intake: только regular non-symlink source, private target, no-replace и без
   copy/non-atomic fallback. Managed intake дополнительно revalidate-ит stable
   candidate после claim и фиксирует read-only snapshot с SHA-256/size/fsync.
+- Ordered document admission использует отдельный fsync-backed CAS journal в
+  file-ledger mode и тот же `SourceLifecycle` port в JDBC mode. После pre-hash
+  atomic claim `sealClaim` публикует private inode через fsync + atomic move и
+  удаляет старый inode path; открытый producer descriptor поэтому не меняет
+  bytes, которые хешируются и передаются application use case. Этот путь не
+  подключён к default flow до активации соответствующей artifact policy.
 - Positive retry backoff обычного ingest планируется на daemon scheduler;
   poller thread больше не удерживается через `Thread.sleep`.
