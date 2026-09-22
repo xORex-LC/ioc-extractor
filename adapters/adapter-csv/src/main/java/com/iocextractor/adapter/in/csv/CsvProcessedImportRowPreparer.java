@@ -119,7 +119,7 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
                                                   List<ImportRowIssue> issues) {
         List<ClassifiedIndicator> indicators = new ArrayList<>();
         int issueCountBeforeBranch = issues.size();
-        String source = sourceLabel(branch.cells());
+        String source = sourceLabel(branch.cells(), mapper.columns());
         for (ColumnSpec column : mapper.columns()) {
             if (!IOC_PROVIDERS.contains(column.from())) {
                 continue;
@@ -135,16 +135,17 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
                 continue;
             }
             RawIndicator raw = extracted.getFirst();
-            if (column.whenType() != null && raw.type() != column.whenType()) {
-                issues.add(issue(record, branch.artifactName(), INPUT_INVALID));
-                continue;
-            }
             Indicator indicator = new Indicator(raw.value(), raw.type(), new SourceContext(source, null));
             if (!classifier.supports(indicator)) {
                 issues.add(issue(record, branch.artifactName(), INPUT_INVALID));
                 continue;
             }
-            indicators.add(new ClassifiedIndicator(indicator, classifier.classify(indicator)));
+            ClassifiedIndicator classified = new ClassifiedIndicator(indicator, classifier.classify(indicator));
+            if (!mapper.applies(column, classified)) {
+                issues.add(issue(record, branch.artifactName(), INPUT_INVALID));
+                continue;
+            }
+            indicators.add(classified);
         }
         if (indicators.isEmpty() && issues.size() == issueCountBeforeBranch) {
             issues.add(issue(record, branch.artifactName(), INPUT_INVALID));
@@ -220,8 +221,18 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
                         : artifact.mergeDefault());
     }
 
-    private String sourceLabel(Map<String, ImportCell> cells) {
-        ImportCell source = cells.get("source");
+    private String sourceLabel(Map<String, ImportCell> cells, List<ColumnSpec> columns) {
+        List<String> targets = columns.stream()
+                .filter(column -> "source.label".equals(column.from()))
+                .map(ColumnSpec::name)
+                .toList();
+        if (targets.size() > 1) {
+            throw new IllegalStateException("Processed import has ambiguous source.label bindings");
+        }
+        if (targets.isEmpty()) {
+            return null;
+        }
+        ImportCell source = cells.get(targets.getFirst());
         return source != null && source.presence() == ImportCell.Presence.VALUE
                 ? source.value() : null;
     }

@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.iocextractor.adapter.out.sink.csv.RowMappingException.ComponentKind.PROVIDER;
@@ -88,6 +89,22 @@ class ConfigurableRowMapperTest {
                 Map.of());
 
         assertThat(m.toRow(indicator("abcdef", IndicatorType.SHA256, null)))
+                .containsExactly((String) null);
+    }
+
+    @Test
+    void multiple_types_and_structural_condition_gate_one_scalar_cell() {
+        ColumnSpec column = new ColumnSpec("hash", "value", null, null, null,
+                List.of(IndicatorType.MD5, IndicatorType.SHA1), List.of("eligible"));
+        Map<String, Predicate<ClassifiedIndicator>> conditions = Map.of("eligible",
+                classified -> classified.indicator().value().startsWith("a"));
+        ConfigurableRowMapper m = new ConfigurableRowMapper(List.of(column),
+                Map.of("value", new IndicatorValueProvider()), Map.of(), conditions);
+
+        assertThat(m.toRow(indicator("abc", IndicatorType.MD5, null))).containsExactly("abc");
+        assertThat(m.toRow(indicator("abc", IndicatorType.SHA256, null)))
+                .containsExactly((String) null);
+        assertThat(m.toRow(indicator("def", IndicatorType.SHA1, null)))
                 .containsExactly((String) null);
     }
 

@@ -154,7 +154,16 @@ charset или enabled. Schema/identity changes меняют durable contract и
 | `ioc.sink.artifacts[].columns[].value` | строка или null | опционален | Literal для `const`. |
 | `ioc.sink.artifacts[].columns[].type` | `TEXT`, `INTEGER`, `REAL`, `BLOB`, `NUMERIC` | inferred/text | SQLite affinity, прежде всего для constant columns. |
 | `ioc.sink.artifacts[].columns[].when-type` | IOC type | опционален | Provider выводится только для выбранного IOC type. |
+| `ioc.sink.artifacts[].columns[].when-types` | непустой список IOC types | опционален | Provider выводится для любого указанного типа; совместно с `when-type` использовать нельзя. Порядок списка не влияет на результат. |
+| `ioc.sink.artifacts[].columns[].when` | список filters | опционален | Должны совпасть все условия. `is-clean-host` выбирает чистый домен; `is-address-with-detail` выбирает адрес со схемой, путём, параметрами запроса или портом. Условия применяются после классификации и сочетаются с фильтром типа. |
 | `ioc.sink.artifacts[].columns[].transform` | упорядоченный список | опционален | Зарегистрированы `lower`, `lower-host`, `upper` и `strip-prefix`; параметризованная форма — `strip-prefix:<text>`. Для deferred `id` запрещён. |
+| `ioc.sink.artifacts[].write-policy` | объект | опционален | Правила выбора повторов и изменения полей для одного артефакта; при отсутствии сохраняется `keep-first`. |
+| `ioc.sink.artifacts[].write-policy.duplicate-selection` | `keep-first`, `last-nonempty` | `keep-first` при отсутствии | `last-nonempty` выбирает одно целое вхождение с непустым значением `selection-column`. |
+| `ioc.sink.artifacts[].write-policy.selection-column` | выходная колонка | опционален | Обязательна для `last-nonempty`; колонка идентичности или ID не подходит. |
+| `ioc.sink.artifacts[].write-policy.fields` | список | опционален | Правила обновления полей вне ключа. |
+| `ioc.sink.artifacts[].write-policy.fields[].name` | выходная колонка | обязателен внутри правила | Колонка идентичности или ID не подходит. |
+| `ioc.sink.artifacts[].write-policy.fields[].update` | `latest-registered` | обязателен внутри правила | Использует долговечный порядок поступлений независимо от завершения воркеров. |
+| `ioc.sink.artifacts[].write-policy.fields[].empty` | `keep-existing` | обязателен внутри правила | Пустой ввод сохраняет значение и его приоритет. |
 
 ## Canonical artifact identity
 

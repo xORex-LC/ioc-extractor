@@ -115,7 +115,15 @@ ioc:
   # These schemas are a durable external contract. Prefer changing only paths,
   # charset or enablement unless a coordinated schema migration is intended.
   # A constant column may set `value`; optional column selectors are `type`,
-  # `when-type` and ordered `transform` entries, all demonstrated below.
+  # `when-type`, `when-types`, `when` and ordered `transform` entries. The
+  # latter two gates are available for artifact-specific mapping rules.
+  # Optional write-policy example for a future artifact (do not enable until
+  # its admission, mutation and recovery paths have passed qualification):
+  # write-policy:
+  #   duplicate-selection: last-nonempty
+  #   selection-column: name
+  #   fields:
+  #     - { name: name, update: latest-registered, empty: keep-existing }
   # value: "custom-value"    # example constant payload
   sink:
     csv:
@@ -170,7 +178,7 @@ ioc:
         id: { strategy: ascending, start: auto }
         columns:
           - { name: id,              from: id }
-          - { name: hash_md5,        from: value, when-type: MD5,    transform: [ upper ] }
+          - { name: hash_md5,        from: value, when-types: [ MD5 ], transform: [ upper ] }
           - { name: hash_sha256,     from: value, when-type: SHA256, transform: [ upper ] }
           - { name: hash_sha1,       from: value, when-type: SHA1,   transform: [ upper ] }
           - { name: score,           from: const, type: INTEGER }

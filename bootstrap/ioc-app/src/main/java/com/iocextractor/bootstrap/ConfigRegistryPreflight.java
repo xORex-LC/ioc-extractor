@@ -4,6 +4,7 @@ import org.springframework.beans.factory.InitializingBean;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -23,6 +24,7 @@ final class ConfigRegistryPreflight implements InitializingBean {
         List<String> errors = new ArrayList<>();
         validateClassifyPredicates(errors);
         validateSinkArtifacts(errors);
+        ArtifactPolicyCatalog.compile(props, errors);
         if (!errors.isEmpty()) {
             throw new IllegalStateException("CONFIG.REGISTRY invalid IOC configuration:\n- "
                     + String.join("\n- ", errors));
@@ -68,7 +70,25 @@ final class ConfigRegistryPreflight implements InitializingBean {
             validateArtifactFilters(errors, artifactFilters, artifact.exclude(),
                     "ioc.sink.artifacts[%d].exclude".formatted(artifactIndex),
                     "use a registered artifact exclude predicate");
-            validateColumns(errors, valueProviders, transforms, artifact.columns(), artifactIndex);
+            validateColumns(errors, valueProviders, transforms, artifactFilters,
+                    artifact.columns(), artifactIndex);
+            validateSourceLabelBinding(errors, artifact.columns(), artifactIndex);
+        }
+    }
+
+    private void validateSourceLabelBinding(List<String> errors,
+                                            List<IocProperties.Sink.Artifact.Column> columns,
+                                            int artifactIndex) {
+        if (columns == null) {
+            return;
+        }
+        long bindings = columns.stream()
+                .filter(Objects::nonNull)
+                .filter(column -> "source.label".equals(column.from()))
+                .count();
+        if (bindings > 1) {
+            errors.add("ioc.sink.artifacts[%d].columns has multiple source.label bindings"
+                    .formatted(artifactIndex));
         }
     }
 
@@ -88,6 +108,7 @@ final class ConfigRegistryPreflight implements InitializingBean {
     private void validateColumns(List<String> errors,
                                  Set<String> valueProviders,
                                  Set<String> transforms,
+                                 Set<String> conditions,
                                  List<IocProperties.Sink.Artifact.Column> columns,
                                  int artifactIndex) {
         if (columns == null) {
@@ -101,6 +122,7 @@ final class ConfigRegistryPreflight implements InitializingBean {
             }
             validateColumnProvider(errors, valueProviders, column, artifactIndex, columnIndex);
             validateColumnTransforms(errors, transforms, column, artifactIndex, columnIndex);
+            validateColumnGates(errors, conditions, column, artifactIndex, columnIndex);
             if ("id".equals(column.from())) {
                 idColumns++;
                 validateDeferredIdColumn(errors, column, artifactIndex, columnIndex);
@@ -120,8 +142,44 @@ final class ConfigRegistryPreflight implements InitializingBean {
         if (column.whenType() != null) {
             errors.add(path + ".when-type is not supported for the deferred 'id' provider; remove the gate");
         }
+        if (column.whenTypes() != null) {
+            errors.add(path + ".when-types is not supported for the deferred 'id' provider; remove the gate");
+        }
+        if (column.when() != null) {
+            errors.add(path + ".when is not supported for the deferred 'id' provider; remove the condition");
+        }
         if (column.transform() != null && !column.transform().isEmpty()) {
             errors.add(path + ".transform is not supported for the deferred 'id' provider; remove transforms");
+        }
+    }
+
+    private void validateColumnGates(List<String> errors,
+                                     Set<String> conditions,
+                                     IocProperties.Sink.Artifact.Column column,
+                                     int artifactIndex,
+                                     int columnIndex) {
+        String path = "ioc.sink.artifacts[%d].columns[%d]".formatted(artifactIndex, columnIndex);
+        if (column.whenType() != null && column.whenTypes() != null) {
+            errors.add(path + " cannot combine when-type with when-types");
+        }
+        if (column.whenTypes() != null) {
+            if (column.whenTypes().isEmpty() || column.whenTypes().contains(null)
+                    || Set.copyOf(column.whenTypes()).size() != column.whenTypes().size()) {
+                errors.add(path + ".when-types must be a nonempty list without nulls or duplicates");
+            }
+        }
+        if (column.when() != null) {
+            if (column.when().isEmpty()) {
+                errors.add(path + ".when must be nonempty when supplied");
+            }
+            if (!column.when().contains(null)
+                    && Set.copyOf(column.when()).size() != column.when().size()) {
+                errors.add(path + ".when must not contain duplicates");
+            }
+            for (int index = 0; index < column.when().size(); index++) {
+                rejectUnknown(errors, conditions, column.when().get(index),
+                        path + ".when[" + index + "]", "use a registered column condition");
+            }
         }
     }
 

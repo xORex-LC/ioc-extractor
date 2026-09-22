@@ -214,7 +214,23 @@ public final class ExportPlanCatalog {
                 add(digest, column.from());
                 add(digest, column.value());
                 add(digest, column.type());
-                add(digest, column.whenType() == null ? null : column.whenType().name());
+                if (column.whenTypes() == null) {
+                    add(digest, column.whenType() == null ? null : column.whenType().name());
+                } else if (column.whenTypes().size() == 1) {
+                    add(digest, column.whenTypes().getFirst().name());
+                } else {
+                    var types = new java.util.ArrayList<String>();
+                    column.whenTypes().forEach(type -> types.add(type.name()));
+                    types.sort(String::compareTo);
+                    add(digest, "when-types");
+                    addAll(digest, types);
+                }
+                if (column.when() != null) {
+                    var conditions = new java.util.ArrayList<>(column.when());
+                    conditions.sort(String::compareTo);
+                    add(digest, "when");
+                    addAll(digest, conditions);
+                }
                 addAll(digest, column.transform());
             }
             return HexFormat.of().formatHex(digest.digest());

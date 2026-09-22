@@ -21,9 +21,18 @@ public record ColumnSpec(
         String from,
         String value,
         IndicatorType whenType,
-        List<String> transform) {
+        List<String> transform,
+        List<IndicatorType> whenTypes,
+        List<String> when) {
 
     public ColumnSpec {
         transform = transform == null ? null : Collections.unmodifiableList(new ArrayList<>(transform));
+        whenTypes = whenTypes == null ? null : Collections.unmodifiableList(new ArrayList<>(whenTypes));
+        when = when == null ? null : Collections.unmodifiableList(new ArrayList<>(when));
+    }
+
+    public ColumnSpec(String name, String from, String value, IndicatorType whenType,
+                      List<String> transform) {
+        this(name, from, value, whenType, transform, null, null);
     }
 }

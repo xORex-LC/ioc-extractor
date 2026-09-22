@@ -72,6 +72,21 @@ class ConfigRegistryPreflightIT {
     }
 
     @Test
+    void rejectsAmbiguousAndUnknownColumnGatesTogether() throws Exception {
+        IocProperties source = defaults();
+        IocProperties.Sink.Artifact.Column mask = source.sink().artifacts().getFirst().columns().get(1);
+        var invalid = new IocProperties.Sink.Artifact.Column(mask.name(), mask.from(),
+                mask.value(), mask.type(), IndicatorType.DOMAIN, mask.transform(),
+                List.of(IndicatorType.DOMAIN, IndicatorType.DOMAIN), List.of("unknown-condition"));
+
+        contextRunner(withMasksColumnAt(source, 1, invalid))
+                .run(context -> assertRegistryFailure(context.getStartupFailure(),
+                        "cannot combine when-type with when-types",
+                        "when-types must be a nonempty list",
+                        "unknown-condition"));
+    }
+
+    @Test
     void rejectsConditionalOrTransformedDeferredIdColumn() throws Exception {
         IocProperties source = defaults();
         IocProperties.Sink.Artifact.Column id = source.sink().artifacts().getFirst().columns().getFirst();
@@ -83,6 +98,38 @@ class ConfigRegistryPreflightIT {
                         "ioc.sink.artifacts[0].columns[0].when-type",
                         "ioc.sink.artifacts[0].columns[0].transform",
                         "deferred 'id' provider"));
+    }
+
+    @Test
+    void rejectsInvalidArtifactWritePolicyBeforeRuntimeAssembly() throws Exception {
+        IocProperties source = defaults();
+        IocProperties.Sink.Artifact masks = source.sink().artifacts().getFirst();
+        var invalidPolicy = new IocProperties.Sink.Artifact.WritePolicy(
+                "last-nonempty", "mask", List.of(
+                new IocProperties.Sink.Artifact.WritePolicy.Field(
+                        "mask", "latest-registered", "keep-existing")));
+        var invalid = new IocProperties.Sink.Artifact(
+                masks.name(), masks.enabled(), masks.path(), masks.accepts(), masks.include(),
+                masks.exclude(), masks.id(), masks.columns(), invalidPolicy);
+
+        contextRunner(withMasksArtifact(source, invalid))
+                .run(context -> assertRegistryFailure(context.getStartupFailure(),
+                        "selection-column cannot be an identity",
+                        "fields[0].name cannot be an identity"));
+    }
+
+    @Test
+    void rejectsAmbiguousSourceLabelBinding() throws Exception {
+        IocProperties source = defaults();
+        IocProperties.Sink.Artifact masks = source.sink().artifacts().getFirst();
+        List<IocProperties.Sink.Artifact.Column> columns = new ArrayList<>(masks.columns());
+        columns.add(new IocProperties.Sink.Artifact.Column(
+                "source_copy", "source.label", null, null, null, null));
+
+        contextRunner(withMasksArtifact(source,
+                copyArtifact(masks, masks.include(), masks.exclude(), columns)))
+                .run(context -> assertRegistryFailure(context.getStartupFailure(),
+                        "multiple source.label bindings"));
     }
 
     @Test
@@ -188,6 +235,13 @@ class ConfigRegistryPreflightIT {
         List<IocProperties.Sink.Artifact.Column> columns = new ArrayList<>(masks.columns());
         columns.set(columnIndex, replacement);
         artifacts.set(0, copyArtifact(masks, masks.include(), masks.exclude(), columns));
+        return withSink(source, new IocProperties.Sink(source.sink().csv(), artifacts));
+    }
+
+    private IocProperties withMasksArtifact(IocProperties source,
+                                             IocProperties.Sink.Artifact replacement) {
+        List<IocProperties.Sink.Artifact> artifacts = new ArrayList<>(source.sink().artifacts());
+        artifacts.set(0, replacement);
         return withSink(source, new IocProperties.Sink(source.sink().csv(), artifacts));
     }
 

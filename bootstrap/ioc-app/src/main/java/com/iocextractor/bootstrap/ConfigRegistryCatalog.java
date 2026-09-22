@@ -17,6 +17,7 @@ import com.iocextractor.domain.classify.FeaturePredicate;
 import com.iocextractor.domain.classify.FeaturePredicates;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 import com.iocextractor.domain.feature.NetworkAddressClassifier;
+import com.iocextractor.domain.model.IndicatorType;
 
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -40,6 +41,8 @@ final class ConfigRegistryCatalog {
     private static final String PROVIDER_ADDRESS_IP = "address.ip";
 
     private static final String FILTER_IS_BARE_IP = "is-bare-ip";
+    private static final String FILTER_IS_CLEAN_HOST = "is-clean-host";
+    private static final String FILTER_IS_ADDRESS_WITH_DETAIL = "is-address-with-detail";
 
     private static final String TRANSFORM_LOWER = "lower";
     private static final String TRANSFORM_LOWER_HOST = "lower-host";
@@ -60,6 +63,8 @@ final class ConfigRegistryCatalog {
     static Set<String> artifactFilterKeys() {
         Set<String> keys = new LinkedHashSet<>(classifyPredicateKeys());
         keys.add(FILTER_IS_BARE_IP);
+        keys.add(FILTER_IS_CLEAN_HOST);
+        keys.add(FILTER_IS_ADDRESS_WITH_DETAIL);
         return keys;
     }
 
@@ -100,7 +105,21 @@ final class ConfigRegistryCatalog {
                 filters.put(key, classified -> predicate.test(classified.classification().features())));
         filters.put(FILTER_IS_BARE_IP, classified -> NetworkAddressClassifier.isBareIp(
                 classified.indicator(), classified.classification().features()));
+        filters.put(FILTER_IS_CLEAN_HOST, classified ->
+                classified.indicator().type() == IndicatorType.DOMAIN
+                        && !hasAddressDetail(classified));
+        filters.put(FILTER_IS_ADDRESS_WITH_DETAIL, classified ->
+                (classified.indicator().type() == IndicatorType.URL
+                        || classified.indicator().type() == IndicatorType.DOMAIN
+                        || classified.indicator().type() == IndicatorType.IPV4)
+                        && hasAddressDetail(classified));
         return filters;
+    }
+
+    private static boolean hasAddressDetail(ClassifiedIndicator classified) {
+        var features = classified.classification().features();
+        return features.value().contains("://")
+                || features.hasPort() || features.hasPath() || features.hasQuery();
     }
 
     static Map<String, Transform> transforms() {

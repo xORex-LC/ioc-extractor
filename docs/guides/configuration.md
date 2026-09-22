@@ -153,7 +153,16 @@ contract and must be tested against existing databases and consumers.
 | `ioc.sink.artifacts[].columns[].value` | string or null | optional | Literal used by `const`. |
 | `ioc.sink.artifacts[].columns[].type` | `TEXT`, `INTEGER`, `REAL`, `BLOB`, `NUMERIC` | inferred/text | SQLite affinity, mainly for constant columns. |
 | `ioc.sink.artifacts[].columns[].when-type` | IOC type | optional | Emits the provider only for the selected IOC type. |
+| `ioc.sink.artifacts[].columns[].when-types` | non-empty list of IOC types | optional | Emits for any listed type; cannot be combined with `when-type`. List order has no effect. |
+| `ioc.sink.artifacts[].columns[].when` | list of filter names | optional | All conditions must match. `is-clean-host` selects a bare domain; `is-address-with-detail` selects an address with a scheme, path, query, or port. Conditions are evaluated after classification and can be combined with a type gate. |
 | `ioc.sink.artifacts[].columns[].transform` | ordered list | optional | Registered keys are `lower`, `lower-host`, `upper`, and `strip-prefix`; the parameterized form is `strip-prefix:<text>`. Not allowed on deferred `id`. |
+| `ioc.sink.artifacts[].write-policy` | object | optional | Per-artifact duplicate selection and field mutation; absent preserves keep-first behavior. |
+| `ioc.sink.artifacts[].write-policy.duplicate-selection` | `keep-first`, `last-nonempty` | `keep-first` when absent | `last-nonempty` selects one whole mapped occurrence with a nonblank selection-column value. |
+| `ioc.sink.artifacts[].write-policy.selection-column` | output column | optional | Required for `last-nonempty`; cannot be an identity or ID column. |
+| `ioc.sink.artifacts[].write-policy.fields` | list | optional | Non-key output fields with an ordered update policy. |
+| `ioc.sink.artifacts[].write-policy.fields[].name` | output column | required within field rule | Cannot be an identity or ID column. |
+| `ioc.sink.artifacts[].write-policy.fields[].update` | `latest-registered` | required within field rule | Uses durable delivery registration, independent of worker completion. |
+| `ioc.sink.artifacts[].write-policy.fields[].empty` | `keep-existing` | required within field rule | Blank input preserves stored value and its origin. |
 
 ## Canonical artifact identity
 

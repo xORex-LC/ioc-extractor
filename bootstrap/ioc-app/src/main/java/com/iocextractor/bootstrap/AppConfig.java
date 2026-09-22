@@ -1354,7 +1354,7 @@ public class AppConfig {
             if (!artifact.enabled()) {
                 continue;
             }
-            RowMapper mapper = new ConfigurableRowMapper(columnSpecs(artifact), providers, transforms);
+            RowMapper mapper = new ConfigurableRowMapper(columnSpecs(artifact), providers, transforms, filters);
             artifacts.add(new CsvArtifactDefinition(
                     artifact.name(),
                     EnumSet.copyOf(artifact.accepts()),
@@ -1419,7 +1419,8 @@ public class AppConfig {
     private List<ColumnSpec> columnSpecs(IocProperties.Sink.Artifact artifact) {
         return artifact.columns().stream()
                 .map(column -> new ColumnSpec(column.name(), column.from(),
-                        column.value(), column.whenType(), column.transform()))
+                        column.value(), column.whenType(), column.transform(),
+                        column.whenTypes(), column.when()))
                 .toList();
     }
 

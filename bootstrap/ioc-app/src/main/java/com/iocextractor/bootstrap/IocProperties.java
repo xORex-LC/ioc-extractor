@@ -169,13 +169,30 @@ public record IocProperties(
                 List<String> include,
                 List<String> exclude,
                 Id id,
-                @NotEmpty @Valid List<Column> columns) {
+                @NotEmpty @Valid List<Column> columns,
+                WritePolicy writePolicy) {
 
+            @ConstructorBinding
             public Artifact {
                 accepts = snapshotList(accepts);
                 include = snapshotList(include);
                 exclude = snapshotList(exclude);
                 columns = snapshotList(columns);
+            }
+
+            public Artifact(String name, boolean enabled, String path, List<IndicatorType> accepts,
+                            List<String> include, List<String> exclude, Id id, List<Column> columns) {
+                this(name, enabled, path, accepts, include, exclude, id, columns, null);
+            }
+
+            public record WritePolicy(String duplicateSelection, String selectionColumn,
+                                      List<Field> fields) {
+                public WritePolicy {
+                    fields = snapshotList(fields);
+                }
+
+                public record Field(String name, String update, String empty) {
+                }
             }
 
             public record Id(ArtifactIdStrategy strategy, IdStart start) {
@@ -192,10 +209,20 @@ public record IocProperties(
                     String value,
                     String type,
                     IndicatorType whenType,
-                    List<String> transform) {
+                    List<String> transform,
+                    List<IndicatorType> whenTypes,
+                    List<String> when) {
 
+                @ConstructorBinding
                 public Column {
                     transform = snapshotList(transform);
+                    whenTypes = snapshotList(whenTypes);
+                    when = snapshotList(when);
+                }
+
+                public Column(String name, String from, String value, String type,
+                              IndicatorType whenType, List<String> transform) {
+                    this(name, from, value, type, whenType, transform, null, null);
                 }
             }
         }

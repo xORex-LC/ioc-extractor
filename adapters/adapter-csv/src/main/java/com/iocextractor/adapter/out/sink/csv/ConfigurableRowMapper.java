@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 import static com.iocextractor.adapter.out.sink.csv.RowMappingException.ComponentKind.PROVIDER;
 import static com.iocextractor.adapter.out.sink.csv.RowMappingException.ComponentKind.TRANSFORM;
@@ -29,15 +30,24 @@ public final class ConfigurableRowMapper implements RowMapper {
     private final List<ColumnSpec> columns;
     private final Map<String, ValueProvider> providers;
     private final Map<String, Transform> transforms;
+    private final Map<String, Predicate<ClassifiedIndicator>> conditions;
     private final List<String> header;
     private final Optional<String> idColumn;
 
     public ConfigurableRowMapper(List<ColumnSpec> columns,
                                  Map<String, ValueProvider> providers,
                                  Map<String, Transform> transforms) {
+        this(columns, providers, transforms, Map.of());
+    }
+
+    public ConfigurableRowMapper(List<ColumnSpec> columns,
+                                 Map<String, ValueProvider> providers,
+                                 Map<String, Transform> transforms,
+                                 Map<String, Predicate<ClassifiedIndicator>> conditions) {
         this.columns = List.copyOf(columns);
         this.providers = Map.copyOf(providers);
         this.transforms = Map.copyOf(transforms);
+        this.conditions = Map.copyOf(conditions);
         this.header = this.columns.stream().map(ColumnSpec::name).toList();
         this.idColumn = this.columns.stream()
                 .filter(column -> "id".equals(column.from()))
@@ -70,7 +80,7 @@ public final class ConfigurableRowMapper implements RowMapper {
     }
 
     private String cell(ColumnSpec column, ClassifiedIndicator classified) {
-        if (column.whenType() != null && classified.indicator().type() != column.whenType()) {
+        if (!applies(column, classified)) {
             return null;
         }
         String value;
@@ -85,6 +95,28 @@ public final class ConfigurableRowMapper implements RowMapper {
             }
         }
         return value;
+    }
+
+    /** Shared gate for ordinary mapping and processed-import preparation. */
+    public boolean applies(ColumnSpec column, ClassifiedIndicator classified) {
+        if (column.whenType() != null && classified.indicator().type() != column.whenType()) {
+            return false;
+        }
+        if (column.whenTypes() != null && !column.whenTypes().contains(classified.indicator().type())) {
+            return false;
+        }
+        if (column.when() != null) {
+            for (String key : column.when()) {
+                Predicate<ClassifiedIndicator> condition = conditions.get(key);
+                if (condition == null) {
+                    throw new IocExtractorException("Unknown column condition: " + key);
+                }
+                if (!condition.test(classified)) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private String provide(ColumnSpec column, ClassifiedIndicator classified) {
