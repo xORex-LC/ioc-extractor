@@ -234,8 +234,12 @@ fail/quarantine; it must not assign replacement bytes the older registration.
 This necessarily intersects pre-claim ING-13 and retry ING-11 seams. Limit changes
 to preserving occurrence identity/order and adopting the claim; do not declare
 all existing ING debts closed. Existing legacy paths remain when policy disabled.
-The default proposal requires JDBC service coordination for daemon latest-received;
-file-ledger parity is an open owner question, not an in-memory fallback.
+The owner requires daemon latest-received to work with both JDBC and file-ledger
+coordination. Both adapters implement the same durable document-admission journal
+port and recovery contract. The file adapter must fsync its atomic journal
+replacement and containing directory before advancing the phase; an in-memory
+fallback is not acceptable. Neither adapter may derive order from its own queue:
+the dataframe registration remains the shared business authority.
 
 ### 6.3 Managed import and oneshot
 
@@ -465,15 +469,16 @@ memory on representative data; do not introduce caches or tune pools by guess.
 |---|---|---|
 | Q-01 | Export on name-only change | Accepted: public name changes trigger ordinary export/delivery cadence |
 | Q-02 | Compound carrier row | Resolved by owner: one IP, URL, domain or hash per row; no combined records for now |
-| Q-03 | Ordered-policy daemon file-ledger support | Require JDBC service journal for first implementation; preserve old file-ledger policies; asked owner |
+| Q-03 | Ordered-policy daemon file-ledger support | Accepted: both file-ledger and JDBC service coordination are supported |
 | Q-04 | Profile/filename/default activation | Separate aggregate export profile; disabled until qualified; proposed |
 | Q-05 | Repeated keys within CSV | Accepted: last row with nonempty name for the same full key; configurable per contract; existing contracts unchanged |
 | Q-06 | Network address routing | Confirmed: full URLs and scheme-less host-plus-path in url_match; bare domains/IPs in their own carriers. Scheme-less host:port without path is also accepted in url_match, without inventing a scheme |
 | Q-07 | Lifecycle restart and rollback | Lifecycle-local priority and recreation from delayed previously uncommitted input accepted; coordinated rollback/restore limitation still requires review |
 
-Q-01, Q-02, Q-05 and Q-06 are resolved. Q-03 is unanswered; Q-07 lifecycle restart is accepted, while its separate
-rollback/restore limitation still requires review. Design alternatives remain localized: Q-01
-controls export gating, Q-02 row shape and Q-03 an additional journal adapter.
+Q-01, Q-02, Q-03, Q-05 and Q-06 are resolved. Q-07 lifecycle restart is accepted,
+while its separate rollback/restore limitation still requires review. Q-03 adds
+a file-journal adapter under the same application port and dataframe order
+authority.
 No framework-boundary exception is currently necessary. If an implementation
 prototype disproves these seams, update design and ask about the concrete
 contract impact before silently weakening a requirement.

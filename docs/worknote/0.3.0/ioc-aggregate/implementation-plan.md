@@ -10,7 +10,8 @@ language: "en"
 # Implementation plan
 
 These slices implement the [technical design](technical-design.md). They are
-planned work, not completed evidence. Resolve outstanding Q-03/Q-04/Q-07 before finalizing dependent
+planned work, not completed evidence. Q-03 requires both service-ledger modes;
+resolve outstanding Q-04 and the rollback part of Q-07 before finalizing dependent
 contracts; record remaining proposed defaults explicitly before activation.
 
 | Slice | Changes and ownership | Exit condition |

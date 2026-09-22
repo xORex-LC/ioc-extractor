@@ -117,3 +117,14 @@ Scheme-less/decorated-address routing remains a proposal awaiting clarification.
 Owner accepted recreation after expiry from delayed previously uncommitted input.
 Documented the distinction from committed-operation replay and from source threat
 freshness. This is requirements evidence; no production behavior was changed.
+
+## P0 architecture contract — 2026-09-22
+
+Owner resolved Q-03 in favor of both file-ledger and JDBC service-ledger daemon
+support. ADR-0030 now assigns business precedence to one dataframe-owned monotonic
+registration sequence while service/file journals retain transport recovery state.
+It also fixes the local producer handoff, pre-hash private claim, replacement
+detection, terminal handshake, oneshot unresolved-state and coordinated-restore
+contracts. The aggregate preset remains disabled and Q-04/Q-07 rollout choices
+remain open. Implementation probes and executable recovery evidence belong to P2;
+this checkpoint records the approved boundary, not runtime qualification.
