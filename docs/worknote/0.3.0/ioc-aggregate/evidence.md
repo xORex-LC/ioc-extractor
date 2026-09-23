@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Evidence ledger"
 version: "0.3.0"
-status: "Discovery in progress"
+status: "P0-P2 implementation evidence"
 document_type: "Evidence ledger"
 source_of_truth: false
 language: "en"
@@ -128,3 +128,39 @@ detection, terminal handshake, oneshot unresolved-state and coordinated-restore
 contracts. The aggregate preset remains disabled and Q-04/Q-07 rollout choices
 remain open. Implementation probes and executable recovery evidence belong to P2;
 this checkpoint records the approved boundary, not runtime qualification.
+
+## P1 configurable policy foundation — 2026-09-22
+
+Commit `c215c103` adds strict `when-types`/`when` mapping conditions while
+retaining the legacy `when-type` form, registry-backed predicates, relevant
+semantic fingerprints and pure application policy types for occurrence selection
+and latest-registered field updates. Focused mapping/configuration/policy tests
+passed. No aggregate preset or runtime wiring was enabled.
+
+## P2 durable admission foundation — 2026-09-23
+
+Commit `f27740e6` adds dataframe and service schema v10, a single dataframe-owned
+registration sequence, JDBC and file-backed admission journals, managed-import
+references, oneshot ordering decoration, pre-hash document claim/seal handling,
+terminal handshakes and exact retention guarded by live references/provenance.
+Application contracts remain framework-free; SQL/filesystem ownership stays in
+adapters. The published concurrency library API and artifact were unchanged.
+
+Focused evidence at implementation time:
+
+- `ObservationAdmissionServiceTest`: 5/5 after commit `272fbecc`, including a
+  crash after registration but before journal linking and dry-run no-side-effect.
+- `FileSystemSourceLifecycleIT`: 9/9 after `272fbecc`, including restart after
+  token rename, open-writer mutation detection and file-journal restart.
+- `JdbcObservationRegistrationStoreIT`: 2/2, covering concurrent global order,
+  idempotency, namespace mismatch, missing recovery, overflow, terminal
+  references and provenance-protected retention.
+- P2 implementation-time `make pmd-analysis`, `make pmd-watchlist` and
+  `make docs` passed. Final exact-HEAD release gates are reported separately
+  after the checkpoint documentation commit.
+
+This is infrastructure evidence, not end-to-end aggregate qualification. The
+new admission collaborators are not wired into default bootstrap composition;
+occurrence propagation, canonical `name` mutation, aggregate import/export and
+activation remain P3–P6. Dataframe/service schema v10 also makes binary-only
+downgrade unsafe; the coordinated restore procedure remains a P6 blocker.

@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Worknote bundle index"
 version: "0.3.0"
-status: "Technical design proposed"
+status: "P0-P2 implemented; activation pending"
 document_type: "Worknote bundle index"
 source_of_truth: false
 language: "en"
@@ -11,9 +11,10 @@ language: "en"
 
 This bundle records the requested additional output artifact for release 0.3.0.
 Documentation work was authorized on 2026-09-21; P0–P2 implementation
-was authorized subsequently. The owner has authorized technical design; a proposal is available with explicit
-pending product choices. Implementation status is recorded in the evidence ledger. The work-item ID is local
-to this release bundle.
+was authorized subsequently and is now implemented. The policy and durable
+admission foundations remain disconnected from the default runtime composition;
+P3–P7 and the pending activation choices still apply. Implementation status is
+recorded in the evidence ledger. The work-item ID is local to this release bundle.
 
 These mutable worknotes do not replace accepted ADRs, capability documentation
 or operator guides. New documents use English according to repository policy.
@@ -47,3 +48,7 @@ or operator guides. New documents use English according to repository policy.
   choices remain open. See the question table in the technical design.
 - Earlier TTL/import verification remains evidence for its original scope;
   it does not qualify this feature. No full-release completion is claimed.
+- P0–P2 provide the accepted ordering contract, configurable mapping-policy
+  seams and durable document/import/oneshot admission foundations. Actual
+  aggregate occurrence preparation, canonical `name` mutation, import/export
+  integration and production wiring remain P3–P6 work.

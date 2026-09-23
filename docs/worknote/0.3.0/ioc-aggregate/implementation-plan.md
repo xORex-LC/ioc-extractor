@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — implementation plan"
 version: "0.3.0"
-status: "Proposed; production work not started"
+status: "P0-P2 implemented; P3-P7 planned"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "en"
@@ -9,10 +9,11 @@ language: "en"
 
 # Implementation plan
 
-These slices implement the [technical design](technical-design.md). They are
-planned work, not completed evidence. Q-03 requires both service-ledger modes;
-resolve outstanding Q-04 and the rollback part of Q-07 before finalizing dependent
-contracts; record remaining proposed defaults explicitly before activation.
+These slices implement the [technical design](technical-design.md). P0–P2 are
+implemented as configuration-disabled foundations; P3–P7 remain planned work.
+Q-03 requires both service-ledger modes. Resolve outstanding Q-04 and the rollback
+part of Q-07 before finalizing dependent contracts, and record remaining proposed
+defaults explicitly before activation.
 
 | Slice | Changes and ownership | Exit condition |
 |---|---|---|
@@ -29,6 +30,20 @@ P1 establishes policy contracts used by P2/P3; P4 joins their outputs. P5 depend
 on canonical outcomes and P6 covers the combined recovery behavior. Keep each
 slice reviewable and configuration-disabled until its dependencies are complete.
 Do not merge unfinished behavior into an enabled shipping preset.
+
+## Execution checkpoint
+
+| Slice | Commit | Implemented result |
+|---|---|---|
+| P0 | `0ca0fda6` | Proposed ADR-0030 fixes the single dataframe-owned order authority, file/JDBC recovery boundary, producer handoff and terminal-reference rules. No activation. |
+| P1 | `c215c103` | Configurable `when-types`/`when` mapping gates, compatibility with `when-type`, semantic fingerprinting and pure occurrence/write policy contracts. |
+| P2 | `f27740e6`, `272fbecc` | Dataframe/service schema v10, JDBC registration and recovery stores, durable file/JDBC document journals, import references, oneshot decorator, pre-hash claim/seal recovery and crash-boundary tests. |
+
+The new collaborators are deliberately not part of the default bootstrap graph
+yet. P3 carries occurrence data into preparation; P4 applies ordered field
+mutation; P5 adds the aggregate import/export path; P6 owns activation and
+rollback operations. Therefore this checkpoint does not generate the new
+artifact or change existing runtime output.
 
 ## Responsibilities and review boundaries
 

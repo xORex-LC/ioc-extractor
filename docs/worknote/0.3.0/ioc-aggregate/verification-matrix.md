@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Verification plan"
 version: "0.3.0"
-status: "Discovery in progress"
+status: "P0-P2 partial execution evidence"
 document_type: "Verification plan"
 source_of_truth: false
 language: "en"
@@ -9,8 +9,9 @@ language: "en"
 
 # DATA-AGGREGATE-01 — verification matrix
 
-All rows are planned, not executed feature tests. Conditional cases become
-required when the corresponding discovery decision admits them.
+Product-output rows remain planned until P3–P7. P1/P2 mechanism evidence is
+recorded below; it does not qualify end-to-end aggregate generation. Conditional
+cases become required when the corresponding discovery decision admits them.
 
 | ID | Behavior / evidence | Dependency |
 |---|---|---|
@@ -90,3 +91,20 @@ records, staged recovery and unchanged legacy contract behavior. Name-only publi
 changes must reach ordinary export/delivery; same-value origin changes must not
 create a public revision. Q-07 lifecycle restart is accepted: delayed previously uncommitted input creates
 a new lifecycle after expiry; replay of an already committed operation must not.
+
+## P0-P2 execution checkpoint
+
+- V-13 is covered for the P1 configuration surface: legacy `when-type`, new
+  `when-types`/`when`, invalid combinations, predicate references and semantic
+  fingerprint changes have focused tests.
+- V-17, V-18, the P2 portion of V-19, V-26 dry-run behavior and the P2 portion
+  of V-27 have focused application/JDBC/filesystem tests. They cover shared
+  registration ordering, idempotent registration, namespace/overflow failure,
+  reservation-to-link crash recovery, pre-hash claim adoption, terminal
+  references and provenance-protected exact retention.
+- The local P2 adapter requires stable filesystem identity and fails closed when
+  it is unavailable. A future adapter may use a pre-registration owned immutable
+  snapshot under ADR-0030; this implementation does not claim that fallback.
+- V-01–V-12 and V-20–V-32 remain open wherever they depend on occurrence
+  propagation, canonical mutation, aggregate import/export, bootstrap activation,
+  coordinated restore or final exact-HEAD qualification.

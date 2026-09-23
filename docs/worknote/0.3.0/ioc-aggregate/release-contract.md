@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Draft release contract"
 version: "0.3.0"
-status: "Discovery in progress"
+status: "P0-P2 foundation implemented; activation pending"
 document_type: "Draft release contract"
 source_of_truth: false
 language: "en"
@@ -17,8 +17,10 @@ The user authorized discovery, documentation and technical design. Initial scope
 managed aggregate import. See the [network amendment](network-routing-amendment.md).
 Per-artifact mapping/update configurability is required. Missing new attribution
 preserves an existing name. Extend shared section markers to recognize the five
-observed label forms while retaining existing marker support. A [technical design](technical-design.md) is proposed; activation,
-release-blocking disposition and production implementation are not yet settled.
+observed label forms while retaining existing marker support. The accepted P0
+ordering contract and P1/P2 policy/admission foundations are implemented. The
+[technical design](technical-design.md) remains the contract for P3–P7;
+aggregate generation, activation and release-blocking disposition are not yet settled.
 
 ## Compatibility requirements
 

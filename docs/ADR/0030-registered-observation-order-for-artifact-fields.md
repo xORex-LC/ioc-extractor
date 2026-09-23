@@ -51,8 +51,10 @@ capture available file identity and metadata; claim to a private token path;
 hash the owned bytes and recheck identity/size/mtime before admitting them to
 processing. If an available identity changes, a file is replaced at the same
 path, or content changes during hashing, quarantine/fail closed. Where the
-filesystem cannot supply sufficient identity, use an owned immutable snapshot
-and verify its digest; never assign replacement bytes an earlier registration.
+filesystem cannot supply sufficient identity, only an owned immutable snapshot
+captured before registration may substitute, with its digest verified before
+processing. An adapter that cannot provide either reliable identity or that
+snapshot fails closed; it never assigns replacement bytes an earlier registration.
 The complete P0 probe matrix includes same-size/same-mtime replacement and an
 open writer surviving rename. A producer violating the handoff contract cannot
 claim ordered processing based on quiet-period observation alone.
