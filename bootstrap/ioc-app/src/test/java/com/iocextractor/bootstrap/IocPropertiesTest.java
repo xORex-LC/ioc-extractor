@@ -1,6 +1,14 @@
 package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.domain.classify.ClassificationDecision;
+import com.iocextractor.domain.feature.HostKind;
+import com.iocextractor.domain.feature.IndicatorFeatures;
+import com.iocextractor.domain.model.Indicator;
+import com.iocextractor.domain.model.IndicatorType;
+import com.iocextractor.domain.model.MaskMatch;
+import com.iocextractor.domain.model.SourceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.context.properties.bind.Bindable;
@@ -97,6 +105,25 @@ class IocPropertiesTest {
                 .hasMessageContaining("fields[0].name must name an output column");
     }
 
+    @Test
+    void aggregateNetworkConditionsSeparateCleanHostsFromDetailedAddresses() {
+        var conditions = ConfigRegistryCatalog.artifactFilters();
+        var cleanDomain = classified("example.org", IndicatorType.DOMAIN, false, false, false);
+        var domainPath = classified("example.org/file", IndicatorType.DOMAIN, false, true, false);
+        var fullUrl = classified("https://example.org/file", IndicatorType.URL, false, true, false);
+        var ipPort = classified("192.0.2.1:8443", IndicatorType.IPV4, true, false, false);
+        var hashWithDetailFeatures = classified("deadbeef", IndicatorType.MD5, true, true, true);
+
+        assertThat(conditions.get("is-clean-host").test(cleanDomain)).isTrue();
+        assertThat(conditions.get("is-clean-host").test(domainPath)).isFalse();
+        assertThat(conditions.get("is-clean-host").test(fullUrl)).isFalse();
+        assertThat(conditions.get("is-address-with-detail").test(fullUrl)).isTrue();
+        assertThat(conditions.get("is-address-with-detail").test(domainPath)).isTrue();
+        assertThat(conditions.get("is-address-with-detail").test(ipPort)).isTrue();
+        assertThat(conditions.get("is-address-with-detail").test(cleanDomain)).isFalse();
+        assertThat(conditions.get("is-address-with-detail").test(hashWithDetailFeatures)).isFalse();
+    }
+
     private IocProperties withMasksPolicy(
             IocProperties source,
             IocProperties.Sink.Artifact.WritePolicy writePolicy) {
@@ -124,5 +151,14 @@ class IocPropertiesTest {
         return new Binder(ConfigurationPropertySources.from(sources), null, conversionService)
                 .bind("ioc", Bindable.of(IocProperties.class))
                 .orElseThrow(() -> new IllegalStateException("default ioc properties did not bind"));
+    }
+
+    private ClassifiedIndicator classified(String value, IndicatorType type,
+                                            boolean hasPort, boolean hasPath, boolean hasQuery) {
+        var indicator = new Indicator(value, type, new SourceContext(null, null));
+        HostKind hostKind = type == IndicatorType.IPV4 ? HostKind.IP : HostKind.REGISTRABLE;
+        var features = new IndicatorFeatures(value, value, hasPort, hasPath, hasQuery, hostKind);
+        return new ClassifiedIndicator(indicator,
+                new ClassificationDecision(features, -1, List.of(), new MaskMatch(null, null)));
     }
 }
