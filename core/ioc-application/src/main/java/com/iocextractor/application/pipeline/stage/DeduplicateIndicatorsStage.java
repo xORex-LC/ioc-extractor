@@ -3,6 +3,7 @@ package com.iocextractor.application.pipeline.stage;
 import com.iocextractor.application.pipeline.payload.AttributedIndicators;
 import com.iocextractor.application.pipeline.payload.DeduplicationDecision;
 import com.iocextractor.application.pipeline.payload.DeduplicatedIndicators;
+import com.iocextractor.application.pipeline.payload.IndicatorOccurrence;
 import com.iocextractor.application.observability.PipelineDecisionKind;
 import com.iocextractor.application.observability.PipelineItemDecision;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
@@ -55,8 +56,15 @@ public final class DeduplicateIndicatorsStage implements Stage<AttributedIndicat
     public Envelope<DeduplicatedIndicators> process(Envelope<AttributedIndicators> input) {
         var extracted = input.payload().indicators();
         var result = deduplicate(extracted);
+        var occurrences = new ArrayList<IndicatorOccurrence>(input.payload().outcome().decisions().size());
+        int ordinal = 0;
+        for (var decision : input.payload().outcome().decisions()) {
+            occurrences.add(new IndicatorOccurrence(
+                    decision.indicator(), decision.rawIndicator().position(), ordinal++));
+        }
         trace(result.decisions());
-        return input.withPayload(new DeduplicatedIndicators(extracted.size(), result.retained(), result.decisions()))
+        return input.withPayload(new DeduplicatedIndicators(
+                        extracted.size(), result.retained(), occurrences, result.decisions()))
                 .withDiagnostics(result.diagnostics());
     }
 

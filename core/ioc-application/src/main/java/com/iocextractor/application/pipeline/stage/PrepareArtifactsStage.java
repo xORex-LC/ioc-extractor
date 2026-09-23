@@ -1,6 +1,7 @@
 package com.iocextractor.application.pipeline.stage;
 
 import com.iocextractor.application.artifact.ArtifactWritePlan;
+import com.iocextractor.application.artifact.ArtifactPreparationBatch;
 import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
 import com.iocextractor.application.pipeline.payload.RetainedIndicators;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
@@ -33,7 +34,8 @@ public final class PrepareArtifactsStage implements Stage<RetainedIndicators, Pr
         var plans = new ArrayList<ArtifactWritePlan>(preparers.size());
         var diagnostics = new ArrayList<Diagnostic>();
         for (ArtifactPreparer preparer : preparers) {
-            var result = preparer.prepare(input.payload().retained());
+            var result = preparer.prepare(new ArtifactPreparationBatch(
+                    input.payload().retained(), input.payload().occurrences()));
             plans.add(Objects.requireNonNull(result.value(), "prepared plan"));
             diagnostics.addAll(result.diagnostics());
         }

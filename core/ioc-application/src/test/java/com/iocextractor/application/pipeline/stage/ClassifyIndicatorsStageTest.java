@@ -40,6 +40,11 @@ class ClassifyIndicatorsStageTest {
         assertThat(output.payload().retained())
                 .extracting(classified -> classified.indicator())
                 .containsExactly(first);
+        assertThat(output.payload().occurrences())
+                .extracting(occurrence -> occurrence.classified().indicator())
+                .containsExactly(first, duplicate);
+        assertThat(output.payload().occurrences().get(1).position())
+                .isGreaterThan(output.payload().occurrences().get(0).position());
     }
 
     @Test

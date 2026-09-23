@@ -2,6 +2,7 @@ package com.iocextractor.application.pipeline.stage;
 
 import com.iocextractor.application.classification.IndicatorClassifier;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicatorOccurrence;
 import com.iocextractor.application.pipeline.payload.DeduplicatedIndicators;
 import com.iocextractor.application.pipeline.payload.RetainedIndicators;
 import com.iocextractor.application.observability.PipelineDecisionKind;
@@ -20,6 +21,7 @@ import com.iocextractor.platform.etl.Stage;
 import com.iocextractor.platform.etl.StageId;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.Objects;
 
 /** Materializes one reusable classification decision per retained indicator. */
@@ -53,6 +55,7 @@ public final class ClassifyIndicatorsStage implements Stage<DeduplicatedIndicato
     @Override
     public Envelope<RetainedIndicators> process(Envelope<DeduplicatedIndicators> input) {
         var classified = new ArrayList<ClassifiedIndicator>(input.payload().retained().size());
+        var classifiedByKey = new LinkedHashMap<String, ClassifiedIndicator>();
         var diagnostics = new ArrayList<Diagnostic>();
         for (Indicator indicator : input.payload().retained()) {
             if (!classifier.supports(indicator)) {
@@ -60,10 +63,22 @@ public final class ClassifyIndicatorsStage implements Stage<DeduplicatedIndicato
                 continue;
             }
             var decision = classifier.classify(indicator);
-            classified.add(new ClassifiedIndicator(indicator, decision));
+            var value = new ClassifiedIndicator(indicator, decision);
+            classified.add(value);
+            classifiedByKey.putIfAbsent(indicator.dedupKey(), value);
             trace(indicator, decision);
         }
-        return input.withPayload(new RetainedIndicators(input.payload().extracted(), classified))
+        var occurrences = input.payload().occurrences().stream()
+                .map(occurrence -> {
+                    ClassifiedIndicator value = classifiedByKey.get(occurrence.indicator().dedupKey());
+                    return value == null ? null : new ClassifiedIndicatorOccurrence(
+                            new ClassifiedIndicator(occurrence.indicator(), value.classification()),
+                            occurrence.orderingPosition());
+                })
+                .filter(Objects::nonNull)
+                .toList();
+        return input.withPayload(new RetainedIndicators(
+                        input.payload().extracted(), classified, occurrences))
                 .withDiagnostics(diagnostics);
     }
 

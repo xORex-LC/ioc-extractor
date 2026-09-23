@@ -117,6 +117,9 @@ ioc:
     # Section headers that set the `source` attribution for following indicators.
     section-markers:
       - "БИБ-\\d+"
+      - "Заявка_\\d+"
+      - "ФСТЭК_(?:\\d{2}\\.\\d{2}\\.\\d{4}_)?\\d+(?:/\\d+)+"
+      - "ФСТЭК\\s+\\d{2}\\.\\d{2}\\.\\d{4}\\s+№\\s*\\d+(?:/\\d+)+"
       - "Письмо ФСТЭК России[^№]*№\\s*[\\d/]+"
 
   # ---- Deobfuscation (refang) rules: ordered, applied left-to-right -----------

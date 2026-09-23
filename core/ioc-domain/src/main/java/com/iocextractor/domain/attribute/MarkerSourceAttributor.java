@@ -38,14 +38,27 @@ public final class MarkerSourceAttributor implements SourceAttributor {
     }
 
     private List<SourceMarker> collectMarkers(String text) {
-        List<SourceMarker> markers = new ArrayList<>();
+        List<MarkerCandidate> candidates = new ArrayList<>();
+        int patternOrder = 0;
         for (PatternEngine.Compiled pattern : markerPatterns) {
             for (Span span : pattern.findAll(text)) {
-                markers.add(new SourceMarker(span.start(), normalize(span.value())));
+                candidates.add(new MarkerCandidate(
+                        span.start(), span.end(), patternOrder, normalize(span.value())));
+            }
+            patternOrder++;
+        }
+        candidates.sort(Comparator.comparingInt(MarkerCandidate::start)
+                .thenComparing(Comparator.comparingInt(MarkerCandidate::length).reversed())
+                .thenComparingInt(MarkerCandidate::patternOrder));
+        List<MarkerCandidate> selected = new ArrayList<>();
+        for (MarkerCandidate candidate : candidates) {
+            if (selected.isEmpty() || candidate.start() >= selected.getLast().end()) {
+                selected.add(candidate);
             }
         }
-        markers.sort(Comparator.comparingInt(SourceMarker::position));
-        return markers;
+        return selected.stream()
+                .map(candidate -> new SourceMarker(candidate.start(), candidate.label()))
+                .toList();
     }
 
     /** Nearest marker whose position is at or before {@code position}, or {@code null} if none. */
@@ -65,5 +78,12 @@ public final class MarkerSourceAttributor implements SourceAttributor {
         // Collapse whitespace runs incl. the non-breaking space (U+00A0) that the
         // Word export inserts and that the regex \s class does not match by default.
         return raw.replace('\u00A0', ' ').replaceAll("\\s+", " ").trim();
+    }
+
+    private record MarkerCandidate(int start, int end, int patternOrder, String label) {
+
+        private int length() {
+            return end - start;
+        }
     }
 }

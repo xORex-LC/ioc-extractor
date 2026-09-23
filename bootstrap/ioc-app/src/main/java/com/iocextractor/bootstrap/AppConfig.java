@@ -375,11 +375,13 @@ public class AppConfig {
                                                  PrepareLifecycleAdmissionUseCase lifecycleAdmission,
                                                  CanonicalObservationStore canonicalObservationStore,
                                                  ProcessingPolicyIdentity processingPolicyIdentity,
+                                                 ArtifactIdentityResolver artifactIdentityResolver,
                                                  JdbcLifecycleClock lifecycleClock,
                                                  Clock clock,
                                                  IocProperties props) {
         List<ArtifactPreparer> preparers = artifactPreparers(
-                artifactDefinitions(props, artifactIdBaseline), null, clock, decisionTracer);
+                artifactDefinitions(props, artifactIdBaseline), null, clock, decisionTracer,
+                artifactIdentityResolver);
         ExtractIocsUseCase delegate = factory.create(preparers, csvArtifactProjection);
         return command -> {
             lifecycleAdmission.prepare();
@@ -417,6 +419,7 @@ public class AppConfig {
     public SourcePreparerFactory sourcePreparerFactory(IocProperties props,
                                                        ArtifactIdBaseline artifactIdBaseline,
                                                        PipelineDecisionTracer decisionTracer,
+                                                       ArtifactIdentityResolver artifactIdentityResolver,
                                                        Clock clock) {
         var artifacts = artifactDefinitions(props, artifactIdBaseline);
         Map<String, ArtifactIdSequence> ids = new LinkedHashMap<>();
@@ -426,7 +429,7 @@ public class AppConfig {
         return source -> new com.iocextractor.application.ingest.SourcePreparers(artifacts.stream()
                 .map(artifact -> new CsvArtifactPreparer(
                         artifact, ids.get(artifact.name()), new DiagnosticFactory(clock),
-                        source.key().value(), decisionTracer))
+                        source.key().value(), decisionTracer, artifactIdentityResolver))
                 .map(ArtifactPreparer.class::cast)
                 .toList());
     }
@@ -1332,14 +1335,16 @@ public class AppConfig {
     private List<ArtifactPreparer> artifactPreparers(List<CsvArtifactDefinition> artifacts,
                                                      String sourceKey,
                                                      Clock clock,
-                                                     PipelineDecisionTracer decisionTracer) {
+                                                     PipelineDecisionTracer decisionTracer,
+                                                     ArtifactIdentityResolver artifactIdentityResolver) {
         return artifacts.stream()
                 .map(artifact -> new CsvArtifactPreparer(
                         artifact,
                         new ArtifactIdSequence(artifact.idStrategy(), artifact.idStart()),
                         new DiagnosticFactory(clock),
                         sourceKey,
-                        decisionTracer))
+                        decisionTracer,
+                        artifactIdentityResolver))
                 .map(ArtifactPreparer.class::cast)
                 .toList();
     }
@@ -1350,6 +1355,8 @@ public class AppConfig {
         Map<String, Transform> transforms = ConfigRegistryCatalog.transforms();
         Map<String, Predicate<ClassifiedIndicator>> filters = ConfigRegistryCatalog.artifactFilters();
         List<CsvArtifactDefinition> artifacts = new ArrayList<>();
+        Map<String, com.iocextractor.application.artifact.policy.ArtifactWritePolicy> writePolicies =
+                ArtifactPolicyCatalog.compile(props);
         for (IocProperties.Sink.Artifact artifact : props.sink().artifacts()) {
             if (!artifact.enabled()) {
                 continue;
@@ -1361,7 +1368,10 @@ public class AppConfig {
                     artifactFilter(artifact, filters),
                     mapper,
                     strategyOf(artifact.id()),
-                    startOf(artifact.name(), artifact, artifactIdBaseline)));
+                    startOf(artifact.name(), artifact, artifactIdBaseline),
+                    writePolicies.getOrDefault(
+                            artifact.name(),
+                            com.iocextractor.application.artifact.policy.ArtifactWritePolicy.legacy())));
         }
         return artifacts;
     }

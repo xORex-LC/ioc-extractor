@@ -2,7 +2,13 @@ package com.iocextractor.adapter.out.sink.csv;
 
 import com.iocextractor.application.artifact.ArtifactIdSequence;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
+import com.iocextractor.application.artifact.ArtifactPreparationBatch;
+import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
+import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
+import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
+import com.iocextractor.application.observation.OccurrencePosition;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicatorOccurrence;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.observability.PipelineItemDecision;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
@@ -100,6 +106,57 @@ class CsvArtifactPreparerTest {
                 assertThat(decision.artifact()).isEqualTo("hashes"));
     }
 
+    @Test
+    void occurrence_policy_selects_the_last_nonempty_whole_row_by_mapped_identity() {
+        var policy = new ArtifactWritePolicy(
+                ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY,
+                "name",
+                Map.of("name", ArtifactWritePolicy.FieldUpdatePolicy.LATEST_REGISTERED_KEEP_EXISTING));
+        RowMapper mapper = new RowMapper() {
+            @Override
+            public List<String> header() {
+                return List.of("name", "hash");
+            }
+
+            @Override
+            public List<String> toRow(ClassifiedIndicator classified) {
+                return java.util.Arrays.asList(
+                        classified.indicator().source().label(), classified.indicator().value());
+            }
+
+            @Override
+            public Optional<String> idColumn() {
+                return Optional.empty();
+            }
+        };
+        var definition = new CsvArtifactDefinition(
+                "aggregate", Set.of(IndicatorType.MD5), ArtifactFilter.none(), mapper,
+                ArtifactIdStrategy.ASCENDING, 1, policy);
+        var identity = new CanonicalArtifactIdentityResolver(List.of(
+                new ArtifactIdentityDefinition("aggregate", List.of("hash"), true, 1)));
+        var preparer = new CsvArtifactPreparer(
+                definition, new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 1),
+                new DiagnosticFactory(Clock.systemUTC()), "source-key",
+                NoopPipelineDecisionTracer.INSTANCE, identity);
+        ClassifiedIndicator first = indicator("same-hash", IndicatorType.MD5, "first");
+        ClassifiedIndicator unnamed = indicator("same-hash", IndicatorType.MD5, null);
+        ClassifiedIndicator last = indicator("same-hash", IndicatorType.MD5, "last");
+
+        var result = preparer.prepare(new ArtifactPreparationBatch(
+                List.of(first),
+                List.of(
+                        new ClassifiedIndicatorOccurrence(first, new OccurrencePosition(1)),
+                        new ClassifiedIndicatorOccurrence(unnamed, new OccurrencePosition(2)),
+                        new ClassifiedIndicatorOccurrence(last, new OccurrencePosition(3)))));
+
+        assertThat(result.diagnostics()).isEmpty();
+        assertThat(result.value().rows()).singleElement().satisfies(row -> {
+            assertThat(row.template().value("name")).isEqualTo("last");
+            assertThat(row.template().value("hash")).isEqualTo("same-hash");
+            assertThat(row.orderedFieldPositions()).containsEntry("name", new OccurrencePosition(3));
+        });
+    }
+
     private CsvArtifactPreparer preparer(RowMapper mapper) {
         var definition = new CsvArtifactDefinition(
                 "hashes", Set.of(IndicatorType.MD5), mapper, ArtifactIdStrategy.ASCENDING, 100);
@@ -116,7 +173,11 @@ class CsvArtifactPreparerTest {
     }
 
     private ClassifiedIndicator indicator(String value, IndicatorType type) {
-        var indicator = new Indicator(value, type, new SourceContext("source", null));
+        return indicator(value, type, "source");
+    }
+
+    private ClassifiedIndicator indicator(String value, IndicatorType type, String source) {
+        var indicator = new Indicator(value, type, new SourceContext(source, null));
         var features = new IndicatorFeatures(value, value, false, false, false, HostKind.UNKNOWN);
         return new ClassifiedIndicator(indicator,
                 new ClassificationDecision(features, -1, List.of(), new MaskMatch(null, null)));
