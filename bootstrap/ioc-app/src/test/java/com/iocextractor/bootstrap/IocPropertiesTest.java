@@ -112,6 +112,7 @@ class IocPropertiesTest {
         var domainPath = classified("example.org/file", IndicatorType.DOMAIN, false, true, false);
         var fullUrl = classified("https://example.org/file", IndicatorType.URL, false, true, false);
         var ipPort = classified("192.0.2.1:8443", IndicatorType.IPV4, true, false, false);
+        var domainQuery = classified("example.org?id=1", IndicatorType.DOMAIN, false, false, true);
         var hashWithDetailFeatures = classified("deadbeef", IndicatorType.MD5, true, true, true);
 
         assertThat(conditions.get("is-clean-host").test(cleanDomain)).isTrue();
@@ -120,8 +121,25 @@ class IocPropertiesTest {
         assertThat(conditions.get("is-address-with-detail").test(fullUrl)).isTrue();
         assertThat(conditions.get("is-address-with-detail").test(domainPath)).isTrue();
         assertThat(conditions.get("is-address-with-detail").test(ipPort)).isTrue();
+        assertThat(conditions.get("is-address-with-detail").test(domainQuery)).isTrue();
         assertThat(conditions.get("is-address-with-detail").test(cleanDomain)).isFalse();
         assertThat(conditions.get("is-address-with-detail").test(hashWithDetailFeatures)).isFalse();
+    }
+
+    @Test
+    void artifactPolicyCatalogHandlesAbsentOptionalCatalogSections() throws Exception {
+        IocProperties defaults = bind(Map.of());
+
+        assertThat(ArtifactPolicyCatalog.compile(withCatalogs(defaults, null, defaults.artifactIdentity())))
+                .isEmpty();
+        assertThat(ArtifactPolicyCatalog.compile(withCatalogs(defaults,
+                new IocProperties.Sink(defaults.sink().csv(), null), defaults.artifactIdentity())))
+                .isEmpty();
+        assertThat(ArtifactPolicyCatalog.compile(withCatalogs(defaults, defaults.sink(), null)))
+                .containsKey("masks");
+        assertThat(ArtifactPolicyCatalog.compile(withCatalogs(defaults, defaults.sink(),
+                new IocProperties.ArtifactIdentity(null))))
+                .containsKey("masks");
     }
 
     private IocProperties withMasksPolicy(
@@ -137,6 +155,16 @@ class IocPropertiesTest {
                 source.patterns(), source.classify(), new IocProperties.Sink(source.sink().csv(), artifacts),
                 source.pipeline(), source.ingestion(), source.artifactIdentity(), source.dataframeImport(),
                 source.export(), source.sync(), source.maintenance(), source.lifecycle(), source.observability());
+    }
+
+    private IocProperties withCatalogs(IocProperties source,
+                                       IocProperties.Sink sink,
+                                       IocProperties.ArtifactIdentity artifactIdentity) {
+        return new IocProperties(
+                source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
+                source.patterns(), source.classify(), sink, source.pipeline(), source.ingestion(),
+                artifactIdentity, source.dataframeImport(), source.export(), source.sync(), source.maintenance(),
+                source.lifecycle(), source.observability());
     }
 
     private IocProperties bind(Map<String, Object> overrides) throws Exception {
