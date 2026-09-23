@@ -238,6 +238,10 @@ class ObservationAdmissionServiceTest {
                 new ObservationOrder(1), ObservationOrigin.MANAGED_IMPORT);
         var active = new ObservationAdmissionReference(
                 registration, 0, Optional.empty(), false, NOW, NOW);
+        var normalizedBlank = new ObservationAdmissionReference(
+                registration, 0, Optional.of(" "), false, NOW, NOW);
+
+        assertThat(normalizedBlank.terminalOutcome()).isEmpty();
 
         assertThatThrownBy(() -> new ObservationAdmissionReference(
                 registration, -1, Optional.empty(), false, NOW, NOW))
@@ -261,6 +265,8 @@ class ObservationAdmissionServiceTest {
                 .terminal("FAILED", NOW))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("outcome changed");
+        assertThat(active.terminal("SUCCEEDED", NOW).terminal("SUCCEEDED", NOW).terminalOutcome())
+                .contains("SUCCEEDED");
     }
 
     @Test
@@ -276,6 +282,13 @@ class ObservationAdmissionServiceTest {
                 reserved.claimPath(), reserved.claimedEvidence(), reserved.phase(), -1,
                 reserved.registration(), reserved.sourceKey(), reserved.terminalOutcome(),
                 reserved.registrationFinalized(), reserved.createdAt(), reserved.updatedAt()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("version or timestamps");
+        assertThatThrownBy(() -> new DocumentAdmission(
+                reserved.observationId(), reserved.candidatePath(), reserved.candidateEvidence(),
+                reserved.claimPath(), reserved.claimedEvidence(), reserved.phase(), 0,
+                reserved.registration(), reserved.sourceKey(), reserved.terminalOutcome(),
+                reserved.registrationFinalized(), NOW, NOW.minusSeconds(1)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("version or timestamps");
         assertThatThrownBy(() -> reserved.ordered(wrongRegistration, NOW))
