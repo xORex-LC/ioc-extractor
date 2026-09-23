@@ -20,6 +20,7 @@ import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.io.ClassPathResource;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -142,6 +143,63 @@ class IocPropertiesTest {
                 .containsKey("masks");
     }
 
+    @Test
+    void artifactPolicyCatalogHandlesPartiallyInvalidCollectAllModels() throws Exception {
+        IocProperties defaults = bind(Map.of());
+        IocProperties.Sink.Artifact masks = defaults.sink().artifacts().getFirst();
+        var keepFirst = new IocProperties.Sink.Artifact.WritePolicy("keep-first", null, null);
+
+        var incompleteArtifacts = Arrays.asList(
+                (IocProperties.Sink.Artifact) null,
+                artifactCopy(masks, null, masks.columns(), null),
+                artifactCopy(masks, "missing-columns", null, null));
+        assertThat(ArtifactPolicyCatalog.compile(withCatalogs(defaults,
+                new IocProperties.Sink(defaults.sink().csv(), incompleteArtifacts),
+                defaults.artifactIdentity())))
+                .isEmpty();
+
+        var columnsWithNull = new ArrayList<IocProperties.Sink.Artifact.Column>();
+        columnsWithNull.add(null);
+        columnsWithNull.add(masks.columns().get(1));
+        var nullColumnArtifact = artifactCopy(masks, "null-column", columnsWithNull, keepFirst);
+        assertThat(ArtifactPolicyCatalog.compile(withCatalogs(defaults,
+                new IocProperties.Sink(defaults.sink().csv(), List.of(nullColumnArtifact)), null)))
+                .containsKey("null-column");
+
+        var incompleteIdentities = Arrays.asList(
+                (IocProperties.ArtifactIdentity.Artifact) null,
+                new IocProperties.ArtifactIdentity.Artifact(null, List.of("mask"), null, null, null, null),
+                new IocProperties.ArtifactIdentity.Artifact(
+                        "missing-keys", null, null, null, null, null));
+        assertThat(ArtifactPolicyCatalog.compile(withCatalogs(defaults, defaults.sink(),
+                new IocProperties.ArtifactIdentity(incompleteIdentities))))
+                .containsKey("masks");
+
+        var fieldsWithMissingNames = Arrays.asList(
+                (IocProperties.Sink.Artifact.WritePolicy.Field) null,
+                new IocProperties.Sink.Artifact.WritePolicy.Field(
+                        null, "latest-registered", "keep-existing"));
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(withMasksPolicy(defaults,
+                new IocProperties.Sink.Artifact.WritePolicy(
+                        "keep-first", null, fieldsWithMissingNames))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("name must name an output column");
+
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(withMasksPolicy(defaults,
+                new IocProperties.Sink.Artifact.WritePolicy(
+                        "last-nonempty", "unknown", null))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("selection-column must name an output column");
+
+        var idField = new IocProperties.Sink.Artifact.WritePolicy.Field(
+                "id", "latest-registered", "keep-existing");
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(withMasksPolicy(defaults,
+                new IocProperties.Sink.Artifact.WritePolicy(
+                        "last-nonempty", "id", List.of(idField)))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("identity or public ID column");
+    }
+
     private IocProperties withMasksPolicy(
             IocProperties source,
             IocProperties.Sink.Artifact.WritePolicy writePolicy) {
@@ -165,6 +223,16 @@ class IocPropertiesTest {
                 source.patterns(), source.classify(), sink, source.pipeline(), source.ingestion(),
                 artifactIdentity, source.dataframeImport(), source.export(), source.sync(), source.maintenance(),
                 source.lifecycle(), source.observability());
+    }
+
+    private IocProperties.Sink.Artifact artifactCopy(
+            IocProperties.Sink.Artifact source,
+            String name,
+            List<IocProperties.Sink.Artifact.Column> columns,
+            IocProperties.Sink.Artifact.WritePolicy writePolicy) {
+        return new IocProperties.Sink.Artifact(
+                name, source.enabled(), source.path(), source.accepts(), source.include(), source.exclude(),
+                source.id(), columns, writePolicy);
     }
 
     private IocProperties bind(Map<String, Object> overrides) throws Exception {

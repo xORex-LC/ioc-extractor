@@ -345,6 +345,91 @@ class ObservationAdmissionServiceTest {
                 .hasMessageContaining("must be linked");
     }
 
+    @Test
+    void documentAdmissionRejectsEveryInconsistentPersistedPhase() {
+        DocumentAdmissionReservation reservation = reservation("document-invalid-phase");
+        RegisteredObservation registration = new RegisteredObservation(
+                reservation.observationId(), "dataframe",
+                new ObservationOrder(1), ObservationOrigin.DOCUMENT);
+        Optional<DocumentCandidateEvidence> evidence = Optional.of(reservation.candidateEvidence());
+        Optional<SourceKey> sourceKey = Optional.of(new SourceKey("digest-invalid"));
+
+        assertInvalidAdmission(reservation, DocumentAdmissionPhase.RESERVED,
+                Optional.of(registration), Optional.empty(), Optional.empty(), Optional.empty(), false,
+                "requires one registration");
+        assertInvalidAdmission(reservation, DocumentAdmissionPhase.ORDERED,
+                Optional.of(registration), evidence, Optional.empty(), Optional.empty(), false,
+                "requires claimed evidence");
+        assertInvalidAdmission(reservation, DocumentAdmissionPhase.CLAIMED,
+                Optional.of(registration), evidence, sourceKey, Optional.empty(), false,
+                "requires a source key");
+        assertInvalidAdmission(reservation, DocumentAdmissionPhase.LINKED,
+                Optional.of(registration), evidence, sourceKey,
+                Optional.of(DocumentTerminalOutcome.SUCCEEDED), false,
+                "Terminal outcome");
+        assertInvalidAdmission(reservation, DocumentAdmissionPhase.LINKED,
+                Optional.of(registration), evidence, sourceKey, Optional.empty(), true,
+                "Only terminal admission");
+        assertThatThrownBy(() -> new DocumentAdmissionReservation(
+                reservation.observationId(), reservation.candidatePath(), reservation.candidateEvidence(),
+                reservation.candidatePath(), NOW))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must differ");
+    }
+
+    @Test
+    void admissionRecoveryAcceptsDurableCasOutcomeAndSkipsIncompleteRetention() {
+        var journal = new MemoryDocumentJournal();
+        var registrations = new MemoryRegistrationStore();
+        var documents = new DocumentAdmissionService(journal, registrations, CLOCK);
+        DocumentAdmissionReservation reservation = reservation("document-cas-recovery");
+        journal.persistUpdateBeforeReject = true;
+
+        DocumentAdmission ordered = documents.admit(reservation);
+        documents.recordClaim(reservation.observationId(), reservation.candidateEvidence());
+        assertThat(documents.recover(10)).singleElement()
+                .satisfies(value -> assertThat(value.phase()).isEqualTo(DocumentAdmissionPhase.CLAIMED));
+        DocumentAdmission linked = documents.link(reservation.observationId(), new SourceKey("digest-cas"));
+        DocumentAdmission terminalOnly = linked.terminal(DocumentTerminalOutcome.SUCCEEDED, NOW);
+        assertThat(journal.replace(linked, terminalOnly)).isTrue();
+        assertThat(documents.purgeTerminalBefore(NOW.plusSeconds(1), 10)).isZero();
+        assertThat(ordered.registration()).isPresent();
+
+        var references = new MemoryReferenceStore();
+        var imports = new ManagedImportObservationAdmission(registrations, references, CLOCK);
+        ImportDeliveryId deliveryId = new ImportDeliveryId("import-cas-recovery");
+        imports.register(deliveryId);
+        references.persistUpdateBeforeReject = true;
+        imports.complete(deliveryId, "SUCCEEDED");
+        imports.complete(deliveryId, "SUCCEEDED");
+
+        ImportDeliveryId pendingId = new ImportDeliveryId("import-pending-recovery");
+        imports.register(pendingId);
+        assertThat(imports.recover(10))
+                .anySatisfy(reference -> assertThat(reference.registration().observationId().value())
+                        .isEqualTo(pendingId.value()));
+
+        references.rejectNextPurge = true;
+        assertThat(imports.purgeTerminalBefore(NOW.plusSeconds(1), 10)).isZero();
+    }
+
+    private static void assertInvalidAdmission(
+            DocumentAdmissionReservation reservation,
+            DocumentAdmissionPhase phase,
+            Optional<RegisteredObservation> registration,
+            Optional<DocumentCandidateEvidence> claimedEvidence,
+            Optional<SourceKey> sourceKey,
+            Optional<DocumentTerminalOutcome> terminalOutcome,
+            boolean registrationFinalized,
+            String message) {
+        assertThatThrownBy(() -> new DocumentAdmission(
+                reservation.observationId(), reservation.candidatePath(), reservation.candidateEvidence(),
+                reservation.claimPath(), claimedEvidence, phase, 0, registration, sourceKey,
+                terminalOutcome, registrationFinalized, NOW, NOW))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(message);
+    }
+
     private static DocumentAdmissionReservation reservation(String id) {
         return new DocumentAdmissionReservation(new ObservationId(id),
                 Path.of("inbox", id + ".docx"),
@@ -355,6 +440,7 @@ class ObservationAdmissionServiceTest {
     private static final class MemoryDocumentJournal implements DocumentAdmissionJournal {
         private final Map<ObservationId, DocumentAdmission> values = new LinkedHashMap<>();
         private boolean rejectNextReplace;
+        private boolean persistUpdateBeforeReject;
 
         @Override
         public DocumentAdmission reserve(DocumentAdmissionReservation reservation) {
@@ -369,6 +455,11 @@ class ObservationAdmissionServiceTest {
 
         @Override
         public boolean replace(DocumentAdmission expected, DocumentAdmission updated) {
+            if (persistUpdateBeforeReject) {
+                persistUpdateBeforeReject = false;
+                values.replace(expected.observationId(), expected, updated);
+                return false;
+            }
             if (rejectNextReplace) {
                 rejectNextReplace = false;
                 return false;
@@ -455,6 +546,8 @@ class ObservationAdmissionServiceTest {
 
     private static final class MemoryReferenceStore implements ObservationAdmissionReferenceStore {
         private final Map<ObservationId, ObservationAdmissionReference> values = new LinkedHashMap<>();
+        private boolean persistUpdateBeforeReject;
+        private boolean rejectNextPurge;
 
         @Override
         public ObservationAdmissionReference link(RegisteredObservation registration) {
@@ -470,6 +563,11 @@ class ObservationAdmissionServiceTest {
         @Override
         public boolean replace(ObservationAdmissionReference expected,
                                ObservationAdmissionReference updated) {
+            if (persistUpdateBeforeReject) {
+                persistUpdateBeforeReject = false;
+                values.replace(expected.registration().observationId(), expected, updated);
+                return false;
+            }
             return values.replace(expected.registration().observationId(), expected, updated);
         }
 
@@ -493,6 +591,10 @@ class ObservationAdmissionServiceTest {
 
         @Override
         public boolean purgeFinalized(ObservationId observationId, long expectedVersion) {
+            if (rejectNextPurge) {
+                rejectNextPurge = false;
+                return false;
+            }
             ObservationAdmissionReference current = values.get(observationId);
             return current != null && current.registrationFinalized()
                     && current.version() == expectedVersion
