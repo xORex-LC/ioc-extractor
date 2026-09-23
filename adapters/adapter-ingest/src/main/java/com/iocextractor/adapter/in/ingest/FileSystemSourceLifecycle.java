@@ -74,13 +74,15 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
     public ClaimedSource sealClaim(ClaimedSource claimed) {
         Objects.requireNonNull(claimed, "claimed");
         Path source = claimed.processingPath();
-        Path sealed = source.resolveSibling(source.getFileName() + ".sealed");
-        Path temporary = source.resolveSibling(source.getFileName() + ".sealing");
+        Path fileName = Objects.requireNonNull(source.getFileName(), "claim path requires a file name");
+        Path parent = Objects.requireNonNull(source.getParent(), "claim path requires a parent");
+        Path sealed = parent.resolve(fileName + ".sealed");
+        Path temporary = parent.resolve(fileName + ".sealing");
         try {
             if (Files.isRegularFile(sealed)) {
                 Files.deleteIfExists(source);
                 Files.deleteIfExists(temporary);
-                forceDirectory(sealed.getParent());
+                forceDirectory(parent);
                 return sealedClaim(claimed, sealed);
             }
             if (!Files.isRegularFile(source)) {
@@ -92,9 +94,9 @@ public final class FileSystemSourceLifecycle implements SourceLifecycle {
                 channel.force(true);
             }
             Files.move(temporary, sealed, StandardCopyOption.ATOMIC_MOVE);
-            forceDirectory(sealed.getParent());
+            forceDirectory(parent);
             Files.delete(source);
-            forceDirectory(sealed.getParent());
+            forceDirectory(parent);
             return sealedClaim(claimed, sealed);
         } catch (AtomicMoveNotSupportedException failure) {
             deleteTemporary(temporary, failure);

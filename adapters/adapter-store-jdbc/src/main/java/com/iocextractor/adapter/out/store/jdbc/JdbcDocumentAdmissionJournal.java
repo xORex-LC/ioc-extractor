@@ -19,7 +19,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +34,24 @@ public final class JdbcDocumentAdmissionJournal implements DocumentAdmissionJour
             dataframe_namespace, admission_order, source_key, terminal_outcome,
             registration_finalized, created_at_ms, updated_at_ms
             """;
+    private static final String RECOVERABLE_QUERY = """
+            SELECT occurrence_id, candidate_path, candidate_file_key, candidate_size,
+                   candidate_mtime_ns, claim_path, claimed_file_key, claimed_size,
+                   claimed_mtime_ns, version, phase, dataframe_namespace, admission_order,
+                   source_key, terminal_outcome, registration_finalized, created_at_ms, updated_at_ms
+            FROM document_admission
+            WHERE phase <> 'TERMINAL' OR registration_finalized = 0
+            ORDER BY created_at_ms, occurrence_id LIMIT ?
+            """;
+    private static final String TERMINAL_QUERY = """
+            SELECT occurrence_id, candidate_path, candidate_file_key, candidate_size,
+                   candidate_mtime_ns, claim_path, claimed_file_key, claimed_size,
+                   claimed_mtime_ns, version, phase, dataframe_namespace, admission_order,
+                   source_key, terminal_outcome, registration_finalized, created_at_ms, updated_at_ms
+            FROM document_admission
+            WHERE phase = 'TERMINAL' AND registration_finalized = 1 AND updated_at_ms < ?
+            ORDER BY updated_at_ms, occurrence_id LIMIT ?
+            """;
 
     private final DataSource dataSource;
 
@@ -46,20 +63,20 @@ public final class JdbcDocumentAdmissionJournal implements DocumentAdmissionJour
     public DocumentAdmission reserve(DocumentAdmissionReservation reservation) {
         Objects.requireNonNull(reservation, "reservation");
         try (Connection connection = dataSource.getConnection()) {
-            beginImmediate(connection);
+            JdbcImmediateTransactions.begin(connection);
             try {
                 DocumentAdmission existing = find(connection, reservation.observationId());
                 if (existing != null) {
                     requireSameReservation(existing, reservation);
-                    commit(connection);
+                    JdbcImmediateTransactions.commit(connection);
                     return existing;
                 }
                 DocumentAdmission created = DocumentAdmission.reserved(reservation);
                 insert(connection, created);
-                commit(connection);
+                JdbcImmediateTransactions.commit(connection);
                 return created;
             } catch (SQLException | RuntimeException failure) {
-                rollback(connection, failure);
+                JdbcImmediateTransactions.rollback(connection, failure);
                 throw failure;
             }
         } catch (SQLException failure) {
@@ -112,21 +129,13 @@ public final class JdbcDocumentAdmissionJournal implements DocumentAdmissionJour
 
     @Override
     public List<DocumentAdmission> findRecoverable(int limit) {
-        return query("""
-                SELECT %s FROM document_admission
-                WHERE phase <> 'TERMINAL' OR registration_finalized = 0
-                ORDER BY created_at_ms, occurrence_id LIMIT ?
-                """.formatted(COLUMNS), null, limit);
+        return query(RECOVERABLE_QUERY, null, limit);
     }
 
     @Override
     public List<DocumentAdmission> findTerminalBefore(Instant cutoff, int limit) {
         Objects.requireNonNull(cutoff, "cutoff");
-        return query("""
-                SELECT %s FROM document_admission
-                WHERE phase = 'TERMINAL' AND registration_finalized = 1 AND updated_at_ms < ?
-                ORDER BY updated_at_ms, occurrence_id LIMIT ?
-                """.formatted(COLUMNS), cutoff, limit);
+        return query(TERMINAL_QUERY, cutoff, limit);
     }
 
     @Override
@@ -266,23 +275,4 @@ public final class JdbcDocumentAdmissionJournal implements DocumentAdmissionJour
         }
     }
 
-    private void beginImmediate(Connection connection) throws SQLException {
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("BEGIN IMMEDIATE");
-        }
-    }
-
-    private void commit(Connection connection) throws SQLException {
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("COMMIT");
-        }
-    }
-
-    private void rollback(Connection connection, Exception failure) {
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("ROLLBACK");
-        } catch (SQLException rollbackFailure) {
-            failure.addSuppressed(rollbackFailure);
-        }
-    }
 }

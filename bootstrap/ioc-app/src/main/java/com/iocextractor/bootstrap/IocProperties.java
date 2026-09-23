@@ -191,6 +191,10 @@ public record IocProperties(
                     fields = snapshotList(fields);
                 }
 
+                public List<Field> fields() {
+                    return snapshotList(fields);
+                }
+
                 public record Field(String name, String update, String empty) {
                 }
             }
@@ -218,6 +222,14 @@ public record IocProperties(
                     transform = snapshotList(transform);
                     whenTypes = snapshotList(whenTypes);
                     when = snapshotList(when);
+                }
+
+                public List<IndicatorType> whenTypes() {
+                    return snapshotList(whenTypes);
+                }
+
+                public List<String> when() {
+                    return snapshotList(when);
                 }
 
                 public Column(String name, String from, String value, String type,

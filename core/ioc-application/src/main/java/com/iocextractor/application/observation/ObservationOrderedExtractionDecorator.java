@@ -31,17 +31,17 @@ public final class ObservationOrderedExtractionDecorator implements ExtractIocsU
                 observationId, ObservationOrigin.ONESHOT);
         ExtractionCommand ordered = new ExtractionCommand(command.runId(), command.source(), false,
                 command.lifecycleWriteContext(), registration);
-        try {
-            ExtractionResult result = delegate.extract(ordered);
-            registrations.markTerminal(observationId, registration.namespaceId());
-            return result;
-        } catch (RuntimeException failure) {
-            try {
-                registrations.markTerminal(observationId, registration.namespaceId());
-            } catch (RuntimeException finalizationFailure) {
-                failure.addSuppressed(finalizationFailure);
-            }
-            throw failure;
+        try (var ignored = new RegistrationFinalizer(registrations, registration)) {
+            return delegate.extract(ordered);
+        }
+    }
+
+    private record RegistrationFinalizer(ObservationRegistrationStore registrations,
+                                         RegisteredObservation registration) implements AutoCloseable {
+
+        @Override
+        public void close() {
+            registrations.markTerminal(registration.observationId(), registration.namespaceId());
         }
     }
 }

@@ -13,7 +13,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -40,14 +39,14 @@ public final class JdbcObservationAdmissionReferenceStore
             throw new IllegalArgumentException("Only managed-import references are stored here");
         }
         try (Connection connection = dataSource.getConnection()) {
-            beginImmediate(connection);
+            JdbcImmediateTransactions.begin(connection);
             try {
                 ObservationAdmissionReference existing = find(connection, registration.observationId());
                 if (existing != null) {
                     if (!existing.registration().equals(registration)) {
                         throw new IllegalStateException("Observation admission reference changed on retry");
                     }
-                    commit(connection);
+                    JdbcImmediateTransactions.commit(connection);
                     return existing;
                 }
                 Instant now = clock.instant();
@@ -66,11 +65,11 @@ public final class JdbcObservationAdmissionReferenceStore
                         throw new IllegalStateException("Observation reference insert changed no rows");
                     }
                 }
-                commit(connection);
+                JdbcImmediateTransactions.commit(connection);
                 return new ObservationAdmissionReference(registration, 0, Optional.empty(),
                         false, now, now);
             } catch (SQLException | RuntimeException failure) {
-                rollback(connection, failure);
+                JdbcImmediateTransactions.rollback(connection, failure);
                 throw failure;
             }
         } catch (SQLException failure) {
@@ -211,23 +210,4 @@ public final class JdbcObservationAdmissionReferenceStore
                 Instant.ofEpochMilli(result.getLong("updated_at_ms")));
     }
 
-    private void beginImmediate(Connection connection) throws SQLException {
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("BEGIN IMMEDIATE");
-        }
-    }
-
-    private void commit(Connection connection) throws SQLException {
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("COMMIT");
-        }
-    }
-
-    private void rollback(Connection connection, Exception failure) {
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("ROLLBACK");
-        } catch (SQLException rollbackFailure) {
-            failure.addSuppressed(rollbackFailure);
-        }
-    }
 }

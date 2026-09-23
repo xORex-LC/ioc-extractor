@@ -32,7 +32,7 @@ public final class JdbcObservationRegistrationStore implements ObservationRegist
         Objects.requireNonNull(observationId, "observationId");
         Objects.requireNonNull(origin, "origin");
         try (Connection connection = dataSource.getConnection()) {
-            beginImmediate(connection);
+            JdbcImmediateTransactions.begin(connection);
             try {
                 Control control = control(connection);
                 RegisteredObservation existing = find(connection, observationId, control.namespaceId());
@@ -40,7 +40,7 @@ public final class JdbcObservationRegistrationStore implements ObservationRegist
                     if (existing.origin() != origin) {
                         throw new IllegalStateException("Occurrence origin changed on registration retry");
                     }
-                    commit(connection);
+                    JdbcImmediateTransactions.commit(connection);
                     return existing;
                 }
                 if (control.nextOrder() == Long.MAX_VALUE) {
@@ -62,11 +62,11 @@ public final class JdbcObservationRegistrationStore implements ObservationRegist
                     insert.setLong(4, clock.millis());
                     requireOne(insert.executeUpdate());
                 }
-                commit(connection);
+                JdbcImmediateTransactions.commit(connection);
                 return new RegisteredObservation(observationId, control.namespaceId(),
                         new ObservationOrder(control.nextOrder()), origin);
             } catch (SQLException | RuntimeException failure) {
-                rollback(connection, failure);
+                JdbcImmediateTransactions.rollback(connection, failure);
                 throw failure;
             }
         } catch (SQLException failure) {
@@ -165,26 +165,6 @@ public final class JdbcObservationRegistrationStore implements ObservationRegist
     private void requireOne(int changed) {
         if (changed != 1) {
             throw new IllegalStateException("Observation order transaction changed " + changed + " rows");
-        }
-    }
-
-    private void beginImmediate(Connection connection) throws SQLException {
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("BEGIN IMMEDIATE");
-        }
-    }
-
-    private void commit(Connection connection) throws SQLException {
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("COMMIT");
-        }
-    }
-
-    private void rollback(Connection connection, Exception failure) {
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("ROLLBACK");
-        } catch (SQLException rollbackFailure) {
-            failure.addSuppressed(rollbackFailure);
         }
     }
 

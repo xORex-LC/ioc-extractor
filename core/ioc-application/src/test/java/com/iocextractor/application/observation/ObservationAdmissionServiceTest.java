@@ -119,6 +119,108 @@ class ObservationAdmissionServiceTest {
     }
 
     @Test
+    void managedImportRecoveryCompletesTerminalHandshakeBeforeRetention() {
+        var registrations = new MemoryRegistrationStore();
+        var references = new MemoryReferenceStore();
+        var imports = new ManagedImportObservationAdmission(registrations, references, CLOCK);
+        ImportDeliveryId deliveryId = new ImportDeliveryId("import-recovery");
+        RegisteredObservation registration = imports.register(deliveryId);
+        ObservationAdmissionReference linked = references.find(registration.observationId()).orElseThrow();
+        references.replace(linked, linked.terminal("SUCCEEDED", NOW));
+
+        List<ObservationAdmissionReference> recovered = imports.recover(10);
+
+        assertThat(recovered).singleElement().satisfies(reference -> {
+            assertThat(reference.registration()).isEqualTo(registration);
+            assertThat(reference.registrationFinalized()).isTrue();
+        });
+        assertThat(registrations.terminal).containsExactly(registration.observationId());
+        assertThat(imports.purgeTerminalBefore(NOW.plusSeconds(1), 10)).isOne();
+        assertThat(references.values).isEmpty();
+        assertThat(registrations.values).isEmpty();
+    }
+
+    @Test
+    void managedImportFailsClosedOnChangedReferencesAndTerminalOutcome() {
+        var registrations = new MemoryRegistrationStore();
+        var references = new MemoryReferenceStore();
+        var imports = new ManagedImportObservationAdmission(registrations, references, CLOCK);
+        ImportDeliveryId mismatchedDelivery = new ImportDeliveryId("import-reference-mismatch");
+        ObservationId mismatchedId = new ObservationId(mismatchedDelivery.value());
+        references.link(new RegisteredObservation(mismatchedId, "other-namespace",
+                new ObservationOrder(99), ObservationOrigin.MANAGED_IMPORT));
+
+        assertThatThrownBy(() -> imports.register(mismatchedDelivery))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("reference changed");
+
+        ImportDeliveryId completedDelivery = new ImportDeliveryId("import-completed");
+        imports.register(completedDelivery);
+        imports.complete(completedDelivery, "SUCCEEDED");
+        assertThatThrownBy(() -> imports.complete(completedDelivery, "QUARANTINED"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("outcome changed");
+        assertThatThrownBy(() -> imports.resume(new ImportDeliveryId("missing-import")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Missing import observation");
+        assertThatThrownBy(() -> imports.recover(0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("limit must be positive");
+        assertThatThrownBy(() -> imports.purgeTerminalBefore(NOW, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("limit must be positive");
+    }
+
+    @Test
+    void oneshotFailureRemainsPrimaryWhenRegistrationFinalizationAlsoFails() {
+        var registrations = new MemoryRegistrationStore();
+        var extractionFailure = new IllegalStateException("extraction failed");
+        var finalizationFailure = new IllegalStateException("finalization failed");
+        registrations.terminalFailure = finalizationFailure;
+        var decorator = new ObservationOrderedExtractionDecorator(command -> {
+            throw extractionFailure;
+        }, registrations);
+
+        assertThatThrownBy(() -> decorator.extract(
+                new ExtractionCommand("oneshot-failure", Path.of("source.docx"), false)))
+                .isSameAs(extractionFailure)
+                .satisfies(failure -> assertThat(failure.getSuppressed())
+                        .containsExactly(finalizationFailure));
+    }
+
+    @Test
+    void documentCompletionIsIdempotentAndRejectsAChangedOutcome() {
+        var journal = new MemoryDocumentJournal();
+        var registrations = new MemoryRegistrationStore();
+        var service = new DocumentAdmissionService(journal, registrations, CLOCK);
+        DocumentAdmissionReservation reservation = reservation("document-completion");
+        service.admit(reservation);
+        service.recordClaim(reservation.observationId(), reservation.candidateEvidence());
+        service.link(reservation.observationId(), new SourceKey("digest-completion"));
+
+        DocumentAdmission completed = service.complete(
+                reservation.observationId(), DocumentTerminalOutcome.SUCCEEDED);
+        DocumentAdmission retried = service.complete(
+                reservation.observationId(), DocumentTerminalOutcome.SUCCEEDED);
+
+        assertThat(retried).isEqualTo(completed);
+        assertThatThrownBy(() -> service.complete(
+                reservation.observationId(), DocumentTerminalOutcome.QUARANTINED))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("outcome changed");
+        assertThatThrownBy(() -> service.recover(0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("limit must be positive");
+        assertThatThrownBy(() -> service.purgeTerminalBefore(NOW, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("limit must be positive");
+        assertThatThrownBy(() -> service.link(
+                new ObservationId("missing-document"), new SourceKey("missing")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Missing document admission");
+    }
+
+    @Test
     void sameSizeAndTimestampCannotReuseAReservationForAnotherFileIdentity() {
         var first = new DocumentCandidateEvidence(Optional.of("inode-1"), 42, 100);
         var replacement = new DocumentCandidateEvidence(Optional.of("inode-2"), 42, 100);
@@ -127,6 +229,64 @@ class ObservationAdmissionServiceTest {
         assertThat(first.sameObjectAs(replacement)).isFalse();
         assertThat(first.sameObjectAs(unavailable)).isFalse();
         assertThat(unavailable.sameObjectAs(unavailable)).isFalse();
+    }
+
+    @Test
+    void observationReferenceEnforcesItsTerminalStateMachine() {
+        RegisteredObservation registration = new RegisteredObservation(
+                new ObservationId("reference-state"), "dataframe",
+                new ObservationOrder(1), ObservationOrigin.MANAGED_IMPORT);
+        var active = new ObservationAdmissionReference(
+                registration, 0, Optional.empty(), false, NOW, NOW);
+
+        assertThatThrownBy(() -> new ObservationAdmissionReference(
+                registration, -1, Optional.empty(), false, NOW, NOW))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("version or timestamps");
+        assertThatThrownBy(() -> new ObservationAdmissionReference(
+                registration, 1, Optional.empty(), true, NOW, NOW))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must be terminal");
+        assertThatThrownBy(() -> active.terminal(" ", NOW))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not be blank");
+        assertThatThrownBy(() -> active.finalized(NOW))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("is not terminal");
+        assertThatThrownBy(() -> active.terminal("SUCCEEDED", NOW)
+                .terminal("FAILED", NOW))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("outcome changed");
+    }
+
+    @Test
+    void documentAdmissionRejectsOutOfOrderAndContradictoryTransitions() {
+        DocumentAdmissionReservation reservation = reservation("document-state");
+        DocumentAdmission reserved = DocumentAdmission.reserved(reservation);
+        RegisteredObservation wrongRegistration = new RegisteredObservation(
+                new ObservationId("another-document"), "dataframe",
+                new ObservationOrder(1), ObservationOrigin.DOCUMENT);
+
+        assertThatThrownBy(() -> reserved.ordered(wrongRegistration, NOW))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("another document occurrence");
+        assertThatThrownBy(() -> reserved.claimed(reservation.candidateEvidence(), NOW))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Expected document admission phase ORDERED");
+
+        RegisteredObservation registration = new RegisteredObservation(
+                reservation.observationId(), "dataframe",
+                new ObservationOrder(1), ObservationOrigin.DOCUMENT);
+        DocumentAdmission ordered = reserved.ordered(registration, NOW);
+        DocumentCandidateEvidence replacement = new DocumentCandidateEvidence(
+                Optional.of("replacement-inode"), 12, 20);
+
+        assertThatThrownBy(() -> ordered.claimed(replacement, NOW))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("differs from reservation");
+        assertThatThrownBy(() -> ordered.terminal(DocumentTerminalOutcome.SUCCEEDED, NOW))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("must be linked");
     }
 
     private static DocumentAdmissionReservation reservation(String id) {
@@ -189,6 +349,7 @@ class ObservationAdmissionServiceTest {
     private static final class MemoryRegistrationStore implements ObservationRegistrationStore {
         private final Map<ObservationId, RegisteredObservation> values = new LinkedHashMap<>();
         private final List<ObservationId> terminal = new ArrayList<>();
+        private RuntimeException terminalFailure;
         private long nextOrder = 1;
 
         @Override
@@ -221,6 +382,9 @@ class ObservationAdmissionServiceTest {
         @Override
         public void markTerminal(ObservationId id, String expectedNamespace) {
             resume(id, expectedNamespace);
+            if (terminalFailure != null) {
+                throw terminalFailure;
+            }
             if (!terminal.contains(id)) {
                 terminal.add(id);
             }

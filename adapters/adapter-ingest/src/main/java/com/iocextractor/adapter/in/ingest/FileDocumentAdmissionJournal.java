@@ -131,12 +131,17 @@ public final class FileDocumentAdmissionJournal implements DocumentAdmissionJour
             return List.of();
         }
         try (var files = Files.list(directory)) {
-            return files.filter(path -> path.getFileName().toString().endsWith(".properties"))
+            return files.filter(this::isJournalFile)
                     .map(this::read)
                     .toList();
         } catch (IOException failure) {
             throw new IocExtractorException("Failed to scan document admission journal", failure);
         }
+    }
+
+    private boolean isJournalFile(Path path) {
+        Path fileName = path.getFileName();
+        return fileName != null && fileName.toString().endsWith(".properties");
     }
 
     private DocumentAdmission read(Path path) {
