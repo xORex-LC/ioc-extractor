@@ -244,6 +244,10 @@ class ObservationAdmissionServiceTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("version or timestamps");
         assertThatThrownBy(() -> new ObservationAdmissionReference(
+                registration, 0, Optional.empty(), false, NOW, NOW.minusSeconds(1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("version or timestamps");
+        assertThatThrownBy(() -> new ObservationAdmissionReference(
                 registration, 1, Optional.empty(), true, NOW, NOW))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("must be terminal");
