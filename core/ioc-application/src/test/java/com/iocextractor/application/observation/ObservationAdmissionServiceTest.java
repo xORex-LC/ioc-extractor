@@ -393,6 +393,10 @@ class ObservationAdmissionServiceTest {
         DocumentAdmission terminalOnly = linked.terminal(DocumentTerminalOutcome.SUCCEEDED, NOW);
         assertThat(journal.replace(linked, terminalOnly)).isTrue();
         assertThat(documents.purgeTerminalBefore(NOW.plusSeconds(1), 10)).isZero();
+        assertThat(documents.recover(10)).singleElement()
+                .satisfies(value -> assertThat(value.registrationFinalized()).isTrue());
+        journal.rejectNextPurge = true;
+        assertThat(documents.purgeTerminalBefore(NOW.plusSeconds(1), 10)).isZero();
         assertThat(ordered.registration()).isPresent();
 
         var references = new MemoryReferenceStore();
@@ -441,6 +445,7 @@ class ObservationAdmissionServiceTest {
         private final Map<ObservationId, DocumentAdmission> values = new LinkedHashMap<>();
         private boolean rejectNextReplace;
         private boolean persistUpdateBeforeReject;
+        private boolean rejectNextPurge;
 
         @Override
         public DocumentAdmission reserve(DocumentAdmissionReservation reservation) {
@@ -487,6 +492,10 @@ class ObservationAdmissionServiceTest {
 
         @Override
         public boolean purgeTerminal(ObservationId observationId, long expectedVersion) {
+            if (rejectNextPurge) {
+                rejectNextPurge = false;
+                return false;
+            }
             DocumentAdmission current = values.get(observationId);
             return current != null && current.version() == expectedVersion
                     && values.remove(observationId, current);
