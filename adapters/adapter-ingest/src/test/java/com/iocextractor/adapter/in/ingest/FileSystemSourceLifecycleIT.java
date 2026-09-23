@@ -5,6 +5,7 @@ import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.ClaimedSource;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
+import com.iocextractor.application.ingest.admission.DocumentAdmissionReservation;
 import com.iocextractor.application.observation.ObservationOrder;
 import com.iocextractor.application.observation.ObservationOrigin;
 import com.iocextractor.application.observation.RegisteredObservation;
@@ -192,6 +193,34 @@ class FileSystemSourceLifecycleIT {
             assertThat(value.registration()).isEqualTo(admitted.registration());
             assertThat(value.source().key()).isEqualTo(admitted.source().key());
             assertThat(value.source().processingPath()).isEqualTo(admitted.source().processingPath());
+        });
+        assertThat(registrations.nextOrder).isEqualTo(2);
+    }
+
+    @Test
+    void restartAfterTokenRenameLinksTheExistingClaimWithoutReregistering() throws Exception {
+        Path processing = tempDir.resolve("processing-claim-crash");
+        var lifecycle = new FileSystemSourceLifecycle(
+                processing, tempDir.resolve("done-claim-crash"), tempDir.resolve("failed-claim-crash"));
+        var registrations = new MemoryRegistrationStore();
+        Clock clock = Clock.fixed(Instant.parse("2026-09-22T12:00:00Z"), ZoneOffset.UTC);
+        Path journalPath = tempDir.resolve("admission-claim-crash");
+        var journal = new FileDocumentAdmissionJournal(journalPath);
+        var service = new DocumentAdmissionService(journal, registrations, clock);
+        var evidenceReader = new FileDocumentCandidateEvidenceReader();
+        ObservationId id = new ObservationId("delivery-claim-crash");
+        Path source = Files.writeString(tempDir.resolve("claim-crash.html"), "ioc-data");
+        Path claimPath = lifecycle.prehashClaimPath(source, id);
+        var reservation = new DocumentAdmissionReservation(
+                id, source, evidenceReader.read(source), claimPath, clock.instant());
+        RegisteredObservation registration = service.admit(reservation).registration().orElseThrow();
+        lifecycle.claimBeforeHash(source, id, clock.instant());
+
+        var recovered = handler(journalPath, lifecycle, registrations, clock).recover(10);
+
+        assertThat(recovered).singleElement().satisfies(value -> {
+            assertThat(value.registration()).isEqualTo(registration);
+            assertThat(value.source().processingPath()).exists();
         });
         assertThat(registrations.nextOrder).isEqualTo(2);
     }

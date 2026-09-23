@@ -77,6 +77,24 @@ class ObservationAdmissionServiceTest {
     }
 
     @Test
+    void retryAfterRegistrationBeforeJournalLinkReusesTheAllocatedOrder() {
+        var journal = new MemoryDocumentJournal();
+        var registrations = new MemoryRegistrationStore();
+        var service = new DocumentAdmissionService(journal, registrations, CLOCK);
+        DocumentAdmissionReservation reservation = reservation("document-register-crash");
+        journal.rejectNextReplace = true;
+
+        assertThatThrownBy(() -> service.admit(reservation))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("changed concurrently");
+        DocumentAdmission recovered = service.admit(reservation);
+
+        assertThat(recovered.phase()).isEqualTo(DocumentAdmissionPhase.ORDERED);
+        assertThat(recovered.registration().orElseThrow().admissionOrder().value()).isOne();
+        assertThat(registrations.nextOrder).isEqualTo(2);
+    }
+
+    @Test
     void importAndOneshotUseTheSameOrderAuthorityAndDryRunHasNoSideEffect() {
         var registrations = new MemoryRegistrationStore();
         var references = new MemoryReferenceStore();
@@ -120,6 +138,7 @@ class ObservationAdmissionServiceTest {
 
     private static final class MemoryDocumentJournal implements DocumentAdmissionJournal {
         private final Map<ObservationId, DocumentAdmission> values = new LinkedHashMap<>();
+        private boolean rejectNextReplace;
 
         @Override
         public DocumentAdmission reserve(DocumentAdmissionReservation reservation) {
@@ -134,6 +153,10 @@ class ObservationAdmissionServiceTest {
 
         @Override
         public boolean replace(DocumentAdmission expected, DocumentAdmission updated) {
+            if (rejectNextReplace) {
+                rejectNextReplace = false;
+                return false;
+            }
             return values.replace(expected.observationId(), expected, updated);
         }
 
