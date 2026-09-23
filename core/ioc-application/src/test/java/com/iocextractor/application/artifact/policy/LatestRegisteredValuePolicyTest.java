@@ -43,6 +43,21 @@ class LatestRegisteredValuePolicyTest {
     }
 
     @Test
+    void missingValuesAndEqualRanksPreserveDeterministicOrdering() {
+        FieldValueOrigin existing = origin(4, "same");
+
+        assertThat(policy.decide(null, null, "A", existing))
+                .isEqualTo(FieldUpdateDecision.CHANGE_PUBLIC_VALUE);
+        assertThat(policy.decide("A", existing, null, origin(5, "later")))
+                .isEqualTo(FieldUpdateDecision.PRESERVE);
+        assertThat(policy.decide("A", existing, "A", existing))
+                .isEqualTo(FieldUpdateDecision.PRESERVE);
+        assertThatThrownBy(() -> policy.decide("A", existing, "A", origin(4, "other")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Conflicting evidence");
+    }
+
+    @Test
     void last_nonempty_selection_keeps_one_whole_occurrence() {
         var selector = new ArtifactOccurrenceSelector();
         var selectionPolicy = new ArtifactWritePolicy(
@@ -66,6 +81,31 @@ class LatestRegisteredValuePolicyTest {
 
         assertThat(selector.select(candidates, ArtifactWritePolicy.legacy(), Candidate::name))
                 .isSameAs(candidates.getFirst());
+    }
+
+    @Test
+    void policyAndSelectionRejectMissingRequirementsWithoutPartialSelection() {
+        assertThatThrownBy(() -> new ArtifactWritePolicy(
+                ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY, null, Map.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires a column");
+        assertThatThrownBy(() -> new ArtifactWritePolicy(
+                ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY, " ", Map.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires a column");
+
+        var selector = new ArtifactOccurrenceSelector();
+        var selectionPolicy = new ArtifactWritePolicy(
+                ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY, "name", Map.of());
+        assertThatThrownBy(() -> selector.select(List.<Candidate>of(), selectionPolicy, Candidate::name))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("empty group");
+
+        List<Candidate> unnamed = List.of(
+                new Candidate(null, "10.0.0.1"),
+                new Candidate(" ", "10.0.0.2"));
+        assertThat(selector.select(unnamed, selectionPolicy, Candidate::name))
+                .isSameAs(unnamed.getFirst());
     }
 
     private static FieldValueOrigin origin(long order, String id) {

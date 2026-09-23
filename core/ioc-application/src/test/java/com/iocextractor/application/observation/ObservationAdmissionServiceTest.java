@@ -225,10 +225,42 @@ class ObservationAdmissionServiceTest {
         var first = new DocumentCandidateEvidence(Optional.of("inode-1"), 42, 100);
         var replacement = new DocumentCandidateEvidence(Optional.of("inode-2"), 42, 100);
         var unavailable = new DocumentCandidateEvidence(Optional.empty(), 42, 100);
+        var blankIdentity = new DocumentCandidateEvidence(Optional.of(" "), 42, 100);
 
         assertThat(first.sameObjectAs(replacement)).isFalse();
         assertThat(first.sameObjectAs(unavailable)).isFalse();
         assertThat(unavailable.sameObjectAs(unavailable)).isFalse();
+        assertThat(blankIdentity.fileKey()).isEmpty();
+        assertThat(first.sameObjectAs(new DocumentCandidateEvidence(Optional.of("inode-1"), 41, 100)))
+                .isFalse();
+        assertThat(first.sameObjectAs(new DocumentCandidateEvidence(Optional.of("inode-1"), 42, 99)))
+                .isFalse();
+        assertThatThrownBy(() -> new DocumentCandidateEvidence(Optional.empty(), -1, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("nonnegative");
+        assertThatThrownBy(() -> new DocumentCandidateEvidence(Optional.empty(), 0, -1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("nonnegative");
+    }
+
+    @Test
+    void observationCoordinatesRejectInvalidBoundaries() {
+        ObservationId observationId = new ObservationId("invalid-coordinate");
+
+        assertThatThrownBy(() -> new ObservationOrder(0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must be positive");
+        assertThatThrownBy(() -> new OccurrencePosition(-1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must be nonnegative");
+        assertThatThrownBy(() -> new RegisteredObservation(
+                observationId, null, new ObservationOrder(1), ObservationOrigin.DOCUMENT))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires a namespace");
+        assertThatThrownBy(() -> new RegisteredObservation(
+                observationId, " ", new ObservationOrder(1), ObservationOrigin.DOCUMENT))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires a namespace");
     }
 
     @Test
