@@ -164,3 +164,29 @@ new admission collaborators are not wired into default bootstrap composition;
 occurrence propagation, canonical `name` mutation, aggregate import/export and
 activation remain P3–P6. Dataframe/service schema v10 also makes binary-only
 downgrade unsafe; the coordinated restore procedure remains a P6 blocker.
+
+## Final P0–P2 qualification — 2026-09-23
+
+The final production and test tree is `fe0f0963`. The qualification compared it
+with the isolated pre-feature baseline `e3f88ccf`; both complete reactor runs
+passed. The evidence-ledger update itself changes no production, build or test
+source.
+
+| Check | P0–P2 result | Baseline / delta |
+|---|---|---|
+| `make verify` | All 25 reactor projects succeeded; test lifecycle reports 198 fast, 67 integration and 5 external suites, with 260 deterministic-offline suites | Baseline: 196 fast, 66 integration, 5 external and 257 deterministic-offline; P0–P2 add 2 fast, 1 integration and 3 deterministic-offline suites |
+| Aggregate JaCoCo | 21,081/23,540 lines (89.55%); 6,930/8,659 branches (80.03%) | Covered code grew by 968 lines and 415 branches; total measured code grew by 1,150 lines and 536 branches. Percentage changed by -0.27 line points and -0.17 branch points while retaining the fixed floors |
+| SpotBugs | 116 accepted, 0 visible | Unchanged count and baseline; no new accepted selector or suppression |
+| CPD | 21/21 duplication groups | Unchanged count. Changed-range review found no new feature duplication group; four intersections are pre-existing `IocProperties`/import-catalog ranges shifted by the new nested records |
+| `make pmd-analysis` | 0 blocking, 21/21 advisory | Unchanged ratchet. New admission/mapping/storage types add no finding; findings in touched legacy orchestration files remain existing reviewed advisories |
+| `make pmd-watchlist` | 29 advisory findings | No finding intersects the new admission, policy, journal or JDBC registration classes |
+| `make security-scan` | 129 dependency entries, 0 vulnerabilities | Offline NVD-backed scan passed; Sonatype OSS Index was unavailable without credentials and is not claimed as live external evidence |
+| `make docs` | 1,017 links, 390 unique, 872 OK, 145 excluded, 0 errors | No broken documentation link |
+
+Focused final application evidence includes 14/14
+`ObservationAdmissionServiceTest` cases. They cover idempotent allocation,
+crash-after-registration recovery, file/JDBC reference handshakes, conflicting
+orders/outcomes, compare-and-set recovery, retention guards, dry-run behavior
+and oneshot failure precedence. Provisioned external suites were not executed;
+the five external suite shells remain discoverable and do not substitute for
+stand qualification.
