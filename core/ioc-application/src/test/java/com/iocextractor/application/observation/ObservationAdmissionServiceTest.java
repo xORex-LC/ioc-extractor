@@ -154,6 +154,16 @@ class ObservationAdmissionServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("reference changed");
 
+        ImportDeliveryId reorderedDelivery = new ImportDeliveryId("import-order-mismatch");
+        RegisteredObservation registered = registrations.registerNew(
+                new ObservationId(reorderedDelivery.value()), ObservationOrigin.MANAGED_IMPORT);
+        references.link(new RegisteredObservation(
+                registered.observationId(), registered.namespaceId(),
+                new ObservationOrder(registered.admissionOrder().value() + 100), registered.origin()));
+        assertThatThrownBy(() -> imports.resume(reorderedDelivery))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("reference changed");
+
         ImportDeliveryId completedDelivery = new ImportDeliveryId("import-completed");
         imports.register(completedDelivery);
         imports.complete(completedDelivery, "SUCCEEDED");
