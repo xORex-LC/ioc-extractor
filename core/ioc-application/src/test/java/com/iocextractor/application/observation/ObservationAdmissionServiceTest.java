@@ -271,6 +271,13 @@ class ObservationAdmissionServiceTest {
                 new ObservationId("another-document"), "dataframe",
                 new ObservationOrder(1), ObservationOrigin.DOCUMENT);
 
+        assertThatThrownBy(() -> new DocumentAdmission(
+                reserved.observationId(), reserved.candidatePath(), reserved.candidateEvidence(),
+                reserved.claimPath(), reserved.claimedEvidence(), reserved.phase(), -1,
+                reserved.registration(), reserved.sourceKey(), reserved.terminalOutcome(),
+                reserved.registrationFinalized(), reserved.createdAt(), reserved.updatedAt()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("version or timestamps");
         assertThatThrownBy(() -> reserved.ordered(wrongRegistration, NOW))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("another document occurrence");
