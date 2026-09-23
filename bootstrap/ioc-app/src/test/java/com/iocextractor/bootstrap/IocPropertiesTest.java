@@ -72,6 +72,31 @@ class IocPropertiesTest {
                         "fields[1].name is duplicated");
     }
 
+    @Test
+    void artifactPolicyCompilationRejectsSelectionAndFieldBoundaryCases() throws Exception {
+        IocProperties defaults = bind(Map.of());
+        var keepFirstWithSelection = new IocProperties.Sink.Artifact.WritePolicy(
+                "keep-first", "source", null);
+        var lastNonemptyWithoutSelection = new IocProperties.Sink.Artifact.WritePolicy(
+                "last-nonempty", null, null);
+        var unknownField = new IocProperties.Sink.Artifact.WritePolicy(
+                "keep-first", null, List.of(new IocProperties.Sink.Artifact.WritePolicy.Field(
+                "unknown", "latest-registered", "keep-existing")));
+
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(
+                withMasksPolicy(defaults, keepFirstWithSelection)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("selection-column is only valid for last-nonempty");
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(
+                withMasksPolicy(defaults, lastNonemptyWithoutSelection)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("selection-column must name an output column");
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(
+                withMasksPolicy(defaults, unknownField)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("fields[0].name must name an output column");
+    }
+
     private IocProperties withMasksPolicy(
             IocProperties source,
             IocProperties.Sink.Artifact.WritePolicy writePolicy) {
