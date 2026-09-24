@@ -43,7 +43,8 @@ public final class ConfirmationReceiptReplayService implements ReplayConfirmatio
                     context.receipt(),
                     artifact.artifactName(),
                     artifact.header(),
-                    artifact.records()));
+                    artifact.records(),
+                    context.registration()));
             outcomes.put(artifact.artifactName(), outcome);
         }
         return new ConfirmationReceiptReplayResult(outcomes);

@@ -843,6 +843,53 @@ class IngestionServiceTest {
     }
 
     @Test
+    void complete_receipt_reprojects_and_publishes_a_public_field_update() {
+        var key = new SourceKey("ABC123");
+        var observation = new ObservationId("delivery-current");
+        var ledger = new MemoryLedger();
+        var lifecycle = new MemoryLifecycle();
+        var preparer = new CountingPreparer();
+        var projection = new CollectingProjection();
+        var events = new RecordingControlEventPublisher();
+        var lifecycleSupport = new IngestionLifecycleSupport(
+                command -> Optional.of(new ConfirmationReceiptReplayResult(java.util.Map.of(
+                        "masks", new LifecycleWriteResult(
+                                observation,
+                                "masks",
+                                EffectiveTime.at(EVENT_TIME),
+                                0, 0, 0, 1, 0, 4,
+                                new ProjectionGeneration(2), true)))),
+                (observationId, completedAt, retention) -> { },
+                () -> EffectiveTime.at(EVENT_TIME),
+                "processing-policy-v1",
+                java.time.Duration.ofDays(30));
+        var service = new IngestionService(
+                ledger,
+                lifecycle,
+                source -> new SourcePreparers(List.of(preparer)),
+                failingExtractionFactory(),
+                new MemoryRunLedger(),
+                projection,
+                events,
+                clock,
+                NoopDiagnosticSink.INSTANCE,
+                new SynchronousKeyedExecutionGuard(),
+                lifecycleSupport);
+
+        IngestSourceResult result = service.ingest(new IngestSourceCommand(
+                Path.of("inbox/source.html"), observation, key, Instant.EPOCH));
+
+        assertThat(result.duplicate()).isTrue();
+        assertThat(result.extractionResultOptional()).isEmpty();
+        assertThat(preparer.written).isZero();
+        assertThat(projection.requests).singleElement().satisfies(request -> {
+            assertThat(request.runId()).isEqualTo("run-1");
+            assertThat(request.artifactName()).isEqualTo("masks");
+        });
+        assertArtifactsChanged(events, "run-1", List.of("masks"));
+    }
+
+    @Test
     void recovery_marks_processing_orphans_as_failed() {
         var key = new SourceKey("ABC123");
         var ledger = new MemoryLedger();

@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Application orchestration for whole-file ingest. It coordinates source
@@ -394,6 +395,7 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         ExtractionResult extraction = null;
         boolean receiptReplayed = false;
         Map<String, Integer> insertedPerArtifact;
+        Set<String> changedArtifacts;
         try {
             var lifecycleContext = lifecycleSupport == null
                     ? null : lifecycleSupport.context(unit, sourcePreparers.artifactNames().size());
@@ -404,19 +406,21 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
             if (replay.isPresent()) {
                 receiptReplayed = true;
                 insertedPerArtifact = replay.orElseThrow().insertedPerArtifact();
+                changedArtifacts = replay.orElseThrow().changedArtifacts();
             } else {
                 extraction = extractionFactory.create(
                                 sourcePreparers.preparers(), NoopArtifactProjection.INSTANCE)
                         .extract(new ExtractionCommand(
                                 run.runId(), unit.processingPath(), false, lifecycleContext));
                 insertedPerArtifact = extraction.writtenPerArtifact();
+                changedArtifacts = extraction.changedArtifacts();
             }
             runLedger.markDbCommitted(run.runId());
             dbCommitted = true;
             var projectionDiagnostics = new ArrayList<Diagnostic>();
             List<String> artifactsToProject = lifecycleSupport == null
                     ? sourcePreparers.artifactNames()
-                    : insertedArtifacts(insertedPerArtifact);
+                    : List.copyOf(changedArtifacts);
             for (String artifactName : artifactsToProject) {
                 var outcome = projection.project(new ArtifactProjectionCommand(run.runId(), artifactName));
                 outcome.diagnostics().forEach(diagnosticSink::emit);
@@ -443,19 +447,9 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         requireCompleted(unit.key(), "mark-source-archived",
                 ledger.markSourceArchived(unit.observationId(), archived));
         runLedger.markCompleted(run.runId());
-        publishArtifactsChanged(run.runId(), insertedArtifacts(insertedPerArtifact));
+        publishArtifactsChanged(run.runId(), List.copyOf(changedArtifacts));
         return new IngestSourceResult(
                 unit.key(), IngestionStatus.SOURCE_ARCHIVED, receiptReplayed, extraction);
-    }
-
-    private List<String> insertedArtifacts(Map<String, Integer> insertedPerArtifact) {
-        var artifacts = new ArrayList<String>();
-        insertedPerArtifact.forEach((artifact, inserted) -> {
-            if (inserted != null && inserted > 0) {
-                artifacts.add(artifact);
-            }
-        });
-        return List.copyOf(artifacts);
     }
 
     private void publishArtifactsChanged(String runId, List<String> artifactNames) {

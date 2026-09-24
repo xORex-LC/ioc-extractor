@@ -352,6 +352,23 @@ class LifecycleRuntimeServicesTest {
                 .anyMatch(MutableArtifactProjectionRequired.class::isInstance);
 
         events.clear();
+        var updated = new LifecycleWriteResult(
+                observation, "masks", AS_OF, 0, 0, 0,
+                1, 0, 2, new ProjectionGeneration(2), false);
+        new EventPublishingCanonicalArtifactWriter(ignored -> updated, events::add).confirm(null);
+        assertThat(events).hasSize(2)
+                .anyMatch(CanonicalDeadlineScheduleChanged.class::isInstance)
+                .anyMatch(MutableArtifactProjectionRequired.class::isInstance);
+
+        events.clear();
+        var metadataOnly = new LifecycleWriteResult(
+                observation, "masks", AS_OF, 0, 1, 0,
+                0, 1, 2, new ProjectionGeneration(2), false);
+        new EventPublishingCanonicalArtifactWriter(ignored -> metadataOnly, events::add).confirm(null);
+        assertThat(events).singleElement()
+                .isInstanceOf(CanonicalDeadlineScheduleChanged.class);
+
+        events.clear();
         var replay = new LifecycleWriteResult(
                 observation, "masks", AS_OF, 1, 0, 0,
                 1, new ProjectionGeneration(1), true);

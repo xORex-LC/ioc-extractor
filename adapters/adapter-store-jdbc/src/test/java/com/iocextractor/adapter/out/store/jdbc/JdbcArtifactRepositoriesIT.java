@@ -6,8 +6,13 @@ import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
+import com.iocextractor.application.artifact.CanonicalWriteCommand;
+import com.iocextractor.application.artifact.CanonicalWriteRow;
 import com.iocextractor.application.export.ArtifactRevision;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
+import com.iocextractor.application.observation.ObservationOrigin;
+import com.iocextractor.application.observation.OccurrencePosition;
 import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
@@ -19,6 +24,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -253,11 +259,62 @@ class JdbcArtifactRepositoriesIT {
                 .hasMessageContaining("Legacy canonical writer is disabled");
     }
 
+    @Test
+    void compatibility_writer_orders_mutable_fields_without_losing_insert_counts() throws Exception {
+        var schema = schema("masks", "id", "mask", "source");
+        var repository = canonicalRepository(List.of(schema), List.of(
+                new ArtifactIdentityDefinition("masks", List.of("mask"), false, 1)));
+        var registrations = new JdbcObservationRegistrationStore(dataSource, CLOCK);
+        var older = registrations.registerNew(
+                new ObservationId("compat-older"), ObservationOrigin.DOCUMENT);
+        var newer = registrations.registerNew(
+                new ObservationId("compat-newer"), ObservationOrigin.DOCUMENT);
+
+        CanonicalWriteResult inserted = repository.write(orderedCommand(
+                newer, "2", "newer", new OccurrencePosition(20)));
+        CanonicalWriteResult stale = repository.write(orderedCommand(
+                older, "3", "older", new OccurrencePosition(10)));
+        var newest = registrations.registerNew(
+                new ObservationId("compat-newest"), ObservationOrigin.DOCUMENT);
+        CanonicalWriteResult updated = repository.write(orderedCommand(
+                newest, "4", "latest", new OccurrencePosition(30)));
+
+        assertThat(inserted.inserted()).isOne();
+        assertThat(stale.inserted()).isZero();
+        assertThat(stale.publicRowsUpdated()).isZero();
+        assertThat(updated.inserted()).isZero();
+        assertThat(updated.publicRowsUpdated()).isOne();
+        assertThat(updated.revision()).isEqualTo(inserted.revision() + 1);
+        assertThat(repository.load("masks").rows()).singleElement().satisfies(value -> {
+            assertThat(value.value("id")).isEqualTo("2");
+            assertThat(value.value("mask")).isEqualTo("example.com");
+            assertThat(value.value("source")).isEqualTo("latest");
+        });
+        assertThat(queryLong("SELECT admission_order FROM canonical_compat_field_origin "
+                + "WHERE artifact = 'masks' AND field_name = 'source'"))
+                .isEqualTo(newest.admissionOrder().value());
+    }
+
+    private CanonicalWriteCommand orderedCommand(
+            com.iocextractor.application.observation.RegisteredObservation registration,
+            String id,
+            String source,
+            OccurrencePosition position) {
+        return new CanonicalWriteCommand(
+                "masks",
+                List.of("id", "mask", "source"),
+                List.of(new CanonicalWriteRow(
+                        row("id", id, "mask", "example.com", "source", source),
+                        Map.of("source", position))),
+                registration);
+    }
+
     private JdbcCanonicalArtifactRepository canonicalRepository(List<DataframeArtifactSchema> schemas,
                                                                 List<ArtifactIdentityDefinition> identities) {
         dataSource = dataSource("artifacts-" + System.nanoTime() + ".db");
         new SqliteUserVersionSchemaMigrator(dataSource, DataframeFormatMigrations.sqlite()).migrate();
         new DataframeSchemaReconciler(dataSource).reconcile(schemas);
+        new JdbcArtifactIdentityStore(dataSource, CLOCK).ensureAll(identities);
         return new JdbcCanonicalArtifactRepository(
                 dataSource,
                 schemas,
@@ -303,5 +360,14 @@ class JdbcArtifactRepositoriesIT {
         Path db = tempDir.resolve(fileName);
         return new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(
                 new SqliteDataSourceSettings("dataframe", "jdbc:sqlite:" + db, "low-memory", 1, 1));
+    }
+
+    private long queryLong(String sql) throws Exception {
+        try (var connection = dataSource.getConnection();
+             var statement = connection.createStatement();
+             var resultSet = statement.executeQuery(sql)) {
+            assertThat(resultSet.next()).isTrue();
+            return resultSet.getLong(1);
+        }
     }
 }

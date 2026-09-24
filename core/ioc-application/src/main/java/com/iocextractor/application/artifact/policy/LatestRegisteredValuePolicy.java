@@ -12,7 +12,9 @@ public final class LatestRegisteredValuePolicy {
             return FieldUpdateDecision.PRESERVE;
         }
         if (currentOrigin == null) {
-            return FieldUpdateDecision.CHANGE_PUBLIC_VALUE;
+            return Objects.equals(incomingValue, currentValue)
+                    ? FieldUpdateDecision.ADVANCE_ORIGIN_ONLY
+                    : FieldUpdateDecision.CHANGE_PUBLIC_VALUE;
         }
         int comparison = incomingOrigin.compareTo(currentOrigin);
         if (comparison < 0) {

@@ -22,6 +22,8 @@ import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.quote;
 /** Stages typed prepared rows and publishes only structurally complete receipts. */
 final class JdbcConfirmationReceiptWriter {
 
+    private static final int PAYLOAD_VERSION = 2;
+
     private final Map<String, DataframeArtifactSchema> schemas;
 
     JdbcConfirmationReceiptWriter(Map<String, DataframeArtifactSchema> schemas) {
@@ -74,6 +76,7 @@ final class JdbcConfirmationReceiptWriter {
             statement.setLong(4, epochMillis(asOf));
             statement.executeUpdate();
         }
+        stageFieldPositions(connection, confirmation);
         try (PreparedStatement statement = connection.prepareStatement("""
                 UPDATE confirmation_receipt
                 SET row_count = row_count + ?
@@ -87,23 +90,48 @@ final class JdbcConfirmationReceiptWriter {
         }
     }
 
+    private void stageFieldPositions(Connection connection,
+                                     CanonicalArtifactConfirmation confirmation) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO confirmation_receipt_field_position(
+                    receipt_id, artifact, ordinal, field_name, occurrence_position)
+                VALUES (?, ?, ?, ?, ?)
+                """)) {
+            int ordinal = 0;
+            for (CanonicalRecordConfirmation record : confirmation.records()) {
+                for (var field : record.preparedRow().orderedFieldPositions().entrySet()) {
+                    statement.setString(1, confirmation.receipt().id().value());
+                    statement.setString(2, confirmation.artifactName());
+                    statement.setInt(3, ordinal);
+                    statement.setString(4, field.getKey());
+                    statement.setLong(5, field.getValue().value());
+                    statement.addBatch();
+                }
+                ordinal++;
+            }
+            statement.executeBatch();
+        }
+    }
+
     private void ensureHeader(Connection connection,
                               CanonicalArtifactConfirmation confirmation) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO confirmation_receipt(
                     receipt_id, source_key, processing_policy_fingerprint,
-                    state, expected_artifacts, row_count)
-                VALUES (?, ?, ?, 'STAGING', ?, 0)
+                    state, expected_artifacts, row_count, payload_version)
+                VALUES (?, ?, ?, 'STAGING', ?, 0, ?)
                 ON CONFLICT(receipt_id) DO NOTHING
                 """)) {
             statement.setString(1, confirmation.receipt().id().value());
             statement.setString(2, confirmation.sourceKey());
             statement.setString(3, confirmation.receipt().processingPolicyFingerprint());
             statement.setInt(4, confirmation.receipt().expectedArtifacts());
+            statement.setInt(5, PAYLOAD_VERSION);
             statement.executeUpdate();
         }
         try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT source_key, processing_policy_fingerprint, expected_artifacts, state
+                SELECT source_key, processing_policy_fingerprint, expected_artifacts,
+                       state, payload_version
                 FROM confirmation_receipt
                 WHERE receipt_id = ?
                 """)) {
@@ -114,6 +142,7 @@ final class JdbcConfirmationReceiptWriter {
                         || !confirmation.receipt().processingPolicyFingerprint()
                         .equals(resultSet.getString("processing_policy_fingerprint"))
                         || confirmation.receipt().expectedArtifacts() != resultSet.getInt("expected_artifacts")
+                        || resultSet.getInt("payload_version") != PAYLOAD_VERSION
                         || !"STAGING".equals(resultSet.getString("state"))) {
                     throw new IocExtractorException("Confirmation receipt identity is not writable");
                 }

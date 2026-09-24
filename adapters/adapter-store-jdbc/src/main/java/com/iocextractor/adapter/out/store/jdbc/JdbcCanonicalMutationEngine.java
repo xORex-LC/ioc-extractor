@@ -13,6 +13,7 @@ import com.iocextractor.application.artifact.lifecycle.CanonicalRecordConfirmati
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.LifecycleId;
 import com.iocextractor.application.artifact.lifecycle.ValidityDecision;
+import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.common.IocExtractorException;
 
 import java.sql.Connection;
@@ -46,6 +47,7 @@ public final class JdbcCanonicalMutationEngine {
     private final CanonicalArtifactKeyResolver keyResolver;
     private final JdbcCanonicalMatchPlanner matchPlanner;
     private final JdbcLifecycleArchive lifecycleArchive;
+    private final JdbcOrderedFieldStore orderedFields;
 
     /** Creates a kernel for one immutable schema and key catalog. */
     public JdbcCanonicalMutationEngine(javax.sql.DataSource dataSource,
@@ -54,6 +56,12 @@ public final class JdbcCanonicalMutationEngine {
         this.keyResolver = new CanonicalArtifactKeyResolver(definitions);
         this.matchPlanner = new JdbcCanonicalMatchPlanner(dataSource, schemas);
         this.lifecycleArchive = new JdbcLifecycleArchive();
+        this.orderedFields = new JdbcOrderedFieldStore();
+    }
+
+    /** Validates one ordered observation against the dataframe-owned authority. */
+    void validateRegistration(Connection connection, RegisteredObservation registration) throws SQLException {
+        orderedFields.validateRegistration(connection, registration);
     }
 
     /** Confirms one ordinary-ingest observation through the shared active matcher. */
@@ -64,7 +72,8 @@ public final class JdbcCanonicalMutationEngine {
                                            Long publicId,
                                            LifecycleId lifecycleId,
                                            EffectiveTime asOf,
-                                           ValidityDecision validity) throws SQLException {
+                                           ValidityDecision validity,
+                                           RegisteredObservation registration) throws SQLException {
         ArtifactRow incoming = confirmation.preparedRow().idColumn().isPresent()
                 ? confirmation.preparedRow().materialize(publicId)
                 : confirmation.preparedRow().template();
@@ -87,20 +96,36 @@ public final class JdbcCanonicalMutationEngine {
         if (stored.isEmpty()) {
             long rowId = insertActive(connection, schema, sourceKey, incoming, recordKey,
                     lifecycleId, asOf, validity);
+            orderedFields.initializeLifecycle(connection, schema.artifactName(), lifecycleId.value(),
+                    confirmation.preparedRow(), registration);
             replaceAliases(connection, schema, rowId, lifecycleId.value(), incoming);
             return outcome(CanonicalRecordMutationKind.INSERTED, rowId, lifecycleId.value());
         }
 
         StoredLifecycle current = stored.orElseThrow();
         if (current.validUntilEpochMs() > epochMillis(asOf)) {
+            var resolution = orderedFields.resolveLifecycle(
+                    connection, schema.artifactName(), current.lifecycleId(), current.publicRow(),
+                    confirmation.preparedRow(), registration);
+            if (resolution.publicChanged()) {
+                updatePublicRow(connection, schema, current.rowId(), resolution.finalRow(),
+                        List.copyOf(resolution.publicChangedFields()));
+            }
             renewActive(connection, schema, sourceKey, current, asOf, validity);
-            replaceAliases(connection, schema, current.rowId(), current.lifecycleId(), current.publicRow());
-            return outcome(CanonicalRecordMutationKind.TTL_CONFIRMED, current.rowId(), current.lifecycleId());
+            replaceAliases(connection, schema, current.rowId(), current.lifecycleId(), resolution.finalRow());
+            CanonicalRecordMutationKind kind = resolution.publicChanged()
+                    ? CanonicalRecordMutationKind.UPDATED
+                    : CanonicalRecordMutationKind.TTL_CONFIRMED;
+            return new CanonicalRecordMutationOutcome(
+                    kind, current.rowId(), current.lifecycleId(),
+                    resolution.publicChangedFields(), Set.of(), resolution.metadataChanged());
         }
 
         lifecycleArchive.archiveAndDelete(connection, schema, current.rowId(), asOf);
         long rowId = insertActive(connection, schema, sourceKey, incoming, recordKey,
                 lifecycleId, asOf, validity);
+        orderedFields.initializeLifecycle(connection, schema.artifactName(), lifecycleId.value(),
+                confirmation.preparedRow(), registration);
         replaceAliases(connection, schema, rowId, lifecycleId.value(), incoming);
         return outcome(CanonicalRecordMutationKind.RESTARTED, rowId, lifecycleId.value());
     }

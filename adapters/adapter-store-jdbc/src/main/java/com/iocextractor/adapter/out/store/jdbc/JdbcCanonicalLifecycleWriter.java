@@ -200,17 +200,26 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                     timeSource.now(connection), "lifecycle effective time");
             ValidityDecision validity = validityPolicy.decide(asOf).requireValidAt(asOf);
             ensureObservation(connection, confirmation, asOf);
+            boolean hasOrderedFields = confirmation.records().stream()
+                    .anyMatch(record -> !record.preparedRow().orderedFieldPositions().isEmpty());
+            if (hasOrderedFields) {
+                mutationEngine.validateRegistration(connection,
+                        Objects.requireNonNull(confirmation.registration(),
+                                "ordered confirmation registration"));
+            }
 
             int created = 0;
             int renewed = 0;
             int restarted = 0;
+            int updated = 0;
+            int metadataOnly = 0;
             int publicOffset = 0;
             int lifecycleOffset = 0;
             for (CanonicalRecordConfirmation record : confirmation.records()) {
                 var outcome = mutationEngine.confirm(
                         connection, schema, confirmation.sourceKey(), record,
                         ids.publicId(publicOffset, record), ids.lifecycleIds().idAt(lifecycleOffset),
-                        asOf, validity);
+                        asOf, validity, confirmation.registration());
                 if (outcome.kind() == CanonicalRecordMutationKind.INSERTED) {
                     publicOffset += publicIdIncrement(record);
                     lifecycleOffset++;
@@ -221,26 +230,33 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                     publicOffset += publicIdIncrement(record);
                     lifecycleOffset++;
                     restarted++;
+                } else if (outcome.kind() == CanonicalRecordMutationKind.UPDATED) {
+                    updated++;
                 } else {
                     throw new IocExtractorException("Unexpected ordinary-ingest mutation outcome: "
                             + outcome.kind());
                 }
+                if (outcome.metadataMutation() && !outcome.publicMutation()) {
+                    metadataOnly++;
+                }
             }
 
             int newPublicRows = Math.addExact(created, restarted);
-            long revision = newPublicRows == 0
+            int changedPublicRows = Math.addExact(newPublicRows, updated);
+            long revision = changedPublicRows == 0
                     ? currentRevision(connection, schema.artifactName())
                     : bumpRevision(connection, schema.artifactName(), asOf.value().toString());
-            ProjectionGeneration generation = newPublicRows == 0
+            ProjectionGeneration generation = changedPublicRows == 0
                     ? currentProjectionGeneration(connection, schema.artifactName())
                     : advanceProjectionGeneration(connection, schema.artifactName(), asOf);
 
-            insertCommitMarker(connection, confirmation, asOf, created, renewed, restarted, revision, generation);
+            insertCommitMarker(connection, confirmation, asOf, created, renewed, restarted,
+                    updated, metadataOnly, revision, generation);
             receiptWriter.stageAndPublishIfComplete(connection, schema, confirmation, asOf);
             connection.commit();
             return new LifecycleWriteResult(
                     confirmation.observationId(), confirmation.artifactName(), asOf,
-                    created, renewed, restarted, revision, generation, false);
+                    created, renewed, restarted, updated, metadataOnly, revision, generation, false);
         } catch (SQLException | RuntimeException e) {
             failure = e;
             JdbcLifecycleTransactions.rollback(connection, e);
@@ -310,6 +326,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
             throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT c.effective_as_of_ms, c.inserted, c.renewed, c.restarted,
+                       c.updated, c.metadata_only,
                        c.artifact_revision, c.projection_generation, o.source_key
                 FROM canonical_observation_commit c
                 JOIN canonical_observation o ON o.observation_id = c.observation_id
@@ -331,6 +348,8 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                         resultSet.getInt("inserted"),
                         resultSet.getInt("renewed"),
                         resultSet.getInt("restarted"),
+                        resultSet.getInt("updated"),
+                        resultSet.getInt("metadata_only"),
                         resultSet.getLong("artifact_revision"),
                         new ProjectionGeneration(resultSet.getLong("projection_generation")),
                         true));
@@ -373,13 +392,16 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                                     int created,
                                     int renewed,
                                     int restarted,
+                                    int updated,
+                                    int metadataOnly,
                                     long revision,
                                     ProjectionGeneration generation) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO canonical_observation_commit(
                     observation_id, artifact, committed_at_ms, effective_as_of_ms,
-                    inserted, renewed, restarted, artifact_revision, projection_generation)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    inserted, renewed, restarted, updated, metadata_only,
+                    artifact_revision, projection_generation)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """)) {
             statement.setString(1, confirmation.observationId().value());
             statement.setString(2, confirmation.artifactName());
@@ -388,8 +410,10 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
             statement.setInt(5, created);
             statement.setInt(6, renewed);
             statement.setInt(7, restarted);
-            statement.setLong(8, revision);
-            statement.setLong(9, generation.value());
+            statement.setInt(8, updated);
+            statement.setInt(9, metadataOnly);
+            statement.setLong(10, revision);
+            statement.setLong(11, generation.value());
             statement.executeUpdate();
         }
     }

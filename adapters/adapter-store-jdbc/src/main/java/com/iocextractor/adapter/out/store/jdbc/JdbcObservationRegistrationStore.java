@@ -121,6 +121,12 @@ public final class JdbcObservationRegistrationStore implements ObservationRegist
                        AND NOT EXISTS (
                          SELECT 1 FROM canonical_compat_field_origin compat_origin
                          WHERE compat_origin.occurrence_id = registered_observation.occurrence_id)
+                       AND NOT EXISTS (
+                         SELECT 1 FROM canonical_lifecycle_field_origin_history history_origin
+                         WHERE history_origin.occurrence_id = registered_observation.occurrence_id)
+                       AND NOT EXISTS (
+                         SELECT 1 FROM canonical_observation observation
+                         WHERE observation.observation_id = registered_observation.occurrence_id)
                      """)) {
             statement.setString(1, registration.observationId().value());
             statement.setLong(2, registration.admissionOrder().value());

@@ -44,6 +44,7 @@ final class JdbcLifecycleArchive {
         }
         long historyId = lastInsertId(connection);
         copyHistorySources(connection, schema.artifactName(), rowId, historyId);
+        archiveFieldOrigins(connection, schema.artifactName(), rowId, closedAt);
         deleteMatchAliases(connection, schema.artifactName(), rowId);
         try (PreparedStatement statement = connection.prepareStatement(
                 "DELETE FROM " + quote(schema.artifactName()) + " WHERE " + quote("id") + " = ?")) {
@@ -51,6 +52,37 @@ final class JdbcLifecycleArchive {
             if (statement.executeUpdate() != 1) {
                 throw new IocExtractorException("Due lifecycle disappeared before deletion");
             }
+        }
+    }
+
+    private void archiveFieldOrigins(Connection connection,
+                                     String artifact,
+                                     long rowId,
+                                     EffectiveTime closedAt) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO canonical_lifecycle_field_origin_history(
+                    artifact, lifecycle_id, field_name, admission_order,
+                    occurrence_position, occurrence_id, archived_at_ms)
+                SELECT origin.artifact, origin.lifecycle_id, origin.field_name,
+                       origin.admission_order, origin.occurrence_position,
+                       origin.occurrence_id, ?
+                FROM canonical_lifecycle_field_origin origin
+                JOIN %s active ON active.%s = origin.lifecycle_id
+                WHERE origin.artifact = ? AND active.%s = ?
+                """.formatted(quote(artifact), quote("_lifecycle_id"), quote("id")))) {
+            statement.setLong(1, closedAt.value().toEpochMilli());
+            statement.setString(2, artifact);
+            statement.setLong(3, rowId);
+            statement.executeUpdate();
+        }
+        try (PreparedStatement statement = connection.prepareStatement("""
+                DELETE FROM canonical_lifecycle_field_origin
+                WHERE artifact = ? AND lifecycle_id = (
+                    SELECT %s FROM %s WHERE %s = ?)
+                """.formatted(quote("_lifecycle_id"), quote(artifact), quote("id")))) {
+            statement.setString(1, artifact);
+            statement.setLong(2, rowId);
+            statement.executeUpdate();
         }
     }
 

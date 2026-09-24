@@ -1,5 +1,7 @@
 package com.iocextractor.application.artifact;
 
+import com.iocextractor.application.observation.RegisteredObservation;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -19,14 +21,25 @@ public record ArtifactWritePlan(String artifactName,
 
     /** Reserves final ids and materializes a canonical artifact for one commit attempt. */
     public CanonicalArtifact materialize() {
+        return new CanonicalArtifact(artifactName, header,
+                materializeRows().stream().map(CanonicalWriteRow::row).toList());
+    }
+
+    /** Reserves ids while retaining ordered-field positions for canonical mutation. */
+    public CanonicalWriteCommand materializeCommand(RegisteredObservation registration) {
+        return new CanonicalWriteCommand(artifactName, header, materializeRows(), registration);
+    }
+
+    private List<CanonicalWriteRow> materializeRows() {
         int idCount = (int) rows.stream().filter(row -> row.idColumn().isPresent()).count();
         ArtifactIdReservation ids = idSequence.reserve(idCount);
         int idOffset = 0;
-        var materialized = new ArrayList<ArtifactRow>(rows.size());
+        var materialized = new ArrayList<CanonicalWriteRow>(rows.size());
         for (PreparedArtifactRow row : rows) {
             Long id = row.idColumn().isPresent() ? ids.idAt(idOffset++) : null;
-            materialized.add(row.materialize(id));
+            materialized.add(new CanonicalWriteRow(
+                    row.materialize(id), row.orderedFieldPositions()));
         }
-        return new CanonicalArtifact(artifactName, header, materialized);
+        return List.copyOf(materialized);
     }
 }

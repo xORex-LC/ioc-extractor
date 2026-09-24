@@ -1,5 +1,6 @@
 package com.iocextractor.application.pipeline.stage;
 
+import com.iocextractor.application.artifact.ArtifactWritePlan;
 import com.iocextractor.application.pipeline.payload.ArtifactWriteSummary;
 import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
 import com.iocextractor.application.pipeline.PipelineMetaAttributes;
@@ -9,6 +10,7 @@ import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepositor
 import com.iocextractor.application.artifact.lifecycle.CanonicalArtifactConfirmation;
 import com.iocextractor.application.artifact.lifecycle.CanonicalRecordConfirmation;
 import com.iocextractor.application.artifact.lifecycle.LifecycleWriteContext;
+import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.application.port.out.artifact.lifecycle.CanonicalArtifactWriter;
 import com.iocextractor.diagnostics.Diagnostic;
@@ -21,6 +23,7 @@ import com.iocextractor.platform.etl.StageId;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Objects;
 
 /**
@@ -69,6 +72,7 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
     public Envelope<ArtifactWriteSummary> process(Envelope<PreparedArtifacts> input) {
         var payload = input.payload();
         var written = new LinkedHashMap<String, Integer>();
+        var changedArtifacts = new LinkedHashSet<String>();
         var projectionDiagnostics = new ArrayList<Diagnostic>();
         if (!input.meta().booleanAttribute(PipelineMetaAttributes.DRY_RUN, false)) {
             LifecycleWriteContext lifecycle = lifecycleContext(input);
@@ -77,11 +81,11 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
                         "Lifecycle receipt artifact count does not match prepared plans");
             }
             for (var plan : payload.plans()) {
-                int inserted;
+                WriteOutcome writeOutcome;
                 try {
-                    inserted = lifecycle == null
-                            ? repository.write(plan.artifactName(), plan.materialize()).inserted()
-                            : confirm(plan, lifecycle);
+                    writeOutcome = lifecycle == null
+                            ? write(plan, registration(input))
+                            : confirm(plan, lifecycle, registration(input));
                 } catch (RuntimeException failure) {
                     throw writeFailure("canonical", plan.artifactName(), failure);
                 }
@@ -92,17 +96,28 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
                 } catch (RuntimeException failure) {
                     throw writeFailure("projection", plan.artifactName(), failure);
                 }
-                written.put(plan.artifactName(), inserted);
+                written.put(plan.artifactName(), writeOutcome.inserted());
+                if (writeOutcome.publicChanged()) {
+                    changedArtifacts.add(plan.artifactName());
+                }
             }
         }
         return input.withPayload(new ArtifactWriteSummary(
                 payload.extracted(),
                 payload.retained(),
-                written)).withDiagnostics(projectionDiagnostics);
+                written,
+                changedArtifacts)).withDiagnostics(projectionDiagnostics);
     }
 
-    private int confirm(com.iocextractor.application.artifact.ArtifactWritePlan plan,
-                        LifecycleWriteContext context) {
+    private WriteOutcome write(ArtifactWritePlan plan,
+                               RegisteredObservation registration) {
+        var result = repository.write(plan.materializeCommand(registration));
+        return new WriteOutcome(result.inserted(), result.publicRowsChanged() > 0);
+    }
+
+    private WriteOutcome confirm(ArtifactWritePlan plan,
+                                 LifecycleWriteContext context,
+                                 RegisteredObservation registration) {
         if (lifecycleWriter == null || identityResolver == null) {
             throw new IllegalStateException("Lifecycle-aware canonical writer is not configured");
         }
@@ -113,13 +128,27 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
                                         "Prepared row has no canonical identity: " + plan.artifactName())),
                         row))
                 .toList();
-        return lifecycleWriter.confirm(new CanonicalArtifactConfirmation(
+        var result = lifecycleWriter.confirm(new CanonicalArtifactConfirmation(
                 context.observationId(),
                 context.sourceKey(),
                 context.receipt(),
                 plan.artifactName(),
                 plan.header(),
-                records)).publicRowsInserted();
+                records,
+                registration));
+        return new WriteOutcome(result.publicRowsInserted(), result.publicRowsChanged() > 0);
+    }
+
+    private RegisteredObservation registration(Envelope<PreparedArtifacts> input) {
+        Object value = input.meta().attributes().get(PipelineMetaAttributes.REGISTERED_OBSERVATION);
+        if (value == null) {
+            LifecycleWriteContext lifecycle = lifecycleContext(input);
+            return lifecycle == null ? null : lifecycle.registration();
+        }
+        if (value instanceof RegisteredObservation registration) {
+            return registration;
+        }
+        throw new IllegalArgumentException("Registered observation has an unexpected type");
     }
 
     private LifecycleWriteContext lifecycleContext(Envelope<PreparedArtifacts> input) {
@@ -147,5 +176,8 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
         return failure.getMessage() == null || failure.getMessage().isBlank()
                 ? failure.getClass().getSimpleName()
                 : failure.getMessage();
+    }
+
+    private record WriteOutcome(int inserted, boolean publicChanged) {
     }
 }

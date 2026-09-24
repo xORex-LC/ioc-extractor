@@ -17,6 +17,9 @@ public final class PipelineMetaAttributes {
     /** Optional {@code LifecycleWriteContext} used by the canonical write stage. */
     public static final String LIFECYCLE_WRITE_CONTEXT = "ioc.lifecycle.write_context";
 
+    /** Optional durable delivery precedence used by ordered mutable fields. */
+    public static final String REGISTERED_OBSERVATION = "ioc.observation.registration";
+
     private PipelineMetaAttributes() {
     }
 }

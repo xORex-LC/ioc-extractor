@@ -13,11 +13,15 @@ import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
 import com.iocextractor.application.artifact.lifecycle.LifecycleTimeSource;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
+import com.iocextractor.application.observation.ObservationOrigin;
+import com.iocextractor.application.observation.OccurrencePosition;
+import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
@@ -30,6 +34,7 @@ import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -146,6 +151,11 @@ class JdbcCanonicalLifecycleWriterIT {
         });
         assertThat(store.findComplete(
                 "source-key", "policy-v2", EffectiveTime.at(START))).isEmpty();
+
+        execute("UPDATE confirmation_receipt SET payload_version = 1 "
+                + "WHERE receipt_id = 'receipt-replayable'");
+        assertThat(store.findComplete(
+                "source-key", "policy-v1", EffectiveTime.at(START))).isEmpty();
 
         store.markTerminal(
                 new ObservationId("observation-replayable"),
@@ -440,6 +450,163 @@ class JdbcCanonicalLifecycleWriterIT {
                 .hasMessageContaining("Canonical observation identity is not writable");
     }
 
+    @Test
+    void ordered_field_uses_admission_order_and_distinguishes_public_from_metadata_changes()
+            throws Exception {
+        JdbcCanonicalLifecycleWriter writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        var registrations = new JdbcObservationRegistrationStore(dataSource, ALLOCATOR_CLOCK);
+        RegisteredObservation older = registrations.registerNew(
+                new ObservationId("ordered-older"), ObservationOrigin.DOCUMENT);
+        RegisteredObservation newer = registrations.registerNew(
+                new ObservationId("ordered-newer"), ObservationOrigin.DOCUMENT);
+
+        var first = writer.confirm(orderedCommand(
+                newer, receipt("ordered-newer-receipt", 1), "new-name", 20));
+        var stale = writer.confirm(orderedCommand(
+                older, receipt("ordered-older-receipt", 1), "old-name", 10));
+        RegisteredObservation newest = registrations.registerNew(
+                new ObservationId("ordered-newest"), ObservationOrigin.DOCUMENT);
+        var sameValue = writer.confirm(orderedCommand(
+                newest, receipt("ordered-newest-receipt", "ordered-policy-v2", 1), "new-name", 30));
+        long newestOrder = newest.admissionOrder().value();
+        RegisteredObservation empty = registrations.registerNew(
+                new ObservationId("ordered-empty"), ObservationOrigin.DOCUMENT);
+        var emptyValue = writer.confirm(orderedCommand(
+                empty, receipt("ordered-empty-receipt", 1), "   ", 40));
+
+        assertThat(first.created()).isOne();
+        assertThat(stale.publicRowsUpdated()).isZero();
+        assertThat(sameValue.publicRowsUpdated()).isZero();
+        assertThat(sameValue.metadataOnlyRows()).isOne();
+        assertThat(sameValue.artifactRevision()).isEqualTo(first.artifactRevision());
+        assertThat(emptyValue.metadataOnlyRows()).isZero();
+        assertThat(queryString("SELECT value FROM masks WHERE row_key = 'ordered-row'"))
+                .isEqualTo("new-name");
+        assertThat(queryLong("SELECT admission_order FROM canonical_lifecycle_field_origin "
+                + "WHERE artifact = 'masks' AND field_name = 'value'"))
+                .isEqualTo(newestOrder);
+        var replayable = new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30))
+                .findComplete("source-key", "ordered-policy-v2", EffectiveTime.at(START))
+                .orElseThrow();
+        assertThat(replayable.artifacts()).singleElement().satisfies(artifact ->
+                assertThat(artifact.records()).singleElement().satisfies(record ->
+                        assertThat(record.preparedRow().orderedFieldPositions())
+                                .containsEntry("value", new OccurrencePosition(30))));
+    }
+
+    @Test
+    @Timeout(20)
+    void later_registered_observation_wins_when_it_commits_before_an_older_worker() throws Exception {
+        var registrations = new JdbcObservationRegistrationStore(dataSource, ALLOCATOR_CLOCK);
+        RegisteredObservation older = registrations.registerNew(
+                new ObservationId("concurrent-older"), ObservationOrigin.DOCUMENT);
+        RegisteredObservation newer = registrations.registerNew(
+                new ObservationId("concurrent-newer"), ObservationOrigin.DOCUMENT);
+        CountDownLatch olderReachedWrite = new CountDownLatch(1);
+        CountDownLatch releaseOlder = new CountDownLatch(1);
+        JdbcLifecycleTransactionObserver delayedOlder = (phase, operation, artifact) -> {
+            if (operation == JdbcLifecycleTransactionObserver.Operation.CONFIRM
+                    && phase == JdbcLifecycleTransactionObserver.Phase.BEFORE_WRITE_OWNERSHIP) {
+                olderReachedWrite.countDown();
+                await(releaseOlder, "older ordered confirmation release");
+            }
+        };
+        JdbcCanonicalLifecycleWriter olderWriter = writer(delayedOlder);
+        JdbcCanonicalLifecycleWriter newerWriter = writer(JdbcLifecycleTransactionObserver.NOOP);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var olderCompletion = executor.submit(() -> olderWriter.confirm(orderedCommand(
+                    older, receipt("concurrent-older-receipt", 1), "older", 10)));
+            assertThat(olderReachedWrite.await(5, TimeUnit.SECONDS)).isTrue();
+            var newerCompletion = executor.submit(() -> newerWriter.confirm(orderedCommand(
+                    newer, receipt("concurrent-newer-receipt", 1), "newer", 20)));
+            try {
+                assertThat(newerCompletion.get(5, TimeUnit.SECONDS).created()).isOne();
+            } finally {
+                releaseOlder.countDown();
+            }
+            assertThat(olderCompletion.get(5, TimeUnit.SECONDS).publicRowsUpdated()).isZero();
+        }
+
+        assertThat(queryString("SELECT value FROM masks WHERE row_key = 'ordered-row'"))
+                .isEqualTo("newer");
+        assertThat(queryLong("SELECT admission_order FROM canonical_lifecycle_field_origin "
+                + "WHERE artifact = 'masks' AND field_name = 'value'"))
+                .isEqualTo(newer.admissionOrder().value());
+    }
+
+    @Test
+    void ordered_field_and_origin_rollback_together_when_public_update_fails() throws Exception {
+        JdbcCanonicalLifecycleWriter writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        var registrations = new JdbcObservationRegistrationStore(dataSource, ALLOCATOR_CLOCK);
+        RegisteredObservation first = registrations.registerNew(
+                new ObservationId("atomic-first"), ObservationOrigin.DOCUMENT);
+        writer.confirm(orderedCommand(first, receipt("atomic-first-receipt", 1), "first", 1));
+        long firstOrder = first.admissionOrder().value();
+        execute("""
+                CREATE TRIGGER reject_ordered_update BEFORE UPDATE OF value ON masks
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced ordered update failure');
+                END
+                """);
+        RegisteredObservation second = registrations.registerNew(
+                new ObservationId("atomic-second"), ObservationOrigin.DOCUMENT);
+
+        assertThatThrownBy(() -> writer.confirm(orderedCommand(
+                second, receipt("atomic-second-receipt", 1), "second", 2)))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("Failed lifecycle confirmation");
+
+        assertThat(queryString("SELECT value FROM masks WHERE row_key = 'ordered-row'"))
+                .isEqualTo("first");
+        assertThat(queryLong("SELECT admission_order FROM canonical_lifecycle_field_origin "
+                + "WHERE artifact = 'masks' AND field_name = 'value'"))
+                .isEqualTo(firstOrder);
+        assertThat(queryLong("SELECT COUNT(*) FROM canonical_observation_commit "
+                + "WHERE observation_id = 'atomic-second'"))
+                .isZero();
+        assertThat(queryLong("SELECT COUNT(*) FROM confirmation_receipt "
+                + "WHERE receipt_id = 'atomic-second-receipt'"))
+                .isZero();
+    }
+
+    @Test
+    void expiry_archives_field_origin_and_reappearance_starts_a_new_origin() throws Exception {
+        JdbcCanonicalLifecycleWriter writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        var registrations = new JdbcObservationRegistrationStore(dataSource, ALLOCATOR_CLOCK);
+        RegisteredObservation first = registrations.registerNew(
+                new ObservationId("expiry-first"), ObservationOrigin.DOCUMENT);
+        writer.confirm(orderedCommand(first, receipt("expiry-first-receipt", 1), "first", 1));
+        long oldLifecycle = queryLong("SELECT _lifecycle_id FROM masks WHERE row_key = 'ordered-row'");
+        timeSource.set(START.plus(TTL));
+        RegisteredObservation second = registrations.registerNew(
+                new ObservationId("expiry-second"), ObservationOrigin.DOCUMENT);
+
+        var restarted = writer.confirm(orderedCommand(
+                second, receipt("expiry-second-receipt", 1), "second", 2));
+
+        assertThat(restarted.restarted()).isOne();
+        assertThat(queryLong("SELECT COUNT(*) FROM canonical_lifecycle_field_origin_history "
+                + "WHERE artifact = 'masks' AND lifecycle_id = " + oldLifecycle))
+                .isOne();
+        assertThat(queryLong("SELECT admission_order FROM canonical_lifecycle_field_origin "
+                + "WHERE artifact = 'masks' AND field_name = 'value'"))
+                .isEqualTo(second.admissionOrder().value());
+
+        registrations.markTerminal(first.observationId(), first.namespaceId());
+        assertThat(registrations.purgeTerminal(first)).isFalse();
+        assertThat(new JdbcLifecycleHistoryStore(dataSource, schemas)
+                .purge("masks", EffectiveTime.at(START.plus(TTL)), 10).purged())
+                .isOne();
+        assertThat(registrations.purgeTerminal(first)).isFalse();
+        var receipts = new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30));
+        receipts.markTerminal(first.observationId(), EffectiveTime.at(START.plus(TTL)), Duration.ofDays(30));
+        assertThat(receipts.purgeExpired(
+                EffectiveTime.at(START.plus(TTL).plus(Duration.ofDays(31))), 1).purged())
+                .isOne();
+        assertThat(registrations.purgeTerminal(first)).isTrue();
+    }
+
     private JdbcCanonicalLifecycleWriter writer(JdbcLifecycleTransactionObserver observer) {
         return new JdbcCanonicalLifecycleWriter(
                 dataSource,
@@ -474,6 +641,27 @@ class JdbcCanonicalLifecycleWriterIT {
                 List.of(records));
     }
 
+    private CanonicalArtifactConfirmation orderedCommand(RegisteredObservation registration,
+                                                          ConfirmationReceiptContext receipt,
+                                                          String value,
+                                                          long position) {
+        LinkedHashMap<String, String> values = new LinkedHashMap<>();
+        values.put("id", null);
+        values.put("value", value);
+        values.put("source", "feed-name");
+        values.put("time_first_seen", null);
+        values.put("time_last_seen", null);
+        var record = new CanonicalRecordConfirmation(
+                new ArtifactRowKey("ordered-row"),
+                new PreparedArtifactRow(
+                        ArtifactRow.ordered(values), Optional.of("id"),
+                        Map.of("value", new OccurrencePosition(position))));
+        return new CanonicalArtifactConfirmation(
+                registration.observationId(), "source-key", receipt, "masks",
+                List.of("id", "value", "source", "time_first_seen", "time_last_seen"),
+                List.of(record), registration);
+    }
+
     private CanonicalRecordConfirmation row(String rowKey, String value) {
         LinkedHashMap<String, String> values = new LinkedHashMap<>();
         values.put("id", null);
@@ -502,8 +690,12 @@ class JdbcCanonicalLifecycleWriterIT {
     }
 
     private ConfirmationReceiptContext receipt(String id, int expectedArtifacts) {
+        return receipt(id, "policy-v1", expectedArtifacts);
+    }
+
+    private ConfirmationReceiptContext receipt(String id, String policy, int expectedArtifacts) {
         return new ConfirmationReceiptContext(
-                new ConfirmationReceiptId(id), "policy-v1", expectedArtifacts, Duration.ofDays(30));
+                new ConfirmationReceiptId(id), policy, expectedArtifacts, Duration.ofDays(30));
     }
 
     private DataframeArtifactSchema schema(String artifact) {

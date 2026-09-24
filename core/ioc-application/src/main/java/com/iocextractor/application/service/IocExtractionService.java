@@ -134,6 +134,10 @@ public final class IocExtractionService implements ExtractIocsUseCase {
             meta = meta.withAttribute(
                     PipelineMetaAttributes.LIFECYCLE_WRITE_CONTEXT, command.lifecycleWriteContext());
         }
+        if (command.registration() != null) {
+            meta = meta.withAttribute(
+                    PipelineMetaAttributes.REGISTERED_OBSERVATION, command.registration());
+        }
         var pipelineResult = runner.runWithOutcome(Envelope.of(command, meta), pipeline);
         var output = pipelineResult.envelope();
         var summary = output.payload();
@@ -144,6 +148,7 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                 summary.extracted(),
                 summary.retained(),
                 new LinkedHashMap<>(summary.writtenPerArtifact()),
+                summary.changedArtifacts(),
                 CompletionStatus.from(diagnosticSummary),
                 output.diagnostics(),
                 diagnosticSummary);

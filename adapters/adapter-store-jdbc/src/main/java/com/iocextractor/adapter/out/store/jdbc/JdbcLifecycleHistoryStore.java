@@ -45,6 +45,7 @@ public final class JdbcLifecycleHistoryStore implements LifecycleHistoryStore {
             connection.setAutoCommit(false);
             Exception failure = null;
             try {
+                deleteFieldOrigins(connection, artifact, cutoff, batchSize);
                 int purged = deleteBatch(connection, artifact, cutoff, batchSize);
                 boolean moreEligible = hasEligible(connection, artifact, cutoff);
                 connection.commit();
@@ -60,6 +61,25 @@ public final class JdbcLifecycleHistoryStore implements LifecycleHistoryStore {
             throw e;
         } catch (SQLException | RuntimeException e) {
             throw new IocExtractorException("Failed to purge lifecycle history: " + artifact, e);
+        }
+    }
+
+    private void deleteFieldOrigins(Connection connection,
+                                    String artifact,
+                                    EffectiveTime cutoff,
+                                    int batchSize) throws SQLException {
+        String history = quote(artifact + "_history");
+        String sql = "DELETE FROM canonical_lifecycle_field_origin_history"
+                + " WHERE artifact = ? AND lifecycle_id IN ("
+                + "SELECT " + quote("_lifecycle_id") + " FROM " + history
+                + " WHERE " + quote("closed_at_epoch_ms") + " <= ?"
+                + " ORDER BY " + quote("closed_at_epoch_ms") + ", " + quote("history_id")
+                + " LIMIT ?)";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, artifact);
+            statement.setLong(2, cutoff.value().toEpochMilli());
+            statement.setInt(3, batchSize);
+            statement.executeUpdate();
         }
     }
 

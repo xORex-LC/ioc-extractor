@@ -7,7 +7,8 @@ public record CanonicalRecordMutationOutcome(CanonicalRecordMutationKind kind,
                                              long canonicalRowId,
                                              long lifecycleId,
                                              Set<String> updatedFields,
-                                             Set<String> clearedFields) {
+                                             Set<String> clearedFields,
+                                             boolean metadataMutation) {
 
     public CanonicalRecordMutationOutcome {
         if (kind == null) {
@@ -21,6 +22,14 @@ public record CanonicalRecordMutationOutcome(CanonicalRecordMutationKind kind,
         if (!java.util.Collections.disjoint(updatedFields, clearedFields)) {
             throw new IllegalArgumentException("Updated and cleared fields must be disjoint");
         }
+    }
+
+    public CanonicalRecordMutationOutcome(CanonicalRecordMutationKind kind,
+                                          long canonicalRowId,
+                                          long lifecycleId,
+                                          Set<String> updatedFields,
+                                          Set<String> clearedFields) {
+        this(kind, canonicalRowId, lifecycleId, updatedFields, clearedFields, false);
     }
 
     /** Returns whether public bytes changed and therefore revision work is required. */

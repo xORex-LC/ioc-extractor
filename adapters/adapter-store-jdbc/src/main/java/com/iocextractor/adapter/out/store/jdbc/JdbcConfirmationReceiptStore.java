@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import com.iocextractor.application.observation.OccurrencePosition;
 
 /** SQLite complete-receipt reader, retention reaper and observation acknowledgement. */
 public final class JdbcConfirmationReceiptStore
@@ -153,6 +154,7 @@ public final class JdbcConfirmationReceiptStore
                 FROM confirmation_receipt
                 WHERE source_key = ?
                   AND processing_policy_fingerprint = ?
+                  AND payload_version = 2
                   AND state = 'COMPLETE'
                   AND purge_after_ms > ?
                 ORDER BY completed_at_ms DESC, receipt_id DESC
@@ -216,7 +218,9 @@ public final class JdbcConfirmationReceiptStore
         List<String> businessColumns = publicHeader(schema).stream()
                 .filter(column -> !"id".equals(column))
                 .toList();
-        String sql = "SELECT " + quote("row_key")
+        Map<Integer, Map<String, OccurrencePosition>> positions = loadFieldPositions(
+                connection, schema.artifactName(), receiptId);
+        String sql = "SELECT " + quote("ordinal") + ", " + quote("row_key")
                 + (businessColumns.isEmpty() ? "" : ", " + joinedQuoted(businessColumns))
                 + " FROM " + quote(schema.artifactName() + "_receipt_rows")
                 + " WHERE " + quote("receipt_id") + " = ? ORDER BY " + quote("ordinal");
@@ -234,11 +238,39 @@ public final class JdbcConfirmationReceiptStore
                             ? Optional.of("id") : Optional.empty();
                     rows.add(new CanonicalRecordConfirmation(
                             new ArtifactRowKey(resultSet.getString("row_key")),
-                            new PreparedArtifactRow(ArtifactRow.ordered(values), idColumn)));
+                            new PreparedArtifactRow(
+                                    ArtifactRow.ordered(values), idColumn,
+                                    positions.getOrDefault(resultSet.getInt("ordinal"), Map.of()))));
                 }
                 return List.copyOf(rows);
             }
         }
+    }
+
+    private Map<Integer, Map<String, OccurrencePosition>> loadFieldPositions(
+            Connection connection,
+            String artifact,
+            ConfirmationReceiptId receiptId) throws SQLException {
+        var result = new LinkedHashMap<Integer, Map<String, OccurrencePosition>>();
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT ordinal, field_name, occurrence_position
+                FROM confirmation_receipt_field_position
+                WHERE receipt_id = ? AND artifact = ?
+                ORDER BY ordinal, field_name
+                """)) {
+            statement.setString(1, receiptId.value());
+            statement.setString(2, artifact);
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    int ordinal = rows.getInt("ordinal");
+                    Map<String, OccurrencePosition> positions = result.computeIfAbsent(
+                            ordinal, ignored -> new LinkedHashMap<>());
+                    positions.put(rows.getString("field_name"),
+                            new OccurrencePosition(rows.getLong("occurrence_position")));
+                }
+            }
+        }
+        return result;
     }
 
     private int purgeReceipts(Connection connection,

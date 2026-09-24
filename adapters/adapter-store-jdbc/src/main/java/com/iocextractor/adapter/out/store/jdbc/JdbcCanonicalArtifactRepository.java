@@ -3,6 +3,7 @@ package com.iocextractor.adapter.out.store.jdbc;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
+import com.iocextractor.application.artifact.CanonicalWriteCommand;
 import com.iocextractor.application.artifact.lifecycle.LifecycleActivationState;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.LifecycleTimeSource;
@@ -36,9 +37,8 @@ public final class JdbcCanonicalArtifactRepository
 
     private final DataSource dataSource;
     private final Map<String, DataframeArtifactSchema> schemas;
-    private final ArtifactIdentityResolver identityResolver;
-    private final Clock clock;
     private final LifecycleTimeSource activeTimeSource;
+    private final JdbcCompatibilityArtifactWriter compatibilityWriter;
 
     public JdbcCanonicalArtifactRepository(DataSource dataSource,
                                            List<DataframeArtifactSchema> schemas,
@@ -46,8 +46,8 @@ public final class JdbcCanonicalArtifactRepository
                                            Clock clock) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
-        this.identityResolver = Objects.requireNonNull(identityResolver, "identityResolver");
-        this.clock = Objects.requireNonNull(clock, "clock");
+        this.compatibilityWriter = new JdbcCompatibilityArtifactWriter(
+                dataSource, this.schemas, identityResolver, clock);
         this.activeTimeSource = () -> EffectiveTime.at(clock.instant());
     }
 
@@ -59,8 +59,8 @@ public final class JdbcCanonicalArtifactRepository
                                            LifecycleTimeSource activeTimeSource) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
-        this.identityResolver = Objects.requireNonNull(identityResolver, "identityResolver");
-        this.clock = Objects.requireNonNull(clock, "clock");
+        this.compatibilityWriter = new JdbcCompatibilityArtifactWriter(
+                dataSource, this.schemas, identityResolver, clock);
         this.activeTimeSource = Objects.requireNonNull(activeTimeSource, "activeTimeSource");
     }
 
@@ -137,146 +137,12 @@ public final class JdbcCanonicalArtifactRepository
 
     @Override
     public CanonicalWriteResult write(String artifactName, CanonicalArtifact artifact) {
-        DataframeArtifactSchema schema = schema(artifactName);
-        try (Connection connection = dataSource.getConnection()) {
-            boolean previousAutoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);
-            try {
-                acquireCompatibilityWriteOwnership(connection);
-                int inserted = 0;
-                for (ArtifactRow row : artifact.rows()) {
-                    if (insertRow(connection, schema, row)) {
-                        inserted++;
-                    }
-                }
-                long revision = inserted > 0
-                        ? bumpRevision(connection, artifactName, clock.instant().toString())
-                        : currentRevision(connection, artifactName);
-                connection.commit();
-                return new CanonicalWriteResult(inserted, revision);
-            } catch (SQLException | RuntimeException e) {
-                rollback(connection, e);
-                throw e;
-            } finally {
-                connection.setAutoCommit(previousAutoCommit);
-            }
-        } catch (SQLException e) {
-            throw new IocExtractorException("Failed to write JDBC artifact: " + artifactName, e);
-        }
+        return compatibilityWriter.write(artifactName, artifact);
     }
 
-    private void acquireCompatibilityWriteOwnership(Connection connection) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("""
-                UPDATE canonical_lifecycle_control
-                SET version = version
-                WHERE singleton_id = 1
-                  AND state = 'DISABLED_COMPATIBLE'
-                """)) {
-            if (statement.executeUpdate() != 1) {
-                throw new IocExtractorException(
-                        "Legacy canonical writer is disabled after lifecycle activation starts");
-            }
-        }
-    }
-
-    private boolean insertRow(Connection connection, DataframeArtifactSchema schema, ArtifactRow row)
-            throws SQLException {
-        var rowKey = identityResolver.keyOf(schema.artifactName(), row)
-                .orElseThrow(() -> new IocExtractorException("Cannot resolve row_key for artifact "
-                        + schema.artifactName()));
-        String observedAt = clock.instant().toString();
-        String sourceKey = sourceKey(row);
-        List<String> columns = new ArrayList<>();
-        List<String> values = new ArrayList<>();
-        String explicitId = row.value("id");
-        if (explicitId != null && !explicitId.isBlank()) {
-            columns.add("id");
-            values.add(explicitId);
-        }
-        for (DataframeColumn column : schema.columns()) {
-            if (!"id".equals(column.name())) {
-                columns.add(column.name());
-                values.add(row.value(column.name()));
-            }
-        }
-        columns.add("row_key");
-        values.add(rowKey.value());
-        columns.add("_created_at");
-        values.add(observedAt);
-        columns.add("_first_source_key");
-        values.add(sourceKey);
-
-        String sql = "INSERT INTO " + quote(schema.artifactName()) + "(" + joinedQuoted(columns) + ") VALUES ("
-                + "?,".repeat(columns.size()).replaceFirst(",$", "")
-                + ") ON CONFLICT(" + quote("row_key") + ") DO NOTHING";
-        int inserted;
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            for (int i = 0; i < values.size(); i++) {
-                statement.setString(i + 1, values.get(i));
-            }
-            inserted = statement.executeUpdate();
-        }
-        recordSource(connection, schema.artifactName(), rowKey.value(), sourceKey, observedAt);
-        return inserted > 0;
-    }
-
-    private long bumpRevision(Connection connection, String artifactName, String changedAt) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("""
-                INSERT INTO artifact_revision(artifact, revision, changed_at)
-                VALUES (?, 1, ?)
-                ON CONFLICT(artifact) DO UPDATE SET
-                    revision = artifact_revision.revision + 1,
-                    changed_at = excluded.changed_at
-                """)) {
-            statement.setString(1, artifactName);
-            statement.setString(2, changedAt);
-            statement.executeUpdate();
-        }
-        return currentRevision(connection, artifactName);
-    }
-
-    private long currentRevision(Connection connection, String artifactName) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT revision FROM artifact_revision WHERE artifact = ?")) {
-            statement.setString(1, artifactName);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                return resultSet.next() ? resultSet.getLong(1) : 0L;
-            }
-        }
-    }
-
-    private void recordSource(Connection connection,
-                              String artifactName,
-                              String rowKey,
-                              String sourceKey,
-                              String observedAt) throws SQLException {
-        Long rowId = rowId(connection, artifactName, rowKey);
-        if (rowId == null) {
-            return;
-        }
-        JdbcCanonicalSourceRecorder.record(connection, artifactName, rowId, sourceKey, observedAt);
-    }
-
-    private Long rowId(Connection connection, String artifactName, String rowKey) throws SQLException {
-        String sql = "SELECT " + quote("id") + " FROM " + quote(artifactName)
-                + " WHERE " + quote("row_key") + " = ?";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, rowKey);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                return resultSet.next() ? resultSet.getLong(1) : null;
-            }
-        }
-    }
-
-    private String sourceKey(ArtifactRow row) {
-        String sourceKey = row.value("_source_key");
-        if (sourceKey == null || sourceKey.isBlank()) {
-            sourceKey = row.value("source");
-        }
-        if (sourceKey == null || sourceKey.isBlank()) {
-            return "unknown";
-        }
-        return sourceKey;
+    @Override
+    public CanonicalWriteResult write(CanonicalWriteCommand command) {
+        return compatibilityWriter.write(command);
     }
 
     private Map<String, DataframeArtifactSchema> schemasByName(List<DataframeArtifactSchema> source) {
@@ -311,11 +177,4 @@ public final class JdbcCanonicalArtifactRepository
         return "\"" + DataframeColumn.requireSqlIdentifier(identifier, "identifier") + "\"";
     }
 
-    private void rollback(Connection connection, Exception original) throws SQLException {
-        try {
-            connection.rollback();
-        } catch (SQLException rollbackFailure) {
-            original.addSuppressed(rollbackFailure);
-        }
-    }
 }

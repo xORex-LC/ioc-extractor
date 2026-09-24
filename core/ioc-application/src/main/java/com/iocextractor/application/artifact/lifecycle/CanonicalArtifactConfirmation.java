@@ -1,5 +1,7 @@
 package com.iocextractor.application.artifact.lifecycle;
 
+import com.iocextractor.application.observation.RegisteredObservation;
+
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -19,7 +21,8 @@ public record CanonicalArtifactConfirmation(ObservationId observationId,
                                             ConfirmationReceiptContext receipt,
                                             String artifactName,
                                             List<String> header,
-                                            List<CanonicalRecordConfirmation> records) {
+                                            List<CanonicalRecordConfirmation> records,
+                                            RegisteredObservation registration) {
 
     /** Copies collections and rejects ambiguous duplicate row keys. */
     public CanonicalArtifactConfirmation {
@@ -48,5 +51,15 @@ public record CanonicalArtifactConfirmation(ObservationId observationId,
             throw new IllegalArgumentException(name + " must not be blank");
         }
         return value;
+    }
+
+    /** Compatibility constructor for artifacts without ordered mutable fields. */
+    public CanonicalArtifactConfirmation(ObservationId observationId,
+                                         String sourceKey,
+                                         ConfirmationReceiptContext receipt,
+                                         String artifactName,
+                                         List<String> header,
+                                         List<CanonicalRecordConfirmation> records) {
+        this(observationId, sourceKey, receipt, artifactName, header, records, null);
     }
 }
