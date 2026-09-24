@@ -136,7 +136,7 @@ final class JdbcOrderedFieldStore {
     }
 
     private FieldValueOrigin load(Connection connection, Scope scope, String field) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(scope.selectSql())) {
+        try (PreparedStatement statement = scope.prepareSelect(connection)) {
             int index = scope.bindIdentity(statement);
             statement.setString(index, field);
             try (ResultSet result = statement.executeQuery()) {
@@ -155,7 +155,7 @@ final class JdbcOrderedFieldStore {
                         Scope scope,
                         String field,
                         FieldValueOrigin origin) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(scope.upsertSql())) {
+        try (PreparedStatement statement = scope.prepareUpsert(connection)) {
             int index = scope.bindIdentity(statement);
             statement.setString(index++, field);
             statement.setLong(index++, origin.admissionOrder().value());
@@ -191,29 +191,35 @@ final class JdbcOrderedFieldStore {
             return lifecycleId != null;
         }
 
-        private String selectSql() {
-            return lifecycle() ? """
-                    SELECT admission_order, occurrence_position, occurrence_id
-                    FROM canonical_lifecycle_field_origin
-                    WHERE artifact = ? AND lifecycle_id = ? AND field_name = ?
-                    """ : """
+        private PreparedStatement prepareSelect(Connection connection) throws SQLException {
+            if (lifecycle()) {
+                return connection.prepareStatement("""
+                        SELECT admission_order, occurrence_position, occurrence_id
+                        FROM canonical_lifecycle_field_origin
+                        WHERE artifact = ? AND lifecycle_id = ? AND field_name = ?
+                        """);
+            }
+            return connection.prepareStatement("""
                     SELECT admission_order, occurrence_position, occurrence_id
                     FROM canonical_compat_field_origin
                     WHERE artifact = ? AND row_key = ? AND identity_epoch = ? AND field_name = ?
-                    """;
+                    """);
         }
 
-        private String upsertSql() {
-            return lifecycle() ? """
-                    INSERT INTO canonical_lifecycle_field_origin(
-                        artifact, lifecycle_id, field_name, admission_order,
-                        occurrence_position, occurrence_id)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(artifact, lifecycle_id, field_name) DO UPDATE SET
-                        admission_order = excluded.admission_order,
-                        occurrence_position = excluded.occurrence_position,
-                        occurrence_id = excluded.occurrence_id
-                    """ : """
+        private PreparedStatement prepareUpsert(Connection connection) throws SQLException {
+            if (lifecycle()) {
+                return connection.prepareStatement("""
+                        INSERT INTO canonical_lifecycle_field_origin(
+                            artifact, lifecycle_id, field_name, admission_order,
+                            occurrence_position, occurrence_id)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(artifact, lifecycle_id, field_name) DO UPDATE SET
+                            admission_order = excluded.admission_order,
+                            occurrence_position = excluded.occurrence_position,
+                            occurrence_id = excluded.occurrence_id
+                        """);
+            }
+            return connection.prepareStatement("""
                     INSERT INTO canonical_compat_field_origin(
                         artifact, row_key, identity_epoch, field_name, admission_order,
                         occurrence_position, occurrence_id)
@@ -222,7 +228,7 @@ final class JdbcOrderedFieldStore {
                         admission_order = excluded.admission_order,
                         occurrence_position = excluded.occurrence_position,
                         occurrence_id = excluded.occurrence_id
-                    """;
+                    """);
         }
 
         private int bindIdentity(PreparedStatement statement) throws SQLException {

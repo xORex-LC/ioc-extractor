@@ -61,7 +61,7 @@ final class JdbcLifecycleArchive {
                                      String artifact,
                                      long rowId,
                                      EffectiveTime closedAt) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("""
+        String insertSql = """
                 INSERT INTO canonical_lifecycle_field_origin_history(
                     artifact, lifecycle_id, field_name, admission_order,
                     occurrence_position, occurrence_id, archived_at_ms)
@@ -69,19 +69,21 @@ final class JdbcLifecycleArchive {
                        origin.admission_order, origin.occurrence_position,
                        origin.occurrence_id, ?
                 FROM canonical_lifecycle_field_origin origin
-                JOIN %s active ON active.%s = origin.lifecycle_id
-                WHERE origin.artifact = ? AND active.%s = ?
-                """.formatted(quote(artifact), quote("_lifecycle_id"), quote("id")))) {
+                JOIN """ + quote(artifact) + " active ON active." + quote("_lifecycle_id")
+                + " = origin.lifecycle_id WHERE origin.artifact = ? AND active."
+                + quote("id") + " = ?";
+        try (PreparedStatement statement = connection.prepareStatement(insertSql)) {
             statement.setLong(1, closedAt.value().toEpochMilli());
             statement.setString(2, artifact);
             statement.setLong(3, rowId);
             statement.executeUpdate();
         }
-        try (PreparedStatement statement = connection.prepareStatement("""
+        String deleteSql = """
                 DELETE FROM canonical_lifecycle_field_origin
                 WHERE artifact = ? AND lifecycle_id = (
-                    SELECT %s FROM %s WHERE %s = ?)
-                """.formatted(quote("_lifecycle_id"), quote(artifact), quote("id")))) {
+                    SELECT """ + quote("_lifecycle_id") + " FROM " + quote(artifact)
+                + " WHERE " + quote("id") + " = ?)";
+        try (PreparedStatement statement = connection.prepareStatement(deleteSql)) {
             statement.setString(1, artifact);
             statement.setLong(2, rowId);
             statement.executeUpdate();

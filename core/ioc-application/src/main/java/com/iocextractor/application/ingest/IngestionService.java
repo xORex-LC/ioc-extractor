@@ -394,7 +394,6 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
         boolean dbCommitted = false;
         ExtractionResult extraction = null;
         boolean receiptReplayed = false;
-        Map<String, Integer> insertedPerArtifact;
         Set<String> changedArtifacts;
         try {
             var lifecycleContext = lifecycleSupport == null
@@ -405,14 +404,12 @@ public final class IngestionService implements IngestSourceUseCase, RecoverInges
                             new ConfirmationReceiptReplayCommand(lifecycleContext));
             if (replay.isPresent()) {
                 receiptReplayed = true;
-                insertedPerArtifact = replay.orElseThrow().insertedPerArtifact();
                 changedArtifacts = replay.orElseThrow().changedArtifacts();
             } else {
                 extraction = extractionFactory.create(
                                 sourcePreparers.preparers(), NoopArtifactProjection.INSTANCE)
                         .extract(new ExtractionCommand(
                                 run.runId(), unit.processingPath(), false, lifecycleContext));
-                insertedPerArtifact = extraction.writtenPerArtifact();
                 changedArtifacts = extraction.changedArtifacts();
             }
             runLedger.markDbCommitted(run.runId());

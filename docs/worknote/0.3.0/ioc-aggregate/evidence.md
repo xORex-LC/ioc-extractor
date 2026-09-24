@@ -235,5 +235,16 @@ observation must remain available until those facts expire. Schema v11 archives
 field origin with lifecycle history, and cleanup tests prove the registration is
 released only after the final authoritative reference is removed.
 
+SpotBugs review removed a dead replay counter and rewrote constant field-origin
+statements so the analyzer can see their fixed SQL shape. The remaining P4 SQL
+findings are reviewed false positives: runtime identifiers come only from the
+validated immutable artifact catalog or mapped schema columns, pass the adapter's
+identifier grammar and quoting boundary, and all data values stay bound. The
+exact baseline moves two existing selectors into the extracted compatibility
+writer, refreshes five unchanged finding anchors and adds four net selectors for
+new ordered-field read/update/archive/retention statements. The resulting raw
+set is 120 accepted findings with zero proposal delta; final filtered/aggregate
+verification remains part of the exact-HEAD gate.
+
 These are focused results. Final exact-HEAD verify, analyzer, coverage, security
 and documentation results belong to the completion report after this checkpoint.
