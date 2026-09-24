@@ -75,10 +75,11 @@ runtime JDBC drivers.
   ordered lifecycle metadata. Lifecycle/canonical-row ID ranges are reserved by
   atomic SQLite `UPDATE ... RETURNING`; allocator state survives active/history
   cleanup.
-- `JdbcCanonicalLifecycleWriter` is the P3 transaction boundary for insert,
-  active renewal, due-row archive/recreate, provenance, observation replay,
-  insert-driven revision, projection generation and typed receipt staging. It
-  samples one write-owned effective time after acquiring SQLite write ownership;
+- `JdbcCanonicalLifecycleWriter` is the lifecycle transaction boundary for
+  insert, active renewal, due-row archive/recreate, provenance, ordered public
+  updates, observation replay, revision, projection generation and typed receipt
+  staging. It samples one write-owned effective time after acquiring SQLite
+  write ownership;
   canonical-row and lifecycle ranges are committed beforehand, so rollback
   creates gaps rather than reusable identities. `JdbcConfirmationReceiptWriter`
   publishes `COMPLETE` only after exact artifact-marker and typed-row counts,
@@ -108,11 +109,13 @@ runtime JDBC drivers.
   summaries, while lifecycle/canonical-row ID allocators remain monotonic after
   both active and history rows are gone.
 - `JdbcCanonicalArtifactRepository` writes rows with canonical `row_key` and
-  `ON CONFLICT(row_key) DO NOTHING`, preserving explicit legacy ids when present.
-  It is a commit-only boundary: routing and row mapping finish before this adapter
-  is called, so rejected fail-fast runs perform no storage write.
-  It returns the actual inserted-row count and advances `artifact_revision` once
-  per mutating write in the same transaction. `JdbcArtifactRevisionReader`
+  delegates lifecycle-disabled writes to `JdbcCompatibilityArtifactWriter`.
+  Legacy rows retain `ON CONFLICT(row_key) DO NOTHING`; opt-in ordered fields use
+  the same registration policy/provenance semantics as the lifecycle writer.
+  Routing and row mapping finish before this adapter is called, so rejected
+  fail-fast runs perform no storage write. Public inserts/updates advance
+  `artifact_revision`; same-value origin advancement does not.
+  `JdbcArtifactRevisionReader`
   provides change detection without scanning business rows. The compatibility
   writer still uses `JdbcArtifactIdBaseline` while production remains disabled;
   the lifecycle writer owns the durable canonical-row ID allocator after
@@ -133,6 +136,10 @@ runtime JDBC drivers.
   registration sequence and field-origin tables. `JdbcObservationRegistrationStore`
   allocates or resumes one rank in a short dataframe transaction and refuses
   namespace drift, missing recovery rows and overflow.
+- Dataframe schema v11 versions confirmation payloads, stores ordered-field
+  positions, persists public-update/metadata-only commit counts and archives
+  lifecycle field origins beside lifecycle history. Receipt v1 is deliberately
+  treated as an ETL fallback rather than reinterpreted with v2 semantics.
 - Service schema v10 adds CAS journals for document admission and managed-import
   registration references. Terminal retention deletes the finalized service
   reference first, then attempts exact dataframe-registration cleanup; canonical

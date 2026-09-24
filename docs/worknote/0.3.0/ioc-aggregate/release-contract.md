@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Draft release contract"
 version: "0.3.0"
-status: "P0-P2 foundation implemented; activation pending"
+status: "P0-P4 foundation implemented; activation pending"
 document_type: "Draft release contract"
 source_of_truth: false
 language: "en"
@@ -18,8 +18,9 @@ managed aggregate import. See the [network amendment](network-routing-amendment.
 Per-artifact mapping/update configurability is required. Missing new attribution
 preserves an existing name. Extend shared section markers to recognize the five
 observed label forms while retaining existing marker support. The accepted P0
-ordering contract and P1/P2 policy/admission foundations are implemented. The
-[technical design](technical-design.md) remains the contract for P3–P7;
+ordering contract and P1–P4 policy/admission/preparation/mutation foundations
+are implemented. The [technical design](technical-design.md) remains the
+contract for P5–P7;
 aggregate generation, activation and release-blocking disposition are not yet settled.
 
 ## Compatibility requirements
@@ -47,9 +48,10 @@ An ADR is warranted for changed canonical update/order semantics, rather than
 merely for adding a CSV column layout.
 
 R030-TEST, R030-DOC, R030-REL and affected module quality checks apply. Cost and
-release-date impact remain unestimated pending the persistence/recovery and
-input-contract design. Ordering behavior is accepted: later durable registration
-wins without priority changes on retries or restart. Within a document, aggregate
+release-date impact remain unestimated pending import/export integration,
+activation/rollback and input-contract completion. Ordering behavior is accepted:
+later durable registration wins without priority changes on retries or restart.
+Within a document, aggregate
 selects the last nonempty label and its corresponding occurrence. Empty-name
 inputs preserve existing names; unnamed new rows store NULL.
 Existing TTL/import closure does not constitute aggregate qualification.

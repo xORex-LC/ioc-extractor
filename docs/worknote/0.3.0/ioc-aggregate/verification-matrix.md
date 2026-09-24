@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Verification plan"
 version: "0.3.0"
-status: "P0-P2 partial execution evidence"
+status: "P0-P4 partial execution evidence"
 document_type: "Verification plan"
 source_of_truth: false
 language: "en"
@@ -9,7 +9,7 @@ language: "en"
 
 # DATA-AGGREGATE-01 — verification matrix
 
-Product-output rows remain planned until P3–P7. P1/P2 mechanism evidence is
+Product-output rows remain planned until P5–P7. P1–P4 mechanism evidence is
 recorded below; it does not qualify end-to-end aggregate generation. Conditional
 cases become required when the corresponding discovery decision admits them.
 
@@ -92,7 +92,7 @@ changes must reach ordinary export/delivery; same-value origin changes must not
 create a public revision. Q-07 lifecycle restart is accepted: delayed previously uncommitted input creates
 a new lifecycle after expiry; replay of an already committed operation must not.
 
-## P0-P2 execution checkpoint
+## P0-P4 execution checkpoint
 
 - V-13 is covered for the P1 configuration surface: legacy `when-type`, new
   `when-types`/`when`, invalid combinations, predicate references and semantic
@@ -105,6 +105,15 @@ a new lifecycle after expiry; replay of an already committed operation must not.
 - The local P2 adapter requires stable filesystem identity and fails closed when
   it is unavailable. A future adapter may use a pre-registration owned immutable
   snapshot under ADR-0030; this implementation does not claim that fallback.
-- V-01–V-12 and V-20–V-32 remain open wherever they depend on occurrence
-  propagation, canonical mutation, aggregate import/export, bootstrap activation,
-  coordinated restore or final exact-HEAD qualification.
+- V-15 and V-31 have focused P3 coverage for marker overlap/NBSP recognition,
+  whole-occurrence selection, mixed legacy policies and classification reuse.
+- V-20–V-22 and the P4 part of V-26 have focused JDBC coverage for transactional
+  rollback, out-of-order completion, same-value provenance advancement, blank
+  preservation, conflicting equal origins and both lifecycle modes. V-08 covers
+  archiving and retention of ordered provenance. V-09 is covered through mutable
+  projection/event recovery; immutable export delivery remains P5 scope.
+- V-23 has receipt-v2 position round-trip and committed-operation replay coverage;
+  its aggregate import/redelivery branch remains P5 scope.
+- V-01–V-12, V-14 and remaining V-17–V-32 portions stay open wherever they
+  depend on aggregate mapping/import/export, bootstrap activation, coordinated
+  restore, consumer fixtures, performance or final exact-HEAD qualification.

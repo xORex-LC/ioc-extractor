@@ -100,8 +100,24 @@ handshake через reconcile. Retention сначала удаляет finalize
 reference и только затем пытается удалить точную terminal registration; строка
 с canonical field-origin остаётся в dataframe DB.
 
+Dataframe schema v11 завершает ordered-field transaction contract. Complete
+receipt v2 хранит position каждого управляемого поля; commit marker различает
+public update и metadata-only origin advance. Активный lifecycle origin при
+expiry атомарно переносится в history-owned origin table, поэтому retention не
+может удалить registration раньше lifecycle history. Старый complete receipt v1
+не переинтерпретируется: receipt replay возвращает ETL fallback, а уже
+зафиксированный canonical commit остаётся idempotency authority.
+
+`LatestRegisteredValuePolicy` остаётся pure application strategy. JDBC adapter
+только загружает текущий origin, применяет решение и в одной транзакции изменяет
+public row, origin, revision/projection generation, commit marker и receipt.
+Более новый одинаковый value двигает только origin; пустой incoming value не
+меняет ни public value, ни precedence; публичное изменение двигает revision и
+попадает в projection/event recovery. Эти правила одинаковы в `ACTIVE` и
+`DISABLED_COMPATIBLE` режимах.
+
 Эти таблицы являются foundation для ordered artifact policies. Их наличие не
-включает новый artifact или новую mutation policy. Переход на schema v10 также
+включает новый artifact или новую mutation policy. Переход на schema v11 также
 означает, что старый binary корректно откажется открывать более новую БД;
 coordinated backup/restore остаётся обязательной частью rollout-плана до
 production activation.

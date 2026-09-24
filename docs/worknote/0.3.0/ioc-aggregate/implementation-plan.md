@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — implementation plan"
 version: "0.3.0"
-status: "P0-P2 implemented; P3-P7 planned"
+status: "P0-P4 implemented; P5-P7 planned"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "en"
@@ -9,8 +9,8 @@ language: "en"
 
 # Implementation plan
 
-These slices implement the [technical design](technical-design.md). P0–P2 are
-implemented as configuration-disabled foundations; P3–P7 remain planned work.
+These slices implement the [technical design](technical-design.md). P0–P4 are
+implemented as configuration-disabled foundations; P5–P7 remain planned work.
 Q-03 requires both service-ledger modes. Resolve outstanding Q-04 and the rollback
 part of Q-07 before finalizing dependent contracts, and record remaining proposed
 defaults explicitly before activation.
@@ -38,12 +38,14 @@ Do not merge unfinished behavior into an enabled shipping preset.
 | P0 | `0ca0fda6` | Proposed ADR-0030 fixes the single dataframe-owned order authority, file/JDBC recovery boundary, producer handoff and terminal-reference rules. No activation. |
 | P1 | `c215c103` | Configurable `when-types`/`when` mapping gates, compatibility with `when-type`, semantic fingerprinting and pure occurrence/write policy contracts. |
 | P2 | `f27740e6`, `272fbecc` | Dataframe/service schema v10, JDBC registration and recovery stores, durable file/JDBC document journals, import references, oneshot decorator, pre-hash claim/seal recovery and crash-boundary tests. |
+| P3 | `008b2b5d`, `783d6b69` | Occurrences survive batch deduplication while classification remains once per normalized key; opt-in whole-row last-nonempty selection, marker overlap/NBSP handling and strict identity validation preserve legacy artifact behavior. |
+| P4 | `facee3d0` | Both lifecycle and compatibility JDBC paths apply latest-registered mutable fields atomically, persist active/history provenance and receipt positions, distinguish public from metadata-only changes and propagate projection/recovery events. |
 
-The new collaborators are deliberately not part of the default bootstrap graph
-yet. P3 carries occurrence data into preparation; P4 applies ordered field
-mutation; P5 adds the aggregate import/export path; P6 owns activation and
-rollback operations. Therefore this checkpoint does not generate the new
-artifact or change existing runtime output.
+The occurrence and mutation mechanisms are deliberately inactive for existing
+artifacts because no shipping preset selects the new policies. P5 adds the
+aggregate import/export path; P6 owns activation and rollback operations.
+Therefore this checkpoint does not generate the new artifact. The only shared
+runtime behavior change is the requested expansion of source-marker recognition.
 
 ## Responsibilities and review boundaries
 
@@ -53,7 +55,7 @@ artifact or change existing runtime output.
   delegate. Review dependency direction and behavior, not arbitrary class-size
   thresholds or mechanical service/implementation pairs.
 - Preserve published concurrency API/tag/artifact; no library release is needed.
-- P0–P2 implementation and logical commits are owner-authorized. Record each
+- P0–P4 implementation and logical commits are owner-authorized. Record each
   slice against its actual tested commit in the evidence ledger.
 
 ## Verification workflow

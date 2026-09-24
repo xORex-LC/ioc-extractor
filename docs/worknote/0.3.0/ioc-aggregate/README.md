@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Worknote bundle index"
 version: "0.3.0"
-status: "P0-P2 implemented; activation pending"
+status: "P0-P4 implemented; activation pending"
 document_type: "Worknote bundle index"
 source_of_truth: false
 language: "en"
@@ -10,10 +10,10 @@ language: "en"
 # DATA-AGGREGATE-01 — IOC aggregate output
 
 This bundle records the requested additional output artifact for release 0.3.0.
-Documentation work was authorized on 2026-09-21; P0–P2 implementation
-was authorized subsequently and is now implemented. The policy and durable
-admission foundations remain disconnected from the default runtime composition;
-P3–P7 and the pending activation choices still apply. Implementation status is
+Documentation work was authorized on 2026-09-21; P0–P4 implementation
+was authorized subsequently and is now implemented. Policy, durable admission,
+occurrence preparation and canonical mutation foundations remain disabled by the
+shipping presets; P5–P7 and the pending activation choices still apply. Status is
 recorded in the evidence ledger. The work-item ID is local to this release bundle.
 
 These mutable worknotes do not replace accepted ADRs, capability documentation
@@ -44,11 +44,11 @@ or operator guides. New documents use English according to repository policy.
   Extend section markers for all five observed sample label forms.
   Later registration wins; retry/restart preserve priority. Within a document,
   retain the last nonempty label and its corresponding occurrence.
-  Empty-name policy is accepted; detailed import/publication and persistence
+  Empty-name policy is accepted; detailed import/publication and rollout
   choices remain open. See the question table in the technical design.
 - Earlier TTL/import verification remains evidence for its original scope;
   it does not qualify this feature. No full-release completion is claimed.
-- P0–P2 provide the accepted ordering contract, configurable mapping-policy
-  seams and durable document/import/oneshot admission foundations. Actual
-  aggregate occurrence preparation, canonical `name` mutation, import/export
-  integration and production wiring remain P3–P6 work.
+- P0–P4 provide the accepted ordering contract, configurable mapping-policy
+  seams, durable admission, occurrence-preserving preparation and atomic ordered
+  field mutation in both JDBC lifecycle modes. Aggregate import/export contracts,
+  shipping configuration and production activation remain P5–P6 work.

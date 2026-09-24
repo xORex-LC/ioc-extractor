@@ -40,11 +40,17 @@ Tika, RE2/J, Guava PSL и Commons CSV изолированы адаптерам�
    ordinary ingest and managed import; callers own diagnostics and gated TRACE
    without repeating the domain rule.
 5. **Dedup предшествует classification.** Дубликаты текущего batch не оплачивают
-   feature extraction и rule evaluation; durable dedup отдельно выполняет
-   canonical storage по `row_key`.
+   feature extraction и rule evaluation; при этом application сохраняет все
+   позиции исходных occurrences и после единственной classification присоединяет
+   решение обратно к каждой позиции. Durable dedup отдельно выполняет canonical
+   storage по `row_key`.
 6. **Mapping не делает IO.** `ArtifactPreparer` применяет `accepts`, filters,
    column providers и transforms и возвращает write plan. `from: id` остаётся
-   deferred slot до materialization непосредственно перед commit.
+   deferred slot до materialization непосредственно перед commit. Артефакт может
+   явно выбрать whole-row `last-nonempty` по mapped column: тогда mapper сначала
+   строит кандидата для каждого occurrence, группирует по canonical identity и
+   выбирает одну строку целиком. Без этой policy сохраняется прежний путь с
+   одной строкой на deduplicated indicator.
 7. **Failure policy применяется до durable write.** Ожидаемый data-dependent
    отказ provider/transform становится `SINK.ROW_MAPPING_FAILED`; неожиданный
    exception остаётся run failure. Rejected run не резервирует id и не пишет
@@ -53,7 +59,9 @@ Tika, RE2/J, Guava PSL и Commons CSV изолированы адаптерам�
    использует compatibility repository. В `fixed` mode driving boundary
    передаёт `LifecycleWriteContext`; `WriteArtifactsStage` вычисляет row keys из
    уже подготовленных templates и вызывает lifecycle writer с observation и
-   receipt facts. Domain/stages не читают config и не знают JDBC.
+   receipt facts. Ordered mutable fields дополнительно передают исходную позицию
+   и durable registration; обычные artifacts этого metadata не требуют.
+   Domain/stages не читают config и не знают JDBC.
 9. **Post-commit projection advisory.** Успешный canonical commit необратим для
    текущего pipeline run. Lossy mutable projection может добавить
    `SINK.CHARSET_UNMAPPABLE` и повысить completion до warnings, но не запускает

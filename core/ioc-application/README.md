@@ -81,6 +81,13 @@ Recovery всегда вызывает `resume` с сохранённым namesp
 выделить новый rank. Terminal retention сначала удаляет recovery reference и
 только затем запрашивает точное удаление незадействованной registration.
 
+`LatestRegisteredValuePolicy` является pure strategy без clock/storage access.
+`ArtifactWritePlan` сохраняет positions управляемых полей до commit, а
+`WriteArtifactsStage` передаёт registration через storage-neutral command либо
+lifecycle confirmation. Результат записи различает inserted, public-updated и
+metadata-only rows; наружу публикуется ordered set artifacts с изменившимся
+public представлением, чтобы projection и recovery не теряли name-only update.
+
 ## Зависимости
 
 **Зависит внутрь от:** domain и framework-free platform contracts для ETL,

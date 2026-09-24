@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Evidence ledger"
 version: "0.3.0"
-status: "P0-P2 implementation evidence"
+status: "P0-P4 implementation evidence; final qualification pending"
 document_type: "Evidence ledger"
 source_of_truth: false
 language: "en"
@@ -190,3 +190,50 @@ orders/outcomes, compare-and-set recovery, retention guards, dry-run behavior
 and oneshot failure precedence. Provisioned external suites were not executed;
 the five external suite shells remain discoverable and do not substitute for
 stand qualification.
+
+## P3 occurrence-preserving preparation — 2026-09-24
+
+Commit `008b2b5d` carries attributed occurrences through batch deduplication and
+rejoins one materialized classification decision to each occurrence. The CSV
+adapter applies whole-row last-nonempty selection only for artifacts that opt in;
+legacy policies continue to map one deduplicated indicator. Marker candidates
+are resolved by start, longest span and configured pattern order so an embedded
+short marker cannot steal attribution.
+
+Commit `783d6b69` adds strict identity validation for occurrence/ordered-field
+policies and matches Word-export NBSP forms without changing source offsets or
+breaking literal pattern engines. Focused marker, configuration and CSV-preparer
+tests passed. The aggregate preset remains absent, so this evidence qualifies the
+mechanism and requested shared marker recognition, not product output.
+
+## P4 ordered canonical mutation — 2026-09-24
+
+Commit `facee3d0` applies the framework-free latest-registered value policy in
+both lifecycle and disabled-lifecycle JDBC paths. Dataframe schema v11 persists
+receipt field positions, public-update/metadata-only outcomes and archived field
+origins. One SQLite transaction owns public value, origin, revision, projection
+generation, commit marker and receipt publication. Registration retention now
+also respects archived origins and canonical observation receipts.
+
+Focused implementation evidence:
+
+- application module test cohort passed, including public-change propagation;
+- `IngestionServiceTest`: 34 passed, including receipt replay of a name-only
+  public update into mutable projection and change publication;
+- `JdbcCanonicalLifecycleWriterIT`: 15 passed, including deterministic
+  out-of-order workers, same-value origin advancement, blank preservation and
+  injected rollback of row/origin/receipt;
+- `JdbcArtifactRepositoriesIT`: 10 passed, including compatibility-mode ordered
+  updates and metadata-only revision behavior;
+- complete JDBC adapter integration cohort: 227 tests, zero failures/errors and
+  one property-gated load-profile skip;
+- `CsvArtifactPreparerTest`: 4 passed; `IocPropertiesTest`: 8 passed.
+
+The significant implementation discovery was retention ownership: a terminal
+registration referenced only by lifecycle history or a committed canonical
+observation must remain available until those facts expire. Schema v11 archives
+field origin with lifecycle history, and cleanup tests prove the registration is
+released only after the final authoritative reference is removed.
+
+These are focused results. Final exact-HEAD verify, analyzer, coverage, security
+and documentation results belong to the completion report after this checkpoint.
