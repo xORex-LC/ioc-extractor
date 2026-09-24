@@ -48,6 +48,8 @@ class LatestRegisteredValuePolicyTest {
 
         assertThat(policy.decide(null, null, "A", existing))
                 .isEqualTo(FieldUpdateDecision.CHANGE_PUBLIC_VALUE);
+        assertThat(policy.decide("A", null, "A", existing))
+                .isEqualTo(FieldUpdateDecision.ADVANCE_ORIGIN_ONLY);
         assertThat(policy.decide("A", existing, null, origin(5, "later")))
                 .isEqualTo(FieldUpdateDecision.PRESERVE);
         assertThat(policy.decide("A", existing, "A", existing))

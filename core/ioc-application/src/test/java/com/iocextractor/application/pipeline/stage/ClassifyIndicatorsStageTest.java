@@ -113,6 +113,28 @@ class ClassifyIndicatorsStageTest {
     }
 
     @Test
+    void tracesFileAndUnmatchedNetworkOutcomesWithoutInventingRuleMetadata() {
+        var tracer = new RecordingTracer();
+        var stage = new ClassifyIndicatorsStage(indicator -> new ClassificationDecision(
+                new IndicatorFeatures(indicator.value(), indicator.value(),
+                        false, false, false, HostKind.UNKNOWN),
+                -1, List.of(), new MaskMatch(null, null)),
+                StageTestSupport.DIAGNOSTICS, tracer);
+        var hash = new Indicator("0123456789ABCDEF0123456789ABCDEF", IndicatorType.MD5,
+                new SourceContext("test-source", null));
+        var network = StageTestSupport.indicator("unmatched.example");
+
+        stage.process(StageTestSupport.envelope(
+                StageTestSupport.deduplicatedIndicators(hash, network), false));
+
+        assertThat(tracer.decisions)
+                .extracting(PipelineItemDecision::outcome)
+                .containsExactly("not_applicable", "unmatched");
+        assertThat(tracer.decisions)
+                .allSatisfy(decision -> assertThat(decision.rule()).isNull());
+    }
+
+    @Test
     void syntheticLargeBatchStillClassifiesOncePerItemWithTracingEnabled() {
         int batchSize = 10_000;
         var calls = new AtomicInteger();

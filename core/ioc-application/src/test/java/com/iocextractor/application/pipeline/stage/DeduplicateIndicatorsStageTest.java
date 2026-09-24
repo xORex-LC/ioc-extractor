@@ -1,10 +1,14 @@
 package com.iocextractor.application.pipeline.stage;
 
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
+import com.iocextractor.application.observability.PipelineItemDecision;
+import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.SourceContext;
 import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -63,6 +67,33 @@ class DeduplicateIndicatorsStageTest {
                 .containsExactly(first, sameValueDifferentType);
         assertThat(output.payload().retained().getFirst().source().label())
                 .isEqualTo("first-source");
+    }
+
+    @Test
+    void tracesBothRetainedAndDroppedOccurrencesWhenTracingIsEnabled() {
+        var decisions = new ArrayList<PipelineItemDecision>();
+        PipelineDecisionTracer tracer = new PipelineDecisionTracer() {
+            @Override
+            public boolean isEnabled() {
+                return true;
+            }
+
+            @Override
+            public void trace(PipelineItemDecision decision) {
+                decisions.add(decision);
+            }
+        };
+        var first = StageTestSupport.indicator("first.example");
+        var duplicate = StageTestSupport.indicator("first.example");
+        var stage = new DeduplicateIndicatorsStage(
+                true, StageTestSupport.DIAGNOSTICS, tracer);
+
+        stage.process(StageTestSupport.envelope(
+                StageTestSupport.attributedIndicators(first, duplicate), false));
+
+        assertThat(decisions)
+                .extracting(PipelineItemDecision::outcome)
+                .containsExactly("retained", "dropped");
     }
 
     private static Indicator indicator(String value, IndicatorType type, String source) {
