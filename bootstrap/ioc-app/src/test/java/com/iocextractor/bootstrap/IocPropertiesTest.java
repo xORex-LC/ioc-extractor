@@ -45,6 +45,14 @@ class IocPropertiesTest {
 
         assertThat(ArtifactPolicyCatalog.compile(defaults).get("masks"))
                 .isEqualTo(ArtifactWritePolicy.legacy());
+        assertThat(ArtifactPolicyCatalog.compile(defaults).get("ioc_aggregate"))
+                .satisfies(policy -> {
+                    assertThat(policy.duplicateSelection())
+                            .isEqualTo(ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY);
+                    assertThat(policy.selectionColumn()).isEqualTo("name");
+                    assertThat(policy.fields()).containsEntry(
+                            "name", ArtifactWritePolicy.FieldUpdatePolicy.LATEST_REGISTERED_KEEP_EXISTING);
+                });
 
         var field = new IocProperties.Sink.Artifact.WritePolicy.Field(
                 "source", "latest-registered", "keep-existing");
@@ -154,11 +162,14 @@ class IocPropertiesTest {
         assertThat(ArtifactPolicyCatalog.compile(withCatalogs(defaults,
                 new IocProperties.Sink(defaults.sink().csv(), null), defaults.artifactIdentity())))
                 .isEmpty();
-        assertThat(ArtifactPolicyCatalog.compile(withCatalogs(defaults, defaults.sink(), null)))
-                .containsKey("masks");
-        assertThat(ArtifactPolicyCatalog.compile(withCatalogs(defaults, defaults.sink(),
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(
+                withCatalogs(defaults, defaults.sink(), null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires a nonempty artifact identity");
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(withCatalogs(defaults, defaults.sink(),
                 new IocProperties.ArtifactIdentity(null))))
-                .containsKey("masks");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires a nonempty artifact identity");
     }
 
     @Test
@@ -189,9 +200,10 @@ class IocPropertiesTest {
                 new IocProperties.ArtifactIdentity.Artifact(null, List.of("mask"), null, null, null, null),
                 new IocProperties.ArtifactIdentity.Artifact(
                         "missing-keys", null, null, null, null, null));
-        assertThat(ArtifactPolicyCatalog.compile(withCatalogs(defaults, defaults.sink(),
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(withCatalogs(defaults, defaults.sink(),
                 new IocProperties.ArtifactIdentity(incompleteIdentities))))
-                .containsKey("masks");
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires a nonempty artifact identity");
 
         var fieldsWithMissingNames = Arrays.asList(
                 (IocProperties.Sink.Artifact.WritePolicy.Field) null,

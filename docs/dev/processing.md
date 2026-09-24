@@ -93,6 +93,16 @@ composition root. Новый формат или технология вывод
 них разные failure contracts: projection допускает replacement + advisory,
 immutable slice использует strict encoding, потому что bytes входят в hashes.
 
+Классpath-конфигурация также определяет самостоятельный `ioc_aggregate` без
+публичного `id`: `name`, `ip_address`, `url_match`, `host_match`, `hash`.
+Маршрутизация carrier-значений выражена `when-type`/`when-types` и структурными
+conditions: bare IPv4 попадает в `ip_address`, clean DOMAIN — в `host_match`,
+адрес со схемой, путём, query или port — в `url_match`, hashes нормализуются в
+upper case. Полная четвёрка carrier-колонок является canonical identity; Java-код
+не ветвится по имени этого артефакта. Whole-row `last-nonempty` выбирает последнюю
+помеченную occurrence внутри документа, а ordered field policy меняет только
+непустой `name` от более поздней durable registration.
+
 ## Отказы
 
 | Граница | Поведение |

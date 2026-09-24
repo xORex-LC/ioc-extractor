@@ -114,10 +114,12 @@ daemon ingestion both accumulate into the same canonical model.
 | Immutable export slice | Consistent profile snapshot with `manifest.json` and `_SUCCESS` |
 | Remote publication | Idempotent delivery of completed slices through a publish ledger |
 
-Default projections include masks, bare IPv4 addresses, an address blacklist and
-file hashes. Their schemas are configured in the packaged defaults and explained
-in [processing](docs/dev/processing.md). The external delivery contract is
-described in [artifact export](docs/dev/artifact-export.md).
+Default projections include masks, bare IPv4 addresses, an address blacklist,
+file hashes, and the standalone `IOC_aggregate_generated.csv` carrier artifact.
+Its immutable output belongs to the separate `ioc-aggregate` profile. Schemas
+are configured in the packaged defaults and explained in
+[processing](docs/dev/processing.md). The external delivery contract is described
+in [artifact export](docs/dev/artifact-export.md).
 
 ## Configuration
 

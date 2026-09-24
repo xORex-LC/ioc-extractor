@@ -34,6 +34,9 @@ Daemon export scheduler до открытия этого barrier не выпол
 
 1. **Profile — неделимая ordered единица.** В v1 поддерживается только полный
    (`COMPLETE`) output; artifacts и columns имеют значимый порядок.
+   Defaults публикуют `ioc_aggregate` отдельным профилем `ioc-aggregate`, чтобы
+   его без-ID schema и cadence/delivery membership не меняли существующие
+   `reputation-lists` и `address-blacklist` contracts.
 2. **Public bytes детерминированы plan-ом.** Schema, identity, active mapping и
    CSV format входят в hashes/fingerprints; runtime timestamp/run id не меняют
    смысл plan.

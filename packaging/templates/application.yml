@@ -187,6 +187,21 @@ ioc:
           - { name: threat_type,     from: const }
           - { name: source,          from: source.label, transform: [ "strip-prefix:Письмо " ] }
           - { name: description,     from: const }
+      - name: ioc_aggregate
+        enabled: true
+        path: "./dataframe/IOC_aggregate_generated.csv"
+        accepts: [ IPV4, DOMAIN, URL, MD5, SHA1, SHA256 ]
+        columns:
+          - { name: name,       from: source.label }
+          - { name: ip_address, from: value, when-type: IPV4, when: [ is-bare-ip ] }
+          - { name: url_match,  from: value, when-types: [ IPV4, DOMAIN, URL ], when: [ is-address-with-detail ], transform: [ lower-host ] }
+          - { name: host_match, from: value, when-type: DOMAIN, when: [ is-clean-host ], transform: [ lower-host ] }
+          - { name: hash,       from: value, when-types: [ MD5, SHA1, SHA256 ], transform: [ upper ] }
+        write-policy:
+          duplicate-selection: last-nonempty
+          selection-column: name
+          fields:
+            - { name: name, update: latest-registered, empty: keep-existing }
 
   artifact-identity:
     artifacts:
@@ -218,6 +233,12 @@ ioc:
           - { name: hash-md5-v1, key-columns: [ hash_md5 ] }
           - { name: hash-sha1-v1, key-columns: [ hash_sha1 ] }
           - { name: hash-sha256-v1, key-columns: [ hash_sha256 ] }
+      - name: ioc_aggregate
+        key-columns: [ ip_address, url_match, host_match, hash ]
+        key-mode: composite
+        record-key: ioc-aggregate-row-v1
+        match-keys:
+          - { name: ioc-aggregate-v1, key-columns: [ ip_address, url_match, host_match, hash ] }
 
   # ---- Managed dataframe import --------------------------------------------
   # Disabled baseline. Enabling requires explicit source, authority and
@@ -322,6 +343,9 @@ ioc:
       - name: address-blacklist
         output-mode: complete
         artifacts: [ address_blacklist ]
+      - name: ioc-aggregate
+        output-mode: complete
+        artifacts: [ ioc_aggregate ]
     retention:
       max-age: 7d
       max-count: 3

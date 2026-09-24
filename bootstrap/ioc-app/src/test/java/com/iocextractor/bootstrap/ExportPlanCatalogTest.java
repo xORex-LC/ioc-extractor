@@ -31,7 +31,7 @@ class ExportPlanCatalogTest {
         ExportPlanCatalog catalog = catalog(properties, new ArrayList<>());
 
         assertThat(catalog.plans()).extracting(plan -> plan.profile().name())
-                .containsExactly("reputation-lists", "address-blacklist");
+                .containsExactly("reputation-lists", "address-blacklist", "ioc-aggregate");
         assertThat(catalog.plans().getFirst().profile().mode()).isEqualTo(ExportMode.COMPLETE);
         assertThat(catalog.plans().getFirst().artifacts()).extracting("artifactName")
                 .containsExactly("masks", "ip_list", "hashes");
@@ -39,6 +39,14 @@ class ExportPlanCatalogTest {
             assertThat(artifact.identityHash()).hasSize(64);
             assertThat(artifact.schemaHash()).hasSize(64);
         });
+        assertThat(catalog.plans().get(2).artifacts())
+                .singleElement()
+                .satisfies(artifact -> {
+                    assertThat(artifact.artifactName()).isEqualTo("ioc_aggregate");
+                    assertThat(artifact.fileName()).isEqualTo("IOC_aggregate_generated.csv");
+                    assertThat(artifact.columns())
+                            .containsExactly("name", "ip_address", "url_match", "host_match", "hash");
+                });
         catalog.requireProfile("reputation-lists");
         assertThatThrownBy(() -> catalog.requireProfile("missing"))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -54,7 +62,10 @@ class ExportPlanCatalogTest {
                 legacyIdentity("address_blacklist", ArtifactKeyMode.FIRST_NON_EMPTY,
                         "forbidden_url", "forbidden_ip"),
                 legacyIdentity("hashes", ArtifactKeyMode.FIRST_NON_EMPTY,
-                        "hash_md5", "hash_sha1", "hash_sha256"));
+                        "hash_md5", "hash_sha1", "hash_sha256"),
+                properties.artifactIdentity().artifacts().stream()
+                        .filter(artifact -> artifact.name().equals("ioc_aggregate"))
+                        .findFirst().orElseThrow());
 
         var currentPlans = catalog(properties, new ArrayList<>()).plans();
         var compatibilityPlans = catalog(
@@ -100,7 +111,9 @@ class ExportPlanCatalogTest {
                         tuple("reputation-lists",
                                 "f02edaaa1b0ddd13401f016cbebdde67f67f50a28a0808f7e10a906669a8d493"),
                         tuple("address-blacklist",
-                                "63fad9fe69f104f25e755dfac6eafcd46a2fe9c5c0d7831cc9454147442c073b"));
+                                "63fad9fe69f104f25e755dfac6eafcd46a2fe9c5c0d7831cc9454147442c073b"),
+                        tuple("ioc-aggregate",
+                                "708f2df26fc7c81120ac75ba50677c356da3a70ac11dd44f8c65e3b064f16e9a"));
         assertThat(plans.getFirst().artifacts())
                 .extracting(artifact -> artifact.artifactName(), artifact -> artifact.mappingHash())
                 .containsExactly(
@@ -111,6 +124,10 @@ class ExportPlanCatalogTest {
                 .extracting(artifact -> artifact.artifactName(), artifact -> artifact.mappingHash())
                 .containsExactly(tuple("address_blacklist",
                         "7117767f5770e482e970835fac62db5d82389d9924141a204fb7eae7e6730553"));
+        assertThat(plans.get(2).artifacts())
+                .extracting(artifact -> artifact.artifactName(), artifact -> artifact.mappingHash())
+                .containsExactly(tuple("ioc_aggregate",
+                        "199d07964ffce6113d5e21a1aae1c8d20848edcc2bdcab06bad0918bb3c0d1d0"));
     }
 
     @Test
