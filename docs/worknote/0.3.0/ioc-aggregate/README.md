@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Worknote bundle index"
 version: "0.3.0"
-status: "P0-P4 implemented; activation pending"
+status: "P0-P4 qualified; activation pending"
 document_type: "Worknote bundle index"
 source_of_truth: false
 language: "en"

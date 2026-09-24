@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Evidence ledger"
 version: "0.3.0"
-status: "P0-P4 implementation evidence; final qualification pending"
+status: "P0-P4 implementation and exact-HEAD qualification evidence"
 document_type: "Evidence ledger"
 source_of_truth: false
 language: "en"
@@ -243,8 +243,33 @@ identifier grammar and quoting boundary, and all data values stay bound. The
 exact baseline moves two existing selectors into the extracted compatibility
 writer, refreshes five unchanged finding anchors and adds four net selectors for
 new ordered-field read/update/archive/retention statements. The resulting raw
-set is 120 accepted findings with zero proposal delta; final filtered/aggregate
-verification remains part of the exact-HEAD gate.
+set is 120 accepted findings with zero proposal delta and zero visible findings
+after filtering.
 
-These are focused results. Final exact-HEAD verify, analyzer, coverage, security
-and documentation results belong to the completion report after this checkpoint.
+## P0-P4 final qualification — 2026-09-24
+
+The implementation checkpoint through commit `1ac37414` passed the complete
+deterministic offline release gate. A PMD-discovered complexity increase in
+`WriteArtifactsStage` was removed by separating orchestration, canonical write
+and projection responsibilities; the policy ratchet returned to its existing
+count without suppression or baseline growth.
+
+- `make verify`: passed; 19 production coverage groups and 18 required local
+  reports were present. Aggregate coverage was 21,548/24,039 lines (89.64%) and
+  7,063/8,827 branches (80.02%). The deterministic lifecycle contained 198 fast,
+  67 integration and 5 external suite shells; the 260 deterministic-offline
+  suites passed. The one JDBC load-profile case remained property-gated.
+- SpotBugs: 120 reviewed raw findings, zero visible findings. CPD: 21/21
+  reviewed duplication groups.
+- `make pmd-analysis`: passed with zero blocking and 21/21 advisory findings.
+  `make pmd-watchlist`: passed with 29 advisory findings; none touched a P3-P4
+  changed file.
+- `make security-scan`: passed against the existing offline Dependency-Check
+  database; 129 dependencies were analyzed and zero vulnerabilities reported.
+  This is deterministic offline evidence, not a live advisory refresh.
+- `make docs`: passed with 1,017 links inspected, 390 unique, 872 successful,
+  145 excluded and zero errors.
+
+This qualifies the P0-P4 shared mechanisms. It does not qualify IOC aggregate
+wire output, managed import, immutable export/delivery or production activation;
+those remain P5-P7 scope.

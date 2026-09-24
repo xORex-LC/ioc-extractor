@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Verification plan"
 version: "0.3.0"
-status: "P0-P4 partial execution evidence"
+status: "P0-P4 exact-HEAD qualification evidence"
 document_type: "Verification plan"
 source_of_truth: false
 language: "en"
@@ -114,6 +114,10 @@ a new lifecycle after expiry; replay of an already committed operation must not.
   projection/event recovery; immutable export delivery remains P5 scope.
 - V-23 has receipt-v2 position round-trip and committed-operation replay coverage;
   its aggregate import/redelivery branch remains P5 scope.
+- The complete deterministic offline release gate, PMD policy, PMD watchlist,
+  offline Dependency-Check and documentation checks passed for the P0-P4
+  implementation. Exact metrics and evidence boundaries are recorded in the
+  evidence ledger.
 - V-01–V-12, V-14 and remaining V-17–V-32 portions stay open wherever they
   depend on aggregate mapping/import/export, bootstrap activation, coordinated
-  restore, consumer fixtures, performance or final exact-HEAD qualification.
+  restore, consumer fixtures or performance qualification.
