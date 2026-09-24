@@ -173,8 +173,9 @@ final class JdbcCompatibilityArtifactWriter {
                                       DataframeArtifactSchema schema,
                                       long rowId) throws SQLException {
         List<String> columns = header(schema);
-        String sql = "SELECT " + joinedQuoted(columns) + " FROM " + quote(schema.artifactName())
-                + " WHERE " + quote("id") + " = ?";
+        String sql = "SELECT " + JdbcSql.joinedQuoted(columns) + " FROM "
+                + JdbcSql.quote(schema.artifactName())
+                + " WHERE " + JdbcSql.quote("id") + " = ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, rowId);
             try (ResultSet result = statement.executeQuery()) {
@@ -196,11 +197,11 @@ final class JdbcCompatibilityArtifactWriter {
                                     ArtifactRow row,
                                     Set<String> fields) throws SQLException {
         String assignments = fields.stream()
-                .map(field -> quote(field) + " = ?")
+                .map(field -> JdbcSql.quote(field) + " = ?")
                 .collect(Collectors.joining(", "));
         try (PreparedStatement statement = connection.prepareStatement(
-                "UPDATE " + quote(schema.artifactName()) + " SET " + assignments
-                        + " WHERE " + quote("id") + " = ?")) {
+                "UPDATE " + JdbcSql.quote(schema.artifactName()) + " SET " + assignments
+                        + " WHERE " + JdbcSql.quote("id") + " = ?")) {
             int index = 1;
             for (String field : fields) {
                 statement.setString(index++, row.value(field));
@@ -253,9 +254,10 @@ final class JdbcCompatibilityArtifactWriter {
         columns.add("_first_source_key");
         values.add(sourceKey);
 
-        String sql = "INSERT INTO " + quote(schema.artifactName()) + "(" + joinedQuoted(columns)
+        String sql = "INSERT INTO " + JdbcSql.quote(schema.artifactName()) + "("
+                + JdbcSql.joinedQuoted(columns)
                 + ") VALUES (" + "?,".repeat(columns.size()).replaceFirst(",$", "")
-                + ") ON CONFLICT(" + quote("row_key") + ") DO NOTHING";
+                + ") ON CONFLICT(" + JdbcSql.quote("row_key") + ") DO NOTHING";
         int inserted;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             for (int i = 0; i < values.size(); i++) {
@@ -305,8 +307,8 @@ final class JdbcCompatibilityArtifactWriter {
     }
 
     private Long rowId(Connection connection, String artifactName, String rowKey) throws SQLException {
-        String sql = "SELECT " + quote("id") + " FROM " + quote(artifactName)
-                + " WHERE " + quote("row_key") + " = ?";
+        String sql = "SELECT " + JdbcSql.quote("id") + " FROM " + JdbcSql.quote(artifactName)
+                + " WHERE " + JdbcSql.quote("row_key") + " = ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, rowKey);
             try (ResultSet result = statement.executeQuery()) {
@@ -333,14 +335,6 @@ final class JdbcCompatibilityArtifactWriter {
 
     private List<String> header(DataframeArtifactSchema schema) {
         return schema.columns().stream().map(DataframeColumn::name).toList();
-    }
-
-    private String joinedQuoted(List<String> identifiers) {
-        return identifiers.stream().map(this::quote).collect(Collectors.joining(", "));
-    }
-
-    private String quote(String identifier) {
-        return "\"" + DataframeColumn.requireSqlIdentifier(identifier, "identifier") + "\"";
     }
 
     private void rollback(Connection connection, Exception original) throws SQLException {

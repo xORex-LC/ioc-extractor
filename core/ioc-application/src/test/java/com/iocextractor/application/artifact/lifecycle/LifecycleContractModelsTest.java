@@ -308,12 +308,14 @@ class LifecycleContractModelsTest {
     @Test
     void lifecycle_write_and_expiry_results_enforce_revision_and_generation_rules() {
         for (int[] counts : List.of(
-                new int[] {-1, 0, 0},
-                new int[] {0, -1, 0},
-                new int[] {0, 0, -1})) {
+                new int[] {-1, 0, 0, 0, 0},
+                new int[] {0, -1, 0, 0, 0},
+                new int[] {0, 0, -1, 0, 0},
+                new int[] {0, 0, 0, -1, 0},
+                new int[] {0, 0, 0, 0, -1})) {
             assertThatThrownBy(() -> new LifecycleWriteResult(
                     new ObservationId("observation"), "masks", NOW,
-                    counts[0], counts[1], counts[2], 1,
+                    counts[0], counts[1], counts[2], counts[3], counts[4], 1,
                     new ProjectionGeneration(1), false))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("counts");

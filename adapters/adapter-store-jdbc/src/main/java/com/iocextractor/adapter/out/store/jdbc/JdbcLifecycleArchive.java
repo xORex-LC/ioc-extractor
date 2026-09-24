@@ -11,7 +11,9 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
+
+import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.joinedQuoted;
+import static com.iocextractor.adapter.out.store.jdbc.JdbcSql.quote;
 
 /** Atomic typed snapshot, compact provenance copy and active-row deletion. */
 final class JdbcLifecycleArchive {
@@ -30,7 +32,7 @@ final class JdbcLifecycleArchive {
                 quote("id"), quote("row_key"), quote("_lifecycle_id"),
                 quote("_first_confirmed_at_epoch_ms"), quote("_last_confirmed_at_epoch_ms"),
                 quote("_valid_until_epoch_ms"), "?", "?"));
-        selected.addAll(publicHeader(schema).stream().map(this::quote).toList());
+        selected.addAll(publicHeader(schema).stream().map(JdbcSql::quote).toList());
         String sql = "INSERT INTO " + quote(schema.artifactName() + "_history") + " ("
                 + joinedQuoted(historyColumns) + ") SELECT " + String.join(", ", selected)
                 + " FROM " + quote(schema.artifactName()) + " WHERE " + quote("id") + " = ?";
@@ -112,7 +114,7 @@ final class JdbcLifecycleArchive {
 
         List<String> selected = new ArrayList<>(List.of(
                 quote("id"), quote("row_key"), "?", "?", "?", "?", "?", "?"));
-        selected.addAll(publicHeader(schema).stream().map(this::quote).toList());
+        selected.addAll(publicHeader(schema).stream().map(JdbcSql::quote).toList());
         String sql = "INSERT INTO " + quote(schema.artifactName() + "_history") + " ("
                 + joinedQuoted(historyColumns) + ") SELECT " + String.join(", ", selected)
                 + " FROM " + quote(schema.artifactName()) + " WHERE " + quote("id") + " = ?"
@@ -170,11 +172,4 @@ final class JdbcLifecycleArchive {
         return schema.columns().stream().map(DataframeColumn::name).toList();
     }
 
-    private String joinedQuoted(List<String> identifiers) {
-        return identifiers.stream().map(this::quote).collect(Collectors.joining(", "));
-    }
-
-    private String quote(String identifier) {
-        return "\"" + DataframeColumn.requireSqlIdentifier(identifier, "identifier") + "\"";
-    }
 }
