@@ -24,7 +24,10 @@ import com.iocextractor.platform.etl.StageId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Writes retained indicators to configured sinks unless dry-run is enabled.
@@ -71,42 +74,59 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
     @Override
     public Envelope<ArtifactWriteSummary> process(Envelope<PreparedArtifacts> input) {
         var payload = input.payload();
-        var written = new LinkedHashMap<String, Integer>();
-        var changedArtifacts = new LinkedHashSet<String>();
-        var projectionDiagnostics = new ArrayList<Diagnostic>();
-        if (!input.meta().booleanAttribute(PipelineMetaAttributes.DRY_RUN, false)) {
-            LifecycleWriteContext lifecycle = lifecycleContext(input);
-            if (lifecycle != null && lifecycle.receipt().expectedArtifacts() != payload.plans().size()) {
-                throw new IllegalArgumentException(
-                        "Lifecycle receipt artifact count does not match prepared plans");
-            }
-            for (var plan : payload.plans()) {
-                WriteOutcome writeOutcome;
-                try {
-                    writeOutcome = lifecycle == null
-                            ? write(plan, registration(input))
-                            : confirm(plan, lifecycle, registration(input));
-                } catch (RuntimeException failure) {
-                    throw writeFailure("canonical", plan.artifactName(), failure);
-                }
-                try {
-                    var outcome = projection.project(new ArtifactProjectionCommand(
-                            input.meta().runId(), plan.artifactName()));
-                    projectionDiagnostics.addAll(outcome.diagnostics());
-                } catch (RuntimeException failure) {
-                    throw writeFailure("projection", plan.artifactName(), failure);
-                }
-                written.put(plan.artifactName(), writeOutcome.inserted());
-                if (writeOutcome.publicChanged()) {
-                    changedArtifacts.add(plan.artifactName());
-                }
-            }
-        }
+        WriteExecution execution = input.meta().booleanAttribute(PipelineMetaAttributes.DRY_RUN, false)
+                ? WriteExecution.empty()
+                : execute(input, payload);
         return input.withPayload(new ArtifactWriteSummary(
                 payload.extracted(),
                 payload.retained(),
-                written,
-                changedArtifacts)).withDiagnostics(projectionDiagnostics);
+                execution.written(),
+                execution.changedArtifacts())).withDiagnostics(execution.diagnostics());
+    }
+
+    private WriteExecution execute(Envelope<PreparedArtifacts> input, PreparedArtifacts payload) {
+        LifecycleWriteContext lifecycle = lifecycleContext(input);
+        validateExpectedArtifactCount(lifecycle, payload.plans().size());
+        RegisteredObservation registration = registration(input);
+        var written = new LinkedHashMap<String, Integer>();
+        var changedArtifacts = new LinkedHashSet<String>();
+        var diagnostics = new ArrayList<Diagnostic>();
+        for (var plan : payload.plans()) {
+            WriteOutcome outcome = writeCanonical(plan, lifecycle, registration);
+            diagnostics.addAll(project(input.meta().runId(), plan.artifactName()));
+            written.put(plan.artifactName(), outcome.inserted());
+            if (outcome.publicChanged()) {
+                changedArtifacts.add(plan.artifactName());
+            }
+        }
+        return new WriteExecution(written, changedArtifacts, diagnostics);
+    }
+
+    private void validateExpectedArtifactCount(LifecycleWriteContext lifecycle, int actualArtifacts) {
+        if (lifecycle != null && lifecycle.receipt().expectedArtifacts() != actualArtifacts) {
+            throw new IllegalArgumentException(
+                    "Lifecycle receipt artifact count does not match prepared plans");
+        }
+    }
+
+    private WriteOutcome writeCanonical(ArtifactWritePlan plan,
+                                        LifecycleWriteContext lifecycle,
+                                        RegisteredObservation registration) {
+        try {
+            return lifecycle == null
+                    ? write(plan, registration)
+                    : confirm(plan, lifecycle, registration);
+        } catch (RuntimeException failure) {
+            throw writeFailure("canonical", plan.artifactName(), failure);
+        }
+    }
+
+    private List<Diagnostic> project(String runId, String artifactName) {
+        try {
+            return projection.project(new ArtifactProjectionCommand(runId, artifactName)).diagnostics();
+        } catch (RuntimeException failure) {
+            throw writeFailure("projection", artifactName, failure);
+        }
     }
 
     private WriteOutcome write(ArtifactWritePlan plan,
@@ -179,5 +199,14 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
     }
 
     private record WriteOutcome(int inserted, boolean publicChanged) {
+    }
+
+    private record WriteExecution(Map<String, Integer> written,
+                                  Set<String> changedArtifacts,
+                                  List<Diagnostic> diagnostics) {
+
+        private static WriteExecution empty() {
+            return new WriteExecution(Map.of(), Set.of(), List.of());
+        }
     }
 }
