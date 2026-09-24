@@ -74,6 +74,10 @@ final class ArtifactPolicyCatalog {
         validateSelection(selection, selectionColumn, columns, identity, path, errors);
         Map<String, ArtifactWritePolicy.FieldUpdatePolicy> fields = compileFields(
                 configured.fields(), columns, identity, path, errors);
+        if ((selection == ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY || !fields.isEmpty())
+                && identity.isEmpty()) {
+            errors.add(path + " requires a nonempty artifact identity");
+        }
         return validSelection(selection, selectionColumn, columns)
                 ? new ArtifactWritePolicy(selection, selectionColumn, fields) : null;
     }

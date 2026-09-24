@@ -39,11 +39,12 @@ public final class MarkerSourceAttributor implements SourceAttributor {
 
     private List<SourceMarker> collectMarkers(String text) {
         List<MarkerCandidate> candidates = new ArrayList<>();
+        String matchingText = text.replace('\u00A0', ' ');
         int patternOrder = 0;
         for (PatternEngine.Compiled pattern : markerPatterns) {
-            for (Span span : pattern.findAll(text)) {
-                candidates.add(new MarkerCandidate(
-                        span.start(), span.end(), patternOrder, normalize(span.value())));
+            collectCandidates(candidates, pattern, text, patternOrder);
+            if (!matchingText.equals(text)) {
+                collectCandidates(candidates, pattern, matchingText, patternOrder);
             }
             patternOrder++;
         }
@@ -59,6 +60,16 @@ public final class MarkerSourceAttributor implements SourceAttributor {
         return selected.stream()
                 .map(candidate -> new SourceMarker(candidate.start(), candidate.label()))
                 .toList();
+    }
+
+    private void collectCandidates(List<MarkerCandidate> candidates,
+                                   PatternEngine.Compiled pattern,
+                                   String text,
+                                   int patternOrder) {
+        for (Span span : pattern.findAll(text)) {
+            candidates.add(new MarkerCandidate(
+                    span.start(), span.end(), patternOrder, normalize(span.value())));
+        }
     }
 
     /** Nearest marker whose position is at or before {@code position}, or {@code null} if none. */

@@ -107,6 +107,24 @@ class IocPropertiesTest {
     }
 
     @Test
+    void occurrenceOrFieldPolicyRequiresCanonicalIdentity() throws Exception {
+        IocProperties defaults = bind(Map.of());
+        var field = new IocProperties.Sink.Artifact.WritePolicy.Field(
+                "source", "latest-registered", "keep-existing");
+        var policy = new IocProperties.Sink.Artifact.WritePolicy(
+                "last-nonempty", "source", List.of(field));
+        IocProperties configured = withMasksPolicy(defaults, policy);
+        IocProperties withoutIdentities = withCatalogs(
+                configured,
+                configured.sink(),
+                new IocProperties.ArtifactIdentity(List.of()));
+
+        assertThatThrownBy(() -> ArtifactPolicyCatalog.compile(withoutIdentities))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires a nonempty artifact identity");
+    }
+
+    @Test
     void aggregateNetworkConditionsSeparateCleanHostsFromDetailedAddresses() {
         var conditions = ConfigRegistryCatalog.artifactFilters();
         var cleanDomain = classified("example.org", IndicatorType.DOMAIN, false, false, false);

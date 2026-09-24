@@ -62,4 +62,20 @@ class MarkerSourceAttributorTest {
         assertThat(outcome.indicators()).singleElement()
                 .extracting(indicator -> indicator.source().label()).isEqualTo(label);
     }
+
+    @Test
+    void nonbreaking_spaces_are_matched_and_normalized_without_changing_positions() {
+        var fstec = new MarkerSourceAttributor(new Re2jPatternEngine(), List.of(
+                "ФСТЭК\\s+\\d{2}\\.\\d{2}\\.\\d{4}\\s+№\\s*\\d+(?:/\\d+)+"));
+        String text = "ФСТЭК\u00A021.05.2025\u00A0№240/93/1329: example.com";
+
+        AttributionOutcome outcome = fstec.attribute(text, List.of(
+                new RawIndicator("example.com", IndicatorType.DOMAIN, text.indexOf("example.com"))));
+
+        assertThat(outcome.markers()).containsExactly(
+                new SourceMarker(0, "ФСТЭК 21.05.2025 №240/93/1329"));
+        assertThat(outcome.indicators()).singleElement()
+                .extracting(indicator -> indicator.source().label())
+                .isEqualTo("ФСТЭК 21.05.2025 №240/93/1329");
+    }
 }
