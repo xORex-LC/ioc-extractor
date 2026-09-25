@@ -11,8 +11,9 @@ language: "en"
 
 These slices implement the [technical design](technical-design.md). P0–P6 are
 implemented: the aggregate preset, import/export integration and transition
-operations now build on the P0–P4 foundations. P7 remains the final exact-HEAD
-qualification and publication checkpoint. Q-03 supports both service-ledger
+operations now build on the P0–P4 foundations. The deterministic P5–P6 quality
+checkpoint is complete; P7 remains the representative performance and final
+publication checkpoint. Q-03 supports both service-ledger
 modes; the Q-07 rollback boundary is coordinated restoration rather than binary
 downgrade.
 
@@ -43,13 +44,15 @@ Do not merge unfinished behavior into an enabled shipping preset.
 | P4 | `facee3d0` | Both lifecycle and compatibility JDBC paths apply latest-registered mutable fields atomically, persist active/history provenance and receipt positions, distinguish public from metadata-only changes and propagate projection/recovery events. |
 | P5 | `72f4daa1`, `202fd03c` | The shipped five-column aggregate artifact and isolated export profile are active; target-only managed import adds exact carrier validation, last-nonempty duplicate reduction, pinned policy metadata and source-label binding. |
 | P6 | `86bb0373` | Daemon file/JDBC ledgers and managed import share durable dataframe order, service schema v11 proves new import reservations, startup blocks legacy unranked work, retention/health expose and preserve unresolved authority, and v0.2 identity overlays remain boundedly compatible. |
+| P5–P6 hardening | `0ecacac0`–`6f1d9b4d` | Runtime contract fixes, ordered recovery and retention boundaries, strict import validation, exact coverage qualification, PMD remediation and the reviewed CPD improvement close the deterministic implementation checkpoint. |
 
 The ordered occurrence and mutation mechanisms remain opt-in per artifact;
 existing four artifacts keep their legacy policies. The shipping aggregate
 preset selects them for `name`, starts empty without backfill and is covered by
-the P5 import/export and P6 recovery paths. P7 must still record final-worktree
-gates, analyzer review and representative performance evidence before release
-qualification is claimed.
+the P5 import/export and P6 recovery paths. Exact deterministic gates and
+analyzer review are recorded in the evidence ledger. P7 must still record the
+representative performance comparison and any provisioned external evidence
+before release qualification is claimed.
 
 ## Responsibilities and review boundaries
 

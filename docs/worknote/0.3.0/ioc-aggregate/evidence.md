@@ -299,8 +299,9 @@ Focused implementation evidence includes:
 - existing artifact/profile configuration tests proving the new policy is
   selected only by `ioc_aggregate`.
 
-These checks establish the P5 product path. Final aggregate coverage, analyzer,
-security and representative performance evidence remains part of P7.
+These checks establish the P5 product path. Its deterministic aggregate
+coverage and analyzer evidence is recorded in the combined checkpoint below;
+representative performance evidence remains part of P7.
 
 ## P6 ordered-intake transition and operations — 2026-09-25
 
@@ -320,16 +321,49 @@ service-owned files; binary-only downgrade and schema stripping are unsupported.
 
 Focused implementation evidence includes:
 
-- `ObservationAdmissionServiceTest`: 15 passed, covering document/import
+- `ObservationAdmissionServiceTest`: 16 passed, covering document/import
   references, recovery, terminal state transitions and retention boundaries;
-- full JDBC adapter integration cohort: 230 tests, zero failures/errors and one
+- full JDBC adapter integration cohort: 233 tests, zero failures/errors and one
   property-gated load-profile skip;
 - `JdbcCanonicalImportWriterContractIT`: 18 passed, including ordered import
   commit/replay behavior;
-- `FileSystemSourceLifecycleIT`: 10 passed, including durable file-journal
-  recovery;
-- bootstrap fast-test cohort: 264 tests, zero failures/errors, including health,
-  status, startup barrier and exact legacy-overlay compatibility.
+- `FileSystemSourceLifecycleIT`: 14 passed, including durable file-journal
+  recovery and success/rejection/quarantine terminal reconciliation;
+- ordered daemon retry, observation retention scheduler lifecycle, missing
+  ingest-receipt recovery and strict import-validator failure paths.
 
-The final exact-HEAD deterministic gate and report metrics are intentionally left
-to P7; the counts above are focused implementation evidence for P5–P6.
+## P5–P6 deterministic quality checkpoint — 2026-09-26
+
+Follow-up commits `0ecacac0` through `6f1d9b4d` close runtime-contract,
+recovery, validation, coverage and analyzer findings found during complete-gate
+qualification. The final production refactor extracted one shared terminal
+failure decision from the synchronous and asynchronous ingest paths; semantic
+CPD review confirmed that this removed one real duplication group without
+changing analyzer scope.
+
+Final local deterministic evidence:
+
+- `make verify`: all 25 reactor projects pass; aggregate JaCoCo is at least
+  22,152/24,663 lines (89.82%) and 7,337/9,134 branches (80.33%). Repeated full
+  runs observed a two-line execution range up to 22,154/24,663 (89.83%) without
+  changing any ratchet result; domain remains 100%/100%, application remains
+  above its 85%/90% floors;
+- SpotBugs: 120 reviewed findings accepted by exact identity, zero visible;
+- CPD: 24 reviewed duplication groups against the reduced 24-group ratchet;
+- `make pmd-analysis`: zero blocking findings and 22/22 reviewed advisory
+  findings; `make pmd-watchlist`: 30 advisory findings. The new
+  `CloseResource` watchlist item is reviewed as the long-lived Spring
+  `SmartLifecycle` scheduler's explicit shutdown/await/forced-shutdown owner,
+  not a leaked per-call resource;
+- `make security-scan`: 129 dependencies analyzed with zero unsuppressed and
+  two narrowly suppressed findings. Both are reviewed false-positive CPE
+  matches from PDFBox Examples against the distinct JBIG2 ImageIO artifact,
+  bounded by the tracked 2027-01-31 review deadline. This is offline evidence
+  from the existing local Dependency-Check cache, last checked on 2026-07-19;
+  no live NVD refresh is claimed;
+- documentation/link validation passes for the published and release-worknote
+  changes.
+
+P7 retains the representative duplicate-heavy memory/writer-latency comparison,
+release publication and any provisioned external qualification. Offline skips
+and the stale local vulnerability cache are not presented as live evidence.

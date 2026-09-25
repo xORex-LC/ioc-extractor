@@ -9,9 +9,9 @@ language: "en"
 
 # DATA-AGGREGATE-01 — verification matrix
 
-Product output and transition paths are implemented through P6. Mechanism and
-focused product evidence are recorded below; the final exact-HEAD analyzer,
-security, coverage and performance checkpoint remains P7. Conditional cases
+Product output and transition paths are implemented through P6. Mechanism,
+product and deterministic exact-HEAD quality evidence are recorded below;
+representative performance and final publication remain P7. Conditional cases
 become required when the corresponding discovery decision admits them.
 
 | ID | Behavior / evidence | Dependency |
@@ -79,7 +79,7 @@ resource cancellation and database-busy outcomes must have bounded recovery.
 V-02/V-03/V-12/V-13 additionally cover the [network amendment](network-routing-amendment.md):
 structural column gates, clean domains, URL overlap suppression, configurable
 carrier cardinality and processed/as-is validation. P5 focused tests cover these
-paths; P7 records their final-gate evidence.
+paths; their deterministic final-gate evidence is recorded below.
 
 Accepted routing checkpoint: verify full URL and scheme-less host-plus-path
 retain their observed representation in url_match, while bare domain and bare IP
@@ -144,6 +144,8 @@ a new lifecycle after expiry; replay of an already committed operation must not.
 - V-30 has immutable aggregate export consumer coverage. The durable revision
   and reconcile path is shared with existing artifacts and name-only mutation
   produces the same public-change signal.
-- P5–P6 focused cohorts passed as recorded in the evidence ledger. V-14 and V-32
-  remain open for the final exact-HEAD gate, analyzer/security metrics and
-  representative performance comparison in P7.
+- P5–P6 focused cohorts and the complete exact-HEAD deterministic gate passed as
+  recorded in the evidence ledger. V-14 is complete for local deterministic
+  qualification. V-32 remains open only for the representative duplicate-heavy
+  memory/writer-latency comparison and any provisioned external qualification
+  in P7.
