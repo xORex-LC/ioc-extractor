@@ -199,6 +199,67 @@ class DataframeImportCatalogCompilerValidationTest {
     }
 
     @Test
+    void validatesProcessedShapeValueRulesAndSourceLabelBinding() {
+        DataframeImportCatalogEnvironment environment = processedEnvironment(
+                Set.of("name", "description"));
+        DataframeImportCatalogDraft.Artifact malformed = processedArtifact(
+                null,
+                List.of("ip", "", "ip", "missing"),
+                new DataframeImportCatalogDraft.Column(
+                        "ip", "ip", List.of("lower"), null, "missing-rule"));
+        DataframeImportCatalogDraft.Artifact wrongMode = processedArtifact(
+                "name", null,
+                new DataframeImportCatalogDraft.Column(
+                        "ip", "ip", List.of("lower"), null, "bare-ip"));
+        DataframeImportCatalogDraft.Artifact invalidBinding = processedArtifact(
+                "missing", List.of("ip"),
+                new DataframeImportCatalogDraft.Column(
+                        "ip", "ip", List.of("lower"), null, "bare-ip"));
+
+        DataframeImportCatalogCompilation compilation = compiler.compile(
+                disabledDraft(List.of(), List.of(), List.of(
+                        contract("processed-malformed", ImportProcessingMode.PROCESSED, malformed),
+                        contract("ordinary-binding", ImportProcessingMode.AS_IS, wrongMode),
+                        contract("processed-binding", ImportProcessingMode.PROCESSED, invalidBinding))),
+                environment);
+
+        assertThat(compilation.violations()).extracting(ImportContractViolation::message)
+                .contains(
+                        "validation must reference a registered value rule",
+                        "group entry must name a unique mapped target column",
+                        "source label binding is only valid for processed mode",
+                        "source label target must name a mapped source.label output column");
+
+        DataframeImportCatalogDraft.Artifact undersized = processedArtifact(
+                null, List.of("ip"),
+                new DataframeImportCatalogDraft.Column(
+                        "ip", "ip", List.of("lower"), null, "bare-ip"));
+        assertThat(compiler.compile(
+                disabledDraft(List.of(), List.of(), List.of(
+                        contract("processed-undersized", ImportProcessingMode.PROCESSED, undersized))),
+                environment).violations())
+                .extracting(ImportContractViolation::message)
+                .contains(
+                        "exactly-one group must contain at least two target columns",
+                        "ambiguous processed source.label mapping requires an explicit target");
+    }
+
+    @Test
+    void acceptsRegisteredValueRuleAndUnambiguousProcessedSourceBinding() {
+        DataframeImportCatalogDraft.Artifact artifact = processedArtifact(
+                "name", List.of("ip", "name"),
+                new DataframeImportCatalogDraft.Column(
+                        "ip", "ip", List.of("lower"), null, "bare-ip"));
+
+        DataframeImportCatalogCompilation compilation = compiler.compile(
+                disabledDraft(List.of(), List.of(), List.of(
+                        contract("processed-valid", ImportProcessingMode.PROCESSED, artifact))),
+                processedEnvironment(Set.of("name")));
+
+        assertThat(compilation.valid()).isTrue();
+    }
+
+    @Test
     void collectsArtifactRoleSchemaIdentityColumnAndTransformViolations() {
         DataframeImportCatalogDraft.Artifact malformedRelated = new DataframeImportCatalogDraft.Artifact(
                 "", ImportArtifactRole.RELATED, "", Arrays.asList("", "unknown", "unknown"),
@@ -572,6 +633,42 @@ class DataframeImportCatalogCompilerValidationTest {
                 List.of(
                         new DataframeImportCatalogDraft.Column("ip", "ip", List.of("lower"), null),
                         new DataframeImportCatalogDraft.Column("score", "score", List.of(), null)));
+    }
+
+    private static DataframeImportCatalogDraft.Artifact processedArtifact(
+            String sourceLabelTarget,
+            List<String> exactlyOneNonempty,
+            DataframeImportCatalogDraft.Column ipColumn) {
+        return new DataframeImportCatalogDraft.Artifact(
+                "ip_list", ImportArtifactRole.PRIMARY, "ip-row-v1", List.of("ip-v1"), null,
+                sourceLabelTarget, exactlyOneNonempty,
+                List.of(
+                        ipColumn,
+                        new DataframeImportCatalogDraft.Column(
+                                "name", "name", List.of(), null)));
+    }
+
+    private static DataframeImportCatalogDraft.Contract contract(
+            String id,
+            ImportProcessingMode mode,
+            DataframeImportCatalogDraft.Artifact artifact) {
+        return new DataframeImportCatalogDraft.Contract(
+                id, 1, "UTF-8", validDialect(),
+                new DataframeImportCatalogDraft.Recognition(
+                        List.of("ip", "name"), List.of(), List.of(), Map.of()),
+                mode, ImportRoutingPolicy.TARGET_ONLY,
+                ImportRowFailurePolicy.ACCEPT_VALID, ImportDuplicatePolicy.COALESCE, true,
+                ImportFormulaPolicy.REJECT, ImportMergePolicy.AUTHORITATIVE,
+                List.of(artifact), null);
+    }
+
+    private static DataframeImportCatalogEnvironment processedEnvironment(
+            Set<String> sourceLabelTargets) {
+        return new DataframeImportCatalogEnvironment(
+                Map.of("ip_list", new DataframeImportCatalogEnvironment.ArtifactSchema(
+                        Set.of("ip", "name"), "ip-row-v1", Set.of("ip-v1"),
+                        Set.of("ioc-aggregate"), false, sourceLabelTargets)),
+                Set.of("lower"), Set.of("bare-ip"), Set.of(), "processing-policy-v1");
     }
 
     private static DataframeImportCatalogDraft.Contract copyContract(

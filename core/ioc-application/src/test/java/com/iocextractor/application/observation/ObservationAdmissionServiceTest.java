@@ -287,6 +287,24 @@ class ObservationAdmissionServiceTest {
     }
 
     @Test
+    void registrationStatusRejectsImpossibleCountsAndNormalizesMissingAge() {
+        assertThat(new ObservationRegistrationStatus(2, 1, null).oldestPendingOneshot())
+                .isEmpty();
+        assertThat(new ObservationRegistrationStatus(1, 1, Optional.of(NOW)).oldestPendingOneshot())
+                .contains(NOW);
+
+        assertThatThrownBy(() -> new ObservationRegistrationStatus(-1, 0, Optional.empty()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("counts are inconsistent");
+        assertThatThrownBy(() -> new ObservationRegistrationStatus(0, -1, Optional.empty()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("counts are inconsistent");
+        assertThatThrownBy(() -> new ObservationRegistrationStatus(1, 2, Optional.empty()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("counts are inconsistent");
+    }
+
+    @Test
     void observationReferenceEnforcesItsTerminalStateMachine() {
         RegisteredObservation registration = new RegisteredObservation(
                 new ObservationId("reference-state"), "dataframe",

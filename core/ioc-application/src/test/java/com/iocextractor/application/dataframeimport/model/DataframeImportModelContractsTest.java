@@ -6,6 +6,7 @@ import com.iocextractor.application.port.in.dataframeimport.RecoverDataframeImpo
 import com.iocextractor.application.port.in.dataframeimport.ReplayDataframeImportCommand;
 import com.iocextractor.application.port.in.dataframeimport.ValidateDataframeImportResult;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportResult;
+import com.iocextractor.application.port.out.dataframeimport.CreateImportWorkspaceCommand;
 import com.iocextractor.application.port.out.dataframeimport.PublishImportReportCommand;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
@@ -372,6 +373,37 @@ class DataframeImportModelContractsTest {
                         new ImportContractId("contract"), 0, new ImportContractFingerprint(DIGEST)),
                 () -> ImportMergePolicy.parse(null),
                 () -> ImportMergePolicy.parse("unknown")));
+    }
+
+    @Test
+    void workspaceCreationRequiresSelectionOnlyForLastNonemptyReduction() {
+        ImportDeliveryId deliveryId = new ImportDeliveryId("delivery-workspace");
+        ImportSnapshot snapshot = snapshot();
+        ImportContractPin contract = contract();
+
+        assertThat(new CreateImportWorkspaceCommand(
+                deliveryId, snapshot, contract, ImportDuplicatePolicy.LAST_NONEMPTY,
+                "name", ImportPromotionPolicy.defaults()).duplicateSelectionColumn())
+                .isEqualTo("name");
+        assertThat(new CreateImportWorkspaceCommand(
+                deliveryId, snapshot, contract, ImportDuplicatePolicy.COALESCE,
+                null, ImportPromotionPolicy.defaults()).duplicateSelectionColumn())
+                .isNull();
+        assertThat(new CreateImportWorkspaceCommand(
+                deliveryId, snapshot, contract, ImportDuplicatePolicy.COALESCE,
+                " ", ImportPromotionPolicy.defaults()).duplicateSelectionColumn())
+                .isBlank();
+
+        assertInvalid(List.of(
+                () -> new CreateImportWorkspaceCommand(
+                        deliveryId, snapshot, contract, ImportDuplicatePolicy.LAST_NONEMPTY,
+                        null, ImportPromotionPolicy.defaults()),
+                () -> new CreateImportWorkspaceCommand(
+                        deliveryId, snapshot, contract, ImportDuplicatePolicy.LAST_NONEMPTY,
+                        " ", ImportPromotionPolicy.defaults()),
+                () -> new CreateImportWorkspaceCommand(
+                        deliveryId, snapshot, contract, ImportDuplicatePolicy.KEEP_FIRST,
+                        "name", ImportPromotionPolicy.defaults())));
     }
 
     @Test
