@@ -19,7 +19,7 @@
     <properties>
         <maven.deploy.skip>true</maven.deploy.skip>
         <maven.install.skip>true</maven.install.skip>
-        <ioc.cpd.expectedDuplications>25</ioc.cpd.expectedDuplications>
+        <ioc.cpd.expectedDuplications>24</ioc.cpd.expectedDuplications>
     </properties>
 
     <dependencies>
