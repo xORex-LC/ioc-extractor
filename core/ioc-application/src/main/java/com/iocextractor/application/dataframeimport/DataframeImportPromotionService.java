@@ -11,6 +11,7 @@ import com.iocextractor.application.port.out.dataframeimport.CanonicalImportResu
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportWriter;
 import com.iocextractor.application.port.out.dataframeimport.DataframeImportObserver;
 import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
+import com.iocextractor.application.observation.ManagedImportObservationAdmission;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -25,13 +26,14 @@ public final class DataframeImportPromotionService implements ProcessNextDatafra
     private final CanonicalImportWriter writer;
     private final Clock clock;
     private final DataframeImportObserver observer;
+    private final ManagedImportObservationAdmission observationAdmission;
 
     /** Creates the framework-free forward-only promotion orchestrator. */
     public DataframeImportPromotionService(
             ImportDeliveryLedger ledger,
             CanonicalImportWriter writer,
             Clock clock) {
-        this(ledger, writer, clock, NoopDataframeImportObserver.INSTANCE);
+        this(ledger, writer, clock, NoopDataframeImportObserver.INSTANCE, null);
     }
 
     /** Creates promotion with operational observation after the durable receipt. */
@@ -40,10 +42,21 @@ public final class DataframeImportPromotionService implements ProcessNextDatafra
             CanonicalImportWriter writer,
             Clock clock,
             DataframeImportObserver observer) {
+        this(ledger, writer, clock, observer, null);
+    }
+
+    /** Creates promotion with shared document/import precedence authority. */
+    public DataframeImportPromotionService(
+            ImportDeliveryLedger ledger,
+            CanonicalImportWriter writer,
+            Clock clock,
+            DataframeImportObserver observer,
+            ManagedImportObservationAdmission observationAdmission) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.writer = Objects.requireNonNull(writer, "writer");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.observer = new ResilientDataframeImportObserver(observer);
+        this.observationAdmission = observationAdmission;
     }
 
     @Override
@@ -91,7 +104,8 @@ public final class DataframeImportPromotionService implements ProcessNextDatafra
                 delivery.contract().orElseThrow(
                         () -> new IllegalStateException("Promoting import has no pinned contract")),
                 delivery.stage().orElseThrow(
-                        () -> new IllegalStateException("Promoting import has no pinned stage")));
+                        () -> new IllegalStateException("Promoting import has no pinned stage")),
+                observationAdmission == null ? null : observationAdmission.resume(delivery.id()));
     }
 
     private ProcessNextDataframeImportResult idle() {

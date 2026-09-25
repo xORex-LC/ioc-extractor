@@ -9,6 +9,7 @@ import com.iocextractor.application.artifact.CanonicalMatchPlan;
 import com.iocextractor.application.artifact.CanonicalMatchRequest;
 import com.iocextractor.application.artifact.CanonicalRecordMutationKind;
 import com.iocextractor.application.artifact.CanonicalRecordMutationOutcome;
+import com.iocextractor.application.artifact.PreparedArtifactRow;
 import com.iocextractor.application.artifact.lifecycle.CanonicalRecordConfirmation;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.LifecycleId;
@@ -182,6 +183,50 @@ public final class JdbcCanonicalMutationEngine {
                 changes.updated(), changes.cleared());
     }
 
+    /** Applies import merge output while resolving configured fields by durable admission order. */
+    CanonicalRecordMutationOutcome mutateExistingOrdered(
+            Connection connection,
+            DataframeArtifactSchema schema,
+            long canonicalRowId,
+            ArtifactRow mergedRow,
+            PreparedArtifactRow incoming,
+            boolean renewTtl,
+            String sourceKey,
+            EffectiveTime asOf,
+            ValidityDecision validity,
+            RegisteredObservation registration) throws SQLException {
+        StoredLifecycle stored = loadStored(connection, schema, canonicalRowId);
+        if (stored.validUntilEpochMs() <= epochMillis(asOf)) {
+            throw new IocExtractorException("Cannot mutate an expired canonical lifecycle");
+        }
+        var resolution = orderedFields.resolveLifecycle(
+                connection, schema.artifactName(), stored.lifecycleId(), stored.publicRow(),
+                incoming, registration);
+        ArtifactRow resolved = mergedRow;
+        for (String field : incoming.orderedFieldPositions().keySet()) {
+            resolved = resolved.withValue(field, resolution.finalRow().value(field));
+        }
+        ArtifactRowKey resolvedKey = resolvedRecordKey(schema.artifactName(), resolved)
+                .orElse(stored.rowKey());
+        if (!stored.rowKey().equals(resolvedKey)) {
+            throw new IocExtractorException("Canonical record-key mutation must create a new record");
+        }
+        PublicRowChanges changes = detectPublicRowChanges(schema, stored.publicRow(), resolved);
+        if (changes.hasChanges()) {
+            updatePublicRow(connection, schema, canonicalRowId, resolved, changes.columns());
+            replaceAliases(connection, schema, canonicalRowId, stored.lifecycleId(), resolved);
+        }
+        if (renewTtl) {
+            renewLifecycleOnly(connection, schema, stored, asOf, validity);
+        }
+        JdbcCanonicalSourceRecorder.record(
+                connection, schema.artifactName(), canonicalRowId,
+                sourceKey, asOf.value().toString());
+        return new CanonicalRecordMutationOutcome(
+                changes.mutationKind(renewTtl), canonicalRowId, stored.lifecycleId(),
+                changes.updated(), changes.cleared(), resolution.metadataChanged());
+    }
+
     /** Inserts or restarts one already planned import branch without re-matching. */
     CanonicalRecordMutationOutcome insertPlanned(Connection connection,
                                                  DataframeArtifactSchema schema,
@@ -205,6 +250,27 @@ public final class JdbcCanonicalMutationEngine {
                 lifecycleId, asOf, validity);
         replaceAliases(connection, schema, rowId, lifecycleId.value(), incoming);
         return outcome(kind, rowId, lifecycleId.value());
+    }
+
+    /** Inserts a planned import branch and initializes ordered-field provenance atomically. */
+    CanonicalRecordMutationOutcome insertPlannedOrdered(
+            Connection connection,
+            DataframeArtifactSchema schema,
+            String sourceKey,
+            PreparedArtifactRow incoming,
+            ArtifactRowKey recordKey,
+            LifecycleId lifecycleId,
+            EffectiveTime asOf,
+            ValidityDecision validity,
+            RegisteredObservation registration) throws SQLException {
+        CanonicalRecordMutationOutcome outcome = insertPlanned(
+                connection, schema, sourceKey, incoming.template(), recordKey,
+                lifecycleId, asOf, validity);
+        orderedFields.initializeLifecycle(connection, schema.artifactName(), lifecycleId.value(),
+                incoming, registration);
+        return new CanonicalRecordMutationOutcome(
+                outcome.kind(), outcome.canonicalRowId(), outcome.lifecycleId(),
+                outcome.updatedFields(), outcome.clearedFields(), true);
     }
 
     /** Loads one active-match candidate for bounded import merge planning. */

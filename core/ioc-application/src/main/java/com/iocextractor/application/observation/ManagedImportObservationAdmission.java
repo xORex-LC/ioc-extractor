@@ -9,6 +9,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /** Adds dataframe precedence to an existing import delivery ID without reusing import sequence_no. */
 public final class ManagedImportObservationAdmission {
@@ -27,6 +28,16 @@ public final class ManagedImportObservationAdmission {
 
     public RegisteredObservation register(ImportDeliveryId deliveryId) {
         ObservationId id = observationId(deliveryId);
+        Optional<ObservationAdmissionReference> existing = references.find(id);
+        if (existing.isPresent()) {
+            return resume(deliveryId);
+        }
+        if (!references.isRegistrationReserved(id)) {
+            throw new IllegalStateException(
+                    "Managed import delivery is not reserved for ordered observation admission; "
+                            + "disable enabled latest-registered field policies, drain legacy work, "
+                            + "and re-enable the policies");
+        }
         RegisteredObservation registration = registrations.registerNew(id, ObservationOrigin.MANAGED_IMPORT);
         ObservationAdmissionReference reference = references.link(registration);
         if (!reference.registration().equals(registration)) {
@@ -74,8 +85,9 @@ public final class ManagedImportObservationAdmission {
         int purged = 0;
         for (ObservationAdmissionReference reference : references.findFinalizedBefore(cutoff, limit)) {
             RegisteredObservation registration = reference.registration();
-            if (references.purgeFinalized(registration.observationId(), reference.version())) {
-                registrations.purgeTerminal(registration);
+            ObservationRegistrationPurgeOutcome outcome = registrations.purgeTerminalSafely(registration);
+            if (outcome != ObservationRegistrationPurgeOutcome.REFERENCED
+                    && references.purgeFinalized(registration.observationId(), reference.version())) {
                 purged++;
             }
         }

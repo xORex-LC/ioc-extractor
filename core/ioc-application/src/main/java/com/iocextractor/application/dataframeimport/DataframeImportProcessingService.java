@@ -23,6 +23,7 @@ import com.iocextractor.application.port.out.dataframeimport.ImportReportStore;
 import com.iocextractor.application.port.out.dataframeimport.ImportWorkspace;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
 import com.iocextractor.application.port.out.dataframeimport.PublishImportReportCommand;
+import com.iocextractor.application.observation.ManagedImportObservationAdmission;
 import com.iocextractor.diagnostics.codes.ImportDiagnosticCodes;
 
 import java.time.Clock;
@@ -50,6 +51,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
     private final Clock clock;
     private final Duration retryDelay;
     private final DataframeImportObserver observer;
+    private final ManagedImportObservationAdmission observationAdmission;
 
     /** Creates one framework-free global-head processor. */
     public DataframeImportProcessingService(
@@ -63,7 +65,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             Clock clock,
             Duration retryDelay) {
         this(ledger, staging, promotion, workspace, commits, reports, sources, clock,
-                retryDelay, NoopDataframeImportObserver.INSTANCE);
+                retryDelay, NoopDataframeImportObserver.INSTANCE, null);
     }
 
     /** Creates one framework-free global-head processor with operational observation. */
@@ -78,6 +80,23 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             Clock clock,
             Duration retryDelay,
             DataframeImportObserver observer) {
+        this(ledger, staging, promotion, workspace, commits, reports, sources, clock,
+                retryDelay, observer, null);
+    }
+
+    /** Creates the processor with terminal registration handshakes. */
+    public DataframeImportProcessingService(
+            ImportDeliveryLedger ledger,
+            DataframeImportStager staging,
+            ProcessNextDataframeImportUseCase promotion,
+            ImportWorkspace workspace,
+            ImportCommitEvidenceStore commits,
+            ImportReportStore reports,
+            ManagedImportSourceLifecycle sources,
+            Clock clock,
+            Duration retryDelay,
+            DataframeImportObserver observer,
+            ManagedImportObservationAdmission observationAdmission) {
         this.ledger = Objects.requireNonNull(ledger, "ledger");
         this.staging = Objects.requireNonNull(staging, "staging");
         this.promotion = Objects.requireNonNull(promotion, "promotion");
@@ -88,6 +107,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
         this.clock = Objects.requireNonNull(clock, "clock");
         this.retryDelay = Objects.requireNonNull(retryDelay, "retryDelay");
         this.observer = new ResilientDataframeImportObserver(observer);
+        this.observationAdmission = observationAdmission;
         if (retryDelay.isNegative()) {
             throw new IllegalArgumentException("Import processing retry delay must not be negative");
         }
@@ -189,6 +209,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
                     evidence.publicMutations(), evidence.affectedArtifacts(), List.of(), evidence.issues());
             reports.publish(report);
             dispositionForwardSource(current, outcome);
+            completeObservation(current, outcome);
             current = transition(
                     current, ImportDeliveryState.TERMINAL, ImportDeliveryCheckpoint.none(), outcome);
             observer.deliveryCompleted(current, report, elapsedSince(startedAt));
@@ -219,6 +240,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
                     0, 0, 0, Set.of(), codes, List.of());
             reports.publish(report);
             dispositionForwardSource(current, ImportTerminalOutcome.REJECTED);
+            completeObservation(current, ImportTerminalOutcome.REJECTED);
             current = transition(current, ImportDeliveryState.TERMINAL,
                     ImportDeliveryCheckpoint.none(), ImportTerminalOutcome.REJECTED);
             observer.deliveryCompleted(current, report, elapsedSince(startedAt));
@@ -254,6 +276,12 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
                 yield performed(delivery);
             }
         };
+    }
+
+    private void completeObservation(ImportDelivery delivery, ImportTerminalOutcome outcome) {
+        if (observationAdmission != null) {
+            observationAdmission.complete(delivery.id(), outcome.name());
+        }
     }
 
     private ImportStagingCommand stagingCommand(ImportDelivery delivery) {

@@ -21,6 +21,7 @@ public final class ServiceSchemaMigrations {
     private static final String V8 = "com/iocextractor/adapter/out/store/jdbc/service/v8__ingestion_observation_identity.sql";
     private static final String V9 = "com/iocextractor/adapter/out/store/jdbc/service/v9__managed_dataframe_import.sql";
     private static final String V10 = "com/iocextractor/adapter/out/store/jdbc/service/v10__document_admission_journal.sql";
+    private static final String V11 = "com/iocextractor/adapter/out/store/jdbc/service/v11__import_observation_reservation.sql";
 
     private ServiceSchemaMigrations() {
     }
@@ -36,7 +37,8 @@ public final class ServiceSchemaMigrations {
                 new SqliteSchemaMigration(7, "publish reconcile index", resource(V7)),
                 new SqliteSchemaMigration(8, "ingestion observation identity", resource(V8)),
                 new SqliteSchemaMigration(9, "managed dataframe import", resource(V9)),
-                new SqliteSchemaMigration(10, "document admission journal", resource(V10)));
+                new SqliteSchemaMigration(10, "document admission journal", resource(V10)),
+                new SqliteSchemaMigration(11, "import observation reservation", resource(V11)));
     }
 
     private static String resource(String name) {

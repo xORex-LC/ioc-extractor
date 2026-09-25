@@ -265,7 +265,8 @@ period ниже максимального времени неатомарной
 | `ioc.dataframe-import.contracts[].mode` | `as-is`, `processed` | обязателен | В `as-is` нет implicit preprocessing. |
 | `ioc.dataframe-import.contracts[].routing` | `target-only`, `related-artifacts` | обязателен | Related routing требует authority. |
 | `ioc.dataframe-import.contracts[].row-failure-policy` | `accept-valid`, `reject-delivery` | обязателен | Row isolation либо reject delivery. |
-| `ioc.dataframe-import.contracts[].duplicate-policy` | `coalesce`, `keep-first` | обязателен | Deterministic duplicate handling. |
+| `ioc.dataframe-import.contracts[].duplicate-policy` | `coalesce`, `keep-first`, `last-nonempty` | обязателен | Детерминированная обработка повторов; `last-nonempty` сохраняет последнюю логическую CSV-запись с непустым значением колонки выбора. |
+| `ioc.dataframe-import.contracts[].duplicate-selection-column` | распознанный header | обязателен для `last-nonempty` | Колонка выбирает целую запись-победитель; значения разных повторов не объединяются по ячейкам. |
 | `ioc.dataframe-import.contracts[].renew-unchanged` | boolean | обязателен | Подтверждает ли exact no-op lifecycle validity. |
 | `ioc.dataframe-import.contracts[].formula-policy` | `reject`, `machine-only-preserve` | обязателен | Preserve требует source authority. |
 | `ioc.dataframe-import.contracts[].merge-default` | `keep-existing`, `fill-missing`, `replace-non-null`, `authoritative`, `reject-conflict` | обязателен | Override не превышает source ceiling. |
@@ -275,11 +276,14 @@ period ниже максимального времени неатомарной
 | `ioc.dataframe-import.contracts[].artifacts[].record-key` | definition ID | обязателен | Текущая active row-key definition. |
 | `ioc.dataframe-import.contracts[].artifacts[].match-keys` | список definition IDs | обязателен | Все имена объявлены у artifact. |
 | `ioc.dataframe-import.contracts[].artifacts[].merge-default` | merge policy | опционален | Artifact override ниже ceiling. |
+| `ioc.dataframe-import.contracts[].artifacts[].source-label-target` | целевая колонка | опционален | Получает настроенную метку managed-источника при processed import; target должен присутствовать в mapping этой ветки. |
+| `ioc.dataframe-import.contracts[].artifacts[].exactly-one-nonempty` | список target-колонок | пусто | Требует ровно один непустой carrier после mapping и отклоняет неоднозначные либо полностью пустые строки IOC aggregate. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns` | список mappings | обязателен | Произвольный SQL/код запрещён. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns[].target` | artifact column | обязателен | Unique target. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns[].source` | recognized header | обязателен | Required/optional canonical header. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns[].transforms` | ordered list | пусто | Только registered transforms. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns[].merge-policy` | merge policy | опционален | Column override ниже ceiling. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].validation` | зарегистрированный validator | опционален | Применяет именованную структурную проверку после transforms и до staging; произвольные выражения не принимаются. |
 | `ioc.dataframe-import.contracts[].requested-slot` | object | опционален | Только для artifact с external ID. |
 | `ioc.dataframe-import.contracts[].requested-slot.source-column` | recognized header | обязателен внутри object | Requested external slot. |
 | `ioc.dataframe-import.contracts[].requested-slot.profile` | export profile | обязателен внутри object | Slot scope. |

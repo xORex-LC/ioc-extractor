@@ -59,6 +59,7 @@ public final class FileSourceMessageHandler implements AutoCloseable {
     private final DiagnosticFactory diagnostics;
     private final ScheduledExecutorService retryScheduler;
     private final Set<Path> retrying = ConcurrentHashMap.newKeySet();
+    private final OrderedDocumentAdmissionHandler orderedAdmissions;
 
     public FileSourceMessageHandler(FileSourceHasher hasher,
                                     IngestSourceUseCase useCase,
@@ -69,7 +70,21 @@ public final class FileSourceMessageHandler implements AutoCloseable {
                                     DiagnosticSink diagnosticSink) {
         this(hasher, useCase, rejectUseCase, clock, maxAttempts, backoff, diagnosticSink,
                 Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform()
-                        .daemon().name("ioc-ingest-retry", 0).factory()));
+                        .daemon().name("ioc-ingest-retry", 0).factory()), null);
+    }
+
+    /** Creates a handler with durable pre-hash document admission. */
+    public FileSourceMessageHandler(FileSourceHasher hasher,
+                                    IngestSourceUseCase useCase,
+                                    RejectIngestionUseCase rejectUseCase,
+                                    Clock clock,
+                                    int maxAttempts,
+                                    Duration backoff,
+                                    DiagnosticSink diagnosticSink,
+                                    OrderedDocumentAdmissionHandler orderedAdmissions) {
+        this(hasher, useCase, rejectUseCase, clock, maxAttempts, backoff, diagnosticSink,
+                Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform()
+                        .daemon().name("ioc-ingest-retry", 0).factory()), orderedAdmissions);
     }
 
     FileSourceMessageHandler(FileSourceHasher hasher,
@@ -80,6 +95,19 @@ public final class FileSourceMessageHandler implements AutoCloseable {
                              Duration backoff,
                              DiagnosticSink diagnosticSink,
                              ScheduledExecutorService retryScheduler) {
+        this(hasher, useCase, rejectUseCase, clock, maxAttempts, backoff,
+                diagnosticSink, retryScheduler, null);
+    }
+
+    FileSourceMessageHandler(FileSourceHasher hasher,
+                             IngestSourceUseCase useCase,
+                             RejectIngestionUseCase rejectUseCase,
+                             Clock clock,
+                             int maxAttempts,
+                             Duration backoff,
+                             DiagnosticSink diagnosticSink,
+                             ScheduledExecutorService retryScheduler,
+                             OrderedDocumentAdmissionHandler orderedAdmissions) {
         this.hasher = Objects.requireNonNull(hasher, "hasher");
         this.useCase = Objects.requireNonNull(useCase, "useCase");
         this.rejectUseCase = Objects.requireNonNull(rejectUseCase, "rejectUseCase");
@@ -89,11 +117,16 @@ public final class FileSourceMessageHandler implements AutoCloseable {
         this.diagnosticSink = Objects.requireNonNull(diagnosticSink, "diagnosticSink");
         this.diagnostics = new DiagnosticFactory(clock);
         this.retryScheduler = Objects.requireNonNull(retryScheduler, "retryScheduler");
+        this.orderedAdmissions = orderedAdmissions;
     }
 
     public void handle(File file) {
         Path source = file.toPath().toAbsolutePath().normalize();
         ObservationId observationId = new ObservationId(UUID.randomUUID().toString());
+        if (orderedAdmissions != null) {
+            handleOrdered(source, observationId);
+            return;
+        }
         if (backoff.isPositive() && maxAttempts > 1) {
             if (retrying.add(source)) {
                 hashAsync(new RetryContext(source, observationId), 1);
@@ -101,6 +134,35 @@ public final class FileSourceMessageHandler implements AutoCloseable {
             return;
         }
         handleSynchronously(source, observationId);
+    }
+
+    private void handleOrdered(Path source, ObservationId observationId) {
+        OrderedDocumentAdmissionHandler.AdmittedDocument admitted = admitWithRetries(
+                source, observationId);
+        IngestSourceCommand command = new IngestSourceCommand(
+                admitted.source(), admitted.registration());
+        RetryContext context = new RetryContext(source, observationId, command);
+        if (backoff.isPositive() && maxAttempts > 1) {
+            if (retrying.add(source)) {
+                ingestAsync(context, command.key(), 1, null);
+            }
+            return;
+        }
+        ingestSynchronously(context, command.key());
+    }
+
+    private OrderedDocumentAdmissionHandler.AdmittedDocument admitWithRetries(
+            Path source, ObservationId observationId) {
+        RuntimeException last = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return orderedAdmissions.admit(source, observationId, Instant.now(clock));
+            } catch (RuntimeException failure) {
+                last = failure;
+            }
+        }
+        throw new IocExtractorException("Document admission failed after retries: " + source,
+                Objects.requireNonNull(last, "admission failure"));
     }
 
     @Override
@@ -117,12 +179,16 @@ public final class FileSourceMessageHandler implements AutoCloseable {
             rejectUnreadable(source, observationId, exhausted.failure());
             return;
         }
+        ingestSynchronously(new RetryContext(source, observationId, null), key);
+    }
+
+    private void ingestSynchronously(RetryContext context, SourceKey key) {
         RuntimeException last = null;
         boolean alreadyRejected = false;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 IngestSourceResult result = useCase.ingest(
-                        new IngestSourceCommand(source, observationId, key, Instant.now(clock)));
+                        command(context, key));
                 if (result.status() == IngestionStatus.FAILED) {
                     if (last == null) {
                         return;
@@ -130,7 +196,7 @@ public final class FileSourceMessageHandler implements AutoCloseable {
                     alreadyRejected = true;
                     break;
                 }
-                logHandledSource(result, source, key);
+                logHandledSource(result, context.source(), key);
                 return;
             } catch (RuntimeException e) {
                 last = e;
@@ -140,7 +206,8 @@ public final class FileSourceMessageHandler implements AutoCloseable {
         if (!alreadyRejected) {
             try {
                 rejectUseCase.reject(
-                        observationId, key, last == null ? "source ingestion failed" : last.getMessage());
+                        context.observationId(), key,
+                        last == null ? "source ingestion failed" : last.getMessage());
             } catch (RuntimeException rejectionFailure) {
                 if (last != null) {
                     rejectionFailure.addSuppressed(last);
@@ -149,7 +216,8 @@ public final class FileSourceMessageHandler implements AutoCloseable {
             }
         }
         emitIngestDiagnostic(terminal);
-        throw new IocExtractorException("Source ingestion failed after retries: " + source, terminal);
+        throw new IocExtractorException(
+                "Source ingestion failed after retries: " + context.source(), terminal);
     }
 
     private SourceKey hashWithRetries(Path source) {
@@ -267,8 +335,7 @@ public final class FileSourceMessageHandler implements AutoCloseable {
                              int attempt,
                              RuntimeException previousFailure) {
         try {
-            IngestSourceResult result = useCase.ingest(new IngestSourceCommand(
-                    context.source(), context.observationId(), key, Instant.now(clock)));
+            IngestSourceResult result = useCase.ingest(command(context, key));
             if (result.status() == IngestionStatus.FAILED && previousFailure != null) {
                 completeAsyncFailure(context, key, previousFailure, true);
                 return;
@@ -315,7 +382,20 @@ public final class FileSourceMessageHandler implements AutoCloseable {
         log.error("Source ingestion failed after scheduled retries: {}", context.source(), terminal);
     }
 
-    private record RetryContext(Path source, ObservationId observationId) {
+    private IngestSourceCommand command(RetryContext context, SourceKey key) {
+        return context.command() == null
+                ? new IngestSourceCommand(
+                        context.source(), context.observationId(), key, Instant.now(clock))
+                : context.command();
+    }
+
+    private record RetryContext(Path source,
+                                ObservationId observationId,
+                                IngestSourceCommand command) {
+
+        private RetryContext(Path source, ObservationId observationId) {
+            this(source, observationId, null);
+        }
     }
 
     private static final class HashingExhaustedException extends RuntimeException {

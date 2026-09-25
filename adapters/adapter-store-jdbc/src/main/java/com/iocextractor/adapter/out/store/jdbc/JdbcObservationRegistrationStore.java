@@ -3,6 +3,7 @@ package com.iocextractor.adapter.out.store.jdbc;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.observation.ObservationOrigin;
 import com.iocextractor.application.observation.ObservationOrder;
+import com.iocextractor.application.observation.ObservationRegistrationPurgeOutcome;
 import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.application.port.out.observation.ObservationRegistrationStore;
 import com.iocextractor.common.IocExtractorException;
@@ -14,6 +15,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Objects;
 
 /** SQLite order authority: one short write transaction, never nested with service storage. */
@@ -110,9 +112,16 @@ public final class JdbcObservationRegistrationStore implements ObservationRegist
 
     @Override
     public boolean purgeTerminal(RegisteredObservation registration) {
+        return purgeTerminalSafely(registration) == ObservationRegistrationPurgeOutcome.PURGED;
+    }
+
+    @Override
+    public ObservationRegistrationPurgeOutcome purgeTerminalSafely(
+            RegisteredObservation registration) {
         Objects.requireNonNull(registration, "registration");
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement("""
+        try (Connection connection = dataSource.getConnection()) {
+            int deleted;
+            try (PreparedStatement statement = connection.prepareStatement("""
                      DELETE FROM registered_observation
                      WHERE occurrence_id = ? AND admission_order = ? AND terminal_at_ms IS NOT NULL
                        AND NOT EXISTS (
@@ -128,11 +137,56 @@ public final class JdbcObservationRegistrationStore implements ObservationRegist
                          SELECT 1 FROM canonical_observation observation
                          WHERE observation.observation_id = registered_observation.occurrence_id)
                      """)) {
-            statement.setString(1, registration.observationId().value());
-            statement.setLong(2, registration.admissionOrder().value());
-            return statement.executeUpdate() == 1;
+                statement.setString(1, registration.observationId().value());
+                statement.setLong(2, registration.admissionOrder().value());
+                deleted = statement.executeUpdate();
+            }
+            if (deleted == 1) {
+                return ObservationRegistrationPurgeOutcome.PURGED;
+            }
+            return find(connection, registration.observationId(), registration.namespaceId()) == null
+                    ? ObservationRegistrationPurgeOutcome.MISSING
+                    : ObservationRegistrationPurgeOutcome.REFERENCED;
         } catch (SQLException failure) {
             throw new IocExtractorException("Failed to purge observation registrations", failure);
+        }
+    }
+
+    @Override
+    public int purgeTerminalOneshotBefore(Instant cutoff, int limit) {
+        Objects.requireNonNull(cutoff, "cutoff");
+        if (limit < 1) {
+            throw new IllegalArgumentException("Observation purge limit must be positive");
+        }
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     DELETE FROM registered_observation
+                     WHERE occurrence_id IN (
+                       SELECT candidate.occurrence_id
+                       FROM registered_observation candidate
+                       WHERE candidate.origin_kind = 'ONESHOT'
+                         AND candidate.terminal_at_ms IS NOT NULL
+                         AND candidate.terminal_at_ms < ?
+                         AND NOT EXISTS (
+                           SELECT 1 FROM canonical_lifecycle_field_origin lifecycle_origin
+                           WHERE lifecycle_origin.occurrence_id = candidate.occurrence_id)
+                         AND NOT EXISTS (
+                           SELECT 1 FROM canonical_compat_field_origin compat_origin
+                           WHERE compat_origin.occurrence_id = candidate.occurrence_id)
+                         AND NOT EXISTS (
+                           SELECT 1 FROM canonical_lifecycle_field_origin_history history_origin
+                           WHERE history_origin.occurrence_id = candidate.occurrence_id)
+                         AND NOT EXISTS (
+                           SELECT 1 FROM canonical_observation observation
+                           WHERE observation.observation_id = candidate.occurrence_id)
+                       ORDER BY candidate.terminal_at_ms, candidate.admission_order
+                       LIMIT ?)
+                     """)) {
+            statement.setLong(1, cutoff.toEpochMilli());
+            statement.setInt(2, limit);
+            return statement.executeUpdate();
+        } catch (SQLException failure) {
+            throw new IocExtractorException("Failed to purge terminal oneshot registrations", failure);
         }
     }
 

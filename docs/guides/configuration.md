@@ -269,7 +269,8 @@ longest producer-side non-atomic copy interval.
 | `ioc.dataframe-import.contracts[].mode` | `as-is`, `processed` | required | No implicit preprocessing in `as-is`. |
 | `ioc.dataframe-import.contracts[].routing` | `target-only`, `related-artifacts` | required | Related mappings also require source authority. |
 | `ioc.dataframe-import.contracts[].row-failure-policy` | `accept-valid`, `reject-delivery` | required | Selects row isolation versus whole-delivery rejection. |
-| `ioc.dataframe-import.contracts[].duplicate-policy` | `coalesce`, `keep-first` | required | Deterministic within-delivery duplicate handling. |
+| `ioc.dataframe-import.contracts[].duplicate-policy` | `coalesce`, `keep-first`, `last-nonempty` | required | Deterministic within-delivery duplicate handling; `last-nonempty` keeps the last logical CSV record with a nonblank selection value. |
+| `ioc.dataframe-import.contracts[].duplicate-selection-column` | recognized header | required for `last-nonempty` | Column used only to select the winning whole record; it does not merge cells across duplicate rows. |
 | `ioc.dataframe-import.contracts[].renew-unchanged` | boolean | required | Whether an accepted exact no-op confirms lifecycle validity. |
 | `ioc.dataframe-import.contracts[].formula-policy` | `reject`, `machine-only-preserve` | required | Preservation requires explicit source authority. |
 | `ioc.dataframe-import.contracts[].merge-default` | `keep-existing`, `fill-missing`, `replace-non-null`, `authoritative`, `reject-conflict` | required | Column/artifact overrides cannot exceed the source ceiling. |
@@ -279,11 +280,14 @@ longest producer-side non-atomic copy interval.
 | `ioc.dataframe-import.contracts[].artifacts[].record-key` | identity definition ID | required | Must equal the artifact's active declared record key. |
 | `ioc.dataframe-import.contracts[].artifacts[].match-keys` | identity definition ID list | required | Every name must exist for that artifact. |
 | `ioc.dataframe-import.contracts[].artifacts[].merge-default` | merge policy | optional | Artifact override below the source ceiling. |
+| `ioc.dataframe-import.contracts[].artifacts[].source-label-target` | target column | optional | Receives the configured managed-source label for processed imports; the target must be mapped by this branch. |
+| `ioc.dataframe-import.contracts[].artifacts[].exactly-one-nonempty` | target-column list | empty | Requires exactly one listed carrier after mapping; used to reject ambiguous or all-empty IOC aggregate rows. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns` | mapping list | required | Target/source and ordered registered transforms; arbitrary code or SQL is not allowed. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns[].target` | artifact column | required | Unique target within the artifact branch. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns[].source` | recognized header | required | Required or optional canonical input header. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns[].transforms` | ordered transform list | empty | Registered transform specifications only. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns[].merge-policy` | merge policy | optional | Column override below the source ceiling. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].validation` | registered validator | optional | Applies a named structural validator after transforms and before staging; arbitrary expressions are not accepted. |
 | `ioc.dataframe-import.contracts[].requested-slot` | optional mapping | omitted | Only artifacts with an external ID and a containing stable-slot export profile may use it. |
 | `ioc.dataframe-import.contracts[].requested-slot.source-column` | recognized header | required when present | Positive requested external slot, never canonical identity. |
 | `ioc.dataframe-import.contracts[].requested-slot.profile` | export profile | required when present | Scopes the external slot. |

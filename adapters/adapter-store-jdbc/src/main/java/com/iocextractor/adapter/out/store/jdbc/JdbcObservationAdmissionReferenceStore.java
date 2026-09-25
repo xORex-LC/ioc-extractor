@@ -33,6 +33,22 @@ public final class JdbcObservationAdmissionReferenceStore
     }
 
     @Override
+    public boolean isRegistrationReserved(ObservationId observationId) {
+        Objects.requireNonNull(observationId, "observationId");
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT 1 FROM import_observation_reservation WHERE delivery_id = ?
+                     """)) {
+            statement.setString(1, observationId.value());
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next();
+            }
+        } catch (SQLException failure) {
+            throw new IocExtractorException("Failed to read import observation reservation", failure);
+        }
+    }
+
+    @Override
     public ObservationAdmissionReference link(RegisteredObservation registration) {
         Objects.requireNonNull(registration, "registration");
         if (registration.origin() != ObservationOrigin.MANAGED_IMPORT) {
@@ -147,12 +163,18 @@ public final class JdbcObservationAdmissionReferenceStore
         }
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
-                     SELECT occurrence_id, origin_kind, dataframe_namespace, admission_order,
-                            version, terminal_outcome, registration_finalized,
-                            created_at_ms, updated_at_ms
-                     FROM observation_admission_reference
-                     WHERE registration_finalized = 1 AND updated_at_ms < ?
-                     ORDER BY updated_at_ms, occurrence_id LIMIT ?
+                     SELECT reference.occurrence_id, reference.origin_kind,
+                            reference.dataframe_namespace, reference.admission_order,
+                            reference.version, reference.terminal_outcome,
+                            reference.registration_finalized,
+                            reference.created_at_ms, reference.updated_at_ms
+                     FROM observation_admission_reference reference
+                     LEFT JOIN import_delivery delivery
+                       ON delivery.delivery_id = reference.occurrence_id
+                     WHERE reference.registration_finalized = 1
+                       AND reference.updated_at_ms < ?
+                       AND (delivery.delivery_id IS NULL OR delivery.state = 'TERMINAL')
+                     ORDER BY reference.updated_at_ms, reference.occurrence_id LIMIT ?
                      """)) {
             statement.setLong(1, cutoff.toEpochMilli());
             statement.setInt(2, limit);

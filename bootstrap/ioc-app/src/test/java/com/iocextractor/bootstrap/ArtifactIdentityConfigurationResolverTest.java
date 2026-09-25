@@ -48,6 +48,21 @@ class ArtifactIdentityConfigurationResolverTest {
     }
 
     @Test
+    void exactV020SetAlsoReceivesTheShippedAggregateIdentity() {
+        var legacy = List.of(
+                legacy("masks", null, "mask"),
+                legacy("ip_list", null, "ip"),
+                legacy("address_blacklist", ArtifactKeyMode.FIRST_NON_EMPTY,
+                        "forbidden_url", "forbidden_ip"),
+                legacy("hashes", ArtifactKeyMode.FIRST_NON_EMPTY,
+                        "hash_md5", "hash_sha1", "hash_sha256"));
+
+        assertThat(ArtifactIdentityConfigurationResolver.resolveAll(legacy, true))
+                .extracting(definition -> definition.artifactName())
+                .containsExactly("masks", "ip_list", "address_blacklist", "hashes", "ioc_aggregate");
+    }
+
+    @Test
     void preservesExplicitCurrentDefinition() {
         var configured = new IocProperties.ArtifactIdentity.Artifact(
                 "custom", List.of("value"), ArtifactKeyMode.FIRST_NON_EMPTY, 3,

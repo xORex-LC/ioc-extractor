@@ -4,6 +4,8 @@ import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
+import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
+import com.iocextractor.application.observation.ObservationOrderingPolicy;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -60,6 +62,16 @@ public class IngestFlowConfiguration {
     }
 
     @Bean
+    public OrderedDocumentAdmissionHandler orderedDocumentAdmissionHandler(
+            DocumentAdmissionService admissions,
+            SourceLifecycle sources,
+            FileSourceHasher hasher,
+            IngestionLedger ledger) {
+        return new OrderedDocumentAdmissionHandler(
+                admissions, sources, new FileDocumentCandidateEvidenceReader(), hasher, ledger);
+    }
+
+    @Bean
     @ConditionalOnProperty(prefix = "ioc.ingestion.ledger", name = "type", havingValue = "file",
             matchIfMissing = true)
     public IngestionLedger ingestionLedger(IngestAdapterProperties properties, Clock ingestClock) {
@@ -72,9 +84,12 @@ public class IngestFlowConfiguration {
                                                              RejectIngestionUseCase rejectUseCase,
                                                              com.iocextractor.diagnostics.sink.DiagnosticSink diagnosticSink,
                                                              IngestAdapterProperties properties,
-                                                             Clock ingestClock) {
+                                                             Clock ingestClock,
+                                                             OrderedDocumentAdmissionHandler orderedAdmissions,
+                                                             ObservationOrderingPolicy orderingPolicy) {
         return new FileSourceMessageHandler(hasher, useCase, rejectUseCase, ingestClock,
-                properties.retry().maxAttempts(), properties.retry().backoff(), diagnosticSink);
+                properties.retry().maxAttempts(), properties.retry().backoff(), diagnosticSink,
+                orderingPolicy.enabled() ? orderedAdmissions : null);
     }
 
     @Bean

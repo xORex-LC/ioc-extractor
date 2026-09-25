@@ -33,7 +33,9 @@ import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleHistoryStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleReconciliationStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleStatusReader;
 import com.iocextractor.adapter.out.store.jdbc.JdbcIngestionLedger;
+import com.iocextractor.adapter.out.store.jdbc.JdbcDocumentAdmissionJournal;
 import com.iocextractor.adapter.out.store.jdbc.JdbcObservationRegistrationStore;
+import com.iocextractor.adapter.out.store.jdbc.JdbcObservationRegistrationStatusReader;
 import com.iocextractor.adapter.out.store.jdbc.JdbcExportProgressStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcExportRunLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcRunLedger;
@@ -55,6 +57,8 @@ import com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator;
 import com.iocextractor.adapter.in.ingest.IngestionLifecycleState;
 import com.iocextractor.adapter.in.ingest.IngestionStartupObserver;
 import com.iocextractor.adapter.in.ingest.FileSourceHasher;
+import com.iocextractor.adapter.in.ingest.FileDocumentAdmissionJournal;
+import com.iocextractor.adapter.in.ingest.OrderedDocumentAdmissionHandler;
 import com.iocextractor.application.artifact.IngestRunRecoveryService;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.ArtifactIdSequence;
@@ -88,7 +92,10 @@ import com.iocextractor.application.export.SliceRetentionService;
 import com.iocextractor.application.export.StandaloneSliceRetentionGuard;
 import com.iocextractor.application.ingest.IngestionService;
 import com.iocextractor.application.ingest.IngestionLifecycleSupport;
+import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
 import com.iocextractor.application.observation.ObservationOrderedExtractionDecorator;
+import com.iocextractor.application.observation.ManagedImportObservationAdmission;
+import com.iocextractor.application.observation.ObservationOrderingPolicy;
 import com.iocextractor.application.maintenance.RetentionAction;
 import com.iocextractor.application.maintenance.RetentionService;
 import com.iocextractor.application.maintenance.RetentionTarget;
@@ -104,6 +111,7 @@ import com.iocextractor.application.port.in.export.RecoverExportUseCase;
 import com.iocextractor.application.port.in.export.RunSliceRetentionUseCase;
 import com.iocextractor.application.port.in.export.ValidateExportProfileUseCase;
 import com.iocextractor.application.port.in.ingest.RecoverIngestionUseCase;
+import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.maintenance.RetentionStore;
@@ -126,9 +134,11 @@ import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleHistory
 import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleReconciliationStore;
 import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleStatusReader;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
+import com.iocextractor.application.port.out.ingest.DocumentAdmissionJournal;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.port.out.ingest.SourcePreparerFactory;
 import com.iocextractor.application.port.out.observation.ObservationRegistrationStore;
+import com.iocextractor.application.port.out.observation.ObservationRegistrationStatusReader;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.application.port.out.export.ArtifactRevisionReader;
 import com.iocextractor.application.port.out.export.ArtifactSliceWriter;
@@ -417,11 +427,14 @@ public class AppConfig {
                 throw failure;
             }
         };
-        boolean orderedFieldsEnabled = ArtifactPolicyCatalog.compile(props).values().stream()
-                .anyMatch(policy -> !policy.fields().isEmpty());
-        return orderedFieldsEnabled
+        return ArtifactPolicyCatalog.hasEnabledOrderedFields(props)
                 ? new ObservationOrderedExtractionDecorator(lifecycleAware, observationRegistrations)
                 : lifecycleAware;
+    }
+
+    @Bean
+    public ObservationOrderingPolicy observationOrderingPolicy(IocProperties props) {
+        return new ObservationOrderingPolicy(ArtifactPolicyCatalog.hasEnabledOrderedFields(props));
     }
 
     @Bean
@@ -474,6 +487,30 @@ public class AppConfig {
                                                SchemaMigrationResult serviceSchemaMigration,
                                                Clock clock) {
         return new JdbcIngestionLedger(serviceStorageDataSource, clock);
+    }
+
+    @Bean
+    @ConditionalOnJdbcLedger
+    public DocumentAdmissionJournal jdbcDocumentAdmissionJournal(
+            @Qualifier("serviceStorageDataSource") HikariDataSource serviceStorageDataSource,
+            @Qualifier("serviceSchemaMigration") SchemaMigrationResult serviceSchemaMigration) {
+        return new JdbcDocumentAdmissionJournal(serviceStorageDataSource);
+    }
+
+    @Bean
+    @ConditionalOnFileLedger
+    public DocumentAdmissionJournal fileDocumentAdmissionJournal(IocProperties props) {
+        return new FileDocumentAdmissionJournal(
+                Path.of(props.ingestion().ledger().path()).resolve("document-admission"));
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
+    public DocumentAdmissionService documentAdmissionService(
+            DocumentAdmissionJournal journal,
+            ObservationRegistrationStore registrations,
+            Clock clock) {
+        return new DocumentAdmissionService(journal, registrations, clock);
     }
 
     @Bean
@@ -555,6 +592,36 @@ public class AppConfig {
             @Qualifier("dataframeFormatSchemaMigration") SchemaMigrationResult dataframeFormatSchemaMigration,
             Clock clock) {
         return new JdbcObservationRegistrationStore(dataframeStorageDataSource, clock);
+    }
+
+    @Bean
+    public ObservationRegistrationStatusReader observationRegistrationStatusReader(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            @Qualifier("dataframeFormatSchemaMigration") SchemaMigrationResult dataframeFormatSchemaMigration) {
+        return new JdbcObservationRegistrationStatusReader(dataframeStorageDataSource);
+    }
+
+    @Bean
+    public ObservationRegistrationHealthIndicator observationRegistrationHealthIndicator(
+            ObservationRegistrationStatusReader reader,
+            Clock clock) {
+        return new ObservationRegistrationHealthIndicator(reader, clock);
+    }
+
+    @Bean
+    public ObservationRegistrationRetentionScheduler observationRegistrationRetentionScheduler(
+            ObservationRegistrationStore registrations,
+            ObjectProvider<DocumentAdmissionService> documents,
+            ObjectProvider<ManagedImportObservationAdmission> imports,
+            IocProperties props,
+            Clock clock) {
+        return new ObservationRegistrationRetentionScheduler(
+                registrations,
+                documents.getIfAvailable(),
+                imports.getIfAvailable(),
+                clock,
+                props.lifecycle().receiptRetention(),
+                props.lifecycle().historyCleanupInterval());
     }
 
     @Bean
@@ -1184,13 +1251,24 @@ public class AppConfig {
             IngestionStartupObserver startupObserver,
             Clock clock,
             @Qualifier("iocIngestionFlow") IntegrationFlow intakeFlow,
-            ObjectProvider<DataframeImportRuntimeLifecycle> importRuntime) {
+            ObjectProvider<DataframeImportRuntimeLifecycle> importRuntime,
+            OrderedDocumentStartupRecovery documentRecovery) {
         if (!(intakeFlow instanceof Lifecycle lifecycle)) {
             throw new IllegalStateException("iocIngestionFlow does not expose lifecycle control");
         }
         return new CanonicalIntakeStartupCoordinator(
                 runRecovery, sourceRecovery, lifecycleAdmission, lifecycle,
-                importRuntime.getIfAvailable(), lifecycleState, startupObserver, clock);
+                importRuntime.getIfAvailable(), lifecycleState, startupObserver, clock,
+                documentRecovery);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
+    public OrderedDocumentStartupRecovery orderedDocumentStartupRecovery(
+            OrderedDocumentAdmissionHandler admissions,
+            IngestSourceUseCase ingestion,
+            ObservationOrderingPolicy orderingPolicy) {
+        return new OrderedDocumentStartupRecovery(admissions, ingestion, orderingPolicy);
     }
 
     @Bean
@@ -1208,6 +1286,8 @@ public class AppConfig {
                                              ControlEventPublisher controlEventPublisher,
                                              DiagnosticSink diagnosticSink,
                                              KeyedExecutionGuard ingestionExecutionGuard,
+                                             DocumentAdmissionService documentAdmissions,
+                                             ObservationOrderingPolicy orderingPolicy,
                                              IocProperties props,
                                              Clock clock) {
         IngestionLifecycleSupport lifecycleSupport = props.lifecycle().validity().mode()
@@ -1230,7 +1310,8 @@ public class AppConfig {
                 clock,
                 diagnosticSink,
                 ingestionExecutionGuard,
-                lifecycleSupport);
+                lifecycleSupport,
+                orderingPolicy.enabled() ? documentAdmissions : null);
     }
 
     @Bean
@@ -1468,9 +1549,10 @@ public class AppConfig {
     }
 
     List<ArtifactIdentityDefinition> artifactIdentityDefinitions(IocProperties props) {
-        return props.artifactIdentity().artifacts().stream()
-                .map(ArtifactIdentityConfigurationResolver::resolve)
-                .toList();
+        boolean includeShippedAggregate = props.sink().artifacts().stream()
+                .anyMatch(artifact -> "ioc_aggregate".equals(artifact.name()));
+        return ArtifactIdentityConfigurationResolver.resolveAll(
+                props.artifactIdentity().artifacts(), includeShippedAggregate);
     }
 
     List<ArtifactIdAllocatorDefinition> artifactIdAllocatorDefinitions(

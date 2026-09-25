@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Bounded adapter for the four exact artifact identities shipped by v0.2.0.
@@ -38,6 +39,39 @@ final class V020ArtifactIdentityCompatibility {
 
     static boolean appliesTo(IocProperties.ArtifactIdentity.Artifact artifact) {
         return resolve(artifact).isPresent();
+    }
+
+    static boolean isExactLegacySet(List<IocProperties.ArtifactIdentity.Artifact> artifacts) {
+        return artifacts != null
+                && artifacts.size() == SHAPES.size()
+                && artifacts.stream().allMatch(V020ArtifactIdentityCompatibility::appliesTo)
+                && artifacts.stream().map(IocProperties.ArtifactIdentity.Artifact::name)
+                        .collect(java.util.stream.Collectors.toSet())
+                        .equals(Set.of("masks", "ip_list", "address_blacklist", "hashes"));
+    }
+
+    static boolean containsCompleteLegacyBase(
+            List<IocProperties.ArtifactIdentity.Artifact> artifacts) {
+        if (artifacts == null) {
+            return false;
+        }
+        Set<String> resolvedLegacyNames = artifacts.stream()
+                .filter(V020ArtifactIdentityCompatibility::appliesTo)
+                .map(IocProperties.ArtifactIdentity.Artifact::name)
+                .collect(java.util.stream.Collectors.toSet());
+        return resolvedLegacyNames.containsAll(
+                Set.of("masks", "ip_list", "address_blacklist", "hashes"));
+    }
+
+    static ArtifactIdentityDefinition aggregateDefinition() {
+        List<String> carriers = List.of("ip_address", "url_match", "host_match", "hash");
+        return new ArtifactIdentityDefinition(
+                "ioc_aggregate",
+                new CanonicalKeyDefinition(
+                        "ioc-aggregate-row-v1", CanonicalKeyMode.COMPOSITE, carriers),
+                List.of(new CanonicalKeyDefinition(
+                        "ioc-aggregate-v1", CanonicalKeyMode.COMPOSITE, carriers)),
+                1);
     }
 
     private static boolean matchesCompatibilityEnvelope(

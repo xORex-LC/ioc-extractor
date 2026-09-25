@@ -11,6 +11,12 @@ import java.util.Optional;
 /** Service-side recovery reference for import delivery admission. */
 public interface ObservationAdmissionReferenceStore {
 
+    /**
+     * Returns whether the service ledger durably proves that this occurrence was
+     * reserved by the ordered-admission protocol and may allocate a new rank.
+     */
+    boolean isRegistrationReserved(ObservationId observationId);
+
     ObservationAdmissionReference link(RegisteredObservation registration);
 
     Optional<ObservationAdmissionReference> find(ObservationId observationId);

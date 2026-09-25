@@ -145,6 +145,7 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
                                 .orElseThrow(() -> new IllegalStateException(
                                         "Import claim reservation was neither inserted nor resolved")));
                 if (affected == 1) {
+                    reserveObservationAdmission(reservation);
                     appendTransition(delivery.id(), ImportDeliveryState.DETECTED,
                             ImportDeliveryState.DETECTED, "IMPORT.CLAIM_RESERVED", reservation.detectedAt());
                 }
@@ -153,6 +154,19 @@ public final class JdbcImportDeliveryLedger implements ImportDeliveryLedger {
             return Objects.requireNonNull(result, "transaction result");
         } catch (DataAccessException failure) {
             throw new IllegalStateException("Import claim reservation failed", failure);
+        }
+    }
+
+    private void reserveObservationAdmission(ImportClaimReservation reservation) {
+        int affected = jdbc.sql("""
+                        INSERT INTO import_observation_reservation(delivery_id, reserved_at_ms)
+                        VALUES (:delivery_id, :reserved_at_ms)
+                        """)
+                .param("delivery_id", reservation.deliveryId().value())
+                .param("reserved_at_ms", reservation.detectedAt().toEpochMilli())
+                .update();
+        if (affected != 1) {
+            throw new IllegalStateException("Import observation reservation changed no rows");
         }
     }
 

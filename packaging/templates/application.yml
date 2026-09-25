@@ -288,7 +288,6 @@ ioc:
               - { target: url_match,  source: url_match,  transforms: [ lower-host ], merge-policy: keep-existing, validation: url-address }
               - { target: host_match, source: host_match, transforms: [ lower-host ], merge-policy: keep-existing, validation: clean-domain }
               - { target: hash,       source: hash,       transforms: [ upper ], merge-policy: keep-existing, validation: hash }
-        requested-slot:
     runtime:
       dirs:
         processing: "./var/import/processing"

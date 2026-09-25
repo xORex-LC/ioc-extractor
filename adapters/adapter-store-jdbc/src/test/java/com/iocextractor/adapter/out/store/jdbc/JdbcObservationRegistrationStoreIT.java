@@ -2,6 +2,8 @@ package com.iocextractor.adapter.out.store.jdbc;
 
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
+import com.iocextractor.application.dataframeimport.model.ImportClaimReservation;
+import com.iocextractor.application.dataframeimport.model.ImportSourceId;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionReservation;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
@@ -101,7 +103,7 @@ class JdbcObservationRegistrationStoreIT {
     }
 
     @Test
-    void jdbcJournalsRecoverDocumentAndManagedImportTerminalHandshakes() {
+    void jdbcJournalsRecoverDocumentAndManagedImportTerminalHandshakes() throws Exception {
         try (HikariDataSource dataframe = dataSource("dataframe", "dataframe-journal.db");
              HikariDataSource service = dataSource("service", "service-journal.db")) {
             new SqliteUserVersionSchemaMigrator(dataframe, DataframeFormatMigrations.sqlite()).migrate();
@@ -123,19 +125,94 @@ class JdbcObservationRegistrationStoreIT {
             assertThat(documents.recover(10)).singleElement()
                     .satisfies(value -> assertThat(value.registrationFinalized()).isTrue());
             assertThat(claimed.registration()).isEqualTo(ordered.registration());
+            RegisteredObservation documentRegistration = ordered.registration().orElseThrow();
+            assertThat(registrations.purgeTerminal(documentRegistration)).isTrue();
+            assertThat(documents.purgeTerminalBefore(NOW.plusSeconds(1), 10)).isOne();
+            assertThat(documentJournal.find(documentId)).isEmpty();
 
             var imports = new ManagedImportObservationAdmission(registrations,
                     new JdbcObservationAdmissionReferenceStore(service, CLOCK), CLOCK);
+            insertLegacyImport(service, "legacy-import");
+            assertThatThrownBy(() -> imports.register(new ImportDeliveryId("legacy-import")))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("drain legacy work");
+
             ImportDeliveryId deliveryId = new ImportDeliveryId("import-jdbc");
+            new JdbcImportDeliveryLedger(service).reserveClaim(new ImportClaimReservation(
+                    deliveryId, new ImportSourceId("source-jdbc"), "candidate-jdbc", NOW));
             RegisteredObservation imported = imports.register(deliveryId);
             imports.complete(deliveryId, "SUCCEEDED");
             assertThat(imports.recover(10)).isEmpty();
             assertThat(imported.admissionOrder())
                     .isEqualTo(new ObservationOrder(ordered.registration().orElseThrow()
                             .admissionOrder().value() + 1));
+            assertThat(imports.purgeTerminalBefore(NOW.plusSeconds(1), 10)).isZero();
+            markImportTerminal(service, deliveryId);
             assertThat(imports.purgeTerminalBefore(NOW.plusSeconds(1), 10)).isOne();
             assertThatThrownBy(() -> registrations.resume(imported.observationId(),
                     imported.namespaceId())).isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    private void markImportTerminal(HikariDataSource dataSource, ImportDeliveryId deliveryId) throws Exception {
+        try (var connection = dataSource.getConnection();
+             var statement = connection.prepareStatement("""
+                     UPDATE import_delivery
+                     SET state = 'TERMINAL', terminal_outcome = 'SUCCEEDED',
+                         terminal_at_ms = ?, updated_at_ms = ?, purge_after_ms = ?
+                     WHERE delivery_id = ?
+                     """)) {
+            statement.setLong(1, NOW.toEpochMilli());
+            statement.setLong(2, NOW.toEpochMilli());
+            statement.setLong(3, NOW.plusSeconds(1).toEpochMilli());
+            statement.setString(4, deliveryId.value());
+            assertThat(statement.executeUpdate()).isOne();
+        }
+    }
+
+    private void insertLegacyImport(HikariDataSource dataSource, String deliveryId) throws Exception {
+        try (var connection = dataSource.getConnection();
+             var statement = connection.prepareStatement("""
+                     INSERT INTO import_delivery(
+                       delivery_id, source_id, candidate_token, state, version, attempt_count,
+                       created_at_ms, updated_at_ms)
+                     VALUES (?, 'legacy-source', 'legacy-candidate', 'DETECTED', 0, 0, ?, ?)
+                     """)) {
+            statement.setString(1, deliveryId);
+            statement.setLong(2, NOW.toEpochMilli());
+            statement.setLong(3, NOW.toEpochMilli());
+            statement.executeUpdate();
+        }
+    }
+
+    @Test
+    void statusAndBoundedCleanupKeepUnresolvedOneshotVisible() {
+        try (HikariDataSource dataSource = dataSource("dataframe", "observation-status.db")) {
+            new SqliteUserVersionSchemaMigrator(dataSource, DataframeFormatMigrations.sqlite()).migrate();
+            var registrations = new JdbcObservationRegistrationStore(dataSource, CLOCK);
+            var status = new JdbcObservationRegistrationStatusReader(dataSource);
+            RegisteredObservation document = registrations.registerNew(
+                    new ObservationId("document-pending"), ObservationOrigin.DOCUMENT);
+            RegisteredObservation unresolved = registrations.registerNew(
+                    new ObservationId("oneshot-unresolved"), ObservationOrigin.ONESHOT);
+            RegisteredObservation completed = registrations.registerNew(
+                    new ObservationId("oneshot-completed"), ObservationOrigin.ONESHOT);
+            registrations.markTerminal(completed.observationId(), completed.namespaceId());
+
+            assertThat(status.status()).satisfies(value -> {
+                assertThat(value.pendingTotal()).isEqualTo(2);
+                assertThat(value.pendingOneshot()).isOne();
+                assertThat(value.oldestPendingOneshot()).contains(NOW);
+            });
+            assertThat(registrations.purgeTerminalOneshotBefore(NOW.plusMillis(1), 1)).isOne();
+            assertThat(registrations.resume(document.observationId(), document.namespaceId()))
+                    .isEqualTo(document);
+            assertThat(registrations.resume(unresolved.observationId(), unresolved.namespaceId()))
+                    .isEqualTo(unresolved);
+            assertThatThrownBy(() -> registrations.resume(
+                    completed.observationId(), completed.namespaceId()))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Missing registered observation");
         }
     }
 

@@ -24,6 +24,7 @@ final class CanonicalIntakeStartupCoordinator implements ApplicationRunner, Orde
     private final DataframeImportRuntimeLifecycle importRuntime;
     private final IngestionLifecycleState lifecycleState;
     private final IngestionStartupObserver observer;
+    private final OrderedDocumentStartupRecovery documentRecovery;
     private final Clock clock;
 
     CanonicalIntakeStartupCoordinator(
@@ -35,6 +36,20 @@ final class CanonicalIntakeStartupCoordinator implements ApplicationRunner, Orde
             IngestionLifecycleState lifecycleState,
             IngestionStartupObserver observer,
             Clock clock) {
+        this(runRecovery, sourceRecovery, lifecycleAdmission, intakeFlow, importRuntime,
+                lifecycleState, observer, clock, null);
+    }
+
+    CanonicalIntakeStartupCoordinator(
+            IngestRunRecoveryService runRecovery,
+            RecoverIngestionUseCase sourceRecovery,
+            PrepareLifecycleAdmissionUseCase lifecycleAdmission,
+            Lifecycle intakeFlow,
+            DataframeImportRuntimeLifecycle importRuntime,
+            IngestionLifecycleState lifecycleState,
+            IngestionStartupObserver observer,
+            Clock clock,
+            OrderedDocumentStartupRecovery documentRecovery) {
         this.runRecovery = Objects.requireNonNull(runRecovery, "runRecovery");
         this.sourceRecovery = Objects.requireNonNull(sourceRecovery, "sourceRecovery");
         this.lifecycleAdmission = Objects.requireNonNull(lifecycleAdmission, "lifecycleAdmission");
@@ -43,6 +58,7 @@ final class CanonicalIntakeStartupCoordinator implements ApplicationRunner, Orde
         this.lifecycleState = Objects.requireNonNull(lifecycleState, "lifecycleState");
         this.observer = Objects.requireNonNull(observer, "observer");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.documentRecovery = documentRecovery;
     }
 
     @Override
@@ -58,7 +74,9 @@ final class CanonicalIntakeStartupCoordinator implements ApplicationRunner, Orde
         try {
             requireClosedIntake();
             int recoveredRuns = runRecovery.recover();
-            int recoveredSources = sourceRecovery.recoverIncomplete().size();
+            int recoveredDocuments = documentRecovery == null ? 0 : documentRecovery.recover();
+            int recoveredSources = Math.addExact(
+                    recoveredDocuments, sourceRecovery.recoverIncomplete().size());
             lifecycleAdmission.prepare();
             if (importRuntime != null) {
                 importRuntime.recoverBeforeIntake();

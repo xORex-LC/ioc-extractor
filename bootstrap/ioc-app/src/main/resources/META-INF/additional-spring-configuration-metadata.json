@@ -151,7 +151,10 @@
     },
     {
       "name": "ioc.dataframe-import.contracts[].duplicate-policy",
-      "values": [ { "value": "coalesce" }, { "value": "keep-first" } ]
+      "values": [
+        { "value": "coalesce" }, { "value": "keep-first" },
+        { "value": "last-nonempty" }
+      ]
     },
     {
       "name": "ioc.dataframe-import.contracts[].formula-policy",

@@ -12,6 +12,8 @@ import com.iocextractor.application.artifact.CanonicalKeyMode;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
 import com.iocextractor.application.artifact.lifecycle.LifecycleClockPolicy;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
+import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportArtifactBranch;
 import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
 import com.iocextractor.application.dataframeimport.model.ImportCell;
@@ -43,6 +45,8 @@ import com.iocextractor.application.dataframeimport.model.ImportWorkspaceLimits;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportCommand;
 import com.iocextractor.application.port.out.dataframeimport.CreateImportWorkspaceCommand;
 import com.iocextractor.application.port.out.dataframeimport.ImportWorkspaceWriter;
+import com.iocextractor.application.observation.ObservationOrigin;
+import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.application.tck.dataframeimport.CanonicalImportWriterContractTest;
 import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
@@ -188,6 +192,41 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
 
         assertThat(environment.count("masks")).isOne();
         assertThat(environment.count("import_commit")).isOne();
+    }
+
+    @Test
+    void orderedImportFieldUsesSharedRegistrationRankAcrossReverseCompletion() {
+        Environment environment = environment("ordered-import");
+        JdbcObservationRegistrationStore registrations =
+                new JdbcObservationRegistrationStore(environment.dataSource, CLOCK);
+        CanonicalImportCommand older = environment.stage(
+                "ordered-older", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "ordered.example", "source", "older"),
+                        OptionalLong.empty()))), List.of());
+        CanonicalImportCommand newer = environment.stage(
+                "ordered-newer", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "ordered.example", "source", "newer"),
+                        OptionalLong.empty()))), List.of());
+        RegisteredObservation olderRegistration = registrations.registerNew(
+                new ObservationId(older.deliveryId().value()), ObservationOrigin.MANAGED_IMPORT);
+        RegisteredObservation newerRegistration = registrations.registerNew(
+                new ObservationId(newer.deliveryId().value()), ObservationOrigin.MANAGED_IMPORT);
+        JdbcCanonicalImportWriter writer = environment.orderedWriter();
+
+        writer.promote(withRegistration(newer, newerRegistration));
+        writer.promote(withRegistration(older, olderRegistration));
+
+        assertThat(environment.queryString("SELECT source FROM masks"))
+                .isEqualTo("newer");
+        assertThat(environment.queryLong("""
+                SELECT admission_order FROM canonical_lifecycle_field_origin
+                WHERE artifact = 'masks' AND field_name = 'source'
+                """)).isEqualTo(newerRegistration.admissionOrder().value());
+        assertThat(environment.queryLong(
+                "SELECT revision FROM artifact_revision WHERE artifact = 'masks'"))
+                .isOne();
     }
 
     @Test
@@ -634,6 +673,13 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                 command.deliveryId(), command.sequence(), command.sourceId(), snapshot, contract, stage);
     }
 
+    private CanonicalImportCommand withRegistration(
+            CanonicalImportCommand command, RegisteredObservation registration) {
+        return new CanonicalImportCommand(
+                command.deliveryId(), command.sequence(), command.sourceId(), command.snapshot(),
+                command.contract(), command.stage(), registration);
+    }
+
     private Environment environment(String name) {
         Path database = tempDir.resolve(databases.incrementAndGet() + "-" + name + ".db");
         HikariDataSource dataSource = new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(
@@ -818,6 +864,26 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                     new JdbcLifecycleClock(dataSource, CLOCK,
                             new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30))),
                     new FixedRecordValidityPolicy(TTL), CLOCK, new JdbcWriterAdmission());
+        }
+
+        private JdbcCanonicalImportWriter orderedWriter() {
+            ArtifactWritePolicy policy = new ArtifactWritePolicy(
+                    ArtifactWritePolicy.DuplicateSelection.KEEP_FIRST,
+                    null,
+                    Map.of("source",
+                            ArtifactWritePolicy.FieldUpdatePolicy.LATEST_REGISTERED_KEEP_EXISTING));
+            return new JdbcCanonicalImportWriter(
+                    dataSource, schemas,
+                    List.of(
+                            new ArtifactIdAllocatorDefinition(
+                                    "masks", ArtifactIdStrategy.ASCENDING, 1, 1),
+                            new ArtifactIdAllocatorDefinition(
+                                    "hashes", ArtifactIdStrategy.ASCENDING, 1, 1)),
+                    identities, workspaceRoot,
+                    ignored -> EffectiveTime.at(NOW),
+                    new FixedRecordValidityPolicy(TTL), CLOCK,
+                    new JdbcWriterAdmission(), JdbcCanonicalImportObserver.NOOP,
+                    Duration.ofDays(90), Map.of("masks", policy));
         }
 
         private void deleteStage(CanonicalImportCommand command) {

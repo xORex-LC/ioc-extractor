@@ -24,6 +24,17 @@ final class ArtifactPolicyCatalog {
         return result;
     }
 
+    static boolean hasEnabledOrderedFields(IocProperties properties) {
+        if (properties.sink() == null || properties.sink().artifacts() == null) {
+            return false;
+        }
+        Map<String, ArtifactWritePolicy> policies = compile(properties);
+        return properties.sink().artifacts().stream()
+                .filter(IocProperties.Sink.Artifact::enabled)
+                .map(artifact -> policies.get(artifact.name()))
+                .anyMatch(policy -> policy != null && !policy.fields().isEmpty());
+    }
+
     static Map<String, ArtifactWritePolicy> compile(IocProperties properties, List<String> errors) {
         if (properties.sink() == null || properties.sink().artifacts() == null) {
             return Map.of();
@@ -51,7 +62,21 @@ final class ArtifactPolicyCatalog {
                 keys.put(identity.name(), new HashSet<>(identity.keyColumns()));
             }
         }
+        if (hasAggregateSink(properties)
+                && !keys.containsKey("ioc_aggregate")
+                && V020ArtifactIdentityCompatibility.containsCompleteLegacyBase(
+                        properties.artifactIdentity().artifacts())) {
+            keys.put("ioc_aggregate", Set.of("ip_address", "url_match", "host_match", "hash"));
+        }
         return keys;
+    }
+
+    private static boolean hasAggregateSink(IocProperties properties) {
+        return properties.sink() != null
+                && properties.sink().artifacts() != null
+                && properties.sink().artifacts().stream()
+                        .filter(java.util.Objects::nonNull)
+                        .anyMatch(artifact -> "ioc_aggregate".equals(artifact.name()));
     }
 
     private static ArtifactWritePolicy compileArtifact(IocProperties.Sink.Artifact artifact,

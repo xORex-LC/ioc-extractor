@@ -3,6 +3,7 @@ package com.iocextractor.application.ingest.admission;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.observation.ObservationOrigin;
+import com.iocextractor.application.observation.ObservationRegistrationPurgeOutcome;
 import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.application.port.out.ingest.DocumentAdmissionJournal;
 import com.iocextractor.application.port.out.observation.ObservationRegistrationStore;
@@ -11,6 +12,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /** Coordinates short local transactions without holding service and dataframe locks together. */
 public final class DocumentAdmissionService {
@@ -37,6 +39,11 @@ public final class DocumentAdmissionService {
         return advance(current, current.ordered(registration, clock.instant()));
     }
 
+    /** Returns durable admission state so an adapter retry can resume after ownership moved. */
+    public Optional<DocumentAdmission> find(ObservationId observationId) {
+        return journal.find(Objects.requireNonNull(observationId, "observationId"));
+    }
+
     public DocumentAdmission recordClaim(ObservationId id, DocumentCandidateEvidence evidence) {
         DocumentAdmission current = required(id);
         verifyRegistration(current);
@@ -47,6 +54,11 @@ public final class DocumentAdmissionService {
         DocumentAdmission current = required(id);
         verifyRegistration(current);
         return advance(current, current.linked(key, clock.instant()));
+    }
+
+    /** Resumes the exact durable registration linked to a document occurrence. */
+    public RegisteredObservation resume(ObservationId id) {
+        return verifyRegistration(required(id)).registration().orElseThrow();
     }
 
     public DocumentAdmission complete(ObservationId id, DocumentTerminalOutcome outcome) {
@@ -76,8 +88,10 @@ public final class DocumentAdmissionService {
             if (!admission.registrationFinalized()) {
                 continue;
             }
-            if (journal.purgeTerminal(admission.observationId(), admission.version())) {
-                registrations.purgeTerminal(admission.registration().orElseThrow());
+            ObservationRegistrationPurgeOutcome outcome = registrations.purgeTerminalSafely(
+                    admission.registration().orElseThrow());
+            if (outcome != ObservationRegistrationPurgeOutcome.REFERENCED
+                    && journal.purgeTerminal(admission.observationId(), admission.version())) {
                 purged++;
             }
         }

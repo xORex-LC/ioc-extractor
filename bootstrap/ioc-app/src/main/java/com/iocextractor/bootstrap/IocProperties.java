@@ -505,6 +505,7 @@ public record IocProperties(
                                @Valid List<Artifact> artifacts,
                                @Valid RequestedSlot requestedSlot) {
 
+            @ConstructorBinding
             public Contract {
                 artifacts = snapshotList(artifacts);
             }
@@ -593,6 +594,7 @@ public record IocProperties(
                                List<String> exactlyOneNonempty,
                                @Valid List<Column> columns) {
 
+            @ConstructorBinding
             public Artifact {
                 matchKeys = snapshotList(matchKeys);
                 exactlyOneNonempty = snapshotList(exactlyOneNonempty);
@@ -625,6 +627,7 @@ public record IocProperties(
                              ImportMergePolicy mergePolicy,
                              String validation) {
 
+            @ConstructorBinding
             public Column {
                 transforms = transforms == null ? List.of() : snapshotList(transforms);
             }

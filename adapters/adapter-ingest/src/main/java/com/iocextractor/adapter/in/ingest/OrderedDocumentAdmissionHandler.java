@@ -4,13 +4,16 @@ import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.ClaimedSource;
 import com.iocextractor.application.ingest.SourceKey;
 import com.iocextractor.application.ingest.SourceUnit;
+import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.admission.DocumentAdmission;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionPhase;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionReservation;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
 import com.iocextractor.application.ingest.admission.DocumentCandidateEvidence;
+import com.iocextractor.application.ingest.admission.DocumentTerminalOutcome;
 import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
+import com.iocextractor.application.port.out.ingest.IngestionLedger;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,33 +29,77 @@ public final class OrderedDocumentAdmissionHandler {
     private final SourceLifecycle sources;
     private final FileDocumentCandidateEvidenceReader evidenceReader;
     private final FileSourceHasher hasher;
+    private final IngestionLedger ledger;
 
     public OrderedDocumentAdmissionHandler(DocumentAdmissionService admissions,
                                            SourceLifecycle sources,
                                            FileDocumentCandidateEvidenceReader evidenceReader,
                                            FileSourceHasher hasher) {
+        this(admissions, sources, evidenceReader, hasher, null);
+    }
+
+    /** Creates a handler that reconciles terminal ingestion before touching claimed files. */
+    public OrderedDocumentAdmissionHandler(DocumentAdmissionService admissions,
+                                           SourceLifecycle sources,
+                                           FileDocumentCandidateEvidenceReader evidenceReader,
+                                           FileSourceHasher hasher,
+                                           IngestionLedger ledger) {
         this.admissions = Objects.requireNonNull(admissions, "admissions");
         this.sources = Objects.requireNonNull(sources, "sources");
         this.evidenceReader = Objects.requireNonNull(evidenceReader, "evidenceReader");
         this.hasher = Objects.requireNonNull(hasher, "hasher");
+        this.ledger = ledger;
     }
 
     public AdmittedDocument admit(Path source, ObservationId observationId, Instant detectedAt) {
         Path normalized = Objects.requireNonNull(source, "source").toAbsolutePath().normalize();
-        var reservation = new DocumentAdmissionReservation(observationId, normalized,
-                evidenceReader.read(normalized), sources.prehashClaimPath(normalized, observationId),
-                detectedAt);
+        DocumentAdmission existing = admissions.find(observationId).orElse(null);
+        if (existing != null && !existing.candidatePath().equals(normalized)) {
+            throw new IllegalStateException("Document admission candidate path changed on retry");
+        }
+        var reservation = existing == null
+                ? new DocumentAdmissionReservation(observationId, normalized,
+                        evidenceReader.read(normalized),
+                        sources.prehashClaimPath(normalized, observationId), detectedAt)
+                : new DocumentAdmissionReservation(
+                        observationId, existing.candidatePath(), existing.candidateEvidence(),
+                        existing.claimPath(), existing.createdAt());
         return advanceToLinked(admissions.admit(reservation));
     }
 
     public List<AdmittedDocument> recover(int limit) {
         List<AdmittedDocument> recovered = new ArrayList<>();
         for (DocumentAdmission admission : admissions.recover(limit)) {
+            if (completeFromIngestionLedger(admission)) {
+                continue;
+            }
             if (admission.phase() != DocumentAdmissionPhase.TERMINAL) {
                 recovered.add(advanceToLinked(admission));
             }
         }
         return List.copyOf(recovered);
+    }
+
+    private boolean completeFromIngestionLedger(DocumentAdmission admission) {
+        if (ledger == null || admission.phase() != DocumentAdmissionPhase.LINKED) {
+            return false;
+        }
+        return ledger.find(admission.observationId()).map(record -> {
+            if (record.status() == IngestionStatus.SOURCE_ARCHIVED) {
+                admissions.complete(admission.observationId(), DocumentTerminalOutcome.SUCCEEDED);
+                return true;
+            }
+            if (record.status() == IngestionStatus.FAILED) {
+                admissions.complete(admission.observationId(), DocumentTerminalOutcome.REJECTED);
+                return true;
+            }
+            return false;
+        }).orElse(false);
+    }
+
+    /** Completes the service-journal/dataframe terminal handshake idempotently. */
+    public void complete(ObservationId observationId, DocumentTerminalOutcome outcome) {
+        admissions.complete(observationId, outcome);
     }
 
     private AdmittedDocument advanceToLinked(DocumentAdmission initial) {

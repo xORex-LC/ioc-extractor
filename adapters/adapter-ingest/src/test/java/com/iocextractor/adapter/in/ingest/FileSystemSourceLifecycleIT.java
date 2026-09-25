@@ -198,6 +198,26 @@ class FileSystemSourceLifecycleIT {
     }
 
     @Test
+    void adapterRetryResumesAdmissionAfterCandidatePathWasClaimed() throws Exception {
+        Path processing = tempDir.resolve("processing-admit-retry");
+        var lifecycle = new FileSystemSourceLifecycle(
+                processing, tempDir.resolve("done-admit-retry"), tempDir.resolve("failed-admit-retry"));
+        var registrations = new MemoryRegistrationStore();
+        Clock clock = Clock.fixed(Instant.parse("2026-09-22T12:00:00Z"), ZoneOffset.UTC);
+        Path source = Files.writeString(tempDir.resolve("admit-retry.html"), "ioc-data");
+        var handler = handler(tempDir.resolve("admission-admit-retry"),
+                lifecycle, registrations, clock);
+        ObservationId id = new ObservationId("delivery-admit-retry");
+
+        var first = handler.admit(source, id, clock.instant());
+        var retried = handler.admit(source, id, clock.instant().plusSeconds(10));
+
+        assertThat(source).doesNotExist();
+        assertThat(retried).isEqualTo(first);
+        assertThat(registrations.nextOrder).isEqualTo(2);
+    }
+
+    @Test
     void restartAfterTokenRenameLinksTheExistingClaimWithoutReregistering() throws Exception {
         Path processing = tempDir.resolve("processing-claim-crash");
         var lifecycle = new FileSystemSourceLifecycle(

@@ -7,6 +7,8 @@ import com.iocextractor.application.artifact.ArtifactRowKey;
 import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
 import com.iocextractor.application.artifact.CanonicalRecordMutationKind;
 import com.iocextractor.application.artifact.CanonicalRecordMutationOutcome;
+import com.iocextractor.application.artifact.PreparedArtifactRow;
+import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.RecordValidityPolicy;
 import com.iocextractor.application.artifact.lifecycle.ValidityDecision;
@@ -21,6 +23,8 @@ import com.iocextractor.application.dataframeimport.model.ImportSha256;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportCommand;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportResult;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportWriter;
+import com.iocextractor.application.observation.OccurrencePosition;
+import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.common.IocExtractorException;
 
 import javax.sql.DataSource;
@@ -84,6 +88,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
     private final JdbcWriterAdmission writerAdmission;
     private final JdbcCanonicalImportObserver observer;
     private final Duration receiptRetention;
+    private final Map<String, ArtifactWritePolicy> writePolicies;
 
     /** Creates a production writer participating in shared fair admission. */
     public JdbcCanonicalImportWriter(
@@ -97,9 +102,25 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             Clock allocatorClock,
             JdbcWriterAdmission writerAdmission) {
         this(dataSource, schemas, publicIdDefinitions, identityDefinitions, workspaceRoot,
+                timeSource, validityPolicy, allocatorClock, writerAdmission, Map.of());
+    }
+
+    /** Creates a production writer with per-artifact ordered-field policies. */
+    public JdbcCanonicalImportWriter(
+            DataSource dataSource,
+            List<DataframeArtifactSchema> schemas,
+            List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
+            List<ArtifactIdentityDefinition> identityDefinitions,
+            Path workspaceRoot,
+            JdbcLifecycleClock timeSource,
+            RecordValidityPolicy validityPolicy,
+            Clock allocatorClock,
+            JdbcWriterAdmission writerAdmission,
+            Map<String, ArtifactWritePolicy> writePolicies) {
+        this(dataSource, schemas, publicIdDefinitions, identityDefinitions, workspaceRoot,
                 Objects.requireNonNull(timeSource, "timeSource")::now,
                 validityPolicy, allocatorClock, writerAdmission,
-                JdbcCanonicalImportObserver.NOOP, DEFAULT_RECEIPT_RETENTION);
+                JdbcCanonicalImportObserver.NOOP, DEFAULT_RECEIPT_RETENTION, writePolicies);
     }
 
     JdbcCanonicalImportWriter(
@@ -114,6 +135,24 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             JdbcWriterAdmission writerAdmission,
             JdbcCanonicalImportObserver observer,
             Duration receiptRetention) {
+        this(dataSource, schemas, publicIdDefinitions, identityDefinitions, workspaceRoot,
+                timeSource, validityPolicy, allocatorClock, writerAdmission, observer,
+                receiptRetention, Map.of());
+    }
+
+    JdbcCanonicalImportWriter(
+            DataSource dataSource,
+            List<DataframeArtifactSchema> schemas,
+            List<ArtifactIdAllocatorDefinition> publicIdDefinitions,
+            List<ArtifactIdentityDefinition> identityDefinitions,
+            Path workspaceRoot,
+            ConnectionTimeSource timeSource,
+            RecordValidityPolicy validityPolicy,
+            Clock allocatorClock,
+            JdbcWriterAdmission writerAdmission,
+            JdbcCanonicalImportObserver observer,
+            Duration receiptRetention,
+            Map<String, ArtifactWritePolicy> writePolicies) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.schemas = schemasByName(schemas);
         List<ArtifactIdentityDefinition> identities = List.copyOf(
@@ -126,6 +165,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
         this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
         this.observer = Objects.requireNonNull(observer, "observer");
         this.receiptRetention = requirePositive(receiptRetention, "receiptRetention");
+        this.writePolicies = Map.copyOf(Objects.requireNonNull(writePolicies, "writePolicies"));
         Objects.requireNonNull(allocatorClock, "allocatorClock");
         this.lifecycleIdAllocator = new JdbcLifecycleIdAllocator(dataSource, allocatorClock);
         this.publicIdAllocators = initializePublicIdAllocators(publicIdDefinitions, allocatorClock);
@@ -373,6 +413,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
     private void createPlanningTables(Connection connection) throws SQLException {
         try (Statement statement = connection.createStatement()) {
             statement.execute("DROP TABLE IF EXISTS temp_import_final_cell");
+            statement.execute("DROP TABLE IF EXISTS temp_import_ordered_field");
             statement.execute("DROP TABLE IF EXISTS temp_import_rejection");
             statement.execute("DROP TABLE IF EXISTS temp_import_plan");
             statement.execute("DROP TABLE IF EXISTS temp_import_match");
@@ -400,6 +441,14 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
                         target_column TEXT NOT NULL,
                         value TEXT,
                         PRIMARY KEY(branch_id, target_column)) WITHOUT ROWID
+                    """);
+            statement.execute("""
+                    CREATE TEMP TABLE temp_import_ordered_field (
+                        branch_id INTEGER NOT NULL,
+                        field_name TEXT NOT NULL,
+                        value TEXT NOT NULL,
+                        occurrence_position INTEGER NOT NULL,
+                        PRIMARY KEY(branch_id, field_name)) WITHOUT ROWID
                     """);
             statement.execute("""
                     CREATE TEMP TABLE temp_import_rejection (
@@ -558,6 +607,9 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             return PlannedBranch.rejected(candidate, "IMPORT.MATCH_EXPIRED_DURING_PLAN");
         }
         Map<String, String> values = new LinkedHashMap<>();
+        Map<String, String> orderedValues = new LinkedHashMap<>();
+        ArtifactWritePolicy writePolicy = writePolicies.getOrDefault(
+                candidate.artifact(), ArtifactWritePolicy.legacy());
         for (DataframeColumn column : schema.columns()) {
             values.put(column.name(), stored == null ? null : stored.publicRow().value(column.name()));
         }
@@ -575,11 +627,18 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
                         return PlannedBranch.rejected(candidate, "IMPORT.STAGE_COLUMN_INVALID");
                     }
                     ImportCell cell = importCell(cells);
+                    ImportMergePolicy mergePolicy = ImportMergePolicy.valueOf(
+                            cells.getString("merge_policy"));
                     ImportMergeResult merged = mergeResolver.resolve(
                             stored != null, values.get(column), cell,
-                            ImportMergePolicy.valueOf(cells.getString("merge_policy")));
+                            mergePolicy);
                     if (merged.decision() == ImportMergeResult.Decision.CONFLICT) {
                         return PlannedBranch.rejected(candidate, "IMPORT.MERGE_CONFLICT");
+                    }
+                    if (writePolicy.fields().containsKey(column)
+                            && orderedCandidate(cell, mergePolicy, merged, values.get(column))) {
+                        orderedValues.put(column, cell.value());
+                        continue;
                     }
                     if (merged.decision() == ImportMergeResult.Decision.SET
                             || merged.decision() == ImportMergeResult.Decision.CLEAR) {
@@ -605,8 +664,26 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             return PlannedBranch.rejected(candidate, "IMPORT.EXISTING_SLOT_MISMATCH");
         }
         boolean publicChange = stored == null || publicChange(schema, stored.publicRow(), finalRow);
-        boolean renew = stored == null || publicChange || header.renewUnchanged();
-        return PlannedBranch.accepted(candidate, finalRow, renew);
+        boolean renew = stored == null || publicChange || !orderedValues.isEmpty()
+                || header.renewUnchanged();
+        return PlannedBranch.accepted(candidate, finalRow, orderedValues, renew);
+    }
+
+    private boolean orderedCandidate(ImportCell cell,
+                                     ImportMergePolicy mergePolicy,
+                                     ImportMergeResult result,
+                                     String existingValue) {
+        if (cell.presence() != ImportCell.Presence.VALUE
+                || cell.value() == null || cell.value().isBlank()) {
+            return false;
+        }
+        if (result.decision() == ImportMergeResult.Decision.SET) {
+            return true;
+        }
+        return result.decision() == ImportMergeResult.Decision.UNCHANGED
+                && Objects.equals(existingValue, cell.value())
+                && mergePolicy != ImportMergePolicy.KEEP_EXISTING
+                && mergePolicy != ImportMergePolicy.FILL_MISSING;
     }
 
     private boolean slotMismatch(Connection connection,
@@ -679,6 +756,20 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
             }
             statement.executeBatch();
         }
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO temp_import_ordered_field(
+                    branch_id, field_name, value, occurrence_position)
+                VALUES (?, ?, ?, ?)
+                """)) {
+            for (var entry : branch.orderedValues().entrySet()) {
+                statement.setLong(1, branch.candidate().branchId());
+                statement.setString(2, entry.getKey());
+                statement.setString(3, entry.getValue());
+                statement.setLong(4, branch.candidate().sourceRow());
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
     }
 
     private void rejectCrossRowConflicts(Connection connection) throws SQLException {
@@ -710,6 +801,13 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
                           HAVING COUNT(DISTINCT source_row_number) > 1)
                     """);
             statement.executeUpdate("""
+                    DELETE FROM temp_import_ordered_field
+                    WHERE branch_id IN (
+                        SELECT plan.branch_id FROM temp_import_plan plan
+                        JOIN temp_import_rejection rejection
+                          ON rejection.source_row_number = plan.source_row_number)
+                    """);
+            statement.executeUpdate("""
                     DELETE FROM temp_import_final_cell
                     WHERE branch_id IN (
                         SELECT plan.branch_id FROM temp_import_plan plan
@@ -738,6 +836,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
                         FROM temp_import_plan
                         """);
                 statement.executeUpdate("DELETE FROM temp_import_final_cell");
+                statement.executeUpdate("DELETE FROM temp_import_ordered_field");
                 statement.executeUpdate("DELETE FROM temp_import_plan");
             }
             return new PromotionCounts(0, Math.addExact(header.acceptedRows(), header.rejectedRows()));
@@ -756,6 +855,12 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
         Set<String> affected = new LinkedHashSet<>();
         Set<String> observed = new LinkedHashSet<>();
         List<SlotRequest> slotRequests = new ArrayList<>();
+        RegisteredObservation registration = command.registration();
+        boolean hasOrderedFields = queryLong(connection,
+                "SELECT COUNT(*) FROM temp_import_ordered_field") > 0;
+        if (hasOrderedFields) {
+            mutationEngine.validateRegistration(connection, registration);
+        }
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT branch_id, source_row_number, artifact, record_key_hash, canonical_row_id,
                        renew_ttl, requested_slot
@@ -767,20 +872,36 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
                 String artifact = rows.getString("artifact");
                 DataframeArtifactSchema schema = requireSchema(artifact);
                 ArtifactRow finalRow = loadFinalRow(connection, branchId, schema);
+                PreparedArtifactRow prepared = loadPreparedRow(
+                        connection, branchId, finalRow);
                 Optional<Long> canonicalRowId = optionalLong(rows, "canonical_row_id");
                 CanonicalRecordMutationOutcome outcome;
                 if (canonicalRowId.isPresent()) {
-                    outcome = mutationEngine.mutateExisting(
-                            connection, schema, canonicalRowId.orElseThrow(), finalRow,
-                            rows.getInt("renew_ttl") == 1,
-                            IMPORT_SOURCE_PREFIX + command.sourceId().value(), asOf, validity);
+                    outcome = prepared.orderedFieldPositions().isEmpty()
+                            ? mutationEngine.mutateExisting(
+                                    connection, schema, canonicalRowId.orElseThrow(), finalRow,
+                                    rows.getInt("renew_ttl") == 1,
+                                    IMPORT_SOURCE_PREFIX + command.sourceId().value(), asOf, validity)
+                            : mutationEngine.mutateExistingOrdered(
+                                    connection, schema, canonicalRowId.orElseThrow(), finalRow,
+                                    prepared, rows.getInt("renew_ttl") == 1,
+                                    IMPORT_SOURCE_PREFIX + command.sourceId().value(), asOf, validity,
+                                    registration);
                 } else {
                     ArtifactRow insertRow = materializePublicId(
-                            artifact, schema, finalRow, reservations, publicOffsets);
-                    outcome = mutationEngine.insertPlanned(
-                            connection, schema, IMPORT_SOURCE_PREFIX + command.sourceId().value(),
-                            insertRow, new ArtifactRowKey(rows.getString("record_key_hash")),
-                            reservations.lifecycleIds().idAt(lifecycleOffset++), asOf, validity);
+                            artifact, schema, prepared.template(), reservations, publicOffsets);
+                    PreparedArtifactRow insertPrepared = new PreparedArtifactRow(
+                            insertRow, Optional.empty(), prepared.orderedFieldPositions());
+                    outcome = prepared.orderedFieldPositions().isEmpty()
+                            ? mutationEngine.insertPlanned(
+                                    connection, schema, IMPORT_SOURCE_PREFIX + command.sourceId().value(),
+                                    insertRow, new ArtifactRowKey(rows.getString("record_key_hash")),
+                                    reservations.lifecycleIds().idAt(lifecycleOffset++), asOf, validity)
+                            : mutationEngine.insertPlannedOrdered(
+                                    connection, schema, IMPORT_SOURCE_PREFIX + command.sourceId().value(),
+                                    insertPrepared, new ArtifactRowKey(rows.getString("record_key_hash")),
+                                    reservations.lifecycleIds().idAt(lifecycleOffset++), asOf, validity,
+                                    registration);
                 }
                 if (outcome.publicMutation()) {
                     publicMutations++;
@@ -801,6 +922,29 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
         }
         return new MutationSummary(publicMutations, Set.copyOf(affected),
                 Set.copyOf(observed), List.copyOf(slotRequests));
+    }
+
+    private PreparedArtifactRow loadPreparedRow(Connection connection,
+                                                 long branchId,
+                                                 ArtifactRow base) throws SQLException {
+        ArtifactRow incoming = base;
+        Map<String, OccurrencePosition> positions = new LinkedHashMap<>();
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT field_name, value, occurrence_position
+                FROM temp_import_ordered_field
+                WHERE branch_id = ?
+                ORDER BY field_name
+                """)) {
+            statement.setLong(1, branchId);
+            try (ResultSet fields = statement.executeQuery()) {
+                while (fields.next()) {
+                    String field = fields.getString("field_name");
+                    incoming = incoming.withValue(field, fields.getString("value"));
+                    positions.put(field, new OccurrencePosition(fields.getLong("occurrence_position")));
+                }
+            }
+        }
+        return new PreparedArtifactRow(incoming, Optional.empty(), positions);
     }
 
     private ArtifactRow materializePublicId(String artifact,
@@ -1248,16 +1392,23 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
     private record PlannedBranch(
             BranchCandidate candidate,
             Optional<ArtifactRow> finalRow,
+            Map<String, String> orderedValues,
             boolean renewTtl,
             Optional<Rejection> rejection) {
 
+        private PlannedBranch {
+            orderedValues = Map.copyOf(orderedValues);
+        }
+
         private static PlannedBranch accepted(
-                BranchCandidate candidate, ArtifactRow finalRow, boolean renewTtl) {
-            return new PlannedBranch(candidate, Optional.of(finalRow), renewTtl, Optional.empty());
+                BranchCandidate candidate, ArtifactRow finalRow,
+                Map<String, String> orderedValues, boolean renewTtl) {
+            return new PlannedBranch(candidate, Optional.of(finalRow), orderedValues,
+                    renewTtl, Optional.empty());
         }
 
         private static PlannedBranch rejected(BranchCandidate candidate, String code) {
-            return new PlannedBranch(candidate, Optional.empty(), false,
+            return new PlannedBranch(candidate, Optional.empty(), Map.of(), false,
                     Optional.of(new Rejection(candidate.artifact(), code)));
         }
     }

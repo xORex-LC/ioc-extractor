@@ -110,6 +110,12 @@ final class IocConfigPreflight implements Validator {
     private void validateArtifactIdentityReferences(IocProperties props, Errors errors) {
         Map<String, SinkArtifactRef> sinkArtifacts = validateSinkArtifacts(props.sink(), errors);
         Set<String> identityArtifacts = validateIdentityDefinitions(props.artifactIdentity(), sinkArtifacts, errors);
+        if (sinkArtifacts.containsKey("ioc_aggregate")
+                && props.artifactIdentity() != null
+                && V020ArtifactIdentityCompatibility.containsCompleteLegacyBase(
+                        props.artifactIdentity().artifacts())) {
+            identityArtifacts.add("ioc_aggregate");
+        }
         for (SinkArtifactRef sinkArtifact : sinkArtifacts.values()) {
             IocProperties.Sink.Artifact artifact = sinkArtifact.artifact();
             if (artifact.enabled() && hasText(artifact.name()) && !identityArtifacts.contains(artifact.name())) {

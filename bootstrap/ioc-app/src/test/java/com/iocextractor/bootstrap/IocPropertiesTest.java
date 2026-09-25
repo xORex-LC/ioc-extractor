@@ -43,6 +43,7 @@ class IocPropertiesTest {
     void artifactPoliciesCompileLegacyAndLatestRegisteredBehavior() throws Exception {
         IocProperties defaults = bind(Map.of());
 
+        assertThat(ArtifactPolicyCatalog.hasEnabledOrderedFields(defaults)).isTrue();
         assertThat(ArtifactPolicyCatalog.compile(defaults).get("masks"))
                 .isEqualTo(ArtifactWritePolicy.legacy());
         assertThat(ArtifactPolicyCatalog.compile(defaults).get("ioc_aggregate"))
@@ -68,6 +69,26 @@ class IocPropertiesTest {
                     assertThat(policy.fields()).containsEntry(
                             "source", ArtifactWritePolicy.FieldUpdatePolicy.LATEST_REGISTERED_KEEP_EXISTING);
                 });
+    }
+
+    @Test
+    void disabledOrderedArtifactLeavesLegacyAdmissionAvailable() throws Exception {
+        IocProperties defaults = bind(Map.of());
+        List<IocProperties.Sink.Artifact> artifacts = defaults.sink().artifacts().stream()
+                .map(artifact -> "ioc_aggregate".equals(artifact.name())
+                        ? new IocProperties.Sink.Artifact(
+                                artifact.name(), false, artifact.path(), artifact.accepts(),
+                                artifact.include(), artifact.exclude(), artifact.id(),
+                                artifact.columns(), artifact.writePolicy())
+                        : artifact)
+                .toList();
+        IocProperties disabled = withCatalogs(defaults,
+                new IocProperties.Sink(defaults.sink().csv(), artifacts),
+                defaults.artifactIdentity());
+
+        assertThat(ArtifactPolicyCatalog.hasEnabledOrderedFields(disabled)).isFalse();
+        assertThat(ArtifactPolicyCatalog.hasEnabledOrderedFields(
+                withCatalogs(defaults, null, defaults.artifactIdentity()))).isFalse();
     }
 
     @Test

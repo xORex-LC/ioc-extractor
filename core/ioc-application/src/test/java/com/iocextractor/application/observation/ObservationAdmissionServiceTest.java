@@ -152,7 +152,7 @@ class ObservationAdmissionServiceTest {
 
         assertThatThrownBy(() -> imports.register(mismatchedDelivery))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("reference changed");
+                .hasMessageContaining("Missing registered observation");
 
         ImportDeliveryId reorderedDelivery = new ImportDeliveryId("import-order-mismatch");
         RegisteredObservation registered = registrations.registerNew(
@@ -179,6 +179,19 @@ class ObservationAdmissionServiceTest {
         assertThatThrownBy(() -> imports.purgeTerminalBefore(NOW, 0))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("limit must be positive");
+    }
+
+    @Test
+    void managedImportRejectsLegacyDeliveryWithoutOrderedReservation() {
+        var registrations = new MemoryRegistrationStore();
+        var references = new MemoryReferenceStore();
+        references.registrationReserved = false;
+        var imports = new ManagedImportObservationAdmission(registrations, references, CLOCK);
+
+        assertThatThrownBy(() -> imports.register(new ImportDeliveryId("legacy-import")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("drain legacy work");
+        assertThat(registrations.values).isEmpty();
     }
 
     @Test
@@ -565,8 +578,14 @@ class ObservationAdmissionServiceTest {
 
     private static final class MemoryReferenceStore implements ObservationAdmissionReferenceStore {
         private final Map<ObservationId, ObservationAdmissionReference> values = new LinkedHashMap<>();
+        private boolean registrationReserved = true;
         private boolean persistUpdateBeforeReject;
         private boolean rejectNextPurge;
+
+        @Override
+        public boolean isRegistrationReserved(ObservationId observationId) {
+            return registrationReserved;
+        }
 
         @Override
         public ObservationAdmissionReference link(RegisteredObservation registration) {
