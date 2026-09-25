@@ -37,6 +37,19 @@ class ObservationRegistrationOperationsTest {
     }
 
     @Test
+    void registrationReadFailureDegradesHealthWithoutEscapingActuatorBoundary() {
+        var indicator = new ObservationRegistrationHealthIndicator(
+                () -> {
+                    throw new IllegalStateException("status unavailable");
+                }, CLOCK);
+
+        var health = indicator.health();
+
+        assertThat(health.getStatus()).isEqualTo(Status.DOWN);
+        assertThat(health.getDetails()).containsKey("error");
+    }
+
+    @Test
     void retentionUsesReceiptHorizonAndNeverPurgesUnresolvedOneshotDirectly() {
         var registrations = new RecordingRegistrationStore();
         var scheduler = new ObservationRegistrationRetentionScheduler(
@@ -48,9 +61,26 @@ class ObservationRegistrationOperationsTest {
         assertThat(registrations.limit).isEqualTo(1_000);
     }
 
+    @Test
+    void completedPurgeDoesNotPreventSubsequentSweep() {
+        var registrations = new RecordingRegistrationStore();
+        registrations.purgeResult = 2;
+        var scheduler = new ObservationRegistrationRetentionScheduler(
+                registrations, null, null, CLOCK, Duration.ofDays(30), Duration.ofHours(1));
+
+        scheduler.runOnce();
+        scheduler.runOnce();
+
+        assertThat(registrations.cutoff).isEqualTo(NOW.minus(Duration.ofDays(30)));
+        assertThat(registrations.limit).isEqualTo(1_000);
+        assertThat(registrations.calls).isEqualTo(2);
+    }
+
     private static final class RecordingRegistrationStore implements ObservationRegistrationStore {
         private Instant cutoff;
         private int limit;
+        private int purgeResult;
+        private int calls;
 
         @Override
         public RegisteredObservation registerNew(ObservationId observationId, ObservationOrigin origin) {
@@ -76,7 +106,8 @@ class ObservationRegistrationOperationsTest {
         public int purgeTerminalOneshotBefore(Instant cutoff, int limit) {
             this.cutoff = cutoff;
             this.limit = limit;
-            return 0;
+            calls++;
+            return purgeResult;
         }
     }
 }
