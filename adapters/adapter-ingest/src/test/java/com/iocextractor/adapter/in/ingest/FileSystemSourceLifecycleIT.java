@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.NullSource;
 
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -256,8 +257,10 @@ class FileSystemSourceLifecycleIT {
     }
 
     @ParameterizedTest
+    @NullSource
     @EnumSource(IngestionStatus.class)
-    void restartReconcilesLinkedAdmissionWithDurableIngestionStatus(IngestionStatus status)
+    void restartReconcilesLinkedAdmissionWithDurableIngestionStatusOrItsAbsence(
+            IngestionStatus status)
             throws Exception {
         Path processing = tempDir.resolve("processing-ledger-" + status);
         var lifecycle = new FileSystemSourceLifecycle(
@@ -274,7 +277,7 @@ class FileSystemSourceLifecycleIT {
         ObservationId id = new ObservationId("delivery-ledger-" + status);
         Path source = Files.writeString(tempDir.resolve("ledger-" + status + ".html"), "ioc-data");
         var admitted = initial.admit(source, id, clock.instant());
-        var record = new IngestionRecord(
+        var record = status == null ? null : new IngestionRecord(
                 id, admitted.source().key(), status, admitted.source().originalPath(),
                 admitted.source().processingPath(), null, admitted.source().detectedAt(),
                 clock.instant(), status == IngestionStatus.FAILED ? "failed" : null);
@@ -284,7 +287,7 @@ class FileSystemSourceLifecycleIT {
 
         var recovered = recovering.recover(10);
 
-        if (status == IngestionStatus.CLAIMED) {
+        if (status == null || status == IngestionStatus.CLAIMED) {
             assertThat(recovered).singleElement().isEqualTo(admitted);
             assertThat(service.find(id).orElseThrow().terminalOutcome()).isEmpty();
         } else {
@@ -340,7 +343,7 @@ class FileSystemSourceLifecycleIT {
 
         @Override
         public Optional<IngestionRecord> find(ObservationId observationId) {
-            return record.observationId().equals(observationId)
+            return record != null && record.observationId().equals(observationId)
                     ? Optional.of(record) : Optional.empty();
         }
 
