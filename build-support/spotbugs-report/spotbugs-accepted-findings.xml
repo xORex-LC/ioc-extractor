@@ -566,7 +566,7 @@
     <finding id="DATA-IMPORT-P4-SB-003" module="adapters/adapter-store-jdbc" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="482b21fa7d5a1e5dbe962cbbc9b9719a" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P4-FAILURE-BOUNDARY" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcImportWorkspaceWriter" />
         <method name="seal" signature="()Lcom/iocextractor/application/dataframeimport/model/ImportStage;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcImportWorkspaceWriter.java" startLine="160" bytecode="145" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcImportWorkspaceWriter.java" startLine="160" bytecode="180" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcImportWorkspaceWriter" />
@@ -819,7 +819,7 @@
     <finding id="DATA-TTL-P5-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="1f893dd6d628cf5ff5f8c6441d665d9f" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P5-FAILURE-CONTRACT" review="ingestion-cleanup-propagation-change">
         <class name="com.iocextractor.bootstrap.AppConfig" />
         <method name="lambda$extractIocsUseCase$3" signature="(Lcom/iocextractor/application/port/in/artifact/lifecycle/PrepareLifecycleAdmissionUseCase;Lcom/iocextractor/bootstrap/IocProperties;Lcom/iocextractor/application/port/in/ExtractIocsUseCase;Lcom/iocextractor/bootstrap/ProcessingPolicyIdentity;Ljava/util/List;Lcom/iocextractor/application/port/out/artifact/lifecycle/CanonicalObservationStore;Lcom/iocextractor/adapter/out/store/jdbc/JdbcLifecycleClock;Lcom/iocextractor/application/port/in/ExtractionCommand;)Lcom/iocextractor/application/port/in/ExtractionResult;" />
-        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="406" bytecode="218" />
+        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="427" bytecode="223" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.bootstrap.AppConfig" />
@@ -907,7 +907,7 @@
     <finding id="DATA-IMPORT-P7-SB-002" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="33647f9283725fba8bd5d784ee39b0b3" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P7-STARTUP-BARRIER" review="ingestion-cleanup-propagation-change">
         <class name="com.iocextractor.bootstrap.CanonicalIntakeStartupCoordinator" />
         <method name="run" signature="(Lorg/springframework/boot/ApplicationArguments;)V" />
-        <anchor sourcePath="com/iocextractor/bootstrap/CanonicalIntakeStartupCoordinator.java" startLine="80" bytecode="203" />
+        <anchor sourcePath="com/iocextractor/bootstrap/CanonicalIntakeStartupCoordinator.java" startLine="98" bytecode="228" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.bootstrap.CanonicalIntakeStartupCoordinator" />
@@ -1233,10 +1233,10 @@
         </suppression>
         <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under FUP-SB-01.</rationale>
     </finding>
-    <finding id="SB04-096" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="7a89ba4685786a19ea93a39df38a53f1" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B/HARDEN-01" review="cleanup-ownership-accounting-change">
+    <finding id="SB04-096" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="b9e6d8bca26fdea52cbcc2035538b3e0" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-B/HARDEN-01" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.application.ingest.IngestionService" />
-        <method name="processClaimed" signature="(Lcom/iocextractor/application/ingest/SourceUnit;)Lcom/iocextractor/application/port/in/ingest/IngestSourceResult;" />
-        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="441" bytecode="403" />
+        <method name="processClaimed" signature="(Lcom/iocextractor/application/ingest/SourceUnit;Lcom/iocextractor/application/observation/RegisteredObservation;)Lcom/iocextractor/application/port/in/ingest/IngestSourceResult;" />
+        <anchor sourcePath="com/iocextractor/application/ingest/IngestionService.java" startLine="488" bytecode="410" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.application.ingest.IngestionService" />

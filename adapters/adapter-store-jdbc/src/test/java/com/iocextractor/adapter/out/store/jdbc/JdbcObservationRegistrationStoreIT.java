@@ -12,6 +12,7 @@ import com.iocextractor.application.ingest.admission.DocumentTerminalOutcome;
 import com.iocextractor.application.observation.ManagedImportObservationAdmission;
 import com.iocextractor.application.observation.ObservationOrder;
 import com.iocextractor.application.observation.ObservationOrigin;
+import com.iocextractor.application.observation.ObservationRegistrationPurgeOutcome;
 import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.zaxxer.hikari.HikariDataSource;
@@ -89,6 +90,8 @@ class JdbcObservationRegistrationStoreIT {
             store.markTerminal(disposableId, disposable.namespaceId());
             assertThat(store.purgeTerminal(first)).isFalse();
             assertThat(store.purgeTerminal(disposable)).isTrue();
+            assertThat(store.purgeTerminalSafely(disposable))
+                    .isEqualTo(ObservationRegistrationPurgeOutcome.MISSING);
             assertThat(store.resume(firstId, first.namespaceId())).isEqualTo(first);
             assertThatThrownBy(() -> store.resume(disposableId, disposable.namespaceId()))
                     .isInstanceOf(IllegalStateException.class)
