@@ -524,6 +524,54 @@ class JdbcLifecycleStorageFoundationIT {
     }
 
     @Test
+    void activation_store_reports_legacy_and_rejects_invalid_metadata() throws Exception {
+        initializeArtifact("activation-status.db", 1, 1);
+        var activation = new JdbcLifecycleActivationStore(
+                dataSource, List.of(masksSchema()), CLOCK);
+
+        assertThat(activation.hasLegacyRecords()).isFalse();
+        execute("""
+                INSERT INTO masks(id, mask, row_key, _created_at)
+                VALUES (1, 'legacy.example', 'legacy', '2026-08-16T00:00:00Z')
+                """);
+        assertThat(activation.hasLegacyRecords()).isTrue();
+        execute("""
+                INSERT INTO masks(
+                    id, mask, row_key, _created_at, _lifecycle_id,
+                    _first_confirmed_at_epoch_ms, _last_confirmed_at_epoch_ms,
+                    _valid_until_epoch_ms)
+                VALUES (2, 'partial.example', 'partial', '2026-08-16T00:00:00Z',
+                        2, 10, NULL, 30)
+                """);
+
+        assertThatThrownBy(activation::hasLegacyRecords)
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("partially populated");
+    }
+
+    @Test
+    void empty_legacy_activation_completes_without_projection_work() throws Exception {
+        initializeArtifact("empty-activation.db", 1, 1);
+        var control = new JdbcLifecycleControlStore(dataSource, List.of(masksSchema()));
+        LifecycleControlState disabled = control.load();
+        assertThat(control.compareAndSet(
+                disabled, disabled.beginActivation("record-validity:fixed:v1"))).isTrue();
+        var activation = new JdbcLifecycleActivationStore(
+                dataSource, List.of(masksSchema()), CLOCK);
+
+        var result = activation.expireLegacyBatch("masks", EffectiveTime.at(NOW), 10);
+
+        assertThat(result.expired()).isZero();
+        assertThat(result.moreLegacyRows()).isFalse();
+        assertThat(queryLong("SELECT COUNT(*) FROM artifact_projection_state")).isZero();
+        assertThat(queryLong("""
+                SELECT COUNT(*) FROM lifecycle_activation_progress
+                WHERE artifact = 'masks' AND after_row_id IS NULL
+                  AND expired_count = 0 AND completed = 1
+                """)).isOne();
+    }
+
+    @Test
     void resumed_activation_rejects_partially_populated_lifecycle_metadata() throws Exception {
         initializeArtifact("invalid-activation.db", 1, 1);
         execute("""
