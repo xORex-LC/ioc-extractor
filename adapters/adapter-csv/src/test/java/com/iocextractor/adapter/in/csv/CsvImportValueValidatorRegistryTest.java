@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.in.csv;
 
 import com.iocextractor.application.classification.IndicatorClassifier;
+import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
 import com.iocextractor.domain.classify.ClassificationDecision;
 import com.iocextractor.domain.extract.ExtractionOutcome;
 import com.iocextractor.domain.extract.RawIndicator;
@@ -13,24 +14,22 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CsvImportValueValidatorRegistryTest {
 
     @Test
     void validatesWholeCellCarrierKindsThroughSharedStructuralConditions() {
-        CsvImportValueValidatorRegistry validators = new CsvImportValueValidatorRegistry(
-                text -> new RefangOutcome(text, List.of()),
-                text -> extracted(text),
-                new IndicatorClassifier(indicator -> classified(indicator.value(), indicator.type())),
-                Map.of(
-                        "is-bare-ip", indicator -> indicator.indicator().type() == IndicatorType.IPV4
-                                && !indicator.classification().features().hasPort(),
-                        "is-address-with-detail", indicator -> indicator.classification().features().hasPath()
-                                || indicator.classification().features().hasPort(),
-                        "is-clean-host", indicator -> indicator.indicator().type() == IndicatorType.DOMAIN
-                                && !indicator.classification().features().hasPath()));
+        CsvImportValueValidatorRegistry validators = validators(Map.of(
+                "is-bare-ip", indicator -> indicator.indicator().type() == IndicatorType.IPV4
+                        && !indicator.classification().features().hasPort(),
+                "is-address-with-detail", indicator -> indicator.classification().features().hasPath()
+                        || indicator.classification().features().hasPort(),
+                "is-clean-host", indicator -> indicator.indicator().type() == IndicatorType.DOMAIN
+                        && !indicator.classification().features().hasPath()));
 
         assertThat(validators.isValid("bare-ip", "192.0.2.1")).isTrue();
         assertThat(validators.isValid("bare-ip", "192.0.2.1:8443")).isFalse();
@@ -39,6 +38,27 @@ class CsvImportValueValidatorRegistryTest {
         assertThat(validators.isValid("clean-domain", "example.org/drop.exe")).isFalse();
         assertThat(validators.isValid("hash", "A".repeat(32))).isTrue();
         assertThat(validators.isValid("hash", "prefix " + "A".repeat(32))).isFalse();
+    }
+
+    @Test
+    void rejectsUnknownRulesAndMissingStructuralConditions() {
+        CsvImportValueValidatorRegistry validators = validators(Map.of());
+
+        assertThatThrownBy(() -> validators.isValid("unknown", "example.org"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Unknown import value validation rule: unknown");
+        assertThatThrownBy(() -> validators.isValid("url-address", "example.org/drop.exe"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Missing import validation condition: is-address-with-detail");
+    }
+
+    private CsvImportValueValidatorRegistry validators(
+            Map<String, Predicate<ClassifiedIndicator>> conditions) {
+        return new CsvImportValueValidatorRegistry(
+                text -> new RefangOutcome(text, List.of()),
+                this::extracted,
+                new IndicatorClassifier(indicator -> classified(indicator.value(), indicator.type())),
+                conditions);
     }
 
     private ExtractionOutcome extracted(String text) {
