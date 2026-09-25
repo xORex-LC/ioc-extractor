@@ -6,6 +6,7 @@ import com.iocextractor.application.observation.ObservationRegistrationStatus;
 import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.application.port.out.observation.ObservationRegistrationStore;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.boot.health.contributor.Status;
 
 import java.time.Clock;
@@ -74,6 +75,27 @@ class ObservationRegistrationOperationsTest {
         assertThat(registrations.cutoff).isEqualTo(NOW.minus(Duration.ofDays(30)));
         assertThat(registrations.limit).isEqualTo(1_000);
         assertThat(registrations.calls).isEqualTo(2);
+    }
+
+    @Test
+    @Timeout(5)
+    void retentionLifecycleOwnsOneWorkerAndStopsIdempotently() {
+        var registrations = new RecordingRegistrationStore();
+        var scheduler = new ObservationRegistrationRetentionScheduler(
+                registrations, null, null, CLOCK, Duration.ofDays(30), Duration.ofDays(1));
+
+        try {
+            scheduler.start();
+            scheduler.start();
+
+            assertThat(scheduler.isRunning()).isTrue();
+            assertThat(registrations.calls).isEqualTo(1);
+        } finally {
+            scheduler.stop();
+        }
+
+        assertThat(scheduler.isRunning()).isFalse();
+        scheduler.stop();
     }
 
     private static final class RecordingRegistrationStore implements ObservationRegistrationStore {
