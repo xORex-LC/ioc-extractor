@@ -113,7 +113,10 @@ public final class JdbcExportRunLedger implements ExportRunLedger, ExportRunRead
                         UPDATE export_run
                         SET status = :next,
                             manifest_sha256 = COALESCE(:manifest_sha256, manifest_sha256),
-                            updated_at = :updated_at,
+                            updated_at = CASE
+                                WHEN julianday(:updated_at) <= julianday(updated_at) THEN updated_at
+                                ELSE :updated_at
+                            END,
                             reason = :reason
                         WHERE run_id = :run_id AND status = :expected
                         """)
@@ -141,7 +144,10 @@ public final class JdbcExportRunLedger implements ExportRunLedger, ExportRunRead
             int affected = jdbc.sql("""
                             UPDATE export_run
                             SET status = :terminal,
-                                updated_at = :updated_at,
+                                updated_at = CASE
+                                    WHEN julianday(:updated_at) <= julianday(updated_at) THEN updated_at
+                                    ELSE :updated_at
+                                END,
                                 reason = NULL
                             WHERE run_id = :run_id AND status = :expected
                             """)
