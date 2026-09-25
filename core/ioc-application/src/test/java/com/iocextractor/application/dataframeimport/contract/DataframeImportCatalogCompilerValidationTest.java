@@ -38,6 +38,8 @@ class DataframeImportCatalogCompilerValidationTest {
                 null,
                 new DataframeImportCatalogEnvironment(null, Set.of("lower"), Set.of("upstream")),
                 new DataframeImportCatalogEnvironment(Map.of(), null, Set.of("upstream")),
+                new DataframeImportCatalogEnvironment(
+                        Map.of(), Set.of("lower"), null, Set.of("upstream"), null),
                 new DataframeImportCatalogEnvironment(Map.of(), Set.of("lower"), null));
 
         assertThat(incompleteEnvironments)
@@ -257,6 +259,32 @@ class DataframeImportCatalogCompilerValidationTest {
                 processedEnvironment(Set.of("name")));
 
         assertThat(compilation.valid()).isTrue();
+
+        DataframeImportCatalogDraft.Artifact implicit = processedArtifact(
+                null, List.of("ip", "name"),
+                new DataframeImportCatalogDraft.Column(
+                        "ip", "ip", List.of("lower"), null, "bare-ip"));
+        DataframeImportCatalogEnvironment withoutSourceBindings = new DataframeImportCatalogEnvironment(
+                Map.of("ip_list", new DataframeImportCatalogEnvironment.ArtifactSchema(
+                        Set.of("ip", "name"), "ip-row-v1", Set.of("ip-v1"),
+                        Set.of("ioc-aggregate"), false, null)),
+                Set.of("lower"), Set.of("bare-ip"), Set.of(), "processing-policy-v1");
+        assertThat(compiler.compile(
+                disabledDraft(List.of(), List.of(), List.of(
+                        contract("processed-without-binding", ImportProcessingMode.PROCESSED, implicit))),
+                withoutSourceBindings).valid()).isTrue();
+
+        DataframeImportCatalogDraft.Artifact unknown = new DataframeImportCatalogDraft.Artifact(
+                "unknown", ImportArtifactRole.PRIMARY, "unknown-row", List.of("unknown-match"), null,
+                null, null,
+                List.of(new DataframeImportCatalogDraft.Column(
+                        "ip", "ip", List.of("lower"), null, "bare-ip")));
+        assertThat(compiler.compile(
+                disabledDraft(List.of(), List.of(), List.of(
+                        contract("processed-without-schema", ImportProcessingMode.PROCESSED, unknown))),
+                processedEnvironment(Set.of("name"))).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("artifact must reference a configured canonical schema");
     }
 
     @Test

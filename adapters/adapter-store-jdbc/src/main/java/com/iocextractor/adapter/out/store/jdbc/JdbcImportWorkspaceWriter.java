@@ -345,7 +345,7 @@ final class JdbcImportWorkspaceWriter implements ImportWorkspaceWriter {
     }
 
     private void lastNonemptyDuplicates() throws SQLException {
-        execute("""
+        try (PreparedStatement winners = connection.prepareStatement("""
                 CREATE TEMP TABLE duplicate_winner AS
                 SELECT candidate.group_key_hash, candidate.group_key_canonical,
                        COALESCE(
@@ -356,7 +356,7 @@ final class JdbcImportWorkspaceWriter implements ImportWorkspaceWriter {
                                  ON selection_cell.branch_id = primary_branch.branch_id
                                WHERE primary_branch.source_row_number = candidate.source_row_number
                                  AND primary_branch.primary_flag = 1
-                                 AND selection_cell.target_column = %s
+                                 AND selection_cell.target_column = ?
                                  AND selection_cell.presence = 2
                                  AND length(trim(selection_cell.value)) > 0)
                            THEN candidate.source_row_number END),
@@ -364,7 +364,10 @@ final class JdbcImportWorkspaceWriter implements ImportWorkspaceWriter {
                 FROM stage_input_row candidate
                 WHERE candidate.status = 'MAPPED'
                 GROUP BY candidate.group_key_hash, candidate.group_key_canonical
-                """.formatted(sqlLiteral(command.duplicateSelectionColumn())));
+                """)) {
+            winners.setString(1, command.duplicateSelectionColumn());
+            winners.executeUpdate();
+        }
         execute("""
                 CREATE UNIQUE INDEX ux_duplicate_winner
                 ON duplicate_winner(group_key_hash, group_key_canonical)
@@ -406,10 +409,6 @@ final class JdbcImportWorkspaceWriter implements ImportWorkspaceWriter {
                         AND current.source_row_number <> winner.source_row_number)
                 """);
         rowErrors += duplicateRows;
-    }
-
-    private String sqlLiteral(String value) {
-        return "'" + value.replace("'", "''") + "'";
     }
 
     private void coalesceDuplicates() throws SQLException {

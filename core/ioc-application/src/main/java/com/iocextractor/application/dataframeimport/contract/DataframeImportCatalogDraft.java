@@ -279,6 +279,12 @@ public record DataframeImportCatalogDraft(
             return readOnly(matchKeys);
         }
 
+        /** Returns the immutable nonempty-cardinality target group. */
+        @Override
+        public List<String> exactlyOneNonempty() {
+            return readOnly(exactlyOneNonempty);
+        }
+
         /** Returns the immutable column-mapping snapshot. */
         @Override
         public List<Column> columns() {
