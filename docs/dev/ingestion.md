@@ -13,8 +13,11 @@ inbox
      / optional WatchService event path
   -> include/exclude glob filter
   -> quiet-period stability check
+  -> reserve document occurrence
+  -> allocate dataframe admission order
+  -> atomic token claim + private seal
   -> content hash
-  -> atomic claim into processing
+  -> link source key to admission journal
   -> IngestionService
        -> extraction pipeline
        -> failure-policy checkpoint
@@ -124,8 +127,11 @@ TERMINAL`. Dataframe DB назначает order; JDBC service journal либо 
 fsync-backed file journal сохраняет recovery reference. После token-only atomic
 claim адаптер создаёт private sealed copy до hashing: producer, который держит
 старый file descriptor открытым, больше не может изменить обрабатываемый inode.
-Обычный daemon flow остаётся прежним, пока ordered policy не собрана в bootstrap
-в рамках активации конкретного artifact.
+Bootstrap включает этот путь, когда хотя бы один enabled artifact содержит
+`latest-registered` field policy. Для shipping `ioc_aggregate` это обычный
+daemon path. При отсутствии таких policies сохраняется прежний прямой
+hash/claim flow без лишней registration. File-ledger и JDBC-ledger используют
+одну application state machine; различается только durable journal adapter.
 
 На старте recovery действует по durable состоянию, а не по одному наличию
 файла:
@@ -135,6 +141,10 @@ claim адаптер создаёт private sealed copy до hashing: producer, 
 - orphan в `processing`, для которого нет ledger-записи, изолируется как
   failure, а не молча считается обработанным;
 - завершённые `SOURCE_ARCHIVED` и `FAILED` не запускаются заново.
+- admission journal сначала восстанавливает pre-hash claim и исходный rank,
+  затем обычный source recovery продолжает linked ingestion; legacy
+  nonterminal work без registration при активной ordered policy блокирует
+  startup с инструкцией drain/restore и никогда не получает новый rank.
 
 После run/source recovery тот же coordinator вызывает lifecycle admission.
 Ошибка safe clock, control/reconciliation или projection convergence оставляет

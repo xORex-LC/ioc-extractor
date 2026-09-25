@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Verification plan"
 version: "0.3.0"
-status: "P0-P4 exact-HEAD qualification evidence"
+status: "P0-P6 implementation evidence; P7 qualification pending"
 document_type: "Verification plan"
 source_of_truth: false
 language: "en"
@@ -9,9 +9,10 @@ language: "en"
 
 # DATA-AGGREGATE-01 — verification matrix
 
-Product-output rows remain planned until P5–P7. P1–P4 mechanism evidence is
-recorded below; it does not qualify end-to-end aggregate generation. Conditional
-cases become required when the corresponding discovery decision admits them.
+Product output and transition paths are implemented through P6. Mechanism and
+focused product evidence are recorded below; the final exact-HEAD analyzer,
+security, coverage and performance checkpoint remains P7. Conditional cases
+become required when the corresponding discovery decision admits them.
 
 | ID | Behavior / evidence | Dependency |
 |---|---|---|
@@ -77,7 +78,8 @@ resource cancellation and database-busy outcomes must have bounded recovery.
 
 V-02/V-03/V-12/V-13 additionally cover the [network amendment](network-routing-amendment.md):
 structural column gates, clean domains, URL overlap suppression, configurable
-carrier cardinality and processed/as-is validation. These checks are planned.
+carrier cardinality and processed/as-is validation. P5 focused tests cover these
+paths; P7 records their final-gate evidence.
 
 Accepted routing checkpoint: verify full URL and scheme-less host-plus-path
 retain their observed representation in url_match, while bare domain and bare IP
@@ -121,3 +123,27 @@ a new lifecycle after expiry; replay of an already committed operation must not.
 - V-01–V-12, V-14 and remaining V-17–V-32 portions stay open wherever they
   depend on aggregate mapping/import/export, bootstrap activation, coordinated
   restore, consumer fixtures or performance qualification.
+
+## P5-P6 execution checkpoint
+
+- V-01–V-03 have generated and independently consumed golden fixtures for the
+  exact five-column artifact, one-carrier routing and NULL representation.
+- V-04–V-07 and V-09 are covered across occurrence preparation, ordered JDBC
+  mutation and golden product paths. Public name changes advance ordinary
+  projection/export work; same-value provenance changes remain metadata-only.
+- V-10 is covered by the unchanged legacy artifact policies and the complete
+  golden pipeline. V-11 covers fresh configuration, empty start, no backfill,
+  strict v0.2 identity-overlay compatibility and the coordinated restore rule.
+- V-12 and V-24 cover target-only processed import, source-label binding,
+  carrier validation, authority composition and last-nonempty duplicate
+  reduction. Existing import duplicate policies remain unchanged.
+- V-23/V-25 include pinned import policy metadata, new-delivery order and
+  committed-operation replay. V-27–V-29 cover file/JDBC terminal recovery,
+  import reservation, unresolved status/health, reference-aware retention,
+  legacy unranked-work blocking and lifecycle recreation.
+- V-30 has immutable aggregate export consumer coverage. The durable revision
+  and reconcile path is shared with existing artifacts and name-only mutation
+  produces the same public-change signal.
+- P5–P6 focused cohorts passed as recorded in the evidence ledger. V-14 and V-32
+  remain open for the final exact-HEAD gate, analyzer/security metrics and
+  representative performance comparison in P7.

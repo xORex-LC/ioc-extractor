@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Evidence ledger"
 version: "0.3.0"
-status: "P0-P4 implementation and exact-HEAD qualification evidence"
+status: "P0-P6 implementation evidence; P7 qualification pending"
 document_type: "Evidence ledger"
 source_of_truth: false
 language: "en"
@@ -273,3 +273,63 @@ count without suppression or baseline growth.
 This qualifies the P0-P4 shared mechanisms. It does not qualify IOC aggregate
 wire output, managed import, immutable export/delivery or production activation;
 those remain P5-P7 scope.
+
+## P5 aggregate artifact and import/export integration — 2026-09-25
+
+Commit `72f4daa1` activates the five-column `ioc_aggregate` sink and the separate
+`ioc-aggregate` immutable export profile in both classpath and packaging
+configuration. The artifact starts empty, receives no historical backfill and
+selects the opt-in occurrence/name policy without changing the four existing
+artifact policies.
+
+Commit `202fd03c` adds the explicit target-only managed-import contract. Its
+compiled policy validates exactly one IP, URL, clean domain or hash carrier,
+binds `name` through `source.label`, applies last-nonempty whole-record reduction
+by normalized four-carrier key and fingerprints the effective mapping/policy for
+sealed-stage recovery. Existing import contracts retain their duplicate rules.
+
+Focused implementation evidence includes:
+
+- golden pipeline output for all four carrier shapes with exact five-column
+  order and NULL representation;
+- independent immutable-export consumer bytes for
+  `IOC_aggregate_generated.csv`;
+- processed-import source binding, structural carrier validators, compiler
+  rejection paths, normalized duplicate reduction and private workspace tests;
+- existing artifact/profile configuration tests proving the new policy is
+  selected only by `ioc_aggregate`.
+
+These checks establish the P5 product path. Final aggregate coverage, analyzer,
+security and representative performance evidence remains part of P7.
+
+## P6 ordered-intake transition and operations — 2026-09-25
+
+Commit `86bb0373` completes runtime admission for daemon document processing and
+managed import. File and JDBC document journals recover the same dataframe-owned
+registration order; import reservation is proven by service schema v11 before
+canonical promotion. Startup blocks legacy unranked work instead of inventing an
+order. Registration status, health and bounded retention expose unresolved
+authority and preserve every live document, import, receipt and provenance
+reference.
+
+The same commit bounds upgrade compatibility: an exact v0.2 four-artifact
+identity overlay receives the shipped aggregate identity only when the aggregate
+sink is present, while partial or modified overlays remain strict. The operator
+guide records coordinated backup/restore of configuration, both databases and
+service-owned files; binary-only downgrade and schema stripping are unsupported.
+
+Focused implementation evidence includes:
+
+- `ObservationAdmissionServiceTest`: 15 passed, covering document/import
+  references, recovery, terminal state transitions and retention boundaries;
+- full JDBC adapter integration cohort: 230 tests, zero failures/errors and one
+  property-gated load-profile skip;
+- `JdbcCanonicalImportWriterContractIT`: 18 passed, including ordered import
+  commit/replay behavior;
+- `FileSystemSourceLifecycleIT`: 10 passed, including durable file-journal
+  recovery;
+- bootstrap fast-test cohort: 264 tests, zero failures/errors, including health,
+  status, startup barrier and exact legacy-overlay compatibility.
+
+The final exact-HEAD deterministic gate and report metrics are intentionally left
+to P7; the counts above are focused implementation evidence for P5–P6.

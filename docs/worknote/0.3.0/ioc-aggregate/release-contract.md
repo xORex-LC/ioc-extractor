@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Draft release contract"
 version: "0.3.0"
-status: "P0-P4 foundation implemented; activation pending"
+status: "P0-P6 implemented; P7 qualification pending"
 document_type: "Draft release contract"
 source_of_truth: false
 language: "en"
@@ -18,10 +18,11 @@ managed aggregate import. See the [network amendment](network-routing-amendment.
 Per-artifact mapping/update configurability is required. Missing new attribution
 preserves an existing name. Extend shared section markers to recognize the five
 observed label forms while retaining existing marker support. The accepted P0
-ordering contract and P1–P4 policy/admission/preparation/mutation foundations
-are implemented. The [technical design](technical-design.md) remains the
-contract for P5–P7;
-aggregate generation, activation and release-blocking disposition are not yet settled.
+ordering contract and P1–P6 policy/admission/preparation/mutation,
+import/export and transition slices are implemented. The
+[technical design](technical-design.md) remains the contract for final P7
+qualification. Aggregate generation is enabled in the shipping preset; managed
+import remains disabled until an operator supplies a validated source.
 
 ## Compatibility requirements
 
@@ -35,8 +36,9 @@ aggregate generation, activation and release-blocking disposition are not yet se
   change to all artifacts is implied.
 - If the configuration DSL grows, retain existing single-type configurations
   and qualify fingerprints and processed-import behavior.
-- Determine rollback behavior after a newer binary/configuration adds the
-  artifact or mapping policy before claiming upgrade support.
+- Rollback after schema v11 requires coordinated restoration of the matching
+  binary, configuration, both databases and service-owned files. Binary-only
+  downgrade or manual schema stripping is unsupported.
 
 ## Completion criteria
 

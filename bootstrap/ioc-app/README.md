@@ -127,6 +127,22 @@ facts, aggregate source-readiness counts и lane depth. Incompatible source
 Shutdown сначала закрывает watches/new hints, затем scheduler и ждёт уже
 принятую lane work до typed timeout.
 
+## Ordered observation operations
+
+Composition включает cross-delivery ordering только при наличии enabled
+`latest-registered` artifact field. Oneshot использует registration decorator;
+daemon document intake выбирает JDBC либо file-backed admission journal;
+managed import резервирует admission atomарно с service delivery и передаёт тот
+же rank в canonical promotion. Startup восстанавливает pre-hash document
+admissions до ordinary source ledger и отказывается re-rank-ить legacy work.
+
+`ObservationRegistrationRetentionScheduler` выполняет bounded cleanup по
+существующему receipt/history horizon. Он не удаляет unresolved oneshot rows.
+`ObservationRegistrationHealthIndicator` публикует safe aggregate counts и
+переводит health в `DOWN`, если crashed oneshot registration остаётся без
+terminal disposition. Rollback schema v11 требует coordinated restore обеих DB,
+configuration и service-owned files; composition не поддерживает schema strip.
+
 ## Зависимости
 
 **Зависит от:** selected platform/core/adapters modules, Spring Boot and its

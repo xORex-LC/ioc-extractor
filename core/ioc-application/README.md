@@ -78,8 +78,10 @@ Ordered field policies используют framework-free `ObservationOrder`,
 координируют dataframe registration с transport/service recovery references
 короткими последовательными операциями, без cross-database transaction.
 Recovery всегда вызывает `resume` с сохранённым namespace и не имеет права
-выделить новый rank. Terminal retention сначала удаляет recovery reference и
-только затем запрашивает точное удаление незадействованной registration.
+выделить новый rank. Terminal retention запрашивает безопасное удаление точной
+registration и оставляет recovery reference, пока её удерживает provenance или
+receipt; после `PURGED` либо доказанного `MISSING` удаляется service/file
+reference. Это делает crash между двумя локальными удалениями идемпотентным.
 
 `LatestRegisteredValuePolicy` является pure strategy без clock/storage access.
 `ArtifactWritePlan` сохраняет positions управляемых полей до commit, а
@@ -87,6 +89,9 @@ Recovery всегда вызывает `resume` с сохранённым namesp
 lifecycle confirmation. Результат записи различает inserted, public-updated и
 metadata-only rows; наружу публикуется ordered set artifacts с изменившимся
 public представлением, чтобы projection и recovery не теряли name-only update.
+Managed import использует ту же registration через `CanonicalImportCommand`,
+поэтому document и CSV delivery сравниваются одним dataframe-owned order, а
+service sequence остаётся только FIFO authority самого import-контура.
 
 ## Зависимости
 

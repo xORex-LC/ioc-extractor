@@ -80,7 +80,10 @@ concurrency, Spring Integration file support.
   file-ledger mode и тот же `SourceLifecycle` port в JDBC mode. После pre-hash
   atomic claim `sealClaim` публикует private inode через fsync + atomic move и
   удаляет старый inode path; открытый producer descriptor поэтому не меняет
-  bytes, которые хешируются и передаются application use case. Этот путь не
-  подключён к default flow до активации соответствующей artifact policy.
+  bytes, которые хешируются и передаются application use case. Bootstrap
+  подключает путь только при наличии enabled `latest-registered` field policy;
+  shipping `ioc_aggregate` активирует его. Startup сначала восстанавливает
+  admission journal, затем обычный ingestion ledger. Legacy незавершённая
+  работа без rank отклоняется с drain/restore instruction.
 - Positive retry backoff обычного ingest планируется на daemon scheduler;
   poller thread больше не удерживается через `Thread.sleep`.

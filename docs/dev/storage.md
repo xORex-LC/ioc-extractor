@@ -100,6 +100,14 @@ handshake через reconcile. Retention сначала удаляет finalize
 reference и только затем пытается удалить точную terminal registration; строка
 с canonical field-origin остаётся в dataframe DB.
 
+Service schema v11 добавляет `import_observation_reservation`. Маркер создаётся
+атомарно с новой import delivery и является единственным разрешением выделить
+rank после crash между service reservation и dataframe registration. Старые
+nonterminal deliveries без маркера не переоцениваются по timestamps и не
+получают новый rank. Cleanup не выдаёт finalized import reference, пока
+соответствующая delivery не стала `TERMINAL`, поэтому service recovery authority
+не удаляется раньше завершения handshake.
+
 Dataframe schema v11 завершает ordered-field transaction contract. Complete
 receipt v2 хранит position каждого управляемого поля; commit marker различает
 public update и metadata-only origin advance. Активный lifecycle origin при
@@ -116,11 +124,11 @@ public row, origin, revision/projection generation, commit marker и receipt.
 попадает в projection/event recovery. Эти правила одинаковы в `ACTIVE` и
 `DISABLED_COMPATIBLE` режимах.
 
-Эти таблицы являются foundation для ordered artifact policies. Их наличие не
-включает новый artifact или новую mutation policy. Переход на schema v11 также
-означает, что старый binary корректно откажется открывать более новую БД;
-coordinated backup/restore остаётся обязательной частью rollout-плана до
-production activation.
+Shipping `ioc_aggregate` включает ordered `name` policy и использует эти таблицы
+как runtime authority в oneshot, daemon document и managed-import paths. Старый
+binary корректно откажется открывать schema v11; rollback выполняется только
+совместным восстановлением service/dataframe DB, конфигурации и принадлежащих
+сервису файлов из одной остановленной recovery point.
 
 ### Lifecycle-aware storage path (dataframe v4; explicit activation)
 

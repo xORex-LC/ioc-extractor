@@ -141,10 +141,17 @@ runtime JDBC drivers.
   lifecycle field origins beside lifecycle history. Receipt v1 is deliberately
   treated as an ETL fallback rather than reinterpreted with v2 semantics.
 - Service schema v10 adds CAS journals for document admission and managed-import
-  registration references. Terminal retention deletes the finalized service
-  reference first, then attempts exact dataframe-registration cleanup; canonical
-  field-origin foreign references keep the registration alive. The two databases
-  are never locked in one transaction.
+  registration references. Service schema v11 atomically adds an
+  `import_observation_reservation` marker for each new delivery before dataframe
+  rank allocation. Legacy unmarked recovery cannot allocate a rank. Terminal
+  retention first asks dataframe storage for a safe exact purge; a live
+  provenance/receipt reference retains both registration and service reference,
+  while `PURGED` or already `MISSING` allows the service reference to be removed.
+  The two databases are never locked in one transaction.
+- `JdbcObservationRegistrationStatusReader` exposes only pending totals and the
+  oldest unresolved oneshot time. The bootstrap health component marks unresolved
+  oneshot state `DOWN`; automatic retention excludes live/unresolved oneshot
+  registrations and deletes terminal rows only after the receipt/history horizon.
 - `JdbcImportWorkspace` keeps bulk import rows outside the service/dataframe
   stores in one opaque per-delivery SQLite file. Batched staging is bounded by
   parser, row/error, per-stage and aggregate watermarks; sealing checkpoints and

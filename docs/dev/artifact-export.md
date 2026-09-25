@@ -131,6 +131,11 @@ delivery из сотен тысяч rows создаёт один quiet-period bu
 каждой row. Import no-op и TTL-only confirmation не продвигают artifact revision
 и сами по себе immutable slice не создают.
 
+Для `ioc_aggregate` изменение только `name` является public mutation: оно
+продвигает revision, обновляет mutable projection и попадает в обычный
+`ioc-aggregate` immutable slice/delivery path. Продвижение только field-origin
+при совпадающем `name` остаётся metadata-only и не создаёт новый slice.
+
 Lifecycle expiry отдельно восстанавливает mutable `*_generated.csv`, но не
 вызывает `DaemonExportScheduler.nudge()`. Поэтому истечение само по себе не
 создаёт immutable slice; только следующий разрешённый new-data export зафиксирует

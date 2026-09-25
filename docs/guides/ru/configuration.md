@@ -138,7 +138,7 @@ charset или enabled. Schema/identity changes меняют durable contract и
 | `ioc.sink.csv.quote` | один символ | `"` | Должен отличаться от delimiter. |
 | `ioc.sink.csv.null-literal` | непустая строка | `NULL` | Сериализованное отсутствие значения. |
 | `ioc.sink.csv.charset` | Java charset | `UTF-8` | Непредставимые символы заменяются и диагностируются, но не останавливают run. |
-| `ioc.sink.artifacts` | непустой список | masks, ip_list, address_blacklist, hashes | Переопределяйте полные элементы, не отдельные indexes. |
+| `ioc.sink.artifacts` | непустой список | masks, ip_list, address_blacklist, hashes, ioc_aggregate | Переопределяйте полные элементы, не отдельные indexes. Перед первой активацией прочитайте [гайд IOC aggregate](ioc-aggregate.md). |
 | `ioc.sink.artifacts[].name` | уникальная строка | обязателен | Stable identity, используемая export и row-key config. |
 | `ioc.sink.artifacts[].enabled` | boolean | обязателен | Disabled artifact не готовится и не проецируется. |
 | `ioc.sink.artifacts[].path` | путь | обязателен | Путь mutable projection. |
@@ -187,11 +187,14 @@ charset или enabled. Schema/identity changes меняют durable contract и
 `match-keys` и `epoch` только четыре точные built-in identity-записи из packaged
 template v0.2.0. Они преобразуются в поставляемые current definitions, а startup
 пишет `CONFIG.LEGACY_ARTIFACT_IDENTITY`. Custom или изменённая запись без
-`record-key` не проходит semantic validation. После исключения v0.2.0 из
-rollback targets перенесите явные current definitions из `application.yml.new`
-через `ioc-config apply`; compatibility shape не является шаблоном для новых
-artifacts. Этот adapter относится только к переходу между релизами и удаляется,
-когда прямой upgrade/rollback с v0.2.0 больше не поддерживается.
+`record-key` не проходит semantic validation. Пока присутствует shipping
+aggregate sink, полная legacy base из четырёх записей также разрешается в
+shipped identity `ioc_aggregate`; partial или изменённые legacy definitions этой
+совместимости не получают. После исключения v0.2.0 из rollback targets перенесите
+все явные current definitions из `application.yml.new` через `ioc-config apply`;
+compatibility shape не является шаблоном для новых artifacts. Этот adapter
+относится только к переходу между релизами и удаляется, когда прямой
+upgrade/rollback с v0.2.0 больше не поддерживается.
 
 ## Managed dataframe import
 

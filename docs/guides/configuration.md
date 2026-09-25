@@ -137,7 +137,7 @@ contract and must be tested against existing databases and consumers.
 | `ioc.sink.csv.quote` | one-character string | `"` | Must differ from delimiter. |
 | `ioc.sink.csv.null-literal` | non-blank string | `NULL` | Serialized value for absent cells. |
 | `ioc.sink.csv.charset` | Java charset name | `UTF-8` | Unmappable characters are replaced and reported, not fatal. |
-| `ioc.sink.artifacts` | non-empty list | masks, ip_list, address_blacklist, hashes | Override complete list elements, not isolated indexes. |
+| `ioc.sink.artifacts` | non-empty list | masks, ip_list, address_blacklist, hashes, ioc_aggregate | Override complete list elements, not isolated indexes. See the [IOC aggregate guide](ioc-aggregate.md) before first activation. |
 | `ioc.sink.artifacts[].name` | unique string | required | Stable artifact identity referenced by export and row-key configuration. |
 | `ioc.sink.artifacts[].enabled` | boolean | required | Disabled artifacts are not prepared or projected. |
 | `ioc.sink.artifacts[].path` | path | required | Mutable projection output path. |
@@ -186,12 +186,14 @@ During the v0.2.0 rollback overlap, the 0.3.0 binary accepts only the four exact
 built-in identity entries from the v0.2.0 packaged template without
 `record-key`, `match-keys`, or `epoch`. It resolves them to the shipped current
 definitions and logs `CONFIG.LEGACY_ARTIFACT_IDENTITY`. A custom or modified
-entry missing `record-key` fails semantic validation. Once v0.2.0 is no longer
-a rollback target, merge the explicit current definitions from
-`application.yml.new` through `ioc-config apply`; do not keep the compatibility
-shape as a template for new artifacts. This adapter is release-transition code,
-not a permanent alternate schema: it is removed once direct v0.2.0
-upgrade/rollback is no longer supported.
+entry missing `record-key` fails semantic validation. While the shipped
+aggregate sink is present, the complete four-entry legacy base also resolves
+the shipped `ioc_aggregate` identity; partial or modified legacy definitions do
+not receive this compatibility. Once v0.2.0 is no longer a rollback target,
+merge all explicit current definitions from `application.yml.new` through
+`ioc-config apply`; do not keep the compatibility shape as a template for new
+artifacts. This adapter is release-transition code, not a permanent alternate
+schema: it is removed once direct v0.2.0 upgrade/rollback is no longer supported.
 
 ## Managed dataframe import
 

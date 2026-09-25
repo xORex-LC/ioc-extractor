@@ -103,6 +103,12 @@ upper case. Полная четвёрка carrier-колонок являетс�
 помеченную occurrence внутри документа, а ordered field policy меняет только
 непустой `name` от более поздней durable registration.
 
+Registration создаётся driving boundary до business processing: oneshot
+декоратор завершает её в рамках invocation, daemon сохраняет pre-hash recovery в
+JDBC либо file journal, managed import связывает её с delivery reservation.
+Повтор и restart возобновляют тот же rank. Aggregate начинает пустым: storage
+reconciliation создаёт схему, но не строит строки из четырёх прежних artifacts.
+
 ## Отказы
 
 | Граница | Поведение |

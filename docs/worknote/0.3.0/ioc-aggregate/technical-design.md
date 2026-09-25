@@ -380,7 +380,7 @@ Plan dataframe v10 and service v10 if still free at implementation time; include
 receipt version and private import-stage format bump where changed. Allocation
 numbers are not an accepted ADR number reservation.
 
-Safe proposed activation sequence:
+Safe activation sequence:
 
 1. Stop new intake; finish or explicitly resolve old nonterminal ingestion/import
    work under the old policy. Do not synthesize original cross-path order from
@@ -398,10 +398,11 @@ Safe proposed activation sequence:
    lifecycle must admit a new configured artifact without a fresh TTL cutover.
 
 Old binaries may reject a bumped schema: binary-only rollback is NOT promised.
-Supported rollback proposal is coordinated restoration of pre-upgrade state with
-intake stopped; it loses post-backup accepted writes unless separately reconciled.
-This limitation must be explicitly reviewed before production activation. No
-silent downgrade or attempt to strip internal tables to appease an old binary.
+Supported rollback is coordinated restoration of pre-upgrade state with intake
+stopped; it loses post-backup accepted writes unless separately reconciled. The
+restore set contains the matching binary, configuration, both databases and
+service-owned files. There is no silent downgrade or attempt to strip internal
+tables to appease an old binary.
 
 ## 10. Retention, operations and failure contract
 
@@ -463,22 +464,22 @@ identity, active reservation, field origin and retention candidates. Measure
 allocation latency, canonical lock duration and duplicate-heavy preparation
 memory on representative data; do not introduce caches or tune pools by guess.
 
-## 12. Product questions and proposed defaults
+## 12. Product questions and implemented resolutions
 
 | ID | Question | Proposal / readiness |
 |---|---|---|
 | Q-01 | Export on name-only change | Accepted: public name changes trigger ordinary export/delivery cadence |
 | Q-02 | Compound carrier row | Resolved by owner: one IP, URL, domain or hash per row; no combined records for now |
 | Q-03 | Ordered-policy daemon file-ledger support | Accepted: both file-ledger and JDBC service coordination are supported |
-| Q-04 | Profile/filename/default activation | Separate aggregate export profile; disabled until qualified; proposed |
+| Q-04 | Profile/filename/default activation | Implemented: shipping aggregate sink writes `IOC_aggregate_generated.csv`; immutable export uses the separate `ioc-aggregate` profile |
 | Q-05 | Repeated keys within CSV | Accepted: last row with nonempty name for the same full key; configurable per contract; existing contracts unchanged |
 | Q-06 | Network address routing | Confirmed: full URLs and scheme-less host-plus-path in url_match; bare domains/IPs in their own carriers. Scheme-less host:port without path is also accepted in url_match, without inventing a scheme |
-| Q-07 | Lifecycle restart and rollback | Lifecycle-local priority and recreation from delayed previously uncommitted input accepted; coordinated rollback/restore limitation still requires review |
+| Q-07 | Lifecycle restart and rollback | Implemented contract: lifecycle-local priority and recreation from delayed previously uncommitted input; rollback requires coordinated restore and does not support binary-only downgrade |
 
-Q-01, Q-02, Q-03, Q-05 and Q-06 are resolved. Q-07 lifecycle restart is accepted,
-while its separate rollback/restore limitation still requires review. Q-03 adds
-a file-journal adapter under the same application port and dataframe order
-authority.
+Q-01–Q-07 are resolved for the implemented P0–P6 scope. Q-03 adds a file-journal
+adapter under the same application port and dataframe order authority. Q-04
+keeps managed import operator-disabled even though its aggregate contract is
+compiled and qualified.
 No framework-boundary exception is currently necessary. If an implementation
 prototype disproves these seams, update design and ask about the concrete
 contract impact before silently weakening a requirement.
@@ -486,11 +487,12 @@ contract impact before silently weakening a requirement.
 ## 13. Verification and decisions to publish
 
 Use the [verification matrix](verification-matrix.md) and expanded
-[implementation plan](implementation-plan.md). Before production implementation,
-publish an append-only ADR for durable order authority, field policy and
+[implementation plan](implementation-plan.md). Before release qualification,
+finalize the append-only ADR for durable order authority, field policy and
 occurrence-preserving pipeline semantics. It extends relevant lifecycle/import
-contracts without rewriting accepted ADRs. Update capability docs, module READMEs,
-configuration reference, recovery/upgrade guide and release notes with code.
+contracts without rewriting accepted ADRs. Keep capability docs, module READMEs,
+configuration reference, recovery/upgrade guide and release notes aligned with
+the implementation.
 
 A design review is not an executable qualification. P0 must prove the riskiest
 seams (crash before claim, receipt reuse, update-only export, mode compatibility)
