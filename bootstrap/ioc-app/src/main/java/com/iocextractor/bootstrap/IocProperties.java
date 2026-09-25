@@ -510,17 +510,6 @@ public record IocProperties(
                 artifacts = snapshotList(artifacts);
             }
 
-            public Contract(String id, int version, String charset, Dialect dialect,
-                            Recognition recognition, ImportProcessingMode mode,
-                            ImportRoutingPolicy routing, ImportRowFailurePolicy rowFailurePolicy,
-                            ImportDuplicatePolicy duplicatePolicy, boolean renewUnchanged,
-                            ImportFormulaPolicy formulaPolicy, ImportMergePolicy mergeDefault,
-                            List<Artifact> artifacts, RequestedSlot requestedSlot) {
-                this(id, version, charset, dialect, recognition, mode, routing, rowFailurePolicy,
-                        duplicatePolicy, null, renewUnchanged, formulaPolicy, mergeDefault,
-                        artifacts, requestedSlot);
-            }
-
             /** Returns the immutable artifact-mapping snapshot. */
             @Override
             public List<Artifact> artifacts() {

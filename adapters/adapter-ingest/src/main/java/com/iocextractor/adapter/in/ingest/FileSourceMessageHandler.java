@@ -202,22 +202,30 @@ public final class FileSourceMessageHandler implements AutoCloseable {
                 last = e;
             }
         }
-        RuntimeException terminal = last;
-        if (!alreadyRejected) {
-            try {
-                rejectUseCase.reject(
-                        context.observationId(), key,
-                        last == null ? "source ingestion failed" : last.getMessage());
-            } catch (RuntimeException rejectionFailure) {
-                if (last != null) {
-                    rejectionFailure.addSuppressed(last);
-                }
-                terminal = rejectionFailure;
-            }
-        }
+        RuntimeException terminal = terminalFailure(context, key, last, alreadyRejected);
         emitIngestDiagnostic(terminal);
         throw new IocExtractorException(
                 "Source ingestion failed after retries: " + context.source(), terminal);
+    }
+
+    private RuntimeException terminalFailure(RetryContext context,
+                                             SourceKey key,
+                                             RuntimeException failure,
+                                             boolean alreadyRejected) {
+        if (alreadyRejected) {
+            return failure;
+        }
+        try {
+            rejectUseCase.reject(
+                    context.observationId(), key,
+                    failure == null ? "source ingestion failed" : failure.getMessage());
+            return failure;
+        } catch (RuntimeException rejectionFailure) {
+            if (failure != null) {
+                rejectionFailure.addSuppressed(failure);
+            }
+            return rejectionFailure;
+        }
     }
 
     private SourceKey hashWithRetries(Path source) {
