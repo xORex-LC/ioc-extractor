@@ -602,6 +602,7 @@ public class AppConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public ObservationRegistrationHealthIndicator observationRegistrationHealthIndicator(
             ObservationRegistrationStatusReader reader,
             Clock clock) {
@@ -609,6 +610,7 @@ public class AppConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = RuntimeMode.DAEMON_VALUE)
     public ObservationRegistrationRetentionScheduler observationRegistrationRetentionScheduler(
             ObservationRegistrationStore registrations,
             ObjectProvider<DocumentAdmissionService> documents,

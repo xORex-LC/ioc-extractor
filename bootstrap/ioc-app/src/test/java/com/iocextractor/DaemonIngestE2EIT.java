@@ -2,6 +2,8 @@ package com.iocextractor;
 
 import com.iocextractor.application.tck.junit.EndToEndTest;
 import com.iocextractor.adapter.in.ingest.FileSourceHasher;
+import com.iocextractor.adapter.in.ingest.OrderedDocumentAdmissionHandler;
+import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.adapter.out.store.jdbc.JdbcRemoteFetchLedger;
 import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.ingest.SourceKey;
@@ -41,6 +43,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -105,6 +108,9 @@ class DaemonIngestE2EIT {
     @Autowired
     FileSourceHasher fileSourceHasher;
 
+    @Autowired
+    OrderedDocumentAdmissionHandler documentAdmissions;
+
     @Test
     void ingests_source_directly_into_canonical_storage_and_projection() throws Exception {
         // a source staged outside the watched inbox, so the poller cannot race the manual ingest
@@ -116,8 +122,9 @@ class DaemonIngestE2EIT {
         Files.writeString(source, "\n<p>unique-original-e2e.example</p>\n",
                 java.nio.file.StandardOpenOption.APPEND);
 
+        var admitted = admit(source, Instant.parse("2026-06-25T00:00:00Z"));
         IngestSourceResult result = ingestSourceUseCase.ingest(
-                new IngestSourceCommand(source, new SourceKey("e2e-source"), Instant.parse("2026-06-25T00:00:00Z")));
+                new IngestSourceCommand(admitted.source(), admitted.registration()));
 
         assertThat(result.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
         assertThat(result.duplicate()).isFalse();
@@ -125,7 +132,7 @@ class DaemonIngestE2EIT {
         // canonical truth in the dataframe DB
         assertThat(count("SELECT COUNT(*) FROM masks")).isPositive();
         // provenance recorded against the ingest source key
-        assertThat(count("SELECT COUNT(*) FROM masks_sources WHERE source_key = 'e2e-source'")).isPositive();
+        assertThat(countForSourceKey(admitted.source().key().value())).isPositive();
         // CSV projection refreshed from canonical truth
         Path projection = Path.of("target/daemon-e2e/masks_list_generated.csv");
         assertThat(Files.exists(projection)).isTrue();
@@ -158,13 +165,14 @@ class DaemonIngestE2EIT {
 
             var fetched = fetcher.fetch(new com.iocextractor.application.port.in.sync.RemoteFetchCommand(false));
             Path landed = inbox.resolve("remote-source.html");
+            var admitted = admit(landed, modifiedAt);
             IngestSourceResult ingested = ingestSourceUseCase.ingest(
-                    new IngestSourceCommand(landed, new SourceKey("remote-e2e"), modifiedAt));
+                    new IngestSourceCommand(admitted.source(), admitted.registration()));
             var duplicate = fetcher.fetch(new com.iocextractor.application.port.in.sync.RemoteFetchCommand(false));
 
             assertThat(fetched.fetched()).isOne();
             assertThat(ingested.status()).isEqualTo(IngestionStatus.SOURCE_ARCHIVED);
-            assertThat(countForSourceKey("remote-e2e")).isPositive();
+            assertThat(countForSourceKey(admitted.source().key().value())).isPositive();
             assertThat(duplicate.skipped()).isOne();
         } finally {
             pollingAdapters.forEach(SourcePollingChannelAdapter::start);
@@ -191,10 +199,16 @@ class DaemonIngestE2EIT {
             assertThat(done).isDirectory();
             try (var archivedSources = Files.list(done)) {
                 assertThat(archivedSources.map(path -> path.getFileName().toString()))
-                        .anyMatch(name -> name.endsWith("__" + key.value() + "-watched-source.html"));
+                        .anyMatch(name -> name.contains(key.value())
+                                && name.contains("watched-source.html"));
             }
             assertThat(countForSourceKey(key.value())).isPositive();
         });
+    }
+
+    private OrderedDocumentAdmissionHandler.AdmittedDocument admit(Path source, Instant detectedAt) {
+        return documentAdmissions.admit(
+                source, new ObservationId(UUID.randomUUID().toString()), detectedAt);
     }
 
     private FileTransport readOnlyRemote(String path, byte[] content, Instant modifiedAt) {
