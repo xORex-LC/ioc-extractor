@@ -138,10 +138,10 @@ final class JdbcImportWorkspaceWriter implements ImportWorkspaceWriter {
         try {
             commitBatch();
             ImportWorkspaceSchema.createSealIndexes(connection);
-            if (command.duplicatePolicy() == ImportDuplicatePolicy.COALESCE) {
-                coalesceDuplicates();
-            } else {
-                keepFirstDuplicates();
+            switch (command.duplicatePolicy()) {
+                case COALESCE -> coalesceDuplicates();
+                case KEEP_FIRST -> keepFirstDuplicates();
+                case LAST_NONEMPTY -> lastNonemptyDuplicates();
             }
             finalizeStatuses();
             long acceptedRows = countStatus("ACCEPTED");
@@ -342,6 +342,74 @@ final class JdbcImportWorkspaceWriter implements ImportWorkspaceWriter {
                         AND first.group_key_canonical = current.group_key_canonical)
                 """);
         rowErrors += duplicateRows;
+    }
+
+    private void lastNonemptyDuplicates() throws SQLException {
+        execute("""
+                CREATE TEMP TABLE duplicate_winner AS
+                SELECT candidate.group_key_hash, candidate.group_key_canonical,
+                       COALESCE(
+                           MAX(CASE WHEN EXISTS (
+                               SELECT 1
+                               FROM stage_branch primary_branch
+                               JOIN stage_cell selection_cell
+                                 ON selection_cell.branch_id = primary_branch.branch_id
+                               WHERE primary_branch.source_row_number = candidate.source_row_number
+                                 AND primary_branch.primary_flag = 1
+                                 AND selection_cell.target_column = %s
+                                 AND selection_cell.presence = 2
+                                 AND length(trim(selection_cell.value)) > 0)
+                           THEN candidate.source_row_number END),
+                           MIN(candidate.source_row_number)) AS source_row_number
+                FROM stage_input_row candidate
+                WHERE candidate.status = 'MAPPED'
+                GROUP BY candidate.group_key_hash, candidate.group_key_canonical
+                """.formatted(sqlLiteral(command.duplicateSelectionColumn())));
+        execute("""
+                CREATE UNIQUE INDEX ux_duplicate_winner
+                ON duplicate_winner(group_key_hash, group_key_canonical)
+                """);
+        long duplicateRows = queryLong("""
+                SELECT COUNT(*)
+                FROM stage_input_row current
+                JOIN duplicate_winner winner
+                  ON winner.group_key_hash = current.group_key_hash
+                 AND winner.group_key_canonical = current.group_key_canonical
+                WHERE current.status = 'MAPPED'
+                  AND current.source_row_number <> winner.source_row_number
+                """);
+        requireErrorCapacity(duplicateRows);
+        execute("""
+                INSERT INTO stage_row_error(
+                    logical_group_id, source_row_number, artifact, diagnostic_code)
+                SELECT winner.source_row_number, current.source_row_number,
+                       primary_branch.artifact, 'IMPORT.DUPLICATE_IGNORED'
+                FROM stage_input_row current
+                JOIN duplicate_winner winner
+                  ON winner.group_key_hash = current.group_key_hash
+                 AND winner.group_key_canonical = current.group_key_canonical
+                JOIN stage_branch primary_branch
+                  ON primary_branch.source_row_number = current.source_row_number
+                 AND primary_branch.primary_flag = 1
+                WHERE current.status = 'MAPPED'
+                  AND current.source_row_number <> winner.source_row_number
+                """);
+        execute("""
+                UPDATE stage_input_row AS current
+                SET status = 'DUPLICATE_IGNORED', error_count = error_count + 1
+                WHERE status = 'MAPPED'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM duplicate_winner winner
+                      WHERE winner.group_key_hash = current.group_key_hash
+                        AND winner.group_key_canonical = current.group_key_canonical
+                        AND current.source_row_number <> winner.source_row_number)
+                """);
+        rowErrors += duplicateRows;
+    }
+
+    private String sqlLiteral(String value) {
+        return "'" + value.replace("'", "''") + "'";
     }
 
     private void coalesceDuplicates() throws SQLException {

@@ -44,17 +44,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EndToEndTest
 class GoldenPipelineIT {
 
-    private static final List<String> ARTIFACTS = List.of("masks", "ip_list", "address_blacklist", "hashes");
+    private static final List<String> ARTIFACTS = List.of(
+            "masks", "ip_list", "address_blacklist", "hashes", "ioc_aggregate");
     private static final Map<String, Path> PROJECTIONS = Map.of(
             "masks", Path.of("target/golden/masks.csv"),
             "ip_list", Path.of("target/golden/ip-list.csv"),
             "address_blacklist", Path.of("target/golden/address-blacklist.csv"),
-            "hashes", Path.of("target/golden/hashes.csv"));
+            "hashes", Path.of("target/golden/hashes.csv"),
+            "ioc_aggregate", Path.of("target/golden/IOC_aggregate.csv"));
     private static final Map<String, String> GOLDEN_RESOURCES = Map.of(
             "masks", "golden/expected-masks.csv",
             "ip_list", "golden/expected-ip-list.csv",
             "address_blacklist", "golden/expected-address-blacklist.csv",
-            "hashes", "golden/expected-hashes.csv");
+            "hashes", "golden/expected-hashes.csv",
+            "ioc_aggregate", "golden/expected-ioc-aggregate.csv");
     private static final Map<String, List<String>> HEADERS = Map.of(
             "masks", List.of(
                     "id", "mask", "url_match", "host_match", "score", "time_last_seen",
@@ -65,7 +68,8 @@ class GoldenPipelineIT {
             "address_blacklist", List.of("forbidden_url", "forbidden_ip"),
             "hashes", List.of(
                     "id", "hash_md5", "hash_sha256", "hash_sha1", "score",
-                    "time_last_seen", "time_first_seen", "threat_type", "source", "description"));
+                    "time_last_seen", "time_first_seen", "threat_type", "source", "description"),
+            "ioc_aggregate", List.of("name", "ip_address", "url_match", "host_match", "hash"));
 
     private final ReferenceArtifactConsumer consumer = new ReferenceArtifactConsumer();
 

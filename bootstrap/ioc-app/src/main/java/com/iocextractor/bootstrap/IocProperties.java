@@ -498,6 +498,7 @@ public record IocProperties(
                                ImportRoutingPolicy routing,
                                ImportRowFailurePolicy rowFailurePolicy,
                                ImportDuplicatePolicy duplicatePolicy,
+                               String duplicateSelectionColumn,
                                boolean renewUnchanged,
                                ImportFormulaPolicy formulaPolicy,
                                ImportMergePolicy mergeDefault,
@@ -506,6 +507,17 @@ public record IocProperties(
 
             public Contract {
                 artifacts = snapshotList(artifacts);
+            }
+
+            public Contract(String id, int version, String charset, Dialect dialect,
+                            Recognition recognition, ImportProcessingMode mode,
+                            ImportRoutingPolicy routing, ImportRowFailurePolicy rowFailurePolicy,
+                            ImportDuplicatePolicy duplicatePolicy, boolean renewUnchanged,
+                            ImportFormulaPolicy formulaPolicy, ImportMergePolicy mergeDefault,
+                            List<Artifact> artifacts, RequestedSlot requestedSlot) {
+                this(id, version, charset, dialect, recognition, mode, routing, rowFailurePolicy,
+                        duplicatePolicy, null, renewUnchanged, formulaPolicy, mergeDefault,
+                        artifacts, requestedSlot);
             }
 
             /** Returns the immutable artifact-mapping snapshot. */
@@ -577,11 +589,20 @@ public record IocProperties(
                                String recordKey,
                                List<String> matchKeys,
                                ImportMergePolicy mergeDefault,
+                               String sourceLabelTarget,
+                               List<String> exactlyOneNonempty,
                                @Valid List<Column> columns) {
 
             public Artifact {
                 matchKeys = snapshotList(matchKeys);
+                exactlyOneNonempty = snapshotList(exactlyOneNonempty);
                 columns = snapshotList(columns);
+            }
+
+            public Artifact(String name, ImportArtifactRole role, String recordKey,
+                            List<String> matchKeys, ImportMergePolicy mergeDefault,
+                            List<Column> columns) {
+                this(name, role, recordKey, matchKeys, mergeDefault, null, null, columns);
             }
 
             /** Returns the immutable match-key snapshot. */
@@ -601,10 +622,16 @@ public record IocProperties(
         public record Column(String target,
                              String source,
                              List<String> transforms,
-                             ImportMergePolicy mergePolicy) {
+                             ImportMergePolicy mergePolicy,
+                             String validation) {
 
             public Column {
                 transforms = transforms == null ? List.of() : snapshotList(transforms);
+            }
+
+            public Column(String target, String source, List<String> transforms,
+                          ImportMergePolicy mergePolicy) {
+                this(target, source, transforms, mergePolicy, null);
             }
 
             /** Returns the immutable ordered transform snapshot. */

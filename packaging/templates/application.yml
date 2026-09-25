@@ -246,8 +246,49 @@ ioc:
   dataframe-import:
     enabled: false
     sources: []
-    authority-profiles: []
-    contracts: []
+    authority-profiles:
+      - id: ioc-aggregate-feed
+        artifacts: [ ioc_aggregate ]
+        maximum-merge-policy: replace-non-null
+        allow-related-routing: false
+        allow-machine-only-formula-preserve: false
+    contracts:
+      - id: ioc-aggregate-v1
+        version: 1
+        charset: UTF-8
+        dialect:
+          delimiter: ";"
+          quote: '"'
+          record-separator: crlf-or-lf
+          header-required: true
+          null-literals: [ "NULL" ]
+        recognition:
+          required-columns: [ name, ip_address, url_match, host_match, hash ]
+          optional-columns: []
+          ignored-columns: []
+          aliases: {}
+        mode: processed
+        routing: target-only
+        row-failure-policy: reject-delivery
+        duplicate-policy: last-nonempty
+        duplicate-selection-column: name
+        renew-unchanged: true
+        formula-policy: reject
+        merge-default: keep-existing
+        artifacts:
+          - name: ioc_aggregate
+            role: primary
+            record-key: ioc-aggregate-row-v1
+            match-keys: [ ioc-aggregate-v1 ]
+            source-label-target: name
+            exactly-one-nonempty: [ ip_address, url_match, host_match, hash ]
+            columns:
+              - { target: name,       source: name,       transforms: [], merge-policy: replace-non-null }
+              - { target: ip_address, source: ip_address, transforms: [], merge-policy: keep-existing, validation: bare-ip }
+              - { target: url_match,  source: url_match,  transforms: [ lower-host ], merge-policy: keep-existing, validation: url-address }
+              - { target: host_match, source: host_match, transforms: [ lower-host ], merge-policy: keep-existing, validation: clean-domain }
+              - { target: hash,       source: hash,       transforms: [ upper ], merge-policy: keep-existing, validation: hash }
+        requested-slot:
     runtime:
       dirs:
         processing: "./var/import/processing"

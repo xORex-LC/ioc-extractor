@@ -67,3 +67,18 @@ ioc:
           - { name: threat_type,     from: const }
           - { name: source,          from: source.label, transform: [ "strip-prefix:Письмо " ] }
           - { name: description,     from: const }
+      - name: ioc_aggregate
+        enabled: true
+        path: "target/golden/IOC_aggregate.csv"
+        accepts: [ IPV4, DOMAIN, URL, MD5, SHA1, SHA256 ]
+        columns:
+          - { name: name,       from: source.label }
+          - { name: ip_address, from: value, when-type: IPV4, when: [ is-bare-ip ] }
+          - { name: url_match,  from: value, when-types: [ IPV4, DOMAIN, URL ], when: [ is-address-with-detail ], transform: [ lower-host ] }
+          - { name: host_match, from: value, when-type: DOMAIN, when: [ is-clean-host ], transform: [ lower-host ] }
+          - { name: hash,       from: value, when-types: [ MD5, SHA1, SHA256 ], transform: [ upper ] }
+        write-policy:
+          duplicate-selection: last-nonempty
+          selection-column: name
+          fields:
+            - { name: name, update: latest-registered, empty: keep-existing }

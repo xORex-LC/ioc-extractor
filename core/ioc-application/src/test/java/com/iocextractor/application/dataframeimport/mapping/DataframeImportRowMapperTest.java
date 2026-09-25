@@ -240,6 +240,42 @@ class DataframeImportRowMapperTest {
         assertThat(prepared.get().branches()).hasSize(2);
     }
 
+    @Test
+    void appliesConfiguredValueValidationAndExactOneRowShapeBeforeProcessing() {
+        DataframeImportCatalogDraft.Contract base = contract(
+                ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED).definition();
+        DataframeImportCatalogDraft.Artifact primary = base.artifacts().getFirst();
+        DataframeImportCatalogDraft.Artifact constrained = new DataframeImportCatalogDraft.Artifact(
+                primary.name(), primary.role(), primary.recordKey(), primary.matchKeys(),
+                primary.mergeDefault(), null, List.of("ip", "score"),
+                List.of(
+                        new DataframeImportCatalogDraft.Column(
+                                "ip", "address", List.of("trim"), null, "bare-ip"),
+                        new DataframeImportCatalogDraft.Column(
+                                "score", "score", List.of("trim"), null),
+                        new DataframeImportCatalogDraft.Column(
+                                "description", "note", List.of(), null)));
+        CompiledDataframeImportContract configured = compiled(copyWith(
+                base, List.of(constrained, base.artifacts().get(1)), base.requestedSlot()));
+        DataframeImportRowMapper mapper = new DataframeImportRowMapper(
+                (specification, value) -> value.trim(),
+                (rule, value) -> !"bare-ip".equals(rule) || !value.startsWith("999."),
+                keys,
+                (contract, record, mapped) -> ImportRowMappingResult.accepted(mapped));
+
+        ImportRowMappingResult invalidValue = mapper.map(configured,
+                record(21, "999.0.0.1", "", "5".repeat(32), "21"));
+        ImportRowMappingResult compound = mapper.map(configured,
+                record(22, "192.0.2.22", "22", "6".repeat(32), "22"));
+
+        assertThat(invalidValue.row()).isEmpty();
+        assertThat(invalidValue.issues()).extracting(ImportRowIssue::code)
+                .contains("IMPORT.VALUE_INVALID", "IMPORT.NONEMPTY_CARDINALITY");
+        assertThat(compound.row()).isEmpty();
+        assertThat(compound.issues()).extracting(ImportRowIssue::code)
+                .contains("IMPORT.NONEMPTY_CARDINALITY");
+    }
+
     private CompiledDataframeImportContract contract(ImportFormulaPolicy formulaPolicy) {
         return contract(formulaPolicy, ImportProcessingMode.AS_IS);
     }

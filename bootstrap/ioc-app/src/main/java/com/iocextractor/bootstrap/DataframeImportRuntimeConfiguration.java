@@ -3,6 +3,7 @@ package com.iocextractor.bootstrap;
 import com.iocextractor.adapter.in.csv.CommonsCsvDelimitedRecordReader;
 import com.iocextractor.adapter.in.csv.CommonsCsvImportValueTransformRegistry;
 import com.iocextractor.adapter.in.csv.CsvProcessedImportRowPreparer;
+import com.iocextractor.adapter.in.csv.CsvImportValueValidatorRegistry;
 import com.iocextractor.adapter.in.csv.ImportSnapshotPathResolver;
 import com.iocextractor.adapter.in.ingest.LocalImportChangeSignalSource;
 import com.iocextractor.adapter.in.ingest.LocalImportSourceDefinition;
@@ -72,6 +73,7 @@ import com.iocextractor.application.port.out.dataframeimport.ImportValueTransfor
 import com.iocextractor.application.port.out.dataframeimport.ImportWorkspace;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
 import com.iocextractor.application.port.out.dataframeimport.ProcessedImportRowPreparer;
+import com.iocextractor.application.port.out.dataframeimport.ImportValueValidatorRegistry;
 import com.iocextractor.application.port.out.artifact.ArtifactIdBaseline;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.platform.concurrent.BoundedKeyedSerialExecutor;
@@ -207,6 +209,16 @@ class DataframeImportRuntimeConfiguration {
     }
 
     @Bean
+    ImportValueValidatorRegistry dataframeImportValidators(
+            Refanger refanger,
+            IndicatorExtractor extractor,
+            MatchPolicy matchPolicy) {
+        return new CsvImportValueValidatorRegistry(
+                refanger, extractor, new IndicatorClassifier(matchPolicy),
+                ConfigRegistryCatalog.artifactFilters());
+    }
+
+    @Bean
     DataframeImportRecognizer dataframeImportRecognizer(
             DataframeImportCatalog catalog,
             DelimitedRecordReader reader) {
@@ -231,11 +243,12 @@ class DataframeImportRuntimeConfiguration {
     @Bean
     DataframeImportRowMapper dataframeImportRowMapper(
             ImportValueTransformRegistry transforms,
+            ImportValueValidatorRegistry validators,
             ProcessedImportRowPreparer processed,
             AppConfig appConfig,
             IocProperties properties) {
         return new DataframeImportRowMapper(
-                transforms,
+                transforms, validators,
                 new CanonicalArtifactKeyResolver(appConfig.artifactIdentityDefinitions(properties)),
                 processed);
     }

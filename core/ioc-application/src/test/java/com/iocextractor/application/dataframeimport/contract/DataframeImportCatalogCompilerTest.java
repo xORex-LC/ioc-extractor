@@ -80,6 +80,17 @@ class DataframeImportCatalogCompilerTest {
     }
 
     @Test
+    void contractFingerprintPinsEffectiveProcessingPolicy() {
+        DataframeImportCatalogDraft draft = validDraft(List.of("ip", "score"));
+        String first = compiler.compile(draft, environment("a".repeat(64)))
+                .catalogOrThrow().contracts().values().iterator().next().fingerprint().value();
+        String changed = compiler.compile(draft, environment("b".repeat(64)))
+                .catalogOrThrow().contracts().values().iterator().next().fingerprint().value();
+
+        assertThat(changed).isNotEqualTo(first);
+    }
+
+    @Test
     void reportsEveryMissingEnabledCatalogSection() {
         DataframeImportCatalogCompilation compilation = compiler.compile(
                 new DataframeImportCatalogDraft(true, List.of(), List.of(), List.of()), environment());
@@ -166,11 +177,15 @@ class DataframeImportCatalogCompilerTest {
     }
 
     private DataframeImportCatalogEnvironment environment() {
+        return environment(null);
+    }
+
+    private DataframeImportCatalogEnvironment environment(String processingPolicyFingerprint) {
         return new DataframeImportCatalogEnvironment(
                 Map.of("ip_list", new DataframeImportCatalogEnvironment.ArtifactSchema(
                         Set.of("ip", "score"), "ip-row-v1", Set.of("ip-v1"),
                         Set.of("reputation-lists"), true)),
                 Set.of("lower", "upper"),
-                Set.of("upstream"));
+                Set.of(), Set.of("upstream"), processingPolicyFingerprint);
     }
 }

@@ -75,6 +75,8 @@ class OnDemandExportIntegrationIT {
     private static final List<String> MASKS_HEADER = List.of(
             "id", "mask", "url_match", "host_match", "score", "time_last_seen",
             "time_first_seen", "threat_type", "source", "description");
+    private static final List<String> AGGREGATE_HEADER = List.of(
+            "name", "ip_address", "url_match", "host_match", "hash");
 
     private final ReferenceArtifactConsumer consumer = new ReferenceArtifactConsumer();
 
@@ -88,6 +90,9 @@ class OnDemandExportIntegrationIT {
         registry.add("ioc.export.profiles[0].name", () -> "e2e-reputation");
         registry.add("ioc.export.profiles[0].output-mode", () -> "complete");
         registry.add("ioc.export.profiles[0].artifacts[0]", () -> "masks");
+        registry.add("ioc.export.profiles[1].name", () -> "ioc-aggregate");
+        registry.add("ioc.export.profiles[1].output-mode", () -> "complete");
+        registry.add("ioc.export.profiles[1].artifacts[0]", () -> "ioc_aggregate");
         registry.add("spring.main.banner-mode", () -> "off");
     }
 
@@ -219,6 +224,42 @@ class OnDemandExportIntegrationIT {
         assertThat(catchUpManifest.artifacts().getFirst().coverage().revision()).isEqualTo(3);
         assertThat(Files.readString(catchUpSlice.resolve("masks_list_generated.csv")))
                 .contains("after-snapshot.example");
+
+        assertAggregateImmutableSlice();
+    }
+
+    private void assertAggregateImmutableSlice() throws Exception {
+        plans.requireProfile("ioc-aggregate");
+        ExportPlan plan = plans.plans().stream()
+                .filter(candidate -> candidate.profile().name().equals("ioc-aggregate"))
+                .findFirst().orElseThrow();
+        var artifact = plan.artifacts().getFirst();
+        LinkedHashMap<String, String> values = new LinkedHashMap<>();
+        artifact.columns().forEach(column -> values.put(column, null));
+        values.put("name", "Feed A");
+        values.put("url_match", "https://example.org/drop.exe");
+        canonical.write("ioc_aggregate", new CanonicalArtifact(
+                "ioc_aggregate", artifact.columns(), List.of(ArtifactRow.ordered(values))));
+
+        int exit = new CommandLine(rootCommand, commandFactory)
+                .execute("export", "--profile", "ioc-aggregate");
+
+        assertThat(exit).isZero();
+        List<Path> slices;
+        try (var paths = Files.list(EXPORT_ROOT.resolve("ioc-aggregate"))) {
+            slices = paths.filter(Files::isDirectory).toList();
+        }
+        assertThat(slices).singleElement().satisfies(slice -> {
+            Path csv = slice.resolve("IOC_aggregate_generated.csv");
+            assertThat(Files.readAllBytes(csv))
+                    .containsExactly(goldenCsvBytes("golden/expected-export-ioc-aggregate.csv"));
+            assertThat(consumer.readSlice(slice, Map.of("ioc_aggregate", AGGREGATE_HEADER))
+                    .artifacts().get("ioc_aggregate").rows())
+                    .singleElement()
+                    .satisfies(row -> assertThat(row)
+                            .containsEntry("name", "Feed A")
+                            .containsEntry("url_match", "https://example.org/drop.exe"));
+        });
     }
 
     private void publishSliceIsIdempotentAndReleasesRetention(Path slice, SliceManifest manifest)

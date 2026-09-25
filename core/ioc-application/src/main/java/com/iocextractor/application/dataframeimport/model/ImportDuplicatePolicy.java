@@ -5,7 +5,9 @@ public enum ImportDuplicatePolicy implements ImportPolicyToken {
     /** Combine compatible cells without using source order as a winner. */
     COALESCE("coalesce"),
     /** Retain the smallest physical source row and ignore later duplicates. */
-    KEEP_FIRST("keep-first");
+    KEEP_FIRST("keep-first"),
+    /** Retain the last logical row whose configured selection cell is nonempty. */
+    LAST_NONEMPTY("last-nonempty");
 
     private final String token;
 

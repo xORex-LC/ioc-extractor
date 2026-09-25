@@ -124,6 +124,7 @@ public record DataframeImportCatalogDraft(
      * @param routing target-only or related-artifact routing
      * @param rowFailurePolicy partial/strict row failure behavior
      * @param duplicatePolicy within-delivery duplicate behavior
+     * @param duplicateSelectionColumn target column used by last-nonempty selection
      * @param renewUnchanged whether accepted unchanged observations renew lifecycle validity
      * @param formulaPolicy spreadsheet-formula policy
      * @param mergeDefault default field merge policy
@@ -139,6 +140,7 @@ public record DataframeImportCatalogDraft(
                            ImportRoutingPolicy routing,
                            ImportRowFailurePolicy rowFailurePolicy,
                            ImportDuplicatePolicy duplicatePolicy,
+                           String duplicateSelectionColumn,
                            boolean renewUnchanged,
                            ImportFormulaPolicy formulaPolicy,
                            ImportMergePolicy mergeDefault,
@@ -147,6 +149,18 @@ public record DataframeImportCatalogDraft(
         /** Snapshots artifact mappings. */
         public Contract {
             artifacts = snapshotList(artifacts);
+        }
+
+        /** Compatibility constructor for contracts using coalesce or keep-first. */
+        public Contract(String id, int version, String charset, Dialect dialect,
+                        Recognition recognition, ImportProcessingMode mode,
+                        ImportRoutingPolicy routing, ImportRowFailurePolicy rowFailurePolicy,
+                        ImportDuplicatePolicy duplicatePolicy, boolean renewUnchanged,
+                        ImportFormulaPolicy formulaPolicy, ImportMergePolicy mergeDefault,
+                        List<Artifact> artifacts, RequestedSlot requestedSlot) {
+            this(id, version, charset, dialect, recognition, mode, routing, rowFailurePolicy,
+                    duplicatePolicy, null, renewUnchanged, formulaPolicy, mergeDefault,
+                    artifacts, requestedSlot);
         }
 
         /** Returns the immutable artifact-mapping snapshot. */
@@ -242,11 +256,21 @@ public record DataframeImportCatalogDraft(
                            String recordKey,
                            List<String> matchKeys,
                            ImportMergePolicy mergeDefault,
+                           String sourceLabelTarget,
+                           List<String> exactlyOneNonempty,
                            List<Column> columns) {
         /** Snapshots match keys and column mappings. */
         public Artifact {
             matchKeys = snapshotList(matchKeys);
+            exactlyOneNonempty = snapshotList(exactlyOneNonempty);
             columns = snapshotList(columns);
+        }
+
+        /** Compatibility constructor for contracts without processed binding or row shape. */
+        public Artifact(String name, ImportArtifactRole role, String recordKey,
+                        List<String> matchKeys, ImportMergePolicy mergeDefault,
+                        List<Column> columns) {
+            this(name, role, recordKey, matchKeys, mergeDefault, null, null, columns);
         }
 
         /** Returns the immutable match-key snapshot. */
@@ -273,10 +297,17 @@ public record DataframeImportCatalogDraft(
     public record Column(String target,
                          String source,
                          List<String> transforms,
-                         ImportMergePolicy mergePolicy) {
+                         ImportMergePolicy mergePolicy,
+                         String validation) {
         /** Snapshots ordered transforms. */
         public Column {
             transforms = snapshotList(transforms);
+        }
+
+        /** Compatibility constructor for columns without value validation. */
+        public Column(String target, String source, List<String> transforms,
+                      ImportMergePolicy mergePolicy) {
+            this(target, source, transforms, mergePolicy, null);
         }
 
         /** Returns the immutable ordered transform snapshot. */

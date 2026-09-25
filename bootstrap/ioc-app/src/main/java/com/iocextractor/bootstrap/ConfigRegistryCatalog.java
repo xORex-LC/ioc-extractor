@@ -49,6 +49,9 @@ final class ConfigRegistryCatalog {
     private static final String TRANSFORM_UPPER = "upper";
     private static final String TRANSFORM_STRIP_PREFIX = "strip-prefix";
 
+    private static final Set<String> IMPORT_VALUE_VALIDATORS = Set.of(
+            "bare-ip", "url-address", "clean-domain", "hash");
+
     private ConfigRegistryCatalog() {
     }
 
@@ -85,6 +88,10 @@ final class ConfigRegistryCatalog {
                 TRANSFORM_LOWER_HOST,
                 TRANSFORM_UPPER,
                 TRANSFORM_STRIP_PREFIX);
+    }
+
+    static Set<String> importValueValidatorKeys() {
+        return IMPORT_VALUE_VALIDATORS;
     }
 
     static Map<String, ValueProvider> valueProviders() {

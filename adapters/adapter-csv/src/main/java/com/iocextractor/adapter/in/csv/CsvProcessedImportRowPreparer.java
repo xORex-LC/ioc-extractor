@@ -90,7 +90,8 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
             CsvArtifactDefinition definition = Objects.requireNonNull(
                     definitions.get(branch.artifactName()), "processed artifact definition");
             ConfigurableRowMapper rowMapper = (ConfigurableRowMapper) definition.mapper();
-            List<ClassifiedIndicator> indicators = indicators(record, branch, rowMapper, issues);
+            List<ClassifiedIndicator> indicators = indicators(
+                    record, branch, contractArtifact, rowMapper, issues);
             List<List<String>> prepared = prepare(definition, rowMapper, indicators, record, issues);
             Map<String, ImportCell> cells = new LinkedHashMap<>(branch.cells());
             Map<String, ImportMergePolicy> policies = new LinkedHashMap<>(branch.mergePolicies());
@@ -115,11 +116,12 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
 
     private List<ClassifiedIndicator> indicators(ImportDelimitedRecord record,
                                                   ImportArtifactBranch branch,
+                                                  DataframeImportCatalogDraft.Artifact contractArtifact,
                                                   ConfigurableRowMapper mapper,
                                                   List<ImportRowIssue> issues) {
         List<ClassifiedIndicator> indicators = new ArrayList<>();
         int issueCountBeforeBranch = issues.size();
-        String source = sourceLabel(branch.cells(), mapper.columns());
+        String source = sourceLabel(branch.cells(), contractArtifact, mapper.columns());
         for (ColumnSpec column : mapper.columns()) {
             if (!IOC_PROVIDERS.contains(column.from())) {
                 continue;
@@ -221,18 +223,27 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
                         : artifact.mergeDefault());
     }
 
-    private String sourceLabel(Map<String, ImportCell> cells, List<ColumnSpec> columns) {
-        List<String> targets = columns.stream()
+    private String sourceLabel(Map<String, ImportCell> cells,
+                               DataframeImportCatalogDraft.Artifact contractArtifact,
+                               List<ColumnSpec> columns) {
+        List<String> inferredTargets = columns.stream()
                 .filter(column -> "source.label".equals(column.from()))
                 .map(ColumnSpec::name)
                 .toList();
-        if (targets.size() > 1) {
+        String explicit = contractArtifact.sourceLabelTarget();
+        if (explicit != null && !explicit.isBlank()) {
+            return cellValue(cells.get(explicit));
+        }
+        if (inferredTargets.size() > 1) {
             throw new IllegalStateException("Processed import has ambiguous source.label bindings");
         }
-        if (targets.isEmpty()) {
+        if (inferredTargets.isEmpty()) {
             return null;
         }
-        ImportCell source = cells.get(targets.getFirst());
+        return cellValue(cells.get(inferredTargets.getFirst()));
+    }
+
+    private String cellValue(ImportCell source) {
         return source != null && source.presence() == ImportCell.Presence.VALUE
                 ? source.value() : null;
     }

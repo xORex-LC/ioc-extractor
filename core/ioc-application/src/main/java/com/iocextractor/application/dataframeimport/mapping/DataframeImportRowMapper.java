@@ -15,6 +15,7 @@ import com.iocextractor.application.dataframeimport.model.ImportMergePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportProcessingMode;
 import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
 import com.iocextractor.application.port.out.dataframeimport.ImportValueTransformRegistry;
+import com.iocextractor.application.port.out.dataframeimport.ImportValueValidatorRegistry;
 import com.iocextractor.application.port.out.dataframeimport.ProcessedImportRowPreparer;
 
 import java.util.ArrayList;
@@ -32,15 +33,18 @@ public final class DataframeImportRowMapper {
     private static final String FORMULA_REJECTED = "IMPORT.FORMULA_REJECTED";
     private static final String REQUESTED_SLOT_INVALID = "IMPORT.REQUESTED_SLOT_INVALID";
     private static final String RECORD_KEY_MISSING = "IMPORT.RECORD_KEY_MISSING";
+    private static final String VALUE_INVALID = "IMPORT.VALUE_INVALID";
+    private static final String NONEMPTY_CARDINALITY = "IMPORT.NONEMPTY_CARDINALITY";
 
     private final ImportValueTransformRegistry transforms;
+    private final ImportValueValidatorRegistry validators;
     private final CanonicalArtifactKeyResolver keyResolver;
     private final ProcessedImportRowPreparer processed;
 
     /** Creates a mapper using framework-free transform and canonical-key collaborators. */
     public DataframeImportRowMapper(ImportValueTransformRegistry transforms,
                                     CanonicalArtifactKeyResolver keyResolver) {
-        this(transforms, keyResolver, (contract, record, mapped) -> {
+        this(transforms, (rule, value) -> true, keyResolver, (contract, record, mapped) -> {
             throw new ImportRowMappingException(
                     ImportRowMappingException.Reason.PROCESSED_MODE_UNAVAILABLE,
                     "Processed import requires the dedicated preparation strategy");
@@ -51,7 +55,16 @@ public final class DataframeImportRowMapper {
     public DataframeImportRowMapper(ImportValueTransformRegistry transforms,
                                     CanonicalArtifactKeyResolver keyResolver,
                                     ProcessedImportRowPreparer processed) {
+        this(transforms, (rule, value) -> true, keyResolver, processed);
+    }
+
+    /** Creates a mapper with declarative transforms, validators and processed preparation. */
+    public DataframeImportRowMapper(ImportValueTransformRegistry transforms,
+                                    ImportValueValidatorRegistry validators,
+                                    CanonicalArtifactKeyResolver keyResolver,
+                                    ProcessedImportRowPreparer processed) {
         this.transforms = Objects.requireNonNull(transforms, "transforms");
+        this.validators = Objects.requireNonNull(validators, "validators");
         this.keyResolver = Objects.requireNonNull(keyResolver, "keyResolver");
         this.processed = Objects.requireNonNull(processed, "processed");
     }
@@ -65,6 +78,7 @@ public final class DataframeImportRowMapper {
         List<ImportArtifactBranch> branches = new ArrayList<>(contract.definition().artifacts().size());
         for (DataframeImportCatalogDraft.Artifact artifact : contract.definition().artifacts()) {
             Map<String, ImportCell> cells = cells(contract, artifact, record, issues);
+            validateRowShape(artifact, cells, record, issues);
             Map<String, ImportMergePolicy> mergePolicies = mergePolicies(contract, artifact);
             OptionalLong requestedSlot = requestedSlot(contract, artifact, record, issues);
             ArtifactRow keyRow = ArtifactRow.ordered(values(cells));
@@ -143,7 +157,28 @@ public final class DataframeImportRowMapper {
             issues.add(issue(record, artifact, FORMULA_REJECTED));
             return ImportCell.absent();
         }
+        if (column.validation() != null && !validators.isValid(column.validation(), value)) {
+            issues.add(issue(record, artifact, VALUE_INVALID));
+            return ImportCell.absent();
+        }
         return ImportCell.value(value);
+    }
+
+    private void validateRowShape(DataframeImportCatalogDraft.Artifact artifact,
+                                  Map<String, ImportCell> cells,
+                                  ImportDelimitedRecord record,
+                                  List<ImportRowIssue> issues) {
+        if (artifact.exactlyOneNonempty() == null) {
+            return;
+        }
+        long populated = artifact.exactlyOneNonempty().stream()
+                .map(cells::get)
+                .filter(Objects::nonNull)
+                .filter(cell -> cell.presence() == ImportCell.Presence.VALUE && !cell.value().isBlank())
+                .count();
+        if (populated != 1) {
+            issues.add(issue(record, artifact.name(), NONEMPTY_CARDINALITY));
+        }
     }
 
     private OptionalLong requestedSlot(CompiledDataframeImportContract contract,

@@ -166,6 +166,39 @@ class DataframeImportCatalogCompilerValidationTest {
     }
 
     @Test
+    void validatesLastNonemptySelectionAgainstThePrimaryTargetSchema() {
+        DataframeImportCatalogDraft.Contract base = validContract(IP_LIST_CONTRACT);
+        DataframeImportCatalogDraft.Contract missingSelection = new DataframeImportCatalogDraft.Contract(
+                base.id(), base.version(), base.charset(), base.dialect(), base.recognition(),
+                base.mode(), base.routing(), base.rowFailurePolicy(), ImportDuplicatePolicy.LAST_NONEMPTY,
+                null, base.renewUnchanged(), base.formulaPolicy(), base.mergeDefault(),
+                base.artifacts(), base.requestedSlot());
+        DataframeImportCatalogDraft.Contract unknownSelection = new DataframeImportCatalogDraft.Contract(
+                base.id(), base.version(), base.charset(), base.dialect(), base.recognition(),
+                base.mode(), base.routing(), base.rowFailurePolicy(), ImportDuplicatePolicy.LAST_NONEMPTY,
+                "name", base.renewUnchanged(), base.formulaPolicy(), base.mergeDefault(),
+                base.artifacts(), base.requestedSlot());
+        DataframeImportCatalogDraft.Contract unnecessarySelection = new DataframeImportCatalogDraft.Contract(
+                base.id(), base.version(), base.charset(), base.dialect(), base.recognition(),
+                base.mode(), base.routing(), base.rowFailurePolicy(), ImportDuplicatePolicy.KEEP_FIRST,
+                "ip", base.renewUnchanged(), base.formulaPolicy(), base.mergeDefault(),
+                base.artifacts(), base.requestedSlot());
+
+        assertThat(compiler.compile(disabledDraft(
+                List.of(), List.of(), List.of(missingSelection)), environment()).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("last-nonempty duplicate policy requires a target selection column");
+        assertThat(compiler.compile(disabledDraft(
+                List.of(), List.of(), List.of(unknownSelection)), environment()).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("selection column must name a mapped primary artifact target");
+        assertThat(compiler.compile(disabledDraft(
+                List.of(), List.of(), List.of(unnecessarySelection)), environment()).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("selection column is only valid for last-nonempty duplicate policy");
+    }
+
+    @Test
     void collectsArtifactRoleSchemaIdentityColumnAndTransformViolations() {
         DataframeImportCatalogDraft.Artifact malformedRelated = new DataframeImportCatalogDraft.Artifact(
                 "", ImportArtifactRole.RELATED, "", Arrays.asList("", "unknown", "unknown"),

@@ -4,9 +4,11 @@ import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
 import com.iocextractor.application.dataframeimport.model.ImportCatalogFingerprint;
 import com.iocextractor.application.dataframeimport.model.ImportContractFingerprint;
 import com.iocextractor.application.dataframeimport.model.ImportContractId;
+import com.iocextractor.application.dataframeimport.model.ImportDuplicatePolicy;
 import com.iocextractor.application.dataframeimport.model.DelimitedDialect;
 import com.iocextractor.application.dataframeimport.model.ImportFormulaPolicy;
 import com.iocextractor.application.dataframeimport.model.ImportMergePolicy;
+import com.iocextractor.application.dataframeimport.model.ImportProcessingMode;
 import com.iocextractor.application.dataframeimport.model.ImportRoutingPolicy;
 import com.iocextractor.application.dataframeimport.model.ImportSourceId;
 import com.iocextractor.application.dataframeimport.model.ImportSourceTransport;
@@ -48,7 +50,8 @@ public final class DataframeImportCatalogCompiler {
             return invalid(violations);
         }
         if (environment == null || environment.artifacts() == null
-                || environment.transforms() == null || environment.endpoints() == null) {
+                || environment.transforms() == null || environment.validators() == null
+                || environment.endpoints() == null) {
             violations.add(violation("", "catalog reference environment is incomplete"));
             return invalid(violations);
         }
@@ -77,7 +80,8 @@ public final class DataframeImportCatalogCompiler {
                     ImportContractId id = new ImportContractId(contract.id());
                     compiledContracts.put(id, new CompiledDataframeImportContract(
                             id, contract.version(), contract, compiledDialect(contract.dialect()),
-                            new ImportContractFingerprint(sha256(contractDescriptor(contract)))));
+                            new ImportContractFingerprint(sha256(contractDescriptor(
+                                    contract, environment.processingPolicyFingerprint())))));
                 });
         Map<ImportSourceId, DataframeImportCatalogDraft.Source> compiledSources = new LinkedHashMap<>();
         sources.values().stream()
@@ -171,9 +175,33 @@ public final class DataframeImportCatalogCompiler {
                     "default merge policy is required", violations);
             DataframeImportCatalogDraft.Artifact primary = validateArtifacts(
                     contract, path, recognized, environment, violations);
+            validateDuplicateSelection(contract, primary, path, violations);
             validateRequestedSlot(contract.requestedSlot(), primary, recognized, environment, path, violations);
         }
         return result;
+    }
+
+    private void validateDuplicateSelection(DataframeImportCatalogDraft.Contract contract,
+                                            DataframeImportCatalogDraft.Artifact primary,
+                                            String contractPath,
+                                            List<ImportContractViolation> violations) {
+        String path = contractPath + ".duplicate-selection-column";
+        if (contract.duplicatePolicy() == ImportDuplicatePolicy.LAST_NONEMPTY) {
+            if (!hasText(contract.duplicateSelectionColumn())) {
+                violations.add(violation(path,
+                        "last-nonempty duplicate policy requires a target selection column"));
+                return;
+            }
+            if (primary == null || primary.columns() == null || primary.columns().stream()
+                    .filter(java.util.Objects::nonNull)
+                    .noneMatch(column -> contract.duplicateSelectionColumn().equals(column.target()))) {
+                violations.add(violation(path,
+                        "selection column must name a mapped primary artifact target"));
+            }
+        } else if (hasText(contract.duplicateSelectionColumn())) {
+            violations.add(violation(path,
+                    "selection column is only valid for last-nonempty duplicate policy"));
+        }
     }
 
     private Map<String, DataframeImportCatalogDraft.Source> sources(
@@ -436,7 +464,7 @@ public final class DataframeImportCatalogCompiler {
             }
             validateArtifactName(artifact, artifactNames, path, violations);
             primary = validateArtifactRole(artifact, contract.routing(), primary, path, violations);
-            validateArtifactSchema(artifact, recognized, environment, path, violations);
+            validateArtifactSchema(artifact, contract.mode(), recognized, environment, path, violations);
         }
         if (primary == null) {
             violations.add(violation(contractPath + ".artifacts", "exactly one primary artifact is required"));
@@ -477,6 +505,7 @@ public final class DataframeImportCatalogCompiler {
 
     private void validateArtifactSchema(
             DataframeImportCatalogDraft.Artifact artifact,
+            ImportProcessingMode mode,
             Set<String> recognized,
             DataframeImportCatalogEnvironment environment,
             String path,
@@ -490,7 +519,10 @@ public final class DataframeImportCatalogCompiler {
                     "record key must reference the artifact's active identity definition"));
         }
         validateMatchKeys(artifact, schema, path, violations);
-        validateColumns(artifact, schema, recognized, environment.transforms(), path, violations);
+        Set<String> targets = validateColumns(artifact, schema, recognized,
+                environment.transforms(), environment.validators(), path, violations);
+        validateExactlyOneNonempty(artifact, targets, path, violations);
+        validateSourceLabelBinding(artifact, mode, schema, targets, path, violations);
     }
 
     private void validateMatchKeys(DataframeImportCatalogDraft.Artifact artifact,
@@ -512,15 +544,16 @@ public final class DataframeImportCatalogCompiler {
         }
     }
 
-    private void validateColumns(DataframeImportCatalogDraft.Artifact artifact,
-                                 DataframeImportCatalogEnvironment.ArtifactSchema schema,
-                                 Set<String> recognized,
-                                 Set<String> transforms,
-                                 String path,
-                                 List<ImportContractViolation> violations) {
+    private Set<String> validateColumns(DataframeImportCatalogDraft.Artifact artifact,
+                                        DataframeImportCatalogEnvironment.ArtifactSchema schema,
+                                        Set<String> recognized,
+                                        Set<String> transforms,
+                                        Set<String> validators,
+                                        String path,
+                                        List<ImportContractViolation> violations) {
         requireNotEmpty(artifact.columns(), path + ".columns", "at least one column mapping is required", violations);
         if (artifact.columns() == null) {
-            return;
+            return Set.of();
         }
         Set<String> targets = new HashSet<>();
         for (int i = 0; i < artifact.columns().size(); i++) {
@@ -540,6 +573,61 @@ public final class DataframeImportCatalogCompiler {
                         "source must reference a required or optional canonical header"));
             }
             validateTransforms(column.transforms(), transforms, columnPath + ".transforms", violations);
+            if (column.validation() != null && !validators.contains(column.validation())) {
+                violations.add(violation(columnPath + ".validation",
+                        "validation must reference a registered value rule"));
+            }
+        }
+        return targets;
+    }
+
+    private void validateExactlyOneNonempty(DataframeImportCatalogDraft.Artifact artifact,
+                                            Set<String> targets,
+                                            String path,
+                                            List<ImportContractViolation> violations) {
+        List<String> group = artifact.exactlyOneNonempty();
+        if (group == null) {
+            return;
+        }
+        if (group.size() < 2) {
+            violations.add(violation(path + ".exactly-one-nonempty",
+                    "exactly-one group must contain at least two target columns"));
+            return;
+        }
+        Set<String> unique = new HashSet<>();
+        for (int i = 0; i < group.size(); i++) {
+            String target = group.get(i);
+            if (!hasText(target) || !unique.add(target) || !targets.contains(target)) {
+                violations.add(violation(path + ".exactly-one-nonempty[%d]".formatted(i),
+                        "group entry must name a unique mapped target column"));
+            }
+        }
+    }
+
+    private void validateSourceLabelBinding(DataframeImportCatalogDraft.Artifact artifact,
+                                            ImportProcessingMode mode,
+                                            DataframeImportCatalogEnvironment.ArtifactSchema schema,
+                                            Set<String> targets,
+                                            String path,
+                                            List<ImportContractViolation> violations) {
+        if (mode != ImportProcessingMode.PROCESSED) {
+            if (hasText(artifact.sourceLabelTarget())) {
+                violations.add(violation(path + ".source-label-target",
+                        "source label binding is only valid for processed mode"));
+            }
+            return;
+        }
+        Set<String> available = schema == null || schema.sourceLabelTargets() == null
+                ? Set.of() : schema.sourceLabelTargets();
+        if (hasText(artifact.sourceLabelTarget())) {
+            if (!available.contains(artifact.sourceLabelTarget())
+                    || !targets.contains(artifact.sourceLabelTarget())) {
+                violations.add(violation(path + ".source-label-target",
+                        "source label target must name a mapped source.label output column"));
+            }
+        } else if (available.size() > 1) {
+            violations.add(violation(path + ".source-label-target",
+                    "ambiguous processed source.label mapping requires an explicit target"));
         }
     }
 
@@ -594,8 +682,10 @@ public final class DataframeImportCatalogCompiler {
         }
     }
 
-    private String contractDescriptor(DataframeImportCatalogDraft.Contract contract) {
-        FingerprintBuilder builder = new FingerprintBuilder("dataframe-import-contract:v1");
+    private String contractDescriptor(DataframeImportCatalogDraft.Contract contract,
+                                      String processingPolicyFingerprint) {
+        FingerprintBuilder builder = new FingerprintBuilder("dataframe-import-contract:v2");
+        builder.value("processing-policy-fingerprint", processingPolicyFingerprint);
         builder.value("id", contract.id()).number("version", contract.version()).value("charset", contract.charset());
         DataframeImportCatalogDraft.Dialect dialect = contract.dialect();
         builder.value("delimiter", dialect.delimiter()).value("quote", dialect.quote())
@@ -608,16 +698,31 @@ public final class DataframeImportCatalogCompiler {
                 .token("row-failure", contract.rowFailurePolicy()).token("duplicate", contract.duplicatePolicy())
                 .flag("renew-unchanged", contract.renewUnchanged()).token("formula", contract.formulaPolicy())
                 .token("merge-default", contract.mergeDefault());
+        if (contract.duplicateSelectionColumn() != null) {
+            builder.value("duplicate-selection-column", contract.duplicateSelectionColumn());
+        }
         contract.artifacts().stream()
                 .sorted(Comparator.comparing(DataframeImportCatalogDraft.Artifact::name)
-                        .thenComparing(artifact -> artifact.role().token()))
+                .thenComparing(artifact -> artifact.role().token()))
                 .forEach(artifact -> {
                     builder.value("artifact", artifact.name()).token("role", artifact.role())
                             .value("record-key", artifact.recordKey())
                             .sorted("match-keys", artifact.matchKeys()).token("artifact-merge", artifact.mergeDefault());
+                    if (artifact.sourceLabelTarget() != null) {
+                        builder.value("source-label-target", artifact.sourceLabelTarget());
+                    }
+                    if (artifact.exactlyOneNonempty() != null) {
+                        builder.ordered("exactly-one-nonempty", artifact.exactlyOneNonempty());
+                    }
                     artifact.columns().stream().sorted(Comparator.comparing(DataframeImportCatalogDraft.Column::target))
-                            .forEach(column -> builder.value("target", column.target()).value("source", column.source())
-                                    .ordered("transforms", column.transforms()).token("column-merge", column.mergePolicy()));
+                            .forEach(column -> {
+                                builder.value("target", column.target()).value("source", column.source())
+                                        .ordered("transforms", column.transforms())
+                                        .token("column-merge", column.mergePolicy());
+                                if (column.validation() != null) {
+                                    builder.value("validation", column.validation());
+                                }
+                            });
                 });
         DataframeImportCatalogDraft.RequestedSlot slot = contract.requestedSlot();
         if (slot == null) {

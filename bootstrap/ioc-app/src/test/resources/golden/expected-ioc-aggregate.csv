@@ -1,0 +1,12 @@
+"name";"ip_address";"url_match";"host_match";"hash"
+"Письмо ФСТЭК России от 01.01.2026 № 240/93/0001";NULL;NULL;"example.com";NULL
+"Письмо ФСТЭК России от 01.01.2026 № 240/93/0001";NULL;NULL;"sub.example.com";NULL
+"Письмо ФСТЭК России от 01.01.2026 № 240/93/0001";"1.2.3.4";NULL;NULL;NULL
+"Письмо ФСТЭК России от 01.01.2026 № 240/93/0001";NULL;"5.6.7.8:8080/Payload.exe";NULL;NULL
+"Письмо ФСТЭК России от 01.01.2026 № 240/93/0001";NULL;"example.com/Folder/File.exe";NULL;NULL
+"Письмо ФСТЭК России от 01.01.2026 № 240/93/0001";NULL;"example.com/x?Token=AbC";NULL;NULL
+"Письмо ФСТЭК России от 01.01.2026 № 240/93/0001";NULL;"https://example.com/Path/File.rar";NULL;NULL
+"Письмо ФСТЭК России от 01.01.2026 № 240/93/0001";NULL;"t.me/SomeChannel";NULL;NULL
+"Письмо ФСТЭК России от 01.01.2026 № 240/93/0001";NULL;NULL;"abcdefghijklmnop234567.onion";NULL
+"Письмо ФСТЭК России от 01.01.2026 № 240/93/0001";NULL;NULL;NULL;"D41D8CD98F00B204E9800998ECF8427E"
+"Письмо ФСТЭК России от 01.01.2026 № 240/93/0001";NULL;NULL;NULL;"E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"

@@ -117,6 +117,38 @@ class CsvProcessedImportRowPreparerTest {
     }
 
     @Test
+    void usesExplicitNameBindingAsTheProcessedSourceLabel() {
+        CanonicalArtifactKeyResolver keys = keys(new ArtifactIdentityDefinition(
+                "ioc_aggregate", new CanonicalKeyDefinition(
+                        "ioc-aggregate-row-v1", CanonicalKeyMode.COMPOSITE,
+                        List.of("ip_address", "url_match", "host_match", "hash")),
+                List.of(new CanonicalKeyDefinition(
+                        "ioc-aggregate-v1", CanonicalKeyMode.COMPOSITE,
+                        List.of("ip_address", "url_match", "host_match", "hash"))), 1));
+        CsvArtifactDefinition definition = definition("ioc_aggregate", List.of(
+                column("name", "source.label"),
+                column("ip_address", "address.ip"),
+                column("url_match", "value", "lower-host"),
+                column("host_match", "value", "lower-host"),
+                column("hash", "value")));
+        DataframeImportRowMapper mapper = new DataframeImportRowMapper(
+                (specification, value) -> value, keys, processed(List.of(definition), keys));
+        DataframeImportCatalogDraft.Artifact artifact = new DataframeImportCatalogDraft.Artifact(
+                "ioc_aggregate", ImportArtifactRole.PRIMARY, "ioc-aggregate-row-v1",
+                List.of("ioc-aggregate-v1"), null, "name", null,
+                List.of(mapping("name", "feed"), mapping("url_match", "ioc")));
+        CompiledDataframeImportContract contract = contract(artifact);
+
+        var result = mapper.map(contract, new ImportDelimitedRecord(3, Map.of(
+                "feed", "Threat Feed B", "ioc", "hxxp://EVIL.example/Path")));
+
+        assertThat(result.issues()).isEmpty();
+        assertThat(result.row()).hasValueSatisfying(row -> assertThat(row.branches().getFirst().cells())
+                .containsEntry("name", ImportCell.value("Threat Feed B"))
+                .containsEntry("url_match", ImportCell.value("http://evil.example/Path")));
+    }
+
+    @Test
     void rejectsAFreeTextCellThatDoesNotContainExactlyOneWholeIndicator() {
         CanonicalArtifactKeyResolver keys = keys(new ArtifactIdentityDefinition(
                 "masks", List.of("mask"), false, 1));
@@ -194,6 +226,24 @@ class CsvProcessedImportRowPreparerTest {
                 ImportFormulaPolicy.REJECT, ImportMergePolicy.AUTHORITATIVE,
                 List.of(new DataframeImportCatalogDraft.Artifact(
                         artifact, ImportArtifactRole.PRIMARY, recordKey, matchKeys, null, mappings)), null);
+        return new CompiledDataframeImportContract(
+                new ImportContractId(definition.id()), 1, definition,
+                new DelimitedDialect(';', '"', ImportRecordSeparator.CRLF_OR_LF, true, List.of("NULL")),
+                new ImportContractFingerprint("c".repeat(64)));
+    }
+
+    private CompiledDataframeImportContract contract(DataframeImportCatalogDraft.Artifact artifact) {
+        List<String> required = artifact.columns().stream()
+                .map(DataframeImportCatalogDraft.Column::source).toList();
+        var definition = new DataframeImportCatalogDraft.Contract(
+                artifact.name() + "-processed-v1", 1, "UTF-8",
+                new DataframeImportCatalogDraft.Dialect(
+                        ";", "\"", ImportRecordSeparator.CRLF_OR_LF, true, List.of("NULL")),
+                new DataframeImportCatalogDraft.Recognition(required, List.of(), List.of(), Map.of()),
+                ImportProcessingMode.PROCESSED, ImportRoutingPolicy.TARGET_ONLY,
+                ImportRowFailurePolicy.ACCEPT_VALID, ImportDuplicatePolicy.COALESCE, true,
+                ImportFormulaPolicy.REJECT, ImportMergePolicy.AUTHORITATIVE,
+                List.of(artifact), null);
         return new CompiledDataframeImportContract(
                 new ImportContractId(definition.id()), 1, definition,
                 new DelimitedDialect(';', '"', ImportRecordSeparator.CRLF_OR_LF, true, List.of("NULL")),

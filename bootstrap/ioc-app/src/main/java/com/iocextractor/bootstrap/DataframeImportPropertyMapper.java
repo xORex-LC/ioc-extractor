@@ -34,7 +34,9 @@ final class DataframeImportPropertyMapper {
         collectIdentitySchemas(properties.artifactIdentity(), schemas);
         collectExportSlotProfiles(properties.export(), schemas);
         return new DataframeImportCatalogEnvironment(
-                immutableSchemas(schemas), ConfigRegistryCatalog.transformKeys(), endpointNames(properties.sync()));
+                immutableSchemas(schemas), ConfigRegistryCatalog.transformKeys(),
+                ConfigRegistryCatalog.importValueValidatorKeys(), endpointNames(properties.sync()),
+                ProcessingPolicyFingerprint.from(properties));
     }
 
     private static void collectSinkSchemas(IocProperties.Sink sink,
@@ -53,6 +55,11 @@ final class DataframeImportPropertyMapper {
                         .map(IocProperties.Sink.Artifact.Column::name)
                         .filter(DataframeImportPropertyMapper::hasText)
                         .forEach(schema.columns::add);
+                artifact.columns().stream().filter(java.util.Objects::nonNull)
+                        .filter(column -> "source.label".equals(column.from()))
+                        .map(IocProperties.Sink.Artifact.Column::name)
+                        .filter(DataframeImportPropertyMapper::hasText)
+                        .forEach(schema.sourceLabelTargets::add);
             }
         }
     }
@@ -105,7 +112,7 @@ final class DataframeImportPropertyMapper {
         schemas.forEach((name, schema) -> artifacts.put(name,
                 new DataframeImportCatalogEnvironment.ArtifactSchema(
                         schema.columns, schema.recordKey, schema.matchKeys,
-                        schema.slotProfiles, schema.hasExternalId)));
+                        schema.slotProfiles, schema.hasExternalId, schema.sourceLabelTargets)));
         return artifacts;
     }
 
@@ -139,7 +146,8 @@ final class DataframeImportPropertyMapper {
     private static DataframeImportCatalogDraft.Contract contract(IocProperties.DataframeImport.Contract contract) {
         return new DataframeImportCatalogDraft.Contract(contract.id(), contract.version(), contract.charset(),
                 dialect(contract.dialect()), recognition(contract.recognition()), contract.mode(), contract.routing(),
-                contract.rowFailurePolicy(), contract.duplicatePolicy(), contract.renewUnchanged(),
+                contract.rowFailurePolicy(), contract.duplicatePolicy(), contract.duplicateSelectionColumn(),
+                contract.renewUnchanged(),
                 contract.formulaPolicy(), contract.mergeDefault(),
                 map(contract.artifacts(), DataframeImportPropertyMapper::artifact), requestedSlot(contract.requestedSlot()));
     }
@@ -158,12 +166,13 @@ final class DataframeImportPropertyMapper {
 
     private static DataframeImportCatalogDraft.Artifact artifact(IocProperties.DataframeImport.Artifact artifact) {
         return new DataframeImportCatalogDraft.Artifact(artifact.name(), artifact.role(), artifact.recordKey(), artifact.matchKeys(),
-                artifact.mergeDefault(), map(artifact.columns(), DataframeImportPropertyMapper::column));
+                artifact.mergeDefault(), artifact.sourceLabelTarget(), artifact.exactlyOneNonempty(),
+                map(artifact.columns(), DataframeImportPropertyMapper::column));
     }
 
     private static DataframeImportCatalogDraft.Column column(IocProperties.DataframeImport.Column column) {
         return new DataframeImportCatalogDraft.Column(
-                column.target(), column.source(), column.transforms(), column.mergePolicy());
+                column.target(), column.source(), column.transforms(), column.mergePolicy(), column.validation());
     }
 
     private static DataframeImportCatalogDraft.RequestedSlot requestedSlot(
@@ -192,6 +201,7 @@ final class DataframeImportPropertyMapper {
         private String recordKey;
         private final Set<String> matchKeys = new LinkedHashSet<>();
         private final Set<String> slotProfiles = new LinkedHashSet<>();
+        private final Set<String> sourceLabelTargets = new LinkedHashSet<>();
         private boolean hasExternalId;
     }
 }

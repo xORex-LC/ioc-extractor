@@ -54,6 +54,7 @@ public final class DataframeImportStagingService implements DataframeImportStage
                 contract.id(), contract.version(), contract.fingerprint());
         CreateImportWorkspaceCommand workspaceCommand = new CreateImportWorkspaceCommand(
                 command.deliveryId(), command.snapshot(), pin, contract.definition().duplicatePolicy(),
+                contract.definition().duplicateSelectionColumn(),
                 promotionPolicy(contract));
         try (ImportWorkspaceWriter writer = workspace.rebuild(workspaceCommand)) {
             reader.read(new DelimitedReadCommand(

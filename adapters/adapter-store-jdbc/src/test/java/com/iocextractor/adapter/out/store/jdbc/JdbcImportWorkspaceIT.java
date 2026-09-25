@@ -138,6 +138,44 @@ class JdbcImportWorkspaceIT {
     }
 
     @Test
+    void lastNonemptyRetainsLatestNamedRowIntactAndFallsBackToFirstUnnamedRow() throws Exception {
+        JdbcImportWorkspace workspace = workspace(limits(1_000));
+        CreateImportWorkspaceCommand command = command(
+                "last-nonempty", ImportDuplicatePolicy.LAST_NONEMPTY, "name");
+        ImportStage stage;
+        try (ImportWorkspaceWriter writer = workspace.create(command)) {
+            writer.append(row(2, "key-a", Map.of(
+                    "name", ImportCell.value("first"), "ip", ImportCell.value("192.0.2.1"))));
+            writer.append(row(3, "key-a", Map.of(
+                    "name", ImportCell.nullValue(), "ip", ImportCell.value("192.0.2.1"))));
+            writer.append(row(4, "key-a", Map.of(
+                    "name", ImportCell.value("last"), "ip", ImportCell.value("192.0.2.1"))));
+            writer.append(row(5, "key-b", Map.of(
+                    "name", ImportCell.nullValue(), "ip", ImportCell.value("192.0.2.2"))));
+            writer.append(row(6, "key-b", Map.of(
+                    "name", ImportCell.value("   "), "ip", ImportCell.value("192.0.2.2"))));
+            stage = writer.seal();
+        }
+
+        assertThat(stage.acceptedRows()).isEqualTo(2);
+        assertThat(queryString("""
+                SELECT group_concat(source_row_number || ':' || COALESCE(value, 'NULL'), ',')
+                FROM (
+                    SELECT input.source_row_number, cell.value
+                    FROM stage_input_row input
+                    JOIN stage_branch branch ON branch.source_row_number = input.source_row_number
+                    JOIN stage_cell cell ON cell.branch_id = branch.branch_id
+                    WHERE input.status = 'ACCEPTED' AND cell.target_column = 'name'
+                    ORDER BY input.source_row_number)
+                """))
+                .isEqualTo("4:last,5:NULL");
+        assertThat(queryLong("""
+                SELECT COUNT(*) FROM stage_row_error
+                WHERE diagnostic_code = 'IMPORT.DUPLICATE_IGNORED'
+                """)).isEqualTo(3);
+    }
+
+    @Test
     void coalesceRejectsConflictingRequestedSlotsButAcceptsAbsentPlusOneRequest() throws Exception {
         JdbcImportWorkspace conflicting = workspace(tempDir.resolve("slot-conflict"), limits(10));
         CreateImportWorkspaceCommand conflictCommand = command(
@@ -488,6 +526,12 @@ class JdbcImportWorkspaceIT {
     }
 
     private CreateImportWorkspaceCommand command(String delivery, ImportDuplicatePolicy duplicatePolicy) {
+        return command(delivery, duplicatePolicy, null);
+    }
+
+    private CreateImportWorkspaceCommand command(String delivery,
+                                                  ImportDuplicatePolicy duplicatePolicy,
+                                                  String selectionColumn) {
         return new CreateImportWorkspaceCommand(
                 new ImportDeliveryId(delivery),
                 new ImportSnapshot(
@@ -496,7 +540,7 @@ class JdbcImportWorkspaceIT {
                 new ImportContractPin(
                         new ImportContractId("ip-list-v1"), 1,
                         new ImportContractFingerprint("b".repeat(64))),
-                duplicatePolicy);
+                duplicatePolicy, selectionColumn);
     }
 
     private ImportLogicalRow row(long sourceRow, String key, Map<String, ImportCell> values) {

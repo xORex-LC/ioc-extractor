@@ -33,6 +33,7 @@ import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleHistoryStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleReconciliationStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleStatusReader;
 import com.iocextractor.adapter.out.store.jdbc.JdbcIngestionLedger;
+import com.iocextractor.adapter.out.store.jdbc.JdbcObservationRegistrationStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcExportProgressStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcExportRunLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcRunLedger;
@@ -87,6 +88,7 @@ import com.iocextractor.application.export.SliceRetentionService;
 import com.iocextractor.application.export.StandaloneSliceRetentionGuard;
 import com.iocextractor.application.ingest.IngestionService;
 import com.iocextractor.application.ingest.IngestionLifecycleSupport;
+import com.iocextractor.application.observation.ObservationOrderedExtractionDecorator;
 import com.iocextractor.application.maintenance.RetentionAction;
 import com.iocextractor.application.maintenance.RetentionService;
 import com.iocextractor.application.maintenance.RetentionTarget;
@@ -126,6 +128,7 @@ import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleStatusR
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;
 import com.iocextractor.application.port.out.ingest.SourcePreparerFactory;
+import com.iocextractor.application.port.out.observation.ObservationRegistrationStore;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.application.port.out.export.ArtifactRevisionReader;
 import com.iocextractor.application.port.out.export.ArtifactSliceWriter;
@@ -376,6 +379,7 @@ public class AppConfig {
                                                  CanonicalObservationStore canonicalObservationStore,
                                                  ProcessingPolicyIdentity processingPolicyIdentity,
                                                  ArtifactIdentityResolver artifactIdentityResolver,
+                                                 ObservationRegistrationStore observationRegistrations,
                                                  JdbcLifecycleClock lifecycleClock,
                                                  Clock clock,
                                                  IocProperties props) {
@@ -383,7 +387,7 @@ public class AppConfig {
                 artifactDefinitions(props, artifactIdBaseline), null, clock, decisionTracer,
                 artifactIdentityResolver);
         ExtractIocsUseCase delegate = factory.create(preparers, csvArtifactProjection);
-        return command -> {
+        ExtractIocsUseCase lifecycleAware = command -> {
             lifecycleAdmission.prepare();
             if (props.lifecycle().validity().mode() != LifecycleValidityMode.FIXED || command.dryRun()) {
                 return delegate.extract(command);
@@ -398,7 +402,8 @@ public class AppConfig {
             try {
                 var result = delegate.extract(new com.iocextractor.application.port.in.ExtractionCommand(
                         command.runId(), command.source(), false,
-                        new LifecycleWriteContext(observationId, sourceKey.value(), receipt)));
+                        new LifecycleWriteContext(observationId, sourceKey.value(), receipt),
+                        command.registration()));
                 canonicalObservationStore.markTerminal(
                         observationId, lifecycleClock.now(), props.lifecycle().receiptRetention());
                 return result;
@@ -412,6 +417,11 @@ public class AppConfig {
                 throw failure;
             }
         };
+        boolean orderedFieldsEnabled = ArtifactPolicyCatalog.compile(props).values().stream()
+                .anyMatch(policy -> !policy.fields().isEmpty());
+        return orderedFieldsEnabled
+                ? new ObservationOrderedExtractionDecorator(lifecycleAware, observationRegistrations)
+                : lifecycleAware;
     }
 
     @Bean
@@ -537,6 +547,14 @@ public class AppConfig {
                 diagnosticSink,
                 new DiagnosticFactory(clock),
                 "dataframe").migrate();
+    }
+
+    @Bean
+    public ObservationRegistrationStore observationRegistrationStore(
+            @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
+            @Qualifier("dataframeFormatSchemaMigration") SchemaMigrationResult dataframeFormatSchemaMigration,
+            Clock clock) {
+        return new JdbcObservationRegistrationStore(dataframeStorageDataSource, clock);
     }
 
     @Bean
