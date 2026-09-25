@@ -3,15 +3,23 @@ package com.iocextractor.adapter.in.ingest;
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.ClaimedSource;
+import com.iocextractor.application.ingest.IngestionRecord;
+import com.iocextractor.application.ingest.IngestionStatus;
+import com.iocextractor.application.ingest.IngestionLedgerTransition;
 import com.iocextractor.application.ingest.SourceKey;
+import com.iocextractor.application.ingest.SourceUnit;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
 import com.iocextractor.application.ingest.admission.DocumentAdmissionReservation;
+import com.iocextractor.application.ingest.admission.DocumentTerminalOutcome;
 import com.iocextractor.application.observation.ObservationOrder;
 import com.iocextractor.application.observation.ObservationOrigin;
 import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.application.port.out.observation.ObservationRegistrationStore;
+import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -24,7 +32,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -245,6 +255,47 @@ class FileSystemSourceLifecycleIT {
         assertThat(registrations.nextOrder).isEqualTo(2);
     }
 
+    @ParameterizedTest
+    @EnumSource(IngestionStatus.class)
+    void restartReconcilesLinkedAdmissionWithDurableIngestionStatus(IngestionStatus status)
+            throws Exception {
+        Path processing = tempDir.resolve("processing-ledger-" + status);
+        var lifecycle = new FileSystemSourceLifecycle(
+                processing, tempDir.resolve("done-ledger-" + status),
+                tempDir.resolve("failed-ledger-" + status));
+        var registrations = new MemoryRegistrationStore();
+        Clock clock = Clock.fixed(Instant.parse("2026-09-25T13:00:00Z"), ZoneOffset.UTC);
+        var journal = new FileDocumentAdmissionJournal(
+                tempDir.resolve("admission-ledger-" + status));
+        var service = new DocumentAdmissionService(journal, registrations, clock);
+        var initial = new OrderedDocumentAdmissionHandler(
+                service, lifecycle, new FileDocumentCandidateEvidenceReader(),
+                new FileSourceHasher());
+        ObservationId id = new ObservationId("delivery-ledger-" + status);
+        Path source = Files.writeString(tempDir.resolve("ledger-" + status + ".html"), "ioc-data");
+        var admitted = initial.admit(source, id, clock.instant());
+        var record = new IngestionRecord(
+                id, admitted.source().key(), status, admitted.source().originalPath(),
+                admitted.source().processingPath(), null, admitted.source().detectedAt(),
+                clock.instant(), status == IngestionStatus.FAILED ? "failed" : null);
+        var recovering = new OrderedDocumentAdmissionHandler(
+                service, lifecycle, new FileDocumentCandidateEvidenceReader(),
+                new FileSourceHasher(), new SnapshotLedger(record));
+
+        var recovered = recovering.recover(10);
+
+        if (status == IngestionStatus.CLAIMED) {
+            assertThat(recovered).singleElement().isEqualTo(admitted);
+            assertThat(service.find(id).orElseThrow().terminalOutcome()).isEmpty();
+        } else {
+            assertThat(recovered).isEmpty();
+            DocumentTerminalOutcome expected = status == IngestionStatus.SOURCE_ARCHIVED
+                    ? DocumentTerminalOutcome.SUCCEEDED : DocumentTerminalOutcome.REJECTED;
+            assertThat(service.find(id).orElseThrow().terminalOutcome()).contains(expected);
+            assertThat(service.find(id).orElseThrow().registrationFinalized()).isTrue();
+        }
+    }
+
     private OrderedDocumentAdmissionHandler handler(Path journalPath,
                                                     FileSystemSourceLifecycle lifecycle,
                                                     ObservationRegistrationStore registrations,
@@ -282,6 +333,37 @@ class FileSystemSourceLifecycleIT {
         @Override
         public boolean purgeTerminal(RegisteredObservation registration) {
             return values.remove(registration.observationId(), registration);
+        }
+    }
+
+    private record SnapshotLedger(IngestionRecord record) implements IngestionLedger {
+
+        @Override
+        public Optional<IngestionRecord> find(ObservationId observationId) {
+            return record.observationId().equals(observationId)
+                    ? Optional.of(record) : Optional.empty();
+        }
+
+        @Override
+        public IngestionLedgerTransition markClaimed(SourceUnit unit) {
+            throw new AssertionError("recovery must not claim through the ingestion ledger");
+        }
+
+        @Override
+        public IngestionLedgerTransition markSourceArchived(
+                ObservationId observationId, Path archivedPath) {
+            throw new AssertionError("recovery must not archive through the ingestion ledger");
+        }
+
+        @Override
+        public IngestionLedgerTransition markFailed(
+                ObservationId observationId, SourceKey key, String reason) {
+            throw new AssertionError("recovery must not fail through the ingestion ledger");
+        }
+
+        @Override
+        public List<IngestionRecord> findIncomplete() {
+            throw new AssertionError("document admission recovery uses point lookup");
         }
     }
 }

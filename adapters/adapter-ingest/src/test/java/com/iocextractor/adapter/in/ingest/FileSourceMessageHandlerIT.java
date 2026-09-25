@@ -8,6 +8,10 @@ import ch.qos.logback.core.read.ListAppender;
 import com.iocextractor.application.ingest.IngestionStatus;
 import com.iocextractor.application.artifact.lifecycle.ObservationId;
 import com.iocextractor.application.ingest.SourceKey;
+import com.iocextractor.application.ingest.admission.DocumentAdmissionService;
+import com.iocextractor.application.observation.ObservationOrder;
+import com.iocextractor.application.observation.ObservationOrigin;
+import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.application.pipeline.CompletionStatus;
 import com.iocextractor.application.port.in.ExtractionResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceCommand;
@@ -15,6 +19,7 @@ import com.iocextractor.application.port.in.ingest.IngestSourceResult;
 import com.iocextractor.application.port.in.ingest.IngestSourceUseCase;
 import com.iocextractor.application.port.in.ingest.IngestionRejectionResult;
 import com.iocextractor.application.port.in.ingest.RejectIngestionUseCase;
+import com.iocextractor.application.port.out.observation.ObservationRegistrationStore;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticException;
@@ -35,6 +40,7 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -350,6 +356,53 @@ class FileSourceMessageHandlerIT {
         assertThat(reject.observationId).isEqualTo(attempts.getFirst());
     }
 
+    @Test
+    void orderedAdmissionRetryKeepsOneRegistrationAndPassesThePrivateClaim() throws Exception {
+        Path source = Files.writeString(tempDir.resolve("ordered-retry.html"), "ioc");
+        AtomicInteger moves = new AtomicInteger();
+        var ownership = new StrictAtomicFileOwnership((from, to) -> {
+            if (moves.incrementAndGet() == 1) {
+                throw new java.io.IOException("transient ownership failure");
+            }
+            Files.move(from, to, StandardCopyOption.ATOMIC_MOVE);
+        });
+        var lifecycle = new FileSystemSourceLifecycle(
+                tempDir.resolve("processing"), tempDir.resolve("done"),
+                tempDir.resolve("failed"), ownership);
+        var registrations = new MemoryRegistrationStore();
+        Clock clock = Clock.fixed(Instant.parse("2026-09-25T12:00:00Z"), ZoneOffset.UTC);
+        var admissions = new OrderedDocumentAdmissionHandler(
+                new DocumentAdmissionService(
+                        new FileDocumentAdmissionJournal(tempDir.resolve("admissions")),
+                        registrations, clock),
+                lifecycle, new FileDocumentCandidateEvidenceReader(), new FileSourceHasher());
+        List<IngestSourceCommand> commands = new java.util.ArrayList<>();
+
+        try (var handler = new FileSourceMessageHandler(
+                new FileSourceHasher(),
+                command -> {
+                    commands.add(command);
+                    return new IngestSourceResult(
+                            command.key(), IngestionStatus.SOURCE_ARCHIVED, false, null);
+                },
+                (key, reason) -> IngestionRejectionResult.REJECTED,
+                clock, 2, Duration.ZERO, new CollectingDiagnosticSink(), admissions)) {
+            handler.handle(source.toFile());
+        }
+
+        assertThat(moves).hasValue(2);
+        assertThat(registrations.nextOrder).isEqualTo(2);
+        assertThat(commands).singleElement().satisfies(command -> {
+            assertThat(command.source()).isEqualTo(source.toAbsolutePath().normalize());
+            assertThat(command.claimedSourceOptional()).hasValueSatisfying(claimed ->
+                    assertThat(claimed.processingPath()).exists());
+            assertThat(command.registrationOptional()).hasValueSatisfying(registration -> {
+                assertThat(registration.admissionOrder().value()).isEqualTo(1);
+                assertThat(registration.observationId()).isEqualTo(command.observationId());
+            });
+        });
+    }
+
     private FileSourceMessageHandler handler(IngestSourceUseCase useCase) {
         return new FileSourceMessageHandler(
                 new FileSourceHasher(),
@@ -438,6 +491,36 @@ class FileSourceMessageHandlerIT {
                 ObservationId observationId, SourceKey key, String reason) {
             this.observationId = observationId;
             return reject(key, reason);
+        }
+    }
+
+    private static final class MemoryRegistrationStore implements ObservationRegistrationStore {
+        private static final String NAMESPACE = "0123456789abcdef0123456789abcdef";
+        private final Map<ObservationId, RegisteredObservation> values = new LinkedHashMap<>();
+        private long nextOrder = 1;
+
+        @Override
+        public RegisteredObservation registerNew(ObservationId id, ObservationOrigin origin) {
+            return values.computeIfAbsent(id, ignored -> new RegisteredObservation(
+                    id, NAMESPACE, new ObservationOrder(nextOrder++), origin));
+        }
+
+        @Override
+        public RegisteredObservation resume(ObservationId id, String expectedNamespace) {
+            if (!NAMESPACE.equals(expectedNamespace) || !values.containsKey(id)) {
+                throw new IllegalStateException("Missing registered observation on recovery");
+            }
+            return values.get(id);
+        }
+
+        @Override
+        public void markTerminal(ObservationId id, String expectedNamespace) {
+            resume(id, expectedNamespace);
+        }
+
+        @Override
+        public boolean purgeTerminal(RegisteredObservation registration) {
+            return values.remove(registration.observationId(), registration);
         }
     }
 
