@@ -45,6 +45,7 @@ failure/recovery semantics и точки расширения, но не пер�
 | [dev/artifact-export.md](dev/artifact-export.md) | Consistent immutable export slices, manifest/marker и export saga |
 | [dev/sync.md](dev/sync.md) | Remote fetch/publish, transport boundary, ledgers и reconcile |
 | [dev/event-coordination.md](dev/event-coordination.md) | Event hints, consumer-owned admission и correctness-via-reconcile |
+| [dev/dataframe-import.md](dev/dataframe-import.md) | Managed local/SMB CSV intake, recognition, staging, promotion и recovery |
 | [dev/configuration.md](dev/configuration.md) | Strict `ioc.*` boundary, precedence, validation и registry preflight |
 | [dev/observability.md](dev/observability.md) | Diagnostics, failure policy, typed ECS logging, MDC и redaction |
 | [dev/build-quality.md](dev/build-quality.md) | Maven quality lifecycle, SpotBugs exact ratchet, CPD, coverage and dependency-analysis controls |
@@ -57,9 +58,9 @@ failure/recovery semantics и точки расширения, но не пер�
 
 - [ADR/](ADR/) — журнал решений (`NNNN-slug`, сквозная нумерация, append-only):
   почему выбрали то, что выбрали; отклонённые варианты; следствия.
-- [guides/](guides/) — парные en/ru руководства для админов/интеграторов:
-  полный configuration reference, deployment/rollback, daemon operations и
-  работа с удалённым SMB-хранилищем.
+- [guides/](guides/) — operator/integrator guidance: configuration,
+  deployment/rollback, daemon operations, canonical lifecycle, aggregate and
+  managed dataframe import, remote SMB storage and library publication.
 
 Локальные рабочие заметки и временные issue-списки не входят в авторитетный
 комплект документации, по умолчанию игнорируются Git и не используются

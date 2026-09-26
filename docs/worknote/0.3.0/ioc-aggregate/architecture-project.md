@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Architecture assessment"
 version: "0.3.0"
-status: "Discovery in progress"
+status: "Assessment complete; superseded by implemented technical design"
 document_type: "Architecture assessment"
 source_of_truth: false
 language: "en"
@@ -9,9 +9,9 @@ language: "en"
 
 # DATA-AGGREGATE-01 — architecture assessment
 
-Status: baseline assessment and discussion history, not an accepted implementation
-design. The current engineering proposal is [technical design](technical-design.md);
-its explicit decisions supersede earlier alternatives in this assessment.
+Status: historical baseline assessment and discussion record. The implemented
+[technical design](technical-design.md), accepted ADRs and qualification evidence
+supersede alternatives recorded in this assessment.
 
 ## Existing extension path
 

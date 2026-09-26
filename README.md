@@ -28,19 +28,22 @@ canonical SQLite truth → CSV projections → immutable export slices → optio
 
 ## Features
 
-- **Format-agnostic input** through Apache Tika: HTML/text, DOCX, PDF and other
-  formats supported by the configured parser set.
+- **Document input through Apache Tika**: HTML, PDF, DOCX and XLSX are covered
+  by release contract tests; other configured parser formats are best effort.
 - **Safe IOC extraction** with RE2/J by default and an optional JDK regex engine;
   all configured patterns remain RE2-compatible.
 - **Configurable refang and classification** with ordered replacement rules,
   Public Suffix List awareness and a declarative four-variant mask policy.
-- **Canonical SQLite storage** with keep-first cross-run deduplication, source
-  provenance, independent artifact identities and crash-recoverable ledgers.
+- **Canonical SQLite storage** with stable cross-run artifact identity,
+  configurable per-artifact field mutation, source provenance and
+  crash-recoverable ledgers. Legacy artifacts retain keep-first behavior.
 - **Config-driven CSV artifacts** with independent schemas, filters, ID spaces,
   providers and transforms. A genuinely new sink or wire format remains an
   adapter-level extension.
 - **One-shot and daemon operation**: run a command and exit, or continuously
   ingest stable files from an inbox with retry, recovery and retention.
+- **Managed dataframe import**: validate and ingest recognized export-shaped
+  CSV deliveries from dedicated local or SMB inboxes through durable recovery.
 - **Immutable exports and remote synchronization**: export complete profile
   slices, fetch source documents over SMB and publish completed slices using
   durable ledgers plus periodic reconciliation.
@@ -76,8 +79,8 @@ durable write. Exit code `3` means the run completed with error diagnostics and
 may still have committed valid rows under `collect-and-continue` policy.
 
 Run `java -jar "${APP_JAR}" --help` or `ioc --help` after installation for the
-current command surface. Main commands are `extract`, `export`, `sync` and
-`health`.
+current command surface. Main commands are `extract`, `export`, `sync`, `import`
+and `health`.
 
 ## Run modes
 

@@ -48,8 +48,11 @@ prepared rows
 
 1. **SQLite dataframe — canonical truth.** Oneshot и daemon накапливают данные
    одинаково; удаление CSV не удаляет business data.
-2. **Keep-first отделён от provenance.** Повторный `row_key` не меняет public
-   row/id, но новый source сохраняется в `<artifact>_sources`.
+2. **Identity отделена от provenance и mutation policy.** Повторный `row_key`
+   не создаёт новую public row и не меняет её id; новый source сохраняется в
+   `<artifact>_sources`. По умолчанию public values остаются keep-first, но
+   артефакт может объявить ordered mutable field policy: у `ioc_aggregate`
+   более поздно зарегистрированное непустое `name` атомарно заменяет прежнее.
 3. **Identity задаётся public output values.** Versioned record key определяет
    immutable `row_key`, а named match keys дают альтернативные active-only
    aliases. `key-columns`, `key-mode`, definition name и epoch компилируются до

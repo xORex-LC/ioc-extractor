@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — dependency assessment"
 version: "0.3.0"
-status: "Proposed"
+status: "Assessed; no new dependency required"
 document_type: "Design alternatives"
 source_of_truth: false
 language: "en"

@@ -89,7 +89,8 @@ read (SourceReader)
 Конвейер — цепочка независимых стадий: новую стадию/реализацию добавляем, не
 трогая остальные (OCP). Маршрутизация по типу индикатора и декларативным
 `include`/`exclude`-фильтрам позволяет одному прогону наполнять несколько
-артефактов: сетевые маски, bare-IP list, address blacklist и файловые хэши.
+артефактов: сетевые маски, bare-IP list, address blacklist, файловые хэши и
+standalone IOC aggregate.
 
 ## Порты (контракты)
 
@@ -158,6 +159,7 @@ publish начинается только после локального export
 | `ip_list` | только голые IPv4 | свой, baseline из canonical SQLite `max(id)` |
 | `address_blacklist` | простой список `forbidden_url` / `forbidden_ip`; без id | нет id |
 | `hashes` | MD5/SHA1/SHA256 по разным колонкам | свой, baseline из canonical SQLite `max(id)` |
+| `ioc_aggregate` | один carrier на строку: IPv4, URL, FQDN или hash; `name` обновляется по durable admission order | без public id; identity по четырём carrier-колонкам |
 
 **Словарь колонок (masks):**
 
@@ -182,7 +184,8 @@ publish начинается только после локального export
 Fixed TTL является свойством одной lifecycle canonical DB-записи, а не IOC type
 или source provenance. Успешная canonical transaction атомарно создаёт либо
 продлевает lifecycle с абсолютным UTC `valid_until`; подтверждение после
-deadline архивирует прежнюю lifecycle и создаёт новую с новым service-owned ID.
+deadline архивирует прежнюю lifecycle и создаёт новую с новым внутренним
+dataframe-owned lifecycle ID.
 Все active reads используют half-open predicate `valid_until > asOf`.
 
 Expiry обслуживается aggregate nearest-deadline scheduler: event hint и

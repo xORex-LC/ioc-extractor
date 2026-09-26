@@ -24,11 +24,11 @@ or operator guides. New documents use English according to repository policy.
 
 1. [Discovery](discovery.md): confirmed requirements and decision history.
 2. [Architecture assessment](architecture-project.md): current mechanisms and gaps.
-3. [Draft release contract](release-contract.md): scope and compatibility boundaries.
+3. [Release contract](release-contract.md): accepted scope and compatibility boundaries.
 4. [Technical design](technical-design.md): component ownership, ordering, recovery and activation.
 5. [Dependency assessment](library-options.md): reuse and alternatives.
-6. [Implementation plan](implementation-plan.md): proposed slices and exit conditions.
-7. [Verification matrix](verification-matrix.md): intended behavioral evidence.
+6. [Implementation plan](implementation-plan.md): implemented slices and exit conditions.
+7. [Verification matrix](verification-matrix.md): qualification matrix and evidence requirements.
 8. [Evidence](evidence.md): inspected baseline and actual checks.
 
 ## Current disposition
