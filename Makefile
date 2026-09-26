@@ -48,7 +48,7 @@ GITHUB ?= 0
 	context \
 	run stop runtime-up runtime-down runtime-status runtime-reset submit \
 	fixture fixture-1k fixture-5k fixture-100k smoke smoke-cli smoke-oneshot smoke-daemon \
-	lifecycle-smoke lifecycle-load dataframe-import-smoke dataframe-import-load dataframe-import-load-100k dataframe-import-load-1m \
+	lifecycle-smoke lifecycle-load dataframe-import-smoke dataframe-import-load dataframe-import-load-100k dataframe-import-load-1m ioc-aggregate-load \
 	db logs logs-errors release-notes-context \
 	lint-shell docs security-update security-scan security-report \
 	ci-build ci-pmd ci-packaging ci-docs ci pre-push
@@ -244,6 +244,13 @@ dataframe-import-load-100k: dataframe-import-load ## Qualify the 100k full-impor
 dataframe-import-load-1m: IMPORT_PROFILE=mixed
 dataframe-import-load-1m: SIZE=1000000
 dataframe-import-load-1m: dataframe-import-load ## Qualify the 1M mixed-import release profile
+
+ioc-aggregate-load: SIZE=100000
+ioc-aggregate-load: DUPLICATE_RATE=0.95
+ioc-aggregate-load: package ## Compare duplicate-heavy aggregate candidate with optional BASELINE_JAR
+	@args=(--size "$(SIZE)" --duplicate-rate "$(DUPLICATE_RATE)"); \
+	[[ -z "$(BASELINE_JAR)" ]] || args+=(--baseline-jar "$(BASELINE_JAR)"); \
+	tools/dev/ioc-aggregate-load.sh "$${args[@]}"
 
 db: ## Inspect SQLite read-only; DB=service|dataframe DB_COMMAND=shell|schema|tables
 	@tools/dev/database.sh --workspace "$(WORKSPACE)" --db "$(DB)" "$(DB_COMMAND)"

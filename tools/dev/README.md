@@ -21,6 +21,7 @@
 | `smoke.sh [cli|oneshot|daemon|import|all]` | Проверить public CLI, canonical storage/export, daemon ingest/health и полный local managed-import flow |
 | `lifecycle-smoke.sh …` | Через daemon проверить active→history expiry, bounded retention, projection/export convergence, query plans и ID non-reuse |
 | `dataframe-import-load.sh …` | Выполнить opt-in 100k/1M полный JDBC import profile, проверить SLO/heap/query plans и сохранить evidence |
+| `ioc-aggregate-load.sh …` | Сравнить pre-feature JAR и aggregate candidate на одном duplicate-heavy daemon input; измерить end-to-end/write latency, VmHWM и query plans |
 | `logs.sh …` | Читать и фильтровать ECS JSON по level/event/run/diagnostic |
 | `release-notes-context.sh …` | Собрать read-only Git/PR inventory для ручной подготовки release notes |
 
@@ -43,6 +44,7 @@ tools/dev/runtime.sh down
 tools/dev/smoke.sh all
 tools/dev/lifecycle-smoke.sh --size 1000
 tools/dev/dataframe-import-load.sh --profile mixed --size 1000000
+make ioc-aggregate-load SIZE=100000 DUPLICATE_RATE=0.95 BASELINE_JAR=/path/to/pre-feature.jar
 tools/dev/release-notes-context.sh --previous-tag v0.1.0 --target HEAD
 ```
 
@@ -97,6 +99,15 @@ canonical promotion. Профиль `mixed/1000000` создаёт валидн�
 developer runtime databases он не открывает. Оба профиля работают с packaged
 daemon heap ceiling `-Xmx512m`, закрепляют peak-heap SLO и сохраняют plans/RSS в
 `report.md` выбранного evidence workspace.
+
+IOC aggregate load harness также является opt-in квалификацией. Он генерирует
+один детерминированный документ с высокой долей повторов, пропускает его через
+публичный daemon ingest и сохраняет полный ECS/console evidence. При переданном
+baseline JAR тот же input сначала обрабатывает pre-feature версия на том же
+хосте; candidate проверяет five-column projection, one-carrier invariant,
+terminal registration, ordered-field origins и индексированные планы запросов.
+По умолчанию end-to-end regression ограничен 2x, а `VmHWM` — systemd
+`MemoryMax=1GiB`; изменение envelope требует сохранённого измерения и review.
 
 `lifecycle-load` закрепляет измеримый regression envelope, а не hardware-neutral
 benchmark: input fixture маршрутизируется как минимум в 100k canonical rows,
