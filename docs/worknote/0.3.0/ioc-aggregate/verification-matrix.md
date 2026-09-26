@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Verification plan"
 version: "0.3.0"
-status: "P0-P6 implementation evidence; P7 qualification pending"
+status: "P0-P7 qualification complete"
 document_type: "Verification plan"
 source_of_truth: false
 language: "en"
@@ -9,10 +9,10 @@ language: "en"
 
 # DATA-AGGREGATE-01 — verification matrix
 
-Product output and transition paths are implemented through P6. Mechanism,
-product and deterministic exact-HEAD quality evidence are recorded below;
-representative performance and final publication remain P7. Conditional cases
-become required when the corresponding discovery decision admits them.
+Product output and transition paths are implemented through P6. P7 completes
+representative performance, stand operation, exact-HEAD quality evidence and
+publication. Conditional cases become required when the corresponding
+discovery decision admits them.
 
 | ID | Behavior / evidence | Dependency |
 |---|---|---|
@@ -27,7 +27,7 @@ become required when the corresponding discovery decision admits them.
 | V-09 | Name-only mutation updates projection and agreed export revision/cadence; identical repeat follows no-op policy | I-11 |
 | V-10 | Existing four artifacts retain their supported mapping and duplicate behavior | Always |
 | V-11 | New schema admitted on fresh and existing databases; upgrade/rollback and empty-start verified; no backfill | I-06 / I-09 |
-| V-12 | Managed import routing, source authority, processed/as-is differences and cross-path order | Required; exact import policies pending |
+| V-12 | Managed import routing, source authority, processed/as-is differences and cross-path order | Implemented aggregate import contract |
 | V-13 | New mapping configuration validates strictly and changes relevant fingerprints; old syntax remains supported | Selected extension |
 | V-15 | Five observed marker forms plus existing long FSTEK markers; overlapping/embedded matches, punctuation, NBSP, nearest preceding attribution and shared-artifact impact | BR-11 |
 | V-16 | ABSENT/NULL/empty/whitespace-only name preserves existing name; unnamed insertion stores NULL; no implicit clear | BR-12 |
@@ -146,6 +146,23 @@ a new lifecycle after expiry; replay of an already committed operation must not.
   produces the same public-change signal.
 - P5–P6 focused cohorts and the complete exact-HEAD deterministic gate passed as
   recorded in the evidence ledger. V-14 is complete for local deterministic
-  qualification. V-32 remains open only for the representative duplicate-heavy
-  memory/writer-latency comparison and any provisioned external qualification
-  in P7.
+  qualification.
+
+## P7 qualification checkpoint
+
+- V-32 is complete. The duplicate-heavy 100,000-row comparison records elapsed
+  time, write-stage duration, peak RSS, database size, query plans and aggregate
+  cardinality for the prior four-artifact preset and the candidate. A 250,000-row
+  98% duplicate profile exercises the candidate close to the service memory-high
+  boundary without crossing it.
+- Fresh schema, v9-to-v11 migration without backfill, coordinated rollback,
+  binary-only downgrade rejection, file-ledger and JDBC-ledger daemon operation,
+  managed aggregate import, invalid carrier quarantine and complete smoke paths
+  passed on the disposable local stand.
+- File-ledger restart proves that a later registered source updates only the
+  matching row's `name`; managed import proves last accepted nonempty name,
+  one-carrier validation and NULL handling. Operator logs expose successful,
+  warning and rejected outcomes with bounded diagnostic volume.
+- The feature adds no SMB protocol or server-family behavior. Existing external
+  managed-import qualification remains scoped by ADR-0025 and `OPS-8`; an
+  unavailable external family is neither required nor counted as a P7 pass.

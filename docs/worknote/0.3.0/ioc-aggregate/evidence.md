@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Evidence ledger"
 version: "0.3.0"
-status: "P0-P6 implementation evidence; P7 qualification pending"
+status: "P0-P7 qualification complete"
 document_type: "Evidence ledger"
 source_of_truth: false
 language: "en"
@@ -365,5 +365,104 @@ Final local deterministic evidence:
   changes.
 
 P7 retains the representative duplicate-heavy memory/writer-latency comparison,
-release publication and any provisioned external qualification. Offline skips
-and the stale local vulnerability cache are not presented as live evidence.
+release publication and provisioned stand qualification. Offline skips and the
+stale local vulnerability cache are not presented as live evidence.
+
+## P7 stand, load and release qualification — 2026-09-26
+
+The disposable stand root was `/srv/ioc-extractor`; retained run material is
+under `var/p7-evidence-20260926T061956Z`. The candidate was exercised in
+isolated stand workspaces because the installed systemd service requires
+privileged restart. Its active release remained the prior
+`3c02ba5c126c-r030-data-fresh` deployment. No claim is made that the systemd
+unit was switched to the candidate.
+
+### Upgrade, rollback and runtime paths
+
+- A copy of the deployed v9 service/dataframe pair migrated to v11 with all
+  pre-existing counts preserved and an empty aggregate. This confirms the
+  no-backfill contract.
+- The previous binary rejected a v11 dataframe with the typed
+  `STORAGE.MIGRATION_DOWNGRADE` diagnostic (`fromVersion=11`, `toVersion=9`).
+  Restoring the paired v9 databases and configuration allowed the same binary
+  to start healthy, which qualifies coordinated rollback without suggesting a
+  binary-only downgrade.
+- File-ledger daemon intake wrote four separate rows from one BIB-labelled
+  document: IPv4, full URL, FQDN and MD5. After restart, a later BIB-labelled
+  delivery of the same IPv4 retained four rows and changed only that row's name.
+- JDBC-ledger daemon intake reached `COMPLETED`/`SOURCE_ARCHIVED`; observation,
+  run and projection state converged and no file ledger was created.
+- Managed aggregate import reduced five accepted input records to four canonical
+  rows: duplicate IP used the last nonempty name, URL/FQDN were normalized to
+  lower case and MD5 to upper case. The terminal report and ECS event recorded
+  four public mutations plus `IMPORT.DUPLICATE_IGNORED`. A two-carrier row was
+  rejected with `IMPORT.NONEMPTY_CARDINALITY`, quarantined and made no canonical
+  change. Both outcomes left actuator health `UP`.
+- `make smoke SMOKE=all` passed the CLI, accumulated oneshot storage/export,
+  daemon ingest/health and managed-import terminal/projection paths.
+
+These scenarios also exposed four product defects before the final run: a
+projection acknowledgement race, unbounded repeated diagnostics, transformation
+of the public `NULL` token and concurrent lifecycle-clock writer admission.
+Commits `b1c561bb`, `3147130c`, `8857b12e` and `de548814` fix them with focused
+regression coverage. Candidate-file directory/symlink rejection is fixed and
+covered by `e0e68997`; `3825523a` realigns the unchanged reviewed SpotBugs
+identities after that source change.
+
+### Representative load
+
+The reproducible `tools/dev/ioc-aggregate-load.sh` profile uses a deterministic
+seed and records elapsed time, write-stage duration, peak resident memory,
+database size, aggregate cardinality, query plans and complete logs.
+
+For 100,000 inputs at 95% duplicates, the successful prior four-artifact
+baseline and aggregate candidate recorded:
+
+| Metric | Baseline | Candidate | Candidate/baseline |
+|---|---:|---:|---:|
+| elapsed | 14,066 ms | 14,067 ms | 1.000 |
+| `WRITE_ARTIFACTS` | 4,157,524,625 ns | 10,151,187,898 ns | 2.441 |
+| peak RSS | 530,180 KiB | 599,724 KiB | 1.131 |
+| dataframe DB | 12,296,192 bytes | 22,097,920 bytes | 1.797 |
+| aggregate rows | 0 | 5,067 | n/a |
+
+The overall elapsed threshold remains below 2.0 despite the expected additional
+artifact write. The separate 250,000-input, 98%-duplicate candidate completed in
+16,083 ms with an 8,763,274,584 ns write stage, 5,051 aggregate rows and
+720,876 KiB peak RSS. This is below the service's 768 MiB `MemoryHigh` by
+65,556 KiB (about 64 MiB), so the result passes while documenting limited
+headroom for that deliberately heavy profile. Expected indexes were selected;
+projection, storage and field-origin counts agreed and no error/fatal event was
+emitted. Duplicate diagnostics were summarized after the configured delivery
+budget instead of flooding logs.
+
+Two attempts to rerun the old baseline immediately before the exact candidate
+stopped with the old `LifecycleClockUnsafeException`: the system clock was
+about 2 seconds behind the durable lifecycle high-water during concurrent
+projection work. NTP was synchronized. This repeatable negative result is kept
+as evidence for the shared-writer fix rather than treated as a performance
+sample; the candidate completed the same environment without that error.
+
+### Exact implementation gate and residual observation
+
+At implementation HEAD `3825523a`, `make verify` passed all 25 reactor projects.
+The test lifecycle recorded 200 fast, 67 integration, five property-gated
+external and 262 deterministic-offline tests. Aggregate JaCoCo was
+22,172/24,680 lines (89.84%) and 7,343/9,138 branches (80.36%); domain remained
+100% and application remained above its 85%/90% floors. SpotBugs had 120 exact
+accepted identities and zero visible findings; CPD held at 24/24 reviewed
+groups. `make pmd-analysis` passed with zero blocking and 22/22 advisory items;
+the separately reviewed watchlist contained 30 advisory items.
+
+The offline Dependency-Check scan analyzed 129 dependencies and reported zero
+vulnerabilities after the two existing narrow false-positive suppressions. It
+did not refresh the NVD database or provide live external security evidence.
+
+One internal telemetry seam remains: service schema v9 contains nullable
+`import_delivery.public_mutations`, but the delivery transition does not copy
+the canonical commit count into that column. Canonical dataframe `import_commit`,
+the terminal JSON report and ECS completion event all retained the correct
+value, and recovery reads the canonical receipt. The nullable service column is
+not an operator/status authority, so this does not weaken idempotency, recovery
+or the P7 result; its NULL value is recorded here to prevent it being mistaken
+for missing canonical evidence.

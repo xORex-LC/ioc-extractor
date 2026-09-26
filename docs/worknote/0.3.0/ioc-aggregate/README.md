@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Worknote bundle index"
 version: "0.3.0"
-status: "P0-P6 implemented; final qualification pending"
+status: "P0-P7 implemented and qualified"
 document_type: "Worknote bundle index"
 source_of_truth: false
 language: "en"
@@ -10,12 +10,12 @@ language: "en"
 # DATA-AGGREGATE-01 — IOC aggregate output
 
 This bundle records the requested additional output artifact for release 0.3.0.
-Documentation work was authorized on 2026-09-21; P0–P6 implementation was
-authorized subsequently and is now implemented. The shipping preset includes the
+Documentation work was authorized on 2026-09-21; P0–P7 implementation and
+qualification are complete. The shipping preset includes the
 aggregate artifact and isolated export profile, while managed import remains
-operator-disabled. Final P7 exact-HEAD qualification and release publication are
-still pending. Status is recorded in the evidence ledger. The work-item ID is
-local to this release bundle.
+operator-disabled until an operator configures a validated source. Exact-HEAD
+deterministic, stand, upgrade/rollback and representative-load results are
+recorded in the evidence ledger. The work-item ID is local to this release bundle.
 
 These mutable worknotes do not replace accepted ADRs, capability documentation
 or operator guides. New documents use English according to repository policy.
@@ -48,9 +48,9 @@ or operator guides. New documents use English according to repository policy.
   Empty-name, import/publication and rollout policies are recorded in the
   question table in the technical design.
 - Earlier TTL/import verification remains evidence for its original scope;
-  it does not qualify this feature. No full-release completion is claimed.
-- P0–P6 provide the accepted ordering contract, configurable mapping-policy
+  aggregate qualification has its own exact-HEAD and stand evidence.
+- P0–P7 provide the accepted ordering contract, configurable mapping-policy
   seams, durable admission, occurrence-preserving preparation, atomic ordered
-  field mutation, aggregate import/export and transition operations. No historical
-  backfill occurs; production rollout follows the coordinated backup/restore
-  boundary in the operator guide.
+  field mutation, aggregate import/export, transition operations and final
+  qualification. No historical backfill occurs; production rollout follows the
+  coordinated backup/restore boundary in the operator guide.

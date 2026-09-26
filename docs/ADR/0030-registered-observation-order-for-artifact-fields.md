@@ -1,7 +1,6 @@
 # ADR 0030: Registered observation order for mutable artifact fields
 
-Status: Proposed, 2026-09-22. P0–P2 implementation is authorized; activation
-requires the remaining aggregate qualification and rollout decision.
+Status: Accepted, 2026-09-26. Implemented and qualified for 0.3.0.
 
 ## Context
 

@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — technical design"
 version: "0.3.0"
-status: "Proposed; product questions pending"
+status: "Implemented and qualified"
 document_type: "Technical design"
 source_of_truth: false
 language: "en"
@@ -12,11 +12,11 @@ language: "en"
 ## 1. Authority, scope and readiness
 
 Design authorization: owner request in this conversation. Baseline:
-`feature/dataframe/new-artifact`, `e3f88ccf69ccb5147b98169ff6c2ba9742fb0f7a`,
-Java 21, Spring Boot 4.0.8 from the live parent POM. P0–P2 implementation is authorized by the owner; later slices require their
-normal work-item planning and acceptance. [Discovery](discovery.md)
-contains the accepted behavior; this document supplies a concrete engineering
-proposal and identifies product decisions that still constrain activation.
+`feature/dataframe/new-artifact`, initially
+`e3f88ccf69ccb5147b98169ff6c2ba9742fb0f7a`, Java 21 and Spring Boot 4.0.8.
+P0–P7 were owner-authorized and are implemented. [Discovery](discovery.md)
+contains the accepted behavior; this document records the implemented
+engineering design and its activation boundaries.
 
 Use existing hexagonal modules and dependency direction. Domain/application
 remain free of Spring/JDBC/CSV. Do not follow generic skill examples that place
@@ -52,7 +52,7 @@ behavior. Never dispatch on the literal artifact name `ioc_aggregate` in Java.
 
 ## 3. Components and ownership
 
-Names below are proposed implementation names, not existing APIs. Prefer
+Names below describe implementation responsibilities. Prefer
 package-private concrete collaborators; ports are only for I/O/use-case seams.
 
 | Owner | Component | Single responsibility |
@@ -92,12 +92,12 @@ clarification. The proposed artifact remains ioc_aggregate with output path
 Columns map source.label, bare IP, URL-shaped value, clean domain and hash in
 public order. Type gates alone are insufficient: use the structural column
 conditions and configurable carrier cardinality in the
-[network amendment](network-routing-amendment.md). Exact new gate syntax is
-pending P1; no executable preset is supplied here. The proposed write policy
-remains last-nonempty selection on name and latest-received/keep-existing update.
+[network amendment](network-routing-amendment.md). The implemented gate syntax
+is `when-types` with compatible `when-type` support. The write policy uses
+last-nonempty selection on name and latest-registered/keep-existing update.
 
-Disabled-by-default and filename are proposed rollout choices, not owner-approved
-requirements. No shipment preset is changed in this documentation task.
+The shipping sink writes `IOC_aggregate_generated.csv`; the isolated immutable
+profile is `ioc-aggregate`. Managed import remains operator-disabled by default.
 `duplicate-selection` reduces mapped candidate rows with the same record key;
 `selection-column` chooses a whole occurrence, never a mixture of occurrences.
 For all-empty groups select the first occurrence deterministically and set name
@@ -374,11 +374,12 @@ Use distinct tables or explicit constrained scope, not nullable-PK ambiguity.
 Enabling fixed lifecycle uses existing expire cutover and retires compatibility
 provenance with old rows. Managed import keeps its existing fixed-lifecycle gate.
 
-New artifact tables are configuration-driven, but registration, origin and
-journal metadata require real versioned migrations (currently both DBs v9).
-Plan dataframe v10 and service v10 if still free at implementation time; include
-receipt version and private import-stage format bump where changed. Allocation
-numbers are not an accepted ADR number reservation.
+New artifact tables are configuration-driven, while registration, origin and
+journal metadata use real versioned migrations. Dataframe v10 owns registered
+observation order and initial field origins; v11 owns receipt-v2 positions and
+ordered provenance history. Service v10 owns the document admission journal and
+v11 the import observation reservation. Private import stages pin the effective
+policy metadata required for safe recovery.
 
 Safe activation sequence:
 
@@ -476,7 +477,7 @@ memory on representative data; do not introduce caches or tune pools by guess.
 | Q-06 | Network address routing | Confirmed: full URLs and scheme-less host-plus-path in url_match; bare domains/IPs in their own carriers. Scheme-less host:port without path is also accepted in url_match, without inventing a scheme |
 | Q-07 | Lifecycle restart and rollback | Implemented contract: lifecycle-local priority and recreation from delayed previously uncommitted input; rollback requires coordinated restore and does not support binary-only downgrade |
 
-Q-01–Q-07 are resolved for the implemented P0–P6 scope. Q-03 adds a file-journal
+Q-01–Q-07 are resolved for the implemented P0–P7 scope. Q-03 adds a file-journal
 adapter under the same application port and dataframe order authority. Q-04
 keeps managed import operator-disabled even though its aggregate contract is
 compiled and qualified.
@@ -486,15 +487,14 @@ contract impact before silently weakening a requirement.
 
 ## 13. Verification and decisions to publish
 
-Use the [verification matrix](verification-matrix.md) and expanded
-[implementation plan](implementation-plan.md). Before release qualification,
-finalize the append-only ADR for durable order authority, field policy and
-occurrence-preserving pipeline semantics. It extends relevant lifecycle/import
-contracts without rewriting accepted ADRs. Keep capability docs, module READMEs,
-configuration reference, recovery/upgrade guide and release notes aligned with
-the implementation.
+Use the [verification matrix](verification-matrix.md), expanded
+[implementation plan](implementation-plan.md) and [evidence](evidence.md).
+ADR-0030 records the accepted durable order authority, field policy and
+occurrence-preserving pipeline semantics. Capability docs, module READMEs,
+configuration reference, recovery/upgrade guide and release notes are aligned
+with the implementation.
 
-A design review is not an executable qualification. P0 must prove the riskiest
-seams (crash before claim, receipt reuse, update-only export, mode compatibility)
-before feature activation. No changes to analyzer ratchets, library tags or
-module boundary rules are justified merely by this feature.
+The executable qualification covers crash-before-claim recovery, receipt reuse,
+update-only export, mode compatibility, migration/rollback and representative
+load. No analyzer ratchet, library tag or module-boundary rule changed for this
+feature.

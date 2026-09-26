@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — Discovery worknote"
 version: "0.3.0"
-status: "Discovery in progress"
+status: "Discovery complete; implemented and qualified"
 document_type: "Discovery worknote"
 source_of_truth: false
 language: "en"
@@ -14,14 +14,14 @@ language: "en"
 | ID | Requirement | Status |
 |---|---|---|
 | BR-01 | Support an additional output dataframe represented by local `dataframe/IOC_aggregate.csv` | Confirmed |
-| BR-02 | Use the existing processing/storage/export mechanisms where their contracts fit | Confirmed intent; gaps identified |
+| BR-02 | Use the existing processing/storage/export mechanisms where their contracts fit | Implemented; ordered-field seams added where required |
 | BR-03 | Create a new artifact, rather than a union of existing tables | Confirmed |
 | BR-04 | Match by the complete tuple `(ip_address, url_match, host_match, hash)`, excluding `name`; retain one row and replace `name` with the latest received value | Confirmed; registration-order priority accepted |
 | BR-05 | url_match contains URL text; host_match contains only clean domain names | Confirmed 2026-09-22; supersedes temporary NULL rule |
 | BR-06 | Include IPv4, hashes, URLs and domains; one observed carrier per row, no correlation; configurable routing/shape policy | Confirmed 2026-09-22 |
 | BR-07 | Start maintaining a feature documentation bundle alongside TTL/import worknotes | Authorized 2026-09-21 |
 | BR-08 | Start the new artifact empty; no population from existing tables | Confirmed |
-| BR-09 | Support managed CSV import of the aggregate schema using existing import mechanisms | Confirmed; contract details pending |
+| BR-09 | Support managed CSV import of the aggregate schema using existing import mechanisms | Implemented and qualified |
 | BR-10 | Configure duplicate/update behavior per artifact; make the mechanism reusable for existing and future artifacts | Confirmed |
 | BR-11 | Extend configured section-marker regexes to recognize the label forms present in the sample; these occur in production | Confirmed |
 | BR-12 | Preserve the existing name when a repeat has no new source label | Confirmed |
@@ -33,18 +33,18 @@ to the output contract, not its malformed values as required generated output.
 
 | ID | Topic | Disposition / next question |
 |---|---|---|
-| I-01 | Hash routing | DECIDED direction: reusable `when-types` gate. It selects eligible IOC types for one scalar cell; it does not collect multiple values. Compatibility and validation design pending |
+| I-01 | Hash routing | IMPLEMENTED: reusable `when-types` gate selects eligible IOC types for one scalar cell; it does not collect multiple values. Existing `when-type` remains compatible |
 | I-02 | Domain/URL representation | DECIDED: include URLs and clean domains in separate carriers; see [amendment](network-routing-amendment.md); full URLs and scheme-less host-plus-path accepted; bare domain/IP excluded from url_match |
 | I-03 | `name` formatting | DECIDED: use existing regex attribution and `source.label`; extend section-markers for observed production labels. No conversion of long labels into abbreviated labels requested |
 | I-04 | Identity and update | DECIDED: all four non-name fields determine equality; update `name` on a later matching observation |
 | I-05 | Latest observation order | DECIDED: later durable service registration has priority; errors, retry and restart do not raise it. Within a document, select the last nonempty label and its corresponding occurrence in text order; preserve other artifacts' behavior |
 | I-06 | Initial population | DECIDED: start empty; only subsequent observations populate the new artifact. Historical backfill is a future possibility outside this feature |
-| I-07 | Managed import | DECIDED: import the aggregate structure through existing managed import. Target-only routing is the stated scenario; no automatic synchronization from ip_list/hashes requested. Exact recognition/mapping/authority and processed/as-is policies still need qualification |
+| I-07 | Managed import | IMPLEMENTED: explicit `ioc-aggregate-v1` target-only contract; no automatic synchronization from ip_list/hashes. Recognition, mapping, authority and processed/as-is policies are qualified |
 | I-08 | Missing label | DECIDED: configure empty-value handling per field. For aggregate name, ABSENT, NULL, empty and whitespace-only input preserve the existing value; new rows without a name store NULL. No explicit name clearing in this version |
-| I-09 | Publication | OPEN: profile membership, generated/export filename, target delivery and activation default |
-| I-10 | Lifecycle | Existing lifecycle behavior is the intended baseline; confirm renewal/update, expiry/reappearance and initial population treatment |
+| I-09 | Publication | IMPLEMENTED: generated `IOC_aggregate_generated.csv`, isolated `ioc-aggregate` immutable export profile, enabled sink and operator-disabled managed import |
+| I-10 | Lifecycle | QUALIFIED: existing lifecycle behavior, renewal/update, expiry/reappearance and empty initial population are preserved |
 | I-11 | Export on name change | DECIDED: a changed public `name` advances content revision/projection work and becomes eligible for normal export cadence; identical name does not imply public mutation |
-| I-12 | Equality details | OPEN: compare normalized stored values, treatment of NULL versus empty text, and future identity evolution when match fields become populated |
+| I-12 | Equality details | IMPLEMENTED: normalized full four-carrier tuple is record/match identity; NULL is canonical absence and empty carrier text is rejected. Future multi-carrier correlation requires a new contract |
 
 ## Clarifying examples
 
@@ -56,8 +56,9 @@ Creating the new table does not automatically copy old records into it. Managed
 import writes according to its own routing contract; adding an output artifact
 alone does not make it a live view of other tables.
 
-No decision is inferred from a question being left unanswered. Further interview
-should address one substantive product question at a time, remaining questions concern publication, lifecycle/export integration and exact input contracts. The accepted ordering behavior no longer needs re-approval.
+No decision was inferred from unanswered questions. The later decision entries,
+technical design and accepted ADR resolve publication, lifecycle/export and
+input contracts without changing the earlier interview history.
 
 ## Follow-up clarification — 2026-09-21
 
@@ -96,11 +97,12 @@ Recognition is not a request to rewrite source labels into one uniform format.
 Exact RE2-compatible expressions, token boundaries and overlapping-match rules
 will be qualified with synthetic fixtures before changing runtime configuration.
 
-## Accepted ordering behavior and pending engineering design
+## Accepted ordering behavior and resolved engineering design
 
 The owner proposed using metadata to identify which source entered processing
 first. The owner accepted durable service registration as the priority boundary,
-with unchanged priority through errors, retry and restart. Proposed mechanism: persist a monotonic observation admission sequence before dispatch;
+with unchanged priority through errors, retry and restart. The implementation
+persists a monotonic observation admission sequence before dispatch;
 keep it unchanged through retry/recovery and compare it transactionally when
 applying configured latest-name updates. A later independently delivered
 occurrence receives a new sequence even when its bytes are identical.
@@ -113,9 +115,9 @@ each asynchronous ingest attempt and cannot be reused unchanged as first-arrival
 truth. Observation UUID identifies an occurrence but does not order it.
 
 The canonical field's accepted source order must survive restart and participate
-in the name-update transaction. Same-value newer confirmations may need to advance
-that metadata without a public revision. Missing values must follow the agreed
-preserve-name policy; whether they advance a precedence barrier is still open.
+in the name-update transaction. Same-value newer confirmations advance that
+metadata without a public revision. Missing values follow the agreed
+preserve-name policy and do not advance the stored nonempty field origin.
 Keep lifecycle confirmation time separate from source ordering, and define
 same-document duplicates and expired/recreated rows independently.
 
@@ -132,12 +134,11 @@ The owner accepted the following observable behavior:
 - Later durable registration wins across deliveries. Processing completion,
   retries and restart cannot change the original priority.
 
-A new all-unnamed IOC must still be retained; the exact tie treatment between
-unnamed occurrences is an engineering detail subject to the output contract.
-The atomic registration mechanism, durable cross-path sequence, recovery of
-legacy in-flight work and schema/rollback design remain engineering work, not
-additional operator decisions. Final configuration syntax is not approved by
-these behavioral decisions. Production implementation has not started.
+A new all-unnamed IOC must still be retained. At this decision checkpoint, tie
+treatment, atomic registration, cross-path order, legacy-work recovery and
+schema/rollback remained engineering work rather than operator decisions. The
+later technical design, ADR-0030 and implementation evidence record their
+resolution.
 
 
 ## Technical-design checkpoint — 2026-09-22

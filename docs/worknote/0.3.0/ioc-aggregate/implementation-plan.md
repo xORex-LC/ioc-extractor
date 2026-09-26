@@ -1,7 +1,7 @@
 ---
 title: "DATA-AGGREGATE-01 — implementation plan"
 version: "0.3.0"
-status: "P0-P6 implemented; P7 qualification planned"
+status: "P0-P7 implemented and qualified"
 document_type: "Implementation plan"
 source_of_truth: false
 language: "en"
@@ -9,11 +9,10 @@ language: "en"
 
 # Implementation plan
 
-These slices implement the [technical design](technical-design.md). P0–P6 are
-implemented: the aggregate preset, import/export integration and transition
-operations now build on the P0–P4 foundations. The deterministic P5–P6 quality
-checkpoint is complete; P7 remains the representative performance and final
-publication checkpoint. Q-03 supports both service-ledger
+These slices implement the [technical design](technical-design.md). P0–P7 are
+implemented and qualified: the aggregate preset, import/export integration,
+transition operations, representative load profile and publication build on
+the P0–P4 foundations. Q-03 supports both service-ledger
 modes; the Q-07 rollback boundary is coordinated restoration rather than binary
 downgrade.
 
@@ -45,14 +44,16 @@ Do not merge unfinished behavior into an enabled shipping preset.
 | P5 | `72f4daa1`, `202fd03c` | The shipped five-column aggregate artifact and isolated export profile are active; target-only managed import adds exact carrier validation, last-nonempty duplicate reduction, pinned policy metadata and source-label binding. |
 | P6 | `86bb0373` | Daemon file/JDBC ledgers and managed import share durable dataframe order, service schema v11 proves new import reservations, startup blocks legacy unranked work, retention/health expose and preserve unresolved authority, and v0.2 identity overlays remain boundedly compatible. |
 | P5–P6 hardening | `0ecacac0`–`6f1d9b4d` | Runtime contract fixes, ordered recovery and retention boundaries, strict import validation, exact coverage qualification, PMD remediation and the reviewed CPD improvement close the deterministic implementation checkpoint. |
+| P7 | `3bb15a76`–`3825523a` | Reproducible duplicate-heavy load tooling and live stand qualification exposed and fixed projection-acknowledgement, diagnostic-budget, import-NULL, lifecycle-writer and candidate-file-boundary defects. Exact-HEAD quality gates, upgrade/rollback, both daemon ledgers, managed import, smoke and load evidence complete the feature checkpoint. |
 
 The ordered occurrence and mutation mechanisms remain opt-in per artifact;
 existing four artifacts keep their legacy policies. The shipping aggregate
 preset selects them for `name`, starts empty without backfill and is covered by
-the P5 import/export and P6 recovery paths. Exact deterministic gates and
-analyzer review are recorded in the evidence ledger. P7 must still record the
-representative performance comparison and any provisioned external evidence
-before release qualification is claimed.
+the P5 import/export and P6 recovery paths. Exact deterministic gates, analyzer
+review, representative performance and provisioned local-stand evidence are
+recorded in the evidence ledger. The feature introduces no new external
+transport claim; existing SMB server-family qualification remains governed by
+the managed-import release contract.
 
 ## Responsibilities and review boundaries
 
