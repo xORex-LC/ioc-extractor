@@ -18,7 +18,7 @@ public final class FileDocumentCandidateEvidenceReader {
         try {
             BasicFileAttributes attributes = Files.readAttributes(
                     path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-            if (!attributes.isRegularFile() || attributes.isSymbolicLink()) {
+            if (!attributes.isRegularFile()) {
                 throw new IocExtractorException("Document candidate is not a regular file: " + path);
             }
             return new DocumentCandidateEvidence(

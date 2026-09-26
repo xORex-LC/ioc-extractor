@@ -16,6 +16,7 @@ import com.iocextractor.application.observation.ObservationOrigin;
 import com.iocextractor.application.observation.RegisteredObservation;
 import com.iocextractor.application.port.out.observation.ObservationRegistrationStore;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
+import com.iocextractor.common.IocExtractorException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -45,6 +46,26 @@ class FileSystemSourceLifecycleIT {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void candidateEvidenceRejectsDirectory() {
+        var reader = new FileDocumentCandidateEvidenceReader();
+
+        assertThatThrownBy(() -> reader.read(tempDir))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("Document candidate is not a regular file");
+    }
+
+    @Test
+    void candidateEvidenceRejectsSymbolicLinkWithoutFollowingItsTarget() throws Exception {
+        Path target = Files.writeString(tempDir.resolve("target.html"), "ioc");
+        Path link = Files.createSymbolicLink(tempDir.resolve("candidate.html"), target.getFileName());
+        var reader = new FileDocumentCandidateEvidenceReader();
+
+        assertThatThrownBy(() -> reader.read(link))
+                .isInstanceOf(IocExtractorException.class)
+                .hasMessageContaining("Document candidate is not a regular file");
+    }
 
     @Test
     void claims_archives_and_fails_sources_with_error_sidecar() throws Exception {
