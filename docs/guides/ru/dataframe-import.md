@@ -75,10 +75,44 @@ delivery, включая byte-identical повторную подачу.
 
 ## Подача SMB delivery
 
-Используйте выделенный каталог настроенной шары. Service account нужны права на
-list, read, rename/move и create-directory внутри этого каталога и его private
-namespace `.ioc-managed-import`. Producer и consumer должны использовать один
-server-side filesystem, чтобы claim выполнялся rename без copy/delete.
+Используйте выделенный каталог настроенной шары. Managed import является
+мутирующим consumer: в отличие от обычного `sync.fetch`, он claim-ит,
+перемещает и в итоге удаляет собственные managed objects. Не выдавайте эти права
+read-only sync-fetch source только потому, что обе способности используют один
+SMB endpoint/session pool.
+
+Заранее создайте точный namespace под каждым настроенным managed-import source:
+
+```text
+<source>/
+└── .ioc-managed-import/
+    ├── processing/
+    ├── terminal/
+    ├── quarantine/
+    └── probe/
+```
+
+Приложение никогда не создаёт эти каталоги. Перед listing кандидатов service
+identity создаёт пустой reserved object в `probe`, переименовывает его через
+`processing` в `terminal` и удаляет именно этот regular file. Отсутствующий
+каталог или детерминированное несоответствие permission/object отключает только
+этот source; следующий reconcile повторяет probe. Это positive operation check,
+а не аудит ACL: приложение не может доказать, что producer действительно лишён
+доступа.
+
+Используйте две разные identity и обеспечьте на сервере как минимум такую
+матрицу:
+
+| Location / operation | Producer identity | Service identity |
+|---|---|---|
+| `<source>`: публикация завершённого regular file | разрешить create/write и atomic handoff; оставить только действительно нужные producer права listing/read | разрешить list/read и server-side rename в `processing` |
+| `.ioc-managed-import` и все дочерние каталоги | запретить traversal, listing, read, write и delete | разрешить traversal и точные операции probe/claim/disposition/retention |
+| `probe` | нет доступа | создать пустой regular file, переименовать наружу и удалить точный file при recovery |
+| `processing` | нет доступа | создать через rename, читать с запрещённым write sharing, переименовать наружу; без recursive delete |
+| `terminal`, `quarantine` | нет доступа | создать через rename, инспектировать и удалить точный managed regular object |
+
+Producer и consumer должны использовать один server-side filesystem, чтобы
+claim выполнялся rename без copy/delete.
 Предпочтительно загружать файл в отдельный producer-owned sibling staging
 каталог и выполнять один server-side rename в настроенный source. Если producer
 вынужден писать сразу в source-каталог, его максимальная пауза записи должна
@@ -88,6 +122,44 @@ server-side filesystem, чтобы claim выполнялся rename без copy
 Включите SMB encryption, если доверие к сети не обеспечено другим
 документированным control. `CHANGE_NOTIFY` уменьшает latency; complete listing
 остаётся включённым и восстанавливает потерю notifications, disconnect и restart.
+
+### Пример для Samba
+
+Создайте namespace как administrator, затем выразите матрицу через принятые в
+вашей среде POSIX ACL groups. Пример использует отдельные accounts и
+предполагает, что share соблюдает filesystem ACL:
+
+```bash
+install -d -m 0770 -o ioc-service -g ioc-service /srv/ioc-import/inbox/.ioc-managed-import/{processing,terminal,quarantine,probe}
+setfacl -m u:ioc-service:rwx,u:ioc-producer:-wx,m::rwx /srv/ioc-import/inbox
+setfacl -m d:u:ioc-service:rw-,d:m::rw- /srv/ioc-import/inbox
+setfacl -R -m u:ioc-service:rwx,u:ioc-producer:---,m::rwx /srv/ioc-import/inbox/.ioc-managed-import
+```
+
+Адаптируйте owner/group/default ACL к identity mapping вашего Samba server.
+Проверьте от имени producer, что traversal/list/read/write/delete private
+namespace завершаются отказом, а от имени service account — что application
+capability gate становится ready. Успешный service probe сам по себе не
+доказывает запрет producer.
+
+### Пример для Windows Server
+
+Создайте четыре каталога в NTFS backing folder шары. Выдайте service account
+право `Modify` на `<source>` и private subtree. Producer должен иметь только
+права source folder, необходимые для публикации завершённого файла; удалите
+унаследованный доступ producer/group к `.ioc-managed-import`, сохранив
+Administrators/SYSTEM и service identity. Используйте Advanced Security или
+`icacls`; точные principals и inheritance flags зависят от deployment.
+
+Проверьте обе identity через `runas` или отдельные sessions: producer не должен
+проходить в private subtree или получать его listing, service account должен
+проходить capability gate и claim-ить созданный producer candidate. Приложение
+не инспектирует и не сертифицирует NTFS/Samba ACL policy.
+
+Opt-in тест репозитория `SmbManagedImportHardeningContractIT` выполняет это
+two-identity доказательство на заранее подготовленном fixture. Он не создаёт и
+не удаляет namespace рекурсивно; value-free system-property invocation описан
+в README SMB adapter.
 
 ## Наблюдение за выполнением
 

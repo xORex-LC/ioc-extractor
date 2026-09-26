@@ -38,6 +38,7 @@ replay_pid*
 source/*
 !source/README.md
 dataframe/*
+!dataframe/README.md
 !dataframe/hashes_list.csv
 !dataframe/masks_list.csv
 !dataframe/ip_list.csv

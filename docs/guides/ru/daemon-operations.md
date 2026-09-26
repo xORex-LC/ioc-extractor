@@ -25,7 +25,10 @@ Default prefix — `/opt/ioc-extractor`; при другой установке 
 
 ### Безопасный planned restart
 
-До закрытия ING-10 выполняйте planned restart только в idle maintenance window:
+Startup recovery завершается до допуска новой работы обычным poller, а
+source-key serialization не позволяет recovery и polling одновременно
+обрабатывать один source. Для согласованной точки backup или восстановления
+конфигурации всё равно выполняйте planned restart в idle maintenance window:
 
 1. приостановите local и remote producers, чтобы новые sources не поступали;
 2. дождитесь завершения текущего source и пустых `var/inbox` и
@@ -33,10 +36,9 @@ Default prefix — `/opt/ioc-extractor`; при другой установке 
 3. проверьте local health и последние diagnostics `INGEST.*`;
 4. перезапустите service, подтвердите health и только затем возобновите intake.
 
-Процедура уменьшает exposure к гонке startup recovery/poller, но не является
-recovery и не делает существующую `FAILED` identity retryable. Если idle window
-обеспечить нельзя, сохраните state и используйте reviewed maintenance procedure,
-не удаляя ledger records.
+Это процедура операционной согласованности, а не способ сделать существующую
+`FAILED` identity retryable. Если idle window обеспечить нельзя, сохраните state
+и используйте reviewed maintenance procedure, не удаляя ledger records.
 
 ## Подача source document
 
@@ -78,7 +80,7 @@ diagnostics. Валидные строки при этом записывают�
 
 После bounded retries, следующих за успешным claim, terminal source перемещается
 в `var/failed`, а ledger фиксирует terminal state. При pre-claim failure source
-может остаться в `var/inbox` из-за ING-13. В 0.2.0 нет поддерживаемой команды
+может остаться в `var/inbox` из-за ING-13. В текущем релизе нет поддерживаемой команды
 очистки или requeue такой identity. Не переносите source для повторной подачи и
 не редактируйте ledger files/SQLite tables вручную. Сохраните source там, где он
 остался, вместе с logs, исправьте причину и используйте reviewed recovery
