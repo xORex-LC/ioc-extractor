@@ -11,6 +11,7 @@ import com.iocextractor.common.IocExtractorException;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -29,6 +30,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -205,6 +207,42 @@ class JdbcLifecycleStorageFoundationIT {
         assertThat(store.load("masks").requiredGeneration()).isEqualTo(new ProjectionGeneration(3));
         assertThat(store.load("masks").projectedGeneration()).isEqualTo(new ProjectionGeneration(2));
         assertThat(store.load("hashes").pending()).isFalse();
+    }
+
+    @Test
+    @Timeout(15)
+    void projection_acknowledgement_waits_for_shared_writer_admission() throws Exception {
+        initializeStatic("projection-admission.db");
+        execute("""
+                INSERT INTO artifact_projection_state(
+                    artifact, required_generation, projected_generation, requested_at_ms)
+                VALUES ('masks', 2, 0, 100)
+                """);
+        var admission = new JdbcWriterAdmission();
+        var store = new JdbcArtifactProjectionWorkStore(dataSource, CLOCK, admission);
+        CountDownLatch holderEntered = new CountDownLatch(1);
+        CountDownLatch releaseHolder = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Future<?> holder = executor.submit(() -> admission.execute(() -> {
+                holderEntered.countDown();
+                await(releaseHolder);
+                return null;
+            }));
+            assertThat(holderEntered.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<Boolean> acknowledgement = executor.submit(
+                    () -> store.acknowledge(acknowledgement("masks", 2)));
+            awaitQueuedWriter(admission);
+            assertThat(acknowledgement).isNotDone();
+
+            releaseHolder.countDown();
+            holder.get(5, TimeUnit.SECONDS);
+            assertThat(acknowledgement.get(5, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            releaseHolder.countDown();
+        }
+        assertThat(store.load("masks").pending()).isFalse();
     }
 
     @Test
@@ -705,6 +743,25 @@ class JdbcLifecycleStorageFoundationIT {
             }
             return details.toString();
         }
+    }
+
+    private void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("Timed out waiting for projection admission test release");
+            }
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
+    }
+
+    private void awaitQueuedWriter(JdbcWriterAdmission admission) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (admission.queuedWriters() == 0 && System.nanoTime() < deadline) {
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+        }
+        assertThat(admission.queuedWriters()).isPositive();
     }
 
     private List<Long> longRange(long start, long endInclusive) {

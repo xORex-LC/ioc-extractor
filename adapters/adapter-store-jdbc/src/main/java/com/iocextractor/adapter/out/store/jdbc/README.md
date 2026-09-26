@@ -89,8 +89,10 @@ IOC payload; strict mismatch отклоняет всю logical row.
 
 `JdbcWriterAdmission` не заменяет SQLite transaction ownership и не используется
 для hashing, parsing или file I/O. Composition root передаёт один экземпляр в
-ordinary canonical writer, expiry и export-slot reconciliation; import writer
-будет подключён к тому же экземпляру только вместе с P7 recovery barrier.
+ordinary canonical writer, import promotion, expiry, export-slot reconciliation
+и короткие mutable-projection acknowledgement/failure writes. Это не позволяет
+фоновому acknowledgement исчерпать SQLite busy timeout во время большой
+canonical transaction.
 
 `JdbcRemoteFetchLedger` хранит read-only remote identity (`path + size + mtime`) и
 не требует прав на remote move/delete. `JdbcPublishLedger` ключуется по

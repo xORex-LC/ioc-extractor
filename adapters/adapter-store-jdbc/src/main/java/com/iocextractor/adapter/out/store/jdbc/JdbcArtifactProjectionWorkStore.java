@@ -16,11 +16,20 @@ public final class JdbcArtifactProjectionWorkStore implements ArtifactProjection
 
     private final JdbcClient jdbc;
     private final Clock clock;
+    private final JdbcWriterAdmission writerAdmission;
 
     /** Creates projection state access with an injected UTC timestamp source. */
     public JdbcArtifactProjectionWorkStore(DataSource dataSource, Clock clock) {
+        this(dataSource, clock, new JdbcWriterAdmission());
+    }
+
+    /** Creates projection state access participating in shared local write admission. */
+    public JdbcArtifactProjectionWorkStore(DataSource dataSource,
+                                           Clock clock,
+                                           JdbcWriterAdmission writerAdmission) {
         this.jdbc = JdbcClient.create(Objects.requireNonNull(dataSource, "dataSource"));
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
     }
 
     @Override
@@ -52,6 +61,10 @@ public final class JdbcArtifactProjectionWorkStore implements ArtifactProjection
                 acknowledgement.artifactName(), "artifact name");
         long expected = acknowledgement.expectedRequiredGeneration().value();
         long installed = acknowledgement.installedGeneration().value();
+        return writerAdmission.execute(() -> acknowledgeAdmitted(artifact, expected, installed));
+    }
+
+    private boolean acknowledgeAdmitted(String artifact, long expected, long installed) {
         try {
             return jdbc.sql("""
                             UPDATE artifact_projection_state
@@ -82,6 +95,13 @@ public final class JdbcArtifactProjectionWorkStore implements ArtifactProjection
         if (failureCode == null || failureCode.isBlank()) {
             throw new IllegalArgumentException("failureCode must not be blank");
         }
+        return writerAdmission.execute(() -> recordFailureAdmitted(
+                artifact, expectedGeneration, failureCode));
+    }
+
+    private boolean recordFailureAdmitted(String artifact,
+                                          ProjectionGeneration expectedGeneration,
+                                          String failureCode) {
         try {
             return jdbc.sql("""
                             UPDATE artifact_projection_state

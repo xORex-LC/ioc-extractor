@@ -766,8 +766,10 @@ public class AppConfig {
     public ArtifactProjectionWorkStore artifactProjectionWorkStore(
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             DataframeSchemaPlan dataframeSchemaReconciliation,
-            Clock clock) {
-        return new JdbcArtifactProjectionWorkStore(dataframeStorageDataSource, clock);
+            Clock clock,
+            JdbcWriterAdmission jdbcWriterAdmission) {
+        return new JdbcArtifactProjectionWorkStore(
+                dataframeStorageDataSource, clock, jdbcWriterAdmission);
     }
 
     @Bean
