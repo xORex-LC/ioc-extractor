@@ -1324,7 +1324,7 @@
     <finding id="SB04-101" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="bffd062e9915fa3e76d30e8510c74f45" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/HARDEN-02" review="pipeline-observer-failure-contract-change">
         <class name="com.iocextractor.platform.etl.PipelineRunner" />
         <method name="executeInRunScope" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
-        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="148" bytecode="258" />
+        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="147" bytecode="238" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.platform.etl.PipelineRunner" />
@@ -1335,7 +1335,7 @@
     <finding id="SB04-102" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="bffd062e9915fa3e76d30e8510c74f45" occurrence="1" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/HARDEN-02" review="pipeline-observer-failure-contract-change">
         <class name="com.iocextractor.platform.etl.PipelineRunner" />
         <method name="executeInRunScope" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
-        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="153" bytecode="310" />
+        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="152" bytecode="290" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.platform.etl.PipelineRunner" />
@@ -1346,7 +1346,7 @@
     <finding id="SB04-103" module="platform/platform-etl" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="bffd062e9915fa3e76d30e8510c74f45" occurrence="2" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="R030-BUILD" evidence="C2-EX-E/HARDEN-02" review="pipeline-observer-failure-contract-change">
         <class name="com.iocextractor.platform.etl.PipelineRunner" />
         <method name="executeInRunScope" signature="(Lcom/iocextractor/platform/etl/Envelope;Lcom/iocextractor/platform/etl/Pipeline;)Lcom/iocextractor/platform/etl/PipelineRunResult;" />
-        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="162" bytecode="382" />
+        <anchor sourcePath="com/iocextractor/platform/etl/PipelineRunner.java" startLine="161" bytecode="362" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.platform.etl.PipelineRunner" />
