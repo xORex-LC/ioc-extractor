@@ -168,11 +168,16 @@ class DataframeImportRowMapperTest {
                 record(12, "192.0.2.12", "", "E".repeat(32), ""));
         ImportRowMappingResult transformedEmptyCell = mapper.map(contract(ImportFormulaPolicy.REJECT),
                 record(13, "192.0.2.13", "   ", "F".repeat(32), "NULL"));
+        DataframeImportRowMapper caseChangingMapper = new DataframeImportRowMapper(
+                (specification, value) -> value.toLowerCase(), keys);
+        ImportRowMappingResult nullBeforeTransform = caseChangingMapper.map(
+                contract(ImportFormulaPolicy.REJECT),
+                record(14, "192.0.2.14", "NULL", "1".repeat(32), "14"));
         ImportRowMappingResult missingSlot = mapper.map(contract(ImportFormulaPolicy.REJECT),
-                new ImportDelimitedRecord(14, Map.of(
-                        "address", "192.0.2.14", "score", "14", "md5", "1".repeat(32))));
+                new ImportDelimitedRecord(15, Map.of(
+                        "address", "192.0.2.15", "score", "15", "md5", "2".repeat(32))));
         ImportRowMappingResult nonPositiveSlot = mapper.map(contract(ImportFormulaPolicy.REJECT),
-                record(15, "192.0.2.15", "15", "2".repeat(32), "0"));
+                record(16, "192.0.2.16", "16", "3".repeat(32), "0"));
 
         assertThat(emptyCell.row()).hasValueSatisfying(row -> {
             assertThat(row.branches().getFirst().cells().get("score")).isEqualTo(ImportCell.nullValue());
@@ -182,6 +187,10 @@ class DataframeImportRowMapperTest {
             assertThat(row.branches().getFirst().cells().get("score")).isEqualTo(ImportCell.nullValue());
             assertThat(row.branches().getFirst().requestedSlot()).isEmpty();
         });
+        assertThat(nullBeforeTransform.issues()).isEmpty();
+        assertThat(nullBeforeTransform.row()).hasValueSatisfying(row ->
+                assertThat(row.branches().getFirst().cells().get("score"))
+                        .isEqualTo(ImportCell.nullValue()));
         assertThat(missingSlot.row()).hasValueSatisfying(row ->
                 assertThat(row.branches().getFirst().requestedSlot()).isEmpty());
         assertThat(nonPositiveSlot.issues()).extracting(ImportRowIssue::code)
@@ -190,7 +199,7 @@ class DataframeImportRowMapperTest {
         DataframeImportCatalogDraft.Contract definition = contract(ImportFormulaPolicy.REJECT).definition();
         ImportRowMappingResult unconfiguredSlot = mapper.map(
                 compiled(copyWith(definition, definition.artifacts(), null)),
-                record(16, "192.0.2.16", "16", "3".repeat(32), "99"));
+                record(17, "192.0.2.17", "17", "4".repeat(32), "99"));
         assertThat(unconfiguredSlot.row()).hasValueSatisfying(row ->
                 assertThat(row.branches().getFirst().requestedSlot()).isEmpty());
     }

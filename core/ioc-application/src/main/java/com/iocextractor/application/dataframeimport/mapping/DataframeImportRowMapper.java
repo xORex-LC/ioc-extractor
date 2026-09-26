@@ -138,7 +138,7 @@ public final class DataframeImportRowMapper {
             return ImportCell.absent();
         }
         String value = record.values().get(column.source());
-        if (value.isEmpty()) {
+        if (value.isEmpty() || contract.dialect().nullLiterals().contains(value)) {
             return ImportCell.nullValue();
         }
         try {
