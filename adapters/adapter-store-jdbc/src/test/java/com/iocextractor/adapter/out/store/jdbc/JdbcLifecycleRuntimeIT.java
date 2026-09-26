@@ -9,6 +9,7 @@ import com.iocextractor.application.artifact.lifecycle.ProjectionGeneration;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
@@ -20,7 +21,12 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -88,6 +94,36 @@ class JdbcLifecycleRuntimeIT {
         monotonic.set(Duration.ofSeconds(31).toNanos());
         assertThatThrownBy(clock::now).isInstanceOf(LifecycleClockUnsafeException.class);
         assertThat(clock.inspect().status()).isEqualTo(LifecycleClockStatus.UNSAFE);
+    }
+
+    @Test
+    @Timeout(15)
+    void safe_clock_waits_for_shared_writer_admission() throws Exception {
+        initialize("clock-admission.db");
+        var admission = new JdbcWriterAdmission();
+        var clock = new JdbcLifecycleClock(dataSource, Clock.fixed(NOW, ZoneOffset.UTC),
+                new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30)), admission);
+        CountDownLatch holderEntered = new CountDownLatch(1);
+        CountDownLatch releaseHolder = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Future<?> holder = executor.submit(() -> admission.execute(() -> {
+                holderEntered.countDown();
+                await(releaseHolder);
+                return null;
+            }));
+            assertThat(holderEntered.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<EffectiveTime> sample = executor.submit(() -> clock.now());
+            awaitQueuedWriter(admission);
+            assertThat(sample).isNotDone();
+
+            releaseHolder.countDown();
+            holder.get(5, TimeUnit.SECONDS);
+            assertThat(sample.get(5, TimeUnit.SECONDS)).isEqualTo(EffectiveTime.at(NOW));
+        } finally {
+            releaseHolder.countDown();
+        }
     }
 
     @Test
@@ -199,6 +235,25 @@ class JdbcLifecycleRuntimeIT {
                 VALUES (%1$d, 'source-%1$d', '2026-08-16T00:00:00Z',
                         '2026-08-16T00:00:00Z', 1)
                 """.formatted(lifecycleId));
+    }
+
+    private void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("Timed out waiting for writer test release");
+            }
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
+    }
+
+    private void awaitQueuedWriter(JdbcWriterAdmission admission) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (admission.queuedWriters() < 1 && System.nanoTime() < deadline) {
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+        }
+        assertThat(admission.queuedWriters()).isGreaterThanOrEqualTo(1);
     }
 
     private void execute(String sql) throws SQLException {

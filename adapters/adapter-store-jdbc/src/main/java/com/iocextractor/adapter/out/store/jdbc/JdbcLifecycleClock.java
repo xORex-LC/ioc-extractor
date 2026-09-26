@@ -35,6 +35,7 @@ public final class JdbcLifecycleClock implements LifecycleTimeSource, LifecycleC
     private final Clock wallClock;
     private final LifecycleClockPolicy policy;
     private final LongSupplier monotonicNanos;
+    private final JdbcWriterAdmission writerAdmission;
     private final Object clampMonitor = new Object();
     private Long localClampStartedNanos;
 
@@ -42,21 +43,42 @@ public final class JdbcLifecycleClock implements LifecycleTimeSource, LifecycleC
     public JdbcLifecycleClock(DataSource dataSource,
                               Clock wallClock,
                               LifecycleClockPolicy policy) {
-        this(dataSource, wallClock, policy, System::nanoTime);
+        this(dataSource, wallClock, policy, System::nanoTime, new JdbcWriterAdmission());
+    }
+
+    /** Creates a safe clock participating in shared local JDBC write admission. */
+    public JdbcLifecycleClock(DataSource dataSource,
+                              Clock wallClock,
+                              LifecycleClockPolicy policy,
+                              JdbcWriterAdmission writerAdmission) {
+        this(dataSource, wallClock, policy, System::nanoTime, writerAdmission);
     }
 
     JdbcLifecycleClock(DataSource dataSource,
                        Clock wallClock,
                        LifecycleClockPolicy policy,
                        LongSupplier monotonicNanos) {
+        this(dataSource, wallClock, policy, monotonicNanos, new JdbcWriterAdmission());
+    }
+
+    JdbcLifecycleClock(DataSource dataSource,
+                       Clock wallClock,
+                       LifecycleClockPolicy policy,
+                       LongSupplier monotonicNanos,
+                       JdbcWriterAdmission writerAdmission) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         this.wallClock = Objects.requireNonNull(wallClock, "wallClock");
         this.policy = Objects.requireNonNull(policy, "policy");
         this.monotonicNanos = Objects.requireNonNull(monotonicNanos, "monotonicNanos");
+        this.writerAdmission = Objects.requireNonNull(writerAdmission, "writerAdmission");
     }
 
     @Override
     public EffectiveTime now() {
+        return writerAdmission.execute(this::nowAdmitted);
+    }
+
+    private EffectiveTime nowAdmitted() {
         try (Connection connection = dataSource.getConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);

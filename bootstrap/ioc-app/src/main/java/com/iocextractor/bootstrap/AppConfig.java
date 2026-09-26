@@ -676,13 +676,15 @@ public class AppConfig {
             @Qualifier("dataframeStorageDataSource") HikariDataSource dataframeStorageDataSource,
             DataframeSchemaPlan dataframeSchemaReconciliation,
             IocProperties props,
-            Clock clock) {
+            Clock clock,
+            JdbcWriterAdmission jdbcWriterAdmission) {
         return new JdbcLifecycleClock(
                 dataframeStorageDataSource,
                 clock,
                 new LifecycleClockPolicy(
                         props.lifecycle().clock().maxBackwardSkew(),
-                        props.lifecycle().clock().maxClampDuration()));
+                        props.lifecycle().clock().maxClampDuration()),
+                jdbcWriterAdmission);
     }
 
     @Bean
