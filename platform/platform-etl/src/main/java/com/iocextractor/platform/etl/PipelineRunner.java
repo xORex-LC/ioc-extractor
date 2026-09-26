@@ -135,8 +135,7 @@ public final class PipelineRunner {
                     try {
                         Envelope<?> next = executeStage(stage, stageInput);
                         List<Diagnostic> delta = delta(stageInput.diagnostics(), next.diagnostics());
-                        delta.forEach(diagnosticSink::emit);
-                        bounded.addAll(delta);
+                        retainAndEmit(delta, bounded);
                         current = compact(next, bounded.diagnostics());
                         rejectIfRequired(current.diagnostics());
                         observer.stageCompleted(stageInput.meta(), System.nanoTime() - startedAt);
@@ -179,6 +178,14 @@ public final class PipelineRunner {
                     .build();
             diagnosticSink.emit(diagnostic);
             throw new StageProcessingFailure(new DiagnosticException(diagnostic));
+        }
+    }
+
+    private void retainAndEmit(List<Diagnostic> diagnostics, BoundedNotification bounded) {
+        for (Diagnostic diagnostic : diagnostics) {
+            if (bounded.offer(diagnostic)) {
+                diagnosticSink.emit(diagnostic);
+            }
         }
     }
 

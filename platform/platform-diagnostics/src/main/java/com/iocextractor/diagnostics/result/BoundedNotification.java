@@ -48,17 +48,28 @@ public final class BoundedNotification {
 
     /** Adds one diagnostic while preserving the first error and fatal signals. */
     public void add(Diagnostic diagnostic) {
+        offer(diagnostic);
+    }
+
+    /**
+     * Adds one diagnostic and reports whether this occurrence was retained.
+     *
+     * <p>A caller may use the result to apply the same high-cardinality budget
+     * to an external delivery sink. A first error or fatal occurrence that
+     * displaces a lower-severity item is reported as retained.</p>
+     */
+    public boolean offer(Diagnostic diagnostic) {
         Objects.requireNonNull(diagnostic, "diagnostic");
         if (diagnostic.code().impact() == DiagnosticImpact.OPERATION) {
             retained.add(diagnostic);
             trackRetained(diagnostic);
-            return;
+            return true;
         }
         if (budgetedRetained < limit) {
             retained.add(diagnostic);
             budgetedRetained++;
             trackRetained(diagnostic);
-            return;
+            return true;
         }
         boolean firstError = diagnostic.severity() == DiagnosticSeverity.ERROR && !hasErrorOrWorse;
         boolean firstFatal = diagnostic.severity() == DiagnosticSeverity.FATAL && !hasFatal;
@@ -67,9 +78,10 @@ public final class BoundedNotification {
             Diagnostic displaced = retained.set(replacement, diagnostic);
             trackRetained(diagnostic);
             suppress(displaced);
-            return;
+            return true;
         }
         suppress(diagnostic);
+        return false;
     }
 
     /** Returns the bounded high-cardinality snapshot, operation occurrences and suppression summary. */

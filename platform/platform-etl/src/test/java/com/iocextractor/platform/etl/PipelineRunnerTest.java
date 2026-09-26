@@ -91,6 +91,27 @@ class PipelineRunnerTest {
     }
 
     @Test
+    void diagnostic_budget_limits_high_cardinality_sink_delivery() {
+        var first = diagnostic(DiagnosticSeverity.WARN);
+        var second = diagnostic(DiagnosticSeverity.WARN);
+        var third = diagnostic(DiagnosticSeverity.WARN);
+        var diagnostics = new CollectingDiagnosticSink();
+        var pipeline = Pipeline.<String>start()
+                .then(new DiagnosticStage(first))
+                .then(new DiagnosticStage(second))
+                .then(new DiagnosticStage(third));
+        var runner = new PipelineRunner(FailurePolicy.collectAndContinue(),
+                new NoopPipelineObserver(), diagnostics, new DiagnosticFactory(CLOCK), 1);
+
+        var result = runner.runWithOutcome(Envelope.of("start", meta()), pipeline);
+
+        assertThat(diagnostics.diagnostics()).containsExactly(
+                first, result.envelope().diagnostics().getLast());
+        assertThat(result.diagnosticSummary().total()).isEqualTo(3);
+        assertThat(result.diagnosticSummary().suppressed()).isEqualTo(2);
+    }
+
+    @Test
     void failFastStillEmitsSuppressionSummaryBeforeStopping() {
         var warning = diagnostic(DiagnosticSeverity.WARN);
         var error = diagnostic(DiagnosticSeverity.ERROR);
