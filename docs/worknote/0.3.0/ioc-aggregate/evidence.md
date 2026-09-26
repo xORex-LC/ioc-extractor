@@ -466,3 +466,52 @@ value, and recovery reads the canonical receipt. The nullable service column is
 not an operator/status authority, so this does not weaken idempotency, recovery
 or the P7 result; its NULL value is recorded here to prevent it being mistaken
 for missing canonical evidence.
+
+## Live systemd activation — 2026-09-26
+
+The privileged deployment transaction activated release
+`71296e2e095d-20260926T110020Z` from commit
+`71296e2e095d008a7ae89193b334aaaa042466f2`. The active jar SHA-256 is
+`25eea5947fa87a4761b579d66d3cb2b21c45a977afcdfea42844b2380996525e`.
+The deployment validated the existing effective configuration, stopped the
+service, captured the paired database and systemd-unit backup, switched the
+release, started it and passed the health gate. The rollback point consists of
+`71296e2e095d-20260926T110020Z-db.tar` and its matching `-unit.service` sidecar.
+
+The operator then applied the reviewed production template through `ioc-config`.
+The resulting `application.yml`, reviewed candidate and generated
+`application.yml.new` have identical SHA-256
+`6d2460ef1ec1d6a51666559504ce31f35f9585bf9435335c0ddb05528ea76fdd`.
+The helper retained the previous configuration as
+`application.yml.backup-20260926T111325Z-806574` and reported the restarted
+service `UP`.
+
+Live acceptance against the root-owned systemd service confirmed:
+
+- `/actuator/info` reports the exact commit and build time; overall health,
+  artifact storage, observation registration, ingestion, lifecycle and export
+  are `UP`;
+- service and dataframe stores are both schema v11 with foreign keys enabled,
+  WAL mode and `quickCheck=ok`; lifecycle admission is active and the clock is
+  `SAFE` with zero backward skew/clamp age;
+- startup memory was about 263 MiB with a peak around 269 MiB, below the 768 MiB
+  high and 1 GiB hard limits;
+- an atomically published HTML document labelled `БИБ-990001` created exactly
+  four aggregate lifecycles: bare IPv4, full URL, clean FQDN and uppercase MD5.
+  All four names and field origins used dataframe admission order 1;
+- a second document labelled `БИБ-990002` containing only the same IPv4 reached
+  the archive and updated that existing lifecycle in about five seconds. The
+  aggregate remained four rows; only the IP name and origin changed to order 2.
+  URL, FQDN and hash retained `БИБ-990001` and order 1;
+- legacy `ip_list`, `masks` and `hashes` retained their existing keep-first
+  source behavior. Both ingest runs completed across all five artifacts; both
+  observation registrations are terminal and no document-admission work is
+  unresolved;
+- the aggregate immutable profile completed a new slice with revision lag zero.
+  The active-process ECS log contained INFO events only: no WARN, ERROR or FATAL
+  outcome was observed through completion.
+
+Managed import remains intentionally disabled in the production template until
+an operator configures a validated source. Its success, duplicate reduction,
+invalid-carrier quarantine and canonical receipt behavior were qualified in the
+isolated P7 stand scenario above; activation did not broaden that source policy.
