@@ -33,6 +33,7 @@ contracts. It does not import concrete adapters, Spring or runtime logging.
 |---|---|
 | `pom.xml` | Maven module descriptor |
 | `src/main/java/com/iocextractor/application/` | Ports, use cases, payloads and stages |
+| `processing/ExactIndicatorParser.java` | Проверка целой структурированной ячейки через domain extractor и parser |
 | `src/test/java/com/iocextractor/application/` | Application and stage tests |
 
 Artifact Emission разделяет orchestration на три узких компонента:

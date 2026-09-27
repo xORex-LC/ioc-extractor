@@ -3,16 +3,15 @@ package com.iocextractor.domain.feature;
 import com.iocextractor.domain.model.Indicator;
 
 /**
- * Default {@link IndicatorFeatureExtractor}. Pure string parsing (no regex
- * engine, no PSL library): the host kind is delegated to the {@link HostClassifier}
- * port. A {@code :} counts as a port only inside the authority (before the first
- * {@code /} or {@code ?}), so a path token like {@code …/bot<id>:<token>} is not
- * mistaken for a port.
+ * Default {@link IndicatorFeatureExtractor}. The shared address parser owns
+ * authority boundaries and supported forms; the host kind is delegated to the
+ * {@link HostClassifier} port. An invalid address has unknown host features.
  */
 public final class DefaultIndicatorFeatureExtractor implements IndicatorFeatureExtractor {
 
     private final IndicatorNormalizer normalizer;
     private final HostClassifier hostClassifier;
+    private final NetworkAddressParser parser = new NetworkAddressParser();
 
     public DefaultIndicatorFeatureExtractor(IndicatorNormalizer normalizer, HostClassifier hostClassifier) {
         this.normalizer = normalizer;
@@ -22,48 +21,13 @@ public final class DefaultIndicatorFeatureExtractor implements IndicatorFeatureE
     @Override
     public IndicatorFeatures extract(Indicator indicator) {
         String value = normalizer.normalize(indicator.value());
-        String rest = stripScheme(value);
-
-        int slash = rest.indexOf('/');
-        int query = rest.indexOf('?');
-        boolean hasPath = slash >= 0;
-        boolean hasQuery = query >= 0;
-
-        int authorityEnd = rest.length();
-        if (slash >= 0) {
-            authorityEnd = Math.min(authorityEnd, slash);
+        NetworkAddressParser.Result result = parser.parse(value);
+        if (!result.isAvailable()) {
+            return new IndicatorFeatures(value, value, false, false, false, HostKind.UNKNOWN);
         }
-        if (query >= 0) {
-            authorityEnd = Math.min(authorityEnd, query);
-        }
-        String authority = rest.substring(0, authorityEnd);
-
-        String host = authority;
-        boolean hasPort = false;
-        int colon = authority.indexOf(':');
-        if (colon >= 0 && isAllDigits(authority.substring(colon + 1))) {
-            host = authority.substring(0, colon);
-            hasPort = true;
-        }
-
-        HostKind kind = hostClassifier.classify(host);
-        return new IndicatorFeatures(value, host, hasPort, hasPath, hasQuery, kind);
-    }
-
-    private String stripScheme(String value) {
-        int idx = value.indexOf("://");
-        return idx >= 0 ? value.substring(idx + 3) : value;
-    }
-
-    private boolean isAllDigits(String s) {
-        if (s.isEmpty()) {
-            return false;
-        }
-        for (int i = 0; i < s.length(); i++) {
-            if (!Character.isDigit(s.charAt(i))) {
-                return false;
-            }
-        }
-        return true;
+        NetworkAddressParser.Address address = result.address();
+        HostKind kind = hostClassifier.classify(address.host());
+        return new IndicatorFeatures(value, address.host(), address.hasPort(),
+                address.hasPath(), address.hasQuery(), kind);
     }
 }

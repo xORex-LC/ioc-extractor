@@ -145,8 +145,8 @@ ioc:
     SHA1:   "\\b[0-9a-fA-F]{40}\\b"
     MD5:    "\\b[0-9a-fA-F]{32}\\b"
     URL:    "https?://[^\\s;,<>\"']+"
-    IPV4:   "\\b(?:\\d{1,3}\\.){3}\\d{1,3}(?:[:/][^\\s;,<>\"']*)?"
-    DOMAIN: "\\b(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,}(?:/[^\\s;,<>\"']*)?"
+    IPV4:   "\\b(?:\\d{1,3}\\.){3}\\d{1,3}(?:[:/?#][^\\s;,<>\"']*)?"
+    DOMAIN: "\\b(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,}(?:[:/?#][^\\s;,<>\"']*)?"
 
   # ---- Mask classification: declarative rules over indicator features --------
   #  First-match-wins. Authoritative 4-variant scheme; tune rules/codes here,

@@ -14,6 +14,7 @@ application ports, adapters, bootstrap or logging.
 |---|---|
 | `pom.xml` | Maven module descriptor and domain dependency guard |
 | `src/main/java/com/iocextractor/domain/` | Domain model and business rules |
+| `feature/NetworkAddressParser.java`, `NetworkHostDeriver.java` | Единая форма сетевого адреса и вывод типизированного хоста без IO |
 | `src/test/java/com/iocextractor/domain/` | Domain unit tests and capability DAG test |
 
 ## Зависимости

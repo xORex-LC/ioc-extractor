@@ -21,6 +21,8 @@ proposal status in earlier assessments records their place in the decision proce
   non-IOC profile, observed resource costs and remaining integration handover.
 - [P0 semantic contracts](p0-semantic-contracts.md): IOC view, occurrence,
   candidate and import-row contracts, source dependency audit and module decision.
+- [P1 parser and host views](p1-parser-views.md): shared address grammar,
+  exact-cell admission and typed host derivation before plan integration.
 
 Customer requirement: selectively reduce URL/IP values to a host, including
 managed imports, while retaining configurable classification, artifact/field
