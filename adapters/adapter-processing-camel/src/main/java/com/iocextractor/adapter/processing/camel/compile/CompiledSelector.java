@@ -4,9 +4,12 @@ import com.iocextractor.adapter.processing.camel.contract.Condition;
 import com.iocextractor.adapter.processing.camel.contract.FailureReference;
 import com.iocextractor.adapter.processing.camel.contract.PlanDescriptor;
 import com.iocextractor.adapter.processing.camel.contract.PlanSelection;
+import com.iocextractor.adapter.processing.camel.contract.RoutingTraceEvent;
+import com.iocextractor.adapter.processing.camel.contract.RoutingTraceSink;
 import com.iocextractor.adapter.processing.camel.contract.ViewOutcome;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /** One admitted condition graph; no descriptor tree is interpreted per invocation. */
@@ -32,19 +35,18 @@ public final class CompiledSelector {
         return new CompiledSelector(routing, rules);
     }
 
-    /** Evaluates only reached conditions, preserving branch and operand order. */
-    public PlanSelection select(ViewLookup lookup) {
+    /** Evaluates reached decisions and emits value-free trace hooks. */
+    public PlanSelection select(ViewLookup lookup, String planId, RoutingTraceSink trace) {
         return switch (mode) {
-            case FIRST -> first(lookup);
-            case ALL -> all(lookup);
-            case EXCLUSIVE -> exclusive(lookup);
+            case FIRST -> first(lookup, planId, trace);
+            case ALL -> all(lookup, planId, trace);
+            case EXCLUSIVE -> exclusive(lookup, planId, trace);
         };
     }
 
-    private PlanSelection first(ViewLookup lookup) {
+    private PlanSelection first(ViewLookup lookup, String planId, RoutingTraceSink trace) {
         for (BranchRule branch : branches) {
-            Decision decision = branch.condition().evaluate(
-                    (viewId, acceptsAbsent) -> lookup.resolve(branch.id(), viewId, acceptsAbsent));
+            Decision decision = evaluate(branch, lookup, planId, trace);
             if (decision.status() == Decision.Status.MATCH) {
                 return selection(PlanSelection.Status.MATCHED, List.of(branch.id()), List.of(), List.of());
             }
@@ -55,12 +57,11 @@ public final class CompiledSelector {
         return noMatch();
     }
 
-    private PlanSelection all(ViewLookup lookup) {
+    private PlanSelection all(ViewLookup lookup, String planId, RoutingTraceSink trace) {
         List<String> selected = new ArrayList<>();
         List<PlanSelection.BlockedBranch> blocked = new ArrayList<>();
         for (BranchRule branch : branches) {
-            Decision decision = branch.condition().evaluate(
-                    (viewId, acceptsAbsent) -> lookup.resolve(branch.id(), viewId, acceptsAbsent));
+            Decision decision = evaluate(branch, lookup, planId, trace);
             if (decision.status() == Decision.Status.MATCH) {
                 selected.add(branch.id());
             } else if (decision.status() == Decision.Status.BLOCKED) {
@@ -74,11 +75,10 @@ public final class CompiledSelector {
                 : selection(PlanSelection.Status.BLOCKED, List.of(), blocked, List.of());
     }
 
-    private PlanSelection exclusive(ViewLookup lookup) {
+    private PlanSelection exclusive(ViewLookup lookup, String planId, RoutingTraceSink trace) {
         String firstMatch = null;
         for (BranchRule branch : branches) {
-            Decision decision = branch.condition().evaluate(
-                    (viewId, acceptsAbsent) -> lookup.resolve(branch.id(), viewId, acceptsAbsent));
+            Decision decision = evaluate(branch, lookup, planId, trace);
             if (decision.status() == Decision.Status.BLOCKED) {
                 return blocked(branch.id(), decision.failure());
             }
@@ -103,6 +103,21 @@ public final class CompiledSelector {
         };
     }
 
+    private static Decision evaluate(BranchRule branch, ViewLookup lookup,
+                                     String planId, RoutingTraceSink trace) {
+        Decision decision = branch.condition().evaluate(
+                new BranchConditionLookup(lookup, trace, planId, branch.id()));
+        traceDecision(trace, planId, null, branch.id(), null, decision);
+        return decision;
+    }
+
+    private static void traceDecision(RoutingTraceSink trace, String planId, String viewId,
+                                      String branchId, String predicateId, Decision decision) {
+        trace.emit(RoutingTraceEvent.Kind.CONDITION, planId, viewId, branchId, predicateId,
+                decision.status().name().toLowerCase(Locale.ROOT),
+                decision.failure() == null ? null : decision.failure().reasonCode());
+    }
+
     private static PlanSelection blocked(String branchId, FailureReference failure) {
         return selection(PlanSelection.Status.BLOCKED, List.of(),
                 List.of(new PlanSelection.BlockedBranch(branchId, failure)), List.of());
@@ -121,12 +136,16 @@ public final class CompiledSelector {
             return lookup -> {
                 ViewOutcome view = lookup.resolve(leaf.view(), registration.acceptsAbsent());
                 if (view instanceof ViewOutcome.Unavailable unavailable) {
-                    return Decision.blocked(unavailable.failure());
+                    Decision decision = Decision.blocked(unavailable.failure());
+                    lookup.traceLeaf(leaf.view(), leaf.predicate(), decision);
+                    return decision;
                 }
                 Object value = view instanceof ViewOutcome.Absent ? view
                         : ((ViewOutcome.Available) view).value();
-                return registration.binding().matches(value, leaf.arguments())
+                Decision decision = registration.binding().matches(value, leaf.arguments())
                         ? Decision.MATCH : Decision.NO_MATCH;
+                lookup.traceLeaf(leaf.view(), leaf.predicate(), decision);
+                return decision;
             };
         }
         if (condition instanceof Condition.Not not) {
@@ -169,9 +188,21 @@ public final class CompiledSelector {
         Decision evaluate(ConditionLookup lookup);
     }
 
-    @FunctionalInterface
     private interface ConditionLookup {
         ViewOutcome resolve(String viewId, boolean acceptsAbsent);
+
+        void traceLeaf(String viewId, String predicateId, Decision decision);
+    }
+
+    private record BranchConditionLookup(ViewLookup lookup, RoutingTraceSink trace,
+                                         String planId, String branchId) implements ConditionLookup {
+        @Override public ViewOutcome resolve(String viewId, boolean acceptsAbsent) {
+            return lookup.resolve(branchId, viewId, acceptsAbsent);
+        }
+
+        @Override public void traceLeaf(String viewId, String predicateId, Decision decision) {
+            traceDecision(trace, planId, viewId, branchId, predicateId, decision);
+        }
     }
 
     private record BranchRule(String id, CompiledCondition condition) { }

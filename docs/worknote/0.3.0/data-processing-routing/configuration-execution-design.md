@@ -6,9 +6,11 @@ Its proposed C4 contract specifies the recovery and diagnostic rules summarized 
 Status: proposed, 2026-09-27; source baseline `f43037ee87ef`, branch
 `module/platform/router`. Builds on [confirmed contracts](camel-task-design.md).
 The following YAML is a design illustration, NOT supported configuration or a
-paste-ready overlay. R1–R3 implement the technical Camel compiler/runtime;
-the operator binder and IOC semantic compiler are not implemented.
-Camel qualification targets 4.22.1; exact Boot compatibility remains unverified.
+paste-ready overlay. R1–R4 implement the technical Camel compiler/runtime and
+conditional Spring lifecycle; the operator binder and IOC semantic compiler
+are not implemented. Camel 4.22.1 startup, execution and shutdown pass a
+focused Spring Boot context test; full production workload qualification
+remains R5.
 
 ## Configuration ownership
 

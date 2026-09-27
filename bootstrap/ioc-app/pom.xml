@@ -50,6 +50,10 @@
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-adapter-processing-camel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
             <artifactId>ioc-adapter-manifest-json-jackson</artifactId>
         </dependency>
         <dependency>

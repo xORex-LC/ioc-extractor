@@ -7,7 +7,17 @@ and dispatch routes. `runtime` owns the embedded Camel context and selects an
 admitted plan by ID. It computes prerequisite and selected-branch mapping views
 on demand once per call, then dispatches eligible branches through a sequential
 Camel Recipient List.
-The IOC/application bridge awaits its first real consumer.
+`RoutingExecutionScopes` and `RoutingTraceSink` are optional neutral hooks:
+bootstrap supplies MDC scopes and maps value-free decisions with the pinned
+policy fingerprint to the existing application tracer. A registered plan
+activates an isolated context; without a
+registration, bootstrap creates no Camel runtime. `CamelRouteRuntime` admits
+concurrent callers with invocation-local views and replies, exposes readiness,
+rejects new calls during close and waits for active calls for a bounded period
+before stopping Camel. The IOC operation bindings and document/import callers
+still await their first real consumer. Malformed dynamic rule IDs and reason
+codes are replaced in trace evidence without changing the returned failure
+reference.
 
 Only this adapter may depend on Camel. Operator input never supplies endpoint
 addresses or scripts. The compiled selector owns tri-state FIRST/ALL/EXCLUSIVE

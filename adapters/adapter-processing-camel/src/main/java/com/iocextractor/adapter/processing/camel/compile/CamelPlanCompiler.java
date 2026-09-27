@@ -1,6 +1,8 @@
 package com.iocextractor.adapter.processing.camel.compile;
 
 import com.iocextractor.adapter.processing.camel.contract.PlanDescriptor;
+import com.iocextractor.adapter.processing.camel.contract.NoopRoutingExecutionScopes;
+import com.iocextractor.adapter.processing.camel.contract.RoutingExecutionScopes;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -16,6 +18,13 @@ public final class CamelPlanCompiler {
 
     /** Compiles one condition graph and Camel route set per admitted plan. */
     public CompiledRoutes compile(List<PlanDescriptor> plans, OperationCatalog catalog) {
+        return compile(plans, catalog, NoopRoutingExecutionScopes.INSTANCE);
+    }
+
+    /** Compiles local routes with caller-owned, automatically closed execution scopes. */
+    public CompiledRoutes compile(List<PlanDescriptor> plans, OperationCatalog catalog,
+                                  RoutingExecutionScopes scopes) {
+        Objects.requireNonNull(scopes);
         if (plans.size() > MAX_PLANS) {
             throw new PlanAdmissionException("plans", "plan limit exceeded");
         }
@@ -43,17 +52,21 @@ public final class CamelPlanCompiler {
                         @Override public void configure() {
                             errorHandler(noErrorHandler());
                             from(uri).routeId(routeId(plan.id(), "view", view.id()))
-                                    .process(catalog.operations().get(view.operation()));
+                                    .process(exchange -> {
+                                        try (var ignored = scopes.openView(plan.id(), view.id())) {
+                                            catalog.operations().get(view.operation()).process(exchange);
+                                        }
+                                    });
                         }
                     });
                 }
             }
             Map<String, CompiledRoutes.BranchRoute> branchRoutes = new LinkedHashMap<>();
             for (PlanDescriptor.Branch branch : plan.routing().branches()) {
-                addBranchRoute(plan.id(), branch, catalog, uris, routes, branchRoutes);
+                addBranchRoute(plan.id(), branch, catalog, scopes, uris, routes, branchRoutes);
             }
             if (plan.routing().defaultBranch() != null) {
-                addBranchRoute(plan.id(), plan.routing().defaultBranch(), catalog,
+                addBranchRoute(plan.id(), plan.routing().defaultBranch(), catalog, scopes,
                         uris, routes, branchRoutes);
             }
             String dispatchUri = address(plan.id(), "dispatch", "selected");
@@ -67,7 +80,8 @@ public final class CamelPlanCompiler {
     }
 
     private static void addBranchRoute(String planId, PlanDescriptor.Branch branch,
-                                       OperationCatalog catalog, List<String> uris,
+                                       OperationCatalog catalog, RoutingExecutionScopes scopes,
+                                       List<String> uris,
                                        List<RouteBuilder> routes,
                                        Map<String, CompiledRoutes.BranchRoute> branchRoutes) {
         String uri = address(planId, "branch", branch.id());
@@ -77,7 +91,11 @@ public final class CamelPlanCompiler {
             @Override public void configure() {
                 errorHandler(noErrorHandler());
                 from(uri).routeId(routeId(planId, "branch", branch.id()))
-                        .process(catalog.destinations().get(branch.destination()))
+                        .process(exchange -> {
+                            try (var ignored = scopes.openBranch(planId, branch.id())) {
+                                catalog.destinations().get(branch.destination()).process(exchange);
+                            }
+                        })
                         .setHeader(RouteProtocol.BRANCH_ID, constant(branch.id()));
             }
         });
@@ -104,7 +122,8 @@ public final class CamelPlanCompiler {
     }
 
     private static String address(String plan, String kind, String item) {
-        return "direct:" + routeId(plan, kind, item);
+        return "direct:" + routeId(plan, kind, item)
+                + "?block=false&failIfNoConsumers=true";
     }
 
     private static String routeId(String plan, String kind, String item) {

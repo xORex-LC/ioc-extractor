@@ -1,8 +1,8 @@
 # Configurable data processing and routing
 
 Status: design accepted for staged implementation, 2026-09-27. R0 bounded
-admission, R1 module/compiler skeleton, R2 selection/execution and R3 typed
-outcomes/recovery are complete;
+admission, R1 module/compiler skeleton, R2 selection/execution, R3 typed
+outcomes/recovery and R4 lifecycle/observability hooks are complete;
 production integration remains outstanding. Historical
 proposal status in earlier assessments records their place in the decision process.
 
@@ -14,6 +14,8 @@ proposal status in earlier assessments records their place in the decision proce
   no-match behavior and quality evidence.
 - [R3 implementation](r3-implementation.md): explicit recovery edges, demanded
   failure evidence, selected-branch outcomes and quality evidence.
+- [R4 implementation](r4-implementation.md): conditional lifecycle, readiness,
+  bounded shutdown, MDC and typed trace bridge with quality evidence.
 
 Customer requirement: selectively reduce URL/IP values to a host, including
 managed imports, while retaining configurable classification, artifact/field

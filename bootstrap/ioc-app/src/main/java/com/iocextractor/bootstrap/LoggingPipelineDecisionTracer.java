@@ -62,8 +62,8 @@ public final class LoggingPipelineDecisionTracer implements PipelineDecisionTrac
                 .action(EventAction.PIPELINE_ITEM_DECISION)
                 .outcome(EventOutcome.UNKNOWN)
                 .field(LogField.IOC_DECISION_KIND, decision.kind().name().toLowerCase(Locale.ROOT))
-                .field(LogField.IOC_DECISION_OUTCOME, decision.outcome())
-                .field(LogField.IOC_ITEM_IDENTITY, identity(decision));
+                .field(LogField.IOC_DECISION_OUTCOME, decision.outcome());
+        field(event, LogField.IOC_ITEM_IDENTITY, identity(decision));
         field(event, LogField.IOC_INDICATOR_TYPE, decision.indicatorType());
         field(event, LogField.IOC_ITEM_VALUE, SensitiveLogValueSanitizer.sanitize(decision.value()));
         field(event, LogField.IOC_DECISION_RULE, decision.rule());
@@ -72,6 +72,12 @@ public final class LoggingPipelineDecisionTracer implements PipelineDecisionTrac
         field(event, LogField.IOC_SPAN_START, decision.spanStart());
         field(event, LogField.IOC_SPAN_END, decision.spanEnd());
         field(event, LogField.IOC_ARTIFACT_NAME, decision.artifact());
+        field(event, LogField.IOC_ROUTER_PLAN, decision.planId());
+        field(event, LogField.IOC_ROUTER_FINGERPRINT, decision.policyFingerprint());
+        field(event, LogField.IOC_ROUTER_STEP, decision.routingStep());
+        field(event, LogField.IOC_ROUTER_VIEW, decision.viewId());
+        field(event, LogField.IOC_ROUTER_BRANCH, decision.branchId());
+        field(event, LogField.IOC_ROUTER_REASON, decision.reasonCode());
         event.message("pipeline item decision").log();
     }
 
@@ -86,6 +92,9 @@ public final class LoggingPipelineDecisionTracer implements PipelineDecisionTrac
     private static String identity(PipelineItemDecision decision) {
         if (decision.identity() != null && !decision.identity().isBlank()) {
             return decision.identity();
+        }
+        if (decision.kind() == com.iocextractor.application.observability.PipelineDecisionKind.ROUTING) {
+            return null;
         }
         String value = Objects.requireNonNullElse(decision.value(), "");
         String type = Objects.requireNonNullElse(decision.indicatorType(), "item").toLowerCase(Locale.ROOT);

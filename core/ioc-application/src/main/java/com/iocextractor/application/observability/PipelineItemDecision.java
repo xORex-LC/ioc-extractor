@@ -16,7 +16,13 @@ public record PipelineItemDecision(PipelineDecisionKind kind,
                                    String result,
                                    Integer spanStart,
                                    Integer spanEnd,
-                                   String artifact) {
+                                   String artifact,
+                                   String planId,
+                                   String policyFingerprint,
+                                   String routingStep,
+                                   String viewId,
+                                   String branchId,
+                                   String reasonCode) {
 
     public PipelineItemDecision {
         Objects.requireNonNull(kind, "kind");
@@ -58,6 +64,12 @@ public record PipelineItemDecision(PipelineDecisionKind kind,
         private Integer spanStart;
         private Integer spanEnd;
         private String artifact;
+        private String planId;
+        private String policyFingerprint;
+        private String routingStep;
+        private String viewId;
+        private String branchId;
+        private String reasonCode;
 
         private Builder(PipelineDecisionKind kind, String outcome) {
             this.kind = Objects.requireNonNull(kind, "kind");
@@ -108,11 +120,29 @@ public record PipelineItemDecision(PipelineDecisionKind kind,
             return this;
         }
 
+        /** Sets value-free routing references without overloading pattern or result fields. */
+        public Builder routing(String planId, String routingStep, String viewId, String branchId,
+                               String reasonCode) {
+            this.planId = planId;
+            this.routingStep = routingStep;
+            this.viewId = viewId;
+            this.branchId = branchId;
+            this.reasonCode = reasonCode;
+            return this;
+        }
+
+        /** Pins the admitted processing-policy identity to routing trace evidence. */
+        public Builder policyFingerprint(String policyFingerprint) {
+            this.policyFingerprint = policyFingerprint;
+            return this;
+        }
+
         /** Builds the immutable decision. */
         public PipelineItemDecision build() {
             return new PipelineItemDecision(
                     kind, outcome, identity, indicatorType, value, rule, pattern, result,
-                    spanStart, spanEnd, artifact);
+                    spanStart, spanEnd, artifact, planId, policyFingerprint, routingStep,
+                    viewId, branchId, reasonCode);
         }
     }
 }

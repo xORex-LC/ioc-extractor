@@ -72,6 +72,16 @@ application core.
 обоих проверок, пишет safe short identity и маскирует URL query. Application
 stages передают ему только уже вычисленные решения.
 
+`RouterRuntimeConfiguration` активирует отдельный Camel runtime лишь при наличии
+`RouterPlanRegistration`, проверяет план до готовности контекста и передаёт
+владение остановкой Spring. В daemon mode условный health indicator сообщает
+готовность маршрутов. `RouterMdcScopes` ограничивает поля plan/view/branch
+временем локальной операции и возвращает родительский MDC. `RouterTraceBridge`
+отправляет технические решения без значений IOC в уже существующий
+`PipelineDecisionTracer`; итоговые диагностики остаются у application.
+Пока регистрация IOC-плана и обработчики document/import не добавлены,
+production-поток продолжает работать по прежнему пути.
+
 Composition root выбирает typed `PipelineFailurePolicy`, diagnostic budget и
 non-throwing diagnostics bridge. Default application config — `fail-fast`; production
 daemon template явно задаёт `collect-and-continue` и budget 10 000.

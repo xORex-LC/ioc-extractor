@@ -3,6 +3,8 @@ package com.iocextractor.adapter.processing.camel.runtime;
 import com.iocextractor.adapter.processing.camel.compile.CompiledRoutes;
 import com.iocextractor.adapter.processing.camel.contract.FailureReference;
 import com.iocextractor.adapter.processing.camel.contract.PlanExecutionResult;
+import com.iocextractor.adapter.processing.camel.contract.RoutingTraceEvent;
+import com.iocextractor.adapter.processing.camel.contract.RoutingTraceSink;
 import com.iocextractor.adapter.processing.camel.contract.ViewOutcome;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -20,12 +22,17 @@ final class InvocationViews {
     private final List<PlanExecutionResult.RecoveryAttempt> attempts = new ArrayList<>();
     private final ProducerTemplate producer;
     private final CompiledRoutes.CompiledPlan plan;
+    private final String planId;
+    private final RoutingTraceSink trace;
 
-    InvocationViews(ProducerTemplate producer, Object original, CompiledRoutes.CompiledPlan plan) {
+    InvocationViews(ProducerTemplate producer, Object original, CompiledRoutes.CompiledPlan plan,
+                    String planId, RoutingTraceSink trace) {
         resolved.put("original", new ViewState(new ViewOutcome.Available(original),
                 List.of(), List.of()));
         this.producer = producer;
         this.plan = plan;
+        this.planId = planId;
+        this.trace = trace;
     }
 
     ViewOutcome demand(String branchId, String viewId, boolean acceptsAbsent) {
@@ -59,6 +66,7 @@ final class InvocationViews {
                 ? evaluateOperation(viewId, route, primary)
                 : recover(viewId, route, primary);
         resolved.put(viewId, result);
+        traceView(viewId, result.outcome());
         return result;
     }
 
@@ -95,6 +103,7 @@ final class InvocationViews {
         if (alternate.outcome() instanceof ViewOutcome.Unavailable alternateUnavailable) {
             attempts.add(new PlanExecutionResult.RecoveryAttempt(viewId, alternateView,
                     unavailable.failure(), alternateUnavailable.failure(), false));
+            traceRecovery(viewId, unavailable.failure(), "blocked");
             return new ViewState(primary.outcome(), primary.recovered(),
                     combine(primary.unavailable(), alternate.unavailable()));
         }
@@ -102,12 +111,14 @@ final class InvocationViews {
             FailureReference absence = new FailureReference(absent.originView(), "ABSENT_REQUIRED");
             attempts.add(new PlanExecutionResult.RecoveryAttempt(viewId, alternateView,
                     unavailable.failure(), absence, false));
+            traceRecovery(viewId, unavailable.failure(), "blocked");
             return new ViewState(primary.outcome(), primary.recovered(),
                     combine(primary.unavailable(), List.of(
                             new FailureOccurrence(absent.originView(), absence))));
         }
         attempts.add(new PlanExecutionResult.RecoveryAttempt(viewId, alternateView,
                 unavailable.failure(), null, true));
+        traceRecovery(viewId, unavailable.failure(), "recovered");
         return new ViewState(alternate.outcome(),
                 combine(primary.unavailable(), alternate.recovered()), List.of());
     }
@@ -129,6 +140,19 @@ final class InvocationViews {
 
     List<PlanExecutionResult.RecoveryAttempt> recoveryAttempts() {
         return List.copyOf(attempts);
+    }
+
+    private void traceView(String viewId, ViewOutcome outcome) {
+        String status = outcome instanceof ViewOutcome.Available ? "available"
+                : outcome instanceof ViewOutcome.Absent ? "absent" : "unavailable";
+        String reason = outcome instanceof ViewOutcome.Unavailable unavailable
+                ? unavailable.failure().reasonCode() : null;
+        trace.emit(RoutingTraceEvent.Kind.VIEW, planId, viewId, null, null, status, reason);
+    }
+
+    private void traceRecovery(String viewId, FailureReference primary, String outcome) {
+        trace.emit(RoutingTraceEvent.Kind.RECOVERY, planId, viewId, null,
+                "view.recover", outcome, primary.reasonCode());
     }
 
     private static List<FailureOccurrence> combine(List<FailureOccurrence> first,

@@ -13,6 +13,7 @@ Generated from `EventAction` and `LogField`.
 | `stage_start` | pipeline | Pipeline stage execution started. |
 | `stage_complete` | pipeline | Pipeline stage execution completed or failed. |
 | `pipeline_item_decision` | pipeline | One explicitly enabled per-item pipeline decision was traced. |
+| `router_plan_admitted` | router | One admitted routing plan became ready. |
 | `source_read` | source | Source document text was read. |
 | `source_ingest` | source | Source ingestion reached a terminal handled outcome. |
 | `ingest_recover` | source | Daemon startup ingestion recovery progressed or failed. |
@@ -73,6 +74,15 @@ Generated from `EventAction` and `LogField`.
 | `ioc.decision.rule` | ioc | `string` | Rule or source marker selected by a pipeline decision. |
 | `ioc.decision.pattern` | ioc | `string` | Pattern or predicate set evaluated by a pipeline decision. |
 | `ioc.decision.result` | ioc | `string` | Compact materialized result of a pipeline decision. |
+| `ioc.router.plan` | ioc | `string` | Admitted routing plan identifier without input values. |
+| `ioc.router.step` | ioc | `string` | Reached routing decision step: view, condition, recovery or branch. |
+| `ioc.router.view` | ioc | `string` | Derived view involved in a reached routing decision. |
+| `ioc.router.branch` | ioc | `string` | Branch involved in a reached routing decision. |
+| `ioc.router.reason` | ioc | `string` | Stable value-free reason for an expected routing failure. |
+| `ioc.router.fingerprint` | ioc | `string` | Pinned fingerprint of the admitted routing plan set. |
+| `ioc.router.views` | ioc | `long` | Number of derived views in an admitted routing plan. |
+| `ioc.router.branches` | ioc | `long` | Number of explicit branches in an admitted routing plan. |
+| `ioc.router.runtime_version` | ioc | `string` | Embedded Camel runtime version reported at activation. |
 | `ioc.item.identity` | ioc | `string` | Safe short identity of the item involved in a pipeline decision. |
 | `ioc.item.value` | ioc | `string` | TRACE-only item value with query-like data redacted. |
 | `ioc.indicator.type` | ioc | `string` | IOC type involved in a pipeline decision. |
