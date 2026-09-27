@@ -2,6 +2,7 @@ package com.iocextractor.adapter.processing.camel.compile;
 
 import com.iocextractor.adapter.processing.camel.contract.Condition;
 import com.iocextractor.adapter.processing.camel.contract.PlanDescriptor;
+import com.iocextractor.adapter.processing.camel.compile.OperationCatalog.PredicateRegistration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -20,9 +21,10 @@ public final class PlanValidator {
 
     /** Checks a plan and throws with a stable location on invalid input. */
     public static void validate(PlanDescriptor plan, Set<String> operations,
-                                Set<String> destinations, Map<String, Set<String>> predicates) {
+                                Set<String> destinations,
+                                Map<String, PredicateRegistration> predicates) {
         checkId(plan.id(), "plan.id");
-        if (plan.views().size() > MAX_VIEWS || plan.branches().size() > MAX_BRANCHES) {
+        if (plan.views().size() > MAX_VIEWS || plan.routing().branches().size() > MAX_BRANCHES) {
             throw new PlanAdmissionException(plan.id(), "view or branch limit exceeded");
         }
         Map<String, PlanDescriptor.View> views = validateViews(plan, operations);
@@ -56,10 +58,14 @@ public final class PlanValidator {
 
     private static void validateBranches(PlanDescriptor plan, Set<String> views,
                                          Set<String> destinations,
-                                         Map<String, Set<String>> predicates) {
+                                         Map<String, PredicateRegistration> predicates) {
+        PlanDescriptor.Routing routing = plan.routing();
+        if (routing.branches().isEmpty() && routing.onUnmatched().action() != PlanDescriptor.Action.ROUTE) {
+            throw new PlanAdmissionException(plan.id() + ".routing", "empty branches require a default route");
+        }
         Set<String> branchIds = new HashSet<>();
         int nodes = 0;
-        for (PlanDescriptor.Branch branch : plan.branches()) {
+        for (PlanDescriptor.Branch branch : routing.branches()) {
             String location = plan.id() + ".branches." + branch.id();
             checkId(branch.id(), location);
             if (!branchIds.add(branch.id())) {
@@ -74,6 +80,33 @@ public final class PlanValidator {
                     throw new PlanAdmissionException(location, "condition node limit exceeded");
                 }
             }
+        }
+        validateDefault(plan, branchIds, destinations);
+    }
+
+    private static void validateDefault(PlanDescriptor plan, Set<String> branchIds,
+                                        Set<String> destinations) {
+        PlanDescriptor.Routing routing = plan.routing();
+        PlanDescriptor.Branch fallback = routing.defaultBranch();
+        String location = plan.id() + ".routing.on-unmatched";
+        if (routing.onUnmatched().action() != PlanDescriptor.Action.ROUTE) {
+            if (fallback != null || routing.onUnmatched().branch() != null) {
+                throw new PlanAdmissionException(location, "default branch requires route action");
+            }
+            return;
+        }
+        if (fallback == null || !fallback.id().equals(routing.onUnmatched().branch())) {
+            throw new PlanAdmissionException(location, "route action requires matching default branch");
+        }
+        checkId(fallback.id(), location);
+        if (branchIds.contains(fallback.id())) {
+            throw new PlanAdmissionException(location, "duplicate default branch ID");
+        }
+        if (fallback.eligibility() != null) {
+            throw new PlanAdmissionException(location, "default branch cannot have eligibility");
+        }
+        if (!destinations.contains(fallback.destination())) {
+            throw new PlanAdmissionException(location, "unregistered destination " + fallback.destination());
         }
     }
 
@@ -95,7 +128,8 @@ public final class PlanValidator {
     }
 
     private static int checkCondition(Condition condition, String location, int depth,
-                                      Set<String> views, Map<String, Set<String>> predicates) {
+                                      Set<String> views,
+                                      Map<String, PredicateRegistration> predicates) {
         if (depth > MAX_DEPTH) {
             throw new PlanAdmissionException(location, "condition depth limit exceeded");
         }
@@ -112,20 +146,22 @@ public final class PlanValidator {
     }
 
     private static void checkLeaf(Condition.Leaf leaf, String location, Set<String> views,
-                                  Map<String, Set<String>> predicates) {
+                                  Map<String, PredicateRegistration> predicates) {
         if (!"original".equals(leaf.view()) && !views.contains(leaf.view())) {
             throw new PlanAdmissionException(location, "unknown condition view " + leaf.view());
         }
-        if (!predicates.containsKey(leaf.predicate())) {
+        PredicateRegistration predicate = predicates.get(leaf.predicate());
+        if (predicate == null) {
             throw new PlanAdmissionException(location, "unregistered predicate " + leaf.predicate());
         }
-        if (!predicates.get(leaf.predicate()).containsAll(leaf.arguments().keySet())) {
+        if (!predicate.argumentNames().containsAll(leaf.arguments().keySet())) {
             throw new PlanAdmissionException(location, "unknown predicate argument");
         }
     }
 
     private static int checkGroup(java.util.List<Condition> children, String location, int depth,
-                                  Set<String> views, Map<String, Set<String>> predicates) {
+                                  Set<String> views,
+                                  Map<String, PredicateRegistration> predicates) {
         if (children.isEmpty()) {
             throw new PlanAdmissionException(location, "empty condition group");
         }

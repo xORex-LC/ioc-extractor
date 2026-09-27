@@ -2,13 +2,19 @@
 
 Internal Camel integration family for bounded preparation plans. The `contract`
 package contains neutral immutable descriptors, `compile` validates references
-and generates local operation/destination routes, and `runtime` owns the embedded
-Camel context. Execution selection is planned for R2. The IOC/application bridge
-is introduced with its first real consumer; no unused port is declared in R1.
+and binds ordered predicates to a selector while generating local view, branch
+and dispatch routes. `runtime` owns the embedded Camel context and selects an
+admitted plan by ID. It computes prerequisite views on demand once per call,
+then dispatches selected branches through a sequential Camel Recipient List.
+The IOC/application bridge awaits its first real consumer.
 
 Only this adapter may depend on Camel. Operator input never supplies endpoint
-addresses or scripts. The outer application pipeline owns diagnostics, checkpoint
-and persistence. This module is not independently published.
+addresses or scripts. The compiled selector owns tri-state FIRST/ALL/EXCLUSIVE
+eligibility and no-match decisions; Camel owns operation and destination
+execution. Expected unavailable prerequisites return a failure reference;
+unexpected exceptions abort the call. The outer application pipeline owns
+diagnostics, checkpoint and persistence. This module is not independently
+published.
 
 `camel-direct` supplies the local runtime endpoint, `camel-core-languages`
 supplies Camel's `simple` language required during context startup, and

@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** Immutable, ordered condition syntax; execution semantics belong to a later slice. */
+/** Immutable, ordered condition syntax compiled once before execution. */
 public sealed interface Condition permits Condition.Leaf, Condition.All, Condition.Any, Condition.Not {
     /** References a registered predicate against a declared view. */
     record Leaf(String view, String predicate, Map<String, String> arguments) implements Condition {

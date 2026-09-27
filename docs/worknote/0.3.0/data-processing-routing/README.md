@@ -1,14 +1,16 @@
 # Configurable data processing and routing
 
 Status: design accepted for staged implementation, 2026-09-27. R0 bounded
-admission and R1 module/compiler skeleton are complete; production integration
-remains outstanding. Historical
+admission, R1 module/compiler skeleton and R2 selection/execution are complete;
+production integration remains outstanding. Historical
 proposal status in earlier assessments records their place in the decision process.
 
 - [R0 admission](r0-admission.md): minimal contracts, module disposition and executed
   runtime probe; durable decision in ADR 0031.
 - [R1 implementation](r1-implementation.md): module admission, compiler skeleton,
   quality evidence and remaining execution boundary.
+- [R2 implementation](r2-implementation.md): ordered selection, Camel dispatch,
+  no-match behavior and quality evidence.
 
 Customer requirement: selectively reduce URL/IP values to a host, including
 managed imports, while retaining configurable classification, artifact/field
