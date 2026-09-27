@@ -43,7 +43,8 @@ public final class CompiledSelector {
 
     private PlanSelection first(ViewLookup lookup) {
         for (BranchRule branch : branches) {
-            Decision decision = branch.condition().evaluate(lookup);
+            Decision decision = branch.condition().evaluate(
+                    (viewId, acceptsAbsent) -> lookup.resolve(branch.id(), viewId, acceptsAbsent));
             if (decision.status() == Decision.Status.MATCH) {
                 return selection(PlanSelection.Status.MATCHED, List.of(branch.id()), List.of(), List.of());
             }
@@ -58,7 +59,8 @@ public final class CompiledSelector {
         List<String> selected = new ArrayList<>();
         List<PlanSelection.BlockedBranch> blocked = new ArrayList<>();
         for (BranchRule branch : branches) {
-            Decision decision = branch.condition().evaluate(lookup);
+            Decision decision = branch.condition().evaluate(
+                    (viewId, acceptsAbsent) -> lookup.resolve(branch.id(), viewId, acceptsAbsent));
             if (decision.status() == Decision.Status.MATCH) {
                 selected.add(branch.id());
             } else if (decision.status() == Decision.Status.BLOCKED) {
@@ -75,7 +77,8 @@ public final class CompiledSelector {
     private PlanSelection exclusive(ViewLookup lookup) {
         String firstMatch = null;
         for (BranchRule branch : branches) {
-            Decision decision = branch.condition().evaluate(lookup);
+            Decision decision = branch.condition().evaluate(
+                    (viewId, acceptsAbsent) -> lookup.resolve(branch.id(), viewId, acceptsAbsent));
             if (decision.status() == Decision.Status.BLOCKED) {
                 return blocked(branch.id(), decision.failure());
             }
@@ -114,13 +117,15 @@ public final class CompiledSelector {
     private static CompiledCondition compileCondition(Condition condition,
             Map<String, OperationCatalog.PredicateRegistration> predicates) {
         if (condition instanceof Condition.Leaf leaf) {
-            OperationCatalog.PredicateBinding predicate = predicates.get(leaf.predicate()).binding();
+            OperationCatalog.PredicateRegistration registration = predicates.get(leaf.predicate());
             return lookup -> {
-                ViewOutcome view = lookup.resolve(leaf.view());
+                ViewOutcome view = lookup.resolve(leaf.view(), registration.acceptsAbsent());
                 if (view instanceof ViewOutcome.Unavailable unavailable) {
                     return Decision.blocked(unavailable.failure());
                 }
-                return predicate.matches(((ViewOutcome.Available) view).value(), leaf.arguments())
+                Object value = view instanceof ViewOutcome.Absent ? view
+                        : ((ViewOutcome.Available) view).value();
+                return registration.binding().matches(value, leaf.arguments())
                         ? Decision.MATCH : Decision.NO_MATCH;
             };
         }
@@ -137,7 +142,7 @@ public final class CompiledSelector {
     }
 
     private static Decision evaluateGroup(List<CompiledCondition> children, boolean requireAll,
-                                          ViewLookup lookup) {
+                                          ConditionLookup lookup) {
         for (CompiledCondition child : children) {
             Decision result = child.evaluate(lookup);
             if (result.status() == Decision.Status.BLOCKED) {
@@ -153,15 +158,20 @@ public final class CompiledSelector {
         return requireAll ? Decision.MATCH : Decision.NO_MATCH;
     }
 
-    /** Resolves an original or derived view only when a reached predicate demands it. */
+    /** Resolves a view for the reached branch without evaluating another condition. */
     @FunctionalInterface
     public interface ViewLookup {
-        ViewOutcome resolve(String viewId);
+        ViewOutcome resolve(String branchId, String viewId, boolean acceptsAbsent);
     }
 
     @FunctionalInterface
     private interface CompiledCondition {
-        Decision evaluate(ViewLookup lookup);
+        Decision evaluate(ConditionLookup lookup);
+    }
+
+    @FunctionalInterface
+    private interface ConditionLookup {
+        ViewOutcome resolve(String viewId, boolean acceptsAbsent);
     }
 
     private record BranchRule(String id, CompiledCondition condition) { }

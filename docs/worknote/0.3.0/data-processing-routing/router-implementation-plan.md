@@ -1,12 +1,14 @@
 # Router implementation plan
 
 Status: design accepted for implementation; R0 bounded admission, R1 module
-and compiler skeleton, and R2 selection/execution completed, 2026-09-27.
+and compiler skeleton, R2 selection/execution, and R3 outcomes/recovery
+completed, 2026-09-27.
 Reviewed source baseline:
 `f43037ee87ef`, branch `module/platform/router`. See
 [R0 evidence and contracts](r0-admission.md) and
 [R1 implementation evidence](r1-implementation.md) and
-[R2 implementation evidence](r2-implementation.md). R3–R5 are not implemented.
+[R2 implementation evidence](r2-implementation.md) and
+[R3 implementation evidence](r3-implementation.md). R4–R5 are not implemented.
 Companion: [IOC processing plan](ioc-processing-implementation-plan.md).
 
 ## Scope and authoritative design

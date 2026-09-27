@@ -28,21 +28,27 @@ public final class CamelPlanCompiler {
                 throw new PlanAdmissionException("plans." + plan.id(), "duplicate plan ID");
             }
             PlanValidator.validate(plan, catalog.operations().keySet(),
-                    catalog.destinations().keySet(), catalog.predicates());
+                    catalog.destinations().keySet(), catalog.predicates(),
+                    catalog.recoverableReasons());
             Map<String, CompiledRoutes.ViewRoute> viewRoutes = new LinkedHashMap<>();
             for (PlanDescriptor.View view : plan.views()) {
-                String uri = address(plan.id(), "view", view.id());
-                uris.add(uri);
-                viewRoutes.put(view.id(), new CompiledRoutes.ViewRoute(view.input(), uri));
-                routes.add(new RouteBuilder() {
-                    @Override public void configure() {
-                        errorHandler(noErrorHandler());
-                        from(uri).routeId(routeId(plan.id(), "view", view.id()))
-                                .process(catalog.operations().get(view.operation()));
-                    }
-                });
+                if (view.recovery() != null) {
+                    viewRoutes.put(view.id(), new CompiledRoutes.ViewRoute(view.input(),
+                            null, view.recovery()));
+                } else {
+                    String uri = address(plan.id(), "view", view.id());
+                    uris.add(uri);
+                    viewRoutes.put(view.id(), new CompiledRoutes.ViewRoute(view.input(), uri, null));
+                    routes.add(new RouteBuilder() {
+                        @Override public void configure() {
+                            errorHandler(noErrorHandler());
+                            from(uri).routeId(routeId(plan.id(), "view", view.id()))
+                                    .process(catalog.operations().get(view.operation()));
+                        }
+                    });
+                }
             }
-            Map<String, String> branchRoutes = new LinkedHashMap<>();
+            Map<String, CompiledRoutes.BranchRoute> branchRoutes = new LinkedHashMap<>();
             for (PlanDescriptor.Branch branch : plan.routing().branches()) {
                 addBranchRoute(plan.id(), branch, catalog, uris, routes, branchRoutes);
             }
@@ -62,10 +68,11 @@ public final class CamelPlanCompiler {
 
     private static void addBranchRoute(String planId, PlanDescriptor.Branch branch,
                                        OperationCatalog catalog, List<String> uris,
-                                       List<RouteBuilder> routes, Map<String, String> branchRoutes) {
+                                       List<RouteBuilder> routes,
+                                       Map<String, CompiledRoutes.BranchRoute> branchRoutes) {
         String uri = address(planId, "branch", branch.id());
         uris.add(uri);
-        branchRoutes.put(branch.id(), uri);
+        branchRoutes.put(branch.id(), new CompiledRoutes.BranchRoute(uri, branch.requiredViews()));
         routes.add(new RouteBuilder() {
             @Override public void configure() {
                 errorHandler(noErrorHandler());

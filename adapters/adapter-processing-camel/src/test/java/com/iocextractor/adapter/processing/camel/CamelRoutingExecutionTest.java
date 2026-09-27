@@ -5,6 +5,7 @@ import com.iocextractor.adapter.processing.camel.compile.OperationCatalog;
 import com.iocextractor.adapter.processing.camel.compile.OperationCatalog.PredicateRegistration;
 import com.iocextractor.adapter.processing.camel.compile.PlanAdmissionException;
 import com.iocextractor.adapter.processing.camel.contract.Condition;
+import com.iocextractor.adapter.processing.camel.contract.BranchOutcome;
 import com.iocextractor.adapter.processing.camel.contract.FailureReference;
 import com.iocextractor.adapter.processing.camel.contract.PlanDescriptor;
 import com.iocextractor.adapter.processing.camel.contract.PlanExecutionResult;
@@ -29,7 +30,7 @@ class CamelRoutingExecutionTest {
     private final Processor destination = exchange -> {
         destinationCalls.incrementAndGet();
         var input = exchange.getMessage().getBody(PlanExecutionResult.BranchInput.class);
-        exchange.getMessage().setBody(input.original() + "-reply");
+        exchange.getMessage().setBody(new BranchOutcome.Prepared(input.original() + "-reply"));
     };
     private final OperationCatalog catalog = new OperationCatalog(Map.of(
             "host", exchange -> {

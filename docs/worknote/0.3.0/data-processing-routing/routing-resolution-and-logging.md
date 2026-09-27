@@ -169,8 +169,9 @@ views:
       use-view: original
 ```
 
-`view.recover` and reason tokens are proposed registry contracts, not existing
-runtime names. One alternate per recovery node, referencing a previously declared
+`view.recover` is reserved by the R3 technical adapter. Operator binding and
+IOC-specific reason tokens remain integration work. One alternate per recovery
+node, referencing a previously declared
 view; no cycles, chained recovery nodes or catch-all reason in v1. The node
 returns host unchanged on success. On an allowlisted expected failure it may
 return the alternate's actual value/type with recovery provenance. It does not

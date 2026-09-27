@@ -5,6 +5,7 @@ import com.iocextractor.adapter.processing.camel.compile.OperationCatalog;
 import com.iocextractor.adapter.processing.camel.compile.OperationCatalog.PredicateRegistration;
 import com.iocextractor.adapter.processing.camel.compile.PlanAdmissionException;
 import com.iocextractor.adapter.processing.camel.contract.Condition;
+import com.iocextractor.adapter.processing.camel.contract.BranchOutcome;
 import com.iocextractor.adapter.processing.camel.contract.PlanDescriptor;
 import com.iocextractor.adapter.processing.camel.contract.PlanExecutionResult;
 import com.iocextractor.adapter.processing.camel.contract.ViewOutcome;
@@ -33,7 +34,7 @@ class CamelPlanCompilerTest {
         destinations.incrementAndGet();
         PlanExecutionResult.BranchInput input = exchange.getMessage().getBody(
                 PlanExecutionResult.BranchInput.class);
-        exchange.getMessage().setBody(input.original() + "-mapped");
+        exchange.getMessage().setBody(new BranchOutcome.Prepared(input.original() + "-mapped"));
     };
     private final OperationCatalog catalog = new OperationCatalog(
             Map.of("network.host", operation), Map.of("masks", destination),
@@ -48,8 +49,8 @@ class CamelPlanCompilerTest {
         assertThat(compiled.endpointUris()).hasSize(3).allMatch(uri -> uri.startsWith("direct:processing-"));
         try (var runtime = new CamelRouteRuntime(compiled)) {
             var result = runtime.execute("network", "example");
-            assertThat(result.replies()).extracting(PlanExecutionResult.BranchReply::value)
-                    .containsExactly("example-mapped");
+            assertThat(result.replies()).extracting(PlanExecutionResult.BranchReply::outcome)
+                    .containsExactly(new BranchOutcome.Prepared("example-mapped"));
             assertThatThrownBy(() -> runtime.execute("unregistered", "example"))
                     .isInstanceOf(IllegalArgumentException.class);
             assertThat(operations).hasValue(1);

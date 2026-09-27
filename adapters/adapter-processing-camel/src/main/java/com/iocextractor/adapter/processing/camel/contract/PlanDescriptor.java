@@ -2,6 +2,7 @@ package com.iocextractor.adapter.processing.camel.contract;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /** Immutable technical descriptors; no IOC or Camel type crosses this contract. */
 public record PlanDescriptor(String id, List<View> views, Routing routing) {
@@ -12,19 +13,37 @@ public record PlanDescriptor(String id, List<View> views, Routing routing) {
     }
 
     /** One named derived value with one registered operation and input view. */
-    public record View(String id, String operation, String input) {
+    public record View(String id, String operation, String input, Recovery recovery) {
         public View {
             Objects.requireNonNull(id);
             Objects.requireNonNull(operation);
             Objects.requireNonNull(input);
         }
+
+        public View(String id, String operation, String input) {
+            this(id, operation, input, null);
+        }
+    }
+
+    /** A separate view may recover one expected failure through an explicit alternate. */
+    public record Recovery(String alternateView, Set<String> onReasons) {
+        public Recovery {
+            Objects.requireNonNull(alternateView);
+            onReasons = Set.copyOf(onReasons);
+        }
     }
 
     /** One configured destination and optional ordered eligibility condition. */
-    public record Branch(String id, String destination, Condition eligibility) {
+    public record Branch(String id, String destination, Condition eligibility,
+                         List<String> requiredViews) {
         public Branch {
             Objects.requireNonNull(id);
             Objects.requireNonNull(destination);
+            requiredViews = List.copyOf(requiredViews);
+        }
+
+        public Branch(String id, String destination, Condition eligibility) {
+            this(id, destination, eligibility, List.of());
         }
     }
 

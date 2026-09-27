@@ -4,17 +4,21 @@ Internal Camel integration family for bounded preparation plans. The `contract`
 package contains neutral immutable descriptors, `compile` validates references
 and binds ordered predicates to a selector while generating local view, branch
 and dispatch routes. `runtime` owns the embedded Camel context and selects an
-admitted plan by ID. It computes prerequisite views on demand once per call,
-then dispatches selected branches through a sequential Camel Recipient List.
+admitted plan by ID. It computes prerequisite and selected-branch mapping views
+on demand once per call, then dispatches eligible branches through a sequential
+Camel Recipient List.
 The IOC/application bridge awaits its first real consumer.
 
 Only this adapter may depend on Camel. Operator input never supplies endpoint
 addresses or scripts. The compiled selector owns tri-state FIRST/ALL/EXCLUSIVE
-eligibility and no-match decisions; Camel owns operation and destination
-execution. Expected unavailable prerequisites return a failure reference;
-unexpected exceptions abort the call. The outer application pipeline owns
-diagnostics, checkpoint and persistence. This module is not independently
-published.
+eligibility and no-match decisions; Camel owns ordinary operation and destination
+execution. An explicit `view.recover` edge uses one earlier alternate view and a
+registry-checked reason allowlist. The invocation-local result reports which
+branches actually demanded each failure, whether recovery succeeded, and any
+selected branch blocked during preparation. Destination replies are typed as
+prepared, filtered or expected failure. Unexpected exceptions abort the call.
+The outer application pipeline owns diagnostic severity, checkpoint and
+persistence. This module is not independently published.
 
 `camel-direct` supplies the local runtime endpoint, `camel-core-languages`
 supplies Camel's `simple` language required during context startup, and

@@ -1,5 +1,6 @@
 package com.iocextractor.adapter.processing.camel.compile;
 
+import com.iocextractor.adapter.processing.camel.contract.PlanDescriptor;
 import java.util.List;
 import java.util.Map;
 import org.apache.camel.builder.RouteBuilder;
@@ -14,7 +15,7 @@ public record CompiledRoutes(List<RouteBuilder> routes, List<String> endpointUri
     }
 
     /** Admitted local endpoints and one condition graph for a named plan. */
-    public record CompiledPlan(Map<String, ViewRoute> views, Map<String, String> branches,
+    public record CompiledPlan(Map<String, ViewRoute> views, Map<String, BranchRoute> branches,
                                String dispatchUri, CompiledSelector selector) {
         public CompiledPlan {
             views = Map.copyOf(views);
@@ -23,5 +24,10 @@ public record CompiledRoutes(List<RouteBuilder> routes, List<String> endpointUri
     }
 
     /** One view producer's local endpoint and named input dependency. */
-    public record ViewRoute(String input, String uri) { }
+    public record ViewRoute(String input, String uri, PlanDescriptor.Recovery recovery) { }
+
+    /** One destination and the views needed only when that branch is selected. */
+    public record BranchRoute(String uri, List<String> requiredViews) {
+        public BranchRoute { requiredViews = List.copyOf(requiredViews); }
+    }
 }

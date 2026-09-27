@@ -16,23 +16,37 @@ public final class PlanValidator {
     private static final int MAX_BRANCHES = 64;
     private static final int MAX_NODES = 256;
     private static final int MAX_DEPTH = 16;
+    static final String RECOVERY_OPERATION = "view.recover";
 
     private PlanValidator() { }
 
     /** Checks a plan and throws with a stable location on invalid input. */
     public static void validate(PlanDescriptor plan, Set<String> operations,
                                 Set<String> destinations,
-                                Map<String, PredicateRegistration> predicates) {
+                                Map<String, PredicateRegistration> predicates,
+                                Set<String> recoverableReasons) {
         checkId(plan.id(), "plan.id");
         if (plan.views().size() > MAX_VIEWS || plan.routing().branches().size() > MAX_BRANCHES) {
             throw new PlanAdmissionException(plan.id(), "view or branch limit exceeded");
         }
-        Map<String, PlanDescriptor.View> views = validateViews(plan, operations);
+        Map<String, PlanDescriptor.View> views = validateViews(plan, operations,
+                recoverableReasons);
         validateBranches(plan, views.keySet(), destinations, predicates);
     }
 
     private static Map<String, PlanDescriptor.View> validateViews(PlanDescriptor plan,
-                                                                  Set<String> operations) {
+                                                                  Set<String> operations,
+                                                                  Set<String> recoverableReasons) {
+        Map<String, PlanDescriptor.View> views = registerViews(plan, operations, recoverableReasons);
+        validateViewInputs(plan, views);
+        validateViewGraph(plan, views);
+        validateRecoveryGraph(plan, views);
+        return views;
+    }
+
+    private static Map<String, PlanDescriptor.View> registerViews(PlanDescriptor plan,
+                                                                  Set<String> operations,
+                                                                  Set<String> recoverableReasons) {
         Map<String, PlanDescriptor.View> views = new HashMap<>();
         for (PlanDescriptor.View view : plan.views()) {
             String location = plan.id() + ".views." + view.id();
@@ -40,20 +54,84 @@ public final class PlanValidator {
             if ("original".equals(view.id()) || views.putIfAbsent(view.id(), view) != null) {
                 throw new PlanAdmissionException(location, "duplicate or reserved view ID");
             }
-            if (!operations.contains(view.operation())) {
+            if (view.recovery() != null && !"original".equals(view.recovery().alternateView())
+                    && !views.containsKey(view.recovery().alternateView())) {
+                throw new PlanAdmissionException(location, "recovery alternate must precede recovery view");
+            }
+            if (view.recovery() != null) {
+                validateRecovery(view, location, recoverableReasons);
+            } else if (RECOVERY_OPERATION.equals(view.operation())) {
+                throw new PlanAdmissionException(location, "recovery operation requires recovery edge");
+            } else if (!operations.contains(view.operation())) {
                 throw new PlanAdmissionException(location, "unregistered operation " + view.operation());
             }
         }
+        return views;
+    }
+
+    private static void validateViewInputs(PlanDescriptor plan, Map<String, PlanDescriptor.View> views) {
         for (PlanDescriptor.View view : plan.views()) {
             if (!"original".equals(view.input()) && !views.containsKey(view.input())) {
                 throw new PlanAdmissionException(plan.id() + ".views." + view.id(), "unknown input view");
             }
         }
+    }
+
+    private static void validateViewGraph(PlanDescriptor plan, Map<String, PlanDescriptor.View> views) {
         Map<String, Integer> visits = new HashMap<>();
         for (PlanDescriptor.View view : plan.views()) {
             visit(view.id(), views, visits, plan.id());
         }
-        return views;
+    }
+
+    private static void validateRecoveryGraph(PlanDescriptor plan, Map<String, PlanDescriptor.View> views) {
+        for (PlanDescriptor.View view : plan.views()) {
+            if (view.recovery() != null) {
+                String location = plan.id() + ".views." + view.id();
+                if (hasRecoveryAncestor(view.input(), views)
+                        || hasRecoveryAncestor(view.recovery().alternateView(), views)) {
+                    throw new PlanAdmissionException(location, "chained recovery is not supported");
+                }
+                if (dependsOn(view.recovery().alternateView(), view.input(), views)) {
+                    throw new PlanAdmissionException(location,
+                            "recovery alternate depends on primary view");
+                }
+            }
+        }
+    }
+
+    private static boolean hasRecoveryAncestor(String viewId, Map<String, PlanDescriptor.View> views) {
+        if ("original".equals(viewId)) {
+            return false;
+        }
+        PlanDescriptor.View view = views.get(viewId);
+        return view.recovery() != null || hasRecoveryAncestor(view.input(), views);
+    }
+
+    private static boolean dependsOn(String viewId, String ancestor,
+                                     Map<String, PlanDescriptor.View> views) {
+        if ("original".equals(viewId)) {
+            return false;
+        }
+        return viewId.equals(ancestor) || dependsOn(views.get(viewId).input(), ancestor, views);
+    }
+
+    private static void validateRecovery(PlanDescriptor.View view, String location,
+                                         Set<String> recoverableReasons) {
+        if (!RECOVERY_OPERATION.equals(view.operation())) {
+            throw new PlanAdmissionException(location, "recovery edge requires view.recover");
+        }
+        if ("original".equals(view.input())) {
+            throw new PlanAdmissionException(location, "recovery primary must be a derived view");
+        }
+        if (view.input().equals(view.recovery().alternateView())) {
+            throw new PlanAdmissionException(location, "recovery alternate must differ from primary");
+        }
+        if (view.recovery().onReasons().isEmpty()
+                || view.recovery().onReasons().contains("*")
+                || !recoverableReasons.containsAll(view.recovery().onReasons())) {
+            throw new PlanAdmissionException(location, "unknown or empty recoverable reason");
+        }
     }
 
     private static void validateBranches(PlanDescriptor plan, Set<String> views,
@@ -74,6 +152,7 @@ public final class PlanValidator {
             if (!destinations.contains(branch.destination())) {
                 throw new PlanAdmissionException(location, "unregistered destination " + branch.destination());
             }
+            validateRequiredViews(branch, views, location);
             if (branch.eligibility() != null) {
                 nodes += checkCondition(branch.eligibility(), location, 1, views, predicates);
                 if (nodes > MAX_NODES) {
@@ -81,10 +160,11 @@ public final class PlanValidator {
                 }
             }
         }
-        validateDefault(plan, branchIds, destinations);
+        validateDefault(plan, branchIds, views, destinations);
     }
 
     private static void validateDefault(PlanDescriptor plan, Set<String> branchIds,
+                                        Set<String> views,
                                         Set<String> destinations) {
         PlanDescriptor.Routing routing = plan.routing();
         PlanDescriptor.Branch fallback = routing.defaultBranch();
@@ -108,6 +188,20 @@ public final class PlanValidator {
         if (!destinations.contains(fallback.destination())) {
             throw new PlanAdmissionException(location, "unregistered destination " + fallback.destination());
         }
+        validateRequiredViews(fallback, views, location);
+    }
+
+    private static void validateRequiredViews(PlanDescriptor.Branch branch, Set<String> views,
+                                              String location) {
+        Set<String> distinct = new HashSet<>();
+        for (String view : branch.requiredViews()) {
+            if (!"original".equals(view) && !views.contains(view)) {
+                throw new PlanAdmissionException(location, "unknown required view " + view);
+            }
+            if (!distinct.add(view)) {
+                throw new PlanAdmissionException(location, "duplicate required view " + view);
+            }
+        }
     }
 
     private static void visit(String id, Map<String, PlanDescriptor.View> views,
@@ -123,6 +217,10 @@ public final class PlanValidator {
         String input = views.get(id).input();
         if (!"original".equals(input)) {
             visit(input, views, visits, planId);
+        }
+        PlanDescriptor.Recovery recovery = views.get(id).recovery();
+        if (recovery != null && !"original".equals(recovery.alternateView())) {
+            visit(recovery.alternateView(), views, visits, planId);
         }
         visits.put(id, 2);
     }
