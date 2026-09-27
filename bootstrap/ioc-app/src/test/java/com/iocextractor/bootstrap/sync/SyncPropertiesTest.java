@@ -94,6 +94,6 @@ class SyncPropertiesTest {
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), source.sink(), source.pipeline(), source.ingestion(),
                 source.artifactIdentity(), source.dataframeImport(), source.export(), sync, source.maintenance(),
-                source.lifecycle(), source.observability());
+                source.lifecycle(), source.observability(), source.processing());
     }
 }

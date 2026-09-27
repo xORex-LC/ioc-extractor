@@ -14,6 +14,7 @@ import com.iocextractor.application.dataframeimport.model.ImportRowFailurePolicy
 import com.iocextractor.application.dataframeimport.model.ImportSourceTransport;
 import com.iocextractor.adapter.out.store.jdbc.SqliteTuningPreset;
 import com.iocextractor.domain.classify.FeaturePredicates;
+import com.iocextractor.domain.feature.NetworkAddressParser;
 import com.iocextractor.domain.model.IndicatorType;
 import jakarta.validation.Validation;
 import org.junit.jupiter.api.Test;
@@ -185,6 +186,14 @@ class ConfigurationDocumentationContractTest {
         values.addAll(ConfigRegistryCatalog.valueProviderKeys());
         values.add(ConfigRegistryCatalog.CONST_VALUE_PROVIDER);
         values.addAll(ConfigRegistryCatalog.transformKeys());
+        values.addAll(Set.of("network.host", "view.recover", "type-in", "configured"));
+        Arrays.stream(IocProcessingProperties.Mode.values())
+                .map(mode -> mode.name().toLowerCase(java.util.Locale.ROOT)).forEach(values::add);
+        Arrays.stream(IocProcessingProperties.Action.values())
+                .map(action -> action.name().toLowerCase(java.util.Locale.ROOT)).forEach(values::add);
+        Arrays.stream(NetworkAddressParser.FailureReason.values())
+                .map(reason -> reason.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-'))
+                .forEach(values::add);
         Arrays.stream(IndicatorType.values()).map(Enum::name).forEach(values::add);
         addSelectorTokens(values, ArtifactIdStrategy.values());
         addSelectorTokens(values, ArtifactKeyMode.values());
@@ -239,18 +248,33 @@ class ConfigurationDocumentationContractTest {
     }
 
     private static void collectRecordPaths(Class<?> recordType, String prefix, Set<String> paths) {
+        collectRecordPaths(recordType, prefix, paths, Set.of());
+    }
+
+    private static void collectRecordPaths(Class<?> recordType, String prefix, Set<String> paths,
+                                           Set<Class<?>> ancestors) {
+        Set<Class<?>> visited = new LinkedHashSet<>(ancestors);
+        visited.add(recordType);
         for (RecordComponent component : recordType.getRecordComponents()) {
             String path = prefix + "." + kebabCase(component.getName());
             Class<?> componentType = component.getType();
             Type genericType = component.getGenericType();
             if (componentType.isRecord()) {
-                collectRecordPaths(componentType, path, paths);
+                if (visited.contains(componentType)) {
+                    paths.add(path);
+                } else {
+                    collectRecordPaths(componentType, path, paths, visited);
+                }
             } else if (Collection.class.isAssignableFrom(componentType)
                     && genericType instanceof ParameterizedType parameterized) {
                 paths.add(path);
                 Type element = parameterized.getActualTypeArguments()[0];
                 if (element instanceof Class<?> elementClass && elementClass.isRecord()) {
-                    collectRecordPaths(elementClass, path + "[]", paths);
+                    if (visited.contains(elementClass)) {
+                        paths.add(path + "[]");
+                    } else {
+                        collectRecordPaths(elementClass, path + "[]", paths, visited);
+                    }
                 }
             } else {
                 paths.add(path);
@@ -259,6 +283,13 @@ class ConfigurationDocumentationContractTest {
     }
 
     private static void collectCompatibilityAliases(Class<?> recordType, String prefix, Set<String> paths) {
+        collectCompatibilityAliases(recordType, prefix, paths, Set.of());
+    }
+
+    private static void collectCompatibilityAliases(Class<?> recordType, String prefix,
+                                                    Set<String> paths, Set<Class<?>> ancestors) {
+        Set<Class<?>> visited = new LinkedHashSet<>(ancestors);
+        visited.add(recordType);
         for (RecordComponent component : recordType.getRecordComponents()) {
             String path = prefix + "." + kebabCase(component.getName());
             Class<?> componentType = component.getType();
@@ -266,13 +297,14 @@ class ConfigurationDocumentationContractTest {
             if (component.isAnnotationPresent(ConfigurationCompatibilityAlias.class)) {
                 paths.add(path);
             }
-            if (componentType.isRecord()) {
-                collectCompatibilityAliases(componentType, path, paths);
+            if (componentType.isRecord() && !visited.contains(componentType)) {
+                collectCompatibilityAliases(componentType, path, paths, visited);
             } else if (Collection.class.isAssignableFrom(componentType)
                     && genericType instanceof ParameterizedType parameterized) {
                 Type element = parameterized.getActualTypeArguments()[0];
-                if (element instanceof Class<?> elementClass && elementClass.isRecord()) {
-                    collectCompatibilityAliases(elementClass, path + "[]", paths);
+                if (element instanceof Class<?> elementClass && elementClass.isRecord()
+                        && !visited.contains(elementClass)) {
+                    collectCompatibilityAliases(elementClass, path + "[]", paths, visited);
                 }
             }
         }

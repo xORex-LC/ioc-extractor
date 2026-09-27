@@ -28,6 +28,8 @@ class ConfigRegistryPreflightIT {
         contextRunner(defaults()).run(context -> {
             assertThat(context).hasSingleBean(IocProperties.class);
             assertThat(context).hasSingleBean(ConfigRegistryPreflight.class);
+            assertThat(context).hasSingleBean(ProcessingPlanBindings.class);
+            assertThat(context.getBean(ProcessingPlanBindings.class).selectedDocumentPlan()).isEmpty();
         });
     }
 
@@ -268,7 +270,7 @@ class ConfigRegistryPreflightIT {
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), classify, source.sink(), source.pipeline(), source.ingestion(),
                 source.artifactIdentity(), source.dataframeImport(), source.export(), source.sync(), source.maintenance(),
-                source.lifecycle(), source.observability());
+                source.lifecycle(), source.observability(), source.processing());
     }
 
     private IocProperties withSink(IocProperties source, IocProperties.Sink sink) {
@@ -276,7 +278,7 @@ class ConfigRegistryPreflightIT {
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), sink, source.pipeline(), source.ingestion(),
                 source.artifactIdentity(), source.dataframeImport(), source.export(), source.sync(), source.maintenance(),
-                source.lifecycle(), source.observability());
+                source.lifecycle(), source.observability(), source.processing());
     }
 
     @Configuration(proxyBeanMethods = false)

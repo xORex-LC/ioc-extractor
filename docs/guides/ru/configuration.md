@@ -91,6 +91,67 @@ Dataframe database — канонический источник бизнес-д
 | `ioc.pipeline.failure-policy` | `fail-fast`, `collect-and-continue` | `fail-fast` | Для unattended daemon используйте `collect-and-continue`: валидные строки могут быть записаны при итоговом отчёте об ошибках. |
 | `ioc.pipeline.max-diagnostics-per-run` | положительное целое | `10000` | Ограничивает память и объём вывода. Уменьшайте на малых хостах или для шумных недоверенных inputs. |
 
+## Планы обработки IOC (пока только проверка конфигурации)
+
+Дерево `ioc.processing` необязательно. Именованные планы проверяются при
+запуске, но ещё не подключены к обработке документов и импорта. Для текущего
+рабочего потока не задавайте этот раздел. Выбор плана начнёт менять выходные
+данные только после подключения потоков и идентичности политики.
+
+- `ioc.processing.document-plan` выбирает запись в `ioc.processing.plans` по
+  `ioc.processing.plans[].name`. Каждый включённый артефакт должен быть
+  маршрутизирован либо указан в `ioc.processing.plans[].omitted-artifacts`.
+- `ioc.processing.plans[].views` задаёт производные значения с одним входом.
+  Поля записи: `ioc.processing.plans[].views[].name`,
+  `ioc.processing.plans[].views[].operation` и
+  `ioc.processing.plans[].views[].input`. Операция `network.host` извлекает
+  хост. Для отдельного восстановленного представления `view.recover` нужны
+  `ioc.processing.plans[].views[].arguments.on-reasons` и
+  `ioc.processing.plans[].views[].arguments.use-view`; разрешены только
+  причины ожидаемого отказа `empty`, `unsupported-scheme`,
+  `invalid-authority`, `invalid-host`, `invalid-port` и
+  `unsupported-address-form`.
+- `ioc.processing.plans[].classifications` связывает
+  `ioc.processing.plans[].classifications[].view` с
+  `ioc.processing.plans[].classifications[].policy`. Пока поддерживается лишь
+  `configured`, который использует прежние `ioc.classify.rules`.
+- `ioc.processing.plans[].routing.mode` принимает `first`, `all`, `exclusive`.
+  `ioc.processing.plans[].routing.on-unmatched.action` принимает `skip`,
+  `reject`, `route`; `ioc.processing.plans[].routing.on-unmatched.branch`
+  указывает default-ветку только для `route`.
+- `ioc.processing.plans[].routing.branches` сохраняет порядок записей. Каждая
+  содержит `ioc.processing.plans[].routing.branches[].id`,
+  `ioc.processing.plans[].routing.branches[].artifact` и
+  `ioc.processing.plans[].routing.branches[].default-view`.
+  `ioc.processing.plans[].routing.branches[].field-views` связывает существующую
+  выходную колонку с представлением; `id` и поле источника переназначать нельзя.
+- Листовое условие использует
+  `ioc.processing.plans[].routing.branches[].eligibility.on` и
+  `ioc.processing.plans[].routing.branches[].eligibility.predicate`.
+  `type-in` требует IOC-типы в
+  `ioc.processing.plans[].routing.branches[].eligibility.arguments.types`;
+  предикаты признаков не принимают аргументы. У условия ровно одна форма:
+  `ioc.processing.plans[].routing.branches[].eligibility.all` с упорядоченными
+  `ioc.processing.plans[].routing.branches[].eligibility.all[]`,
+  `ioc.processing.plans[].routing.branches[].eligibility.any` с упорядоченными
+  `ioc.processing.plans[].routing.branches[].eligibility.any[]` либо
+  `ioc.processing.plans[].routing.branches[].eligibility.not` с одним потомком.
+- Default-ветка задаётся полями
+  `ioc.processing.plans[].routing.default-branch.id`,
+  `ioc.processing.plans[].routing.default-branch.artifact`,
+  `ioc.processing.plans[].routing.default-branch.default-view` и
+  `ioc.processing.plans[].routing.default-branch.field-views`. У неё не может
+  быть условия. Синтаксически связываемые поля
+  `ioc.processing.plans[].routing.default-branch.eligibility.on`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.predicate`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.arguments.types`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.all`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.all[]`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.any`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.any[]` и
+  `ioc.processing.plans[].routing.default-branch.eligibility.not` семантическая
+  проверка отклонит.
+
 ## Чтение источника
 
 | Параметр | Тип / значения | Встроенный default | Рекомендация |

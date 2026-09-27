@@ -1,6 +1,8 @@
 # Routing syntax, unavailable views, fallback and logging
 
-Status: proposed contract closure, 2026-09-27. Source baseline `f43037ee87ef`.
+Status: proposed runtime contract closure, 2026-09-27. P2 implements the
+typed syntax and startup descriptor admission; IOC runtime execution and final
+diagnostic disposition remain later slices. Source baseline `f43037ee87ef`.
 Refines [configuration design](configuration-execution-design.md). This document
 recommends exact v1 semantics; it does not claim operator acceptance of the new
 choices, implemented configuration binding or runtime qualification.

@@ -78,6 +78,23 @@ class ConfigurableRowMapperTest {
     }
 
     @Test
+    void field_view_controls_gate_value_and_match_without_changing_other_columns() {
+        ConfigurableRowMapper m = mapper(List.of(
+                new ColumnSpec("mask", "value", null, IndicatorType.DOMAIN, null),
+                new ColumnSpec("url_match", "match.url", null, null, null),
+                new ColumnSpec("original", "value", null, null, null)));
+        ClassifiedIndicator original = indicator("https://Example.com/Path", IndicatorType.URL, "feed");
+        ClassifiedIndicator host = indicator("example.com", IndicatorType.DOMAIN, "feed");
+        var hostClassification = host.classification();
+        host = new ClassifiedIndicator(host.indicator(), new ClassificationDecision(
+                hostClassification.features(), 0, List.of(), new MaskMatch("u:hEX", "h:dEX")));
+
+        assertThat(m.toRow(original, Map.of("mask", host, "url_match", host)))
+                .containsExactly("example.com", "u:hEX", "https://Example.com/Path");
+        assertThat(m.toRow(original)).containsExactly(null, "u:hAS", "https://Example.com/Path");
+    }
+
+    @Test
     void when_type_gate_skips_provider_for_an_unrelated_indicator() {
         ValueProvider typeSpecific = ignored -> {
             throw new AssertionError("provider must not run outside its when-type gate");

@@ -227,7 +227,7 @@ class IocPropertiesBindingIT {
                     source.engine(), source.runtime(), source.storage(), source.source(), source.refang(), patterns,
                     source.classify(), source.sink(), source.pipeline(), source.ingestion(),
                     source.artifactIdentity(), source.dataframeImport(), source.export(), source.sync(), source.maintenance(),
-                    source.lifecycle(), source.observability());
+                    source.lifecycle(), source.observability(), source.processing());
 
             patterns.clear();
 
@@ -508,6 +508,104 @@ class IocPropertiesBindingIT {
                 "ioc.sync.endpoints[0].smb.unknown-timeout=45s")
                 .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
                         .containsExactly("ioc.sync.endpoints[0].smb.unknown-timeout"));
+    }
+
+    @Test
+    void bindsTypedProcessingPredicateArgumentsAndFieldViews() {
+        contextRunner(
+                "ioc.processing.plans[0].name=network",
+                "ioc.processing.plans[0].views[0].name=host",
+                "ioc.processing.plans[0].views[0].operation=network.host",
+                "ioc.processing.plans[0].views[0].input=original",
+                "ioc.processing.plans[0].classifications[0].view=original",
+                "ioc.processing.plans[0].classifications[0].policy=configured",
+                "ioc.processing.plans[0].classifications[1].view=host",
+                "ioc.processing.plans[0].classifications[1].policy=configured",
+                "ioc.processing.plans[0].routing.mode=all",
+                "ioc.processing.plans[0].routing.on-unmatched.action=skip",
+                "ioc.processing.plans[0].routing.branches[0].id=masks-host",
+                "ioc.processing.plans[0].routing.branches[0].artifact=masks",
+                "ioc.processing.plans[0].routing.branches[0].default-view=original",
+                "ioc.processing.plans[0].routing.branches[0].eligibility.on=original",
+                "ioc.processing.plans[0].routing.branches[0].eligibility.predicate=type-in",
+                "ioc.processing.plans[0].routing.branches[0].eligibility.arguments.types[0]=DOMAIN",
+                "ioc.processing.plans[0].routing.branches[0].field-views.mask=host")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    var branch = context.getBean(IocProperties.class).processing().plans().getFirst()
+                            .routing().branches().getFirst();
+                    assertThat(branch.eligibility().arguments().types()).containsExactly(IndicatorType.DOMAIN);
+                    assertThat(branch.fieldViews()).containsEntry("mask", "host");
+                });
+    }
+
+    @Test
+    void rejectsUnknownProcessingArgumentOnPropertySystemEnvironmentAndCliChannels() {
+        String property = "ioc.processing.plans[0].routing.branches[0].eligibility.arguments.typez";
+        contextRunner(property + "=DOMAIN")
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure())).containsExactly(property));
+        contextRunner().withSystemProperties(property + "=DOMAIN")
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure())).containsExactly(property));
+        contextRunnerWithEnvironment(Map.of("IOC_PROCESSING_DOCUMENT_PLANN", "network"))
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
+                        .containsExactly("ioc.processing.document.plann"));
+        assertThatThrownBy(() -> springApplication().run("--" + property + "=DOMAIN"))
+                .satisfies(failure -> assertThat(unboundKeys(failure)).containsExactly(property));
+    }
+
+    @Test
+    void rejectsUnknownProcessingArgumentFromYamlOverlay(@TempDir Path tempDir) throws IOException {
+        Path overlay = tempDir.resolve("application.yml");
+        Files.writeString(overlay, """
+                ioc:
+                  processing:
+                    plans:
+                      - routing:
+                          branches:
+                            - eligibility:
+                                arguments:
+                                  typez: [DOMAIN]
+                """);
+        contextRunnerWithYamlOverlay(overlay)
+                .run(context -> assertThat(unboundKeys(context.getStartupFailure()))
+                        .containsExactly("ioc.processing.plans[0].routing.branches[0].eligibility.arguments.typez[0]"));
+    }
+
+    @Test
+    void processingPlanListElementOverlayRequiresTheWholeReplacement(@TempDir Path tempDir)
+            throws IOException {
+        Path lower = tempDir.resolve("lower.yml");
+        Path higher = tempDir.resolve("higher.yml");
+        Files.writeString(lower, """
+                ioc:
+                  processing:
+                    plans:
+                      - name: base
+                        views: []
+                        classifications:
+                          - { view: original, policy: configured }
+                        routing:
+                          mode: all
+                          on-unmatched: { action: skip }
+                          branches:
+                            - { id: masks-original, artifact: masks, default-view: original }
+                """);
+        Files.writeString(higher, """
+                ioc:
+                  processing:
+                    plans:
+                      - name: replacement
+                """);
+
+        new ApplicationContextRunner()
+                .withInitializer(context -> {
+                    addYaml(context, "lower", new FileSystemResource(lower), false);
+                    addYaml(context, "higher", new FileSystemResource(higher), true);
+                    addDefaultApplicationYaml(context);
+                })
+                .withUserConfiguration(TestConfig.class)
+                .run(context -> assertThat(causeMessages(context.getStartupFailure()))
+                        .contains("CONFIG.REGISTRY", "ioc.processing.plans[0].routing requires"));
     }
 
     @Test

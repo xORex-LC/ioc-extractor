@@ -72,9 +72,19 @@ public final class ConfigurableRowMapper implements RowMapper {
 
     @Override
     public List<String> toRow(ClassifiedIndicator indicator) {
+        return toRow(indicator, Map.of());
+    }
+
+    /**
+     * Maps a row with independently resolved views for named output columns.
+     * The caller admits column/view bindings; an unlisted column uses the default.
+     * Gates, providers and transforms all see the same resolved column view.
+     */
+    public List<String> toRow(ClassifiedIndicator defaultView,
+                              Map<String, ClassifiedIndicator> columnViews) {
         List<String> row = new ArrayList<>(columns.size());
         for (ColumnSpec column : columns) {
-            row.add(cell(column, indicator));
+            row.add(cell(column, columnViews.getOrDefault(column.name(), defaultView)));
         }
         return row;
     }

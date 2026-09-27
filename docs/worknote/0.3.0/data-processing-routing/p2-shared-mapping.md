@@ -1,7 +1,8 @@
 # P2 shared mapping admission
 
-Status: P2 implementation in progress. This first P2 slice relocates existing
-pure IOC preparation without changing the active document or import route.
+Status: P2 implemented in two commits. The first relocates existing pure IOC
+preparation; the second admits the typed operator plan without changing the
+active document or import route.
 
 `core/ioc-processing` now owns the single `ClassifiedIndicator`,
 `IndicatorClassifier`, exact-cell composition, `ConfigurableRowMapper`, column
@@ -19,7 +20,21 @@ PMD scope include the module; its mapping tests were moved with the code, so
 the local JaCoCo report remains meaningful. The lowercase-host transform now
 preserves case-sensitive fragment text as well as path/query text.
 
-The remaining P2 work is typed operator plan binding, validation of named
-views/classifications/field overrides and a compiled IOC-to-Router descriptor.
-No new plan is accepted or activated by this relocation alone. P3/P4 retain
-document/import attachment; P5 owns pinned activation and policy identity.
+The operator slice adds typed `ioc.processing` records: named plans, unary
+derived views, `configured` classifications, ordered branch routing,
+per-column view bindings and recursive AND/OR/NOT conditions. `type-in` accepts
+only a nonempty IOC enum list; other registered feature predicates accept no
+arguments. `ProcessingPlanCatalog` checks references, branch/condition limits,
+explicit enabled-artifact coverage or omission, and compiles IOC bindings into
+the existing technical `PlanDescriptor`. The compiled catalog is exposed once
+as `ProcessingPlanBindings` to later flow attachments. The shared mapper
+evaluates each column against its resolved classified view. No configured plan is registered
+with `RouterRuntimeConfiguration` yet. P3/P4 retain document/import attachment;
+P5 owns pinned activation and policy identity.
+
+An override of an ungated `const` column is admitted but omitted from demanded
+views because it cannot affect the cell. An override of `id` or `source.label`
+is rejected because those providers belong to the write/source context. A
+`const` column with a gate keeps its bound view because the gate can change the
+output. View operation semantics remain unary; unsupported network input has
+an expected typed failure rather than implicit fan-out or coercion.

@@ -90,6 +90,67 @@ the service is stopped or after a coordinated SQLite backup.
 | `ioc.pipeline.failure-policy` | `fail-fast`, `collect-and-continue` | `fail-fast` | Use `collect-and-continue` for unattended daemon ingestion; valid rows may commit while the run reports errors. |
 | `ioc.pipeline.max-diagnostics-per-run` | positive integer | `10000` | Bounds memory and output volume. Lower it for small hosts or noisy untrusted inputs. |
 
+## IOC processing plans (admission only)
+
+The `ioc.processing` tree is optional. Named plans are type-checked at startup,
+but are not attached to document or import execution yet. Keep it unset when
+operating the current pipeline. Do not expect a selected plan to change output
+until the flow attachment and policy-identity stages are released.
+
+- `ioc.processing.document-plan` selects one entry in `ioc.processing.plans` by
+  `ioc.processing.plans[].name`. A selected document plan must route each
+  enabled artifact or list it in `ioc.processing.plans[].omitted-artifacts`.
+- `ioc.processing.plans[].views` declares unary derived values. Each entry has
+  `ioc.processing.plans[].views[].name`,
+  `ioc.processing.plans[].views[].operation` and
+  `ioc.processing.plans[].views[].input`. `network.host` derives a bare host;
+  `view.recover` requires
+  `ioc.processing.plans[].views[].arguments.on-reasons` and
+  `ioc.processing.plans[].views[].arguments.use-view`. Recovery creates a
+  separate view and accepts only `empty`, `unsupported-scheme`,
+  `invalid-authority`, `invalid-host`, `invalid-port` or
+  `unsupported-address-form` as input-dependent reasons.
+- `ioc.processing.plans[].classifications` binds
+  `ioc.processing.plans[].classifications[].view` to
+  `ioc.processing.plans[].classifications[].policy`. The only policy is
+  `configured`, which uses the existing `ioc.classify.rules`.
+- `ioc.processing.plans[].routing.mode` accepts `first`, `all` or `exclusive`.
+  `ioc.processing.plans[].routing.on-unmatched.action` is `skip`, `reject` or
+  `route`; `ioc.processing.plans[].routing.on-unmatched.branch` names the
+  default branch only for `route`.
+- `ioc.processing.plans[].routing.branches` is ordered. Each entry has
+  `ioc.processing.plans[].routing.branches[].id`,
+  `ioc.processing.plans[].routing.branches[].artifact` and
+  `ioc.processing.plans[].routing.branches[].default-view`.
+  `ioc.processing.plans[].routing.branches[].field-views` maps an existing
+  output column to a declared view. Source and ID columns cannot be overridden.
+- The optional leaf condition uses
+  `ioc.processing.plans[].routing.branches[].eligibility.on` and
+  `ioc.processing.plans[].routing.branches[].eligibility.predicate`.
+  `type-in` requires enum values in
+  `ioc.processing.plans[].routing.branches[].eligibility.arguments.types`;
+  feature predicates accept no arguments. Conditions have exactly one shape:
+  `ioc.processing.plans[].routing.branches[].eligibility.all` with ordered
+  `ioc.processing.plans[].routing.branches[].eligibility.all[]` children,
+  `ioc.processing.plans[].routing.branches[].eligibility.any` with ordered
+  `ioc.processing.plans[].routing.branches[].eligibility.any[]` children, or
+  `ioc.processing.plans[].routing.branches[].eligibility.not` with one child.
+- For no-match routing, `ioc.processing.plans[].routing.default-branch.id`,
+  `ioc.processing.plans[].routing.default-branch.artifact`,
+  `ioc.processing.plans[].routing.default-branch.default-view` and
+  `ioc.processing.plans[].routing.default-branch.field-views` use the same
+  bindings as an ordinary branch. A default must have no eligibility; the
+  structurally bindable paths
+  `ioc.processing.plans[].routing.default-branch.eligibility.on`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.predicate`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.arguments.types`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.all`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.all[]`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.any`,
+  `ioc.processing.plans[].routing.default-branch.eligibility.any[]` and
+  `ioc.processing.plans[].routing.default-branch.eligibility.not` are rejected
+  by semantic admission.
+
 ## Source reading
 
 | Property | Type / accepted values | Built-in default | Guidance |

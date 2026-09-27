@@ -56,6 +56,38 @@ ioc:
     deduplicate: true
     failure-policy: collect-and-continue
     max-diagnostics-per-run: 10000
+
+  # ---- IOC processing plan syntax (inactive until flow attachment) ---------
+  # Keep this example commented: plan admission does not yet activate the
+  # document/import route, and a real document plan must cover or explicitly
+  # omit every enabled artifact.
+  # processing:
+  #   document-plan: network
+  #   plans:
+  #     - name: network
+  #       omitted-artifacts: [ioc_aggregate]
+  #       views:
+  #         - { name: host, operation: network.host, input: original }
+  #         - name: usable
+  #           operation: view.recover
+  #           input: host
+  #           arguments: { on-reasons: [unsupported-address-form], use-view: original }
+  #       classifications:
+  #         - { view: original, policy: configured }
+  #       routing:
+  #         mode: first
+  #         on-unmatched: { action: route, branch: fallback }
+  #         branches:
+  #           - id: masks-original
+  #             artifact: masks
+  #             default-view: original
+  #             eligibility:
+  #               all:
+  #                 - { on: original, predicate: type-in, arguments: { types: [DOMAIN, URL] } }
+  #                 - any: [{ on: original, predicate: has-path }]
+  #                 - not: { on: original, predicate: has-query }
+  #             field-views: { mask: host }
+  #         default-branch: { id: fallback, artifact: masks, default-view: original }
   # Keep durable SQLite state separate from CSV references/projections. SQLite
   # creates WAL/SHM sidecars next to each DB, so var/db is the backup unit.
   storage:

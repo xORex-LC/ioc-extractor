@@ -81,6 +81,10 @@ stages передают ему только уже вычисленные реш
 `PipelineDecisionTracer`; итоговые диагностики остаются у application.
 Пока регистрация IOC-плана и обработчики document/import не добавлены,
 production-поток продолжает работать по прежнему пути.
+`IocProcessingProperties` связывает операторские планы типизированно, а
+`ProcessingPlanCatalog` при старте проверяет ссылки и формирует
+`ProcessingPlanBindings` для будущих точек входа. Этот bean сам по себе не
+создаёт `RouterPlanRegistration` и не меняет работающий pipeline.
 
 Composition root выбирает typed `PipelineFailurePolicy`, diagnostic budget и
 non-throwing diagnostics bridge. Default application config — `fail-fast`; production

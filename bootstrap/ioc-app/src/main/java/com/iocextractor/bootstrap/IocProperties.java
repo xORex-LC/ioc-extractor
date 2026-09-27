@@ -57,7 +57,8 @@ public record IocProperties(
         @NotNull @Valid Sync sync,
         @Valid Maintenance maintenance,
         @Valid Lifecycle lifecycle,
-        @NotNull @Valid Observability observability) {
+        @NotNull @Valid Observability observability,
+        @Valid IocProcessingProperties processing) {
 
     @ConstructorBinding
     public IocProperties {
@@ -65,6 +66,7 @@ public record IocProperties(
         pipeline = pipeline == null ? new Pipeline(true, PipelineFailurePolicy.FAIL_FAST, 10_000) : pipeline;
         lifecycle = lifecycle == null ? Lifecycle.defaults() : lifecycle;
         dataframeImport = dataframeImport == null ? DataframeImport.disabled() : dataframeImport;
+        processing = processing == null ? IocProcessingProperties.disabled() : processing;
     }
 
     private static <T> List<T> snapshotList(List<T> source) {

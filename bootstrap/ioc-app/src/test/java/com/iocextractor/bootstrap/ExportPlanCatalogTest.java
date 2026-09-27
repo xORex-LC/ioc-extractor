@@ -260,7 +260,7 @@ class ExportPlanCatalogTest {
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), source.sink(), source.pipeline(), source.ingestion(),
                 source.artifactIdentity(), source.dataframeImport(), export, source.sync(), source.maintenance(),
-                source.lifecycle(), source.observability());
+                source.lifecycle(), source.observability(), source.processing());
     }
 
     private IocProperties withArtifactIdentity(
@@ -270,7 +270,7 @@ class ExportPlanCatalogTest {
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), source.sink(), source.pipeline(), source.ingestion(),
                 artifactIdentity, source.dataframeImport(), source.export(), source.sync(), source.maintenance(),
-                source.lifecycle(), source.observability());
+                source.lifecycle(), source.observability(), source.processing());
     }
 
     private IocProperties.ArtifactIdentity.Artifact legacyIdentity(
@@ -292,7 +292,7 @@ class ExportPlanCatalogTest {
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), sink, source.pipeline(), source.ingestion(),
                 source.artifactIdentity(), source.dataframeImport(), source.export(), source.sync(), source.maintenance(),
-                source.lifecycle(), source.observability());
+                source.lifecycle(), source.observability(), source.processing());
     }
 
     private IocProperties withCsv(IocProperties source, IocProperties.Sink.Csv csv) {
@@ -301,7 +301,7 @@ class ExportPlanCatalogTest {
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), sink, source.pipeline(), source.ingestion(),
                 source.artifactIdentity(), source.dataframeImport(), source.export(), source.sync(), source.maintenance(),
-                source.lifecycle(), source.observability());
+                source.lifecycle(), source.observability(), source.processing());
     }
 
     private IocProperties.Sink.Artifact copyArtifact(

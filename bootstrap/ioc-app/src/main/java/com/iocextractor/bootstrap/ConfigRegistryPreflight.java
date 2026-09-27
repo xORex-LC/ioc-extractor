@@ -5,6 +5,7 @@ import org.springframework.beans.factory.InitializingBean;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -15,6 +16,7 @@ import java.util.stream.Collectors;
 final class ConfigRegistryPreflight implements InitializingBean {
 
     private final IocProperties props;
+    private Map<String, ProcessingPlanCatalog.CompiledPlan> processingPlans = Map.of();
 
     ConfigRegistryPreflight(IocProperties props) {
         this.props = props;
@@ -26,10 +28,15 @@ final class ConfigRegistryPreflight implements InitializingBean {
         validateClassifyPredicates(errors);
         validateSinkArtifacts(errors);
         ArtifactPolicyCatalog.compile(props, errors);
+        processingPlans = ProcessingPlanCatalog.compile(props, errors);
         if (!errors.isEmpty()) {
             throw new IllegalStateException("CONFIG.REGISTRY invalid IOC configuration:\n- "
                     + String.join("\n- ", errors));
         }
+    }
+
+    ProcessingPlanBindings processingPlanBindings() {
+        return new ProcessingPlanBindings(props.processing().documentPlan(), processingPlans);
     }
 
     private void validateClassifyPredicates(List<String> errors) {

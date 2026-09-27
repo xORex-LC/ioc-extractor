@@ -136,7 +136,7 @@ class IocConfigPreflightTest {
                         source.sync().enabled(), source.sync().retry(), null,
                         new IocProperties.Sync.Fetch(false, Duration.ofMinutes(1), null),
                         new IocProperties.Sync.Publish(false, Duration.ofMinutes(1), null)),
-                source.maintenance(), source.lifecycle(), source.observability());
+                source.maintenance(), source.lifecycle(), source.observability(), source.processing());
 
         var errors = validate(properties);
 
@@ -326,6 +326,6 @@ class IocConfigPreflightTest {
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), sink, source.pipeline(), ingestion,
                 artifactIdentity, dataframeImport, source.export(), sync, source.maintenance(),
-                lifecycle, source.observability());
+                lifecycle, source.observability(), source.processing());
     }
 }

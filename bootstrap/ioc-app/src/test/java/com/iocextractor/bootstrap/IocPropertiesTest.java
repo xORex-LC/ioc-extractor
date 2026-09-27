@@ -263,7 +263,7 @@ class IocPropertiesTest {
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), new IocProperties.Sink(source.sink().csv(), artifacts),
                 source.pipeline(), source.ingestion(), source.artifactIdentity(), source.dataframeImport(),
-                source.export(), source.sync(), source.maintenance(), source.lifecycle(), source.observability());
+                source.export(), source.sync(), source.maintenance(), source.lifecycle(), source.observability(), source.processing());
     }
 
     private IocProperties withCatalogs(IocProperties source,
@@ -273,7 +273,7 @@ class IocPropertiesTest {
                 source.engine(), source.runtime(), source.storage(), source.source(), source.refang(),
                 source.patterns(), source.classify(), sink, source.pipeline(), source.ingestion(),
                 artifactIdentity, source.dataframeImport(), source.export(), source.sync(), source.maintenance(),
-                source.lifecycle(), source.observability());
+                source.lifecycle(), source.observability(), source.processing());
     }
 
     private IocProperties.Sink.Artifact artifactCopy(
