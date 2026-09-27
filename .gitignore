@@ -68,3 +68,6 @@ AGENTS.md
 # planning and evidence. Other worknotes remain local by default.
 !/docs/worknote/0.3.0/
 !/docs/worknote/0.3.0/**
+# The release worknote may contain isolated Maven qualification probes.
+# Keep their reproducible sources, but never version their generated output.
+/docs/worknote/0.3.0/**/target/
