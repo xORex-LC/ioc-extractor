@@ -28,7 +28,7 @@ resolution. The analyzed universe is an explicit list of checked-in production
 
 ## Dependencies
 
-**Depends on:** all 20 production modules in `platform`, `core`, `adapters` and
+**Depends on:** all 21 production modules in `platform`, `core`, `adapters` and
 `bootstrap`.
 
 **Not imported by:** any production, test-support or other build-support module.

@@ -1,5 +1,7 @@
 package com.iocextractor.application.pipeline.payload;
 
+import com.iocextractor.processing.model.ClassifiedIndicator;
+
 import java.util.List;
 import java.util.Objects;
 

@@ -18,7 +18,7 @@ needed. Apply the policy to document extraction and explicitly contracted import
 | Current code seam | Consequence |
 |---|---|
 | `ConfigRegistryCatalog`: value/address providers; lower/lower-host/upper/strip-prefix transforms | No supported host-only operation; lower-host retains address detail |
-| [ConfigurableRowMapper](../../../../adapters/adapter-csv/src/main/java/com/iocextractor/adapter/out/sink/csv/ConfigurableRowMapper.java): type/condition gates precede cell transforms | A new string transform alone cannot reroute a URL into an IP field |
+| [ConfigurableRowMapper](../../../../core/ioc-processing/src/main/java/com/iocextractor/processing/mapping/ConfigurableRowMapper.java): type/condition gates precede cell transforms | A new string transform alone cannot reroute a URL into an IP field |
 | [RuleBasedMatchPolicy](../../../../core/ioc-domain/src/main/java/com/iocextractor/domain/classify/RuleBasedMatchPolicy.java): first matching configured rule over extracted features | Codes are operator-owned; facts still depend on the selected value |
 | `IocExtractionService`: classify before artifact preparation | One classification currently precedes independently formatted outputs |
 | [CsvProcessedImportRowPreparer](../../../../adapters/adapter-csv/src/main/java/com/iocextractor/adapter/in/csv/CsvProcessedImportRowPreparer.java): CSV definitions, concrete mapper, hardcoded IOC provider names | Adding a provider alone does not establish shared import semantics |

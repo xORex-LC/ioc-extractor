@@ -1,7 +1,11 @@
 package com.iocextractor.adapter.out.sink.csv;
 
+import com.iocextractor.processing.mapping.ArtifactFilter;
+import com.iocextractor.processing.mapping.ColumnSpec;
+import com.iocextractor.processing.mapping.RowMapper;
+
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.domain.model.IndicatorType;
 import org.junit.jupiter.api.Test;
 

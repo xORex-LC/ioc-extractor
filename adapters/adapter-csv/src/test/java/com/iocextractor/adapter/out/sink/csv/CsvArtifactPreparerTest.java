@@ -1,5 +1,13 @@
 package com.iocextractor.adapter.out.sink.csv;
 
+import com.iocextractor.processing.mapping.ArtifactFilter;
+import com.iocextractor.processing.mapping.ColumnSpec;
+import com.iocextractor.processing.mapping.ConfigurableRowMapper;
+import com.iocextractor.adapter.out.sink.csv.IdValueProvider;
+import com.iocextractor.processing.mapping.MappingValueException;
+import com.iocextractor.processing.mapping.RowMapper;
+import com.iocextractor.processing.mapping.ValueProvider;
+
 import com.iocextractor.application.artifact.ArtifactIdSequence;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
 import com.iocextractor.application.artifact.ArtifactPreparationBatch;
@@ -7,7 +15,7 @@ import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.application.observation.OccurrencePosition;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicatorOccurrence;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.observability.PipelineItemDecision;
@@ -155,6 +163,61 @@ class CsvArtifactPreparerTest {
             assertThat(row.template().value("hash")).isEqualTo("same-hash");
             assertThat(row.orderedFieldPositions()).containsEntry("name", new OccurrencePosition(3));
         });
+    }
+
+    @Test
+    void occurrencePolicyRequiresCanonicalIdentityBeforePreparingRows() {
+        var policy = new ArtifactWritePolicy(
+                ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY, "value", Map.of());
+        var definition = new CsvArtifactDefinition(
+                "hashes", Set.of(IndicatorType.MD5), ArtifactFilter.none(),
+                new TestMapper(ignored -> { }), ArtifactIdStrategy.ASCENDING, 1, policy);
+        var preparer = new CsvArtifactPreparer(definition,
+                new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 1),
+                new DiagnosticFactory(Clock.systemUTC()), "source-key",
+                NoopPipelineDecisionTracer.INSTANCE);
+
+        assertThatThrownBy(() -> preparer.prepare(new ArtifactPreparationBatch(
+                List.of(), List.of(new ClassifiedIndicatorOccurrence(indicator("x"),
+                        new OccurrencePosition(1))))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("canonical identity");
+    }
+
+    @Test
+    void occurrencePolicyReportsOneBadMappingWithoutDiscardingIndependentCandidate() {
+        ValueProvider validated = classified -> {
+            if ("bad".equals(classified.indicator().value())) {
+                throw new MappingValueException("invalid candidate");
+            }
+            return classified.indicator().value();
+        };
+        var mapper = new ConfigurableRowMapper(
+                List.of(new ColumnSpec("value", "validated", null, null, null)),
+                Map.of("validated", validated), Map.of());
+        var policy = new ArtifactWritePolicy(
+                ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY, "value", Map.of());
+        var definition = new CsvArtifactDefinition(
+                "hashes", Set.of(IndicatorType.MD5), ArtifactFilter.none(), mapper,
+                ArtifactIdStrategy.ASCENDING, 1, policy);
+        var identity = new CanonicalArtifactIdentityResolver(List.of(
+                new ArtifactIdentityDefinition("hashes", List.of("value"), true, 1)));
+        var preparer = new CsvArtifactPreparer(definition,
+                new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 1),
+                new DiagnosticFactory(Clock.systemUTC()), "source-key",
+                NoopPipelineDecisionTracer.INSTANCE, identity);
+        var bad = indicator("bad");
+        var good = indicator("good");
+
+        var result = preparer.prepare(new ArtifactPreparationBatch(List.of(good), List.of(
+                new ClassifiedIndicatorOccurrence(bad, new OccurrencePosition(1)),
+                new ClassifiedIndicatorOccurrence(good, new OccurrencePosition(2)))));
+
+        assertThat(result.diagnostics()).singleElement()
+                .satisfies(diagnostic -> assertThat(diagnostic.code())
+                        .isEqualTo(SinkDiagnosticCodes.ROW_MAPPING_FAILED));
+        assertThat(result.value().rows()).singleElement()
+                .satisfies(row -> assertThat(row.template().value("value")).isEqualTo("good"));
     }
 
     private CsvArtifactPreparer preparer(RowMapper mapper) {

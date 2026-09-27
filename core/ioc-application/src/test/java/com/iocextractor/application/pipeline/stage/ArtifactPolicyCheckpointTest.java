@@ -1,5 +1,7 @@
 package com.iocextractor.application.pipeline.stage;
 
+import com.iocextractor.processing.model.ClassifiedIndicator;
+
 import com.iocextractor.application.artifact.ArtifactIdSequence;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
 import com.iocextractor.application.artifact.ArtifactRow;
@@ -111,7 +113,7 @@ class ArtifactPolicyCheckpointTest {
 
             @Override
             public Result<ArtifactWritePlan> prepare(
-                    List<com.iocextractor.application.pipeline.payload.ClassifiedIndicator> indicators) {
+                    List<com.iocextractor.processing.model.ClassifiedIndicator> indicators) {
                 int valid = indicators.size() - (oneInvalid ? 1 : 0);
                 var rows = new ArrayList<PreparedArtifactRow>(valid);
                 for (int index = 0; index < valid; index++) {

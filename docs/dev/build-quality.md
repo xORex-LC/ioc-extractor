@@ -103,7 +103,7 @@ runs only after the applicable modules.
 | Maven Enforcer | Toolchain and POM metadata | Violations block every ordinary build |
 | JUnit/Surefire/Failsafe contracts | Fast, integration, architecture, golden and documentation suites | Surefire owns `*Test`; Failsafe owns `*IT`; failures and lifecycle/report-union drift block `verify` |
 | ArchUnit | Compiled production classes | Dependency or package-boundary violation blocks `verify` |
-| JaCoCo | Test execution data and 20 production JARs | Exact universe/report integrity, aggregate/per-module no-regression ratchets and fixed aggregate/domain/application floors block `verify` |
+| JaCoCo | Test execution data and 21 production JARs | Exact universe/report integrity, aggregate/per-module no-regression ratchets and fixed aggregate/domain/application floors block `verify` |
 | Codecov | The verified reactor aggregate JaCoCo XML | Informational project/base-relative/patch reporting only; external upload failure never changes the local gate result |
 | SpotBugs | Applicable production bytecode | New, stale, moved or metadata-drifted findings block the exact ratchet; analyzer/report failures also block |
 | PMD CPD | Applicable checked-in production Java sources | Every duplicate stays visible; analyzer/scope/report failure or a change from the reviewed group-count snapshot blocks `verify` |

@@ -65,13 +65,13 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-043" module="adapters/adapter-csv" type="EI_EXPOSE_REP" hash="7517b4775548db7bcd7d6dd8b38e66fe" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="C2-REP-C" review="immutable-snapshot-construction-change">
-        <class name="com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper" />
+    <finding id="SB04-043" module="core/ioc-processing" type="EI_EXPOSE_REP" hash="f315c56fe881d46a8b1b9b4e3e264b26" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="C2-REP-C" review="immutable-snapshot-construction-change">
+        <class name="com.iocextractor.processing.mapping.ConfigurableRowMapper" />
         <method name="header" signature="()Ljava/util/List;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/ConfigurableRowMapper.java" startLine="50" bytecode="4" />
+        <anchor sourcePath="com/iocextractor/processing/mapping/ConfigurableRowMapper.java" startLine="60" bytecode="4" />
         <suppression>
             <Bug pattern="EI_EXPOSE_REP" />
-            <Class name="com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper" />
+            <Class name="com.iocextractor.processing.mapping.ConfigurableRowMapper" />
             <Method name="header" />
             <Field name="header" />
         </suppression>
@@ -132,13 +132,13 @@
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-NP-A in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
-    <finding id="SB04-015" module="adapters/adapter-csv" type="SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR" hash="22d5f5b6275533de4047b929a884dff6" occurrence="0" priority="2" rank="7" category="CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="C1-COR-A" review="artifact-filter-construction-contract-change">
-        <class name="com.iocextractor.adapter.out.sink.csv.ArtifactFilter" />
+    <finding id="SB04-015" module="core/ioc-processing" type="SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR" hash="df0133b485bdf44da3cca7b700efad50" occurrence="0" priority="2" rank="7" category="CORRECTNESS" disposition="false-positive" owner="R030-BUILD" evidence="C1-COR-A" review="artifact-filter-construction-contract-change">
+        <class name="com.iocextractor.processing.mapping.ArtifactFilter" />
         <method name="&lt;init&gt;" signature="(Ljava/util/List;Ljava/util/List;)V" />
         <anchor />
         <suppression>
             <Bug pattern="SING_SINGLETON_HAS_NONPRIVATE_CONSTRUCTOR" />
-            <Class name="com.iocextractor.adapter.out.sink.csv.ArtifactFilter" />
+            <Class name="com.iocextractor.processing.mapping.ArtifactFilter" />
             <Method name="&lt;init&gt;" />
         </suppression>
         <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C1-COR-A in the BUILD-SPOTBUGS-04 worknote.</rationale>

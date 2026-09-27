@@ -62,6 +62,7 @@
         <module>platform/platform-observability</module>
         <module>platform/platform-diagnostics-logging</module>
         <module>core/ioc-domain</module>
+        <module>core/ioc-processing</module>
         <module>core/ioc-application</module>
         <module>core/ioc-application-tck</module>
         <module>adapters/adapter-regex-re2j</module>
@@ -518,6 +519,11 @@
             <dependency>
                 <groupId>com.iocextractor</groupId>
                 <artifactId>ioc-domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.iocextractor</groupId>
+                <artifactId>ioc-processing</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

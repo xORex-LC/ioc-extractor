@@ -1,5 +1,6 @@
 package com.iocextractor.bootstrap;
 
+
 import org.springframework.beans.factory.InitializingBean;
 
 import java.util.ArrayList;

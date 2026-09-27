@@ -1,6 +1,6 @@
 package com.iocextractor.application.artifact;
 
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicatorOccurrence;
 
 import java.util.List;

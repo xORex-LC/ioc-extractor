@@ -1,5 +1,7 @@
 package com.iocextractor.application.pipeline.payload;
 
+import com.iocextractor.processing.model.ClassifiedIndicator;
+
 import com.iocextractor.application.observation.OccurrencePosition;
 
 import java.util.Objects;

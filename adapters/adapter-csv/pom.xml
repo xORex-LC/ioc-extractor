@@ -13,7 +13,7 @@
 
     <artifactId>ioc-adapter-csv</artifactId>
     <name>ioc-adapter-csv</name>
-    <description>Delimited CSV parsing, declarative row mapping and artifact projection</description>
+    <description>Delimited CSV parsing, artifact preparation and projection</description>
 
     <dependencies>
         <dependency>
@@ -28,6 +28,10 @@
         <dependency>
             <groupId>com.iocextractor</groupId>
             <artifactId>ioc-domain</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-processing</artifactId>
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>

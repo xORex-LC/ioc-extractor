@@ -40,6 +40,7 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 │   └── platform-diagnostics-logging (bridge: DiagnosticSink → LogEvent)
 ├── core/
 │   ├── ioc-domain                 (единый IOC bounded context; capability = пакеты + ArchUnit-DAG)
+│   ├── ioc-processing             (чистая композиция IOC views, classification и field mapping)
 │   ├── ioc-application            (порты in/out + use cases + IOC ETL stages)
 │   └── ioc-application-tck        (переиспользуемые contract tests driven-портов)
 ├── adapters/
@@ -69,7 +70,7 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 ### Направление зависимостей между модулями
 
 ```
-ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
+ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ ioc-domain
    │              │             │              └────────────▶ platform/*
    │              │             └───────────────────────────▶ platform/*
    │              └─────────────────────────────────────────▶ platform/*
@@ -83,6 +84,10 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
 - `platform-etl` зависит только на diagnostics/errors и не знает про IOC domain.
 - `ioc-domain` не зависит на application/adapters/bootstrap/platform-etl и
   остаётся framework-free.
+- `ioc-processing` зависит только от `ioc-domain` и `platform-errors`: он
+  владеет единой классификацией значения и декларативным заполнением полей,
+  но не canonical key, commit, диагностикой или Camel. Его граница описана в
+  [README модуля](../core/ioc-processing/README.md).
 - `ioc-application` зависит внутрь от `ioc-domain` и framework-free platform
   contracts для ETL, diagnostics, control events и keyed concurrency. Точный
   прямой Maven-граф принадлежит [POM модуля](../core/ioc-application/pom.xml),
@@ -100,14 +105,14 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
   JDK-only verifier и synthetic-reactor contract harness напрямую.
 - `coverage-report` зависит на все production-модули только для формирования
   полного JaCoCo aggregate.
-- `spotbugs-report` зависит на те же 20 production-модулей для reactor ordering,
+- `spotbugs-report` зависит на те же 21 production-модуль для reactor ordering,
   формирует общий SpotBugs XML/HTML и проверяет наличие всех module/aggregate
   reports.
-- `cpd-report` зависит на 20 production-модулей только для reactor ordering и
+- `cpd-report` зависит на 21 production-модуль только для reactor ordering и
   анализирует единым PMD CPD execution явный allowlist их `src/main/java`;
   fail-closed registry сверяет reactor, ordering dependencies, source roots и
   итоговый XML source universe.
-- `pmd-report` зависит на те же 20 production-модулей только для reactor
+- `pmd-report` зависит на те же 21 production-модуль только для reactor
   ordering и type resolution. Поимённая 22-rule policy выполняется
   отдельным regular CI job, а 3-rule ownership/size watchlist остаётся
   локально opt-in. Оба профиля анализируют явный allowlist

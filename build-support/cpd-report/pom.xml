@@ -60,6 +60,10 @@
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-processing</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
             <artifactId>ioc-application</artifactId>
         </dependency>
 
@@ -156,6 +160,7 @@
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-observability/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/platform/platform-diagnostics-logging/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/core/ioc-domain/src/main/java</compileSourceRoot>
+                                <compileSourceRoot>${maven.multiModuleProjectDirectory}/core/ioc-processing/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/core/ioc-application/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-regex-re2j/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-psl/src/main/java</compileSourceRoot>

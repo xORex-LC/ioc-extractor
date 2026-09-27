@@ -2,7 +2,7 @@ package com.iocextractor.bootstrap;
 
 import com.iocextractor.adapter.out.regex.JdkRegexPatternEngine;
 import com.iocextractor.adapter.out.regex.Re2jPatternEngine;
-import com.iocextractor.application.processing.ExactIndicatorParser;
+import com.iocextractor.processing.parse.ExactIndicatorParser;
 import com.iocextractor.domain.extract.PatternEngine;
 import com.iocextractor.domain.feature.NetworkAddressParser;
 import com.iocextractor.domain.model.IndicatorType;

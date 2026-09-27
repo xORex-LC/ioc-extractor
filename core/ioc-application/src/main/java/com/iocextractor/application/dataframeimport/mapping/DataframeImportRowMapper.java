@@ -1,5 +1,6 @@
 package com.iocextractor.application.dataframeimport.mapping;
 
+
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
 import com.iocextractor.application.artifact.CanonicalKeyMaterial;

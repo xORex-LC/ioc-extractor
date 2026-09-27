@@ -10,20 +10,13 @@ dataframe и формирование immutable export slices. Схема арт
 кодировки и filesystem publication protocol. Он не меняет export-ledger, не
 читает service DB и не координирует saga. Новый формат артефакта = блок `columns`
 в конфиге (без кода); новая семантика колонки = новый тонкий
-`ValueProvider`/`Transform`.
+`ValueProvider`/`Transform` в `ioc-processing`.
 
 ## Структура
 
 | Файл | Назначение |
 |---|---|
-| `ArtifactFilter.java` | Artifact-level `include`/`exclude` фильтр поверх `accepts` |
-| `RowMapper.java` | Порт маппинга `ClassifiedIndicator → строка CSV` |
-| `ConfigurableRowMapper.java` | Generic-маппер по `ColumnSpec` + реестры провайдеров/трансформаций |
-| `ColumnSpec.java` | Декларативная спека колонки (`name/from/value/when-type/transform`) |
-| `ValueProvider.java` + `*ValueProvider` | Источники значений: `id`, `value`, `source.label`, `match.url`, `match.host`, `address.url`, `address.ip` |
-| `Transform.java` + `*Transform` | Трансформации: `lower`, `lower-host` (только хост), `upper`, `strip-prefix` |
-| `MappingValueException.java`, `RowMappingException.java` | Typed input rejection на SPI boundary и его локализация до element diagnostic |
-| `IdGenerator.java` | Последовательность id артефакта (ascending/descending) |
+| `CsvArtifactDefinition.java`, `CsvArtifactPreparer.java` | Выбор артефакта и адаптация общей подготовки полей к write plan |
 | `CsvArtifactProjection.java` | Производная CSV-проекция из canonical JDBC storage |
 | `CsvArtifactSliceWriter.java` | Реализация `ArtifactSliceWriter`: staging, inspection/recovery и atomic publish; синхронный `SnapshotRowConsumer` |
 | `CsvSliceMaterialization.java` | Состояние одного callback-сеанса: `ArtifactRow → CSVPrinter → DigestOutputStream`, row count и SHA-256 за один проход |
@@ -47,7 +40,7 @@ JDBC truth path использует те же artifact definitions, но дер
 ответственности раздельно: application orchestration не знает CSV-диалект, а
 adapter отвечает за projection-файл и immutable export slices.
 `match.*`, `address.*` и artifact filters читают уже materialized features/match
-из `ClassifiedIndicator`; adapter не вызывает `MatchPolicy` или
+из `ClassifiedIndicator`; общая семантика живёт в `ioc-processing`, adapter не вызывает `MatchPolicy` или
 `IndicatorFeatureExtractor` повторно для каждой колонки.
 
 Provider/transform бросает `MappingValueException` только для ожидаемого

@@ -1,0 +1,195 @@
+package com.iocextractor.processing.mapping;
+
+import com.iocextractor.common.IocExtractorException;
+import com.iocextractor.processing.model.ClassifiedIndicator;
+import com.iocextractor.domain.classify.ClassificationDecision;
+import com.iocextractor.domain.classify.MatchRule;
+import com.iocextractor.domain.classify.RuleBasedMatchPolicy;
+import com.iocextractor.domain.feature.HostKind;
+import com.iocextractor.domain.feature.IndicatorFeatures;
+import com.iocextractor.domain.model.Indicator;
+import com.iocextractor.domain.model.IndicatorType;
+import com.iocextractor.domain.model.MaskMatch;
+import com.iocextractor.domain.model.SourceContext;
+import org.junit.jupiter.api.Test;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Predicate;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static com.iocextractor.processing.mapping.RowMappingException.ComponentKind.PROVIDER;
+import static com.iocextractor.processing.mapping.RowMappingException.ComponentKind.TRANSFORM;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class ConfigurableRowMapperTest {
+
+    private ConfigurableRowMapper mapper(List<ColumnSpec> columns) {
+        Map<String, ValueProvider> providers = new HashMap<>();
+        providers.put("id", ignored -> null);
+        providers.put("value", new IndicatorValueProvider());
+        providers.put("source.label", new SourceLabelValueProvider());
+        providers.put("match.url", new MatchUrlValueProvider());
+        providers.put("match.host", new MatchHostValueProvider());
+        Map<String, Transform> transforms = new HashMap<>();
+        transforms.put("lower", new LowercaseTransform());
+        transforms.put("upper", new UppercaseTransform());
+        transforms.put("strip-prefix", new StripPrefixTransform());
+        return new ConfigurableRowMapper(columns, providers, transforms);
+    }
+
+    private ClassifiedIndicator indicator(String value, IndicatorType type, String label) {
+        var indicator = new Indicator(value, type, new SourceContext(label, null));
+        var features = new IndicatorFeatures(value, value, false, false, false, HostKind.REGISTRABLE);
+        return new ClassifiedIndicator(indicator,
+                new ClassificationDecision(features, 0, List.of(), new MaskMatch("u:hAS", "h:dAS")));
+    }
+
+    @Test
+    void header_is_column_names() {
+        ConfigurableRowMapper m = mapper(List.of(
+                new ColumnSpec("id", "id", null, null, null),
+                new ColumnSpec("mask", "value", null, null, List.of("lower"))));
+        assertThat(m.header()).containsExactly("id", "mask");
+    }
+
+    @Test
+    void const_is_null_value_lowercased_match_codes_and_source() {
+        ConfigurableRowMapper m = mapper(List.of(
+                new ColumnSpec("id", "id", null, null, null),
+                new ColumnSpec("mask", "value", null, null, List.of("lower")),
+                new ColumnSpec("url_match", "match.url", null, null, null),
+                new ColumnSpec("host_match", "match.host", null, null, null),
+                new ColumnSpec("score", "const", null, null, null),
+                new ColumnSpec("source", "source.label", null, null, null)));
+        List<String> row = m.toRow(indicator("EXAMPLE.com", IndicatorType.DOMAIN, "Письмо X"));
+        assertThat(row).containsExactly(null, "example.com", "u:hAS", "h:dAS", null, "Письмо X");
+    }
+
+    @Test
+    void when_type_gates_hash_columns_and_uppercases() {
+        ConfigurableRowMapper m = mapper(List.of(
+                new ColumnSpec("hash_md5", "value", null, IndicatorType.MD5, List.of("upper")),
+                new ColumnSpec("hash_sha256", "value", null, IndicatorType.SHA256, List.of("upper"))));
+        List<String> row = m.toRow(indicator("abcdef", IndicatorType.MD5, null));
+        assertThat(row).containsExactly("ABCDEF", null);
+    }
+
+    @Test
+    void when_type_gate_skips_provider_for_an_unrelated_indicator() {
+        ValueProvider typeSpecific = ignored -> {
+            throw new AssertionError("provider must not run outside its when-type gate");
+        };
+        var m = new ConfigurableRowMapper(
+                List.of(new ColumnSpec(
+                        "hash_md5", "md5-only", null, IndicatorType.MD5, null)),
+                Map.of("md5-only", typeSpecific),
+                Map.of());
+
+        assertThat(m.toRow(indicator("abcdef", IndicatorType.SHA256, null)))
+                .containsExactly((String) null);
+    }
+
+    @Test
+    void multiple_types_and_structural_condition_gate_one_scalar_cell() {
+        ColumnSpec column = new ColumnSpec("hash", "value", null, null, null,
+                List.of(IndicatorType.MD5, IndicatorType.SHA1), List.of("eligible"));
+        Map<String, Predicate<ClassifiedIndicator>> conditions = Map.of("eligible",
+                classified -> classified.indicator().value().startsWith("a"));
+        ConfigurableRowMapper m = new ConfigurableRowMapper(List.of(column),
+                Map.of("value", new IndicatorValueProvider()), Map.of(), conditions);
+
+        assertThat(m.toRow(indicator("abc", IndicatorType.MD5, null))).containsExactly("abc");
+        assertThat(m.toRow(indicator("abc", IndicatorType.SHA256, null)))
+                .containsExactly((String) null);
+        assertThat(m.toRow(indicator("def", IndicatorType.SHA1, null)))
+                .containsExactly((String) null);
+    }
+
+    @Test
+    void strip_prefix_transform() {
+        ConfigurableRowMapper m = mapper(List.of(
+                new ColumnSpec("source", "source.label", null, null, List.of("strip-prefix:Письмо "))));
+        List<String> row = m.toRow(indicator("x", IndicatorType.SHA256, "Письмо ФСТЭК"));
+        assertThat(row).containsExactly("ФСТЭК");
+    }
+
+    @Test
+    void unknown_provider_fails_fast() {
+        ConfigurableRowMapper m = mapper(List.of(new ColumnSpec("x", "nope", null, null, null)));
+        assertThatThrownBy(() -> m.toRow(indicator("x", IndicatorType.URL, null)))
+                .isInstanceOf(IocExtractorException.class);
+    }
+
+    @Test
+    void translatesOnlyTypedProviderRejectionAndAddsMappingLocation() {
+        var m = new ConfigurableRowMapper(
+                List.of(new ColumnSpec("mask", "validated", null, null, null)),
+                Map.of("validated", ignored -> {
+                    throw new MappingValueException("value does not satisfy provider contract");
+                }),
+                Map.of());
+
+        assertThatThrownBy(() -> m.toRow(indicator("secret.example", IndicatorType.URL, null)))
+                .isInstanceOfSatisfying(RowMappingException.class, failure -> {
+                    assertThat(failure.column()).isEqualTo("mask");
+                    assertThat(failure.componentKind()).isEqualTo(PROVIDER);
+                    assertThat(failure.componentName()).isEqualTo("validated");
+                    assertThat(failure).hasMessageContaining("value does not satisfy provider contract")
+                            .hasCauseInstanceOf(MappingValueException.class);
+                });
+    }
+
+    @Test
+    void translatesOnlyTypedTransformRejectionAndAddsMappingLocation() {
+        var m = new ConfigurableRowMapper(
+                List.of(new ColumnSpec("mask", "value", null, null, List.of("validated:strict"))),
+                Map.of("value", classified -> classified.indicator().value()),
+                Map.of("validated", (value, arg) -> {
+                    throw new MappingValueException("value does not satisfy transform contract");
+                }));
+
+        assertThatThrownBy(() -> m.toRow(indicator("secret.example", IndicatorType.URL, null)))
+                .isInstanceOfSatisfying(RowMappingException.class, failure -> {
+                    assertThat(failure.column()).isEqualTo("mask");
+                    assertThat(failure.componentKind()).isEqualTo(TRANSFORM);
+                    assertThat(failure.componentName()).isEqualTo("validated");
+                });
+    }
+
+    @Test
+    void does_not_downgrade_unexpected_provider_defect_to_element_failure() {
+        var m = new ConfigurableRowMapper(
+                List.of(new ColumnSpec("mask", "broken", null, null, null)),
+                Map.of("broken", ignored -> {
+                    throw new IllegalStateException("provider invariant broken");
+                }),
+                Map.of());
+
+        assertThatThrownBy(() -> m.toRow(indicator("example.com", IndicatorType.DOMAIN, null)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("provider invariant broken");
+    }
+
+    @Test
+    void multiple_columns_reuse_one_materialized_classification() {
+        var featureCalls = new AtomicInteger();
+        var features = new IndicatorFeatures(
+                "example.com", "example.com", false, false, false, HostKind.REGISTRABLE);
+        var policy = new RuleBasedMatchPolicy(indicator -> {
+            featureCalls.incrementAndGet();
+            return features;
+        }, List.of(new MatchRule(List.of(), List.of(), new MaskMatch("u:hAS", "h:dAS"))));
+        var indicator = new Indicator("example.com", IndicatorType.DOMAIN, new SourceContext(null, null));
+        var classified = new ClassifiedIndicator(indicator, policy.classify(indicator));
+        var mapper = mapper(List.of(
+                new ColumnSpec("url_match", "match.url", null, null, null),
+                new ColumnSpec("host_match", "match.host", null, null, null),
+                new ColumnSpec("url_match_copy", "match.url", null, null, null)));
+
+        assertThat(mapper.toRow(classified)).containsExactly("u:hAS", "h:dAS", "u:hAS");
+        assertThat(featureCalls).hasValue(1);
+    }
+}

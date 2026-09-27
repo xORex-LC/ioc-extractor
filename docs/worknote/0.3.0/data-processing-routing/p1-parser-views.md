@@ -10,9 +10,9 @@ I/O. `NetworkHostDeriver` creates one new typed IOC with the original source
 context and leaves the original occurrence unchanged. `DefaultIndicatorFeatureExtractor`
 uses the same parser for host/detail flags, avoiding divergent authority rules.
 
-The application-level `ExactIndicatorParser` composes the independent domain
-extractor and address parser without introducing a domain package cycle. P2 can
-move this composition into the admitted processing module. It requires exactly
+`ExactIndicatorParser` composes the independent domain extractor and address
+parser without introducing a domain package cycle. P2 moved this composition
+into `ioc-processing`. It requires exactly
 one extractor result spanning the entire
 trimmed structured cell. A prefix match cannot turn malformed imported text
 into a valid IOC. Document extraction remains lexical and may still find a

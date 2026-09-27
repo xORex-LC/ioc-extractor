@@ -1,5 +1,11 @@
 package com.iocextractor.adapter.out.sink.csv;
 
+import com.iocextractor.processing.mapping.ColumnSpec;
+import com.iocextractor.processing.mapping.ConfigurableRowMapper;
+import com.iocextractor.adapter.out.sink.csv.IdValueProvider;
+import com.iocextractor.processing.mapping.MappingValueException;
+import com.iocextractor.processing.mapping.ValueProvider;
+
 import com.iocextractor.application.artifact.ArtifactIdSequence;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
 import com.iocextractor.application.artifact.CanonicalArtifact;
@@ -7,7 +13,7 @@ import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.pipeline.CompletionStatus;
 import com.iocextractor.application.pipeline.payload.ArtifactWriteSummary;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.application.pipeline.payload.RetainedIndicators;
 import com.iocextractor.application.pipeline.stage.PrepareArtifactsStage;
 import com.iocextractor.application.pipeline.stage.WriteArtifactsStage;

@@ -1,13 +1,14 @@
 package com.iocextractor.adapter.in.csv;
 
-import com.iocextractor.adapter.out.sink.csv.ColumnSpec;
-import com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper;
+
+import com.iocextractor.processing.mapping.ColumnSpec;
+import com.iocextractor.processing.mapping.ConfigurableRowMapper;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition;
-import com.iocextractor.adapter.out.sink.csv.RowMappingException;
+import com.iocextractor.processing.mapping.RowMappingException;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
 import com.iocextractor.application.artifact.CanonicalKeyMaterial;
-import com.iocextractor.application.classification.IndicatorClassifier;
+import com.iocextractor.processing.classification.IndicatorClassifier;
 import com.iocextractor.application.dataframeimport.contract.CompiledDataframeImportContract;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
 import com.iocextractor.application.dataframeimport.mapping.ImportRowMappingResult;
@@ -17,7 +18,7 @@ import com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord;
 import com.iocextractor.application.dataframeimport.model.ImportLogicalRow;
 import com.iocextractor.application.dataframeimport.model.ImportMergePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.application.port.out.dataframeimport.ProcessedImportRowPreparer;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.extract.RawIndicator;

@@ -8,7 +8,7 @@ import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.SourceContext;
 import com.iocextractor.application.pipeline.payload.AttributedIndicators;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.application.pipeline.payload.DeduplicationDecision;
 import com.iocextractor.application.pipeline.payload.DeduplicatedIndicators;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;

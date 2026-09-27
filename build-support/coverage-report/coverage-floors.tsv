@@ -8,6 +8,7 @@ ioc-platform-concurrency	none	none	Per-module ratchet only; no release-wide fixe
 ioc-platform-observability	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-platform-diagnostics-logging	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-domain	85	90	Decision-heavy domain release floor.
+ioc-processing	none	none	Pure module participates in the measured per-module ratchet; no separate fixed floor in P2.
 ioc-application	85	90	Decision-heavy application release floor.
 ioc-adapter-regex-re2j	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-adapter-psl	none	none	Per-module ratchet only; no release-wide fixed floor.

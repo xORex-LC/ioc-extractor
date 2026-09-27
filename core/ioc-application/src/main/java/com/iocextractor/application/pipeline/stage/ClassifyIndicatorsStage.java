@@ -1,7 +1,7 @@
 package com.iocextractor.application.pipeline.stage;
 
-import com.iocextractor.application.classification.IndicatorClassifier;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.processing.classification.IndicatorClassifier;
+import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.application.pipeline.payload.ClassifiedIndicatorOccurrence;
 import com.iocextractor.application.pipeline.payload.DeduplicatedIndicators;
 import com.iocextractor.application.pipeline.payload.RetainedIndicators;

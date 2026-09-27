@@ -1,24 +1,25 @@
 package com.iocextractor.adapter.in.csv;
 
-import com.iocextractor.adapter.out.sink.csv.AddressIpValueProvider;
-import com.iocextractor.adapter.out.sink.csv.AddressUrlValueProvider;
-import com.iocextractor.adapter.out.sink.csv.ArtifactFilter;
-import com.iocextractor.adapter.out.sink.csv.ColumnSpec;
-import com.iocextractor.adapter.out.sink.csv.ConfigurableRowMapper;
+
+import com.iocextractor.processing.mapping.AddressIpValueProvider;
+import com.iocextractor.processing.mapping.AddressUrlValueProvider;
+import com.iocextractor.processing.mapping.ArtifactFilter;
+import com.iocextractor.processing.mapping.ColumnSpec;
+import com.iocextractor.processing.mapping.ConfigurableRowMapper;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition;
 import com.iocextractor.adapter.out.sink.csv.IdValueProvider;
-import com.iocextractor.adapter.out.sink.csv.IndicatorValueProvider;
-import com.iocextractor.adapter.out.sink.csv.LowerHostTransform;
-import com.iocextractor.adapter.out.sink.csv.MatchHostValueProvider;
-import com.iocextractor.adapter.out.sink.csv.MatchUrlValueProvider;
-import com.iocextractor.adapter.out.sink.csv.SourceLabelValueProvider;
-import com.iocextractor.adapter.out.sink.csv.ValueProvider;
+import com.iocextractor.processing.mapping.IndicatorValueProvider;
+import com.iocextractor.processing.mapping.LowerHostTransform;
+import com.iocextractor.processing.mapping.MatchHostValueProvider;
+import com.iocextractor.processing.mapping.MatchUrlValueProvider;
+import com.iocextractor.processing.mapping.SourceLabelValueProvider;
+import com.iocextractor.processing.mapping.ValueProvider;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
 import com.iocextractor.application.artifact.CanonicalKeyDefinition;
 import com.iocextractor.application.artifact.CanonicalKeyMode;
-import com.iocextractor.application.classification.IndicatorClassifier;
+import com.iocextractor.processing.classification.IndicatorClassifier;
 import com.iocextractor.application.dataframeimport.contract.CompiledDataframeImportContract;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
 import com.iocextractor.application.dataframeimport.mapping.DataframeImportRowMapper;

@@ -1,5 +1,6 @@
 package com.iocextractor.application.dataframeimport.contract;
 
+
 import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
 import com.iocextractor.application.dataframeimport.model.ImportDuplicatePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportExistingSlotPolicy;

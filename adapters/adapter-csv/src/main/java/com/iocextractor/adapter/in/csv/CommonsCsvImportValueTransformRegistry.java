@@ -1,7 +1,7 @@
 package com.iocextractor.adapter.in.csv;
 
-import com.iocextractor.adapter.out.sink.csv.MappingValueException;
-import com.iocextractor.adapter.out.sink.csv.Transform;
+import com.iocextractor.processing.mapping.MappingValueException;
+import com.iocextractor.processing.mapping.Transform;
 import com.iocextractor.application.dataframeimport.mapping.ImportValueMappingException;
 import com.iocextractor.application.port.out.dataframeimport.ImportValueTransformRegistry;
 

@@ -23,6 +23,8 @@ proposal status in earlier assessments records their place in the decision proce
   candidate and import-row contracts, source dependency audit and module decision.
 - [P1 parser and host views](p1-parser-views.md): shared address grammar,
   exact-cell admission and typed host derivation before plan integration.
+- [P2 shared mapping admission](p2-shared-mapping.md): pure IOC module,
+  relocated single mapper/classifier and quality-scope admission.
 
 Customer requirement: selectively reduce URL/IP values to a host, including
 managed imports, while retaining configurable classification, artifact/field

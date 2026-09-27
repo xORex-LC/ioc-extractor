@@ -1,7 +1,7 @@
 package com.iocextractor.adapter.in.csv;
 
-import com.iocextractor.application.classification.IndicatorClassifier;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.processing.classification.IndicatorClassifier;
+import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.domain.classify.ClassificationDecision;
 import com.iocextractor.domain.extract.ExtractionOutcome;
 import com.iocextractor.domain.extract.RawIndicator;

@@ -91,7 +91,7 @@ root reactor. PMD source-policy/watchlist manifest и exact rulesets
 полного анализа. Финальный build-only модуль `build-support/spotbugs-report`
 формирует reactor-wide SpotBugs XML/HTML aggregate; поздний report-integrity
 режим выводит ожидаемые пути из того же registry, требует non-empty,
-структурно корректные XML/HTML всех 20 production-модулей и aggregate и
+структурно корректные XML/HTML всех 21 production-модулей и aggregate и
 запрещает reports у excluded scopes. Exact-baseline gate сравнивает unfiltered
 raw findings поэкземплярно: новый, stale, moved или metadata-drifted signal
 блокирует сборку вместе с analyzer error, пропущенным применимым модулем или
@@ -99,7 +99,7 @@ raw findings поэкземплярно: новый, stale, moved или metadat
 [build-quality capability](dev/build-quality.md).
 
 Финальный build-only модуль `build-support/cpd-report` выполняет один
-repository-wide PMD CPD analysis над положительным allowlist всех 19
+repository-wide PMD CPD analysis над положительным allowlist всех 21
 production `src/main/java` roots. Общий fail-closed verifier даёт disposition
 каждому reactor project и сверяет analyzed set с ordering dependencies и
 configured source roots. Перед analysis удаляются stale outputs; после него
@@ -111,9 +111,9 @@ report-only; analyzer, scope или report-integrity error блокирует `v
 
 Отдельный `build-support/pmd-report` владеет принятой PMD source
 policy и ownership/size watchlist. Каждый профиль выполняет один
-`aggregate-pmd-no-fork` над теми же 20 production roots и формирует
+`aggregate-pmd-no-fork` над теми же 21 production roots и формирует
 XML/HTML в раздельных `target/pmd/` и `target/pmd-watchlist/`.
-Verifier сверяет точный 26-project disposition, ordering dependencies,
+Verifier сверяет точный 27-project disposition, ordering dependencies,
 положительные source roots, UTF-8, engine dependencies и оба поимённых
 ruleset без category refs/exclusions; analyzer/configuration error, пропавший
 или out-of-scope report красит выбранную command. Policy работает

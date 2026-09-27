@@ -1,5 +1,8 @@
 package com.iocextractor.adapter.out.sink.csv;
 
+import com.iocextractor.processing.mapping.ArtifactFilter;
+import com.iocextractor.processing.mapping.RowMapper;
+
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
 import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;

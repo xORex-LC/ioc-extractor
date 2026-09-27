@@ -1,5 +1,7 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.processing.mapping.ConfigurableRowMapper;
+
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.domain.model.IndicatorType;
 import org.junit.jupiter.api.Test;

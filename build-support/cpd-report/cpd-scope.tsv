@@ -8,6 +8,7 @@ platform/platform-concurrency	ioc-platform-concurrency	analyzed	Production runti
 platform/platform-observability	ioc-platform-observability	analyzed	Production runtime Java sources
 platform/platform-diagnostics-logging	ioc-platform-diagnostics-logging	analyzed	Production runtime Java sources
 core/ioc-domain	ioc-domain	analyzed	Production runtime Java sources
+core/ioc-processing	ioc-processing	analyzed	Production runtime Java sources
 core/ioc-application	ioc-application	analyzed	Production runtime Java sources
 core/ioc-application-tck	ioc-application-tck	excluded	Reusable test-contract Java sources, not runtime production code
 adapters/adapter-regex-re2j	ioc-adapter-regex-re2j	analyzed	Production runtime Java sources

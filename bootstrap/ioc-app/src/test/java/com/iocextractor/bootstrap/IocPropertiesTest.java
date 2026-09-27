@@ -1,7 +1,7 @@
 package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.domain.classify.ClassificationDecision;
 import com.iocextractor.domain.feature.HostKind;
 import com.iocextractor.domain.feature.IndicatorFeatures;

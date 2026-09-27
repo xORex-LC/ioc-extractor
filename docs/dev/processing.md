@@ -43,7 +43,8 @@ canonical-запись сохраняют текущих владельцев.
 
 `platform-etl` даёт framework-free `Envelope`, `Stage`, `Pipeline` и
 `PipelineRunner`. IOC-specific payloads и порядок стадий принадлежат
-`core/ioc-application`; доменные правила находятся в `core/ioc-domain`;
+`core/ioc-application`; композиция классификации и декларативного заполнения
+полей — в чистом `core/ioc-processing`, доменные правила — в `core/ioc-domain`;
 Tika, RE2/J, Guava PSL и Commons CSV изолированы адаптерами.
 
 Для сетевых значений доменный `NetworkAddressParser` задаёт единую поддерживаемую
@@ -51,7 +52,7 @@ Tika, RE2/J, Guava PSL и Commons CSV изолированы адаптерам�
 необязательный порт, путь, query и fragment; возвращает типизированную причину
 ожидаемого отказа для неподдерживаемой формы. `NetworkHostDeriver` создаёт
 отдельный IOC с исходным контекстом источника, не изменяя оригинал.
-`ExactIndicatorParser` требует одного совпадения на всю структурированную ячейку,
+`ExactIndicatorParser` из `ioc-processing` требует одного совпадения на всю структурированную ячейку,
 поэтому частичный адрес не становится импортированным IOC. Документный
 экстрактор по-прежнему ищет совпадения внутри текста. Эти операции пока не
 подключены к новому плану document/import; старый порядок стадий сохраняется.
@@ -119,7 +120,7 @@ schema fingerprint; это не value provider.
 Актуальные provider/transform/predicate keys принадлежат
 `ConfigRegistryCatalog` и preflight-ятся до первой обработки. Новый артефакт,
 выразимый существующими registries, добавляется конфигурацией. Новая семантика
-значения требует тонкого component-а в CSV adapter и явной регистрации в
+значения требует тонкого component-а в `ioc-processing` и явной регистрации в
 composition root. Новый формат или технология вывода требует отдельного
 адаптера за application port.
 

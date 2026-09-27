@@ -27,7 +27,7 @@ import com.iocextractor.application.artifact.lifecycle.LifecycleWriteResult;
 import com.iocextractor.application.artifact.lifecycle.ProjectionGeneration;
 import com.iocextractor.diagnostics.result.FailurePolicy;
 import com.iocextractor.diagnostics.result.Result;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.port.out.ingest.IngestionLedger;
 import com.iocextractor.application.port.out.ingest.SourceLifecycle;

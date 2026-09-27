@@ -1,5 +1,6 @@
 package com.iocextractor.bootstrap;
 
+
 import com.iocextractor.adapter.in.csv.CommonsCsvDelimitedRecordReader;
 import com.iocextractor.adapter.in.csv.CommonsCsvImportValueTransformRegistry;
 import com.iocextractor.adapter.in.csv.CsvProcessedImportRowPreparer;
@@ -26,7 +27,7 @@ import com.iocextractor.adapter.out.transport.smb.SmbManagedImportSourceLifecycl
 import com.iocextractor.adapter.out.transport.smb.SmbSessionPool;
 import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
-import com.iocextractor.application.classification.IndicatorClassifier;
+import com.iocextractor.processing.classification.IndicatorClassifier;
 import com.iocextractor.application.dataframeimport.DataframeImportAdmissionService;
 import com.iocextractor.application.dataframeimport.DataframeImportDetectionCoordinator;
 import com.iocextractor.application.dataframeimport.DataframeImportDetectionService;

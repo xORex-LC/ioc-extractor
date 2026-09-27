@@ -3,9 +3,9 @@
 ## Назначение
 
 CSV integration-family adapter providing strict inbound record streaming,
-artifact row mapping, canonical CSV projection and immutable artifact slices.
+artifact preparation, canonical CSV projection and immutable artifact slices.
 
-**Правило слоя:** owns Commons CSV parsing/writing, artifact row mapping and
+**Правило слоя:** owns Commons CSV parsing/writing, artifact preparation and
 local atomic publication; domain/application do not depend on Commons CSV or
 filesystem mechanics. Import/export orchestration remains in application ports.
 
@@ -15,11 +15,11 @@ filesystem mechanics. Import/export orchestration remains in application ports.
 |---|---|
 | `pom.xml` | Maven module descriptor |
 | `src/main/java/com/iocextractor/adapter/in/csv/` | Strict decoder, exact-header validation and callback-streaming CSV reader |
-| `src/main/java/com/iocextractor/adapter/out/sink/csv/` | CSV projection, export slice writers and mapping components |
+| `src/main/java/com/iocextractor/adapter/out/sink/csv/` | CSV projection, artifact preparer and export slice writers |
 
 ## Зависимости
 
-**Зависит от:** `ioc-application`, `ioc-domain`, platform
+**Зависит от:** `ioc-application`, `ioc-processing`, `ioc-domain`, platform
 errors/diagnostics/observability, Commons CSV, SLF4J API.
 
 **Не импортируется:** bootstrap and sibling adapters.
@@ -34,8 +34,8 @@ errors/diagnostics/observability, Commons CSV, SLF4J API.
   charset replacement возвращает одну `SINK.CHARSET_UNMAPPABLE` diagnostic с
   точными counts; diagnostic доставляет application orchestration, не adapter;
 - `CsvArtifactPreparer` выполняет config-driven filtering/mapping до policy
-  checkpoint; provider/transform может явно вернуть data-dependent failure
-  только через `MappingValueException`. `ConfigurableRowMapper` локализует его
+  checkpoint; provider/transform из `ioc-processing` может явно вернуть data-dependent failure
+  только через `MappingValueException`. Общий `ConfigurableRowMapper` локализует его
   как `RowMappingException` (column + component kind/name), а preparer создаёт
   element diagnostic. Остальные mapper defects останавливают run;
   route/filter/mapping decisions передаются в gated application TRACE port без

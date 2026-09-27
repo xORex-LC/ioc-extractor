@@ -1,5 +1,6 @@
 package com.iocextractor.application.port.out.dataframeimport;
 
+
 /** Application boundary for startup-validated named value transforms. */
 @FunctionalInterface
 public interface ImportValueTransformRegistry {

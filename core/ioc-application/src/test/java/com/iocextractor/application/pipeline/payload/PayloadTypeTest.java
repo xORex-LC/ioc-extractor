@@ -1,5 +1,7 @@
 package com.iocextractor.application.pipeline.payload;
 
+import com.iocextractor.processing.model.ClassifiedIndicator;
+
 import com.iocextractor.domain.extract.RawIndicator;
 import com.iocextractor.domain.extract.ExtractionOutcome;
 import com.iocextractor.domain.model.Indicator;

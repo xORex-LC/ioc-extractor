@@ -1,21 +1,21 @@
 package com.iocextractor.bootstrap;
 
-import com.iocextractor.adapter.out.sink.csv.AddressIpValueProvider;
-import com.iocextractor.adapter.out.sink.csv.AddressUrlValueProvider;
+import com.iocextractor.processing.mapping.AddressIpValueProvider;
+import com.iocextractor.processing.mapping.AddressUrlValueProvider;
 import com.iocextractor.adapter.out.sink.csv.IdValueProvider;
-import com.iocextractor.adapter.out.sink.csv.IndicatorValueProvider;
-import com.iocextractor.adapter.out.sink.csv.LowerHostTransform;
-import com.iocextractor.adapter.out.sink.csv.LowercaseTransform;
-import com.iocextractor.adapter.out.sink.csv.MatchHostValueProvider;
-import com.iocextractor.adapter.out.sink.csv.MatchUrlValueProvider;
-import com.iocextractor.adapter.out.sink.csv.SourceLabelValueProvider;
-import com.iocextractor.adapter.out.sink.csv.StripPrefixTransform;
-import com.iocextractor.adapter.out.sink.csv.Transform;
-import com.iocextractor.adapter.out.sink.csv.UppercaseTransform;
-import com.iocextractor.adapter.out.sink.csv.ValueProvider;
+import com.iocextractor.processing.mapping.IndicatorValueProvider;
+import com.iocextractor.processing.mapping.LowerHostTransform;
+import com.iocextractor.processing.mapping.LowercaseTransform;
+import com.iocextractor.processing.mapping.MatchHostValueProvider;
+import com.iocextractor.processing.mapping.MatchUrlValueProvider;
+import com.iocextractor.processing.mapping.SourceLabelValueProvider;
+import com.iocextractor.processing.mapping.StripPrefixTransform;
+import com.iocextractor.processing.mapping.Transform;
+import com.iocextractor.processing.mapping.UppercaseTransform;
+import com.iocextractor.processing.mapping.ValueProvider;
 import com.iocextractor.domain.classify.FeaturePredicate;
 import com.iocextractor.domain.classify.FeaturePredicates;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicator;
+import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.domain.feature.NetworkAddressClassifier;
 import com.iocextractor.domain.model.IndicatorType;
 
