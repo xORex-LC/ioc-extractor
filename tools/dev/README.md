@@ -22,6 +22,7 @@
 | `lifecycle-smoke.sh …` | Через daemon проверить active→history expiry, bounded retention, projection/export convergence, query plans и ID non-reuse |
 | `dataframe-import-load.sh …` | Выполнить opt-in 100k/1M полный JDBC import profile, проверить SLO/heap/query plans и сохранить evidence |
 | `ioc-aggregate-load.sh …` | Сравнить pre-feature JAR и aggregate candidate на одном duplicate-heavy daemon input; измерить end-to-end/write latency, VmHWM и query plans |
+| `router-qualification.sh --size 1000|100000` | Измерить синтетический Camel Router по матрице ветвей, потоков и исходов; отчёты в `.dev/router-qualification` |
 | `logs.sh …` | Читать и фильтровать ECS JSON по level/event/run/diagnostic |
 | `release-notes-context.sh …` | Собрать read-only Git/PR inventory для ручной подготовки release notes |
 
@@ -45,6 +46,7 @@ tools/dev/smoke.sh all
 tools/dev/lifecycle-smoke.sh --size 1000
 tools/dev/dataframe-import-load.sh --profile mixed --size 1000000
 make ioc-aggregate-load SIZE=100000 DUPLICATE_RATE=0.95 BASELINE_JAR=/path/to/pre-feature.jar
+make router-qualification SIZE=100000
 tools/dev/release-notes-context.sh --previous-tag v0.1.0 --target HEAD
 ```
 
@@ -119,3 +121,9 @@ JVM `VmHWM` не выше systemd `MemoryMax=1GiB`. Harness запускает �
 регрессию порядка 2x. Новый reference host/JDK/SQLite или изменение batching
 требуют осознанного rebaseline с сохранённым report, а не ослабления assertion
 после случайного red run.
+
+Router qualification запускает синтетические операции без IOC под фиксированным
+`-Xms128m/-Xmx512m`. Корректность матрицы 1k также проверяет Surefire;
+профиль 100k запускается отдельно. CSV и метаданные остаются в
+`.dev/router-qualification`. Его throughput и allocation нельзя сравнивать с
+нынешним IOC preparer до появления документной и импортной интеграции.

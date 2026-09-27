@@ -48,7 +48,7 @@ GITHUB ?= 0
 	context \
 	run stop runtime-up runtime-down runtime-status runtime-reset submit \
 	fixture fixture-1k fixture-5k fixture-100k smoke smoke-cli smoke-oneshot smoke-daemon \
-	lifecycle-smoke lifecycle-load dataframe-import-smoke dataframe-import-load dataframe-import-load-100k dataframe-import-load-1m ioc-aggregate-load \
+	lifecycle-smoke lifecycle-load dataframe-import-smoke dataframe-import-load dataframe-import-load-100k dataframe-import-load-1m ioc-aggregate-load router-qualification \
 	db logs logs-errors release-notes-context \
 	lint-shell docs security-update security-scan security-report \
 	ci-build ci-pmd ci-packaging ci-docs ci pre-push
@@ -251,6 +251,9 @@ ioc-aggregate-load: package ## Compare duplicate-heavy aggregate candidate with 
 	@args=(--size "$(SIZE)" --duplicate-rate "$(DUPLICATE_RATE)"); \
 	[[ -z "$(BASELINE_JAR)" ]] || args+=(--baseline-jar "$(BASELINE_JAR)"); \
 	tools/dev/ioc-aggregate-load.sh "$${args[@]}"
+
+router-qualification: ## Run opt-in synthetic Camel Router profile; SIZE=1000|100000
+	@tools/dev/router-qualification.sh --size "$(SIZE)"
 
 db: ## Inspect SQLite read-only; DB=service|dataframe DB_COMMAND=shell|schema|tables
 	@tools/dev/database.sh --workspace "$(WORKSPACE)" --db "$(DB)" "$(DB_COMMAND)"

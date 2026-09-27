@@ -9,7 +9,9 @@ Reviewed source baseline:
 [R1 implementation evidence](r1-implementation.md) and
 [R2 implementation evidence](r2-implementation.md) and
 [R3 implementation evidence](r3-implementation.md) and
-[R4 implementation evidence](r4-implementation.md). R5 is not implemented.
+[R4 implementation evidence](r4-implementation.md) and
+[R5 synthetic qualification](r5-qualification.md). R5 handover and real
+document/import comparison remain open until IOC P3/P4/P5.
 Companion: [IOC processing plan](ioc-processing-implementation-plan.md).
 
 ## Scope and authoritative design
