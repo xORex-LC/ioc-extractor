@@ -18,6 +18,12 @@ decisions материализуются один раз; application stages и�
 `ExtractionCommand.runId` обязателен и задаётся driving boundary: oneshot CLI
 создаёт новый correlation id, daemon передаёт durable `ingest_run.run_id`.
 `ExtractionResult` возвращает тот же id из terminal envelope.
+Для явно переданного document plan `PrepareRoutedArtifactsStage` сохраняет
+исходные вхождения после атрибуции, получает кандидатов через
+`DocumentProcessingPlan` port и разрешает конфликты по финальному ключу
+артефакта существующей policy. Прежний путь dedup/classify/prepare остаётся
+действующим без плана. Обе ветки сходятся в прежнем checkpoint и write stage;
+application не знает Camel и CSV.
 Terminal ingestion rejection идемпотентен: driving adapter различает впервые
 записанный `REJECTED` и уже durable `ALREADY_REJECTED`, не читая ledger напрямую.
 `ObservationId` идентифицирует одну delivery/retry цепочку, а повторяемый

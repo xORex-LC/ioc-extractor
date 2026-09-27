@@ -17,7 +17,11 @@ rejects new calls during close and waits for active calls for a bounded period
 before stopping Camel. The IOC operation bindings and document/import callers
 still await their first real consumer. Malformed dynamic rule IDs and reason
 codes are replaced in trace evidence without changing the returned failure
-reference.
+reference. The generated branch route sets the branch ID before calling its
+destination so a caller may bind distinct field views for branches sharing a
+destination; the reply retains the same branch ID. An unavailable destination
+may carry opaque local evidence to its caller, without teaching this technical
+module IOC diagnostics.
 
 Only this adapter may depend on Camel. Operator input never supplies endpoint
 addresses or scripts. The compiled selector owns tri-state FIRST/ALL/EXCLUSIVE

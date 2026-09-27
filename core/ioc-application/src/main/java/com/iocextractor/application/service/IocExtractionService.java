@@ -98,40 +98,21 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                 FailurePolicy failurePolicy,
                                 int maxDiagnosticsPerRun,
                                 PipelineDecisionTracer decisionTracer) {
-        this(reader, refanger, extractor, attributor, matchPolicy, preparers, repository,
-                lifecycleWriter, identityResolver, projection, deduplicate, observabilityMode,
-                observer, diagnosticSink, failurePolicy, maxDiagnosticsPerRun, decisionTracer,
-                null, Map.of());
+        this(new Components(reader, refanger, extractor, attributor, matchPolicy, preparers,
+                        repository, lifecycleWriter, identityResolver, projection),
+                new Settings(deduplicate, observabilityMode, observer, diagnosticSink,
+                        failurePolicy, maxDiagnosticsPerRun, decisionTracer, null, Map.of()));
     }
 
     /** Builds the occurrence-preserving document path for an admitted processing plan. */
-    public IocExtractionService(SourceReader reader,
-                                Refanger refanger,
-                                IndicatorExtractor extractor,
-                                SourceAttributor attributor,
-                                MatchPolicy matchPolicy,
-                                List<ArtifactPreparer> preparers,
-                                CanonicalArtifactRepository repository,
-                                CanonicalArtifactWriter lifecycleWriter,
-                                ArtifactIdentityResolver identityResolver,
-                                ArtifactProjection projection,
-                                boolean deduplicate,
-                                String observabilityMode,
-                                PipelineObserver observer,
-                                DiagnosticSink diagnosticSink,
-                                FailurePolicy failurePolicy,
-                                int maxDiagnosticsPerRun,
-                                PipelineDecisionTracer decisionTracer,
-                                DocumentProcessingPlan documentPlan,
-                                Map<String, ArtifactWritePolicy> writePolicies) {
+    IocExtractionService(Components components, Settings settings) {
         this(
-                new PipelineRunner(failurePolicy, observer, diagnosticSink,
-                        new DiagnosticFactory(Clock.systemUTC()), maxDiagnosticsPerRun),
-                pipeline(reader, refanger, extractor, attributor, matchPolicy, preparers,
-                        repository, lifecycleWriter, identityResolver, projection,
-                        deduplicate, Clock.systemUTC(), decisionTracer, documentPlan, writePolicies),
+                new PipelineRunner(settings.failurePolicy(), settings.observer(),
+                        settings.diagnosticSink(), new DiagnosticFactory(Clock.systemUTC()),
+                        settings.maxDiagnosticsPerRun()),
+                pipeline(components, settings, Clock.systemUTC()),
                 Clock.systemUTC(),
-                observabilityMode);
+                settings.observabilityMode());
     }
 
     /**
@@ -184,36 +165,43 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                 diagnosticSummary);
     }
 
-    private static Pipeline<ExtractionCommand, ArtifactWriteSummary> pipeline(SourceReader reader,
-                                                                              Refanger refanger,
-                                                                              IndicatorExtractor extractor,
-                                                                              SourceAttributor attributor,
-                                                                              MatchPolicy matchPolicy,
-                                                                              List<ArtifactPreparer> preparers,
-                                                                              CanonicalArtifactRepository repository,
-                                                                              CanonicalArtifactWriter lifecycleWriter,
-                                                                              ArtifactIdentityResolver identityResolver,
-                                                                              ArtifactProjection projection,
-                                                                              boolean deduplicate,
-                                                                              Clock clock,
-                                                                              PipelineDecisionTracer decisionTracer,
-                                                                              DocumentProcessingPlan documentPlan,
-                                                                              Map<String, ArtifactWritePolicy> writePolicies) {
+    private static Pipeline<ExtractionCommand, ArtifactWriteSummary> pipeline(
+            Components components, Settings settings, Clock clock) {
         var diagnostics = new DiagnosticFactory(clock);
         var attributed = Pipeline.<ExtractionCommand>start()
-                .then(new ReadSourceStage(reader, diagnostics))
-                .then(new RefangStage(refanger, decisionTracer))
-                .then(new ExtractIndicatorsStage(extractor, diagnostics, decisionTracer))
-                .then(new AttributeSourceStage(attributor, clock, decisionTracer));
-        var prepared = documentPlan == null
+                .then(new ReadSourceStage(components.reader(), diagnostics))
+                .then(new RefangStage(components.refanger(), settings.decisionTracer()))
+                .then(new ExtractIndicatorsStage(components.extractor(), diagnostics,
+                        settings.decisionTracer()))
+                .then(new AttributeSourceStage(components.attributor(), clock,
+                        settings.decisionTracer()));
+        var prepared = settings.documentPlan() == null
                 ? attributed
-                .then(new DeduplicateIndicatorsStage(deduplicate, diagnostics, decisionTracer))
-                .then(new ClassifyIndicatorsStage(matchPolicy, diagnostics, decisionTracer))
-                .then(new PrepareArtifactsStage(preparers))
-                : attributed.then(new PrepareRoutedArtifactsStage(documentPlan, preparers,
-                        Objects.requireNonNull(identityResolver, "identityResolver"), writePolicies,
-                        deduplicate));
+                .then(new DeduplicateIndicatorsStage(settings.deduplicate(), diagnostics,
+                        settings.decisionTracer()))
+                .then(new ClassifyIndicatorsStage(components.matchPolicy(), diagnostics,
+                        settings.decisionTracer()))
+                .then(new PrepareArtifactsStage(components.preparers()))
+                : attributed.then(new PrepareRoutedArtifactsStage(settings.documentPlan(),
+                        components.preparers(),
+                        Objects.requireNonNull(components.identityResolver(), "identityResolver"),
+                        settings.writePolicies(), settings.deduplicate()));
         return prepared.then(new WriteArtifactsStage(
-                        repository, lifecycleWriter, identityResolver, projection, diagnostics));
+                components.repository(), components.lifecycleWriter(),
+                components.identityResolver(), components.projection(), diagnostics));
     }
+
+    /** Ports that define one extraction pipeline without choosing its routing policy. */
+    record Components(SourceReader reader, Refanger refanger, IndicatorExtractor extractor,
+                      SourceAttributor attributor, MatchPolicy matchPolicy,
+                      List<ArtifactPreparer> preparers, CanonicalArtifactRepository repository,
+                      CanonicalArtifactWriter lifecycleWriter,
+                      ArtifactIdentityResolver identityResolver, ArtifactProjection projection) { }
+
+    /** Immutable execution settings selected by the composition root. */
+    record Settings(boolean deduplicate, String observabilityMode, PipelineObserver observer,
+                    DiagnosticSink diagnosticSink, FailurePolicy failurePolicy,
+                    int maxDiagnosticsPerRun, PipelineDecisionTracer decisionTracer,
+                    DocumentProcessingPlan documentPlan,
+                    Map<String, ArtifactWritePolicy> writePolicies) { }
 }

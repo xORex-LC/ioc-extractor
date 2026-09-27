@@ -14,7 +14,9 @@ public sealed interface BranchOutcome permits BranchOutcome.Prepared,
     record Filtered() implements BranchOutcome { }
 
     /** An expected destination failure; it does not cause route reselection. */
-    record Unavailable(FailureReference failure) implements BranchOutcome {
+    record Unavailable(FailureReference failure, Object evidence) implements BranchOutcome {
         public Unavailable { Objects.requireNonNull(failure); }
+
+        public Unavailable(FailureReference failure) { this(failure, null); }
     }
 }

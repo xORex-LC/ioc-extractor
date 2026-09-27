@@ -1,0 +1,110 @@
+package com.iocextractor.bootstrap;
+
+import com.iocextractor.adapter.out.sink.csv.CsvArtifactPreparer;
+import com.iocextractor.adapter.processing.camel.compile.OperationCatalog;
+import com.iocextractor.adapter.processing.camel.compile.OperationCatalog.PredicateRegistration;
+import com.iocextractor.adapter.processing.camel.compile.RouteProtocol;
+import com.iocextractor.adapter.processing.camel.contract.BranchOutcome;
+import com.iocextractor.adapter.processing.camel.contract.FailureReference;
+import com.iocextractor.adapter.processing.camel.contract.PlanExecutionResult;
+import com.iocextractor.adapter.processing.camel.contract.ViewOutcome;
+import com.iocextractor.application.artifact.RoutedArtifactCandidate;
+import com.iocextractor.application.pipeline.payload.IndicatorOccurrence;
+import com.iocextractor.domain.classify.FeaturePredicate;
+import com.iocextractor.domain.feature.NetworkAddressParser;
+import com.iocextractor.domain.feature.NetworkHostDeriver;
+import com.iocextractor.processing.classification.IndicatorClassifier;
+import com.iocextractor.processing.model.ClassifiedIndicator;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import org.apache.camel.Exchange;
+import org.apache.camel.Processor;
+
+/** Binds shared IOC operations and CSV preparers to Router's neutral catalog. */
+final class DocumentProcessingOperations {
+    private static final String NETWORK_HOST = "network.host";
+    private final ProcessingPlanCatalog.CompiledPlan plan;
+    private final Map<String, CsvArtifactPreparer> preparers;
+    private final IndicatorClassifier classifier;
+
+    DocumentProcessingOperations(ProcessingPlanCatalog.CompiledPlan plan,
+                                 Map<String, CsvArtifactPreparer> preparers,
+                                 IndicatorClassifier classifier) {
+        this.plan = Objects.requireNonNull(plan, "plan");
+        this.preparers = Map.copyOf(preparers);
+        this.classifier = Objects.requireNonNull(classifier, "classifier");
+    }
+
+    OperationCatalog catalog() {
+        var deriver = new NetworkHostDeriver(new NetworkAddressParser());
+        Processor host = exchange -> {
+            DocumentView input = Objects.requireNonNull(
+                    exchange.getMessage().getBody(DocumentView.class), "document view");
+            var result = deriver.derive(input.classified().indicator());
+            exchange.getMessage().setBody(result.isAvailable()
+                    ? new ViewOutcome.Available(new DocumentView(
+                            new ClassifiedIndicator(result.indicator(), classifier.classify(result.indicator())),
+                            input.occurrence()))
+                    : new ViewOutcome.Unavailable(new FailureReference(NETWORK_HOST,
+                            result.failure().name().toLowerCase(java.util.Locale.ROOT)
+                                    .replace('_', '-'))));
+        };
+        Map<String, Processor> destinations = new HashMap<>();
+        preparers.forEach((artifact, preparer) -> destinations.put(artifact,
+                exchange -> prepareBranch(exchange, preparer)));
+        Map<String, PredicateRegistration> predicates = predicates();
+        return new OperationCatalog(Map.of(NETWORK_HOST, host), destinations, predicates,
+                java.util.Arrays.stream(NetworkAddressParser.FailureReason.values())
+                        .map(reason -> reason.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-'))
+                        .collect(java.util.stream.Collectors.toUnmodifiableSet()));
+    }
+
+    private static Map<String, PredicateRegistration> predicates() {
+        Map<String, PredicateRegistration> registrations = new HashMap<>();
+        for (Map.Entry<String, FeaturePredicate> entry : ConfigRegistryCatalog.featurePredicates().entrySet()) {
+            registrations.put(entry.getKey(), new PredicateRegistration(Set.of(),
+                    (value, args) -> entry.getValue().test(
+                            ((DocumentView) value).classified().classification().features())));
+        }
+        registrations.put("type-in", new PredicateRegistration(Set.of("types"),
+                (value, args) -> java.util.Arrays.asList(args.get("types").split(","))
+                        .contains(((DocumentView) value).classified().indicator().type().name())));
+        return registrations;
+    }
+
+    private void prepareBranch(Exchange exchange, CsvArtifactPreparer preparer) {
+        String branchId = exchange.getMessage().getHeader(RouteProtocol.BRANCH_ID, String.class);
+        ProcessingPlanCatalog.BranchBinding binding = Objects.requireNonNull(
+                plan.bindings().get(branchId), "branch binding " + branchId);
+        PlanExecutionResult.BranchInput input = Objects.requireNonNull(exchange.getMessage()
+                .getBody(PlanExecutionResult.BranchInput.class), "branch input");
+        DocumentView selected = resolved(input, binding.defaultView());
+        Map<String, ClassifiedIndicator> columnViews = new HashMap<>();
+        binding.fieldViews().forEach((column, view) ->
+                columnViews.put(column, resolved(input, view).classified()));
+        var prepared = preparer.prepareRouted(selected.classified(), columnViews,
+                selected.occurrence().orderingPosition(), selected.occurrence().tieOrdinal());
+        BranchOutcome outcome;
+        if (!prepared.diagnostics().isEmpty()) {
+            outcome = new BranchOutcome.Unavailable(
+                    new FailureReference(branchId, "ROW_MAPPING_FAILED"), prepared.diagnostics().getFirst());
+        } else if (prepared.value().isPresent()) {
+            outcome = new BranchOutcome.Prepared(new RoutedArtifactCandidate(
+                    binding.artifact(), prepared.value().orElseThrow()));
+        } else {
+            outcome = new BranchOutcome.Filtered();
+        }
+        exchange.getMessage().setBody(outcome);
+    }
+
+    private static DocumentView resolved(PlanExecutionResult.BranchInput input, String view) {
+        ViewOutcome outcome = Objects.requireNonNull(input.resolvedViews().get(view),
+                "Required branch view was not available: " + view);
+        return (DocumentView) ((ViewOutcome.Available) outcome).value();
+    }
+}
+
+/** One per-occurrence view; source and rank are never inferred from derived values. */
+record DocumentView(ClassifiedIndicator classified, IndicatorOccurrence occurrence) { }

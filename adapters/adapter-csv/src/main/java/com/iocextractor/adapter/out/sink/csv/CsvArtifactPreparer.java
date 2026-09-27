@@ -1,6 +1,7 @@
 package com.iocextractor.adapter.out.sink.csv;
 
 import com.iocextractor.processing.mapping.RowMappingException;
+import com.iocextractor.processing.mapping.ConfigurableRowMapper;
 
 import com.iocextractor.application.artifact.ArtifactIdSequence;
 import com.iocextractor.application.artifact.ArtifactPreparationBatch;
@@ -27,6 +28,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.Map;
+import java.util.Optional;
+import com.iocextractor.application.observation.OccurrencePosition;
 
 /** CSV-configured, side-effect-free implementation of artifact row preparation. */
 public final class CsvArtifactPreparer implements ArtifactPreparer {
@@ -66,6 +70,42 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
     @Override
     public String name() {
         return definition.name();
+    }
+
+    /** Maps one selected branch using the existing artifact filter and column mapper. */
+    public Result<Optional<PreparedArtifactRow>> prepareRouted(
+            ClassifiedIndicator defaultView, Map<String, ClassifiedIndicator> columnViews,
+            OccurrencePosition position, int ordinal) {
+        Objects.requireNonNull(defaultView, "defaultView");
+        Objects.requireNonNull(columnViews, "columnViews");
+        Objects.requireNonNull(position, "position");
+        if (!accepted(defaultView)) {
+            trace(defaultView, "filtered");
+            return Result.success(Optional.empty());
+        }
+        try {
+            List<String> values = definition.mapper() instanceof ConfigurableRowMapper mapper
+                    ? mapper.toRow(defaultView, columnViews)
+                    : unmappedRow(defaultView, columnViews);
+            PreparedArtifactRow mapped = preparedRow(defaultView, values);
+            var positions = new LinkedHashMap<String, OccurrencePosition>();
+            definition.writePolicy().fields().keySet()
+                    .forEach(field -> positions.put(field, position));
+            trace(defaultView, "routed");
+            return Result.success(Optional.of(new PreparedArtifactRow(
+                    mapped.template(), mapped.idColumn(), positions)));
+        } catch (RowMappingException failure) {
+            trace(defaultView, "mapping_failed");
+            return Result.of(Optional.empty(), List.of(mappingDiagnostic(defaultView, failure, ordinal)));
+        }
+    }
+
+    private List<String> unmappedRow(ClassifiedIndicator defaultView,
+                                     Map<String, ClassifiedIndicator> columnViews) {
+        if (!columnViews.isEmpty()) {
+            throw new IllegalStateException("Field views require a configurable row mapper: " + name());
+        }
+        return definition.mapper().toRow(defaultView);
     }
 
     @Override
@@ -168,7 +208,10 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
     }
 
     private PreparedArtifactRow prepareRow(ClassifiedIndicator classified) {
-        List<String> values = definition.mapper().toRow(classified);
+        return preparedRow(classified, definition.mapper().toRow(classified));
+    }
+
+    private PreparedArtifactRow preparedRow(ClassifiedIndicator classified, List<String> values) {
         var row = new LinkedHashMap<String, String>();
         List<String> header = definition.mapper().header();
         for (int index = 0; index < header.size(); index++) {

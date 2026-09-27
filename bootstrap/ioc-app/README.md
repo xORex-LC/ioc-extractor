@@ -79,8 +79,12 @@ stages передают ему только уже вычисленные реш
 временем локальной операции и возвращает родительский MDC. `RouterTraceBridge`
 отправляет технические решения без значений IOC в уже существующий
 `PipelineDecisionTracer`; итоговые диагностики остаются у application.
-Пока регистрация IOC-плана и обработчики document/import не добавлены,
-production-поток продолжает работать по прежнему пути.
+`DocumentProcessingOperations` связывает допущенный план с IOC-операциями,
+классификацией и существующим CSV preparer. `DocumentProcessingAdapter`
+переводит результат общего Camel runtime в application port; его можно собрать
+явно для проверки document path. Production-поток продолжает работать
+по прежнему пути, пока P5 не закрепит fingerprint плана и семантику recovery.
+Обработчик processed import появится в P4.
 `IocProcessingProperties` связывает операторские планы типизированно, а
 `ProcessingPlanCatalog` при старте проверяет ссылки и формирует
 `ProcessingPlanBindings` для будущих точек входа. Этот bean сам по себе не

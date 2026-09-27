@@ -4,6 +4,8 @@ import com.iocextractor.application.artifact.ArtifactIdSequence;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
 import com.iocextractor.application.artifact.ArtifactRow;
 import com.iocextractor.application.artifact.ArtifactRowKey;
+import com.iocextractor.application.artifact.CanonicalArtifact;
+import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.artifact.ArtifactWritePlan;
 import com.iocextractor.application.artifact.PreparedArtifactRow;
 import com.iocextractor.application.artifact.RoutedArtifactCandidate;
@@ -11,14 +13,26 @@ import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.application.pipeline.payload.IndicatorOccurrence;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.DocumentProcessingPlan;
+import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
+import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
+import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.diagnostics.DiagnosticException;
+import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
+import com.iocextractor.diagnostics.result.FailurePolicy;
 import com.iocextractor.diagnostics.result.Result;
+import com.iocextractor.diagnostics.sink.CollectingDiagnosticSink;
+import com.iocextractor.platform.etl.NoopPipelineObserver;
+import com.iocextractor.platform.etl.Pipeline;
+import com.iocextractor.platform.etl.PipelineRunner;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PrepareRoutedArtifactsStageTest {
     private static final ArtifactWritePolicy KEEP_FIRST = ArtifactWritePolicy.legacy();
@@ -69,6 +83,69 @@ class PrepareRoutedArtifactsStageTest {
                 .satisfies(row -> assertThat(row.template().value("name")).isEqualTo("last"));
     }
 
+    @Test
+    void routed_rejection_reaches_checkpoint_before_ids_or_storage() {
+        var ids = new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 17);
+        ArtifactPreparer preparer = empty("masks", "mask", ids);
+        Diagnostic rejection = StageTestSupport.DIAGNOSTICS
+                .create(PipelineDiagnosticCodes.ROUTING_REJECTED)
+                .with("plan", "test").with("indicator", "bad.example")
+                .with("reason", "REJECTED").build();
+        DocumentProcessingPlan routing = occurrence -> Result.of(List.of(), List.of(rejection));
+        var writes = new AtomicInteger();
+        CanonicalArtifactRepository repository = new CanonicalArtifactRepository() {
+            @Override public CanonicalArtifact load(String name) { throw new UnsupportedOperationException(); }
+            @Override public CanonicalWriteResult write(String name, CanonicalArtifact artifact) {
+                writes.incrementAndGet();
+                return new CanonicalWriteResult(0, 0);
+            }
+        };
+        var pipeline = Pipeline.<com.iocextractor.application.pipeline.payload.AttributedIndicators>start()
+                .then(new PrepareRoutedArtifactsStage(routing, List.of(preparer),
+                        (artifact, row) -> Optional.of(new ArtifactRowKey(row.value("mask"))),
+                        Map.of("masks", KEEP_FIRST), true))
+                .then(new WriteArtifactsStage(repository,
+                        ignored -> ArtifactProjectionResult.clean(0), StageTestSupport.DIAGNOSTICS));
+        var runner = new PipelineRunner(FailurePolicy.failFast(), new NoopPipelineObserver(),
+                new CollectingDiagnosticSink(), StageTestSupport.DIAGNOSTICS);
+
+        assertThatThrownBy(() -> runner.run(StageTestSupport.envelope(
+                StageTestSupport.attributedIndicators(StageTestSupport.indicator("bad.example")), false),
+                pipeline)).isInstanceOf(DiagnosticException.class);
+        assertThat(writes).hasValue(0);
+        assertThat(ids.reserve(1).start()).isEqualTo(17);
+    }
+
+    @Test
+    void duplicate_originals_keep_occurrences_and_retained_count_follows_dedup_policy() {
+        var same = StageTestSupport.indicator("https://same.example/a");
+        var input = StageTestSupport.envelope(StageTestSupport.attributedIndicators(same, same), false);
+        DocumentProcessingPlan routing = occurrence -> Result.success(List.of(
+                candidate("masks", "mask", "same.example", occurrence)));
+        var preparers = List.of(empty("masks", "mask"));
+        var identity = (com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver)
+                (artifact, row) -> Optional.of(new ArtifactRowKey(row.value("mask")));
+
+        assertThat(new PrepareRoutedArtifactsStage(routing, preparers, identity,
+                Map.of("masks", KEEP_FIRST), true).process(input).payload().retained()).isEqualTo(1);
+        assertThat(new PrepareRoutedArtifactsStage(routing, preparers, identity,
+                Map.of("masks", KEEP_FIRST), false).process(input).payload().retained()).isEqualTo(2);
+    }
+
+    @Test
+    void a_plan_cannot_route_to_an_artifact_outside_the_enabled_write_set() {
+        var input = StageTestSupport.envelope(StageTestSupport.attributedIndicators(
+                StageTestSupport.indicator("example.com")), false);
+        DocumentProcessingPlan routing = occurrence -> Result.success(List.of(
+                candidate("unknown", "mask", "example.com", occurrence)));
+        var stage = new PrepareRoutedArtifactsStage(routing, List.of(empty("masks", "mask")),
+                (artifact, row) -> Optional.of(new ArtifactRowKey(row.value("mask"))),
+                Map.of("masks", KEEP_FIRST), true);
+
+        assertThatThrownBy(() -> stage.process(input)).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("unknown artifact");
+    }
+
     private static Map<String, String> row(String mask, String name) {
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("mask", mask);
@@ -84,13 +161,17 @@ class PrepareRoutedArtifactsStageTest {
     }
 
     private static ArtifactPreparer empty(String artifact, String column) {
+        return empty(artifact, column, new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 1));
+    }
+
+    private static ArtifactPreparer empty(String artifact, String column, ArtifactIdSequence ids) {
         return new ArtifactPreparer() {
             @Override public String name() { return artifact; }
 
             @Override public Result<ArtifactWritePlan> prepare(
                     List<com.iocextractor.processing.model.ClassifiedIndicator> indicators) {
                 return Result.success(new ArtifactWritePlan(artifact, List.of(column), List.of(),
-                        new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 1)));
+                        ids));
             }
         };
     }

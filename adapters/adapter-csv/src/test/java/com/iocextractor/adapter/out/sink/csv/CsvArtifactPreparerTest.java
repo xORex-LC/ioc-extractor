@@ -43,6 +43,58 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class CsvArtifactPreparerTest {
 
     @Test
+    void routed_mapping_reuses_element_diagnostic_and_occurrence_position() {
+        ValueProvider validating = classified -> {
+            if (classified.indicator().value().contains("invalid")) {
+                throw new MappingValueException("invalid address");
+            }
+            return classified.indicator().value();
+        };
+        var policy = new ArtifactWritePolicy(ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY,
+                "name", Map.of("name", ArtifactWritePolicy.FieldUpdatePolicy.LATEST_REGISTERED_KEEP_EXISTING));
+        var mapper = new ConfigurableRowMapper(List.of(
+                new ColumnSpec("name", "checked", null, null, null)),
+                Map.of("checked", validating), Map.of());
+        var definition = new CsvArtifactDefinition("hashes", Set.of(IndicatorType.MD5),
+                ArtifactFilter.none(), mapper, ArtifactIdStrategy.ASCENDING, 100, policy);
+        var preparer = new CsvArtifactPreparer(definition,
+                new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 100),
+                new DiagnosticFactory(Clock.systemUTC()), "source-key",
+                NoopPipelineDecisionTracer.INSTANCE);
+
+        var rejected = preparer.prepareRouted(indicator("invalid"), Map.of(),
+                new OccurrencePosition(7), 4);
+        assertThat(rejected.value()).isEmpty();
+        assertThat(rejected.diagnostics()).singleElement().satisfies(diagnostic -> {
+            assertThat(diagnostic.code()).isEqualTo(SinkDiagnosticCodes.ROW_MAPPING_FAILED);
+            assertThat(diagnostic.context()).containsEntry("ordinal", 4)
+                    .containsEntry("column", "name");
+        });
+
+        var accepted = preparer.prepareRouted(indicator("valid"), Map.of(),
+                new OccurrencePosition(9), 5);
+        assertThat(accepted.diagnostics()).isEmpty();
+        assertThat(accepted.value()).isPresent().get().satisfies(row ->
+                assertThat(row.orderedFieldPositions()).containsEntry("name", new OccurrencePosition(9)));
+    }
+
+    @Test
+    void routed_plain_mapper_requires_no_field_overrides() {
+        var preparer = preparer(new TestMapper(ignored -> { }));
+        assertThat(preparer.name()).isEqualTo("hashes");
+
+        var accepted = preparer.prepareRouted(indicator("plain"), Map.of(),
+                new OccurrencePosition(4), 1);
+        assertThat(accepted.value()).isPresent().get().satisfies(row ->
+                assertThat(row.template().value("value")).isEqualTo("plain"));
+
+        assertThatThrownBy(() -> preparer.prepareRouted(indicator("plain"),
+                Map.of("value", indicator("alternate")), new OccurrencePosition(4), 1))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Field views require a configurable row mapper");
+    }
+
+    @Test
     void continuesOnlyAfterTypedRowMappingFailureAndDefersIds() {
         ValueProvider validatingProvider = classified -> {
             if ("bad".equals(classified.indicator().value())) {

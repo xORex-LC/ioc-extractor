@@ -39,7 +39,9 @@ errors/diagnostics/observability, Commons CSV, SLF4J API.
   как `RowMappingException` (column + component kind/name), а preparer создаёт
   element diagnostic. Остальные mapper defects останавливают run;
   route/filter/mapping decisions передаются в gated application TRACE port без
-  повторной классификации;
+  повторной классификации. Метод `prepareRouted` готовит одну выбранную ветку
+  с отдельными представлениями колонок и сохраняет позицию управляемых полей;
+  та же настройка фильтра, mapper и диагностик используется повторно;
 - `CsvProcessedImportRowPreparer` подключает explicit `processed` import mode к
   обычным refang/extract/classify и CSV artifact policies. Он требует ровно один
   whole-cell IOC для каждого semantic carrier, сохраняет compound-row

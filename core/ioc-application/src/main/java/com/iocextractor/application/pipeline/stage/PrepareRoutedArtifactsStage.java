@@ -52,6 +52,14 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
 
     @Override
     public Envelope<PreparedArtifacts> process(Envelope<AttributedIndicators> input) {
+        Map<String, ArtifactWritePlan> emptyPlans = emptyPlans();
+        Grouped grouped = group(input.payload(), emptyPlans.keySet());
+        return input.withPayload(new PreparedArtifacts(grouped.extracted(), grouped.retained(),
+                        selectPlans(emptyPlans, grouped.rows())))
+                .withDiagnostics(grouped.diagnostics());
+    }
+
+    private Map<String, ArtifactWritePlan> emptyPlans() {
         Map<String, ArtifactWritePlan> emptyPlans = new LinkedHashMap<>();
         for (ArtifactPreparer preparer : preparers) {
             ArtifactWritePlan empty = preparer.prepare(List.of()).value();
@@ -59,12 +67,16 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
                 throw new IllegalStateException("Duplicate or missing artifact preparation: " + preparer.name());
             }
         }
+        return emptyPlans;
+    }
+
+    private Grouped group(AttributedIndicators input, Set<String> artifacts) {
         Map<String, Map<ArtifactRowKey, List<PreparedArtifactRow>>> groups = new LinkedHashMap<>();
         List<Diagnostic> diagnostics = new ArrayList<>();
         Set<String> seenOriginals = new HashSet<>();
         int retained = 0;
         int ordinal = 0;
-        for (var decision : input.payload().outcome().decisions()) {
+        for (var decision : input.outcome().decisions()) {
             IndicatorOccurrence occurrence = new IndicatorOccurrence(
                     decision.indicator(), decision.rawIndicator().position(), ordinal++);
             if (!deduplicate || seenOriginals.add(occurrence.indicator().dedupKey())) {
@@ -73,7 +85,7 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
             var result = processing.prepare(occurrence);
             diagnostics.addAll(result.diagnostics());
             for (RoutedArtifactCandidate candidate : Objects.requireNonNull(result.value(), "routed candidates")) {
-                if (!emptyPlans.containsKey(candidate.artifact())) {
+                if (!artifacts.contains(candidate.artifact())) {
                     throw new IllegalStateException("Routed candidate targets unknown artifact: "
                             + candidate.artifact());
                 }
@@ -84,6 +96,11 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
                         .computeIfAbsent(key, ignored -> new ArrayList<>()).add(candidate.row());
             }
         }
+        return new Grouped(ordinal, retained, groups, diagnostics);
+    }
+
+    private List<ArtifactWritePlan> selectPlans(Map<String, ArtifactWritePlan> emptyPlans,
+            Map<String, Map<ArtifactRowKey, List<PreparedArtifactRow>>> groups) {
         List<ArtifactWritePlan> plans = new ArrayList<>(preparers.size());
         for (ArtifactWritePlan empty : emptyPlans.values()) {
             ArtifactWritePolicy policy = Objects.requireNonNull(policies.get(empty.artifactName()),
@@ -96,7 +113,10 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
             }
             plans.add(new ArtifactWritePlan(empty.artifactName(), empty.header(), rows, empty.idSequence()));
         }
-        return input.withPayload(new PreparedArtifacts(ordinal, retained, plans))
-                .withDiagnostics(diagnostics);
+        return plans;
     }
+
+    private record Grouped(int extracted, int retained,
+                           Map<String, Map<ArtifactRowKey, List<PreparedArtifactRow>>> rows,
+                           List<Diagnostic> diagnostics) { }
 }

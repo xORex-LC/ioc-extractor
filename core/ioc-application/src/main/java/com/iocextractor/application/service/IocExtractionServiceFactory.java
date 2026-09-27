@@ -118,10 +118,12 @@ public final class IocExtractionServiceFactory {
     public ExtractIocsUseCase create(List<ArtifactPreparer> preparers, ArtifactProjection projection,
                                      DocumentProcessingPlan documentPlan,
                                      Map<String, ArtifactWritePolicy> writePolicies) {
-        return new IocExtractionService(reader, refanger, extractor, attributor, matchPolicy,
-                preparers, repository, lifecycleWriter, identityResolver, projection,
-                deduplicate, observabilityMode, observer, diagnosticSink,
-                failurePolicy, maxDiagnosticsPerRun, decisionTracer,
-                Objects.requireNonNull(documentPlan, "documentPlan"), writePolicies);
+        var components = new IocExtractionService.Components(reader, refanger, extractor,
+                attributor, matchPolicy, preparers, repository, lifecycleWriter,
+                identityResolver, projection);
+        var settings = new IocExtractionService.Settings(deduplicate, observabilityMode,
+                observer, diagnosticSink, failurePolicy, maxDiagnosticsPerRun, decisionTracer,
+                Objects.requireNonNull(documentPlan, "documentPlan"), Map.copyOf(writePolicies));
+        return new IocExtractionService(components, settings);
     }
 }
