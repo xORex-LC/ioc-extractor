@@ -82,6 +82,10 @@
         </dependency>
         <dependency>
             <groupId>com.iocextractor</groupId>
+            <artifactId>ioc-adapter-processing-camel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.iocextractor</groupId>
             <artifactId>ioc-adapter-manifest-json-jackson</artifactId>
         </dependency>
         <dependency>
@@ -157,6 +161,7 @@
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-psl/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-source-tika/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-csv/src/main/java</compileSourceRoot>
+                                        <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-processing-camel/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-manifest-json-jackson/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-store-jdbc/src/main/java</compileSourceRoot>
                                 <compileSourceRoot>${maven.multiModuleProjectDirectory}/adapters/adapter-transport-smb/src/main/java</compileSourceRoot>

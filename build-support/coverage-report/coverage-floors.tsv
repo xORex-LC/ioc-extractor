@@ -1,5 +1,5 @@
 # scope	line-percent	branch-percent	rationale
-reactor	75	80	Release floor for the complete 19-module production aggregate.
+reactor	75	80	Release floor for the complete 20-module production aggregate.
 ioc-platform-errors	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-platform-diagnostics	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-platform-etl	none	none	Per-module ratchet only; no release-wide fixed floor.
@@ -13,6 +13,7 @@ ioc-adapter-regex-re2j	none	none	Per-module ratchet only; no release-wide fixed 
 ioc-adapter-psl	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-adapter-source-tika	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-adapter-csv	none	none	Per-module ratchet only; no release-wide fixed floor.
+ioc-adapter-processing-camel	none	none	New production adapter follows the existing per-module ratchet policy.
 ioc-adapter-manifest-json-jackson	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-adapter-store-jdbc	none	none	Per-module ratchet only; no release-wide fixed floor.
 ioc-adapter-transport-smb	none	none	Per-module ratchet only; no release-wide fixed floor.

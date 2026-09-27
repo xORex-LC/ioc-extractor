@@ -28,7 +28,7 @@ resolution. The analyzed universe is an explicit list of checked-in production
 
 ## Dependencies
 
-**Depends on:** all 19 production modules in `platform`, `core`, `adapters` and
+**Depends on:** all 20 production modules in `platform`, `core`, `adapters` and
 `bootstrap`.
 
 **Not imported by:** any production, test-support or other build-support module.
@@ -57,7 +57,7 @@ select this module and its upstream reactor with `-pl build-support/pmd-report
 -am`; that keeps the PMD aggregator away from the independent coverage,
 SpotBugs and CPD aggregate mojos in a parallel full-reactor build. The
 `pmd-analysis` profile runs exactly one `aggregate-pmd-no-fork` execution after
-its 19 ordering dependencies, removes only the selected output directory first
+its 20 ordering dependencies, removes only the selected output directory first
 and fails on analyzer/ruleset/report errors. The regular policy also reconciles
 every per-rule finding count: rules absent from `pmd-advisory-counts.tsv` must
 stay at zero, while listed rules must match their exact reviewed counts. The

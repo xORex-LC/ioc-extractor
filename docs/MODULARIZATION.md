@@ -46,6 +46,7 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 │   ├── adapter-regex-re2j         (PatternEngine → RE2J/JDK fallback)
 │   ├── adapter-source-tika        (SourceReader → Tika)
 │   ├── adapter-csv                (strict CSV parsing + ArtifactPreparer/projection/export → commons-csv)
+│   ├── adapter-processing-camel   (bounded plan compiler/runtime → Camel; R1, not yet wired to IOC flows)
 │   ├── adapter-manifest-json-jackson (SliceManifestCodec → Jackson)
 │   ├── adapter-store-jdbc         (service/dataframe storage → Spring JDBC + sqlite-jdbc)
 │   ├── adapter-transport-smb      (FileTransport → smbj)
@@ -92,19 +93,21 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-domain
   только свою технологическую библиотеку/integration family.
 - `ioc-application-tck` содержит test-scope contract tests; реализации портов
   подключают его только в тестовом scope.
-- `ioc-app` (bootstrap) зависит на всё и собирает исполняемый артефакт.
+- `ioc-app` (bootstrap) собирает исполняемый артефакт и зависит от подключённых
+  runtime-адаптеров. `adapter-processing-camel` на этапе R1 зарегистрирован в
+  reactor, но ещё не включён в production-композицию.
 - `build-quality` не является Maven-модулем: root `validate` компилирует его
   JDK-only verifier и synthetic-reactor contract harness напрямую.
 - `coverage-report` зависит на все production-модули только для формирования
   полного JaCoCo aggregate.
-- `spotbugs-report` зависит на те же 19 production-модулей для reactor ordering,
+- `spotbugs-report` зависит на те же 20 production-модулей для reactor ordering,
   формирует общий SpotBugs XML/HTML и проверяет наличие всех module/aggregate
   reports.
-- `cpd-report` зависит на 19 production-модулей только для reactor ordering и
+- `cpd-report` зависит на 20 production-модулей только для reactor ordering и
   анализирует единым PMD CPD execution явный allowlist их `src/main/java`;
   fail-closed registry сверяет reactor, ordering dependencies, source roots и
   итоговый XML source universe.
-- `pmd-report` зависит на те же 19 production-модулей только для reactor
+- `pmd-report` зависит на те же 20 production-модулей только для reactor
   ordering и type resolution. Поимённая 22-rule policy выполняется
   отдельным regular CI job, а 3-rule ownership/size watchlist остаётся
   локально opt-in. Оба профиля анализируют явный allowlist

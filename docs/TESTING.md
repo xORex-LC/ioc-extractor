@@ -97,7 +97,7 @@ blocking a release. Stable HTML/XML reports are written to
 
 The `stability-pilot` profile randomizes Surefire/Failsafe class order and JUnit
 class/method order from the same published seed. The wrapper advances the seed
-by one for each repetition, runs all 20 functional JAR modules sequentially,
+by one for each repetition, runs all 21 functional JAR modules sequentially,
 and verifies the exact source/report union after every pass. It archives each
 pass under `target/test-pilots/stability/run-N-seed-S/` before the next Maven
 lifecycle deletes current reports. The first failure stops the pilot and keeps
@@ -175,7 +175,7 @@ later step fails.
 
 The aggregate report and its groups are the authoritative release measurement.
 `build-support/coverage-report/coverage-scope.tsv` gives every reactor project
-an explicit disposition. The production denominator is exactly 19 JAR modules;
+an explicit disposition. The production denominator is exactly 20 JAR modules;
 the reusable TCK, root and build-only POMs are excluded, with no class or package
 exclusions. Eighteen production modules must generate local XML/HTML reports.
 `ioc-platform-errors` has no local test JVM and is declared aggregate-only, but

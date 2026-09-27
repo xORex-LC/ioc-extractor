@@ -23,7 +23,7 @@ published library.
 
 ## Dependencies
 
-**Depends on:** all 19 production modules in `platform`, `core`, `adapters` and
+**Depends on:** all 20 production modules in `platform`, `core`, `adapters` and
 `bootstrap`.
 
 **Not imported by:** any production, test-support, coverage-report or SpotBugs

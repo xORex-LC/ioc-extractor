@@ -15,6 +15,13 @@ read -> refang -> extract -> attribute -> deduplicate(batch-local)
      -> canonical commit -> mutable CSV projection
 ```
 
+
+`adapter-processing-camel` содержит технический компилятор R1 и локальные
+маршруты Camel. В рабочий поток модуль пока не подключён: приведённый выше
+порядок остаётся действующим до переноса точек входа document/import и mapping.
+Адаптер проверяет зарегистрированные операции и назначения до создания маршрутов;
+правила IOC и canonical-запись сохраняют текущих владельцев.
+
 `platform-etl` даёт framework-free `Envelope`, `Stage`, `Pipeline` и
 `PipelineRunner`. IOC-specific payloads и порядок стадий принадлежат
 `core/ioc-application`; доменные правила находятся в `core/ioc-domain`;

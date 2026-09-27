@@ -1,11 +1,14 @@
 # Configurable data processing and routing
 
 Status: design accepted for staged implementation, 2026-09-27. R0 bounded
-admission is complete; production integration remains outstanding. Historical
+admission and R1 module/compiler skeleton are complete; production integration
+remains outstanding. Historical
 proposal status in earlier assessments records their place in the decision process.
 
 - [R0 admission](r0-admission.md): minimal contracts, module disposition and executed
   runtime probe; durable decision in ADR 0031.
+- [R1 implementation](r1-implementation.md): module admission, compiler skeleton,
+  quality evidence and remaining execution boundary.
 
 Customer requirement: selectively reduce URL/IP values to a host, including
 managed imports, while retaining configurable classification, artifact/field
@@ -80,9 +83,10 @@ Java 21 / Spring Boot 4.0.8. Existing `verify` and PMD reports passed on
 `a363a129c95a86c1df6fea3eea4e2e5639230792`, but `make context` reports them
 not fresh for this HEAD. Research is source inspection and documentation review,
 not benchmark, framework compatibility or release qualification evidence.
-The baseline above predates R0 admission. The current branch also contains
-ADR 0031 and the isolated Camel probe. See the R0 evidence note for its executed
-checks rather than using the original baseline reports as current evidence.
+The baseline above predates R0/R1 implementation. The current branch also
+contains ADR 0031, the new Camel adapter and build-quality wiring. See the R0
+and R1 evidence notes for executed checks rather than using the original
+baseline reports as current evidence.
 
 Related context: [processing](../../../dev/processing.md),
 [managed import](../../../dev/dataframe-import.md),

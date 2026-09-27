@@ -14,6 +14,7 @@ adapters/adapter-regex-re2j	ioc-adapter-regex-re2j	analyzed	Production runtime J
 adapters/adapter-psl	ioc-adapter-psl	analyzed	Production runtime JAR
 adapters/adapter-source-tika	ioc-adapter-source-tika	analyzed	Production runtime JAR
 adapters/adapter-csv	ioc-adapter-csv	analyzed	Production runtime JAR
+adapters/adapter-processing-camel	ioc-adapter-processing-camel	analyzed	Production runtime JAR
 adapters/adapter-manifest-json-jackson	ioc-adapter-manifest-json-jackson	analyzed	Production runtime JAR
 adapters/adapter-store-jdbc	ioc-adapter-store-jdbc	analyzed	Production runtime JAR
 adapters/adapter-transport-smb	ioc-adapter-transport-smb	analyzed	Production runtime JAR

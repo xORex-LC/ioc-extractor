@@ -13,6 +13,7 @@ ioc-adapter-regex-re2j	18	0	4	0	0	enforced	Shared RE2/J and JDK contract complet
 ioc-adapter-psl	15	2	11	1	3	enforced	Small line and branch denominators require absolute missed context.
 ioc-adapter-source-tika	57	1	7	3	6	enforced	Small line and branch denominators require absolute missed context.
 ioc-adapter-csv	1122	172	424	145	820	observed	CSV slice identity, overwrite and incomplete-callback contracts over the conservative line minimum.
+ioc-adapter-processing-camel	160	6	74	0	11	enforced	R1 module verify: registered-route and validation contract tests cover all branches; first measured production baseline.
 ioc-adapter-manifest-json-jackson	82	2	5	1	9	enforced	Small line and branch denominators require absolute missed context.
 ioc-adapter-store-jdbc	5346	667	1461	468	3352	observed	Import workspace limits and lifecycle writer fail-closed contracts over the conservative line minimum.
 ioc-adapter-transport-smb	813	283	334	201	1282	observed	Deterministic offline path, object-type and publication-integrity contracts; external paths remain explicit.

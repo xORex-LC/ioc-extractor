@@ -14,6 +14,7 @@ adapters/adapter-regex-re2j	ioc-adapter-regex-re2j	covered	required	Production r
 adapters/adapter-psl	ioc-adapter-psl	covered	required	Production adapter with its own test execution data.
 adapters/adapter-source-tika	ioc-adapter-source-tika	covered	required	Production adapter with its own test execution data.
 adapters/adapter-csv	ioc-adapter-csv	covered	required	Production adapter with its own test execution data.
+adapters/adapter-processing-camel	ioc-adapter-processing-camel	covered	required	Production Camel adapter with its own test execution data.
 adapters/adapter-manifest-json-jackson	ioc-adapter-manifest-json-jackson	covered	required	Production adapter with its own test execution data.
 adapters/adapter-store-jdbc	ioc-adapter-store-jdbc	covered	required	Production adapter with its own test execution data.
 adapters/adapter-transport-smb	ioc-adapter-transport-smb	covered	required	Production adapter with its own test execution data.

@@ -1,9 +1,10 @@
 # Router implementation plan
 
-Status: design accepted for implementation; R0 bounded admission completed,
-2026-09-27. Reviewed source baseline: `f43037ee87ef`, branch
-`module/platform/router`. See [R0 evidence and contracts](r0-admission.md).
-R1–R5 are not implemented.
+Status: design accepted for implementation; R0 bounded admission and R1 module
+and compiler skeleton completed, 2026-09-27. Reviewed source baseline:
+`f43037ee87ef`, branch `module/platform/router`. See
+[R0 evidence and contracts](r0-admission.md) and
+[R1 implementation evidence](r1-implementation.md). R2–R5 are not implemented.
 Companion: [IOC processing plan](ioc-processing-implementation-plan.md).
 
 ## Scope and authoritative design
@@ -50,6 +51,10 @@ contract review, recorded once; neither workstream implements the other's policy
 | R3 — outcomes and recovery | Lazy views computed at most once per invocation; explicit recovery edges and allowlisted reason matching; preserve original failure references and demanded-consumer resolution. Return bounded evidence to the application bridge. | Strict and recovered sibling cases, alternate failure, no catch-all exception recovery; unexpected faults propagate. Router exposes evidence, not IOC diagnostic severity rules. |
 | R4 — runtime lifecycle and observability hooks | Bootstrap owns activation/readiness and shutdown. Reuse existing observation/diagnostic contracts; add typed trace hooks through bridges. No payload-based endpoint selection, unrestricted DSL, redelivery or new worker pool. | Concurrent caller isolation, parent MDC restoration, bounded shutdown with timed tests; one diagnostic delivery owner and no redundant Camel exception logging. |
 | R5 — qualification and handover | Qualify with synthetic non-IOC operations, then run document/import integration fixtures from P3/P4. Measure startup, allocations, retained state and throughput against the existing preparation path. | Reproducible workload/JDK/config measurements and reviewed resource budget; all gates green, no duplicate runtime in migrated scope. |
+
+R1 establishes the package dependency rule for the application bridge, but the
+bridge itself is introduced with the first typed application consumer in P3/P4.
+There is no placeholder port or bootstrap activation in the compiler skeleton.
 
 R5 closes only with the real consumers: a synthetic route demo closes neither
 customer coverage nor end-to-end recovery. R0 must establish concrete structural
