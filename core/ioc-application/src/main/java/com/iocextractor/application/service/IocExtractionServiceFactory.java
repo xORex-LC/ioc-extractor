@@ -6,6 +6,8 @@ import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
+import com.iocextractor.application.port.out.artifact.DocumentProcessingPlan;
+import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.application.port.out.artifact.lifecycle.CanonicalArtifactWriter;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
@@ -17,6 +19,7 @@ import com.iocextractor.domain.refang.Refanger;
 import com.iocextractor.platform.etl.PipelineObserver;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -109,5 +112,16 @@ public final class IocExtractionServiceFactory {
                 preparers, repository, lifecycleWriter, identityResolver, projection,
                 deduplicate, observabilityMode, observer, diagnosticSink,
                 failurePolicy, maxDiagnosticsPerRun, decisionTracer);
+    }
+
+    /** Creates a document use case that resolves candidates after routing on final fields. */
+    public ExtractIocsUseCase create(List<ArtifactPreparer> preparers, ArtifactProjection projection,
+                                     DocumentProcessingPlan documentPlan,
+                                     Map<String, ArtifactWritePolicy> writePolicies) {
+        return new IocExtractionService(reader, refanger, extractor, attributor, matchPolicy,
+                preparers, repository, lifecycleWriter, identityResolver, projection,
+                deduplicate, observabilityMode, observer, diagnosticSink,
+                failurePolicy, maxDiagnosticsPerRun, decisionTracer,
+                Objects.requireNonNull(documentPlan, "documentPlan"), writePolicies);
     }
 }

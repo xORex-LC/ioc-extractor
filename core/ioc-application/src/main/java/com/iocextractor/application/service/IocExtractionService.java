@@ -18,12 +18,15 @@ import com.iocextractor.application.pipeline.stage.ExtractIndicatorsStage;
 import com.iocextractor.application.pipeline.stage.ReadSourceStage;
 import com.iocextractor.application.pipeline.stage.RefangStage;
 import com.iocextractor.application.pipeline.stage.PrepareArtifactsStage;
+import com.iocextractor.application.pipeline.stage.PrepareRoutedArtifactsStage;
 import com.iocextractor.application.pipeline.stage.WriteArtifactsStage;
 import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
+import com.iocextractor.application.port.out.artifact.DocumentProcessingPlan;
+import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.application.port.out.artifact.lifecycle.CanonicalArtifactWriter;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.domain.attribute.SourceAttributor;
@@ -37,6 +40,7 @@ import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -94,12 +98,38 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                 FailurePolicy failurePolicy,
                                 int maxDiagnosticsPerRun,
                                 PipelineDecisionTracer decisionTracer) {
+        this(reader, refanger, extractor, attributor, matchPolicy, preparers, repository,
+                lifecycleWriter, identityResolver, projection, deduplicate, observabilityMode,
+                observer, diagnosticSink, failurePolicy, maxDiagnosticsPerRun, decisionTracer,
+                null, Map.of());
+    }
+
+    /** Builds the occurrence-preserving document path for an admitted processing plan. */
+    public IocExtractionService(SourceReader reader,
+                                Refanger refanger,
+                                IndicatorExtractor extractor,
+                                SourceAttributor attributor,
+                                MatchPolicy matchPolicy,
+                                List<ArtifactPreparer> preparers,
+                                CanonicalArtifactRepository repository,
+                                CanonicalArtifactWriter lifecycleWriter,
+                                ArtifactIdentityResolver identityResolver,
+                                ArtifactProjection projection,
+                                boolean deduplicate,
+                                String observabilityMode,
+                                PipelineObserver observer,
+                                DiagnosticSink diagnosticSink,
+                                FailurePolicy failurePolicy,
+                                int maxDiagnosticsPerRun,
+                                PipelineDecisionTracer decisionTracer,
+                                DocumentProcessingPlan documentPlan,
+                                Map<String, ArtifactWritePolicy> writePolicies) {
         this(
                 new PipelineRunner(failurePolicy, observer, diagnosticSink,
                         new DiagnosticFactory(Clock.systemUTC()), maxDiagnosticsPerRun),
                 pipeline(reader, refanger, extractor, attributor, matchPolicy, preparers,
                         repository, lifecycleWriter, identityResolver, projection,
-                        deduplicate, Clock.systemUTC(), decisionTracer),
+                        deduplicate, Clock.systemUTC(), decisionTracer, documentPlan, writePolicies),
                 Clock.systemUTC(),
                 observabilityMode);
     }
@@ -166,17 +196,24 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                                                               ArtifactProjection projection,
                                                                               boolean deduplicate,
                                                                               Clock clock,
-                                                                              PipelineDecisionTracer decisionTracer) {
+                                                                              PipelineDecisionTracer decisionTracer,
+                                                                              DocumentProcessingPlan documentPlan,
+                                                                              Map<String, ArtifactWritePolicy> writePolicies) {
         var diagnostics = new DiagnosticFactory(clock);
-        return Pipeline.<ExtractionCommand>start()
+        var attributed = Pipeline.<ExtractionCommand>start()
                 .then(new ReadSourceStage(reader, diagnostics))
                 .then(new RefangStage(refanger, decisionTracer))
                 .then(new ExtractIndicatorsStage(extractor, diagnostics, decisionTracer))
-                .then(new AttributeSourceStage(attributor, clock, decisionTracer))
+                .then(new AttributeSourceStage(attributor, clock, decisionTracer));
+        var prepared = documentPlan == null
+                ? attributed
                 .then(new DeduplicateIndicatorsStage(deduplicate, diagnostics, decisionTracer))
                 .then(new ClassifyIndicatorsStage(matchPolicy, diagnostics, decisionTracer))
                 .then(new PrepareArtifactsStage(preparers))
-                .then(new WriteArtifactsStage(
+                : attributed.then(new PrepareRoutedArtifactsStage(documentPlan, preparers,
+                        Objects.requireNonNull(identityResolver, "identityResolver"), writePolicies,
+                        deduplicate));
+        return prepared.then(new WriteArtifactsStage(
                         repository, lifecycleWriter, identityResolver, projection, diagnostics));
     }
 }
