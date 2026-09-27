@@ -1,7 +1,9 @@
 # Configurable IOC processing implementation plan
 
-Status: proposed implementation sequence, 2026-09-27. Reviewed source baseline:
-`f43037ee87ef`, branch `module/platform/router`. No implementation is claimed.
+Status: implementation sequence, 2026-09-27. P0 semantic contracts and source
+closure are complete in [P0 evidence](p0-semantic-contracts.md); no IOC
+processing runtime or operator configuration is implemented yet. Reviewed P0
+source baseline: `e8cb0aeb83ca6776f771951320163573ac0bbce4`.
 Companion: [Router plan](router-implementation-plan.md).
 
 ## Scope and reuse boundaries
@@ -30,7 +32,7 @@ recreating equivalent algorithms.
 
 | Slice | Work and touched owners | Exit evidence |
 |---|---|---|
-| P0 — semantic contracts and closure | Jointly with R0 define original/derived values, provenance, absence/failure, classification binding, candidate output and input cardinality. Audit mapper/provider imports and select what moves versus remains. | Dependency map without application-to-processing-to-application cycle; reviewable input/output fixtures and module decision. |
+| P0 — semantic contracts and closure (complete) | Jointly with R0 define original/derived values, provenance, absence/failure, classification binding, candidate output and input cardinality. Audit mapper/provider imports and select what moves versus remains. | [P0 evidence](p0-semantic-contracts.md): acyclic dependency map, reviewable input/output fixtures and separate pure-module decision. |
 | P1 — parser and views | Extend shared parsing behind `RegexIndicatorExtractor`, feature extraction and normalization as needed; implement host derivation without DNS/network I/O. Preserve original occurrence/span/source metadata. | Customer URL and IP:port/path examples, bare values, invalid authority/port/query/fragment cases, full-cell versus document parsing, RE2/J and JDK parity; explicit unsupported-form outcomes. |
 | P2 — shared mapping and configuration | Extract/adapt `ConfigurableRowMapper`, providers/transforms and classification inputs once. Extend `IocProperties`, registry metadata and semantic preflight for named views, field overrides and classifications; compile IOC bindings for Router. | Strict YAML/env/system/CLI unknown-key and argument checks, whole-element overlay fixtures, coverage/omission checks, startup type/cardinality validation; shared mapper tests with no framework imports. |
 | P3 — document integration | Change `IocExtractionService` entry after attribution and before unconditional deduplication/classification for the admitted flow. Preserve occurrences, legacy plan behavior and stage checkpoints. Adapt `PrepareArtifactsStage`/`CsvArtifactPreparer` to reuse final key resolution and `ArtifactOccurrenceSelector`. | Cleanup collisions resolved on final fields; original blacklist preserved while masks use host; configurable match codes; source ranks/counts and failure-policy parity; no writes on fail-fast rejection. |
@@ -63,9 +65,9 @@ semantics separately and preserve their configured contracts.
 
 ## Activation and unresolved implementation gates
 
-- Exact descriptor syntax and recovery severity in the resolution worknote remain
-  proposed semantics to close at P0/R0; earlier illustrative YAML is not a supported
-  configuration surface.
+- P0 adopts the resolution worknote's semantics for IOC integration. Exact
+  operator descriptor syntax and channel-specific binding still require P2
+  executable validation; earlier illustrative YAML is not supported config.
 - Inspect accepted-warning persistence/report summaries before choosing whether
   a schema change is necessary. No migration is assumed merely to add diagnostics.
 - A policy fingerprint identifies semantics but does not preserve executable old
