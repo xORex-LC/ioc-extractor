@@ -9,6 +9,7 @@ import com.iocextractor.processing.classification.IndicatorClassifier;
 import com.iocextractor.application.dataframeimport.contract.CompiledDataframeImportContract;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
 import com.iocextractor.application.dataframeimport.mapping.ImportRowMappingResult;
+import com.iocextractor.application.dataframeimport.mapping.ImportMergePolicyResolver;
 import com.iocextractor.application.dataframeimport.model.ImportArtifactBranch;
 import com.iocextractor.application.dataframeimport.model.ImportCell;
 import com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord;
@@ -193,21 +194,9 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
             cells.put(column.name(), values.isEmpty()
                     ? ImportCell.nullValue()
                     : ImportCell.value(values.iterator().next()));
-            policies.putIfAbsent(column.name(), effectivePolicy(contract, artifact, column.name()));
+            policies.putIfAbsent(column.name(),
+                    ImportMergePolicyResolver.resolve(contract, artifact, column.name()));
         }
-    }
-
-    private ImportMergePolicy effectivePolicy(CompiledDataframeImportContract contract,
-                                               DataframeImportCatalogDraft.Artifact artifact,
-                                               String target) {
-        return artifact.columns().stream()
-                .filter(column -> column.target().equals(target))
-                .map(DataframeImportCatalogDraft.Column::mergePolicy)
-                .filter(Objects::nonNull)
-                .findFirst()
-                .orElse(artifact.mergeDefault() == null
-                        ? contract.definition().mergeDefault()
-                        : artifact.mergeDefault());
     }
 
     private String sourceLabel(Map<String, ImportCell> cells,

@@ -43,6 +43,15 @@ The new `RouterProcessedImportRowPreparerTest` adds one fast suite: the exact
 source-universe ratchet moves from 215 to 216 fast suites and from 278 to 279
 deterministic-offline suites. No existing test was reclassified or removed.
 
+The quality review found a repeated effective merge-policy resolver in the CSV
+and Router preparers; both now call the application-owned resolver also used by
+input admission. Boundary tests cover final source-row identity, branch count,
+artifact, requested slot, admitted cells and policies, source label, derived
+formula/validator rejection and missing final key. The two pre-existing
+`JdbcImportWorkspaceWriter` SpotBugs `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION`
+findings remain the same abort-on-failure behavior; their exact accepted
+identities were reviewed and updated after adding the warning write.
+
 P5 must bind an operator-selected plan to each versioned import contract, include
 these bindings and semantic versions in policy identity, and define pinned
 in-flight recovery before selecting the new preparer in production. The current

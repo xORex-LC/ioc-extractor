@@ -4,6 +4,7 @@ import com.iocextractor.application.artifact.RoutedArtifactCandidate;
 import com.iocextractor.application.dataframeimport.contract.CompiledDataframeImportContract;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
 import com.iocextractor.application.dataframeimport.mapping.ImportRowMappingResult;
+import com.iocextractor.application.dataframeimport.mapping.ImportMergePolicyResolver;
 import com.iocextractor.application.dataframeimport.model.ImportArtifactBranch;
 import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
 import com.iocextractor.application.dataframeimport.model.ImportCell;
@@ -164,7 +165,7 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
             DataframeImportCatalogDraft.Artifact artifact = artifact(contract, branch.artifactName());
             outputs.getOrDefault(branch.artifactName(), Map.of()).forEach((target, value) -> {
                 cells.put(target, value == null ? ImportCell.nullValue() : ImportCell.value(value));
-                policies.putIfAbsent(target, effectivePolicy(contract, artifact, target));
+                policies.putIfAbsent(target, ImportMergePolicyResolver.resolve(contract, artifact, target));
             });
             branches.add(new ImportArtifactBranch(branch.artifactName(), branch.role(), cells,
                     policies, branch.requestedSlot(), java.util.Optional.empty(), List.of()));
@@ -219,15 +220,6 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
         String target = artifact(contract, branch.artifactName()).sourceLabelTarget();
         ImportCell cell = target == null ? null : branch.cells().get(target);
         return cell != null && cell.presence() == ImportCell.Presence.VALUE ? cell.value() : null;
-    }
-
-    private static ImportMergePolicy effectivePolicy(CompiledDataframeImportContract contract,
-            DataframeImportCatalogDraft.Artifact artifact, String target) {
-        return artifact.columns().stream().filter(column -> column.target().equals(target))
-                .map(DataframeImportCatalogDraft.Column::mergePolicy)
-                .filter(Objects::nonNull).findFirst()
-                .orElse(artifact.mergeDefault() == null
-                        ? contract.definition().mergeDefault() : artifact.mergeDefault());
     }
 
     private static ImportRowIssue issue(ImportDelimitedRecord record, String artifact, String code) {

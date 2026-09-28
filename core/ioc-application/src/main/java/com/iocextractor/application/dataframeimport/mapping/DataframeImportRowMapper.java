@@ -193,12 +193,9 @@ public final class DataframeImportRowMapper {
             DataframeImportCatalogDraft.Artifact artifact) {
         Map<String, ImportMergePolicy> policies = new LinkedHashMap<>();
         for (DataframeImportCatalogDraft.Column column : artifact.columns()) {
-            ImportMergePolicy policy = column.mergePolicy() != null
-                    ? column.mergePolicy()
-                    : artifact.mergeDefault() != null
-                            ? artifact.mergeDefault()
-                            : contract.definition().mergeDefault();
-            policies.put(column.target(), Objects.requireNonNull(policy, "effective import merge policy"));
+            policies.put(column.target(), Objects.requireNonNull(
+                    ImportMergePolicyResolver.resolve(contract, artifact, column),
+                    "effective import merge policy"));
         }
         return policies;
     }
