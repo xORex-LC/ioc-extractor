@@ -16,7 +16,11 @@ import java.util.Objects;
 /** Stable identity of every configured input that can alter prepared canonical rows. */
 final class ProcessingPolicyFingerprint {
 
-    private static final String POLICY_EPOCH = "processing-policy:v2";
+    private static final String POLICY_EPOCH = "processing-policy:v3";
+    private static final String DOCUMENT_ROUTE_SEMANTICS = "document-route:v1";
+    private static final String PROCESSED_IMPORT_ROUTE_SEMANTICS = "processed-import-route:v1";
+    private static final String EXACT_PARSE_SEMANTICS = "exact-indicator-parser:v1";
+    private static final String HOST_DERIVATION_SEMANTICS = "network-host-derivation:v1";
 
     private ProcessingPolicyFingerprint() {
     }
@@ -25,6 +29,10 @@ final class ProcessingPolicyFingerprint {
         Objects.requireNonNull(properties, "properties");
         MessageDigest digest = sha256();
         add(digest, POLICY_EPOCH);
+        add(digest, DOCUMENT_ROUTE_SEMANTICS);
+        add(digest, PROCESSED_IMPORT_ROUTE_SEMANTICS);
+        add(digest, EXACT_PARSE_SEMANTICS);
+        add(digest, HOST_DERIVATION_SEMANTICS);
         addValue(digest, properties.source());
         addValue(digest, properties.refang());
         addValue(digest, properties.engine());
@@ -33,6 +41,7 @@ final class ProcessingPolicyFingerprint {
         addValue(digest, properties.sink());
         addValue(digest, properties.pipeline());
         addValue(digest, properties.artifactIdentity());
+        addValue(digest, properties.processing());
         return HexFormat.of().formatHex(digest.digest());
     }
 

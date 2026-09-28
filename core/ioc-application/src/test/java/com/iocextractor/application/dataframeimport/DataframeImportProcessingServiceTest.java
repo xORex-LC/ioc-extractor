@@ -100,9 +100,18 @@ class DataframeImportProcessingServiceTest {
     void restagesWhenNoCompatibleSealedWorkspaceCanBeAdopted() {
         StatefulLedger ledger = new StatefulLedger(delivery(ImportDeliveryState.STAGING));
         AtomicBoolean stagingCalled = new AtomicBoolean();
-        DataframeImportStager stager = command -> {
-            stagingCalled.set(true);
-            return stagingResult();
+        DataframeImportStager stager = new DataframeImportStager() {
+            @Override
+            public ImportStagingResult stage(ImportStagingCommand command) {
+                throw new AssertionError("unpinned staging must not be called");
+            }
+
+            @Override
+            public ImportStagingResult stagePinned(ImportStagingCommand command, ImportContractPin pin) {
+                stagingCalled.set(true);
+                assertThat(pin).isEqualTo(contract());
+                return stagingResult();
+            }
         };
         DataframeImportProcessingService service = service(
                 ledger, stager, this::idle, workspace(Optional.empty()),
@@ -118,9 +127,18 @@ class DataframeImportProcessingServiceTest {
     @Test
     void failsClosedWhenRestartedStagingCannotReproduceThePinnedContract() {
         StatefulLedger ledger = new StatefulLedger(delivery(ImportDeliveryState.STAGING));
-        ImportContractPin differentContract = new ImportContractPin(
-                new ImportContractId("different-v1"), 1, new ImportContractFingerprint(DIGEST));
-        DataframeImportStager stager = command -> new ImportStagingResult(differentContract, stage());
+        DataframeImportStager stager = new DataframeImportStager() {
+            @Override
+            public ImportStagingResult stage(ImportStagingCommand command) {
+                throw new AssertionError("unpinned staging must not be called");
+            }
+
+            @Override
+            public ImportStagingResult stagePinned(ImportStagingCommand command, ImportContractPin pin) {
+                throw new DataframeImportConsistencyException(
+                        "Pinned import contract is unavailable after restart");
+            }
+        };
         DataframeImportProcessingService service = service(
                 ledger, stager, this::idle, workspace(Optional.empty()),
                 commitEvidenceStore(ledger.current.id()), command -> { }, unusedSourceLifecycle());

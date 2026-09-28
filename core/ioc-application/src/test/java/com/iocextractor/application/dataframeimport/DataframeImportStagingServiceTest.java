@@ -13,6 +13,7 @@ import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
 import com.iocextractor.application.dataframeimport.model.ImportCatalogFingerprint;
 import com.iocextractor.application.dataframeimport.model.ImportContractFingerprint;
 import com.iocextractor.application.dataframeimport.model.ImportContractId;
+import com.iocextractor.application.dataframeimport.model.ImportContractPin;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
 import com.iocextractor.application.dataframeimport.model.ImportDuplicatePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportFormulaPolicy;
@@ -46,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class DataframeImportStagingServiceTest {
 
@@ -77,6 +79,28 @@ class DataframeImportStagingServiceTest {
                 .satisfies(row -> assertThat(row.issues()).extracting(issue -> issue.code())
                         .contains("IMPORT.FORMULA_REJECTED"));
         assertThat(workspace.verified).isTrue();
+    }
+
+    @Test
+    void changed_pinned_policy_never_rebuilds_workspace_or_reads_rows() {
+        CompiledDataframeImportContract contract = contract();
+        FakeReader reader = new FakeReader();
+        RecordingWorkspace workspace = new RecordingWorkspace();
+        DataframeImportStagingService service = new DataframeImportStagingService(
+                new DataframeImportRecognizer(catalog(contract), reader),
+                new DataframeImportRowMapper((specification, value) -> value,
+                        new CanonicalArtifactKeyResolver(List.of(
+                                new ArtifactIdentityDefinition("ip_list", List.of("ip"), false, 1)))),
+                reader, workspace, ImportWorkspaceLimits.defaults());
+        ImportContractPin oldPin = new ImportContractPin(contract.id(), contract.version(),
+                new ImportContractFingerprint("d".repeat(64)));
+
+        assertThatThrownBy(() -> service.stagePinned(
+                new ImportStagingCommand(new ImportDeliveryId("delivery"), SOURCE, SNAPSHOT), oldPin))
+                .isInstanceOf(DataframeImportConsistencyException.class)
+                .hasMessage("Pinned import contract is unavailable after restart");
+        assertThat(workspace.command).isNull();
+        assertThat(reader.rowsRead).isZero();
     }
 
     private DataframeImportCatalog catalog(CompiledDataframeImportContract contract) {
@@ -112,6 +136,7 @@ class DataframeImportStagingServiceTest {
     }
 
     private static final class FakeReader implements DelimitedRecordReader {
+        private int rowsRead;
         @Override
         public List<String> readHeader(DelimitedHeaderReadCommand command) {
             return List.of("description", "ip");
@@ -119,6 +144,7 @@ class DataframeImportStagingServiceTest {
 
         @Override
         public void read(DelimitedReadCommand command, DelimitedRecordConsumer consumer) {
+            rowsRead++;
             consumer.accept(new com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord(
                     2, Map.of("ip", "192.0.2.1", "description", "malicious")));
             consumer.accept(new com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord(

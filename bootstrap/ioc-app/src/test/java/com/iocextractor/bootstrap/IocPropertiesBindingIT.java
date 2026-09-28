@@ -180,6 +180,31 @@ class IocPropertiesBindingIT {
     }
 
     @Test
+    void processing_fingerprint_tracks_selected_plan_and_ordered_plan_bindings() {
+        contextRunner().run(context -> {
+            IocProperties source = context.getBean(IocProperties.class);
+            var first = new IocProcessingProperties.Plan("first", List.of(), List.of(), null, List.of());
+            var second = new IocProcessingProperties.Plan("second", List.of(), List.of(), null, List.of());
+            String baseline = ProcessingPolicyFingerprint.from(source);
+            String ordered = ProcessingPolicyFingerprint.from(withProcessing(source,
+                    new IocProcessingProperties("first", List.of(first, second))));
+            String reversed = ProcessingPolicyFingerprint.from(withProcessing(source,
+                    new IocProcessingProperties("first", List.of(second, first))));
+            String selected = ProcessingPolicyFingerprint.from(withProcessing(source,
+                    new IocProcessingProperties("second", List.of(first, second))));
+
+            assertThat(ordered).isNotEqualTo(baseline).isNotEqualTo(reversed).isNotEqualTo(selected);
+        });
+    }
+
+    private static IocProperties withProcessing(IocProperties source, IocProcessingProperties processing) {
+        return new IocProperties(source.engine(), source.runtime(), source.storage(), source.source(),
+                source.refang(), source.patterns(), source.classify(), source.sink(), source.pipeline(),
+                source.ingestion(), source.artifactIdentity(), source.dataframeImport(), source.export(),
+                source.sync(), source.maintenance(), source.lifecycle(), source.observability(), processing);
+    }
+
+    @Test
     void boundConfigurationCollectionsAreImmutableSnapshots() {
         contextRunner().run(context -> {
             IocProperties properties = context.getBean(IocProperties.class);

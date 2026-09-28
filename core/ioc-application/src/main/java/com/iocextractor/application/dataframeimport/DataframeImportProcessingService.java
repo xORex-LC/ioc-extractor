@@ -146,7 +146,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
                 if (adopted.isPresent()) {
                     result = new ImportStagingResult(pinned, adopted.orElseThrow());
                 } else {
-                    result = requirePinned(staging.stage(stagingCommand(current)), pinned);
+                    result = staging.stagePinned(stagingCommand(current), pinned);
                 }
             }
             if (current.state() == ImportDeliveryState.CONTRACT_PINNED) {
@@ -159,6 +159,9 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             observer.stagingCompleted(current, elapsedSince(startedAt));
             return performed(initial);
         } catch (ImportRecognitionException failure) {
+            if (initial.contract().isPresent()) {
+                throw contradiction("Pinned import contract is unavailable after restart", failure);
+            }
             return reject(initial, List.of(recognitionCode(failure)), startedAt);
         } catch (DelimitedInputReadException failure) {
             return reject(initial, List.of(
@@ -290,13 +293,6 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
         return new ImportStagingCommand(
                 delivery.id(), delivery.sourceId(), delivery.snapshot().orElseThrow(
                         () -> contradiction("Import staging state has no pinned snapshot")));
-    }
-
-    private ImportStagingResult requirePinned(ImportStagingResult result, ImportContractPin pinned) {
-        if (!result.contract().equals(pinned)) {
-            throw contradiction("Pinned import contract is unavailable after restart");
-        }
-        return result;
     }
 
     private PublishImportReportCommand report(

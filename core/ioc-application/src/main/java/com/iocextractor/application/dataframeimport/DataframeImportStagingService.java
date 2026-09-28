@@ -3,6 +3,7 @@ package com.iocextractor.application.dataframeimport;
 
 import com.iocextractor.application.dataframeimport.contract.CompiledDataframeImportContract;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportRecognizer;
+import com.iocextractor.application.dataframeimport.contract.ImportRecognitionException;
 import com.iocextractor.application.dataframeimport.mapping.DataframeImportRowMapper;
 import com.iocextractor.application.dataframeimport.mapping.ImportRowMappingResult;
 import com.iocextractor.application.dataframeimport.model.ImportContractPin;
@@ -48,11 +49,36 @@ public final class DataframeImportStagingService implements DataframeImportStage
     /** Strictly recognizes, maps and disk-stages one immutable delivery snapshot. */
     @Override
     public ImportStagingResult stage(ImportStagingCommand command) {
+        return stageRecognized(command, recognize(command), null);
+    }
+
+    @Override
+    public ImportStagingResult stagePinned(ImportStagingCommand command, ImportContractPin expected) {
+        Objects.requireNonNull(expected, "expected");
+        CompiledDataframeImportContract contract;
+        try {
+            contract = recognize(command);
+        } catch (ImportRecognitionException failure) {
+            throw new DataframeImportConsistencyException(
+                    "Pinned import contract is unavailable after restart", failure);
+        }
+        return stageRecognized(command, contract, expected);
+    }
+
+    private CompiledDataframeImportContract recognize(ImportStagingCommand command) {
         Objects.requireNonNull(command, "command");
-        CompiledDataframeImportContract contract = recognizer.recognize(
+        return recognizer.recognize(
                 command.sourceId(), command.snapshot().reference(), limits.inputLimits());
+    }
+
+    private ImportStagingResult stageRecognized(ImportStagingCommand command,
+            CompiledDataframeImportContract contract, ImportContractPin expected) {
         ImportContractPin pin = new ImportContractPin(
                 contract.id(), contract.version(), contract.fingerprint());
+        if (expected != null && !pin.equals(expected)) {
+            throw new DataframeImportConsistencyException(
+                    "Pinned import contract is unavailable after restart");
+        }
         CreateImportWorkspaceCommand workspaceCommand = new CreateImportWorkspaceCommand(
                 command.deliveryId(), command.snapshot(), pin, contract.definition().duplicatePolicy(),
                 contract.definition().duplicateSelectionColumn(),
