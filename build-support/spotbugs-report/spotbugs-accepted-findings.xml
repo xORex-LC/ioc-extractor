@@ -543,7 +543,7 @@
     </finding>
     <finding id="DATA-IMPORT-P4-SB-001" module="adapters/adapter-store-jdbc" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="cb04b55a4f02854fce439c638ed6a494" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P4-FAILURE-BOUNDARY" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcImportWorkspaceWriter" />
-        <method name="append" signature="(Lcom/iocextractor/application/dataframeimport/model/ImportLogicalRow;)V" />
+        <method name="append" signature="(Lcom/iocextractor/application/dataframeimport/model/ImportLogicalRow;Ljava/util/List;)V" />
         <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcImportWorkspaceWriter.java" startLine="139" bytecode="304" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />

@@ -54,12 +54,13 @@ class JdbcImportWorkspaceIT {
 
     @Test
     void acceptedWarningsRemainSeparateFromRejectionsInSealedStage() throws Exception {
-        JdbcImportWorkspace workspace = workspace(limits(2));
+        JdbcImportWorkspace workspace = workspace(limits(2, 4, 32, 1));
         CreateImportWorkspaceCommand command = command("warnings", ImportDuplicatePolicy.KEEP_FIRST);
         ImportStage stage;
         try (ImportWorkspaceWriter writer = workspace.create(command)) {
             writer.append(row(2, "key-a", Map.of("ip", ImportCell.value("192.0.2.1"))),
-                    List.of(new ImportRowWarning(2, "ip_list", "IMPORT.VIEW_FALLBACK")));
+                    List.of(new ImportRowWarning(2, "ip_list", "IMPORT.VIEW_FALLBACK"),
+                            new ImportRowWarning(2, "ip_list", "IMPORT.SECOND_WARNING")));
             stage = writer.seal();
         }
         assertThat(stage.acceptedRows()).isOne();
@@ -68,6 +69,46 @@ class JdbcImportWorkspaceIT {
         assertThat(queryLong("SELECT COUNT(*) FROM stage_row_error")).isZero();
         assertThat(queryString("SELECT diagnostic_code FROM stage_row_warning"))
                 .isEqualTo("IMPORT.VIEW_FALLBACK");
+        assertThat(queryLong("SELECT COUNT(*) FROM stage_row_warning")).isOne();
+    }
+
+    @Test
+    void warningForAnotherSourceRowAbortsTheWorkspace() {
+        JdbcImportWorkspace workspace = workspace(limits(2));
+        CreateImportWorkspaceCommand command = command("wrong-warning-row", ImportDuplicatePolicy.KEEP_FIRST);
+
+        try (ImportWorkspaceWriter writer = workspace.create(command)) {
+            assertThatThrownBy(() -> writer.append(
+                    row(2, "key-a", Map.of("ip", ImportCell.value("192.0.2.1"))),
+                    List.of(new ImportRowWarning(3, "ip_list", "IMPORT.VIEW_FALLBACK"))))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("another source row");
+        }
+        assertThat(workspace.adoptSealed(command.deliveryId(), command.snapshot(), command.contract()))
+                .isEmpty();
+    }
+
+    @Test
+    void rejectsPinnedStageWithUnsupportedPrivateSchemaVersion() throws Exception {
+        JdbcImportWorkspace workspace = workspace(limits(2));
+        CreateImportWorkspaceCommand command = command("future-version", ImportDuplicatePolicy.KEEP_FIRST);
+        ImportStage stage;
+        try (ImportWorkspaceWriter writer = workspace.create(command)) {
+            writer.append(row(2, "key-a", Map.of("ip", ImportCell.value("192.0.2.1"))));
+            stage = writer.seal();
+        }
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + sealedFile());
+             var statement = connection.createStatement()) {
+            statement.execute("PRAGMA user_version=99");
+            statement.execute("UPDATE stage_meta SET schema_version=99");
+        }
+        ImportStage repinned = new ImportStage(stage.reference(), ImportFileDigests.sha256(sealedFile()),
+                stage.sourceRows(), stage.acceptedRows(), stage.rejectedRows());
+
+        assertThatThrownBy(() -> workspace.verifySealed(command, repinned))
+                .isInstanceOfSatisfying(ImportWorkspaceException.class,
+                        failure -> assertThat(failure.reason()).isEqualTo(
+                                ImportWorkspaceException.Reason.STAGE_INTEGRITY_FAILED));
     }
 
     @Test

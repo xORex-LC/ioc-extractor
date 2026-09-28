@@ -244,7 +244,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
                     mutations.affectedArtifacts(), mutations.observedArtifacts(), generations, asOf.value());
             insertReceipt(connection, command, result);
             persistRejections(connection, command);
-            persistWarnings(connection, command);
+            persistWarnings(connection, command, stage.header());
             persistSlotResolutions(connection, command, slotResolutions);
             persistArtifactEvidence(connection, command, result);
             observer.after(JdbcCanonicalImportObserver.Phase.RECEIPT_WRITTEN);
@@ -379,6 +379,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
                 throw new IocExtractorException("Import stage metadata is missing or unsealed");
             }
             StageHeader header = new StageHeader(
+                    row.getInt("schema_version"),
                     row.getString("snapshot_sha256"), row.getLong("snapshot_size"),
                     row.getString("contract_id"), row.getInt("contract_version"),
                     row.getString("contract_fingerprint"),
@@ -1108,23 +1109,10 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
         }
     }
 
-    private void persistWarnings(Connection connection, CanonicalImportCommand command) throws SQLException {
-        try (PreparedStatement version = connection.prepareStatement("""
-                SELECT schema_version FROM import_stage.stage_meta
-                WHERE delivery_id = ?
-                """)) {
-            version.setString(1, command.deliveryId().value());
-            try (ResultSet row = version.executeQuery()) {
-                if (!row.next()) {
-                    throw new SQLException("Pinned import stage has no metadata");
-                }
-                if (row.getInt(1) == 2) {
-                    return; // A pinned v2 stage had no warning channel.
-                }
-                if (row.getInt(1) != ImportWorkspaceSchema.VERSION) {
-                    throw new SQLException("Unsupported pinned import stage version");
-                }
-            }
+    private void persistWarnings(Connection connection, CanonicalImportCommand command,
+                                 StageHeader header) throws SQLException {
+        if (header.schemaVersion() == 2) {
+            return; // A pinned v2 stage had no warning channel.
         }
         try (PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO import_row_warning(
@@ -1391,6 +1379,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
     }
 
     private record StageHeader(
+            int schemaVersion,
             String snapshotDigest,
             long snapshotSize,
             String contractId,

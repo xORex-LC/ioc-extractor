@@ -33,7 +33,10 @@ v12 adds `import_row_warning`; the canonical transaction copies warnings on fina
 accepted rows with `import_commit`, and receipt-based post-commit finalization
 reads them into the safe terminal report without replaying input. A pinned v2
 sealed stage remains readable with its original stage plan hash and has no warning
-table; v3 is the new writer format. Unknown stage versions still fail closed.
+table; v3 is the new writer format. Promotion reuses the already verified stage
+schema version rather than querying metadata again. Unknown stage versions still
+fail closed. A warning for a different source row aborts the workspace; retained
+warnings are capped independently of rejected-row errors.
 
 Focused evidence covers final host identity after URL cleanup, preserved optional
 ABSENT and explicit NULL cells, two-cell compound conflict, invalid whole-cell
