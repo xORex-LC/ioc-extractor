@@ -84,7 +84,10 @@ stages передают ему только уже вычисленные реш
 переводит результат общего Camel runtime в application port; его можно собрать
 явно для проверки document path. Production-поток продолжает работать
 по прежнему пути, пока P5 не закрепит fingerprint плана и семантику recovery.
-Обработчик processed import появится в P4.
+`IocProcessingOperations` и `IocProcessingRouteAdapter` общие для document и
+processed-import seams. `RouterProcessedImportRowPreparer` собирает одну
+логическую import-строку из явно названных IOC-входов и выходных колонок;
+production-выбор этого пути остаётся закрыт до P5 policy/recovery gate.
 `IocProcessingProperties` связывает операторские планы типизированно, а
 `ProcessingPlanCatalog` при старте проверяет ссылки и формирует
 `ProcessingPlanBindings` для будущих точек входа. Этот bean сам по себе не

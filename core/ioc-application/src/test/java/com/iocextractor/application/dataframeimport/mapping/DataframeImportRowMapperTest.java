@@ -22,6 +22,7 @@ import com.iocextractor.application.dataframeimport.model.ImportRecordSeparator;
 import com.iocextractor.application.dataframeimport.model.ImportRoutingPolicy;
 import com.iocextractor.application.dataframeimport.model.ImportRowFailurePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
+import com.iocextractor.application.dataframeimport.model.ImportRowWarning;
 import com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord;
 import org.junit.jupiter.api.Test;
 
@@ -253,6 +254,62 @@ class DataframeImportRowMapperTest {
         assertThat(result.row().orElseThrow().branches()).allSatisfy(branch ->
                 assertThat(branch.recordKey()).isPresent());
         assertThat(prepared.get().branches()).hasSize(2);
+    }
+
+    @Test
+    void resolvesProcessedIdentityFromFinalFieldsAndKeepsAcceptedWarning() {
+        DataframeImportRowMapper mapper = new DataframeImportRowMapper(
+                (specification, value) -> value, keys,
+                (contract, record, admitted) -> {
+                    var branches = new java.util.ArrayList<>(admitted.branches());
+                    var primary = branches.getFirst();
+                    var cells = new java.util.LinkedHashMap<>(primary.cells());
+                    cells.put("ip", ImportCell.value("192.0.2.99"));
+                    branches.set(0, new com.iocextractor.application.dataframeimport.model.ImportArtifactBranch(
+                            primary.artifactName(), primary.role(), cells, primary.mergePolicies(),
+                            primary.requestedSlot(), java.util.Optional.empty(), List.of()));
+                    return ImportRowMappingResult.accepted(
+                            new ImportLogicalRow(record.sourceRowNumber(), branches),
+                            List.of(new ImportRowWarning(record.sourceRowNumber(), "ip_list", "IMPORT.VIEW_FALLBACK")));
+                });
+
+        ImportRowMappingResult result = mapper.map(
+                contract(ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED),
+                record(23, "bad-input", "23", "7".repeat(32), "23"));
+
+        assertThat(result.issues()).isEmpty();
+        assertThat(result.warnings()).extracting(ImportRowWarning::code)
+                .containsExactly("IMPORT.VIEW_FALLBACK");
+        assertThat(result.row()).hasValueSatisfying(row -> {
+            assertThat(row.branches().getFirst().cells().get("ip"))
+                    .isEqualTo(ImportCell.value("192.0.2.99"));
+            assertThat(row.branches().getFirst().recordKey()).isPresent();
+        });
+    }
+
+    @Test
+    void refusesProcessedFieldsOutsideTheAdmittedContract() {
+        DataframeImportRowMapper mapper = new DataframeImportRowMapper(
+                (specification, value) -> value, keys,
+                (contract, record, admitted) -> {
+                    var branches = new java.util.ArrayList<>(admitted.branches());
+                    var primary = branches.getFirst();
+                    var cells = new java.util.LinkedHashMap<>(primary.cells());
+                    var policies = new java.util.LinkedHashMap<>(primary.mergePolicies());
+                    cells.put("unconfigured", ImportCell.value("extra"));
+                    policies.put("unconfigured", ImportMergePolicy.AUTHORITATIVE);
+                    branches.set(0, new com.iocextractor.application.dataframeimport.model.ImportArtifactBranch(
+                            primary.artifactName(), primary.role(), cells, policies,
+                            primary.requestedSlot(), java.util.Optional.empty(), List.of()));
+                    return ImportRowMappingResult.accepted(
+                            new ImportLogicalRow(record.sourceRowNumber(), branches));
+                });
+
+        assertThatThrownBy(() -> mapper.map(
+                contract(ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED),
+                record(24, "192.0.2.24", "24", "8".repeat(32), "24")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("authorized cells");
     }
 
     @Test

@@ -9,7 +9,6 @@ import com.iocextractor.adapter.processing.camel.contract.FailureReference;
 import com.iocextractor.adapter.processing.camel.contract.PlanExecutionResult;
 import com.iocextractor.adapter.processing.camel.contract.ViewOutcome;
 import com.iocextractor.application.artifact.RoutedArtifactCandidate;
-import com.iocextractor.application.pipeline.payload.IndicatorOccurrence;
 import com.iocextractor.domain.classify.FeaturePredicate;
 import com.iocextractor.domain.feature.NetworkAddressParser;
 import com.iocextractor.domain.feature.NetworkHostDeriver;
@@ -23,13 +22,13 @@ import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 
 /** Binds shared IOC operations and CSV preparers to Router's neutral catalog. */
-final class DocumentProcessingOperations {
+final class IocProcessingOperations {
     private static final String NETWORK_HOST = "network.host";
     private final ProcessingPlanCatalog.CompiledPlan plan;
     private final Map<String, CsvArtifactPreparer> preparers;
     private final IndicatorClassifier classifier;
 
-    DocumentProcessingOperations(ProcessingPlanCatalog.CompiledPlan plan,
+    IocProcessingOperations(ProcessingPlanCatalog.CompiledPlan plan,
                                  Map<String, CsvArtifactPreparer> preparers,
                                  IndicatorClassifier classifier) {
         this.plan = Objects.requireNonNull(plan, "plan");
@@ -40,13 +39,12 @@ final class DocumentProcessingOperations {
     OperationCatalog catalog() {
         var deriver = new NetworkHostDeriver(new NetworkAddressParser());
         Processor host = exchange -> {
-            DocumentView input = Objects.requireNonNull(
-                    exchange.getMessage().getBody(DocumentView.class), "document view");
+            ProcessingView input = Objects.requireNonNull(
+                    exchange.getMessage().getBody(ProcessingView.class), "processing view");
             var result = deriver.derive(input.classified().indicator());
             exchange.getMessage().setBody(result.isAvailable()
-                    ? new ViewOutcome.Available(new DocumentView(
-                            new ClassifiedIndicator(result.indicator(), classifier.classify(result.indicator())),
-                            input.occurrence()))
+                    ? new ViewOutcome.Available(input.derived(new ClassifiedIndicator(
+                            result.indicator(), classifier.classify(result.indicator()))))
                     : new ViewOutcome.Unavailable(new FailureReference(NETWORK_HOST,
                             result.failure().name().toLowerCase(java.util.Locale.ROOT)
                                     .replace('_', '-'))));
@@ -66,11 +64,11 @@ final class DocumentProcessingOperations {
         for (Map.Entry<String, FeaturePredicate> entry : ConfigRegistryCatalog.featurePredicates().entrySet()) {
             registrations.put(entry.getKey(), new PredicateRegistration(Set.of(),
                     (value, args) -> entry.getValue().test(
-                            ((DocumentView) value).classified().classification().features())));
+                            ((ProcessingView) value).classified().classification().features())));
         }
         registrations.put("type-in", new PredicateRegistration(Set.of("types"),
                 (value, args) -> java.util.Arrays.asList(args.get("types").split(","))
-                        .contains(((DocumentView) value).classified().indicator().type().name())));
+                        .contains(((ProcessingView) value).classified().indicator().type().name())));
         return registrations;
     }
 
@@ -80,12 +78,12 @@ final class DocumentProcessingOperations {
                 plan.bindings().get(branchId), "branch binding " + branchId);
         PlanExecutionResult.BranchInput input = Objects.requireNonNull(exchange.getMessage()
                 .getBody(PlanExecutionResult.BranchInput.class), "branch input");
-        DocumentView selected = resolved(input, binding.defaultView());
+        ProcessingView selected = resolved(input, binding.defaultView());
         Map<String, ClassifiedIndicator> columnViews = new HashMap<>();
         binding.fieldViews().forEach((column, view) ->
                 columnViews.put(column, resolved(input, view).classified()));
         var prepared = preparer.prepareRouted(selected.classified(), columnViews,
-                selected.occurrence().orderingPosition(), selected.occurrence().tieOrdinal());
+                selected.position(), selected.ordinal());
         BranchOutcome outcome;
         if (!prepared.diagnostics().isEmpty()) {
             outcome = new BranchOutcome.Unavailable(
@@ -99,12 +97,9 @@ final class DocumentProcessingOperations {
         exchange.getMessage().setBody(outcome);
     }
 
-    private static DocumentView resolved(PlanExecutionResult.BranchInput input, String view) {
+    private static ProcessingView resolved(PlanExecutionResult.BranchInput input, String view) {
         ViewOutcome outcome = Objects.requireNonNull(input.resolvedViews().get(view),
                 "Required branch view was not available: " + view);
-        return (DocumentView) ((ViewOutcome.Available) outcome).value();
+        return (ProcessingView) ((ViewOutcome.Available) outcome).value();
     }
 }
-
-/** One per-occurrence view; source and rank are never inferred from derived values. */
-record DocumentView(ClassifiedIndicator classified, IndicatorOccurrence occurrence) { }

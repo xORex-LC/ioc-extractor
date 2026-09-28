@@ -19,9 +19,11 @@ import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.application.port.out.dataframeimport.ProcessedImportRowPreparer;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.extract.RawIndicator;
+import com.iocextractor.domain.feature.NetworkAddressParser;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.SourceContext;
 import com.iocextractor.domain.refang.Refanger;
+import com.iocextractor.processing.parse.ExactIndicatorParser;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -43,7 +45,7 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
 
     private final Map<String, CsvArtifactDefinition> definitions;
     private final Refanger refanger;
-    private final IndicatorExtractor extractor;
+    private final ExactIndicatorParser parser;
     private final IndicatorClassifier classifier;
 
     /** Creates a bounded row-local preparation strategy from the ordinary runtime policy. */
@@ -65,7 +67,8 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
         }
         this.definitions = Map.copyOf(byName);
         this.refanger = Objects.requireNonNull(refanger, "refanger");
-        this.extractor = Objects.requireNonNull(extractor, "extractor");
+        this.parser = new ExactIndicatorParser(Objects.requireNonNull(extractor, "extractor"),
+                new NetworkAddressParser());
         this.classifier = Objects.requireNonNull(classifier, "classifier");
     }
 
@@ -115,12 +118,12 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
                 continue;
             }
             String processed = refanger.refang(cell.value()).text();
-            List<RawIndicator> extracted = extractor.extract(processed).indicators();
-            if (extracted.size() != 1 || !coversWholeCell(processed, extracted.getFirst())) {
+            ExactIndicatorParser.Result parsed = parser.parse(processed);
+            if (!parsed.isAvailable()) {
                 issues.add(issue(record, branch.artifactName(), INPUT_INVALID));
                 continue;
             }
-            RawIndicator raw = extracted.getFirst();
+            RawIndicator raw = parsed.indicator();
             Indicator indicator = new Indicator(raw.value(), raw.type(), new SourceContext(source, null));
             if (!classifier.supports(indicator)) {
                 issues.add(issue(record, branch.artifactName(), INPUT_INVALID));
@@ -230,11 +233,6 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
     private String cellValue(ImportCell source) {
         return source != null && source.presence() == ImportCell.Presence.VALUE
                 ? source.value() : null;
-    }
-
-    private boolean coversWholeCell(String text, RawIndicator indicator) {
-        return text.substring(0, indicator.position()).isBlank()
-                && text.substring(indicator.position() + indicator.value().length()).isBlank();
     }
 
     private ImportRowIssue issue(ImportDelimitedRecord record, String artifact, String code) {

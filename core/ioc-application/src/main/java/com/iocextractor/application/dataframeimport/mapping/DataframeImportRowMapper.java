@@ -128,6 +128,9 @@ public final class DataframeImportRowMapper {
                                                List<ImportRowWarning> warnings) {
         List<ImportRowIssue> issues = new ArrayList<>();
         List<ImportArtifactBranch> branches = new ArrayList<>(prepared.branches().size());
+        if (prepared.sourceRowNumber() != admittedRow.sourceRowNumber()) {
+            throw new IllegalStateException("Processed import changed the source row identity");
+        }
         if (prepared.branches().size() != contract.definition().artifacts().size()) {
             throw new IllegalStateException("Processed import changed the authorized artifact count");
         }
@@ -139,10 +142,14 @@ public final class DataframeImportRowMapper {
             }
             ImportArtifactBranch admitted = admittedRow.branches().get(index);
             if (!admitted.requestedSlot().equals(branch.requestedSlot())
-                    || admitted.mergePolicies().entrySet().stream().anyMatch(entry ->
-                            branch.mergePolicies().get(entry.getKey()) != entry.getValue())) {
-                throw new IllegalStateException("Processed import changed source authority or merge policy");
+                    || !branch.cells().keySet().equals(admitted.cells().keySet())
+                    || !branch.mergePolicies().equals(admitted.mergePolicies())
+                    || artifact.sourceLabelTarget() != null
+                            && !Objects.equals(admitted.cells().get(artifact.sourceLabelTarget()),
+                                    branch.cells().get(artifact.sourceLabelTarget()))) {
+                throw new IllegalStateException("Processed import changed authorized cells or source authority");
             }
+            validateFinalCells(contract, artifact, branch.cells(), record, issues);
             validateRowShape(artifact, branch.cells(), record, issues);
             ArtifactRow keyRow = ArtifactRow.ordered(values(branch.cells()));
             Optional<CanonicalKeyMaterial> recordKey = keyResolver.recordKeyOf(artifact.name(), keyRow);
@@ -158,6 +165,26 @@ public final class DataframeImportRowMapper {
                 ? ImportRowMappingResult.accepted(
                         new ImportLogicalRow(record.sourceRowNumber(), branches), warnings)
                 : ImportRowMappingResult.rejected(issues);
+    }
+
+    private void validateFinalCells(CompiledDataframeImportContract contract,
+                                    DataframeImportCatalogDraft.Artifact artifact,
+                                    Map<String, ImportCell> cells,
+                                    ImportDelimitedRecord record,
+                                    List<ImportRowIssue> issues) {
+        for (DataframeImportCatalogDraft.Column column : artifact.columns()) {
+            ImportCell cell = cells.get(column.target());
+            if (cell == null || cell.presence() != ImportCell.Presence.VALUE) {
+                continue;
+            }
+            if (contract.definition().formulaPolicy() == ImportFormulaPolicy.REJECT
+                    && formulaDangerous(cell.value())) {
+                issues.add(issue(record, artifact.name(), FORMULA_REJECTED));
+            }
+            if (column.validation() != null && !validators.isValid(column.validation(), cell.value())) {
+                issues.add(issue(record, artifact.name(), VALUE_INVALID));
+            }
+        }
     }
 
     private Map<String, ImportMergePolicy> mergePolicies(

@@ -45,7 +45,8 @@ tracer с fingerprint политики, но без значений IOC; MDC-к
 артефактов сохраняют контракт количества записей lifecycle receipt.
 `IocExtractionService` и его фабрика пока принимают такой план только явно;
 production-конфигурация не выбирает новый путь до завершения привязки
-fingerprint и восстановления незавершённых запусков. Import ещё использует
+fingerprint и восстановления незавершённых запусков. Для processed import
+создан отдельный явный Router-адаптер, но production-конфигурация пока использует
 прежний путь. Оценка серьёзности диагностик, правила IOC и canonical-запись
 сохраняют текущих владельцев.
 
@@ -135,7 +136,12 @@ Tika, RE2/J, Guava PSL и Commons CSV изолированы адаптерам�
     `ProcessedImportRowPreparer` применяет ordinary refang/extract/classify и
     declarative artifact mapping к уже структурированной logical row. Он не
     читает source, не владеет staging/transaction и сохраняет compound-row
-    grouping; `as-is` этот path не вызывает.
+    grouping; `as-is` этот path не вызывает. Для нового Router-пути входные
+    IOC-ячейки и производные выходные колонки указываются явно: из имён
+    provider-ов они не выводятся. Application вычисляет record/match keys и
+    проверяет форму строки только после обработки. Предупреждения успешного
+    fallback отделены от rejection issues и проходят через sealed stage и
+    canonical receipt к terminal-отчёту.
 
 ## Декларативный artifact mapping
 

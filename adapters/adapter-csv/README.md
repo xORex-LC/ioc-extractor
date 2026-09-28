@@ -45,7 +45,10 @@ errors/diagnostics/observability, Commons CSV, SLF4J API.
 - `CsvProcessedImportRowPreparer` подключает explicit `processed` import mode к
   обычным refang/extract/classify и CSV artifact policies. Он требует ровно один
   whole-cell IOC для каждого semantic carrier, сохраняет compound-row
-  correlation и никогда не подменяет `processed` режим поведением `as-is`;
+  correlation и никогда не подменяет `processed` режим поведением `as-is`.
+  Это совместимый текущий путь; новый Router import adapter использует явные
+  входные/выходные привязки и общий `ExactIndicatorParser`, а переключение
+  production-пути ожидает policy identity/recovery gate;
 - public id остаётся deferred slot до commit; `from: id` не допускает
   `when-type` или transforms, что проверяется bootstrap config preflight;
   mapping SPI не получает временный id, а id-provider возвращает пустой slot;

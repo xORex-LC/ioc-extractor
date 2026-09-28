@@ -231,7 +231,7 @@ class DocumentProcessingAdapterTest {
     private static Harness harness(ProcessingPlanCatalog.CompiledPlan plan,
                                    Map<String, CsvArtifactPreparer> preparers, MatchPolicy policy) {
         var classifier = new IndicatorClassifier(policy);
-        var catalog = new DocumentProcessingOperations(plan, preparers, classifier).catalog();
+        var catalog = new IocProcessingOperations(plan, preparers, classifier).catalog();
         var runtime = new CamelRouteRuntime(new CamelPlanCompiler().compile(List.of(plan.router()), catalog));
         return new Harness(new DocumentProcessingAdapter(plan, runtime, classifier, Clock.systemUTC()), runtime);
     }
