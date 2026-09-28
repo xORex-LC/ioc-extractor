@@ -36,6 +36,7 @@ import com.iocextractor.application.dataframeimport.model.ImportRejectedLogicalR
 import com.iocextractor.application.dataframeimport.model.ImportRequestedSlotPolicy;
 import com.iocextractor.application.dataframeimport.model.ImportRowFailurePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
+import com.iocextractor.application.dataframeimport.model.ImportRowWarning;
 import com.iocextractor.application.dataframeimport.model.ImportSha256;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshot;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshotReference;
@@ -119,6 +120,59 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                     "SELECT revision FROM artifact_revision WHERE artifact = 'masks'"))
                     .isOne();
         });
+    }
+
+    @Test
+    void acceptedWarningSurvivesCanonicalCommitAndReceiptReplay() {
+        Environment environment = environment("accepted-warning");
+        ImportRowWarning warning = new ImportRowWarning(2, "masks", "IMPORT.VIEW_FALLBACK");
+        CanonicalImportCommand command = environment.stage(
+                "delivery-accepted-warning", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "evil.example"), OptionalLong.empty()))),
+                List.of(), List.of(warning));
+
+        environment.writer(JdbcCanonicalImportObserver.NOOP).promote(command);
+        var evidence = new JdbcImportCommitEvidenceStore(environment.dataSource).find(command.deliveryId());
+
+        assertThat(evidence).hasValueSatisfying(receipt -> {
+            assertThat(receipt.acceptedRows()).isOne();
+            assertThat(receipt.rejectedRows()).isZero();
+            assertThat(receipt.issues()).isEmpty();
+            assertThat(receipt.warnings()).containsExactly(warning);
+        });
+        assertThat(environment.count("import_row_rejection")).isZero();
+        assertThat(environment.count("import_row_warning")).isOne();
+    }
+
+    @Test
+    void promotesPinnedVersionTwoStageWithoutAWarningTable() throws Exception {
+        Environment environment = environment("version-two-stage");
+        CanonicalImportCommand command = environment.stage(
+                "delivery-version-two", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                        values("mask", "old.example"), OptionalLong.empty()))), List.of());
+        Path sealed = environment.stagePath(command);
+        try (Connection connection = java.sql.DriverManager.getConnection("jdbc:sqlite:" + sealed);
+             var statement = connection.createStatement()) {
+            statement.execute("DROP TABLE stage_row_warning");
+            statement.execute("PRAGMA user_version=2");
+            statement.execute("""
+                    UPDATE stage_meta SET schema_version=2,
+                    plan_hash='9ab1998b7e0d179935dfedf374f6011d609d6db6bafed535deee771626524d64'
+                    """);
+        }
+        ImportStage oldStage = new ImportStage(command.stage().reference(),
+                ImportFileDigests.sha256(sealed), command.stage().sourceRows(),
+                command.stage().acceptedRows(), command.stage().rejectedRows());
+        CanonicalImportCommand resumed = new CanonicalImportCommand(
+                command.deliveryId(), command.sequence(), command.sourceId(),
+                command.snapshot(), command.contract(), oldStage);
+
+        environment.writer(JdbcCanonicalImportObserver.NOOP).promote(resumed);
+
+        assertThat(environment.count("masks")).isOne();
+        assertThat(environment.count("import_row_warning")).isZero();
     }
 
     @Test
@@ -902,6 +956,14 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                                              ImportPromotionPolicy policy,
                                              List<ImportLogicalRow> rows,
                                              List<ImportRejectedLogicalRow> rejectedRows) {
+            return stage(delivery, policy, rows, rejectedRows, List.of());
+        }
+
+        private CanonicalImportCommand stage(String delivery,
+                                             ImportPromotionPolicy policy,
+                                             List<ImportLogicalRow> rows,
+                                             List<ImportRejectedLogicalRow> rejectedRows,
+                                             List<ImportRowWarning> warnings) {
             ImportDeliveryId deliveryId = new ImportDeliveryId(delivery);
             ImportSnapshot snapshot = new ImportSnapshot(
                     new ImportSnapshotReference("snapshot:" + delivery),
@@ -915,7 +977,9 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
                     workspaceRoot, workspaceLimits(), CLOCK);
             ImportStage stage;
             try (ImportWorkspaceWriter writer = workspace.create(create)) {
-                rows.forEach(writer::append);
+                rows.forEach(row -> writer.append(row,
+                        warnings.stream().filter(warning -> warning.sourceRowNumber() == row.sourceRowNumber())
+                                .toList()));
                 rejectedRows.forEach(writer::reject);
                 stage = writer.seal();
             }

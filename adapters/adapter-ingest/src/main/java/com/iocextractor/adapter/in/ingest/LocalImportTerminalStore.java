@@ -227,6 +227,17 @@ public final class LocalImportTerminalStore
             appendNullable(json, issue.artifact());
             json.append(",\"code\":\"").append(escape(issue.code())).append("\"}");
         }
+        json.append("],\n  \"warnings\":[");
+        for (int index = 0; index < command.warnings().size(); index++) {
+            var warning = command.warnings().get(index);
+            if (index > 0) {
+                json.append(',');
+            }
+            json.append("{\"row\":").append(warning.sourceRowNumber())
+                    .append(",\"artifact\":");
+            appendNullable(json, warning.artifact());
+            json.append(",\"code\":\"").append(escape(warning.code())).append("\"}");
+        }
         return json.append("]\n}\n").toString();
     }
 

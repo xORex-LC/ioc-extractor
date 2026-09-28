@@ -3,6 +3,7 @@ package com.iocextractor.adapter.out.store.jdbc;
 import com.iocextractor.application.dataframeimport.model.ImportCommitEvidence;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
 import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
+import com.iocextractor.application.dataframeimport.model.ImportRowWarning;
 import com.iocextractor.application.port.out.dataframeimport.ImportCommitEvidenceStore;
 import com.iocextractor.common.IocExtractorException;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -52,7 +53,7 @@ public final class JdbcImportCommitEvidenceStore implements ImportCommitEvidence
                     .optional();
             return receipt.map(value -> new ImportCommitEvidence(
                     deliveryId, value.acceptedRows(), value.rejectedRows(), value.publicMutations(),
-                    affectedArtifacts(deliveryId), issues(deliveryId)));
+                    affectedArtifacts(deliveryId), issues(deliveryId), warnings(deliveryId)));
         } catch (RuntimeException failure) {
             throw new IocExtractorException("Cannot read canonical import receipt evidence", failure);
         }
@@ -93,6 +94,23 @@ public final class JdbcImportCommitEvidenceStore implements ImportCommitEvidence
                 .param("delivery_id", deliveryId.value())
                 .param("maximum_issues", maximumIssues)
                 .query((row, ignored) -> new ImportRowIssue(
+                        row.getLong("source_row_number"),
+                        row.getString("artifact"),
+                        row.getString("diagnostic_code")))
+                .list();
+    }
+
+    private List<ImportRowWarning> warnings(ImportDeliveryId deliveryId) {
+        return jdbc.sql("""
+                        SELECT source_row_number, artifact, diagnostic_code
+                        FROM import_row_warning
+                        WHERE delivery_id = :delivery_id
+                        ORDER BY warning_ordinal
+                        LIMIT :maximum_warnings
+                        """)
+                .param("delivery_id", deliveryId.value())
+                .param("maximum_warnings", maximumIssues)
+                .query((row, ignored) -> new ImportRowWarning(
                         row.getLong("source_row_number"),
                         row.getString("artifact"),
                         row.getString("diagnostic_code")))

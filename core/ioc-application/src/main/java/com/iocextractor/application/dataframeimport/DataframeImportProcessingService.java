@@ -11,6 +11,7 @@ import com.iocextractor.application.dataframeimport.model.ImportDeliveryTransiti
 import com.iocextractor.application.dataframeimport.model.ImportLedgerTransitionResult;
 import com.iocextractor.application.dataframeimport.model.ImportRetrySchedule;
 import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
+import com.iocextractor.application.dataframeimport.model.ImportRowWarning;
 import com.iocextractor.application.dataframeimport.model.ImportStage;
 import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
 import com.iocextractor.application.port.in.dataframeimport.ProcessNextDataframeImportResult;
@@ -206,7 +207,8 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             ImportTerminalOutcome outcome = evidence.terminalOutcome();
             PublishImportReportCommand report = report(
                     current, outcome, evidence.acceptedRows(), evidence.rejectedRows(),
-                    evidence.publicMutations(), evidence.affectedArtifacts(), List.of(), evidence.issues());
+                    evidence.publicMutations(), evidence.affectedArtifacts(), List.of(),
+                    evidence.issues(), evidence.warnings());
             reports.publish(report);
             dispositionForwardSource(current, outcome);
             completeObservation(current, outcome);
@@ -306,12 +308,26 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
             Set<String> affectedArtifacts,
             List<String> deliveryCodes,
             List<ImportRowIssue> issues) {
+        return report(delivery, outcome, acceptedRows, rejectedRows, publicMutations,
+                affectedArtifacts, deliveryCodes, issues, List.of());
+    }
+
+    private PublishImportReportCommand report(
+            ImportDelivery delivery,
+            ImportTerminalOutcome outcome,
+            long acceptedRows,
+            long rejectedRows,
+            long publicMutations,
+            Set<String> affectedArtifacts,
+            List<String> deliveryCodes,
+            List<ImportRowIssue> issues,
+            List<ImportRowWarning> warnings) {
         return new PublishImportReportCommand(
                 delivery.id(), delivery.sourceId(),
                 delivery.snapshot().orElseThrow(
                         () -> contradiction("Import finalization has no pinned snapshot")).reference(),
                 delivery.contract(), outcome, acceptedRows, rejectedRows, publicMutations,
-                affectedArtifacts, deliveryCodes, issues);
+                affectedArtifacts, deliveryCodes, issues, warnings);
     }
 
     private void dispositionForwardSource(

@@ -81,7 +81,7 @@ public final class DataframeImportStagingService implements DataframeImportStage
     }
 
     private void append(ImportWorkspaceWriter writer, ImportRowMappingResult result) {
-        result.row().ifPresentOrElse(writer::append,
+        result.row().ifPresentOrElse(row -> writer.append(row, result.warnings()),
                 () -> writer.reject(new ImportRejectedLogicalRow(
                         result.issues().getFirst().sourceRowNumber(), result.issues())));
     }

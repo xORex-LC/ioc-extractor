@@ -14,6 +14,7 @@ import com.iocextractor.application.dataframeimport.model.ImportDuplicatePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportLogicalRow;
 import com.iocextractor.application.dataframeimport.model.ImportRejectedLogicalRow;
 import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
+import com.iocextractor.application.dataframeimport.model.ImportRowWarning;
 import com.iocextractor.application.dataframeimport.model.ImportSha256;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshot;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshotReference;
@@ -50,6 +51,51 @@ class JdbcImportWorkspaceIT {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void acceptedWarningsRemainSeparateFromRejectionsInSealedStage() throws Exception {
+        JdbcImportWorkspace workspace = workspace(limits(2));
+        CreateImportWorkspaceCommand command = command("warnings", ImportDuplicatePolicy.KEEP_FIRST);
+        ImportStage stage;
+        try (ImportWorkspaceWriter writer = workspace.create(command)) {
+            writer.append(row(2, "key-a", Map.of("ip", ImportCell.value("192.0.2.1"))),
+                    List.of(new ImportRowWarning(2, "ip_list", "IMPORT.VIEW_FALLBACK")));
+            stage = writer.seal();
+        }
+        assertThat(stage.acceptedRows()).isOne();
+        assertThat(stage.rejectedRows()).isZero();
+        assertThat(workspace.verifySealed(command, stage)).isEqualTo(stage);
+        assertThat(queryLong("SELECT COUNT(*) FROM stage_row_error")).isZero();
+        assertThat(queryString("SELECT diagnostic_code FROM stage_row_warning"))
+                .isEqualTo("IMPORT.VIEW_FALLBACK");
+    }
+
+    @Test
+    void adoptsPinnedVersionTwoStageWithoutReinterpretingItsPlan() throws Exception {
+        JdbcImportWorkspace workspace = workspace(limits(10));
+        CreateImportWorkspaceCommand command = command("version-two", ImportDuplicatePolicy.KEEP_FIRST);
+        ImportStage newStage;
+        try (ImportWorkspaceWriter writer = workspace.create(command)) {
+            writer.append(row(2, "key-a", Map.of("ip", ImportCell.value("192.0.2.1"))));
+            newStage = writer.seal();
+        }
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + sealedFile());
+             var statement = connection.createStatement()) {
+            statement.execute("DROP TABLE stage_row_warning");
+            statement.execute("PRAGMA user_version=2");
+            statement.execute("""
+                    UPDATE stage_meta SET schema_version=2,
+                    plan_hash='16f637219429dbb9053ea2fae651d05c00666c2b613303a3bd0c19f25769017d'
+                    """);
+        }
+        ImportStage oldStage = new ImportStage(newStage.reference(),
+                ImportFileDigests.sha256(sealedFile()), newStage.sourceRows(),
+                newStage.acceptedRows(), newStage.rejectedRows());
+
+        assertThat(workspace.verifySealed(command, oldStage)).isEqualTo(oldStage);
+        assertThat(workspace.adoptSealed(command.deliveryId(), command.snapshot(), command.contract()))
+                .contains(oldStage);
+    }
 
     @Test
     void coalescesCompatibleTriStateRowsAndVerifiesSealedStageReadOnly() throws Exception {

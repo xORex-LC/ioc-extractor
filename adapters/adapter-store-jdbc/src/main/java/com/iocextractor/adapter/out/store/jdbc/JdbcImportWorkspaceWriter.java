@@ -8,6 +8,7 @@ import com.iocextractor.application.dataframeimport.model.ImportDuplicatePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportLogicalRow;
 import com.iocextractor.application.dataframeimport.model.ImportRejectedLogicalRow;
 import com.iocextractor.application.dataframeimport.model.ImportRowIssue;
+import com.iocextractor.application.dataframeimport.model.ImportRowWarning;
 import com.iocextractor.application.dataframeimport.model.ImportStage;
 import com.iocextractor.application.dataframeimport.model.ImportWorkspaceLimits;
 import com.iocextractor.application.port.out.dataframeimport.CreateImportWorkspaceCommand;
@@ -45,9 +46,11 @@ final class JdbcImportWorkspaceWriter implements ImportWorkspaceWriter {
     private final PreparedStatement insertCell;
     private final PreparedStatement insertMatchKey;
     private final PreparedStatement insertError;
+    private final PreparedStatement insertWarning;
 
     private long sourceRows;
     private long rowErrors;
+    private long rowWarnings;
     private long lastSourceRow;
     private int pendingRows;
     private boolean closed;
@@ -92,11 +95,21 @@ final class JdbcImportWorkspaceWriter implements ImportWorkspaceWriter {
                     logical_group_id, source_row_number, artifact, diagnostic_code)
                 VALUES (?, ?, ?, ?)
                 """);
+        this.insertWarning = connection.prepareStatement("""
+                INSERT INTO stage_row_warning(source_row_number, artifact, diagnostic_code)
+                VALUES (?, ?, ?)
+                """);
     }
 
     @Override
     public void append(ImportLogicalRow row) {
+        append(row, List.of());
+    }
+
+    @Override
+    public void append(ImportLogicalRow row, List<ImportRowWarning> warnings) {
         Objects.requireNonNull(row, "row");
+        Objects.requireNonNull(warnings, "warnings");
         checkOpen();
         requireNextRow(row.sourceRowNumber());
         requireRowShape(row);
@@ -108,6 +121,18 @@ final class JdbcImportWorkspaceWriter implements ImportWorkspaceWriter {
             insertInput(row.sourceRowNumber(), groupKey.keyHash(), groupKey.keyCanonical(), MAPPED, 0);
             for (int ordinal = 0; ordinal < row.branches().size(); ordinal++) {
                 insertBranch(row.sourceRowNumber(), ordinal, row.branches().get(ordinal));
+            }
+            for (ImportRowWarning warning : warnings) {
+                if (warning.sourceRowNumber() != row.sourceRowNumber()) {
+                    throw new IllegalArgumentException("Accepted warning belongs to another source row");
+                }
+                if (rowWarnings < limits.maximumRowErrors()) {
+                    insertWarning.setLong(1, warning.sourceRowNumber());
+                    insertWarning.setString(2, warning.artifact());
+                    insertWarning.setString(3, warning.code());
+                    insertWarning.executeUpdate();
+                    rowWarnings++;
+                }
             }
             appended(row.sourceRowNumber(), 0);
         } catch (SQLException | RuntimeException failure) {
@@ -740,6 +765,7 @@ final class JdbcImportWorkspaceWriter implements ImportWorkspaceWriter {
         insertCell.close();
         insertMatchKey.close();
         insertError.close();
+        insertWarning.close();
     }
 
     private RuntimeException failureAfterAbort(RuntimeException primary) {

@@ -244,6 +244,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
                     mutations.affectedArtifacts(), mutations.observedArtifacts(), generations, asOf.value());
             insertReceipt(connection, command, result);
             persistRejections(connection, command);
+            persistWarnings(connection, command);
             persistSlotResolutions(connection, command, slotResolutions);
             persistArtifactEvidence(connection, command, result);
             observer.after(JdbcCanonicalImportObserver.Phase.RECEIPT_WRITTEN);
@@ -373,7 +374,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
     private StageHeader readStageHeader(PreparedStatement statement, String deliveryId) throws SQLException {
         statement.setString(1, deliveryId);
         try (ResultSet row = statement.executeQuery()) {
-            if (!row.next() || row.getInt("schema_version") != ImportWorkspaceSchema.VERSION
+            if (!row.next() || !ImportWorkspaceSchema.readable(row.getInt("schema_version"))
                     || row.getObject("sealed_at_ms") == null) {
                 throw new IocExtractorException("Import stage metadata is missing or unsealed");
             }
@@ -1101,6 +1102,40 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
                 SELECT ?, rejection_ordinal, source_row_number, artifact, diagnostic_code
                 FROM temp_import_rejection
                 ORDER BY rejection_ordinal
+                """)) {
+            statement.setString(1, command.deliveryId().value());
+            statement.executeUpdate();
+        }
+    }
+
+    private void persistWarnings(Connection connection, CanonicalImportCommand command) throws SQLException {
+        try (PreparedStatement version = connection.prepareStatement("""
+                SELECT schema_version FROM import_stage.stage_meta
+                WHERE delivery_id = ?
+                """)) {
+            version.setString(1, command.deliveryId().value());
+            try (ResultSet row = version.executeQuery()) {
+                if (!row.next()) {
+                    throw new SQLException("Pinned import stage has no metadata");
+                }
+                if (row.getInt(1) == 2) {
+                    return; // A pinned v2 stage had no warning channel.
+                }
+                if (row.getInt(1) != ImportWorkspaceSchema.VERSION) {
+                    throw new SQLException("Unsupported pinned import stage version");
+                }
+            }
+        }
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO import_row_warning(
+                    delivery_id, warning_ordinal, source_row_number, artifact, diagnostic_code)
+                SELECT ?, warning.warning_id, warning.source_row_number,
+                       warning.artifact, warning.diagnostic_code
+                FROM import_stage.stage_row_warning warning
+                JOIN import_stage.stage_input_row input
+                  ON input.source_row_number = warning.source_row_number
+                WHERE input.status = 'ACCEPTED'
+                ORDER BY warning_id
                 """)) {
             statement.setString(1, command.deliveryId().value());
             statement.executeUpdate();

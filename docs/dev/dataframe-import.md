@@ -99,10 +99,15 @@ continues when notifications are disabled, lost, duplicated or reconnecting.
   storage/transport-neutral ports. It has no CSV, JDBC, SMBJ or Spring imports.
 - `adapter-csv` owns strict charset decoding, Commons CSV dialect construction,
   streaming rows and import transforms.
-- `adapter-store-jdbc` owns the v9 delivery foundation and the current v11
-  observation reservation, private sealed workspaces, active-only canonical
+- `adapter-store-jdbc` owns the v9 delivery foundation, the v11 observation
+  reservation and v12 accepted-row warnings, private sealed workspaces, active-only canonical
   matching/mutation, sparse requested slots and dataframe `import_commit`
   receipt.
+- An accepted processed row can carry a bounded, value-free `warnings` list
+  independently of rejection `issues`. The sealed workspace stores it separately;
+  the canonical transaction copies warnings into the dataframe receipt so
+  post-commit report recovery reproduces them without reprocessing input.
+  Only warnings on final accepted stage rows are published.
 - `adapter-ingest` owns local claim/terminal filesystem mechanics, the one
   local-filesystem immutable snapshot-store implementation shared by every
   source transport, and local WatchService hints.

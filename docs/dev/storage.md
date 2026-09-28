@@ -119,6 +119,13 @@ expiry атомарно переносится в history-owned origin table, п
 не переинтерпретируется: receipt replay возвращает ETL fallback, а уже
 зафиксированный canonical commit остаётся idempotency authority.
 
+Dataframe schema v12 хранит ограниченные предупреждения принятых строк импорта
+отдельно от `import_row_rejection`. Они записываются в той же транзакции, что и
+`import_commit`, и доступны при восстановлении terminal-отчёта после сбоя.
+Новая версия private sealed workspace также отделяет предупреждения от ошибок.
+Запечатанный stage v2 читается с его исходным `plan_hash` и без предупреждений;
+неизвестные версии не переинтерпретируются.
+
 `LatestRegisteredValuePolicy` остаётся pure application strategy. JDBC adapter
 только загружает текущий origin, применяет решение и в одной транзакции изменяет
 public row, origin, revision/projection generation, commit marker и receipt.
@@ -129,7 +136,7 @@ public row, origin, revision/projection generation, commit marker и receipt.
 
 Shipping `ioc_aggregate` включает ordered `name` policy и использует эти таблицы
 как runtime authority в oneshot, daemon document и managed-import paths. Старый
-binary корректно откажется открывать schema v11; rollback выполняется только
+binary корректно откажется открывать schema v12; rollback выполняется только
 совместным восстановлением service/dataframe DB, конфигурации и принадлежащих
 сервису файлов из одной остановленной recovery point.
 
