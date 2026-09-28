@@ -123,10 +123,6 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
         }
         Indicator indicator = new Indicator(parsed.indicator().value(), parsed.indicator().type(),
                 new SourceContext(sourceLabel(contract, branch), null));
-        if (!classifier.supports(indicator)) {
-            assembly.issues.add(issue(record, input.artifact(), INPUT_INVALID));
-            return;
-        }
         var original = new ProcessingView(new ClassifiedIndicator(indicator, classifier.classify(indicator)),
                 new OccurrencePosition(record.sourceRowNumber()), 0);
         var result = route.prepare(original);

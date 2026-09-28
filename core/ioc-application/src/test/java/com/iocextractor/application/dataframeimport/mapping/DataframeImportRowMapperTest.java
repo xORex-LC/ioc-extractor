@@ -326,6 +326,17 @@ class DataframeImportRowMapperTest {
                 new ImportArtifactBranch("other", primary.role(), primary.cells(),
                         primary.mergePolicies(), primary.requestedSlot(), primary.recordKey(),
                         primary.matchKeys())), "artifact branches");
+        assertProcessedMutationRejected(row -> {
+            ImportArtifactBranch primary = row.branches().getFirst();
+            ImportArtifactBranch related = row.branches().get(1);
+            return new ImportLogicalRow(row.sourceRowNumber(), List.of(
+                    new ImportArtifactBranch(primary.artifactName(), ImportArtifactRole.RELATED,
+                            primary.cells(), primary.mergePolicies(), java.util.OptionalLong.empty(),
+                            primary.recordKey(), primary.matchKeys()),
+                    new ImportArtifactBranch(related.artifactName(), ImportArtifactRole.PRIMARY,
+                            related.cells(), related.mergePolicies(), primary.requestedSlot(),
+                            related.recordKey(), related.matchKeys())));
+        }, "artifact branches");
         assertProcessedMutationRejected(row -> replacePrimary(row, primary ->
                 new ImportArtifactBranch(primary.artifactName(), primary.role(), primary.cells(),
                         primary.mergePolicies(), java.util.OptionalLong.empty(), primary.recordKey(),
@@ -422,6 +433,45 @@ class DataframeImportRowMapperTest {
     }
 
     @Test
+    void finalValidationDropsAcceptedWarningsWhenDerivedIdentityIsInvalid() {
+        DataframeImportRowMapper mapper = new DataframeImportRowMapper(
+                (specification, value) -> value, keys,
+                (contract, record, admitted) -> ImportRowMappingResult.accepted(
+                        replacePrimary(admitted, branch -> {
+                            var cells = new java.util.LinkedHashMap<>(branch.cells());
+                            cells.put("ip", ImportCell.nullValue());
+                            return new ImportArtifactBranch(branch.artifactName(), branch.role(), cells,
+                                    branch.mergePolicies(), branch.requestedSlot(), branch.recordKey(),
+                                    branch.matchKeys());
+                        }), List.of(new ImportRowWarning(record.sourceRowNumber(), "ip_list",
+                                "IMPORT.VIEW_FALLBACK"))));
+
+        ImportRowMappingResult result = mapper.map(
+                contract(ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED),
+                record(31, "192.0.2.31", "31", "F".repeat(32), "31"));
+
+        assertThat(result.row()).isEmpty();
+        assertThat(result.issues()).extracting(ImportRowIssue::code)
+                .contains("IMPORT.RECORD_KEY_MISSING");
+        assertThat(result.warnings()).isEmpty();
+    }
+
+    @Test
+    void processedFinalizationPreservesMachineOnlyDerivedFormulaText() {
+        DataframeImportRowMapper mapper = mapperReplacingPrimaryCell(
+                "description", ImportCell.value("=machine-value"));
+
+        ImportRowMappingResult result = mapper.map(
+                contract(ImportFormulaPolicy.MACHINE_ONLY_PRESERVE, ImportProcessingMode.PROCESSED),
+                record(32, "192.0.2.32", "32", "A".repeat(32), "32"));
+
+        assertThat(result.issues()).isEmpty();
+        assertThat(result.row()).hasValueSatisfying(row ->
+                assertThat(row.branches().getFirst().cells())
+                        .containsEntry("description", ImportCell.value("=machine-value")));
+    }
+
+    @Test
     void processedInputRejectionDoesNotTurnIntoAnAcceptedWarning() {
         DataframeImportRowMapper mapper = new DataframeImportRowMapper(
                 (specification, value) -> value, keys,
@@ -504,6 +554,24 @@ class DataframeImportRowMapperTest {
         assertThat(compound.row()).isEmpty();
         assertThat(compound.issues()).extracting(ImportRowIssue::code)
                 .contains("IMPORT.NONEMPTY_CARDINALITY");
+
+        DataframeImportRowMapper reduced = new DataframeImportRowMapper(
+                (specification, value) -> value.trim(), keys,
+                (contract, record, admitted) -> ImportRowMappingResult.accepted(
+                        replacePrimary(admitted, branch -> {
+                            var cells = new java.util.LinkedHashMap<>(branch.cells());
+                            cells.put("score", ImportCell.nullValue());
+                            return new ImportArtifactBranch(branch.artifactName(), branch.role(), cells,
+                                    branch.mergePolicies(), branch.requestedSlot(), branch.recordKey(),
+                                    branch.matchKeys());
+                        })));
+        ImportRowMappingResult single = reduced.map(configured,
+                record(33, "192.0.2.33", "33", "7".repeat(32), "33"));
+
+        assertThat(single.issues()).isEmpty();
+        assertThat(single.row()).hasValueSatisfying(row ->
+                assertThat(row.branches().getFirst().cells())
+                        .containsEntry("score", ImportCell.nullValue()));
     }
 
     private CompiledDataframeImportContract contract(ImportFormulaPolicy formulaPolicy) {

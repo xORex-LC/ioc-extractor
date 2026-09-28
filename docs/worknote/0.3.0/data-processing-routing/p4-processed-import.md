@@ -49,8 +49,12 @@ deterministic-offline suites. No existing test was reclassified or removed.
 The quality review found a repeated effective merge-policy resolver in the CSV
 and Router preparers; both now call the application-owned resolver also used by
 input admission. Boundary tests cover final source-row identity, branch count,
-artifact, requested slot, admitted cells and policies, source label, derived
-formula/validator rejection and missing final key. The two pre-existing
+artifact and role, requested slot, admitted cells and policies, source label,
+derived formula/validator rejection and missing final key. They also pin final
+cardinality after a derived NULL, accepted-warning removal when final identity
+fails, and the machine-only formula exception. Bootstrap fixtures pin exact
+binding admission, source-label authority, same-value coalescing, related-branch
+preservation and unrecovered route failure. The two pre-existing
 `JdbcImportWorkspaceWriter` SpotBugs `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION`
 findings remain the same abort-on-failure behavior; their exact accepted
 identities were reviewed and updated after adding the warning write.

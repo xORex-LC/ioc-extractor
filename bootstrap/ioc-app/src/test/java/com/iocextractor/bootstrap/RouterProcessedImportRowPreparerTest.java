@@ -31,28 +31,33 @@ import com.iocextractor.application.dataframeimport.model.ImportRecordSeparator;
 import com.iocextractor.application.dataframeimport.model.ImportRoutingPolicy;
 import com.iocextractor.application.dataframeimport.model.ImportRowFailurePolicy;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
+import com.iocextractor.application.observation.OccurrencePosition;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.domain.classify.ClassificationDecision;
 import com.iocextractor.domain.extract.ExtractionOutcome;
 import com.iocextractor.domain.extract.RawIndicator;
 import com.iocextractor.domain.feature.HostKind;
 import com.iocextractor.domain.feature.IndicatorFeatures;
+import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.MaskMatch;
+import com.iocextractor.domain.model.SourceContext;
 import com.iocextractor.domain.refang.RefangOutcome;
 import com.iocextractor.processing.classification.IndicatorClassifier;
 import com.iocextractor.processing.mapping.ArtifactFilter;
 import com.iocextractor.processing.mapping.ColumnSpec;
 import com.iocextractor.processing.mapping.ConfigurableRowMapper;
+import com.iocextractor.processing.model.ClassifiedIndicator;
 import java.time.Clock;
-import java.util.List;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Timeout(15)
 class RouterProcessedImportRowPreparerTest {
@@ -127,11 +132,209 @@ class RouterProcessedImportRowPreparerTest {
         }
     }
 
+    @Test
+    void equalDerivedValuesFromTwoInputsAssembleOneLogicalRow() throws Exception {
+        try (Fixture fixture = fixture()) {
+            var result = fixture.mapper().map(contract(), new ImportDelimitedRecord(7,
+                    Map.of("ioc", "https://EVIL.example/one", "other", "http://evil.example/two")));
+
+            assertThat(result.issues()).isEmpty();
+            assertThat(result.row()).hasValueSatisfying(row -> {
+                assertThat(row.branches()).hasSize(1);
+                assertThat(row.branches().getFirst().cells())
+                        .containsEntry("mask", ImportCell.value("evil.example"));
+            });
+        }
+    }
+
+    @Test
+    void missingPrimaryInputRejectsTheWholeLogicalRow() throws Exception {
+        try (Fixture fixture = fixture()) {
+            var result = fixture.mapper().map(contract(), new ImportDelimitedRecord(8, Map.of()));
+
+            assertThat(result.row()).isEmpty();
+            assertThat(result.issues()).extracting(issue -> issue.code())
+                    .containsExactly("IMPORT.PROCESSED_VALUE_UNROUTABLE");
+        }
+    }
+
+    @Test
+    void bindingRejectsUndeclaredContractsInputsAndOutputsBeforeRouting() throws Exception {
+        try (Fixture fixture = fixture()) {
+            var configured = contract();
+            var source = new ImportDelimitedRecord(9, Map.of("ioc", "https://evil.example/path"));
+            var admitted = fixture.mapper().admit(configured, source).row().orElseThrow();
+            var input = new RouterProcessedImportRowPreparer.Input(ARTIFACT, "mask");
+
+            assertThatThrownBy(() -> fixture.preparer("other", List.of(input),
+                    Map.of(ARTIFACT, Set.of("mask"))).prepare(configured, source, admitted))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("pinned contract");
+            assertThatThrownBy(() -> fixture.preparer(CONTRACT, List.of(input),
+                    Map.of("unknown", Set.of("mask"))).prepare(configured, source, admitted))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("contract authority");
+            assertThatThrownBy(() -> fixture.preparer(CONTRACT, List.of(input),
+                    Map.of(ARTIFACT, Set.of("unknown"))).prepare(configured, source, admitted))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("output fields");
+            assertThatThrownBy(() -> fixture.preparer(CONTRACT,
+                    List.of(new RouterProcessedImportRowPreparer.Input(ARTIFACT, "unknown")),
+                    Map.of(ARTIFACT, Set.of("mask"))).prepare(configured, source, admitted))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("input is not admitted");
+            assertThatThrownBy(() -> fixture.preparer(CONTRACT,
+                    List.of(new RouterProcessedImportRowPreparer.Input("unknown", "mask")),
+                    Map.of(ARTIFACT, Set.of("mask"))).prepare(configured, source, admitted))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("input is not admitted");
+        }
+    }
+
+    @Test
+    void bindingRefusesOutputOmissionAndUnboundArtifacts() throws Exception {
+        try (Fixture fixture = fixture()) {
+            var configured = contract();
+            var source = new ImportDelimitedRecord(10, Map.of("ioc", "https://evil.example/path"));
+            var admitted = fixture.mapper().admit(configured, source).row().orElseThrow();
+            var input = new RouterProcessedImportRowPreparer.Input(ARTIFACT, "mask");
+
+            assertThatThrownBy(() -> fixture.preparer(CONTRACT, List.of(input),
+                    Map.of(ARTIFACT, Set.of("alternate"))).prepare(configured, source, admitted))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("omitted bound import output");
+            assertThatThrownBy(() -> fixture.preparer(CONTRACT, List.of(input),
+                    Map.of()).prepare(configured, source, admitted))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("unauthorized import artifact");
+        }
+    }
+
+    @Test
+    void bindingConstructionRejectsAmbiguousOrUnboundedInputAndOutputDeclarations() throws Exception {
+        try (Fixture fixture = fixture()) {
+            var input = new RouterProcessedImportRowPreparer.Input(ARTIFACT, "mask");
+            assertThatThrownBy(() -> new RouterProcessedImportRowPreparer.Input(" ", "mask"))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> new RouterProcessedImportRowPreparer.Input(null, "mask"))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> new RouterProcessedImportRowPreparer.Input(ARTIFACT, " "))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> new RouterProcessedImportRowPreparer.Input(ARTIFACT, null))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> fixture.preparer(" ", List.of(input), Map.of()))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("contract ID");
+            assertThatThrownBy(() -> fixture.preparer(null, List.of(input), Map.of()))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("contract ID");
+            assertThatThrownBy(() -> fixture.preparer(CONTRACT, List.of(), Map.of()))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("bounded and unique");
+            assertThatThrownBy(() -> fixture.preparer(CONTRACT, List.of(input, input), Map.of()))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("bounded and unique");
+            var many = java.util.stream.IntStream.range(0, 33)
+                    .mapToObj(index -> new RouterProcessedImportRowPreparer.Input(ARTIFACT, "field" + index))
+                    .toList();
+            assertThatThrownBy(() -> fixture.preparer(CONTRACT, many, Map.of()))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("bounded and unique");
+            assertThatThrownBy(() -> fixture.preparer(CONTRACT, List.of(input), Map.of(" ", Set.of("mask"))))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("artifact and fields");
+            assertThatThrownBy(() -> fixture.preparer(CONTRACT, List.of(input), Map.of(ARTIFACT, Set.of())))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("artifact and fields");
+            assertThatThrownBy(() -> fixture.preparer(CONTRACT, List.of(input), Map.of(ARTIFACT, Set.of(" "))))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("non-blank");
+            var nullArtifact = new HashMap<String, Set<String>>();
+            nullArtifact.put(null, Set.of("mask"));
+            assertThatThrownBy(() -> fixture.preparer(CONTRACT, List.of(input), nullArtifact))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("artifact and fields");
+            var nullFields = new HashMap<String, Set<String>>();
+            nullFields.put(ARTIFACT, null);
+            assertThatThrownBy(() -> fixture.preparer(CONTRACT, List.of(input), nullFields))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("artifact and fields");
+            var nullField = new java.util.HashSet<String>();
+            nullField.add(null);
+            assertThatThrownBy(() -> fixture.preparer(CONTRACT, List.of(input), Map.of(ARTIFACT, nullField)))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("non-blank");
+        }
+    }
+
+    @Test
+    void sourceAuthorityCannotBeAnOutputAndValueIsAttributedToTheRoute() throws Exception {
+        try (Fixture fixture = fixture(false, false, "source.label")) {
+            var configured = contractWithSourceLabel();
+            var source = new ImportDelimitedRecord(11,
+                    Map.of("ioc", "https://evil.example/path", "other", "Trusted Feed"));
+            var admitted = fixture.mapper().admit(configured, source).row().orElseThrow();
+            var input = new RouterProcessedImportRowPreparer.Input(ARTIFACT, "mask");
+
+            assertThatThrownBy(() -> fixture.preparer(CONTRACT, List.of(input),
+                    Map.of(ARTIFACT, Set.of("alternate"))).prepare(configured, source, admitted))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("source authority");
+
+            var prepared = fixture.preparer(CONTRACT, List.of(input),
+                    Map.of(ARTIFACT, Set.of("mask"))).prepare(configured, source, admitted);
+            assertThat(prepared.issues()).isEmpty();
+            assertThat(prepared.row()).hasValueSatisfying(row ->
+                    assertThat(row.branches().getFirst().cells())
+                            .containsEntry("mask", ImportCell.value("Trusted Feed")));
+
+            var nullSource = new ImportDelimitedRecord(12,
+                    Map.of("ioc", "https://evil.example/path", "other", "NULL"));
+            var nullAdmitted = fixture.mapper().admit(configured, nullSource).row().orElseThrow();
+            var withoutSource = fixture.preparer(CONTRACT, List.of(input),
+                    Map.of(ARTIFACT, Set.of("mask"))).prepare(configured, nullSource, nullAdmitted);
+            assertThat(withoutSource.row()).hasValueSatisfying(row ->
+                    assertThat(row.branches().getFirst().cells())
+                            .containsEntry("mask", ImportCell.nullValue()));
+        }
+    }
+
+    @Test
+    void relatedBranchWithoutASelectedOutputStaysInTheSameLogicalRow() throws Exception {
+        try (Fixture fixture = fixture()) {
+            var configured = contractWithRelatedArtifact();
+            var source = new ImportDelimitedRecord(13,
+                    Map.of("ioc", "https://evil.example/path", "note", "provenance"));
+            var admitted = fixture.mapper().admit(configured, source).row().orElseThrow();
+            var prepared = fixture.preparer(CONTRACT,
+                    List.of(new RouterProcessedImportRowPreparer.Input(ARTIFACT, "mask")),
+                    Map.of(ARTIFACT, Set.of("mask"))).prepare(configured, source, admitted);
+
+            assertThat(prepared.issues()).isEmpty();
+            assertThat(prepared.row()).hasValueSatisfying(row -> {
+                assertThat(row.branches()).hasSize(2);
+                assertThat(row.branches().get(1).cells())
+                        .containsEntry("note", ImportCell.value("provenance"));
+            });
+        }
+    }
+
+    @Test
+    void unrecoveredViewFailureRejectsTheRowAndDoesNotEmitAcceptedWarning() throws Exception {
+        try (Fixture fixture = fixture(false, true, "value")) {
+            var result = fixture.mapper().map(contract(),
+                    new ImportDelimitedRecord(14, Map.of("ioc", "https://evil.example/path")));
+
+            assertThat(result.row()).isEmpty();
+            assertThat(result.warnings()).isEmpty();
+            assertThat(result.issues()).extracting(issue -> issue.code())
+                    .contains("IMPORT.PROCESSED_DERIVATION_FAILED");
+        }
+    }
+
+    @Test
+    void processingViewRejectsNegativeInvocationPosition() {
+        var indicator = new Indicator("evil.example", IndicatorType.DOMAIN,
+                new SourceContext(null, null));
+        var classified = new ClassifiedIndicator(indicator, new ClassificationDecision(
+                new IndicatorFeatures(indicator.value(), indicator.value(), false, false, false,
+                        HostKind.REGISTRABLE), 0, List.of(), new MaskMatch(null, null)));
+
+        assertThatThrownBy(() -> new ProcessingView(classified, new OccurrencePosition(1), -1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("ordinal");
+    }
+
     private Fixture fixture() {
         return fixture(false);
     }
 
     private Fixture fixture(boolean fallback) {
+        return fixture(fallback, false, "value");
+    }
+
+    private Fixture fixture(boolean fallback, boolean failHost, String outputProvider) {
         var views = fallback ? List.of(
                 new PlanDescriptor.View("host", "network.host", "original"),
                 new PlanDescriptor.View("usable", "view.recover", "host",
@@ -152,7 +355,7 @@ class RouterProcessedImportRowPreparerTest {
         var definition = new CsvArtifactDefinition(ARTIFACT,
                 Set.of(IndicatorType.DOMAIN, IndicatorType.URL),
                 ArtifactFilter.none(), new ConfigurableRowMapper(
-                        List.of(new ColumnSpec("mask", "value", null, null, null)),
+                        List.of(new ColumnSpec("mask", outputProvider, null, null, null)),
                         ConfigRegistryCatalog.valueProviders(), Map.of()), ArtifactIdStrategy.ASCENDING, 1);
         var preparer = new CsvArtifactPreparer(definition,
                 new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 1),
@@ -160,7 +363,7 @@ class RouterProcessedImportRowPreparerTest {
         OperationCatalog registered = new IocProcessingOperations(binding,
                 Map.of(ARTIFACT, preparer), classifier).catalog();
         OperationCatalog catalog = registered;
-        if (fallback) {
+        if (fallback || failHost) {
             var operations = new HashMap<>(registered.operations());
             operations.put("network.host", exchange -> exchange.getMessage().setBody(
                     new ViewOutcome.Unavailable(new FailureReference("network.host", "NO_HOST"))));
@@ -179,7 +382,8 @@ class RouterProcessedImportRowPreparerTest {
         var keys = new CanonicalArtifactKeyResolver(List.of(new ArtifactIdentityDefinition(
                 ARTIFACT, new CanonicalKeyDefinition("mask-row-v1", CanonicalKeyMode.COMPOSITE,
                         List.of("mask")), List.of(), 1)));
-        return new Fixture(new DataframeImportRowMapper((specification, value) -> value, keys, processed), runtime);
+        return new Fixture(new DataframeImportRowMapper((specification, value) -> value, keys, processed),
+                runtime, route, classifier);
     }
 
     private CompiledDataframeImportContract contract() {
@@ -199,7 +403,46 @@ class RouterProcessedImportRowPreparerTest {
                 new ImportContractFingerprint("a".repeat(64)));
     }
 
-    private record Fixture(DataframeImportRowMapper mapper, CamelRouteRuntime runtime) implements AutoCloseable {
+    private CompiledDataframeImportContract contractWithSourceLabel() {
+        var primary = contract().definition().artifacts().getFirst();
+        var attributed = new DataframeImportCatalogDraft.Artifact(primary.name(), primary.role(),
+                primary.recordKey(), primary.matchKeys(), primary.mergeDefault(), "alternate",
+                null, primary.columns());
+        return withArtifacts(List.of(attributed));
+    }
+
+    private CompiledDataframeImportContract contractWithRelatedArtifact() {
+        var primary = contract().definition().artifacts().getFirst();
+        var related = new DataframeImportCatalogDraft.Artifact("secondary", ImportArtifactRole.RELATED,
+                "secondary-row-v1", List.of(), ImportMergePolicy.AUTHORITATIVE,
+                List.of(new DataframeImportCatalogDraft.Column("note", "note", List.of(), null)));
+        return withArtifacts(List.of(primary, related));
+    }
+
+    private CompiledDataframeImportContract withArtifacts(List<DataframeImportCatalogDraft.Artifact> artifacts) {
+        var base = contract();
+        var definition = base.definition();
+        var changed = new DataframeImportCatalogDraft.Contract(definition.id(), definition.version(),
+                definition.charset(), definition.dialect(), definition.recognition(), definition.mode(),
+                definition.routing(), definition.rowFailurePolicy(), definition.duplicatePolicy(),
+                definition.duplicateSelectionColumn(), definition.renewUnchanged(),
+                definition.formulaPolicy(), definition.mergeDefault(), artifacts, definition.requestedSlot());
+        return new CompiledDataframeImportContract(base.id(), base.version(), changed,
+                base.dialect(), base.fingerprint());
+    }
+
+    private record Fixture(DataframeImportRowMapper mapper, CamelRouteRuntime runtime,
+                           IocProcessingRouteAdapter route, IndicatorClassifier classifier)
+            implements AutoCloseable {
+        private RouterProcessedImportRowPreparer preparer(String contractId,
+                List<RouterProcessedImportRowPreparer.Input> inputs,
+                Map<String, Set<String>> outputs) {
+            return new RouterProcessedImportRowPreparer(contractId, inputs, outputs,
+                    text -> new RefangOutcome(text.replace("hxxp", "http"), List.of()),
+                    text -> new ExtractionOutcome(List.of(new RawIndicator(text, IndicatorType.URL, 0)),
+                            List.of()), classifier, route);
+        }
+
         @Override
         public void close() throws java.io.IOException {
             runtime.close();

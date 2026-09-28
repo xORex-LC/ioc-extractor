@@ -1,6 +1,7 @@
 package com.iocextractor.application.dataframeimport.model;
 
 import com.iocextractor.application.artifact.CanonicalKeyMaterial;
+import com.iocextractor.application.dataframeimport.mapping.ImportRowMappingResult;
 import com.iocextractor.application.maintenance.RetentionAction;
 import com.iocextractor.application.port.in.dataframeimport.RecoverDataframeImportsResult;
 import com.iocextractor.application.port.in.dataframeimport.ReplayDataframeImportCommand;
@@ -74,6 +75,24 @@ class DataframeImportModelContractsTest {
                 () -> new ImportRowIssue(1, "ip_list", " ")));
         assertThatNullPointerException()
                 .isThrownBy(() -> new ImportRowIssue(1, "ip_list", null))
+                .withMessage("code");
+    }
+
+    @Test
+    void acceptedWarningsRequireValidEvidenceAndCannotAccompanyRejection() {
+        ImportRowWarning warning = new ImportRowWarning(3, null, "IMPORT.VIEW_FALLBACK");
+        assertThat(warning.artifact()).isNull();
+        assertThat(warning.code()).isEqualTo("IMPORT.VIEW_FALLBACK");
+
+        assertInvalid(List.of(
+                () -> new ImportRowWarning(0, "ip_list", "IMPORT.VIEW_FALLBACK"),
+                () -> new ImportRowWarning(3, "ip_list", " "),
+                () -> new ImportRowMappingResult(Optional.empty(), List.of(), List.of()),
+                () -> new ImportRowMappingResult(Optional.empty(),
+                        List.of(new ImportRowIssue(3, "ip_list", "IMPORT.ROW_INVALID")),
+                        List.of(warning))));
+        assertThatNullPointerException()
+                .isThrownBy(() -> new ImportRowWarning(3, "ip_list", null))
                 .withMessage("code");
     }
 
