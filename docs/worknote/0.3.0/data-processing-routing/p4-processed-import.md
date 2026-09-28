@@ -5,9 +5,9 @@ Status: implementation seam complete; operator activation remains blocked by P5.
 The import mapper now admits declared CSV cells as ABSENT, NULL or VALUE before
 any processed output is interpreted. `AS_IS` retains its previous checks and
 key timing. For `PROCESSED`, a driven preparer receives the admitted logical row;
-the application then checks final row shape and values, preserves the exact
-admitted column set, branch roles, requested slots, source-label authority and
-merge policies, and resolves
+the application then checks final row shape and values, preserves admitted
+columns, branch roles, requested slots, source-label authority and merge
+policies, and resolves
 record/match keys from final fields. An expected input or mapping failure rejects
 the entire logical row. Unexpected exceptions still leave the established retry
 and failure path; no fallback is invented at this boundary.
@@ -21,7 +21,9 @@ Router operations and view-specific mapper used for document occurrences. Branch
 outputs assemble into one logical row, with a conflict rejecting different values
 for the same target. A missing prepared primary branch rejects the row. Outputs
 outside the contract artifact/field set or overwriting the source-label authority
-are refused. The configured canonical key, including any future composite fields,
+are refused by the new Router binding. The compatible CSV preparer can still add
+artifact-schema fields absent from the import contract's input columns. The
+configured canonical key, including any future composite fields,
 remains the final identity owner; no `(IP, country)` artifact is introduced.
 
 Accepted warnings are a separate `ImportRowWarning` channel. The private sealed

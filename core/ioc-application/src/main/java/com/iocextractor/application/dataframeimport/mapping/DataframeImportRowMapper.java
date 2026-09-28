@@ -142,12 +142,13 @@ public final class DataframeImportRowMapper {
             }
             ImportArtifactBranch admitted = admittedRow.branches().get(index);
             if (!admitted.requestedSlot().equals(branch.requestedSlot())
-                    || !branch.cells().keySet().equals(admitted.cells().keySet())
-                    || !branch.mergePolicies().equals(admitted.mergePolicies())
+                    || !branch.cells().keySet().containsAll(admitted.cells().keySet())
+                    || admitted.mergePolicies().entrySet().stream().anyMatch(entry ->
+                            branch.mergePolicies().get(entry.getKey()) != entry.getValue())
                     || artifact.sourceLabelTarget() != null
                             && !Objects.equals(admitted.cells().get(artifact.sourceLabelTarget()),
                                     branch.cells().get(artifact.sourceLabelTarget()))) {
-                throw new IllegalStateException("Processed import changed authorized cells or source authority");
+                throw new IllegalStateException("Processed import changed admitted cells or source authority");
             }
             validateFinalCells(contract, artifact, branch.cells(), record, issues);
             validateRowShape(artifact, branch.cells(), record, issues);

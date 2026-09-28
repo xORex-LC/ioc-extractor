@@ -288,7 +288,7 @@ class DataframeImportRowMapperTest {
     }
 
     @Test
-    void refusesProcessedFieldsOutsideTheAdmittedContract() {
+    void refusesRemovalOfAnAdmittedProcessedCell() {
         DataframeImportRowMapper mapper = new DataframeImportRowMapper(
                 (specification, value) -> value, keys,
                 (contract, record, admitted) -> {
@@ -296,8 +296,8 @@ class DataframeImportRowMapperTest {
                     var primary = branches.getFirst();
                     var cells = new java.util.LinkedHashMap<>(primary.cells());
                     var policies = new java.util.LinkedHashMap<>(primary.mergePolicies());
-                    cells.put("unconfigured", ImportCell.value("extra"));
-                    policies.put("unconfigured", ImportMergePolicy.AUTHORITATIVE);
+                    cells.remove("score");
+                    policies.remove("score");
                     branches.set(0, new com.iocextractor.application.dataframeimport.model.ImportArtifactBranch(
                             primary.artifactName(), primary.role(), cells, policies,
                             primary.requestedSlot(), java.util.Optional.empty(), List.of()));
@@ -309,7 +309,7 @@ class DataframeImportRowMapperTest {
                 contract(ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED),
                 record(24, "192.0.2.24", "24", "8".repeat(32), "24")))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("authorized cells");
+                .hasMessageContaining("admitted cells");
     }
 
     @Test
