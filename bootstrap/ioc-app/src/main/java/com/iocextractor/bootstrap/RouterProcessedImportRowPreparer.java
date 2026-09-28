@@ -96,82 +96,107 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
     public ImportRowMappingResult prepare(CompiledDataframeImportContract contract,
                                           ImportDelimitedRecord record, ImportLogicalRow admitted) {
         requireBinding(contract, admitted);
-        List<ImportRowIssue> issues = new ArrayList<>();
-        List<ImportRowWarning> warnings = new ArrayList<>();
-        Map<String, Map<String, String>> outputs = new LinkedHashMap<>();
-        Set<String> preparedArtifacts = new LinkedHashSet<>();
+        RowAssembly assembly = new RowAssembly();
         for (Input input : inputs) {
-            ImportArtifactBranch branch = branch(admitted, input.artifact());
-            ImportCell cell = Objects.requireNonNull(branch.cells().get(input.target()),
-                    "admitted semantic input " + input);
-            if (cell.presence() != ImportCell.Presence.VALUE) {
-                continue;
+            prepareInput(contract, record, admitted, input, assembly);
+        }
+        requirePrimaryOutput(record, admitted, assembly);
+        if (!assembly.issues.isEmpty()) {
+            return ImportRowMappingResult.rejected(assembly.issues);
+        }
+        return ImportRowMappingResult.accepted(assembledRow(contract, record, admitted, assembly),
+                assembly.warnings);
+    }
+
+    private void prepareInput(CompiledDataframeImportContract contract, ImportDelimitedRecord record,
+                              ImportLogicalRow admitted, Input input, RowAssembly assembly) {
+        ImportArtifactBranch branch = branch(admitted, input.artifact());
+        ImportCell cell = Objects.requireNonNull(branch.cells().get(input.target()),
+                "admitted semantic input " + input);
+        if (cell.presence() != ImportCell.Presence.VALUE) {
+            return;
+        }
+        var parsed = parser.parse(refanger.refang(cell.value()).text());
+        if (!parsed.isAvailable()) {
+            assembly.issues.add(issue(record, input.artifact(), INPUT_INVALID));
+            return;
+        }
+        Indicator indicator = new Indicator(parsed.indicator().value(), parsed.indicator().type(),
+                new SourceContext(sourceLabel(contract, branch), null));
+        if (!classifier.supports(indicator)) {
+            assembly.issues.add(issue(record, input.artifact(), INPUT_INVALID));
+            return;
+        }
+        var original = new ProcessingView(new ClassifiedIndicator(indicator, classifier.classify(indicator)),
+                new OccurrencePosition(record.sourceRowNumber()), 0);
+        var result = route.prepare(original);
+        result.diagnostics().forEach(diagnostic -> {
+            if (diagnostic.severity() == DiagnosticSeverity.WARN) {
+                assembly.warnings.add(new ImportRowWarning(record.sourceRowNumber(), input.artifact(),
+                        VIEW_FALLBACK));
+            } else {
+                assembly.issues.add(issue(record, input.artifact(), DERIVATION_FAILED));
             }
-            var parsed = parser.parse(refanger.refang(cell.value()).text());
-            if (!parsed.isAvailable()) {
-                issues.add(issue(record, input.artifact(), INPUT_INVALID));
-                continue;
+        });
+        result.value().forEach(candidate -> mergeCandidate(record, candidate, assembly));
+    }
+
+    private void mergeCandidate(ImportDelimitedRecord record, RoutedArtifactCandidate candidate,
+                                RowAssembly assembly) {
+        Set<String> targets = outputTargets.get(candidate.artifact());
+        if (targets == null) {
+            throw new IllegalStateException("Route produced unauthorized import artifact: "
+                    + candidate.artifact());
+        }
+        assembly.preparedArtifacts.add(candidate.artifact());
+        Map<String, String> values = assembly.outputs.computeIfAbsent(candidate.artifact(),
+                ignored -> new LinkedHashMap<>());
+        for (String target : targets) {
+            if (!candidate.row().template().values().containsKey(target)) {
+                throw new IllegalStateException("Route omitted bound import output: " + target);
             }
-            Indicator indicator = new Indicator(parsed.indicator().value(), parsed.indicator().type(),
-                    new SourceContext(sourceLabel(contract, branch), null));
-            if (!classifier.supports(indicator)) {
-                issues.add(issue(record, input.artifact(), INPUT_INVALID));
-                continue;
-            }
-            var original = new ProcessingView(new ClassifiedIndicator(indicator, classifier.classify(indicator)),
-                    new OccurrencePosition(record.sourceRowNumber()), 0);
-            var result = route.prepare(original);
-            result.diagnostics().forEach(diagnostic -> {
-                if (diagnostic.severity() == DiagnosticSeverity.WARN) {
-                    warnings.add(new ImportRowWarning(record.sourceRowNumber(), input.artifact(), VIEW_FALLBACK));
-                } else {
-                    issues.add(issue(record, input.artifact(), DERIVATION_FAILED));
-                }
-            });
-            for (RoutedArtifactCandidate candidate : result.value()) {
-                Set<String> targets = outputTargets.get(candidate.artifact());
-                if (targets == null) {
-                    throw new IllegalStateException("Route produced unauthorized import artifact: "
-                            + candidate.artifact());
-                }
-                preparedArtifacts.add(candidate.artifact());
-                Map<String, String> values = outputs.computeIfAbsent(candidate.artifact(),
-                        ignored -> new LinkedHashMap<>());
-                for (String target : targets) {
-                    if (!candidate.row().template().values().containsKey(target)) {
-                        throw new IllegalStateException("Route omitted bound import output: " + target);
-                    }
-                    String value = candidate.row().template().value(target);
-                    if (values.containsKey(target) && !Objects.equals(values.get(target), value)) {
-                        issues.add(issue(record, candidate.artifact(), COMPOUND_CONFLICT));
-                    } else {
-                        values.put(target, value);
-                    }
-                }
+            String value = candidate.row().template().value(target);
+            if (values.containsKey(target) && !Objects.equals(values.get(target), value)) {
+                assembly.issues.add(issue(record, candidate.artifact(), COMPOUND_CONFLICT));
+            } else {
+                values.put(target, value);
             }
         }
+    }
+
+    private static void requirePrimaryOutput(ImportDelimitedRecord record, ImportLogicalRow admitted,
+                                             RowAssembly assembly) {
         for (ImportArtifactBranch branch : admitted.branches()) {
-            if (branch.role() == ImportArtifactRole.PRIMARY && !preparedArtifacts.contains(branch.artifactName())) {
-                issues.add(issue(record, branch.artifactName(), UNROUTABLE));
+            if (branch.role() == ImportArtifactRole.PRIMARY
+                    && !assembly.preparedArtifacts.contains(branch.artifactName())) {
+                assembly.issues.add(issue(record, branch.artifactName(), UNROUTABLE));
             }
         }
-        if (!issues.isEmpty()) {
-            return ImportRowMappingResult.rejected(issues);
-        }
+    }
+
+    private static ImportLogicalRow assembledRow(CompiledDataframeImportContract contract,
+                                                 ImportDelimitedRecord record, ImportLogicalRow admitted,
+                                                 RowAssembly assembly) {
         List<ImportArtifactBranch> branches = new ArrayList<>(admitted.branches().size());
         for (ImportArtifactBranch branch : admitted.branches()) {
             Map<String, ImportCell> cells = new LinkedHashMap<>(branch.cells());
             Map<String, ImportMergePolicy> policies = new LinkedHashMap<>(branch.mergePolicies());
             DataframeImportCatalogDraft.Artifact artifact = artifact(contract, branch.artifactName());
-            outputs.getOrDefault(branch.artifactName(), Map.of()).forEach((target, value) -> {
+            assembly.outputs.getOrDefault(branch.artifactName(), Map.of()).forEach((target, value) -> {
                 cells.put(target, value == null ? ImportCell.nullValue() : ImportCell.value(value));
                 policies.putIfAbsent(target, ImportMergePolicyResolver.resolve(contract, artifact, target));
             });
             branches.add(new ImportArtifactBranch(branch.artifactName(), branch.role(), cells,
                     policies, branch.requestedSlot(), java.util.Optional.empty(), List.of()));
         }
-        return ImportRowMappingResult.accepted(
-                new ImportLogicalRow(record.sourceRowNumber(), branches), warnings);
+        return new ImportLogicalRow(record.sourceRowNumber(), branches);
+    }
+
+    private static final class RowAssembly {
+        private final List<ImportRowIssue> issues = new ArrayList<>();
+        private final List<ImportRowWarning> warnings = new ArrayList<>();
+        private final Map<String, Map<String, String>> outputs = new LinkedHashMap<>();
+        private final Set<String> preparedArtifacts = new LinkedHashSet<>();
     }
 
     private void requireBinding(CompiledDataframeImportContract contract, ImportLogicalRow row) {

@@ -54,6 +54,10 @@ formula/validator rejection and missing final key. The two pre-existing
 `JdbcImportWorkspaceWriter` SpotBugs `THROWS_METHOD_THROWS_RUNTIMEEXCEPTION`
 findings remain the same abort-on-failure behavior; their exact accepted
 identities were reviewed and updated after adding the warning write.
+The Router import preparer keeps row-local assembly state and separates input
+parsing, candidate merging, primary-output validation and final row assembly;
+the adopted PMD policy and resource/size watchlist report no finding in these
+changed members.
 
 P5 must bind an operator-selected plan to each versioned import contract, include
 these bindings and semantic versions in policy identity, and define pinned
