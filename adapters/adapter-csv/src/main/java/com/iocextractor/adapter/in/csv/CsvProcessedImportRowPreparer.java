@@ -5,9 +5,6 @@ import com.iocextractor.processing.mapping.ColumnSpec;
 import com.iocextractor.processing.mapping.ConfigurableRowMapper;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition;
 import com.iocextractor.processing.mapping.RowMappingException;
-import com.iocextractor.application.artifact.ArtifactRow;
-import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
-import com.iocextractor.application.artifact.CanonicalKeyMaterial;
 import com.iocextractor.processing.classification.IndicatorClassifier;
 import com.iocextractor.application.dataframeimport.contract.CompiledDataframeImportContract;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
@@ -32,7 +29,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 
 /** Applies the ordinary CSV artifact policy to explicit {@code processed} import rows. */
@@ -44,20 +40,17 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
     private static final String UNROUTABLE = "IMPORT.PROCESSED_VALUE_UNROUTABLE";
     private static final String DERIVATION_FAILED = "IMPORT.PROCESSED_DERIVATION_FAILED";
     private static final String COMPOUND_CONFLICT = "IMPORT.PROCESSED_COMPOUND_CONFLICT";
-    private static final String RECORD_KEY_MISSING = "IMPORT.RECORD_KEY_MISSING";
 
     private final Map<String, CsvArtifactDefinition> definitions;
     private final Refanger refanger;
     private final IndicatorExtractor extractor;
     private final IndicatorClassifier classifier;
-    private final CanonicalArtifactKeyResolver keyResolver;
 
     /** Creates a bounded row-local preparation strategy from the ordinary runtime policy. */
     public CsvProcessedImportRowPreparer(List<CsvArtifactDefinition> definitions,
                                          Refanger refanger,
                                          IndicatorExtractor extractor,
-                                         IndicatorClassifier classifier,
-                                         CanonicalArtifactKeyResolver keyResolver) {
+                                         IndicatorClassifier classifier) {
         Objects.requireNonNull(definitions, "definitions");
         Map<String, CsvArtifactDefinition> byName = new LinkedHashMap<>();
         for (CsvArtifactDefinition definition : definitions) {
@@ -74,7 +67,6 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
         this.refanger = Objects.requireNonNull(refanger, "refanger");
         this.extractor = Objects.requireNonNull(extractor, "extractor");
         this.classifier = Objects.requireNonNull(classifier, "classifier");
-        this.keyResolver = Objects.requireNonNull(keyResolver, "keyResolver");
     }
 
     @Override
@@ -97,18 +89,9 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
             Map<String, ImportCell> cells = new LinkedHashMap<>(branch.cells());
             Map<String, ImportMergePolicy> policies = new LinkedHashMap<>(branch.mergePolicies());
             replaceDerivedCells(contract, contractArtifact, rowMapper, prepared, cells, policies, record, issues);
-            ArtifactRow keyRow = ArtifactRow.ordered(values(cells));
-            Optional<CanonicalKeyMaterial> recordKey = keyResolver.recordKeyOf(branch.artifactName(), keyRow);
-            if (recordKey.isEmpty()) {
-                issues.add(issue(record, branch.artifactName(), RECORD_KEY_MISSING));
-            }
-            List<CanonicalKeyMaterial> matchKeys = keyResolver.matchKeysOf(branch.artifactName(), keyRow)
-                    .stream()
-                    .filter(key -> contractArtifact.matchKeys().contains(key.definitionId()))
-                    .toList();
             branches.add(new ImportArtifactBranch(
                     branch.artifactName(), branch.role(), cells, policies, branch.requestedSlot(),
-                    recordKey, matchKeys));
+                    java.util.Optional.empty(), List.of()));
         }
         return issues.isEmpty()
                 ? ImportRowMappingResult.accepted(new ImportLogicalRow(record.sourceRowNumber(), branches))
@@ -252,13 +235,6 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
     private boolean coversWholeCell(String text, RawIndicator indicator) {
         return text.substring(0, indicator.position()).isBlank()
                 && text.substring(indicator.position() + indicator.value().length()).isBlank();
-    }
-
-    private Map<String, String> values(Map<String, ImportCell> cells) {
-        Map<String, String> values = new LinkedHashMap<>();
-        cells.forEach((column, cell) -> values.put(column,
-                cell.presence() == ImportCell.Presence.VALUE ? cell.value() : null));
-        return values;
     }
 
     private ImportRowIssue issue(ImportDelimitedRecord record, String artifact, String code) {

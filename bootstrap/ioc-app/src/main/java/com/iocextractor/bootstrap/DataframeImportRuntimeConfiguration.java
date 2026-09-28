@@ -249,11 +249,9 @@ class DataframeImportRuntimeConfiguration {
             Refanger refanger,
             IndicatorExtractor extractor,
             MatchPolicy matchPolicy) {
-        CanonicalArtifactKeyResolver keys = new CanonicalArtifactKeyResolver(
-                appConfig.artifactIdentityDefinitions(properties));
         return new CsvProcessedImportRowPreparer(
                 appConfig.artifactDefinitions(properties, artifactIdBaseline),
-                refanger, extractor, new IndicatorClassifier(matchPolicy), keys);
+                refanger, extractor, new IndicatorClassifier(matchPolicy));
     }
 
     @Bean

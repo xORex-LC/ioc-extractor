@@ -68,7 +68,7 @@ class CsvProcessedImportRowPreparerTest {
                 column("host_match", "match.host"),
                 column("score", "const"),
                 column("source", "source.label")));
-        CsvProcessedImportRowPreparer processed = processed(List.of(definition), keys);
+        CsvProcessedImportRowPreparer processed = processed(List.of(definition));
         DataframeImportRowMapper mapper = new DataframeImportRowMapper(
                 (specification, value) -> value, keys, processed);
 
@@ -104,7 +104,7 @@ class CsvProcessedImportRowPreparerTest {
                 column("forbidden_url", "address.url", "lower-host"),
                 column("forbidden_ip", "address.ip", "lower-host")));
         DataframeImportRowMapper mapper = new DataframeImportRowMapper(
-                (specification, value) -> value, keys, processed(List.of(definition), keys));
+                (specification, value) -> value, keys, processed(List.of(definition)));
 
         var result = mapper.map(contract("address_blacklist", "address-row-v2", List.of(),
                         List.of(mapping("forbidden_url", "url"), mapping("forbidden_ip", "ip"))),
@@ -133,7 +133,7 @@ class CsvProcessedImportRowPreparerTest {
                 column("host_match", "value", "lower-host"),
                 column("hash", "value")));
         DataframeImportRowMapper mapper = new DataframeImportRowMapper(
-                (specification, value) -> value, keys, processed(List.of(definition), keys));
+                (specification, value) -> value, keys, processed(List.of(definition)));
         DataframeImportCatalogDraft.Artifact artifact = new DataframeImportCatalogDraft.Artifact(
                 "ioc_aggregate", ImportArtifactRole.PRIMARY, "ioc-aggregate-row-v1",
                 List.of("ioc-aggregate-v1"), null, "name", null,
@@ -155,7 +155,7 @@ class CsvProcessedImportRowPreparerTest {
                 "masks", List.of("mask"), false, 1));
         CsvArtifactDefinition definition = definition("masks", List.of(column("mask", "value")));
         DataframeImportRowMapper mapper = new DataframeImportRowMapper(
-                (specification, value) -> value, keys, processed(List.of(definition), keys));
+                (specification, value) -> value, keys, processed(List.of(definition)));
 
         var result = mapper.map(contract("masks", "masks-row-v1", List.of(),
                         List.of(mapping("mask", "ioc"))),
@@ -166,8 +166,7 @@ class CsvProcessedImportRowPreparerTest {
                 .contains("IMPORT.PROCESSED_INPUT_INVALID");
     }
 
-    private CsvProcessedImportRowPreparer processed(List<CsvArtifactDefinition> definitions,
-                                                     CanonicalArtifactKeyResolver keys) {
+    private CsvProcessedImportRowPreparer processed(List<CsvArtifactDefinition> definitions) {
         return new CsvProcessedImportRowPreparer(
                 definitions,
                 text -> new RefangOutcome(text.replace("hxxp", "http"), List.of()),
@@ -185,8 +184,7 @@ class CsvProcessedImportRowPreparerTest {
                                 indicator.value().contains("/"), false,
                                 indicator.type() == IndicatorType.IPV4
                                         ? HostKind.IP : HostKind.REGISTRABLE),
-                        0, List.of("test"), new MaskMatch("u:hAS,pEX", null))),
-                keys);
+                        0, List.of("test"), new MaskMatch("u:hAS,pEX", null))));
     }
 
     private ExtractionOutcome outcome(RawIndicator indicator) {

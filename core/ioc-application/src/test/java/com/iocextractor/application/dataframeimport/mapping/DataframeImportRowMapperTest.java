@@ -246,12 +246,17 @@ class DataframeImportRowMapperTest {
                 record(20, "192.0.2.20", "20", "4".repeat(32), "20"));
 
         assertThat(result.issues()).isEmpty();
-        assertThat(prepared.get()).isEqualTo(result.row().orElseThrow());
+        assertThat(prepared.get().branches()).allSatisfy(branch -> {
+            assertThat(branch.recordKey()).isEmpty();
+            assertThat(branch.matchKeys()).isEmpty();
+        });
+        assertThat(result.row().orElseThrow().branches()).allSatisfy(branch ->
+                assertThat(branch.recordKey()).isPresent());
         assertThat(prepared.get().branches()).hasSize(2);
     }
 
     @Test
-    void appliesConfiguredValueValidationAndExactOneRowShapeBeforeProcessing() {
+    void validatesInputValuesBeforeProcessingAndRowShapeAfterProcessing() {
         DataframeImportCatalogDraft.Contract base = contract(
                 ImportFormulaPolicy.REJECT, ImportProcessingMode.PROCESSED).definition();
         DataframeImportCatalogDraft.Artifact primary = base.artifacts().getFirst();
@@ -280,7 +285,7 @@ class DataframeImportRowMapperTest {
 
         assertThat(invalidValue.row()).isEmpty();
         assertThat(invalidValue.issues()).extracting(ImportRowIssue::code)
-                .contains("IMPORT.VALUE_INVALID", "IMPORT.NONEMPTY_CARDINALITY");
+                .containsExactly("IMPORT.VALUE_INVALID");
         assertThat(compound.row()).isEmpty();
         assertThat(compound.issues()).extracting(ImportRowIssue::code)
                 .contains("IMPORT.NONEMPTY_CARDINALITY");
