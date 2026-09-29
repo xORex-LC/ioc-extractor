@@ -92,6 +92,12 @@ constructor and the import-contract compatibility constructor. The exact
 advisory count moves from 8 to 11 with these boundary signatures visible;
 the rule and its scope stay unchanged.
 
+During the final reactor run, the golden end-to-end suite exposed an existing
+observation-registration clock edge: a backward wall-clock step could place
+`terminal_at_ms` before `registered_at_ms` and violate the database check.
+Terminal registration now clamps to the persisted registration time; a JDBC
+integration test reproduces the backward-clock case.
+
 Existing receipt recovery tests cover post-commit finalization; P6 still owns customer golden fixtures,
 before/after resource measurements and retirement of the compatible processed
 mapping path.

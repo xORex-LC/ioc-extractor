@@ -44,6 +44,29 @@ class JdbcObservationRegistrationStoreIT {
 
     @Test
     @Timeout(15)
+    void terminalTimeCannotPrecedeRegistrationWhenWallClockMovesBackward() throws Exception {
+        try (HikariDataSource dataSource = dataSource("dataframe", "backward-clock.db")) {
+            new SqliteUserVersionSchemaMigrator(dataSource, DataframeFormatMigrations.sqlite()).migrate();
+            var id = new ObservationId("clock-regression");
+            var registered = new JdbcObservationRegistrationStore(dataSource, CLOCK)
+                    .registerNew(id, ObservationOrigin.ONESHOT);
+            var earlier = new JdbcObservationRegistrationStore(dataSource,
+                    Clock.fixed(NOW.minusSeconds(1), ZoneOffset.UTC));
+
+            earlier.markTerminal(id, registered.namespaceId());
+
+            try (var connection = dataSource.getConnection();
+                 var query = connection.createStatement().executeQuery(
+                         "SELECT registered_at_ms, terminal_at_ms FROM registered_observation "
+                                 + "WHERE occurrence_id = 'clock-regression'")) {
+                assertThat(query.next()).isTrue();
+                assertThat(query.getLong("terminal_at_ms")).isEqualTo(query.getLong("registered_at_ms"));
+            }
+        }
+    }
+
+    @Test
+    @Timeout(15)
     void registrationIsIdempotentAndOrdersDifferentDeliveryPaths() throws Exception {
         try (HikariDataSource dataSource = dataSource("dataframe", "observations.db")) {
             new SqliteUserVersionSchemaMigrator(dataSource, DataframeFormatMigrations.sqlite()).migrate();

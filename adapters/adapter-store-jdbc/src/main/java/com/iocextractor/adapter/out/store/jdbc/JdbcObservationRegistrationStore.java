@@ -98,7 +98,7 @@ public final class JdbcObservationRegistrationStore implements ObservationRegist
         try (Connection connection = dataSource.getConnection();
              PreparedStatement update = connection.prepareStatement("""
                      UPDATE registered_observation
-                     SET terminal_at_ms = COALESCE(terminal_at_ms, ?)
+                     SET terminal_at_ms = COALESCE(terminal_at_ms, MAX(registered_at_ms, ?))
                      WHERE occurrence_id = ? AND admission_order = ?
                      """)) {
             update.setLong(1, clock.millis());
