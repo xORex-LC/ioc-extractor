@@ -47,7 +47,7 @@
 | `0028-pilot-library-publication.md` | Пилотная JDK-only concurrency-библиотека: отдельные Maven-координаты, независимый consumer POM, Central и GitHub Packages, однократная сборка/подпись и восстановление публикации из неизменного bundle. **Принято 2026-09-07; live qualification pending.** |
 | `0029-release-branch-library-publication.md` | Публикация concurrency-библиотеки из `release-X.Y.Z` по отдельному component-тегу при общей версии с продуктом; default branch содержит workflow только для регистрации ручного запуска. Узко supersede'ит branch/tag selection из ADR-0028. **Принято 2026-09-08; live qualification pending.** |
 | `0030-registered-observation-order-for-artifact-fields.md` | Dataframe-owned monotonic observation order resolves mutable artifact fields independently of completion order; document/import/oneshot coordination retains occurrence identity across retry and recovery, with file and JDBC daemon journals behind one port. **Принято 2026-09-26; реализовано и квалифицировано для 0.3.0.** |
-| [0031-bounded-camel-preparation-runtime.md](0031-bounded-camel-preparation-runtime.md) | Embedded Camel for bounded preparation behind inward ports; R0 admission complete, production integration pending. |
+| [0031-bounded-camel-preparation-runtime.md](0031-bounded-camel-preparation-runtime.md) | Embedded Camel for bounded preparation behind inward ports; selected document/import integration is active and P6 qualification is recorded in the dated implementation note. |
 
 ## Формат
 

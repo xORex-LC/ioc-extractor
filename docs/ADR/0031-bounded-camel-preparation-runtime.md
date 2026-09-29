@@ -92,3 +92,11 @@ recovery parity must pass before production activation.
 - [Testing policy](../TESTING.md)
 - [Apache Camel 4.22.1 release](https://camel.apache.org/releases/release-4.22.1/)
 - [ADR 0030: observation order](0030-registered-observation-order-for-artifact-fields.md)
+
+## Implementation note, 2026-09-29
+
+R1–R5 admitted the bounded compiler/runtime and activated explicit document and
+processed-import selections. P6 qualifies a selected plan against canonical
+outputs and publishes the operator activation procedure. Unselected processed
+contracts still require the compatible CSV preparer; removing it would change
+the accepted legacy behavior, so it is not retired by this decision.

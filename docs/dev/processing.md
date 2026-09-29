@@ -223,6 +223,9 @@ reconciliation создаёт схему, но не строит строки и
 - Source formats: `TikaSourceReaderFormatContractIT` и charset tests.
 - Prepare/checkpoint/commit: `StageContractTest`,
   `ArtifactPolicyCheckpointTest`, `TypedMappingFailurePolicyTest`.
+- Выбранный план от входного документа до canonical SQLite:
+  `CustomerRoutingPipelineIT`; неизменённый путь и полный public-output
+  baseline: `GoldenPipelineIT`.
 - Generated reference: `DIAGNOSTICS-CATALOG.md`.
 
 ## Когда обновлять документ
@@ -235,6 +238,8 @@ post-commit projection semantics. Переименование внутренн�
 ## Связанные документы
 
 - [storage.md](storage.md) — canonical identity, transaction и projection truth.
+- [Руководство по маршрутам](../guides/ioc-processing-routes.md) — включение
+  политики, пример конфигурации и восстановление.
 - [ingestion.md](ingestion.md) — daemon driving flow.
 - [observability.md](observability.md) — diagnostics и gated decision tracing.
 - [ADR-0017](../ADR/0017-diagnostics-first-class-outcome.md) — почему write path

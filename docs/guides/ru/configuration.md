@@ -120,6 +120,9 @@ Dataframe database — канонический источник бизнес-д
   `ioc.dataframe-import.contracts[].processed-route.outputs[].targets` задаёт
   целевые колонки. Поля источника нельзя заменять результатом маршрута.
 
+Пошаговый пример включения и проверки плана приведён в
+[англоязычном руководстве по маршрутам](../ioc-processing-routes.md).
+
 - `ioc.processing.document-plan` выбирает запись в `ioc.processing.plans` по
   `ioc.processing.plans[].name`. Каждый включённый артефакт должен быть
   маршрутизирован либо указан в `ioc.processing.plans[].omitted-artifacts`.

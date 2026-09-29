@@ -8,7 +8,8 @@
 
 Основная версия operator/integration-гайдов — английская, в корне этого
 каталога; русские версии находятся в [ru/](ru/) и обновляются парой.
-Repository publication guide пока существует только на английском.
+Новые руководства по маршрутизации IOC и публикации библиотек пока существуют
+только на английском; русские ссылки на них оставлены в смежных гайдах.
 
 | Гайд | Русская версия | О чём |
 |---|---|---|
@@ -18,5 +19,6 @@ Repository publication guide пока существует только на а�
 | [canonical-record-lifecycle.md](canonical-record-lifecycle.md) | [ru/canonical-record-lifecycle.md](ru/canonical-record-lifecycle.md) | Fresh-install TTL, двухэтапная activation для upgrade, health, retention и rollback boundary |
 | [ioc-aggregate.md](ioc-aggregate.md) | [ru/ioc-aggregate.md](ru/ioc-aggregate.md) | IOC aggregate contract, empty-start activation, ordered names, health и coordinated rollback |
 | [dataframe-import.md](dataframe-import.md) | [ru/dataframe-import.md](ru/dataframe-import.md) | Настройка и эксплуатация contract-driven local/SMB CSV import, preview, status, replay и recovery |
+| [ioc-processing-routes.md](ioc-processing-routes.md) | — | Включение именованных IOC-планов для документа и processed import, проверка результата и восстановление |
 | [remote-storage-sync.md](remote-storage-sync.md) | [ru/remote-storage-sync.md](ru/remote-storage-sync.md) | Работа с удалённым хранилищем: как устроены fetch/publish и push-уведомления, справочник конфигурации с подбором значений, права/сбои/восстановление/мониторинг, настройка SMB-шары на Linux (Samba) и Windows Server, чек-листы |
 | [library-publication.md](library-publication.md) | — | Публикация и проверка independently consumable Maven libraries |

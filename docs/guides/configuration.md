@@ -98,6 +98,8 @@ selection keeps the compatible path. A policy change affects new observations;
 existing canonical rows are not rewritten. In daemon mode, changing a selected
 document policy requires all unfinished document admissions and processing files
 to drain under the previous policy before the service starts with the new one.
+For a complete activation example and drain procedure, see the
+[IOC processing routes guide](ioc-processing-routes.md).
 An unchanged policy can recover its own unfinished work. A pinned import delivery
 with no sealed stage blocks recovery if its old contract is unavailable; restore
 the old configuration to finish it. The document gate uses the complete processing

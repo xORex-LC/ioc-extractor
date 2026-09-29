@@ -13,4 +13,5 @@ that same value. The caller validates bindings and supplies immutable views.
 
 Dependencies point only to `ioc-domain` and `ioc-platform-errors`. Spring,
 Camel, CSV, JDBC and transport libraries are forbidden by Maven and ArchUnit.
-The CSV adapter consumes this evaluator for legacy and later configured routes.
+The CSV adapter consumes this evaluator for both compatible processing and
+selected IOC routes; there is one field-mapping implementation.

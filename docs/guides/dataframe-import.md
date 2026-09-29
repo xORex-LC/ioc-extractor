@@ -34,6 +34,9 @@ not supported.
   extraction, classification and artifact mapping policies. Pipeline-derived
   identity/match/routing values replace imported copies; operator metadata such
   as score, source or description remains subject to its merge policy.
+  A contract may select a named plan with `processed-route`; the
+  [route activation guide](ioc-processing-routes.md#bind-a-processed-import-contract)
+  shows the explicit input and output bindings.
 - `routing: target-only` is the safe default. Use `related-artifacts` only when
   the contract declares every related branch and the authority profile permits
   it.

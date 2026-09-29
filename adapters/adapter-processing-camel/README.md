@@ -47,7 +47,10 @@ profile in fresh JVMs for 1/4/16 selected branches, 1/4 callers and
 success/failure/recovery mixtures. The script records per-profile startup,
 thread allocations, retained-heap samples and throughput under a fixed heap.
 This profile does not assert an IOC end-to-end throughput target; a real
-document/import before/after comparison remains a P6 qualification task.
+document/import before/after throughput target requires a separately agreed
+workload and machine budget. The selected document output fixture and routed
+import row fixture are qualified in bootstrap tests; the reference import
+workspace load is measured separately from this synthetic Router profile.
 
 See [routing capability](../../docs/dev/processing.md),
 [module map](../../docs/MODULARIZATION.md) and

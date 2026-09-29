@@ -150,6 +150,11 @@ publish начинается только после локального export
 
 Колонки и правила заполнения артефактов **декларативны в конфиге**, не в коде
 (provider/transform-модель). Детали — [processing.md](dev/processing.md).
+Именованный план может явно выбирать представление и артефакт для новых
+document/processed-import наблюдений; ограниченный Camel-адаптер исполняет
+маршрут, а canonical identity, commit и recovery остаются за application и
+storage. Порядок включения описан в
+[руководстве по маршрутам](guides/ioc-processing-routes.md).
 
 Текущие артефакты:
 
