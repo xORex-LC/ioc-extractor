@@ -148,6 +148,25 @@ class RouterProcessedImportRowPreparerTest {
     }
 
     @Test
+    void separateImportedUrlsResolveToTheSameFinalCanonicalKey() throws Exception {
+        try (Fixture fixture = fixture()) {
+            var first = fixture.mapper().map(contract(), new ImportDelimitedRecord(20,
+                    Map.of("ioc", "https://EVIL.example/one")));
+            var second = fixture.mapper().map(contract(), new ImportDelimitedRecord(21,
+                    Map.of("ioc", "http://evil.example/two")));
+
+            assertThat(first.issues()).isEmpty();
+            assertThat(second.issues()).isEmpty();
+            assertThat(first.row().orElseThrow().branches().getFirst().recordKey())
+                    .isEqualTo(second.row().orElseThrow().branches().getFirst().recordKey());
+            assertThat(first.row().orElseThrow().branches().getFirst().cells())
+                    .containsEntry("mask", ImportCell.value("evil.example"));
+            assertThat(second.row().orElseThrow().branches().getFirst().cells())
+                    .containsEntry("mask", ImportCell.value("evil.example"));
+        }
+    }
+
+    @Test
     void missingPrimaryInputRejectsTheWholeLogicalRow() throws Exception {
         try (Fixture fixture = fixture()) {
             var result = fixture.mapper().map(contract(), new ImportDelimitedRecord(8, Map.of()));

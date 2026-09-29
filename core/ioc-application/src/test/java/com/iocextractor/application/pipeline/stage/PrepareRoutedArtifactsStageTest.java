@@ -63,6 +63,32 @@ class PrepareRoutedArtifactsStageTest {
     }
 
     @Test
+    void synthetic_ip_and_country_identity_controls_multiplicity_without_a_new_artifact() {
+        var ip = StageTestSupport.indicator("10.93.12.187");
+        var source = StageTestSupport.attributedIndicators(ip, ip);
+        DocumentProcessingPlan routing = occurrence -> Result.success(List.of(
+                new RoutedArtifactCandidate("synthetic", new PreparedArtifactRow(
+                        ArtifactRow.ordered(Map.of("ip", "10.93.12.187", "country",
+                                occurrence.tieOrdinal() == 0 ? "A" : "B")), Optional.empty()))));
+        var preparers = List.of(empty("synthetic", "ip"));
+        var policies = Map.of("synthetic", KEEP_FIRST);
+        var composite = new PrepareRoutedArtifactsStage(routing, preparers,
+                (artifact, row) -> Optional.of(new ArtifactRowKey(
+                        row.value("ip") + ":" + row.value("country"))), policies, true);
+        var ipOnly = new PrepareRoutedArtifactsStage(routing, preparers,
+                (artifact, row) -> Optional.of(new ArtifactRowKey(row.value("ip"))), policies, true);
+
+        assertThat(composite.process(StageTestSupport.envelope(source, false)).payload()
+                .plans().getFirst().rows())
+                .extracting(row -> row.template().value("country"))
+                .containsExactly("A", "B");
+        assertThat(ipOnly.process(StageTestSupport.envelope(source, false)).payload()
+                .plans().getFirst().rows())
+                .extracting(row -> row.template().value("country"))
+                .containsExactly("A");
+    }
+
+    @Test
     void last_nonempty_selection_uses_the_configured_final_field() {
         var source = StageTestSupport.attributedIndicators(
                 StageTestSupport.indicator("https://same.example/a"),
