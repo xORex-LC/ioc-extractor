@@ -64,10 +64,21 @@ rollback to an older binary requires a compatible service DB snapshot.
 
 Tests cover ordered plan fingerprints, import contract route fingerprints,
 pre-rebuild pin checks, shared-runtime plan isolation, Spring route activation,
-and service-DB policy gate restart/change behavior. The two new integration
-suites raise the accepted test universe from 68 to 70 integration suites and
-from 279 to 281 deterministic offline suites without reducing coverage floors.
-Existing receipt recovery
-tests cover post-commit finalization; P6 still owns customer golden fixtures,
+and service-DB policy gate restart/change behavior. Two integration suites and
+one selected-factory unit suite raise the accepted test universe from 68 to 70
+integration suites, from 216 to 217 fast suites, and from 279 to 282
+deterministic offline suites without reducing coverage floors. The route
+validation matrix covers malformed, ambiguous, unauthorized and
+authority-replacing bindings.
+
+A clean Maven `javac` SpotBugs review found ten accepted `EI_EXPOSE_REP`
+identities no longer present in raw bytecode analysis; they were removed from
+the exact baseline. Two existing lifecycle lambdas intentionally rethrow the
+primary runtime failure after recording terminal/observer state. Their raw
+`THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` identities were reviewed and accepted
+with the lifecycle-failure review trigger. The accepted identity set shrank
+from 120 to 112; no rule or analyzer scope was excluded.
+
+Existing receipt recovery tests cover post-commit finalization; P6 still owns customer golden fixtures,
 before/after resource measurements and retirement of the compatible processed
 mapping path.

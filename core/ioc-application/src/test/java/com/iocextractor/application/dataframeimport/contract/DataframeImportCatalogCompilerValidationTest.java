@@ -73,6 +73,109 @@ class DataframeImportCatalogCompilerValidationTest {
                 .contains("inputs must be unique mapped artifact targets");
     }
 
+    @Test
+    void processed_route_rejects_incomplete_and_unbounded_bindings() {
+        var input = new DataframeImportCatalogDraft.RouteInput("ip_list", "ip");
+        var output = new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip"));
+        var tooManyInputs = java.util.stream.IntStream.range(0, 33)
+                .mapToObj(index -> input).toList();
+        List<InvalidRoute> invalid = List.of(
+                new InvalidRoute(new DataframeImportCatalogDraft.ProcessedRoute(" ",
+                        List.of(input), List.of(output)), "processed route requires mode processed and a named plan"),
+                new InvalidRoute(new DataframeImportCatalogDraft.ProcessedRoute("host-plan",
+                        null, List.of(output)), "processed route requires bounded inputs and outputs"),
+                new InvalidRoute(new DataframeImportCatalogDraft.ProcessedRoute("host-plan",
+                        List.of(), List.of(output)), "processed route requires bounded inputs and outputs"),
+                new InvalidRoute(new DataframeImportCatalogDraft.ProcessedRoute("host-plan",
+                        tooManyInputs, List.of(output)), "processed route requires bounded inputs and outputs"),
+                new InvalidRoute(new DataframeImportCatalogDraft.ProcessedRoute("host-plan",
+                        List.of(input), null), "processed route requires bounded inputs and outputs"),
+                new InvalidRoute(new DataframeImportCatalogDraft.ProcessedRoute("host-plan",
+                        List.of(input), List.of()), "processed route requires bounded inputs and outputs"));
+        invalid.forEach(this::assertInvalidRoute);
+
+        var asIs = contract("route-in-as-is", ImportProcessingMode.AS_IS,
+                processedArtifact(null, null, new DataframeImportCatalogDraft.Column("ip", "ip", List.of(), null)));
+        assertThat(compiler.compile(disabledDraft(List.of(), List.of(), List.of(withProcessedRoute(asIs,
+                new DataframeImportCatalogDraft.ProcessedRoute("host-plan", List.of(input), List.of(output))))),
+                processedEnvironment(Set.of())).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("processed route requires mode processed and a named plan");
+    }
+
+    @Test
+    void processed_route_rejects_ambiguous_or_unmapped_input_cells() {
+        var output = new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip"));
+        List<InvalidRoute> invalid = List.of(
+                new InvalidRoute(route(Arrays.asList((DataframeImportCatalogDraft.RouteInput) null),
+                        List.of(output)), "inputs must be unique mapped artifact targets"),
+                new InvalidRoute(route(List.of(new DataframeImportCatalogDraft.RouteInput(" ", "ip")),
+                        List.of(output)), "inputs must be unique mapped artifact targets"),
+                new InvalidRoute(route(List.of(new DataframeImportCatalogDraft.RouteInput("ip_list", " ")),
+                        List.of(output)), "inputs must be unique mapped artifact targets"),
+                new InvalidRoute(route(List.of(new DataframeImportCatalogDraft.RouteInput("ip_list", "missing")),
+                        List.of(output)), "inputs must be unique mapped artifact targets"),
+                new InvalidRoute(route(List.of(new DataframeImportCatalogDraft.RouteInput("ip_list", "ip"),
+                        new DataframeImportCatalogDraft.RouteInput("ip_list", "ip")), List.of(output)),
+                        "inputs must be unique mapped artifact targets"));
+        invalid.forEach(this::assertInvalidRoute);
+    }
+
+    @Test
+    void processed_route_rejects_ambiguous_or_unauthorized_outputs() {
+        var input = new DataframeImportCatalogDraft.RouteInput("ip_list", "ip");
+        var valid = new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip"));
+        List<InvalidRoute> invalid = List.of(
+                new InvalidRoute(route(List.of(input), Arrays.asList((DataframeImportCatalogDraft.RouteOutput) null)),
+                        "outputs require unique artifacts and targets"),
+                new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        " ", List.of("ip")))), "outputs require unique artifacts and targets"),
+                new InvalidRoute(route(List.of(input), List.of(valid, valid)),
+                        "outputs require unique artifacts and targets"),
+                new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        "ip_list", null))), "outputs require unique artifacts and targets"),
+                new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        "ip_list", List.of()))), "outputs require unique artifacts and targets"),
+                new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        "ip_list", Arrays.asList("ip", null)))), "outputs require unique artifacts and targets"),
+                new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        "ip_list", List.of("ip", "ip")))), "outputs require unique artifacts and targets"),
+                new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        "missing", List.of("ip")))), "output target must be mapped and cannot replace source authority"),
+                new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        "ip_list", List.of("missing")))), "output target must be mapped and cannot replace source authority"));
+        invalid.forEach(this::assertInvalidRoute);
+
+        var sourceArtifact = processedArtifact("name", null,
+                new DataframeImportCatalogDraft.Column("ip", "ip", List.of(), null));
+        var contract = withProcessedRoute(contract("source-authority-route", ImportProcessingMode.PROCESSED,
+                sourceArtifact), route(List.of(input), List.of(
+                new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("name")))));
+        assertThat(compiler.compile(disabledDraft(List.of(), List.of(), List.of(contract)),
+                processedEnvironment(Set.of("name"))).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("output target must be mapped and cannot replace source authority");
+    }
+
+    private static DataframeImportCatalogDraft.ProcessedRoute route(
+            List<DataframeImportCatalogDraft.RouteInput> inputs,
+            List<DataframeImportCatalogDraft.RouteOutput> outputs) {
+        return new DataframeImportCatalogDraft.ProcessedRoute("host-plan", inputs, outputs);
+    }
+
+    private void assertInvalidRoute(InvalidRoute invalid) {
+        var artifact = processedArtifact(null, null,
+                new DataframeImportCatalogDraft.Column("ip", "ip", List.of(), null));
+        var contract = withProcessedRoute(contract("invalid-route", ImportProcessingMode.PROCESSED, artifact),
+                invalid.route());
+        assertThat(compiler.compile(disabledDraft(List.of(), List.of(), List.of(contract)),
+                processedEnvironment(Set.of())).violations())
+                .extracting(ImportContractViolation::message)
+                .contains(invalid.message());
+    }
+
+    private record InvalidRoute(DataframeImportCatalogDraft.ProcessedRoute route, String message) { }
+
     private static DataframeImportCatalogDraft.Contract withProcessedRoute(
             DataframeImportCatalogDraft.Contract original,
             DataframeImportCatalogDraft.ProcessedRoute route) {
