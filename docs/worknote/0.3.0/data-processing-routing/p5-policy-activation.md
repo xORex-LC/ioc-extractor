@@ -43,7 +43,8 @@ policy change. There is no executable old-plan archive or automatic backfill.
 
 Document intake uses a service schema v12 policy marker. On a policy change,
 daemon startup checks the incomplete ingestion ledger, processing files and
-nonterminal document admission journal before updating the marker. An unchanged
+document admissions that are nonterminal or await registration finalization
+before updating the marker. An unchanged
 fingerprint may recover its own in-flight work. Existing installations with
 pending legacy work must drain it before first route activation. The gate checks
 at startup, before the ingestion service is exposed. The marker uses the full

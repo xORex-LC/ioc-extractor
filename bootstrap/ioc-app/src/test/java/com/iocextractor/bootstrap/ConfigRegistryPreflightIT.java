@@ -1,6 +1,7 @@
 package com.iocextractor.bootstrap;
 
 import com.iocextractor.processing.mapping.ConfigurableRowMapper;
+import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
 
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.domain.model.IndicatorType;
@@ -36,30 +37,49 @@ class ConfigRegistryPreflightIT {
 
     @Test
     void rejectsImportRouteWhoseBranchExceedsContractOutputs() throws Exception {
+        contextRunner(withImportRoute(defaults(), "masks", "selected"))
+                .run(context -> assertRegistryFailure(context.getStartupFailure(),
+                        "processed-route must bind exactly one branch per authorized output artifact"));
+    }
+
+    @Test
+    void admitsMatchingImportRouteAndRejectsMissingPlan() throws Exception {
         IocProperties source = defaults();
-        var route = new IocProperties.DataframeImport.ProcessedRoute("selected",
-                List.of(new IocProperties.DataframeImport.RouteInput("ip_list", "ip")),
-                List.of(new IocProperties.DataframeImport.RouteOutput("ip_list", List.of("ip"))));
+        contextRunner(withImportRoute(source, "ip_list", "selected"))
+                .run(context -> assertThat(context).hasNotFailed());
+        contextRunner(withImportRoute(source, "ip_list", "missing"))
+                .run(context -> assertRegistryFailure(context.getStartupFailure(),
+                        "processed-route.plan must reference a valid named IOC plan"));
+    }
+
+    private static IocProperties withImportRoute(IocProperties source, String destination, String routePlan) {
+        var route = new DataframeImportCatalogDraft.ProcessedRoute(
+                routePlan,
+                List.of(new DataframeImportCatalogDraft.RouteInput(
+                        "ip_list", "ip")),
+                List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        "ip_list", List.of("ip"))));
         var contract = new IocProperties.DataframeImport.Contract("example", 1, "UTF-8",
                 null, null, com.iocextractor.application.dataframeimport.model.ImportProcessingMode.PROCESSED,
                 null, null, null, null, false, null, null, List.of(), null, route);
         var original = source.dataframeImport();
         var imports = new IocProperties.DataframeImport(false, original.sources(),
                 original.authorityProfiles(), List.of(contract), original.runtime());
+        var omissions = source.sink().artifacts().stream()
+                .filter(IocProperties.Sink.Artifact::enabled)
+                .map(IocProperties.Sink.Artifact::name)
+                .filter(name -> !name.equals(destination)).toList();
         var plan = new IocProcessingProperties.Plan("selected", List.of(),
                 List.of(new IocProcessingProperties.Classification("original", "configured")),
                 new IocProcessingProperties.Routing(IocProcessingProperties.Mode.FIRST,
                         new IocProcessingProperties.OnUnmatched(IocProcessingProperties.Action.SKIP, null),
-                        List.of(new IocProcessingProperties.Branch("mask", "masks", "original",
-                                null, Map.of())), null), List.of());
-        var configured = new IocProperties(source.engine(), source.runtime(), source.storage(),
+                        List.of(new IocProcessingProperties.Branch("bound", destination, "original",
+                                null, Map.of())), null), omissions);
+        return new IocProperties(source.engine(), source.runtime(), source.storage(),
                 source.source(), source.refang(), source.patterns(), source.classify(), source.sink(),
                 source.pipeline(), source.ingestion(), source.artifactIdentity(), imports,
                 source.export(), source.sync(), source.maintenance(), source.lifecycle(),
                 source.observability(), new IocProcessingProperties(null, List.of(plan)));
-
-        contextRunner(configured).run(context -> assertRegistryFailure(context.getStartupFailure(),
-                "processed-route must bind exactly one branch per authorized output artifact"));
     }
 
     @Test

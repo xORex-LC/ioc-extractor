@@ -44,7 +44,21 @@ class JdbcDocumentProcessingPolicyGateIT {
                     .hasMessageContaining("unfinished intake");
             assertThat(policy(dataSource)).isEqualTo(old);
             try (Connection connection = dataSource.getConnection()) {
-                connection.createStatement().executeUpdate("DELETE FROM document_admission");
+                connection.createStatement().executeUpdate("""
+                        UPDATE document_admission SET phase = 'TERMINAL', admission_order = 1,
+                            dataframe_namespace = 'primary', claimed_size = 1,
+                            source_key = 'pending', terminal_outcome = 'COMPLETED'
+                        WHERE occurrence_id = 'pending'
+                        """);
+            }
+            assertThatThrownBy(() -> gate.ensure(changed, true, () -> true))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("unfinished intake");
+            try (Connection connection = dataSource.getConnection()) {
+                connection.createStatement().executeUpdate("""
+                        UPDATE document_admission SET registration_finalized = 1
+                        WHERE occurrence_id = 'pending'
+                        """);
             }
             gate.ensure(changed, true, () -> true);
             assertThat(policy(dataSource)).isEqualTo(changed);

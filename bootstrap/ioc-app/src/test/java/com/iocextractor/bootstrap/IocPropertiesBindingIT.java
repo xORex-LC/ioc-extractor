@@ -2,6 +2,7 @@ package com.iocextractor.bootstrap;
 
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalog;
+import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
 import com.iocextractor.application.dataframeimport.model.ImportProcessingMode;
 import com.iocextractor.domain.model.IndicatorType;
 import org.junit.jupiter.api.Test;
@@ -10,6 +11,9 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.context.properties.bind.UnboundConfigurationPropertiesException;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
 import org.springframework.boot.context.properties.bind.validation.BindValidationException;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -67,6 +71,24 @@ class IocPropertiesBindingIT {
             assertThat(importRetention.successful().action()).isEqualTo(RetentionActionType.DELETE);
             assertThat(context).doesNotHaveBean(DataframeImportCatalog.class);
         });
+    }
+
+    @Test
+    void bindsProcessedRouteThroughTheSharedImportContractShape() {
+        var source = new MapConfigurationPropertySource(Map.of(
+                "ioc.dataframe-import.contracts[0].processed-route.plan", "host-plan",
+                "ioc.dataframe-import.contracts[0].processed-route.inputs[0].artifact", "ip_list",
+                "ioc.dataframe-import.contracts[0].processed-route.inputs[0].target", "ip",
+                "ioc.dataframe-import.contracts[0].processed-route.outputs[0].artifact", "ip_list",
+                "ioc.dataframe-import.contracts[0].processed-route.outputs[0].targets[0]", "ip"));
+        var route = new Binder(source).bind(
+                "ioc.dataframe-import.contracts[0].processed-route",
+                Bindable.of(DataframeImportCatalogDraft.ProcessedRoute.class)).orElseThrow();
+
+        assertThat(route.plan()).isEqualTo("host-plan");
+        assertThat(route.inputs()).containsExactly(new DataframeImportCatalogDraft.RouteInput("ip_list", "ip"));
+        assertThat(route.outputs()).containsExactly(
+                new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip")));
     }
 
     @Test

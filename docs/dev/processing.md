@@ -147,7 +147,8 @@ Tika, RE2/J, Guava PSL и Commons CSV изолированы адаптерам�
 
 Для daemon выбранная политика документа закрепляется в service DB (schema v12).
 При изменении fingerprint старт отклоняется, пока есть незавершённые записи
-ingestion ledger, файлы в processing или нетерминальные document admissions.
+ingestion ledger, файлы в processing или document admissions, ещё не завершённые
+либо ожидающие окончательной регистрации.
 При неизменном fingerprint восстановление продолжается. Импорт закрепляет
 версию и fingerprint контракта на delivery: при повторном staging сначала
 сверяется активный контракт и только затем читаются строки; совместимый sealed

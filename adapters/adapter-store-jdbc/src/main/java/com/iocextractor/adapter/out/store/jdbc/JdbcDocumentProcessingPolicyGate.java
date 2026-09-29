@@ -77,7 +77,8 @@ public final class JdbcDocumentProcessingPolicyGate {
 
     private static boolean hasJournaledWork(Connection connection) throws SQLException {
         try (var query = connection.prepareStatement(
-                "SELECT 1 FROM document_admission WHERE phase <> 'TERMINAL' LIMIT 1");
+                "SELECT 1 FROM document_admission "
+                        + "WHERE phase <> 'TERMINAL' OR registration_finalized = 0 LIMIT 1");
              var rows = query.executeQuery()) {
             return rows.next();
         }

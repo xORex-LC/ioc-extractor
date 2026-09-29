@@ -1,5 +1,6 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
 import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
 import com.iocextractor.application.dataframeimport.model.ImportDuplicatePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportExistingSlotPolicy;
@@ -506,7 +507,7 @@ public record IocProperties(
                                ImportMergePolicy mergeDefault,
                                @Valid List<Artifact> artifacts,
                                @Valid RequestedSlot requestedSlot,
-                               @Valid ProcessedRoute processedRoute) {
+                               @Valid DataframeImportCatalogDraft.ProcessedRoute processedRoute) {
 
             @ConstructorBinding
             public Contract {
@@ -518,27 +519,6 @@ public record IocProperties(
             public List<Artifact> artifacts() {
                 return readOnly(artifacts);
             }
-        }
-
-        /** Explicit IOC route attachment for one processed import contract. */
-        public record ProcessedRoute(String plan, @Valid List<RouteInput> inputs,
-                                     @Valid List<RouteOutput> outputs) {
-            public ProcessedRoute {
-                inputs = snapshotList(inputs);
-                outputs = snapshotList(outputs);
-            }
-
-            @Override public List<RouteInput> inputs() { return readOnly(inputs); }
-            @Override public List<RouteOutput> outputs() { return readOnly(outputs); }
-        }
-
-        /** Authorized input cell for one invocation of the selected route. */
-        public record RouteInput(String artifact, String target) { }
-
-        /** Authorized final fields for one contract artifact. */
-        public record RouteOutput(String artifact, List<String> targets) {
-            public RouteOutput { targets = snapshotList(targets); }
-            @Override public List<String> targets() { return readOnly(targets); }
         }
 
         /** Strict library-neutral CSV dialect. */

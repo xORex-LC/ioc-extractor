@@ -1,5 +1,6 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
 
 import org.springframework.beans.factory.InitializingBean;
 
@@ -60,7 +61,7 @@ final class ConfigRegistryPreflight implements InitializingBean {
                 continue;
             }
             Set<String> outputs = route.outputs().stream().filter(Objects::nonNull)
-                    .map(IocProperties.DataframeImport.RouteOutput::artifact)
+                    .map(DataframeImportCatalogDraft.RouteOutput::artifact)
                     .collect(Collectors.toSet());
             List<String> destinations = plan.router().routing().branches().stream()
                     .map(com.iocextractor.adapter.processing.camel.contract.PlanDescriptor.Branch::destination)
