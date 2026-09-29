@@ -1,0 +1,48 @@
+# A complete selected document route layered on the ordinary golden artifact policy.
+ioc:
+  processing:
+    document-plan: customer-hosts
+    plans:
+      - name: customer-hosts
+        views:
+          - name: host
+            operation: network.host
+            input: original
+        classifications:
+          - { view: original, policy: configured }
+          - { view: host, policy: configured }
+        routing:
+          mode: all
+          on-unmatched: { action: skip }
+          branches:
+            - id: masks-host
+              artifact: masks
+              default-view: host
+              eligibility:
+                'on': original
+                predicate: type-in
+                arguments: { types: [IPV4, DOMAIN, URL] }
+            - id: ip-host
+              artifact: ip_list
+              default-view: host
+              eligibility:
+                'on': original
+                predicate: type-in
+                arguments: { types: [IPV4, DOMAIN, URL] }
+            - id: blacklist-original
+              artifact: address_blacklist
+              default-view: original
+              eligibility:
+                'on': original
+                predicate: type-in
+                arguments: { types: [IPV4, DOMAIN, URL] }
+            - id: hashes-original
+              artifact: hashes
+              default-view: original
+              eligibility:
+                'on': original
+                predicate: type-in
+                arguments: { types: [MD5, SHA1, SHA256] }
+            - id: aggregate-original
+              artifact: ioc_aggregate
+              default-view: original
