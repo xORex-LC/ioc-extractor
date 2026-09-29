@@ -20,12 +20,14 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -175,10 +177,65 @@ public final class DataframeImportCatalogCompiler {
                     "default merge policy is required", violations);
             DataframeImportCatalogDraft.Artifact primary = validateArtifacts(
                     contract, path, recognized, environment, violations);
+            validateProcessedRoute(contract, path, violations);
             validateDuplicateSelection(contract, primary, path, violations);
             validateRequestedSlot(contract.requestedSlot(), primary, recognized, environment, path, violations);
         }
         return result;
+    }
+
+    private void validateProcessedRoute(DataframeImportCatalogDraft.Contract contract, String path,
+                                        List<ImportContractViolation> violations) {
+        var route = contract.processedRoute();
+        if (route == null) {
+            return;
+        }
+        String at = path + ".processed-route";
+        if (contract.mode() != ImportProcessingMode.PROCESSED || !hasText(route.plan())) {
+            violations.add(violation(at, "processed route requires mode processed and a named plan"));
+        }
+        if (route.inputs() == null || route.inputs().isEmpty() || route.inputs().size() > 32
+                || route.outputs() == null || route.outputs().isEmpty()) {
+            violations.add(violation(at, "processed route requires bounded inputs and outputs"));
+            return;
+        }
+        Map<String, DataframeImportCatalogDraft.Artifact> artifacts = new HashMap<>();
+        if (contract.artifacts() != null) {
+            contract.artifacts().stream().filter(Objects::nonNull)
+                    .filter(artifact -> hasText(artifact.name()))
+                    .forEach(artifact -> artifacts.put(artifact.name(), artifact));
+        }
+        Set<String> inputs = new HashSet<>();
+        for (var input : route.inputs()) {
+            if (input == null || !hasText(input.artifact()) || !hasText(input.target())
+                    || !inputs.add(input.artifact() + "\u0000" + input.target())
+                    || !mappedTarget(artifacts.get(input.artifact()), input.target())) {
+                violations.add(violation(at + ".inputs", "inputs must be unique mapped artifact targets"));
+            }
+        }
+        Set<String> outputs = new HashSet<>();
+        for (var output : route.outputs()) {
+            if (output == null || !hasText(output.artifact()) || !outputs.add(output.artifact())
+                    || output.targets() == null || output.targets().isEmpty()
+                    || output.targets().stream().anyMatch(Objects::isNull)
+                    || new HashSet<>(output.targets()).size() != output.targets().size()) {
+                violations.add(violation(at + ".outputs", "outputs require unique artifacts and targets"));
+                continue;
+            }
+            var artifact = artifacts.get(output.artifact());
+            for (String target : output.targets()) {
+                if (!mappedTarget(artifact, target)
+                        || target.equals(artifact.sourceLabelTarget())) {
+                    violations.add(violation(at + ".outputs", "output target must be mapped and cannot replace source authority"));
+                }
+            }
+        }
+    }
+
+    private boolean mappedTarget(DataframeImportCatalogDraft.Artifact artifact, String target) {
+        return artifact != null && hasText(target) && artifact.columns() != null
+                && artifact.columns().stream().filter(Objects::nonNull)
+                .anyMatch(column -> target.equals(column.target()));
     }
 
     private void validateDuplicateSelection(DataframeImportCatalogDraft.Contract contract,
@@ -684,7 +741,7 @@ public final class DataframeImportCatalogCompiler {
 
     private String contractDescriptor(DataframeImportCatalogDraft.Contract contract,
                                       String processingPolicyFingerprint) {
-        FingerprintBuilder builder = new FingerprintBuilder("dataframe-import-contract:v2");
+        FingerprintBuilder builder = new FingerprintBuilder("dataframe-import-contract:v3");
         builder.value("processing-policy-fingerprint", processingPolicyFingerprint);
         builder.value("id", contract.id()).number("version", contract.version()).value("charset", contract.charset());
         DataframeImportCatalogDraft.Dialect dialect = contract.dialect();
@@ -700,6 +757,18 @@ public final class DataframeImportCatalogCompiler {
                 .token("merge-default", contract.mergeDefault());
         if (contract.duplicateSelectionColumn() != null) {
             builder.value("duplicate-selection-column", contract.duplicateSelectionColumn());
+        }
+        var route = contract.processedRoute();
+        if (route == null) {
+            builder.value("processed-route", null);
+        } else {
+            builder.value("processed-plan", route.plan());
+            route.inputs().forEach(input -> builder.value("input-artifact", input.artifact())
+                    .value("input-target", input.target()));
+            route.outputs().forEach(output -> {
+                builder.value("output-artifact", output.artifact());
+                builder.ordered("output-target", output.targets());
+            });
         }
         contract.artifacts().stream()
                 .sorted(Comparator.comparing(DataframeImportCatalogDraft.Artifact::name)

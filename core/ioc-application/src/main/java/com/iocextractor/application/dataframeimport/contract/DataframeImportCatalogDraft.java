@@ -145,10 +145,24 @@ public record DataframeImportCatalogDraft(
                            ImportFormulaPolicy formulaPolicy,
                            ImportMergePolicy mergeDefault,
                            List<Artifact> artifacts,
-                           RequestedSlot requestedSlot) {
+                           RequestedSlot requestedSlot,
+                           ProcessedRoute processedRoute) {
         /** Snapshots artifact mappings. */
         public Contract {
             artifacts = snapshotList(artifacts);
+        }
+
+        /** Compatibility constructor for contracts without an explicit IOC route. */
+        public Contract(String id, int version, String charset, Dialect dialect,
+                        Recognition recognition, ImportProcessingMode mode,
+                        ImportRoutingPolicy routing, ImportRowFailurePolicy rowFailurePolicy,
+                        ImportDuplicatePolicy duplicatePolicy, String duplicateSelectionColumn,
+                        boolean renewUnchanged, ImportFormulaPolicy formulaPolicy,
+                        ImportMergePolicy mergeDefault, List<Artifact> artifacts,
+                        RequestedSlot requestedSlot) {
+            this(id, version, charset, dialect, recognition, mode, routing, rowFailurePolicy,
+                    duplicatePolicy, duplicateSelectionColumn, renewUnchanged, formulaPolicy,
+                    mergeDefault, artifacts, requestedSlot, null);
         }
 
         /** Compatibility constructor for contracts using coalesce or keep-first. */
@@ -160,7 +174,7 @@ public record DataframeImportCatalogDraft(
                         List<Artifact> artifacts, RequestedSlot requestedSlot) {
             this(id, version, charset, dialect, recognition, mode, routing, rowFailurePolicy,
                     duplicatePolicy, null, renewUnchanged, formulaPolicy, mergeDefault,
-                    artifacts, requestedSlot);
+                    artifacts, requestedSlot, null);
         }
 
         /** Returns the immutable artifact-mapping snapshot. */
@@ -168,6 +182,23 @@ public record DataframeImportCatalogDraft(
         public List<Artifact> artifacts() {
             return readOnly(artifacts);
         }
+    }
+
+    /** Compiled-contract source and destination bindings for processed IOC input. */
+    public record ProcessedRoute(String plan, List<RouteInput> inputs, List<RouteOutput> outputs) {
+        public ProcessedRoute {
+            inputs = snapshotList(inputs);
+            outputs = snapshotList(outputs);
+        }
+        @Override public List<RouteInput> inputs() { return readOnly(inputs); }
+        @Override public List<RouteOutput> outputs() { return readOnly(outputs); }
+    }
+
+    public record RouteInput(String artifact, String target) { }
+
+    public record RouteOutput(String artifact, List<String> targets) {
+        public RouteOutput { targets = snapshotList(targets); }
+        @Override public List<String> targets() { return readOnly(targets); }
     }
 
     /**

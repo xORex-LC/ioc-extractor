@@ -91,6 +91,7 @@ public final class CamelPlanCompiler {
             @Override public void configure() {
                 errorHandler(noErrorHandler());
                 from(uri).routeId(routeId(planId, "branch", branch.id()))
+                        .setHeader(RouteProtocol.PLAN_ID, constant(planId))
                         .setHeader(RouteProtocol.BRANCH_ID, constant(branch.id()))
                         .process(exchange -> {
                             try (var ignored = scopes.openBranch(planId, branch.id())) {

@@ -29,6 +29,7 @@ final class ConfigRegistryPreflight implements InitializingBean {
         validateSinkArtifacts(errors);
         ArtifactPolicyCatalog.compile(props, errors);
         processingPlans = ProcessingPlanCatalog.compile(props, errors);
+        validateImportProcessingPlans(errors);
         if (!errors.isEmpty()) {
             throw new IllegalStateException("CONFIG.REGISTRY invalid IOC configuration:\n- "
                     + String.join("\n- ", errors));
@@ -37,6 +38,41 @@ final class ConfigRegistryPreflight implements InitializingBean {
 
     ProcessingPlanBindings processingPlanBindings() {
         return new ProcessingPlanBindings(props.processing().documentPlan(), processingPlans);
+    }
+
+    private void validateImportProcessingPlans(List<String> errors) {
+        if (props.dataframeImport() == null || props.dataframeImport().contracts() == null) {
+            return;
+        }
+        for (int index = 0; index < props.dataframeImport().contracts().size(); index++) {
+            var contract = props.dataframeImport().contracts().get(index);
+            if (contract == null || contract.processedRoute() == null) {
+                continue;
+            }
+            String path = "ioc.dataframe-import.contracts[" + index + "].processed-route";
+            var route = contract.processedRoute();
+            var plan = route.plan() == null ? null : processingPlans.get(route.plan());
+            if (plan == null) {
+                errors.add(path + ".plan must reference a valid named IOC plan");
+                continue;
+            }
+            if (route.outputs() == null) {
+                continue;
+            }
+            Set<String> outputs = route.outputs().stream().filter(Objects::nonNull)
+                    .map(IocProperties.DataframeImport.RouteOutput::artifact)
+                    .collect(Collectors.toSet());
+            List<String> destinations = plan.router().routing().branches().stream()
+                    .map(com.iocextractor.adapter.processing.camel.contract.PlanDescriptor.Branch::destination)
+                    .collect(Collectors.toCollection(ArrayList::new));
+            if (plan.router().routing().defaultBranch() != null) {
+                destinations.add(plan.router().routing().defaultBranch().destination());
+            }
+            if (destinations.size() != Set.copyOf(destinations).size()
+                    || !Set.copyOf(destinations).equals(outputs)) {
+                errors.add(path + " must bind exactly one branch per authorized output artifact");
+            }
+        }
     }
 
     private void validateClassifyPredicates(List<String> errors) {

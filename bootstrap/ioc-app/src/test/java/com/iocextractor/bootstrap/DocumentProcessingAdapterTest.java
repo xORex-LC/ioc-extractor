@@ -41,6 +41,49 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Timeout(15)
 class DocumentProcessingAdapterTest {
     @Test
+    void shared_runtime_uses_each_plan_binding_and_document_run_preparer() throws Exception {
+        var original = plan(PlanDescriptor.Mode.FIRST,
+                new PlanDescriptor.Branch("original-branch", "masks", null, List.of("original")));
+        var derived = new PlanDescriptor("derived", original.views(),
+                new PlanDescriptor.Routing(PlanDescriptor.Mode.FIRST,
+                        List.of(new PlanDescriptor.Branch("host-branch", "masks", null,
+                                List.of("host"))), original.routing().onUnmatched(), null));
+        var originalBinding = new ProcessingPlanCatalog.CompiledPlan(original,
+                Map.of("original-branch", new ProcessingPlanCatalog.BranchBinding(
+                        "masks", "original", Map.of())), Set.of("original"));
+        var hostBinding = new ProcessingPlanCatalog.CompiledPlan(derived,
+                Map.of("host-branch", new ProcessingPlanCatalog.BranchBinding(
+                        "masks", "host", Map.of())), Set.of("host"));
+        var classifier = new IndicatorClassifier(indicator -> decision(indicator.value(), "configured"));
+        var baseline = preparer("masks", List.of(column("mask", "value")));
+        var runPreparer = new CsvArtifactPreparer(new CsvArtifactDefinition("masks",
+                Set.of(IndicatorType.URL, IndicatorType.DOMAIN), ArtifactFilter.none(),
+                new ConfigurableRowMapper(List.of(column("mask", "value")),
+                        ConfigRegistryCatalog.valueProviders(), Map.of()),
+                ArtifactIdStrategy.ASCENDING, 1),
+                new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 1),
+                new DiagnosticFactory(Clock.systemUTC()), "document-source-key",
+                NoopPipelineDecisionTracer.INSTANCE);
+        var catalog = new IocProcessingOperations(Map.of("document", originalBinding,
+                "derived", hostBinding), Map.of("masks", baseline), classifier).catalog();
+        try (var runtime = new CamelRouteRuntime(new CamelPlanCompiler().compile(
+                List.of(original, derived), catalog))) {
+            var first = new DocumentProcessingAdapter(originalBinding, runtime, classifier,
+                    Clock.systemUTC(), Map.of("masks", runPreparer));
+            var second = new DocumentProcessingAdapter(hostBinding, runtime, classifier,
+                    Clock.systemUTC(), Map.of("masks", runPreparer));
+            var occurrence = occurrence("https://example.com/a", 1);
+
+            assertThat(first.prepare(occurrence).value().getFirst().row().template().value("mask"))
+                    .isEqualTo("https://example.com/a");
+            assertThat(second.prepare(occurrence).value().getFirst().row().template().value("mask"))
+                    .isEqualTo("example.com");
+            assertThat(second.prepare(occurrence).value().getFirst().row().template().value("_source_key"))
+                    .isEqualTo("document-source-key");
+        }
+    }
+
+    @Test
     void host_branch_merges_final_mask_value_while_original_branch_keeps_full_url() throws Exception {
         var plan = plan(PlanDescriptor.Mode.ALL,
                 new PlanDescriptor.Branch("mask", "masks", typeIn("original", "URL"), List.of("host", "original")),

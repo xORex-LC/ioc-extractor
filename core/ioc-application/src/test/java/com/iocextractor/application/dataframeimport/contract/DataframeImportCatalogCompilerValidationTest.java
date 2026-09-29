@@ -30,6 +30,61 @@ class DataframeImportCatalogCompilerValidationTest {
     private final DataframeImportCatalogCompiler compiler = new DataframeImportCatalogCompiler();
 
     @Test
+    void processed_route_bindings_are_validated_and_change_the_compiled_contract_pin() {
+        var artifact = processedArtifact(null, null,
+                new DataframeImportCatalogDraft.Column("ip", "ip", List.of(), null));
+        var plain = contract("processed-route", ImportProcessingMode.PROCESSED, artifact);
+        var first = withProcessedRoute(plain, new DataframeImportCatalogDraft.ProcessedRoute(
+                "host-plan", List.of(new DataframeImportCatalogDraft.RouteInput("ip_list", "ip")),
+                List.of(new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip")))));
+        var second = withProcessedRoute(plain, new DataframeImportCatalogDraft.ProcessedRoute(
+                "other-plan", List.of(new DataframeImportCatalogDraft.RouteInput("ip_list", "ip")),
+                List.of(new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip")))));
+        var ordered = withProcessedRoute(plain, new DataframeImportCatalogDraft.ProcessedRoute(
+                "host-plan", List.of(new DataframeImportCatalogDraft.RouteInput("ip_list", "ip"),
+                        new DataframeImportCatalogDraft.RouteInput("ip_list", "name")),
+                List.of(new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip")))));
+        var reversed = withProcessedRoute(plain, new DataframeImportCatalogDraft.ProcessedRoute(
+                "host-plan", List.of(new DataframeImportCatalogDraft.RouteInput("ip_list", "name"),
+                        new DataframeImportCatalogDraft.RouteInput("ip_list", "ip")),
+                List.of(new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip")))));
+        var invalid = withProcessedRoute(plain, new DataframeImportCatalogDraft.ProcessedRoute(
+                "host-plan", List.of(new DataframeImportCatalogDraft.RouteInput("ip_list", "missing")),
+                List.of(new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip")))));
+
+        String firstPin = compiler.compile(disabledDraft(List.of(), List.of(), List.of(first)),
+                processedEnvironment(Set.of())).catalogOrThrow().contracts().values()
+                .iterator().next().fingerprint().value();
+        String secondPin = compiler.compile(disabledDraft(List.of(), List.of(), List.of(second)),
+                processedEnvironment(Set.of())).catalogOrThrow().contracts().values()
+                .iterator().next().fingerprint().value();
+        String orderedPin = compiler.compile(disabledDraft(List.of(), List.of(), List.of(ordered)),
+                processedEnvironment(Set.of())).catalogOrThrow().contracts().values()
+                .iterator().next().fingerprint().value();
+        String reversedPin = compiler.compile(disabledDraft(List.of(), List.of(), List.of(reversed)),
+                processedEnvironment(Set.of())).catalogOrThrow().contracts().values()
+                .iterator().next().fingerprint().value();
+
+        assertThat(firstPin).isNotEqualTo(secondPin);
+        assertThat(orderedPin).isNotEqualTo(reversedPin);
+        assertThat(compiler.compile(disabledDraft(List.of(), List.of(), List.of(invalid)),
+                processedEnvironment(Set.of())).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("inputs must be unique mapped artifact targets");
+    }
+
+    private static DataframeImportCatalogDraft.Contract withProcessedRoute(
+            DataframeImportCatalogDraft.Contract original,
+            DataframeImportCatalogDraft.ProcessedRoute route) {
+        return new DataframeImportCatalogDraft.Contract(original.id(), original.version(),
+                original.charset(), original.dialect(), original.recognition(), original.mode(),
+                original.routing(), original.rowFailurePolicy(), original.duplicatePolicy(),
+                original.duplicateSelectionColumn(), original.renewUnchanged(),
+                original.formulaPolicy(), original.mergeDefault(), original.artifacts(),
+                original.requestedSlot(), route);
+    }
+
+    @Test
     void rejectsAbsentCatalogAndEveryIncompleteEnvironmentShape() {
         assertThat(compiler.compile(null, environment()).violations())
                 .extracting(ImportContractViolation::message)

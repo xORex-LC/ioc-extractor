@@ -11,6 +11,8 @@ import com.iocextractor.adapter.out.sink.csv.CsvArtifactSliceWriter;
 import com.iocextractor.adapter.out.sink.csv.FileSystemSliceRetentionStore;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactPreparer;
+import com.iocextractor.adapter.processing.camel.runtime.CamelRouteRuntime;
+import com.iocextractor.adapter.out.store.jdbc.JdbcDocumentProcessingPolicyGate;
 import com.iocextractor.adapter.out.sink.csv.NioExportOperationGuard;
 import com.iocextractor.processing.mapping.RowMapper;
 import com.iocextractor.processing.mapping.Transform;
@@ -152,6 +154,7 @@ import com.iocextractor.application.port.out.export.SliceRetentionGuard;
 import com.iocextractor.application.port.out.export.SliceRetentionStore;
 import com.iocextractor.application.port.out.export.SnapshotSliceReader;
 import com.iocextractor.application.service.IocExtractionServiceFactory;
+import com.iocextractor.application.port.out.artifact.DocumentProcessingPlanFactory;
 import com.iocextractor.common.IocExtractorException;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.render.DiagnosticRenderer;
@@ -362,12 +365,26 @@ public class AppConfig {
                                                                    JdbcCanonicalArtifactRepository repository,
                                                                    CanonicalArtifactWriter canonicalArtifactWriter,
                                                                    ArtifactIdentityResolver artifactIdentityResolver,
+                                                                   ProcessingPlanBindings processingPlans,
+                                                                   ObjectProvider<CamelRouteRuntime> routerRuntime,
+                                                                   Clock clock,
                                                                    IocProperties props) {
+        DocumentProcessingPlanFactory documentPlanFactory = processingPlans.selectedDocumentPlan()
+                .map(plan -> (DocumentProcessingPlanFactory) preparers -> {
+                    Map<String, CsvArtifactPreparer> byArtifact = new LinkedHashMap<>();
+                    for (ArtifactPreparer preparer : preparers) {
+                        byArtifact.put(preparer.name(), (CsvArtifactPreparer) preparer);
+                    }
+                    return new DocumentProcessingAdapter(plan, routerRuntime.getObject(),
+                            new com.iocextractor.processing.classification.IndicatorClassifier(matchPolicy),
+                            clock, byArtifact);
+                }).orElse(null);
         return new IocExtractionServiceFactory(reader, refanger, extractor, attributor, matchPolicy,
                 props.pipeline().deduplicate(), props.observability().mode().token(),
                 new LoggingPipelineObserver(), diagnosticSink,
                 props.pipeline().failurePolicy().toPolicy(), props.pipeline().maxDiagnosticsPerRun(),
-                repository, canonicalArtifactWriter, artifactIdentityResolver, decisionTracer);
+                repository, canonicalArtifactWriter, artifactIdentityResolver, decisionTracer,
+                documentPlanFactory, ArtifactPolicyCatalog.compile(props));
     }
 
     @Bean
@@ -1294,8 +1311,22 @@ public class AppConfig {
                                              KeyedExecutionGuard ingestionExecutionGuard,
                                              DocumentAdmissionService documentAdmissions,
                                              ObservationOrderingPolicy orderingPolicy,
+                                             ObjectProvider<LazyServiceStorage> serviceStorage,
+                                             ProcessingPlanBindings processingPlans,
                                              IocProperties props,
                                              Clock clock) {
+        boolean selected = processingPlans.selectedDocumentPlan().isPresent();
+        LazyServiceStorage storage = serviceStorage.getIfAvailable();
+        if (storage == null && selected) {
+            throw new IllegalStateException("Document processing plan requires durable service storage in daemon mode");
+        }
+        if (storage != null) {
+            storage.migration();
+            new JdbcDocumentProcessingPolicyGate(storage.dataSource()).ensure(
+                    processingPolicyIdentity.value(), selected,
+                    () -> ledger.findIncomplete().isEmpty()
+                            && sourceLifecycle.findProcessingSources().isEmpty());
+        }
         IngestionLifecycleSupport lifecycleSupport = props.lifecycle().validity().mode()
                 == LifecycleValidityMode.FIXED
                 ? new IngestionLifecycleSupport(
@@ -1437,7 +1468,7 @@ public class AppConfig {
 
     // ---- artifact assembly -------------------------------------------------
 
-    private List<ArtifactPreparer> artifactPreparers(List<CsvArtifactDefinition> artifacts,
+    List<ArtifactPreparer> artifactPreparers(List<CsvArtifactDefinition> artifacts,
                                                      String sourceKey,
                                                      Clock clock,
                                                      PipelineDecisionTracer decisionTracer,

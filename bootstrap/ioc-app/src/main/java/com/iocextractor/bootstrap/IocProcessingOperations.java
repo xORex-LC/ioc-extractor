@@ -24,14 +24,20 @@ import org.apache.camel.Processor;
 /** Binds shared IOC operations and CSV preparers to Router's neutral catalog. */
 final class IocProcessingOperations {
     private static final String NETWORK_HOST = "network.host";
-    private final ProcessingPlanCatalog.CompiledPlan plan;
+    private final Map<String, ProcessingPlanCatalog.CompiledPlan> plans;
     private final Map<String, CsvArtifactPreparer> preparers;
     private final IndicatorClassifier classifier;
 
     IocProcessingOperations(ProcessingPlanCatalog.CompiledPlan plan,
                                  Map<String, CsvArtifactPreparer> preparers,
                                  IndicatorClassifier classifier) {
-        this.plan = Objects.requireNonNull(plan, "plan");
+        this(Map.of(plan.router().id(), plan), preparers, classifier);
+    }
+
+    IocProcessingOperations(Map<String, ProcessingPlanCatalog.CompiledPlan> plans,
+                            Map<String, CsvArtifactPreparer> preparers,
+                            IndicatorClassifier classifier) {
+        this.plans = Map.copyOf(plans);
         this.preparers = Map.copyOf(preparers);
         this.classifier = Objects.requireNonNull(classifier, "classifier");
     }
@@ -51,7 +57,7 @@ final class IocProcessingOperations {
         };
         Map<String, Processor> destinations = new HashMap<>();
         preparers.forEach((artifact, preparer) -> destinations.put(artifact,
-                exchange -> prepareBranch(exchange, preparer)));
+                exchange -> prepareBranch(exchange, artifact)));
         Map<String, PredicateRegistration> predicates = predicates();
         return new OperationCatalog(Map.of(NETWORK_HOST, host), destinations, predicates,
                 java.util.Arrays.stream(NetworkAddressParser.FailureReason.values())
@@ -72,13 +78,18 @@ final class IocProcessingOperations {
         return registrations;
     }
 
-    private void prepareBranch(Exchange exchange, CsvArtifactPreparer preparer) {
+    private void prepareBranch(Exchange exchange, String artifact) {
+        String planId = exchange.getMessage().getHeader(RouteProtocol.PLAN_ID, String.class);
         String branchId = exchange.getMessage().getHeader(RouteProtocol.BRANCH_ID, String.class);
+        ProcessingPlanCatalog.CompiledPlan plan = Objects.requireNonNull(
+                plans.get(planId), "plan binding " + planId);
         ProcessingPlanCatalog.BranchBinding binding = Objects.requireNonNull(
                 plan.bindings().get(branchId), "branch binding " + branchId);
         PlanExecutionResult.BranchInput input = Objects.requireNonNull(exchange.getMessage()
                 .getBody(PlanExecutionResult.BranchInput.class), "branch input");
         ProcessingView selected = resolved(input, binding.defaultView());
+        CsvArtifactPreparer preparer = selected.preparers().getOrDefault(artifact,
+                Objects.requireNonNull(preparers.get(artifact), "artifact preparer " + artifact));
         Map<String, ClassifiedIndicator> columnViews = new HashMap<>();
         binding.fieldViews().forEach((column, view) ->
                 columnViews.put(column, resolved(input, view).classified()));

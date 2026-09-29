@@ -17,6 +17,7 @@ import org.springframework.core.io.ClassPathResource;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -31,6 +32,34 @@ class ConfigRegistryPreflightIT {
             assertThat(context).hasSingleBean(ProcessingPlanBindings.class);
             assertThat(context.getBean(ProcessingPlanBindings.class).selectedDocumentPlan()).isEmpty();
         });
+    }
+
+    @Test
+    void rejectsImportRouteWhoseBranchExceedsContractOutputs() throws Exception {
+        IocProperties source = defaults();
+        var route = new IocProperties.DataframeImport.ProcessedRoute("selected",
+                List.of(new IocProperties.DataframeImport.RouteInput("ip_list", "ip")),
+                List.of(new IocProperties.DataframeImport.RouteOutput("ip_list", List.of("ip"))));
+        var contract = new IocProperties.DataframeImport.Contract("example", 1, "UTF-8",
+                null, null, com.iocextractor.application.dataframeimport.model.ImportProcessingMode.PROCESSED,
+                null, null, null, null, false, null, null, List.of(), null, route);
+        var original = source.dataframeImport();
+        var imports = new IocProperties.DataframeImport(false, original.sources(),
+                original.authorityProfiles(), List.of(contract), original.runtime());
+        var plan = new IocProcessingProperties.Plan("selected", List.of(),
+                List.of(new IocProcessingProperties.Classification("original", "configured")),
+                new IocProcessingProperties.Routing(IocProcessingProperties.Mode.FIRST,
+                        new IocProcessingProperties.OnUnmatched(IocProcessingProperties.Action.SKIP, null),
+                        List.of(new IocProcessingProperties.Branch("mask", "masks", "original",
+                                null, Map.of())), null), List.of());
+        var configured = new IocProperties(source.engine(), source.runtime(), source.storage(),
+                source.source(), source.refang(), source.patterns(), source.classify(), source.sink(),
+                source.pipeline(), source.ingestion(), source.artifactIdentity(), imports,
+                source.export(), source.sync(), source.maintenance(), source.lifecycle(),
+                source.observability(), new IocProcessingProperties(null, List.of(plan)));
+
+        contextRunner(configured).run(context -> assertRegistryFailure(context.getStartupFailure(),
+                "processed-route must bind exactly one branch per authorized output artifact"));
     }
 
     @Test

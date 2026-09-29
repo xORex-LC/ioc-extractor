@@ -7,6 +7,7 @@ import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.application.port.out.artifact.DocumentProcessingPlan;
+import com.iocextractor.application.port.out.artifact.DocumentProcessingPlanFactory;
 import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.application.port.out.artifact.lifecycle.CanonicalArtifactWriter;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
@@ -44,6 +45,8 @@ public final class IocExtractionServiceFactory {
     private final CanonicalArtifactWriter lifecycleWriter;
     private final ArtifactIdentityResolver identityResolver;
     private final PipelineDecisionTracer decisionTracer;
+    private final DocumentProcessingPlanFactory documentPlanFactory;
+    private final Map<String, ArtifactWritePolicy> routedWritePolicies;
 
     /** Creates the factory with explicit extraction policies and canonical storage. */
     public IocExtractionServiceFactory(SourceReader reader,
@@ -80,6 +83,30 @@ public final class IocExtractionServiceFactory {
                                        CanonicalArtifactWriter lifecycleWriter,
                                        ArtifactIdentityResolver identityResolver,
                                        PipelineDecisionTracer decisionTracer) {
+        this(reader, refanger, extractor, attributor, matchPolicy, deduplicate,
+                observabilityMode, observer, diagnosticSink, failurePolicy,
+                maxDiagnosticsPerRun, repository, lifecycleWriter, identityResolver,
+                decisionTracer, null, Map.of());
+    }
+
+    /** Creates a factory that activates a selected route for each document run. */
+    public IocExtractionServiceFactory(SourceReader reader,
+                                       Refanger refanger,
+                                       IndicatorExtractor extractor,
+                                       SourceAttributor attributor,
+                                       MatchPolicy matchPolicy,
+                                       boolean deduplicate,
+                                       String observabilityMode,
+                                       PipelineObserver observer,
+                                       DiagnosticSink diagnosticSink,
+                                       FailurePolicy failurePolicy,
+                                       int maxDiagnosticsPerRun,
+                                       CanonicalArtifactRepository repository,
+                                       CanonicalArtifactWriter lifecycleWriter,
+                                       ArtifactIdentityResolver identityResolver,
+                                       PipelineDecisionTracer decisionTracer,
+                                       DocumentProcessingPlanFactory documentPlanFactory,
+                                       Map<String, ArtifactWritePolicy> routedWritePolicies) {
         this.reader = Objects.requireNonNull(reader, "reader");
         this.refanger = Objects.requireNonNull(refanger, "refanger");
         this.extractor = Objects.requireNonNull(extractor, "extractor");
@@ -98,6 +125,8 @@ public final class IocExtractionServiceFactory {
         this.lifecycleWriter = lifecycleWriter;
         this.identityResolver = identityResolver;
         this.decisionTracer = Objects.requireNonNull(decisionTracer, "decisionTracer");
+        this.documentPlanFactory = documentPlanFactory;
+        this.routedWritePolicies = Map.copyOf(routedWritePolicies);
     }
 
     /**
@@ -108,6 +137,9 @@ public final class IocExtractionServiceFactory {
      * @return extraction use case
      */
     public ExtractIocsUseCase create(List<ArtifactPreparer> preparers, ArtifactProjection projection) {
+        if (documentPlanFactory != null) {
+            return create(preparers, projection, documentPlanFactory.create(preparers), routedWritePolicies);
+        }
         return new IocExtractionService(reader, refanger, extractor, attributor, matchPolicy,
                 preparers, repository, lifecycleWriter, identityResolver, projection,
                 deduplicate, observabilityMode, observer, diagnosticSink,

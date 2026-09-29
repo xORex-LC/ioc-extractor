@@ -149,7 +149,17 @@ final class DataframeImportPropertyMapper {
                 contract.rowFailurePolicy(), contract.duplicatePolicy(), contract.duplicateSelectionColumn(),
                 contract.renewUnchanged(),
                 contract.formulaPolicy(), contract.mergeDefault(),
-                map(contract.artifacts(), DataframeImportPropertyMapper::artifact), requestedSlot(contract.requestedSlot()));
+                map(contract.artifacts(), DataframeImportPropertyMapper::artifact),
+                requestedSlot(contract.requestedSlot()), processedRoute(contract.processedRoute()));
+    }
+
+    private static DataframeImportCatalogDraft.ProcessedRoute processedRoute(
+            IocProperties.DataframeImport.ProcessedRoute route) {
+        return route == null ? null : new DataframeImportCatalogDraft.ProcessedRoute(route.plan(),
+                map(route.inputs(), input -> new DataframeImportCatalogDraft.RouteInput(
+                        input.artifact(), input.target())),
+                map(route.outputs(), output -> new DataframeImportCatalogDraft.RouteOutput(
+                        output.artifact(), output.targets())));
     }
 
     private static DataframeImportCatalogDraft.Dialect dialect(IocProperties.DataframeImport.Dialect dialect) {

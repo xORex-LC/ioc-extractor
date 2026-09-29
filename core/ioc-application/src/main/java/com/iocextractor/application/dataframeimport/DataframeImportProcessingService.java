@@ -147,6 +147,9 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
                     result = new ImportStagingResult(pinned, adopted.orElseThrow());
                 } else {
                     result = staging.stagePinned(stagingCommand(current), pinned);
+                    if (!result.contract().equals(pinned)) {
+                        throw contradiction("Pinned import contract is unavailable after restart");
+                    }
                 }
             }
             if (current.state() == ImportDeliveryState.CONTRACT_PINNED) {

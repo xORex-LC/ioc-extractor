@@ -4,6 +4,7 @@ package com.iocextractor.bootstrap;
 import com.iocextractor.adapter.in.csv.CommonsCsvDelimitedRecordReader;
 import com.iocextractor.adapter.in.csv.CommonsCsvImportValueTransformRegistry;
 import com.iocextractor.adapter.in.csv.CsvProcessedImportRowPreparer;
+import com.iocextractor.adapter.processing.camel.runtime.CamelRouteRuntime;
 import com.iocextractor.adapter.in.csv.CsvImportValueValidatorRegistry;
 import com.iocextractor.adapter.in.csv.ImportSnapshotPathResolver;
 import com.iocextractor.adapter.in.ingest.LocalImportChangeSignalSource;
@@ -248,10 +249,35 @@ class DataframeImportRuntimeConfiguration {
             ArtifactIdBaseline artifactIdBaseline,
             Refanger refanger,
             IndicatorExtractor extractor,
-            MatchPolicy matchPolicy) {
-        return new CsvProcessedImportRowPreparer(
+            MatchPolicy matchPolicy,
+            ProcessingPlanBindings bindings,
+            DataframeImportCatalog catalog,
+            org.springframework.beans.factory.ObjectProvider<CamelRouteRuntime> routerRuntime,
+            Clock clock) {
+        var classifier = new IndicatorClassifier(matchPolicy);
+        ProcessedImportRowPreparer compatible = new CsvProcessedImportRowPreparer(
                 appConfig.artifactDefinitions(properties, artifactIdBaseline),
-                refanger, extractor, new IndicatorClassifier(matchPolicy));
+                refanger, extractor, classifier);
+        Map<String, ProcessedImportRowPreparer> routed = new LinkedHashMap<>();
+        catalog.contracts().values().forEach(contract -> {
+            var route = contract.definition().processedRoute();
+            if (route == null) {
+                return;
+            }
+            var inputs = route.inputs().stream()
+                    .map(input -> new RouterProcessedImportRowPreparer.Input(
+                            input.artifact(), input.target())).toList();
+            Map<String, Set<String>> outputs = new LinkedHashMap<>();
+            route.outputs().forEach(output -> outputs.put(output.artifact(),
+                    new java.util.LinkedHashSet<>(output.targets())));
+            var adapter = new IocProcessingRouteAdapter(bindings.plans().get(route.plan()),
+                    routerRuntime.getObject(), clock);
+            routed.put(contract.id().value(), new RouterProcessedImportRowPreparer(
+                    contract.id().value(), inputs, outputs, refanger, extractor,
+                    classifier, adapter));
+        });
+        return (contract, record, mapped) -> routed.getOrDefault(
+                contract.id().value(), compatible).prepare(contract, record, mapped);
     }
 
     @Bean
