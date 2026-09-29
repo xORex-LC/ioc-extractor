@@ -26,6 +26,14 @@ class JdbcDocumentProcessingPolicyGateIT {
             String old = "a".repeat(64);
             String changed = "b".repeat(64);
 
+            assertThatThrownBy(() -> gate.ensure(null, true, () -> true))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("SHA-256");
+            assertThatThrownBy(() -> gate.ensure("not-a-fingerprint", true, () -> true))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("SHA-256");
+            assertThat(policy(dataSource)).isNull();
+
             gate.ensure(old, false, () -> false);
             assertThat(policy(dataSource)).isNull();
             assertThatThrownBy(() -> gate.ensure(old, true, () -> false))

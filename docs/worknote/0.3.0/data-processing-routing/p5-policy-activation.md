@@ -71,13 +71,13 @@ deterministic offline suites without reducing coverage floors. The route
 validation matrix covers malformed, ambiguous, unauthorized and
 authority-replacing bindings.
 
-A clean Maven `javac` SpotBugs review found ten accepted `EI_EXPOSE_REP`
-identities no longer present in raw bytecode analysis; they were removed from
-the exact baseline. Two existing lifecycle lambdas intentionally rethrow the
-primary runtime failure after recording terminal/observer state. Their raw
-`THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` identities were reviewed and accepted
-with the lifecycle-failure review trigger. The accepted identity set shrank
-from 120 to 112; no rule or analyzer scope was excluded.
+A clean Maven `javac` SpotBugs review retained the existing `EI_EXPOSE_REP`
+findings. Two existing lifecycle lambdas intentionally rethrow the primary
+runtime failure after recording terminal/observer state. Their
+`THROWS_METHOD_THROWS_RUNTIMEEXCEPTION` identities changed because new
+bootstrap wiring shifted compiler-generated lambda names; the exact baseline
+was updated to the current raw method names, hashes and source anchors. The
+accepted identity count remains 120; no rule or analyzer scope was excluded.
 
 Existing receipt recovery tests cover post-commit finalization; P6 still owns customer golden fixtures,
 before/after resource measurements and retirement of the compatible processed

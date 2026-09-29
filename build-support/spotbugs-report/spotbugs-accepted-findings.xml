@@ -816,25 +816,25 @@
         </suppression>
         <rationale>Reviewed false positive: legacy archive tables and columns derive solely from the validated schema catalog and are quoted; lifecycle identity and activation time are bound.</rationale>
     </finding>
-    <finding id="DATA-TTL-P5-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="1f893dd6d628cf5ff5f8c6441d665d9f" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P5-FAILURE-CONTRACT" review="ingestion-cleanup-propagation-change">
+    <finding id="DATA-TTL-P5-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="d1b449412e978faea40fad4dd04309f4" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P5-FAILURE-CONTRACT" review="ingestion-cleanup-propagation-change">
         <class name="com.iocextractor.bootstrap.AppConfig" />
-        <method name="lambda$extractIocsUseCase$3" signature="(Lcom/iocextractor/application/port/in/artifact/lifecycle/PrepareLifecycleAdmissionUseCase;Lcom/iocextractor/bootstrap/IocProperties;Lcom/iocextractor/application/port/in/ExtractIocsUseCase;Lcom/iocextractor/bootstrap/ProcessingPolicyIdentity;Ljava/util/List;Lcom/iocextractor/application/port/out/artifact/lifecycle/CanonicalObservationStore;Lcom/iocextractor/adapter/out/store/jdbc/JdbcLifecycleClock;Lcom/iocextractor/application/port/in/ExtractionCommand;)Lcom/iocextractor/application/port/in/ExtractionResult;" />
-        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="427" bytecode="223" />
+        <method name="lambda$extractIocsUseCase$5" signature="(Lcom/iocextractor/application/port/in/artifact/lifecycle/PrepareLifecycleAdmissionUseCase;Lcom/iocextractor/bootstrap/IocProperties;Lcom/iocextractor/application/port/in/ExtractIocsUseCase;Lcom/iocextractor/bootstrap/ProcessingPolicyIdentity;Ljava/util/List;Lcom/iocextractor/application/port/out/artifact/lifecycle/CanonicalObservationStore;Lcom/iocextractor/adapter/out/store/jdbc/JdbcLifecycleClock;Lcom/iocextractor/application/port/in/ExtractionCommand;)Lcom/iocextractor/application/port/in/ExtractionResult;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="444" bytecode="223" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.bootstrap.AppConfig" />
-            <Method name="lambda$extractIocsUseCase$3" />
+            <Method name="lambda$extractIocsUseCase$5" />
         </suppression>
         <rationale>Reviewed policy signal: stateful one-shot extraction marks the observation terminal on every outcome while preserving the exact primary runtime failure and attaching cleanup failure as suppressed.</rationale>
     </finding>
-    <finding id="DATA-TTL-P4-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="18582dcd25ecfcd4422f61c636c10ab6" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P4-FAILURE-CONTRACT" review="lifecycle-failure-contract-change">
+    <finding id="DATA-TTL-P4-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="9011c888e6a5fa18b9eccf2726590f1c" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P4-FAILURE-CONTRACT" review="lifecycle-failure-contract-change">
         <class name="com.iocextractor.bootstrap.AppConfig" />
-        <method name="lambda$prepareLifecycleAdmissionUseCase$6" signature="(Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionService;Lcom/iocextractor/bootstrap/LifecycleRuntimeObserver;)Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionResult;" />
-        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="773" bytecode="19" />
+        <method name="lambda$prepareLifecycleAdmissionUseCase$8" signature="(Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionService;Lcom/iocextractor/bootstrap/LifecycleRuntimeObserver;)Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionResult;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="909" bytecode="19" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.bootstrap.AppConfig" />
-            <Method name="lambda$prepareLifecycleAdmissionUseCase$6" />
+            <Method name="lambda$prepareLifecycleAdmissionUseCase$8" />
         </suppression>
         <rationale>Reviewed policy signal: bootstrap reports admission failure and deliberately rethrows the exact runtime failure so startup and command admission remain fail-closed.</rationale>
     </finding>
@@ -925,6 +925,126 @@
             <Method name="start" />
         </suppression>
         <rationale>Reviewed startup-boundary signal: partial scheduler, lane and change-signal ownership is closed before the primary start failure is rethrown to abort bootstrap; processing and change-signal failures retain distinct diagnostics, and cleanup failures are preserved only as suppressed evidence.</rationale>
+    </finding>
+    <finding id="SB04-045" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="d84b636c441d973b1edeaf94d00e4fb7" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="C2-REP-C" review="immutable-snapshot-construction-change">
+        <class name="com.iocextractor.bootstrap.ExportPlanCatalog" />
+        <method name="plans" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/ExportPlanCatalog.java" startLine="60" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.ExportPlanCatalog" />
+            <Method name="plans" />
+            <Field name="plans" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under C2-REP-C in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-046" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="e514ebe6ae8e6497319b778ed8a32c59" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="spring-binding-copy-validation-change">
+        <class name="com.iocextractor.bootstrap.IocProperties" />
+        <method name="patterns" signature="()Ljava/util/Map;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="27" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties" />
+            <Method name="patterns" />
+            <Field name="patterns" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-047" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="321d59427789ab8d26d2e8c7d5cc9535" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="spring-binding-copy-validation-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$ArtifactIdentity" />
+        <method name="artifacts" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="177" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$ArtifactIdentity" />
+            <Method name="artifacts" />
+            <Field name="artifacts" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-048" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="21898152d6e6d95f5c7f99eaf4ce3c0d" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="spring-binding-copy-validation-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$ArtifactIdentity$Artifact" />
+        <method name="keyColumns" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="183" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$ArtifactIdentity$Artifact" />
+            <Method name="keyColumns" />
+            <Field name="keyColumns" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-049" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="9b30fa71c0d8a8dddad035e4e509f075" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="spring-binding-copy-validation-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Classify" />
+        <method name="rules" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="107" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Classify" />
+            <Method name="rules" />
+            <Field name="rules" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-050" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="4a52f37d7e1f686b57bba129534e0e63" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="spring-binding-copy-validation-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Classify$Rule" />
+        <method name="when" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="113" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Classify$Rule" />
+            <Method name="when" />
+            <Field name="when" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-051" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="4803fec7397c4f66e5f6c11029ce35e" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="spring-binding-copy-validation-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Export" />
+        <method name="profiles" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="196" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Export" />
+            <Method name="profiles" />
+            <Field name="profiles" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-052" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="e54252e74bad4dd5fc6d8efdf60cf08b" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="spring-binding-copy-validation-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Export$Profile" />
+        <method name="artifacts" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="214" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Export$Profile" />
+            <Method name="artifacts" />
+            <Field name="artifacts" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-053" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="32750f92d56af54271412579aeaa13b" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="spring-binding-copy-validation-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Ingestion$Patterns" />
+        <method name="exclude" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="358" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Ingestion$Patterns" />
+            <Method name="exclude" />
+            <Field name="exclude" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
+    </finding>
+    <finding id="SB04-054" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="c979f70e1e210a5e83ec74c753cd77aa" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="spring-binding-copy-validation-change">
+        <class name="com.iocextractor.bootstrap.IocProperties$Ingestion$Patterns" />
+        <method name="include" signature="()Ljava/util/List;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/IocProperties.java" startLine="358" bytecode="4" />
+        <suppression>
+            <Bug pattern="EI_EXPOSE_REP" />
+            <Class name="com.iocextractor.bootstrap.IocProperties$Ingestion$Patterns" />
+            <Method name="include" />
+            <Field name="include" />
+        </suppression>
+        <rationale>Reviewed analyzer false positive. The boundary-specific reasoning and executable evidence are recorded under REP-FIX-FP in the BUILD-SPOTBUGS-04 worknote.</rationale>
     </finding>
     <finding id="SB04-055" module="bootstrap/ioc-app" type="EI_EXPOSE_REP" hash="4383028711e091ec3fa3830bcd139efc" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="R030-BUILD" evidence="REP-FIX-FP" review="spring-binding-copy-validation-change">
         <class name="com.iocextractor.bootstrap.IocProperties$Maintenance$Retention" />
@@ -1244,27 +1364,5 @@
             <Method name="runWithOutcome" />
         </suppression>
         <rationale>Reviewed exception-policy signal. This boundary intentionally preserves its established runtime failure contract; executable evidence is recorded under C2-EX-E.</rationale>
-    </finding>
-    <finding id="P5-SB-001" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="d1b449412e978faea40fad4dd04309f4" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="IOC-P5" evidence="P5-JAVAC-SPOTBUGS" review="lifecycle-failure-contract-change">
-        <class name="com.iocextractor.bootstrap.AppConfig" />
-        <method name="lambda$extractIocsUseCase$5" signature="(Lcom/iocextractor/application/port/in/artifact/lifecycle/PrepareLifecycleAdmissionUseCase;Lcom/iocextractor/bootstrap/IocProperties;Lcom/iocextractor/application/port/in/ExtractIocsUseCase;Lcom/iocextractor/bootstrap/ProcessingPolicyIdentity;Ljava/util/List;Lcom/iocextractor/application/port/out/artifact/lifecycle/CanonicalObservationStore;Lcom/iocextractor/adapter/out/store/jdbc/JdbcLifecycleClock;Lcom/iocextractor/application/port/in/ExtractionCommand;)Lcom/iocextractor/application/port/in/ExtractionResult;" />
-        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="444" bytecode="223" />
-        <suppression>
-            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
-            <Class name="com.iocextractor.bootstrap.AppConfig" />
-            <Method name="lambda$extractIocsUseCase$5" />
-        </suppression>
-        <rationale>Reviewed after a clean javac build. The lifecycle-aware extraction boundary preserves the original runtime failure after attempting terminal receipt recording; cleanup failure is attached as suppressed evidence.</rationale>
-    </finding>
-    <finding id="P5-SB-002" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="9011c888e6a5fa18b9eccf2726590f1c" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="IOC-P5" evidence="P5-JAVAC-SPOTBUGS" review="lifecycle-failure-contract-change">
-        <class name="com.iocextractor.bootstrap.AppConfig" />
-        <method name="lambda$prepareLifecycleAdmissionUseCase$8" signature="(Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionService;Lcom/iocextractor/bootstrap/LifecycleRuntimeObserver;)Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionResult;" />
-        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="909" bytecode="19" />
-        <suppression>
-            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
-            <Class name="com.iocextractor.bootstrap.AppConfig" />
-            <Method name="lambda$prepareLifecycleAdmissionUseCase$8" />
-        </suppression>
-        <rationale>Reviewed after a clean javac build. Lifecycle admission reports the failure to its observer and rethrows it unchanged so startup remains fail-closed.</rationale>
     </finding>
 </spotbugs-accepted-findings>
