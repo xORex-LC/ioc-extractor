@@ -5,11 +5,13 @@ import com.iocextractor.adapter.out.sink.csv.CsvArtifactPreparer;
 import com.iocextractor.application.artifact.RoutedArtifactCandidate;
 import com.iocextractor.application.pipeline.payload.IndicatorOccurrence;
 import com.iocextractor.application.port.out.artifact.DocumentProcessingPlan;
+import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.diagnostics.result.Result;
 import com.iocextractor.processing.classification.IndicatorClassifier;
 import com.iocextractor.processing.model.ClassifiedIndicator;
 import java.time.Clock;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -22,7 +24,13 @@ final class DocumentProcessingAdapter implements DocumentProcessingPlan {
     DocumentProcessingAdapter(ProcessingPlanCatalog.CompiledPlan plan,
                               CamelRouteRuntime runtime, IndicatorClassifier classifier,
                               Clock clock) {
-        this(plan, runtime, classifier, clock, Map.of());
+        this(plan, runtime, classifier, clock, List.of());
+    }
+
+    DocumentProcessingAdapter(ProcessingPlanCatalog.CompiledPlan plan,
+                              CamelRouteRuntime runtime, IndicatorClassifier classifier,
+                              Clock clock, List<ArtifactPreparer> preparers) {
+        this(plan, runtime, classifier, clock, byArtifact(preparers));
     }
 
     DocumentProcessingAdapter(ProcessingPlanCatalog.CompiledPlan plan,
@@ -31,6 +39,14 @@ final class DocumentProcessingAdapter implements DocumentProcessingPlan {
         this.classifier = Objects.requireNonNull(classifier, "classifier");
         this.route = new IocProcessingRouteAdapter(plan, runtime, clock);
         this.preparers = Map.copyOf(preparers);
+    }
+
+    private static Map<String, CsvArtifactPreparer> byArtifact(List<ArtifactPreparer> preparers) {
+        Map<String, CsvArtifactPreparer> result = new LinkedHashMap<>();
+        for (ArtifactPreparer preparer : preparers) {
+            result.put(preparer.name(), (CsvArtifactPreparer) preparer);
+        }
+        return result;
     }
 
     @Override

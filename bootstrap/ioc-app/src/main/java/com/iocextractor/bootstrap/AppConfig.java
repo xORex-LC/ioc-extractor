@@ -370,13 +370,9 @@ public class AppConfig {
                                                                    IocProperties props) {
         DocumentProcessingPlanFactory documentPlanFactory = processingPlans.selectedDocumentPlan()
                 .map(plan -> (DocumentProcessingPlanFactory) preparers -> {
-                    Map<String, CsvArtifactPreparer> byArtifact = new LinkedHashMap<>();
-                    for (ArtifactPreparer preparer : preparers) {
-                        byArtifact.put(preparer.name(), (CsvArtifactPreparer) preparer);
-                    }
                     return new DocumentProcessingAdapter(plan, routerRuntime.getObject(),
                             new com.iocextractor.processing.classification.IndicatorClassifier(matchPolicy),
-                            clock, byArtifact);
+                            clock, preparers);
                 }).orElse(null);
         return new IocExtractionServiceFactory(reader, refanger, extractor, attributor, matchPolicy,
                 props.pipeline().deduplicate(), props.observability().mode().token(),

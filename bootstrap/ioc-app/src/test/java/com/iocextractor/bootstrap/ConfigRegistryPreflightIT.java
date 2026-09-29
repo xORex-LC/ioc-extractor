@@ -67,6 +67,27 @@ class ConfigRegistryPreflightIT {
                         "processed-route must bind exactly one branch per authorized output artifact"));
     }
 
+    @Test
+    void importRoutePreflightSkipsMissingContractsAndIncludesDefaultDestination() throws Exception {
+        IocProperties source = defaults();
+        var original = source.dataframeImport();
+        var absentCatalog = new IocProperties.DataframeImport(false, original.sources(),
+                original.authorityProfiles(), null, original.runtime());
+        contextRunner(withDataframeImport(source, absentCatalog))
+                .run(context -> assertThat(context).hasNotFailed());
+        var nullContract = new IocProperties.DataframeImport(false, original.sources(),
+                original.authorityProfiles(), java.util.Arrays.asList((IocProperties.DataframeImport.Contract) null),
+                original.runtime());
+        contextRunner(withDataframeImport(source, nullContract))
+                .run(context -> assertThat(context).hasNotFailed());
+
+        var fallback = new IocProcessingProperties.Branch("fallback", "masks", "original", null, Map.of());
+        var outputs = List.of(new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip")),
+                new DataframeImportCatalogDraft.RouteOutput("masks", List.of("mask")));
+        contextRunner(withImportRoute(source, "ip_list", "selected", outputs, fallback, true))
+                .run(context -> assertThat(context).hasNotFailed());
+    }
+
     private static IocProperties withImportRoute(IocProperties source, String destination, String routePlan) {
         return withImportRoute(source, destination, routePlan,
                 List.of(new DataframeImportCatalogDraft.RouteOutput("ip_list", List.of("ip"))), null);
@@ -75,6 +96,13 @@ class ConfigRegistryPreflightIT {
     private static IocProperties withImportRoute(IocProperties source, String destination, String routePlan,
                                                  List<DataframeImportCatalogDraft.RouteOutput> outputs,
                                                  IocProcessingProperties.Branch additionalBranch) {
+        return withImportRoute(source, destination, routePlan, outputs, additionalBranch, false);
+    }
+
+    private static IocProperties withImportRoute(IocProperties source, String destination, String routePlan,
+                                                 List<DataframeImportCatalogDraft.RouteOutput> outputs,
+                                                 IocProcessingProperties.Branch additionalBranch,
+                                                 boolean asDefault) {
         var route = new DataframeImportCatalogDraft.ProcessedRoute(
                 routePlan,
                 List.of(new DataframeImportCatalogDraft.RouteInput(
@@ -89,19 +117,31 @@ class ConfigRegistryPreflightIT {
         var omissions = source.sink().artifacts().stream()
                 .filter(IocProperties.Sink.Artifact::enabled)
                 .map(IocProperties.Sink.Artifact::name)
-                .filter(name -> !name.equals(destination)).toList();
+                .filter(name -> !name.equals(destination)
+                        && (additionalBranch == null || !name.equals(additionalBranch.artifact()))).toList();
         var branch = new IocProcessingProperties.Branch("bound", destination, "original", null, Map.of());
-        var branches = additionalBranch == null ? List.of(branch) : List.of(branch, additionalBranch);
+        var branches = additionalBranch == null || asDefault ? List.of(branch) : List.of(branch, additionalBranch);
         var plan = new IocProcessingProperties.Plan("selected", List.of(),
                 List.of(new IocProcessingProperties.Classification("original", "configured")),
                 new IocProcessingProperties.Routing(IocProcessingProperties.Mode.FIRST,
-                        new IocProcessingProperties.OnUnmatched(IocProcessingProperties.Action.SKIP, null),
-                        branches, null), omissions);
+                        new IocProcessingProperties.OnUnmatched(
+                                asDefault ? IocProcessingProperties.Action.ROUTE : IocProcessingProperties.Action.SKIP,
+                                asDefault ? additionalBranch.id() : null),
+                        branches, asDefault ? additionalBranch : null), omissions);
         return new IocProperties(source.engine(), source.runtime(), source.storage(),
                 source.source(), source.refang(), source.patterns(), source.classify(), source.sink(),
                 source.pipeline(), source.ingestion(), source.artifactIdentity(), imports,
                 source.export(), source.sync(), source.maintenance(), source.lifecycle(),
                 source.observability(), new IocProcessingProperties(null, List.of(plan)));
+    }
+
+    private static IocProperties withDataframeImport(IocProperties source,
+                                                     IocProperties.DataframeImport replacement) {
+        return new IocProperties(source.engine(), source.runtime(), source.storage(),
+                source.source(), source.refang(), source.patterns(), source.classify(), source.sink(),
+                source.pipeline(), source.ingestion(), source.artifactIdentity(), replacement,
+                source.export(), source.sync(), source.maintenance(), source.lifecycle(),
+                source.observability(), source.processing());
     }
 
     @Test

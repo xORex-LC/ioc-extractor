@@ -69,7 +69,7 @@ class DocumentProcessingAdapterTest {
         try (var runtime = new CamelRouteRuntime(new CamelPlanCompiler().compile(
                 List.of(original, derived), catalog))) {
             var first = new DocumentProcessingAdapter(originalBinding, runtime, classifier,
-                    Clock.systemUTC(), Map.of("masks", runPreparer));
+                    Clock.systemUTC(), List.of(runPreparer));
             var second = new DocumentProcessingAdapter(hostBinding, runtime, classifier,
                     Clock.systemUTC(), Map.of("masks", runPreparer));
             var occurrence = occurrence("https://example.com/a", 1);

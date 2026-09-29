@@ -42,7 +42,7 @@ final class ConfigRegistryPreflight implements InitializingBean {
     }
 
     private void validateImportProcessingPlans(List<String> errors) {
-        if (props.dataframeImport() == null || props.dataframeImport().contracts() == null) {
+        if (props.dataframeImport().contracts() == null) {
             return;
         }
         for (int index = 0; index < props.dataframeImport().contracts().size(); index++) {

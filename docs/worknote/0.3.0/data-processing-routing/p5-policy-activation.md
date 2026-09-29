@@ -71,7 +71,9 @@ integration suites, from 216 to 217 fast suites, and from 279 to 282
 deterministic offline suites without reducing coverage floors. The route
 validation matrix covers malformed, ambiguous, unauthorized and
 authority-replacing bindings, plus incomplete route references and duplicate
-destinations. Restart tests also reject a stager that returns
+destinations. Startup tests include the default branch in the output binding
+set and tolerate incomplete catalogs until semantic validation reports them.
+Restart tests also reject a stager that returns
 a different contract pin or loses a pinned source during recognition.
 
 A clean Maven `javac` SpotBugs review retained the existing `EI_EXPOSE_REP`
