@@ -64,12 +64,14 @@ rollback to an older binary requires a compatible service DB snapshot.
 
 Tests cover ordered plan fingerprints, import contract route fingerprints,
 pre-rebuild pin checks, shared-runtime plan isolation, Spring route activation,
-and service-DB policy gate restart/change behavior. Two integration suites and
+and service-DB policy gate restart/change behavior, including absent storage,
+unchanged restart, and both external drain checks. Two integration suites and
 one selected-factory unit suite raise the accepted test universe from 68 to 70
 integration suites, from 216 to 217 fast suites, and from 279 to 282
 deterministic offline suites without reducing coverage floors. The route
 validation matrix covers malformed, ambiguous, unauthorized and
-authority-replacing bindings. Restart tests also reject a stager that returns
+authority-replacing bindings, plus incomplete route references and duplicate
+destinations. Restart tests also reject a stager that returns
 a different contract pin or loses a pinned source during recognition.
 
 A clean Maven `javac` SpotBugs review retained the existing `EI_EXPOSE_REP`

@@ -7,6 +7,7 @@ import com.iocextractor.application.observation.OccurrencePosition;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.port.out.artifact.ArtifactIdBaseline;
 import com.iocextractor.application.tck.junit.IntegrationTest;
+import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
 import com.iocextractor.domain.classify.ClassificationDecision;
 import com.iocextractor.domain.classify.MatchPolicy;
 import com.iocextractor.domain.feature.HostKind;
@@ -17,11 +18,13 @@ import com.iocextractor.domain.model.MaskMatch;
 import com.iocextractor.domain.model.SourceContext;
 import com.iocextractor.processing.model.ClassifiedIndicator;
 import java.time.Clock;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -30,11 +33,54 @@ import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.core.io.ClassPathResource;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Selected IOC plans activate one Camel runtime; an unselected catalog does not. */
 @IntegrationTest
 @Timeout(20)
 class IocRouterConfigurationIT {
+    @TempDir Path tempDir;
+
+    @Test
+    void changedDocumentPolicyRequiresDrainedLedgerAndProcessingFiles() throws Exception {
+        String old = "a".repeat(64);
+        String changed = "b".repeat(64);
+        DocumentProcessingPolicyAdmission.ensure(null, old, false,
+                () -> { throw new AssertionError("no storage requires no drain check"); },
+                () -> { throw new AssertionError("no storage requires no drain check"); });
+        assertThatThrownBy(() -> DocumentProcessingPolicyAdmission.ensure(null, old, true,
+                () -> true, () -> true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("requires durable service storage");
+
+        var settings = new IocProperties.Storage.Service(StorageType.JDBC,
+                "jdbc:sqlite:" + tempDir.resolve("document-policy.db"),
+                new IocProperties.Storage.Sqlite("low-memory"),
+                new IocProperties.Storage.Pool(1, 1));
+        try (var storage = new LazyServiceStorage(settings, NoopDiagnosticSink.INSTANCE, Clock.systemUTC())) {
+            DocumentProcessingPolicyAdmission.ensure(storage, old, true, () -> true, () -> true);
+            DocumentProcessingPolicyAdmission.ensure(storage, old, true,
+                    () -> { throw new AssertionError("unchanged policy requires no drain check"); },
+                    () -> { throw new AssertionError("unchanged policy requires no drain check"); });
+            assertThatThrownBy(() -> DocumentProcessingPolicyAdmission.ensure(storage, changed, true,
+                    () -> false,
+                    () -> { throw new AssertionError("processing check follows ledger check"); }))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("unfinished intake");
+            assertThatThrownBy(() -> DocumentProcessingPolicyAdmission.ensure(storage, changed, true,
+                    () -> true, () -> false))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("unfinished intake");
+            DocumentProcessingPolicyAdmission.ensure(storage, changed, true, () -> true, () -> true);
+            try (var connection = storage.dataSource().getConnection();
+                 var rows = connection.createStatement().executeQuery(
+                         "SELECT policy_fingerprint FROM document_processing_policy WHERE id = 1")) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getString(1)).isEqualTo(changed);
+            }
+        }
+    }
+
     @Test
     void selected_plan_is_executable_and_unselected_catalog_stays_inert() {
         var descriptor = new PlanDescriptor("selected", List.of(), new PlanDescriptor.Routing(

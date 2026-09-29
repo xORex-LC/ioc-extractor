@@ -12,7 +12,6 @@ import com.iocextractor.adapter.out.sink.csv.FileSystemSliceRetentionStore;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactDefinition;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactPreparer;
 import com.iocextractor.adapter.processing.camel.runtime.CamelRouteRuntime;
-import com.iocextractor.adapter.out.store.jdbc.JdbcDocumentProcessingPolicyGate;
 import com.iocextractor.adapter.out.sink.csv.NioExportOperationGuard;
 import com.iocextractor.processing.mapping.RowMapper;
 import com.iocextractor.processing.mapping.Transform;
@@ -1317,16 +1316,9 @@ public class AppConfig {
                                              Clock clock) {
         boolean selected = processingPlans.selectedDocumentPlan().isPresent();
         LazyServiceStorage storage = serviceStorage.getIfAvailable();
-        if (storage == null && selected) {
-            throw new IllegalStateException("Document processing plan requires durable service storage in daemon mode");
-        }
-        if (storage != null) {
-            storage.migration();
-            new JdbcDocumentProcessingPolicyGate(storage.dataSource()).ensure(
-                    processingPolicyIdentity.value(), selected,
-                    () -> ledger.findIncomplete().isEmpty()
-                            && sourceLifecycle.findProcessingSources().isEmpty());
-        }
+        DocumentProcessingPolicyAdmission.ensure(storage, processingPolicyIdentity.value(), selected,
+                () -> ledger.findIncomplete().isEmpty(),
+                () -> sourceLifecycle.findProcessingSources().isEmpty());
         IngestionLifecycleSupport lifecycleSupport = props.lifecycle().validity().mode()
                 == LifecycleValidityMode.FIXED
                 ? new IngestionLifecycleSupport(
