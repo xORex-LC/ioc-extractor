@@ -46,33 +46,37 @@ final class ConfigRegistryPreflight implements InitializingBean {
             return;
         }
         for (int index = 0; index < props.dataframeImport().contracts().size(); index++) {
-            var contract = props.dataframeImport().contracts().get(index);
-            if (contract == null || contract.processedRoute() == null) {
-                continue;
-            }
-            String path = "ioc.dataframe-import.contracts[" + index + "].processed-route";
-            var route = contract.processedRoute();
-            var plan = route.plan() == null ? null : processingPlans.get(route.plan());
-            if (plan == null) {
-                errors.add(path + ".plan must reference a valid named IOC plan");
-                continue;
-            }
-            if (route.outputs() == null) {
-                continue;
-            }
-            Set<String> outputs = route.outputs().stream().filter(Objects::nonNull)
-                    .map(DataframeImportCatalogDraft.RouteOutput::artifact)
-                    .collect(Collectors.toSet());
-            List<String> destinations = plan.router().routing().branches().stream()
-                    .map(com.iocextractor.adapter.processing.camel.contract.PlanDescriptor.Branch::destination)
-                    .collect(Collectors.toCollection(ArrayList::new));
-            if (plan.router().routing().defaultBranch() != null) {
-                destinations.add(plan.router().routing().defaultBranch().destination());
-            }
-            if (destinations.size() != Set.copyOf(destinations).size()
-                    || !Set.copyOf(destinations).equals(outputs)) {
-                errors.add(path + " must bind exactly one branch per authorized output artifact");
-            }
+            validateImportProcessingPlan(props.dataframeImport().contracts().get(index), index, errors);
+        }
+    }
+
+    private void validateImportProcessingPlan(IocProperties.DataframeImport.Contract contract,
+                                              int index, List<String> errors) {
+        if (contract == null || contract.processedRoute() == null) {
+            return;
+        }
+        String path = "ioc.dataframe-import.contracts[" + index + "].processed-route";
+        var route = contract.processedRoute();
+        var plan = route.plan() == null ? null : processingPlans.get(route.plan());
+        if (plan == null) {
+            errors.add(path + ".plan must reference a valid named IOC plan");
+            return;
+        }
+        if (route.outputs() == null) {
+            return;
+        }
+        Set<String> outputs = route.outputs().stream().filter(Objects::nonNull)
+                .map(DataframeImportCatalogDraft.RouteOutput::artifact)
+                .collect(Collectors.toSet());
+        List<String> destinations = plan.router().routing().branches().stream()
+                .map(com.iocextractor.adapter.processing.camel.contract.PlanDescriptor.Branch::destination)
+                .collect(Collectors.toCollection(ArrayList::new));
+        if (plan.router().routing().defaultBranch() != null) {
+            destinations.add(plan.router().routing().defaultBranch().destination());
+        }
+        if (destinations.size() != Set.copyOf(destinations).size()
+                || !Set.copyOf(destinations).equals(outputs)) {
+            errors.add(path + " must bind exactly one branch per authorized output artifact");
         }
     }
 

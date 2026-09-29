@@ -139,18 +139,7 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
                 current = transition(current, ImportDeliveryState.CONTRACT_PINNED,
                         ImportDeliveryCheckpoint.contract(result.contract()));
             } else {
-                ImportContractPin pinned = current.contract().orElseThrow(
-                        () -> contradiction("Import staging state has no pinned contract"));
-                Optional<ImportStage> adopted = workspace.adoptSealed(
-                        current.id(), current.snapshot().orElseThrow(), pinned);
-                if (adopted.isPresent()) {
-                    result = new ImportStagingResult(pinned, adopted.orElseThrow());
-                } else {
-                    result = staging.stagePinned(stagingCommand(current), pinned);
-                    if (!result.contract().equals(pinned)) {
-                        throw contradiction("Pinned import contract is unavailable after restart");
-                    }
-                }
+                result = recoverPinnedStage(current);
             }
             if (current.state() == ImportDeliveryState.CONTRACT_PINNED) {
                 current = transition(current, ImportDeliveryState.STAGING, ImportDeliveryCheckpoint.none());
@@ -178,6 +167,21 @@ public final class DataframeImportProcessingService implements ProcessNextDatafr
                     Optional.of(failure.getClass().getName()));
             return performed(initial);
         }
+    }
+
+    private ImportStagingResult recoverPinnedStage(ImportDelivery current) {
+        ImportContractPin pinned = current.contract().orElseThrow(
+                () -> contradiction("Import staging state has no pinned contract"));
+        Optional<ImportStage> adopted = workspace.adoptSealed(
+                current.id(), current.snapshot().orElseThrow(), pinned);
+        if (adopted.isPresent()) {
+            return new ImportStagingResult(pinned, adopted.orElseThrow());
+        }
+        ImportStagingResult result = staging.stagePinned(stagingCommand(current), pinned);
+        if (!result.contract().equals(pinned)) {
+            throw contradiction("Pinned import contract is unavailable after restart");
+        }
+        return result;
     }
 
     private ProcessNextDataframeImportResult promote(ImportDelivery delivery) {

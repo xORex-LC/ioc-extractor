@@ -205,16 +205,28 @@ public final class DataframeImportCatalogCompiler {
                     .filter(artifact -> hasText(artifact.name()))
                     .forEach(artifact -> artifacts.put(artifact.name(), artifact));
         }
+        validateRouteInputs(route.inputs(), artifacts, at, violations);
+        validateRouteOutputs(route.outputs(), artifacts, at, violations);
+    }
+
+    private void validateRouteInputs(List<DataframeImportCatalogDraft.RouteInput> routeInputs,
+                                     Map<String, DataframeImportCatalogDraft.Artifact> artifacts,
+                                     String at, List<ImportContractViolation> violations) {
         Set<String> inputs = new HashSet<>();
-        for (var input : route.inputs()) {
+        for (var input : routeInputs) {
             if (input == null || !hasText(input.artifact()) || !hasText(input.target())
                     || !inputs.add(input.artifact() + "\u0000" + input.target())
                     || !mappedTarget(artifacts.get(input.artifact()), input.target())) {
                 violations.add(violation(at + ".inputs", "inputs must be unique mapped artifact targets"));
             }
         }
+    }
+
+    private void validateRouteOutputs(List<DataframeImportCatalogDraft.RouteOutput> routeOutputs,
+                                      Map<String, DataframeImportCatalogDraft.Artifact> artifacts,
+                                      String at, List<ImportContractViolation> violations) {
         Set<String> outputs = new HashSet<>();
-        for (var output : route.outputs()) {
+        for (var output : routeOutputs) {
             if (output == null || !hasText(output.artifact()) || !outputs.add(output.artifact())
                     || output.targets() == null || output.targets().isEmpty()
                     || output.targets().stream().anyMatch(Objects::isNull)
