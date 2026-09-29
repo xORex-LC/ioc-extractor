@@ -69,7 +69,8 @@ one selected-factory unit suite raise the accepted test universe from 68 to 70
 integration suites, from 216 to 217 fast suites, and from 279 to 282
 deterministic offline suites without reducing coverage floors. The route
 validation matrix covers malformed, ambiguous, unauthorized and
-authority-replacing bindings.
+authority-replacing bindings. Restart tests also reject a stager that returns
+a different contract pin or loses a pinned source during recognition.
 
 A clean Maven `javac` SpotBugs review retained the existing `EI_EXPOSE_REP`
 findings. Two existing lifecycle lambdas intentionally rethrow the primary

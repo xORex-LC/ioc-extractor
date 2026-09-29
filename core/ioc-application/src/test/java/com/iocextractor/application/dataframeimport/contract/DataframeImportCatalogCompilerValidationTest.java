@@ -143,8 +143,33 @@ class DataframeImportCatalogCompilerValidationTest {
                 new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
                         "missing", List.of("ip")))), "output target must be mapped and cannot replace source authority"),
                 new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
+                        "ip_list", List.of(" ")))), "output target must be mapped and cannot replace source authority"),
+                new InvalidRoute(route(List.of(input), List.of(new DataframeImportCatalogDraft.RouteOutput(
                         "ip_list", List.of("missing")))), "output target must be mapped and cannot replace source authority"));
         invalid.forEach(this::assertInvalidRoute);
+
+        var withoutArtifacts = withProcessedRoute(withArtifacts(contract("empty-route-artifacts",
+                ImportProcessingMode.PROCESSED, processedArtifact(null, null,
+                        new DataframeImportCatalogDraft.Column("ip", "ip", List.of(), null))), null),
+                route(List.of(input), List.of(valid)));
+        assertThat(compiler.compile(disabledDraft(List.of(), List.of(), List.of(withoutArtifacts)),
+                processedEnvironment(Set.of())).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("inputs must be unique mapped artifact targets",
+                        "output target must be mapped and cannot replace source authority");
+
+        var withoutColumns = processedArtifact(null, null,
+                new DataframeImportCatalogDraft.Column("ip", "ip", List.of(), null));
+        withoutColumns = new DataframeImportCatalogDraft.Artifact(withoutColumns.name(), withoutColumns.role(),
+                withoutColumns.recordKey(), withoutColumns.matchKeys(), withoutColumns.mergeDefault(),
+                withoutColumns.sourceLabelTarget(), withoutColumns.exactlyOneNonempty(), null);
+        var missingColumns = withProcessedRoute(contract("empty-route-columns", ImportProcessingMode.PROCESSED,
+                withoutColumns), route(List.of(input), List.of(valid)));
+        assertThat(compiler.compile(disabledDraft(List.of(), List.of(), List.of(missingColumns)),
+                processedEnvironment(Set.of())).violations())
+                .extracting(ImportContractViolation::message)
+                .contains("inputs must be unique mapped artifact targets",
+                        "output target must be mapped and cannot replace source authority");
 
         var sourceArtifact = processedArtifact("name", null,
                 new DataframeImportCatalogDraft.Column("ip", "ip", List.of(), null));

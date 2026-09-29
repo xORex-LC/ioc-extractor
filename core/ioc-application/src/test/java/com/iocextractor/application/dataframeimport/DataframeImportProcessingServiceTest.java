@@ -149,6 +149,58 @@ class DataframeImportProcessingServiceTest {
     }
 
     @Test
+    void refusesAStagerThatReturnsAContractDifferentFromTheDurablePin() {
+        StatefulLedger ledger = new StatefulLedger(delivery(ImportDeliveryState.STAGING));
+        DataframeImportStager stager = new DataframeImportStager() {
+            @Override
+            public ImportStagingResult stage(ImportStagingCommand command) {
+                throw new AssertionError("unpinned staging must not be called");
+            }
+
+            @Override
+            public ImportStagingResult stagePinned(ImportStagingCommand command, ImportContractPin pin) {
+                return new ImportStagingResult(new ImportContractPin(
+                        pin.id(), pin.version(), new ImportContractFingerprint("b".repeat(64))),
+                        DataframeImportProcessingServiceTest.this.stage());
+            }
+        };
+        DataframeImportProcessingService service = service(
+                ledger, stager, this::idle, workspace(Optional.empty()),
+                commitEvidenceStore(ledger.current.id()), command -> { }, unusedSourceLifecycle());
+
+        assertThatThrownBy(service::processNext)
+                .isInstanceOf(DataframeImportConsistencyException.class)
+                .hasMessage("Pinned import contract is unavailable after restart");
+        assertThat(ledger.current.state()).isEqualTo(ImportDeliveryState.STAGING);
+    }
+
+    @Test
+    void treatsPinnedRecognitionFailureAsAConsistencyBarrier() {
+        StatefulLedger ledger = new StatefulLedger(delivery(ImportDeliveryState.CONTRACT_PINNED));
+        DataframeImportStager stager = new DataframeImportStager() {
+            @Override
+            public ImportStagingResult stage(ImportStagingCommand command) {
+                throw new AssertionError("unpinned staging must not be called");
+            }
+
+            @Override
+            public ImportStagingResult stagePinned(ImportStagingCommand command, ImportContractPin pin) {
+                throw new ImportRecognitionException(
+                        ImportRecognitionException.Reason.SOURCE_NOT_CONFIGURED, "source was removed");
+            }
+        };
+        DataframeImportProcessingService service = service(
+                ledger, stager, this::idle, workspace(Optional.empty()),
+                commitEvidenceStore(ledger.current.id()), command -> { }, unusedSourceLifecycle());
+
+        assertThatThrownBy(service::processNext)
+                .isInstanceOf(DataframeImportConsistencyException.class)
+                .hasMessage("Pinned import contract is unavailable after restart")
+                .hasCauseInstanceOf(ImportRecognitionException.class);
+        assertThat(ledger.current.state()).isEqualTo(ImportDeliveryState.CONTRACT_PINNED);
+    }
+
+    @Test
     void mapsEveryRecognitionFailureToItsStableTerminalCode() {
         var expectedCodes = java.util.Map.of(
                 ImportRecognitionException.Reason.SOURCE_NOT_CONFIGURED,
