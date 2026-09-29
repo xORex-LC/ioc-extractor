@@ -83,7 +83,8 @@ class IocPropertiesBindingIT {
                 "ioc.dataframe-import.contracts[0].processed-route.outputs[0].targets[0]", "ip"));
         var route = new Binder(source).bind(
                 "ioc.dataframe-import.contracts[0].processed-route",
-                Bindable.of(DataframeImportCatalogDraft.ProcessedRoute.class)).orElseThrow();
+                Bindable.of(DataframeImportCatalogDraft.ProcessedRoute.class))
+                .orElseThrow(() -> new IllegalStateException("Processed route did not bind"));
 
         assertThat(route.plan()).isEqualTo("host-plan");
         assertThat(route.inputs()).containsExactly(new DataframeImportCatalogDraft.RouteInput("ip_list", "ip"));
