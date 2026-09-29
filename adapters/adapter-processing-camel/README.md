@@ -14,8 +14,9 @@ activates an isolated context; without a
 registration, bootstrap creates no Camel runtime. `CamelRouteRuntime` admits
 concurrent callers with invocation-local views and replies, exposes readiness,
 rejects new calls during close and waits for active calls for a bounded period
-before stopping Camel. The IOC operation bindings and document/import callers
-still await their first real consumer. Malformed dynamic rule IDs and reason
+before stopping Camel. Selected document and processed-import policies now share
+one admitted context; the branch route sets plan and branch IDs before a
+destination resolves its IOC-specific bindings. Malformed dynamic rule IDs and reason
 codes are replaced in trace evidence without changing the returned failure
 reference. The generated branch route sets the branch ID before calling its
 destination so a caller may bind distinct field views for branches sharing a
@@ -45,9 +46,8 @@ Surefire. `make router-qualification SIZE=100000` runs the opt-in 100,000-input
 profile in fresh JVMs for 1/4/16 selected branches, 1/4 callers and
 success/failure/recovery mixtures. The script records per-profile startup,
 thread allocations, retained-heap samples and throughput under a fixed heap.
-This profile does not assert an IOC end-to-end throughput target; the real
-document/import bindings and their previous preparation paths are still needed
-for a valid before/after comparison.
+This profile does not assert an IOC end-to-end throughput target; a real
+document/import before/after comparison remains a P6 qualification task.
 
 See [routing capability](../../docs/dev/processing.md),
 [module map](../../docs/MODULARIZATION.md) and

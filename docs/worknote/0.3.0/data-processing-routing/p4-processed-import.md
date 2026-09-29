@@ -1,6 +1,8 @@
 # P4 processed-import execution evidence
 
-Status: implementation seam complete; operator activation remains blocked by P5.
+Status: implementation seam complete. At this slice's completion, activation
+was blocked by P5; the later [P5 activation](p5-policy-activation.md) attaches
+explicitly selected processed contracts.
 
 The import mapper now admits declared CSV cells as ABSENT, NULL or VALUE before
 any processed output is interpreted. `AS_IS` retains its previous checks and
@@ -63,8 +65,8 @@ parsing, candidate merging, primary-output validation and final row assembly;
 the adopted PMD policy and resource/size watchlist report no finding in these
 changed members.
 
-P5 must bind an operator-selected plan to each versioned import contract, include
-these bindings and semantic versions in policy identity, and define pinned
-in-flight recovery before selecting the new preparer in production. The current
-`CsvProcessedImportRowPreparer` remains the compatible production path until that
-gate; its inference is not reused by the new route and can be retired in P6.
+P5 subsequently bound an operator-selected plan to each versioned import
+contract, included these bindings and semantic versions in policy identity,
+and defined pinned in-flight recovery before selecting the new preparer in
+production. `CsvProcessedImportRowPreparer` remains the compatible path for
+unselected processed contracts and can be retired in P6.

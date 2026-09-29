@@ -79,19 +79,20 @@ stages передают ему только уже вычисленные реш
 временем локальной операции и возвращает родительский MDC. `RouterTraceBridge`
 отправляет технические решения без значений IOC в уже существующий
 `PipelineDecisionTracer`; итоговые диагностики остаются у application.
-`DocumentProcessingOperations` связывает допущенный план с IOC-операциями,
-классификацией и существующим CSV preparer. `DocumentProcessingAdapter`
-переводит результат общего Camel runtime в application port; его можно собрать
-явно для проверки document path. Production-поток продолжает работать
-по прежнему пути, пока P5 не закрепит fingerprint плана и семантику recovery.
+`IocRouterConfiguration` регистрирует проверенные IOC-планы в одном Camel
+runtime. `DocumentProcessingAdapter` переводит результат в application port и
+использует preparer конкретного запуска. При выбранном `document-plan` фабрика
+выбирает этот путь для oneshot и daemon; без выбора сохраняется прежний путь.
 `IocProcessingOperations` и `IocProcessingRouteAdapter` общие для document и
 processed-import seams. `RouterProcessedImportRowPreparer` собирает одну
 логическую import-строку из явно названных IOC-входов и выходных колонок;
-production-выбор этого пути остаётся закрыт до P5 policy/recovery gate.
+контракт выбирает этот путь через явный `processed-route`.
 `IocProcessingProperties` связывает операторские планы типизированно, а
 `ProcessingPlanCatalog` при старте проверяет ссылки и формирует
-`ProcessingPlanBindings` для будущих точек входа. Этот bean сам по себе не
-создаёт `RouterPlanRegistration` и не меняет работающий pipeline.
+`ProcessingPlanBindings` для document/import точек входа. Отпечаток политики
+включает план и версию семантики. В daemon service schema v12 запрещает смену
+политики документа при незавершённом intake; закреплённый import contract
+сверяется до повторного staging.
 
 Composition root выбирает typed `PipelineFailurePolicy`, diagnostic budget и
 non-throwing diagnostics bridge. Default application config — `fail-fast`; production

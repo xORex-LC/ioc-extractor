@@ -90,12 +90,32 @@ the service is stopped or after a coordinated SQLite backup.
 | `ioc.pipeline.failure-policy` | `fail-fast`, `collect-and-continue` | `fail-fast` | Use `collect-and-continue` for unattended daemon ingestion; valid rows may commit while the run reports errors. |
 | `ioc.pipeline.max-diagnostics-per-run` | positive integer | `10000` | Bounds memory and output volume. Lower it for small hosts or noisy untrusted inputs. |
 
-## IOC processing plans (admission only)
+## IOC processing plans
 
-The `ioc.processing` tree is optional. Named plans are type-checked at startup,
-but are not attached to document or import execution yet. Keep it unset when
-operating the current pipeline. Do not expect a selected plan to change output
-until the flow attachment and policy-identity stages are released.
+The `ioc.processing` tree is optional. Named plans are checked at startup and
+execute only when selected by `document-plan` or an import contract. An absent
+selection keeps the compatible path. A policy change affects new observations;
+existing canonical rows are not rewritten. In daemon mode, changing a selected
+document policy requires all unfinished document admissions and processing files
+to drain under the previous policy before the service starts with the new one.
+An unchanged policy can recover its own unfinished work. A pinned import delivery
+with no sealed stage blocks recovery if its old contract is unavailable; restore
+the old configuration to finish it. The document gate uses the complete processing
+fingerprint, so a change to another declared plan can also require a drain.
+Run only one active daemon per service database during a policy change. Committed
+imports finalize from receipts.
+
+- `ioc.dataframe-import.contracts[].processed-route.plan` selects a named IOC
+  plan for one `processed` contract. `as-is` contracts cannot select a route.
+  `ioc.dataframe-import.contracts[].processed-route.inputs` is an ordered list
+  of source cells; each `ioc.dataframe-import.contracts[].processed-route.inputs[].artifact`
+  and `ioc.dataframe-import.contracts[].processed-route.inputs[].target` must
+  name a mapped contract cell. `ioc.dataframe-import.contracts[].processed-route.outputs`
+  lists the authorized final fields. Each
+  `ioc.dataframe-import.contracts[].processed-route.outputs[].artifact` must
+  match exactly one route branch, and
+  `ioc.dataframe-import.contracts[].processed-route.outputs[].targets` names
+  mapped target fields. Source authority fields cannot be replaced.
 
 - `ioc.processing.document-plan` selects one entry in `ioc.processing.plans` by
   `ioc.processing.plans[].name`. A selected document plan must route each

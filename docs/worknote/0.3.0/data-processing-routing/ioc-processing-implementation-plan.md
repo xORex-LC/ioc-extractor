@@ -1,11 +1,11 @@
 # Configurable IOC processing implementation plan
 
-Status: implementation sequence, 2026-09-27. P0 semantic contracts and source
+Status: implementation sequence, 2026-09-28. P0 semantic contracts and source
 closure are complete in [P0 evidence](p0-semantic-contracts.md). P1 parsing
-and the P2 shared mapper/operator-plan admission are implemented. P3 and P4
-have explicit document and processed-import execution seams, but production
-selection remains gated by P5 policy identity/recovery work. Import still uses
-the compatible previous path in production. Reviewed P0
+and P2 shared mapper/operator-plan admission are implemented. P3 and P4
+execution seams are activated by P5 when explicitly selected; see
+[P5 evidence](p5-policy-activation.md). Unselected flows retain their compatible
+paths. Reviewed P0
 source baseline: `e8cb0aeb83ca6776f771951320163573ac0bbce4`.
 Companion: [Router plan](router-implementation-plan.md).
 
@@ -40,7 +40,7 @@ recreating equivalent algorithms.
 | P2 — shared mapping and configuration (implemented) | Extract/adapt `ConfigurableRowMapper`, providers/transforms and classification inputs once. Extend `IocProperties`, registry metadata and semantic preflight for named views, field overrides and classifications; compile IOC bindings for Router. | [P2 evidence](p2-shared-mapping.md): strict key/argument admission, whole-element overlay fixture, coverage/omission checks, bounded unary operations and shared mapper tests. |
 | P3 — document integration (implemented, activation gated) | Change `IocExtractionService` entry after attribution and before unconditional deduplication/classification for the admitted flow. Preserve occurrences, legacy plan behavior and stage checkpoints. Adapt `PrepareArtifactsStage`/`CsvArtifactPreparer` to reuse final key resolution and `ArtifactOccurrenceSelector`. | [P3 evidence](p3-document-integration.md): cleanup collisions resolved on final fields; original blacklist preserved while masks use host; configurable match codes; source ranks/counts and failure-policy parity; no writes on fail-fast rejection. |
 | P4 — processed import integration (implemented, activation gated) | Split `DataframeImportRowMapper` input admission from output finalization; evolve `ProcessedImportRowPreparer` and use explicit IOC input/output bindings in the new route instead of CSV provider inference. Reuse admitted operations, add accepted-row warnings separately from rejection issues. | [P4 evidence](p4-processed-import.md): ABSENT/NULL/VALUE preserved; full-cell parsing, final keys after processing, required-primary and source-authority checks; one logical row without Cartesian expansion; compound conflicts rejected; AS_IS fixtures unchanged. |
-| P5 — policy identity and activation | Extend `ProcessingPolicyFingerprint` and compiled import contract identity with plan/order and semantic versions. Inspect pinned delivery/run recovery and define mismatch disposition before enabling new policies. | Restart and in-flight policy-change fixtures; receipt-based post-commit finalization never reprocesses committed input. No backfill; coexistence and TTL behavior tested. |
+| P5 — policy identity and activation (implemented) | Extend `ProcessingPolicyFingerprint` and compiled import contract identity with plan/order and semantic versions. Guard changed document policy at daemon startup; compare pinned import contract before restaging. Activate selected document/import plans. | [P5 evidence](p5-policy-activation.md): restart and policy-change checks, receipt-only post-commit finalization, no backfill and lifecycle separation. |
 | P6 — customer qualification and retirement | Run both flows with the qualified Router, remove replaced mapper/dispatch paths and promote architecture/configuration/operations documentation. | Golden fixtures, deterministic recovery tests, resource measurements, full quality evidence and operator activation guidance. |
 
 P1 and pure P2 work can progress after P0 while Router is built. P3/P4 execution

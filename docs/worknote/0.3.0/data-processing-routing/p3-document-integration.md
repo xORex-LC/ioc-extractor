@@ -1,8 +1,8 @@
 # P3 document integration evidence
 
 Status: implemented as an explicitly assembled execution path, 2026-09-28.
-Production activation remains gated by P5 because the current durable processing
-fingerprint and recovery pinning do not yet include the operator plan.
+At this slice's completion, production activation was gated by P5. The later
+[P5 activation](p5-policy-activation.md) attaches an explicitly selected plan.
 
 ## Boundary and reuse
 

@@ -148,6 +148,10 @@ runtime JDBC drivers.
   provenance/receipt reference retains both registration and service reference,
   while `PURGED` or already `MISSING` allows the service reference to be removed.
   The two databases are never locked in one transaction.
+- Service schema v12 stores the active document-processing fingerprint.
+  `JdbcDocumentProcessingPolicyGate` permits an unchanged-policy restart, and
+  changes the marker only when the caller has drained external ingestion work
+  and the service document-admission journal has no nonterminal rows.
 - `JdbcObservationRegistrationStatusReader` exposes only pending totals and the
   oldest unresolved oneshot time. The bootstrap health component marks unresolved
   oneshot state `DOWN`; automatic retention excludes live/unresolved oneshot

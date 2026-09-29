@@ -47,7 +47,7 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 │   ├── adapter-regex-re2j         (PatternEngine → RE2J/JDK fallback)
 │   ├── adapter-source-tika        (SourceReader → Tika)
 │   ├── adapter-csv                (strict CSV parsing + ArtifactPreparer/projection/export → commons-csv)
-│   ├── adapter-processing-camel   (bounded selection, recovery, execution and lifecycle → Camel; R4, not yet wired to IOC flows)
+│   ├── adapter-processing-camel   (bounded selection, recovery, execution and lifecycle → Camel; selected IOC flows)
 │   ├── adapter-manifest-json-jackson (SliceManifestCodec → Jackson)
 │   ├── adapter-store-jdbc         (service/dataframe storage → Spring JDBC + sqlite-jdbc)
 │   ├── adapter-transport-smb      (FileTransport → smbj)

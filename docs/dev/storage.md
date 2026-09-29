@@ -111,6 +111,11 @@ nonterminal deliveries без маркера не переоцениваются
 соответствующая delivery не стала `TERMINAL`, поэтому service recovery authority
 не удаляется раньше завершения handshake.
 
+Service schema v12 хранит fingerprint выбранной политики обработки документов.
+Перед сменой политики daemon проверяет отсутствие незавершённых ingestion и
+document-admission записей, а также файлов в processing. При прежнем fingerprint
+восстановление продолжается без повторной подготовки уже записанных данных.
+
 Dataframe schema v11 завершает ordered-field transaction contract. Complete
 receipt v2 хранит position каждого управляемого поля; commit marker различает
 public update и metadata-only origin advance. Активный lifecycle origin при

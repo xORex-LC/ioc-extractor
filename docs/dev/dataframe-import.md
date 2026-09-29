@@ -53,6 +53,12 @@ artifact mapping policies. Pipeline-owned identity, routing and match fields
 replace imported copies, while operator-owned metadata retains tri-state merge
 semantics. Every populated IOC carrier must contain one whole-cell IOC; compound
 URL/IP or multi-hash fields remain one atomic artifact row.
+An optional `processed-route` selects a named IOC plan for one versioned
+contract, with explicit source-cell inputs and authorized final-field outputs.
+The route cannot expand source authority or produce a second logical row for
+the same artifact. An unselected processed contract retains the compatible
+preparer; `as-is` never invokes IOC routing. The compiled contract pin includes
+the selected plan, binding order and processing semantic epoch.
 
 ## Source ownership
 
@@ -142,6 +148,10 @@ continues when notifications are disabled, lost, duplicated or reconnecting.
    local rows. Historical lifecycles do not participate.
 8. **A sealed stage is immutable evidence.** Snapshot and contract pins, plan
    hash, counts, SQLite integrity and stage digest must agree before promotion.
+   On restart without a sealed stage, the active contract must match the durable
+   pin before any row is remapped. A mismatch blocks the ordered lane until the
+   previous configuration is restored; committed deliveries finalize solely
+   from the dataframe receipt.
 9. **Events are latency hints.** Complete source listing, the service ledger,
    dataframe receipt and periodic reconciliation recover lost process-local
    notifications.

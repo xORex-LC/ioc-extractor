@@ -307,6 +307,14 @@ ioc:
         renew-unchanged: true
         formula-policy: reject
         merge-default: keep-existing
+        # Optional IOC route for this processed contract. Activate only with a
+        # qualified named plan whose branches match these authorized outputs.
+        # processed-route:
+        #   plan: named-import-plan
+        #   inputs:
+        #     - { artifact: ioc_aggregate, target: ip_address }
+        #   outputs:
+        #     - { artifact: ioc_aggregate, targets: [ ip_address ] }
         artifacts:
           - name: ioc_aggregate
             role: primary
