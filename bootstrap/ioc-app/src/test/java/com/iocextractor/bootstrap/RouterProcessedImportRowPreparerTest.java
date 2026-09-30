@@ -107,6 +107,27 @@ class RouterProcessedImportRowPreparerTest {
     }
 
     @Test
+    void urlAndIpContributeSeparateFieldsToOneCompoundRow() throws Exception {
+        try (Fixture fixture = compoundFixture()) {
+            var artifact = new DataframeImportCatalogDraft.Artifact("address_blacklist",
+                    ImportArtifactRole.PRIMARY, "address-row-v2", List.of(), ImportMergePolicy.AUTHORITATIVE,
+                    List.of(new DataframeImportCatalogDraft.Column("forbidden_url", "url", List.of(), null),
+                            new DataframeImportCatalogDraft.Column("forbidden_ip", "ip", List.of(), null)));
+            var result = fixture.mapper().map(withArtifacts(List.of(artifact)),
+                    new ImportDelimitedRecord(30, Map.of("url", "hxxp://EVIL.example/drop",
+                            "ip", "192.0.2.44")));
+
+            assertThat(result.issues()).isEmpty();
+            assertThat(result.row()).hasValueSatisfying(row -> {
+                assertThat(row.branches()).hasSize(1);
+                assertThat(row.branches().getFirst().cells())
+                        .containsEntry("forbidden_url", ImportCell.value("http://EVIL.example/drop"))
+                        .containsEntry("forbidden_ip", ImportCell.value("192.0.2.44"));
+            });
+        }
+    }
+
+    @Test
     void rejectsFreeTextInsteadOfUsingAValidAddressPrefix() throws Exception {
         try (Fixture fixture = fixture()) {
             var result = fixture.mapper().map(contract(), new ImportDelimitedRecord(5,
@@ -295,7 +316,7 @@ class RouterProcessedImportRowPreparerTest {
                     Map.of(ARTIFACT, Set.of("mask"))).prepare(configured, nullSource, nullAdmitted);
             assertThat(withoutSource.row()).hasValueSatisfying(row ->
                     assertThat(row.branches().getFirst().cells())
-                            .containsEntry("mask", ImportCell.nullValue()));
+                            .containsEntry("mask", ImportCell.value("https://evil.example/path")));
         }
     }
 
@@ -354,33 +375,55 @@ class RouterProcessedImportRowPreparerTest {
     }
 
     private Fixture fixture(boolean fallback, boolean failHost, String outputProvider) {
+        return fixture(fallback, failHost, ARTIFACT, "host",
+                List.of(new ColumnSpec("mask", outputProvider, null, null, null)),
+                List.of(new RouterProcessedImportRowPreparer.Input(ARTIFACT, "mask"),
+                        new RouterProcessedImportRowPreparer.Input(ARTIFACT, "alternate")),
+                Set.of("mask"), List.of("mask"), "mask-row-v1");
+    }
+
+    private Fixture compoundFixture() {
+        String artifact = "address_blacklist";
+        return fixture(false, false, artifact, "original",
+                List.of(new ColumnSpec("forbidden_url", "address.url", null, null, null),
+                        new ColumnSpec("forbidden_ip", "address.ip", null, null, null)),
+                List.of(new RouterProcessedImportRowPreparer.Input(artifact, "forbidden_url"),
+                        new RouterProcessedImportRowPreparer.Input(artifact, "forbidden_ip")),
+                Set.of("forbidden_url", "forbidden_ip"),
+                List.of("forbidden_url", "forbidden_ip"), "address-row-v2");
+    }
+
+    private Fixture fixture(boolean fallback, boolean failHost, String artifact, String selectedView,
+                            List<ColumnSpec> columns, List<RouterProcessedImportRowPreparer.Input> inputs,
+                            Set<String> outputs, List<String> keyFields, String keyId) {
         var views = fallback ? List.of(
                 new PlanDescriptor.View("host", "network.host", "original"),
                 new PlanDescriptor.View("usable", "view.recover", "host",
                         new PlanDescriptor.Recovery("original", Set.of("NO_HOST"))))
                 : List.of(new PlanDescriptor.View("host", "network.host", "original"));
-        String defaultView = fallback ? "usable" : "host";
+        String defaultView = fallback ? "usable" : selectedView;
         var plan = new PlanDescriptor("import-host", views,
                 new PlanDescriptor.Routing(PlanDescriptor.Mode.FIRST,
-                        List.of(new PlanDescriptor.Branch("mask", ARTIFACT, null, List.of(defaultView))),
+                        List.of(new PlanDescriptor.Branch("mask", artifact, null, List.of(defaultView))),
                         new PlanDescriptor.OnUnmatched(PlanDescriptor.Action.REJECT, null), null));
         var binding = new ProcessingPlanCatalog.CompiledPlan(plan,
-                Map.of("mask", new ProcessingPlanCatalog.BranchBinding(ARTIFACT, defaultView, Map.of())),
+                Map.of("mask", new ProcessingPlanCatalog.BranchBinding(artifact, defaultView, Map.of())),
                 Set.of(defaultView));
         IndicatorClassifier classifier = new IndicatorClassifier(indicator ->
                 new ClassificationDecision(new IndicatorFeatures(indicator.value(), indicator.value(),
-                        false, false, false, HostKind.REGISTRABLE), 0, List.of(),
+                        false, false, false, indicator.type() == IndicatorType.IPV4
+                                ? HostKind.IP : HostKind.REGISTRABLE), 0, List.of(),
                         new MaskMatch("u:hAS", "h:dAS")));
-        var definition = new CsvArtifactDefinition(ARTIFACT,
-                Set.of(IndicatorType.DOMAIN, IndicatorType.URL),
+        var definition = new CsvArtifactDefinition(artifact,
+                Set.of(IndicatorType.DOMAIN, IndicatorType.URL, IndicatorType.IPV4),
                 ArtifactFilter.none(), new ConfigurableRowMapper(
-                        List.of(new ColumnSpec("mask", outputProvider, null, null, null)),
+                        columns,
                         ConfigRegistryCatalog.valueProviders(), Map.of()), ArtifactIdStrategy.ASCENDING, 1);
         var preparer = new CsvArtifactPreparer(definition,
                 new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 1),
                 new DiagnosticFactory(Clock.systemUTC()), null, NoopPipelineDecisionTracer.INSTANCE);
         OperationCatalog registered = new IocProcessingOperations(binding,
-                Map.of(ARTIFACT, preparer), classifier).catalog();
+                Map.of(artifact, preparer), classifier).catalog();
         OperationCatalog catalog = registered;
         if (fallback || failHost) {
             var operations = new HashMap<>(registered.operations());
@@ -392,15 +435,14 @@ class RouterProcessedImportRowPreparerTest {
         var runtime = new CamelRouteRuntime(new CamelPlanCompiler().compile(List.of(plan), catalog));
         var route = new IocProcessingRouteAdapter(binding, runtime, Clock.systemUTC());
         var processed = new RouterProcessedImportRowPreparer(CONTRACT,
-                List.of(new RouterProcessedImportRowPreparer.Input(ARTIFACT, "mask"),
-                        new RouterProcessedImportRowPreparer.Input(ARTIFACT, "alternate")),
-                Map.of(ARTIFACT, Set.of("mask")),
+                inputs, Map.of(artifact, outputs),
                 text -> new RefangOutcome(text.replace("hxxp", "http"), List.of()),
-                text -> new ExtractionOutcome(List.of(new RawIndicator(text, IndicatorType.URL, 0)), List.of()),
+                text -> new ExtractionOutcome(List.of(new RawIndicator(text,
+                        text.contains("://") ? IndicatorType.URL : IndicatorType.IPV4, 0)), List.of()),
                 classifier, route);
         var keys = new CanonicalArtifactKeyResolver(List.of(new ArtifactIdentityDefinition(
-                ARTIFACT, new CanonicalKeyDefinition("mask-row-v1", CanonicalKeyMode.COMPOSITE,
-                        List.of("mask")), List.of(), 1)));
+                artifact, new CanonicalKeyDefinition(keyId, CanonicalKeyMode.COMPOSITE,
+                        keyFields), List.of(), 1)));
         return new Fixture(new DataframeImportRowMapper((specification, value) -> value, keys, processed),
                 runtime, route, classifier);
     }

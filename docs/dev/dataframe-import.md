@@ -64,6 +64,11 @@ The route cannot expand source authority or produce a second logical row for
 the same artifact. An unselected processed contract retains the compatible
 preparer; `as-is` never invokes IOC routing. The compiled contract pin includes
 the selected plan, binding order and processing semantic epoch.
+When multiple selected inputs contribute to one artifact row, a null from an
+inapplicable mapping provider is no contribution. It does not clear an admitted
+cell or conflict with another input's value. Explicit CSV `NULL` remains an
+`ImportCell.NULL` instruction; distinct non-null contributions to the same
+target still reject the logical row.
 
 ## Source ownership
 

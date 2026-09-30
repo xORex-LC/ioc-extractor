@@ -152,6 +152,11 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
                 throw new IllegalStateException("Route omitted bound import output: " + target);
             }
             String value = candidate.row().template().value(target);
+            // A provider/gate with no value contributes nothing. Only the admitted CSV
+            // cell can carry an explicit NULL instruction in this route version.
+            if (value == null) {
+                continue;
+            }
             if (values.containsKey(target) && !Objects.equals(values.get(target), value)) {
                 assembly.issues.add(issue(record, candidate.artifact(), COMPOUND_CONFLICT));
             } else {
@@ -179,7 +184,7 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
             Map<String, ImportMergePolicy> policies = new LinkedHashMap<>(branch.mergePolicies());
             DataframeImportCatalogDraft.Artifact artifact = artifact(contract, branch.artifactName());
             assembly.outputs.getOrDefault(branch.artifactName(), Map.of()).forEach((target, value) -> {
-                cells.put(target, value == null ? ImportCell.nullValue() : ImportCell.value(value));
+                cells.put(target, ImportCell.value(value));
                 policies.putIfAbsent(target, ImportMergePolicyResolver.resolve(contract, artifact, target));
             });
             branches.add(new ImportArtifactBranch(branch.artifactName(), branch.role(), cells,
