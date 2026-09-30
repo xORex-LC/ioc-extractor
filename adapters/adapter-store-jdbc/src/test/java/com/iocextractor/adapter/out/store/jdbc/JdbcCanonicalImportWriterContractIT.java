@@ -146,6 +146,33 @@ class JdbcCanonicalImportWriterContractIT extends CanonicalImportWriterContractT
     }
 
     @Test
+    void coalescedMemberWarningSurvivesCanonicalCommitAndReceiptReplay() {
+        Environment environment = environment("coalesced-warning");
+        ImportRowWarning warning = new ImportRowWarning(3, "masks", "IMPORT.VIEW_FALLBACK");
+        CanonicalImportCommand command = environment.stage(
+                "delivery-coalesced-warning", ImportPromotionPolicy.defaults(),
+                List.of(row(2, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                                cells("mask", ImportCell.value("evil.example"),
+                                        "source", ImportCell.absent()), OptionalLong.empty())),
+                        row(3, branch(environment, "masks", ImportArtifactRole.PRIMARY,
+                                values("mask", "evil.example", "source", "second-feed"),
+                                OptionalLong.empty()))),
+                List.of(), List.of(warning));
+
+        environment.writer(JdbcCanonicalImportObserver.NOOP).promote(command);
+        environment.deleteStage(command);
+        var evidence = new JdbcImportCommitEvidenceStore(environment.dataSource).find(command.deliveryId());
+
+        assertThat(evidence).hasValueSatisfying(receipt -> {
+            assertThat(receipt.acceptedRows()).isOne();
+            assertThat(receipt.warnings()).containsExactly(warning);
+        });
+        assertThat(environment.queryLong("SELECT COUNT(*) FROM masks WHERE source = 'second-feed'"))
+                .isOne();
+        assertThat(environment.count("import_row_warning")).isOne();
+    }
+
+    @Test
     void promotesPinnedVersionTwoStageWithoutAWarningTable() throws Exception {
         Environment environment = environment("version-two-stage");
         CanonicalImportCommand command = environment.stage(

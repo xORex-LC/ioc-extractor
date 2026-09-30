@@ -69,6 +69,10 @@ inapplicable mapping provider is no contribution. It does not clear an admitted
 cell or conflict with another input's value. Explicit CSV `NULL` remains an
 `ImportCell.NULL` instruction; distinct non-null contributions to the same
 target still reject the logical row.
+Warnings from every accepted member of a compatible COALESCE group, including
+members whose cells are folded into the representative, are stored with the
+canonical receipt. Rejected rows do not contribute accepted warnings. Receipt
+recovery reproduces the same warning list without reopening the sealed stage.
 
 ## Source ownership
 

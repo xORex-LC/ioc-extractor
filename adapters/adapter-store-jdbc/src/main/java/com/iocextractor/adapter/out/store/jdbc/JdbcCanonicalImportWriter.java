@@ -1122,7 +1122,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
                 FROM import_stage.stage_row_warning warning
                 JOIN import_stage.stage_input_row input
                   ON input.source_row_number = warning.source_row_number
-                WHERE input.status = 'ACCEPTED'
+                WHERE input.status IN ('ACCEPTED', 'COALESCED')
                 ORDER BY warning_id
                 """)) {
             statement.setString(1, command.deliveryId().value());
