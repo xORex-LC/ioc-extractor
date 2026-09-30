@@ -4,6 +4,8 @@ import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.in.ExtractionCommand;
 import com.iocextractor.application.tck.junit.EndToEndTest;
 import com.zaxxer.hikari.HikariDataSource;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -29,6 +31,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EndToEndTest
 @Timeout(60)
 class CustomerRoutingPipelineIT {
+    private static final List<String> GOLDEN_CSV = List.of(
+            "masks.csv", "ip-list.csv", "address-blacklist.csv", "hashes.csv", "IOC_aggregate.csv");
+
     @TempDir Path inputDir;
 
     @Autowired ExtractIocsUseCase useCase;
@@ -44,7 +49,7 @@ class CustomerRoutingPipelineIT {
         Files.deleteIfExists(database);
         Files.deleteIfExists(Path.of(database + "-wal"));
         Files.deleteIfExists(Path.of(database + "-shm"));
-        registry.add("ioc.storage.dataframe.url", () -> "jdbc:sqlite:" + database);
+        registry.add("golden.output-dir", () -> "target/customer-routed-golden");
     }
 
     @Test
@@ -77,6 +82,22 @@ class CustomerRoutingPipelineIT {
                 .containsExactly("10.93.12.187:9090/clean-prometheus/noe-virus/true",
                         "https://best-malware.com/other.exe",
                         "https://best-malware.com/troyan.exe");
+        for (String artifact : GOLDEN_CSV) {
+            Path actual = Path.of("target/customer-routed-golden", artifact);
+            assertThat(Files.readAllBytes(actual))
+                    .as("public CSV artifact %s", artifact)
+                    .isEqualTo(goldenBytes(artifact));
+        }
+    }
+
+    private byte[] goldenBytes(String resource) throws Exception {
+        try (InputStream input = getClass().getResourceAsStream("/customer-routes/" + resource)) {
+            if (input == null) {
+                throw new IllegalStateException("Missing customer route fixture: " + resource);
+            }
+            String logical = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+            return logical.replace("\n", "\r\n").getBytes(StandardCharsets.UTF_8);
+        }
     }
 
     private List<String> values(String sql) throws Exception {

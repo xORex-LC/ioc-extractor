@@ -5,7 +5,7 @@ ioc:
   storage:
     dataframe:
       type: jdbc
-      url: "jdbc:sqlite:target/golden/ioc-dataframe.db"
+      url: "jdbc:sqlite:${golden.output-dir:target/golden}/ioc-dataframe.db"
   sink:
     csv:
       delimiter: ";"
@@ -14,7 +14,7 @@ ioc:
     artifacts:
       - name: masks
         enabled: true
-        path: "target/golden/masks.csv"
+        path: "${golden.output-dir:target/golden}/masks.csv"
         accepts: [ IPV4, DOMAIN, URL ]
         exclude: [ is-bare-ip ]
         id: { strategy: ascending, start: auto }
@@ -31,7 +31,7 @@ ioc:
           - { name: description,     from: const }
       - name: ip_list
         enabled: true
-        path: "target/golden/ip-list.csv"
+        path: "${golden.output-dir:target/golden}/ip-list.csv"
         accepts: [ IPV4 ]
         include: [ is-bare-ip ]
         id: { strategy: ascending, start: auto }
@@ -46,14 +46,14 @@ ioc:
           - { name: description,     from: const }
       - name: address_blacklist
         enabled: true
-        path: "target/golden/address-blacklist.csv"
+        path: "${golden.output-dir:target/golden}/address-blacklist.csv"
         accepts: [ IPV4, DOMAIN, URL ]
         columns:
           - { name: forbidden_url,   from: address.url, transform: [ lower-host ] }
           - { name: forbidden_ip,    from: address.ip,  transform: [ lower-host ] }
       - name: hashes
         enabled: true
-        path: "target/golden/hashes.csv"
+        path: "${golden.output-dir:target/golden}/hashes.csv"
         accepts: [ MD5, SHA1, SHA256 ]
         id: { strategy: ascending, start: 10024 }
         columns:
@@ -69,7 +69,7 @@ ioc:
           - { name: description,     from: const }
       - name: ioc_aggregate
         enabled: true
-        path: "target/golden/IOC_aggregate.csv"
+        path: "${golden.output-dir:target/golden}/IOC_aggregate.csv"
         accepts: [ IPV4, DOMAIN, URL, MD5, SHA1, SHA256 ]
         columns:
           - { name: name,       from: source.label }
