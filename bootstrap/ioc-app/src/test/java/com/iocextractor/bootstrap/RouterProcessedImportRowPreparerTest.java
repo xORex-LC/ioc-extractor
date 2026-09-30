@@ -402,7 +402,7 @@ class RouterProcessedImportRowPreparerTest {
                 .hasMessageContaining("ordinal");
     }
 
-    private Fixture fixture() {
+    Fixture fixture() {
         return fixture(false);
     }
 
@@ -483,7 +483,7 @@ class RouterProcessedImportRowPreparerTest {
                 runtime, route, classifier);
     }
 
-    private CompiledDataframeImportContract contract() {
+    CompiledDataframeImportContract contract() {
         var artifact = new DataframeImportCatalogDraft.Artifact(ARTIFACT, ImportArtifactRole.PRIMARY,
                 "mask-row-v1", List.of(), ImportMergePolicy.AUTHORITATIVE,
                 List.of(new DataframeImportCatalogDraft.Column("mask", "ioc", List.of(), null),
@@ -528,7 +528,7 @@ class RouterProcessedImportRowPreparerTest {
                 base.dialect(), base.fingerprint());
     }
 
-    private record Fixture(DataframeImportRowMapper mapper, CamelRouteRuntime runtime,
+    record Fixture(DataframeImportRowMapper mapper, CamelRouteRuntime runtime,
                            IocProcessingRouteAdapter route, IndicatorClassifier classifier)
             implements AutoCloseable {
         private RouterProcessedImportRowPreparer preparer(String contractId,
