@@ -129,6 +129,36 @@ class RouterProcessedImportRowPreparerTest {
     }
 
     @Test
+    void hostRouteClearsTheOldUrlCarrierBeforeResolvingCompositeIdentity() throws Exception {
+        try (Fixture fixture = fixture(false, false, "address_blacklist", "host",
+                List.of(new ColumnSpec("forbidden_url", "address.url", null, null, null),
+                        new ColumnSpec("forbidden_ip", "address.ip", null, null, null)),
+                List.of(new RouterProcessedImportRowPreparer.Input("address_blacklist", "forbidden_url")),
+                Set.of("forbidden_url", "forbidden_ip"),
+                List.of("forbidden_url", "forbidden_ip"), "address-row-v2")) {
+            var artifact = new DataframeImportCatalogDraft.Artifact("address_blacklist",
+                    ImportArtifactRole.PRIMARY, "address-row-v2", List.of(), ImportMergePolicy.AUTHORITATIVE,
+                    List.of(new DataframeImportCatalogDraft.Column("forbidden_url", "url", List.of(), null),
+                            new DataframeImportCatalogDraft.Column("forbidden_ip", "ip", List.of(), null)));
+            var contract = withArtifacts(List.of(artifact));
+            var first = fixture.mapper().map(contract, new ImportDelimitedRecord(31,
+                    Map.of("url", "https://192.0.2.44/one")));
+            var second = fixture.mapper().map(contract, new ImportDelimitedRecord(32,
+                    Map.of("url", "https://192.0.2.44/two")));
+
+            assertThat(first.issues()).isEmpty();
+            assertThat(second.issues()).isEmpty();
+            var firstBranch = first.row().orElseThrow().branches().getFirst();
+            var secondBranch = second.row().orElseThrow().branches().getFirst();
+            assertThat(firstBranch.cells()).containsEntry("forbidden_url", ImportCell.nullValue())
+                    .containsEntry("forbidden_ip", ImportCell.value("192.0.2.44"));
+            assertThat(secondBranch.cells()).containsEntry("forbidden_url", ImportCell.nullValue())
+                    .containsEntry("forbidden_ip", ImportCell.value("192.0.2.44"));
+            assertThat(firstBranch.recordKey()).isEqualTo(secondBranch.recordKey());
+        }
+    }
+
+    @Test
     void rejectsFreeTextInsteadOfUsingAValidAddressPrefix() throws Exception {
         try (Fixture fixture = fixture()) {
             var result = fixture.mapper().map(contract(), new ImportDelimitedRecord(5,

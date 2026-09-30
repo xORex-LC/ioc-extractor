@@ -152,8 +152,8 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
                 throw new IllegalStateException("Route omitted bound import output: " + target);
             }
             String value = candidate.row().template().value(target);
-            // A provider/gate with no value contributes nothing. Only the admitted CSV
-            // cell can carry an explicit NULL instruction in this route version.
+            // A provider/gate with no value contributes nothing to this input.
+            // Route-owned fields are replaced only after all inputs are assembled.
             if (value == null) {
                 continue;
             }
@@ -175,15 +175,25 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
         }
     }
 
-    private static ImportLogicalRow assembledRow(CompiledDataframeImportContract contract,
-                                                 ImportDelimitedRecord record, ImportLogicalRow admitted,
-                                                 RowAssembly assembly) {
+    private ImportLogicalRow assembledRow(CompiledDataframeImportContract contract,
+                                          ImportDelimitedRecord record, ImportLogicalRow admitted,
+                                          RowAssembly assembly) {
         List<ImportArtifactBranch> branches = new ArrayList<>(admitted.branches().size());
         for (ImportArtifactBranch branch : admitted.branches()) {
             Map<String, ImportCell> cells = new LinkedHashMap<>(branch.cells());
             Map<String, ImportMergePolicy> policies = new LinkedHashMap<>(branch.mergePolicies());
             DataframeImportCatalogDraft.Artifact artifact = artifact(contract, branch.artifactName());
-            assembly.outputs.getOrDefault(branch.artifactName(), Map.of()).forEach((target, value) -> {
+            Map<String, String> produced = assembly.outputs.getOrDefault(branch.artifactName(), Map.of());
+            if (!produced.isEmpty()) {
+                for (String target : outputTargets.getOrDefault(branch.artifactName(), Set.of())) {
+                    ImportCell admittedCell = cells.get(target);
+                    if (admittedCell != null && admittedCell.presence() == ImportCell.Presence.VALUE
+                            && !produced.containsKey(target)) {
+                        cells.put(target, ImportCell.nullValue());
+                    }
+                }
+            }
+            produced.forEach((target, value) -> {
                 cells.put(target, ImportCell.value(value));
                 policies.putIfAbsent(target, ImportMergePolicyResolver.resolve(contract, artifact, target));
             });

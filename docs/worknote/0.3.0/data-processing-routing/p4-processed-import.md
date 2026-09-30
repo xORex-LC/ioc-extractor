@@ -27,6 +27,11 @@ are refused by the new Router binding. The compatible CSV preparer can still add
 artifact-schema fields absent from the import contract's input columns. The
 configured canonical key, including any future composite fields,
 remains the final identity owner; no `(IP, country)` artifact is introduced.
+After collecting every input contribution, a routed artifact with a non-null
+output clears prior VALUE cells in route-owned targets that received no final
+contribution. This permits URL-to-IP carrier moves without retaining a stale
+URL in the composite key, while a null provider result alone does not command
+a clear.
 
 Accepted warnings are a separate `ImportRowWarning` channel. The private sealed
 workspace stores them independently of rejected-row errors and caps retained
