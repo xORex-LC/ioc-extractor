@@ -2,6 +2,7 @@ package com.iocextractor.application.port.out.dataframeimport;
 
 import com.iocextractor.application.dataframeimport.contract.CompiledDataframeImportContract;
 import com.iocextractor.application.dataframeimport.mapping.ImportRowMappingResult;
+import com.iocextractor.application.dataframeimport.model.ImportCell;
 import com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord;
 import com.iocextractor.application.dataframeimport.model.ImportLogicalRow;
 
@@ -16,4 +17,10 @@ public interface ProcessedImportRowPreparer {
     ImportRowMappingResult prepare(CompiledDataframeImportContract contract,
                                    ImportDelimitedRecord record,
                                    ImportLogicalRow mapped);
+
+    /** Checks a source-label output against the admitted source cell. */
+    default boolean authorizesSourceLabel(String artifact, String target,
+                                          ImportCell admitted, ImportCell prepared) {
+        return java.util.Objects.equals(admitted, prepared);
+    }
 }

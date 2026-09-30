@@ -13,6 +13,7 @@ import com.iocextractor.processing.mapping.LowerHostTransform;
 import com.iocextractor.processing.mapping.MatchHostValueProvider;
 import com.iocextractor.processing.mapping.MatchUrlValueProvider;
 import com.iocextractor.processing.mapping.SourceLabelValueProvider;
+import com.iocextractor.processing.mapping.StripPrefixTransform;
 import com.iocextractor.processing.mapping.ValueProvider;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
@@ -150,6 +151,39 @@ class CsvProcessedImportRowPreparerTest {
     }
 
     @Test
+    void sourceLabelTransformKeepsItsAuthorityAndMissingPresence() {
+        CanonicalArtifactKeyResolver keys = keys(new ArtifactIdentityDefinition(
+                "masks", new CanonicalKeyDefinition("mask-row-v1", CanonicalKeyMode.COMPOSITE,
+                        List.of("mask")), List.of(), 1));
+        CsvArtifactDefinition definition = definition("masks", List.of(
+                column("mask", "value", "lower-host"),
+                column("source", "source.label", "strip-prefix:Feed ")));
+        DataframeImportCatalogDraft.Artifact artifact = new DataframeImportCatalogDraft.Artifact(
+                "masks", ImportArtifactRole.PRIMARY, "mask-row-v1", List.of(), null, "source", null,
+                List.of(mapping("mask", "ioc"), mapping("source", "feed")));
+        DataframeImportRowMapper mapper = new DataframeImportRowMapper(
+                (specification, value) -> value, keys, processed(List.of(definition)));
+        CompiledDataframeImportContract contract = contract(artifact);
+
+        var present = mapper.map(contract, new ImportDelimitedRecord(20,
+                Map.of("ioc", "https://evil.example/path", "feed", "Feed Alpha")));
+        var absent = mapper.map(contract, new ImportDelimitedRecord(21,
+                Map.of("ioc", "https://evil.example/path")));
+        var explicitNull = mapper.map(contract, new ImportDelimitedRecord(22,
+                Map.of("ioc", "https://evil.example/path", "feed", "NULL")));
+
+        assertThat(present.issues()).isEmpty();
+        assertThat(present.row().orElseThrow().branches().getFirst().cells())
+                .containsEntry("source", ImportCell.value("Alpha"));
+        assertThat(absent.issues()).isEmpty();
+        assertThat(absent.row().orElseThrow().branches().getFirst().cells())
+                .containsEntry("source", ImportCell.absent());
+        assertThat(explicitNull.issues()).isEmpty();
+        assertThat(explicitNull.row().orElseThrow().branches().getFirst().cells())
+                .containsEntry("source", ImportCell.nullValue());
+    }
+
+    @Test
     void rejectsAFreeTextCellThatDoesNotContainExactlyOneWholeIndicator() {
         CanonicalArtifactKeyResolver keys = keys(new ArtifactIdentityDefinition(
                 "masks", List.of("mask"), false, 1));
@@ -194,7 +228,8 @@ class CsvProcessedImportRowPreparerTest {
     private CsvArtifactDefinition definition(String name, List<ColumnSpec> columns) {
         return new CsvArtifactDefinition(name,
                 java.util.EnumSet.allOf(IndicatorType.class), ArtifactFilter.none(),
-                new ConfigurableRowMapper(columns, providers(), Map.of("lower-host", new LowerHostTransform())),
+                new ConfigurableRowMapper(columns, providers(), Map.of(
+                        "lower-host", new LowerHostTransform(), "strip-prefix", new StripPrefixTransform())),
                 ArtifactIdStrategy.ASCENDING, 1);
     }
 

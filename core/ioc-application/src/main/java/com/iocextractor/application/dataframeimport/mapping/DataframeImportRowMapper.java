@@ -146,7 +146,8 @@ public final class DataframeImportRowMapper {
                     || admitted.mergePolicies().entrySet().stream().anyMatch(entry ->
                             branch.mergePolicies().get(entry.getKey()) != entry.getValue())
                     || artifact.sourceLabelTarget() != null
-                            && !Objects.equals(admitted.cells().get(artifact.sourceLabelTarget()),
+                            && !processed.authorizesSourceLabel(artifact.name(), artifact.sourceLabelTarget(),
+                                    admitted.cells().get(artifact.sourceLabelTarget()),
                                     branch.cells().get(artifact.sourceLabelTarget()))) {
                 throw new IllegalStateException("Processed import changed admitted cells or source authority");
             }

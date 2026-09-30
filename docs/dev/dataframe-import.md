@@ -53,6 +53,11 @@ artifact mapping policies. Pipeline-owned identity, routing and match fields
 replace imported copies, while operator-owned metadata retains tri-state merge
 semantics. Every populated IOC carrier must contain one whole-cell IOC; compound
 URL/IP or multi-hash fields remain one atomic artifact row.
+For a declared `source-label-target`, finalization verifies that the source
+still comes from the admitted cell. The compatible preparer may apply only the
+artifact's declared `source.label` transforms; missing and explicit-null source
+cells retain their distinct presence states. A selected route cannot replace
+that source target.
 An optional `processed-route` selects a named IOC plan for one versioned
 contract, with explicit source-cell inputs and authorized final-field outputs.
 The route cannot expand source authority or produce a second logical row for

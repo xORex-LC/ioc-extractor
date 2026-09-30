@@ -102,6 +102,19 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
                 : ImportRowMappingResult.rejected(issues);
     }
 
+    @Override
+    public boolean authorizesSourceLabel(String artifact, String target,
+                                         ImportCell admitted, ImportCell prepared) {
+        if (admitted == null || admitted.presence() != ImportCell.Presence.VALUE) {
+            return Objects.equals(admitted, prepared);
+        }
+        CsvArtifactDefinition definition = Objects.requireNonNull(definitions.get(artifact),
+                "processed artifact definition");
+        ConfigurableRowMapper mapper = (ConfigurableRowMapper) definition.mapper();
+        String mapped = mapper.mapSourceLabel(target, admitted.value());
+        return Objects.equals(mapped == null ? ImportCell.nullValue() : ImportCell.value(mapped), prepared);
+    }
+
     private List<ClassifiedIndicator> indicators(ImportDelimitedRecord record,
                                                   ImportArtifactBranch branch,
                                                   DataframeImportCatalogDraft.Artifact contractArtifact,
@@ -189,6 +202,12 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
             }
             if (values.size() > 1) {
                 issues.add(issue(record, artifact.name(), COMPOUND_CONFLICT));
+                continue;
+            }
+            if (column.name().equals(artifact.sourceLabelTarget())
+                    && (cells.get(column.name()) == null
+                            || cells.get(column.name()).presence() != ImportCell.Presence.VALUE
+                            || values.isEmpty())) {
                 continue;
             }
             cells.put(column.name(), values.isEmpty()

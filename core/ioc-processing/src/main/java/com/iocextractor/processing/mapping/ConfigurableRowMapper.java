@@ -99,6 +99,20 @@ public final class ConfigurableRowMapper implements RowMapper {
         } else {
             value = provide(column, classified);
         }
+        return transformValue(column, value);
+    }
+
+    /** Applies the declared source-label presentation transforms to an admitted label. */
+    public String mapSourceLabel(String target, String admittedLabel) {
+        ColumnSpec column = columns.stream().filter(candidate -> candidate.name().equals(target))
+                .findFirst().orElseThrow(() -> new IllegalArgumentException("Unknown source-label column: " + target));
+        if (!"source.label".equals(column.from())) {
+            throw new IllegalArgumentException("Column is not a source-label mapping: " + target);
+        }
+        return transformValue(column, admittedLabel);
+    }
+
+    private String transformValue(ColumnSpec column, String value) {
         if (value != null && column.transform() != null) {
             for (String spec : column.transform()) {
                 value = applyTransform(column, spec, value);
