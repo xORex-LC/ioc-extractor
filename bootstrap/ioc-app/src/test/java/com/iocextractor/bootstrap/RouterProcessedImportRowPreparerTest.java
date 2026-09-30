@@ -32,6 +32,7 @@ import com.iocextractor.application.dataframeimport.model.ImportRoutingPolicy;
 import com.iocextractor.application.dataframeimport.model.ImportRowFailurePolicy;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.observation.OccurrencePosition;
+import com.iocextractor.application.port.out.dataframeimport.ProcessedImportRowPreparer;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.domain.classify.ClassificationDecision;
 import com.iocextractor.domain.extract.ExtractionOutcome;
@@ -318,6 +319,41 @@ class RouterProcessedImportRowPreparerTest {
                     assertThat(row.branches().getFirst().cells())
                             .containsEntry("mask", ImportCell.value("https://evil.example/path")));
         }
+    }
+
+    @Test
+    void compositionUsesSelectedAuthorityPolicyForThePinnedContract() throws Exception {
+        try (Fixture fixture = fixture()) {
+            ProcessedImportRowPreparer permissiveCompatible = new ProcessedImportRowPreparer() {
+                @Override
+                public com.iocextractor.application.dataframeimport.mapping.ImportRowMappingResult prepare(
+                        CompiledDataframeImportContract contract, ImportDelimitedRecord record,
+                        com.iocextractor.application.dataframeimport.model.ImportLogicalRow admitted) {
+                    throw new AssertionError("Mapping is not exercised here");
+                }
+
+                @Override
+                public boolean authorizesSourceLabel(CompiledDataframeImportContract contract,
+                        String artifact, String target, ImportCell admitted, ImportCell prepared) {
+                    return true;
+                }
+            };
+            var selected = new SelectedProcessedImportRowPreparer(permissiveCompatible,
+                    Map.of(CONTRACT, fixture.preparer(CONTRACT,
+                            List.of(new RouterProcessedImportRowPreparer.Input(ARTIFACT, "mask")),
+                            Map.of(ARTIFACT, Set.of("mask")))));
+
+            assertThat(selected.authorizesSourceLabel(contract(), ARTIFACT, "source",
+                    ImportCell.value("Trusted Feed"), ImportCell.value("forged"))).isFalse();
+            assertThat(selected.authorizesSourceLabel(withContractId("compatible"), ARTIFACT, "source",
+                    ImportCell.value("Trusted Feed"), ImportCell.value("forged"))).isTrue();
+        }
+    }
+
+    private CompiledDataframeImportContract withContractId(String id) {
+        var base = contract();
+        return new CompiledDataframeImportContract(new ImportContractId(id), base.version(),
+                base.definition(), base.dialect(), base.fingerprint());
     }
 
     @Test

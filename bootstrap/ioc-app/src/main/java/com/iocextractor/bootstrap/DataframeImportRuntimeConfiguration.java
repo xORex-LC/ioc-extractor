@@ -276,8 +276,7 @@ class DataframeImportRuntimeConfiguration {
                     contract.id().value(), inputs, outputs, refanger, extractor,
                     classifier, adapter));
         });
-        return (contract, record, mapped) -> routed.getOrDefault(
-                contract.id().value(), compatible).prepare(contract, record, mapped);
+        return new SelectedProcessedImportRowPreparer(compatible, routed);
     }
 
     @Bean

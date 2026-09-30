@@ -19,7 +19,8 @@ public interface ProcessedImportRowPreparer {
                                    ImportLogicalRow mapped);
 
     /** Checks a source-label output against the admitted source cell. */
-    default boolean authorizesSourceLabel(String artifact, String target,
+    default boolean authorizesSourceLabel(CompiledDataframeImportContract contract,
+                                          String artifact, String target,
                                           ImportCell admitted, ImportCell prepared) {
         return java.util.Objects.equals(admitted, prepared);
     }

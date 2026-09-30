@@ -103,7 +103,8 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
     }
 
     @Override
-    public boolean authorizesSourceLabel(String artifact, String target,
+    public boolean authorizesSourceLabel(CompiledDataframeImportContract contract,
+                                         String artifact, String target,
                                          ImportCell admitted, ImportCell prepared) {
         if (admitted == null || admitted.presence() != ImportCell.Presence.VALUE) {
             return Objects.equals(admitted, prepared);
