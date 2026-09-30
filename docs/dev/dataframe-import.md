@@ -55,9 +55,10 @@ semantics. Every populated IOC carrier must contain one whole-cell IOC; compound
 URL/IP or multi-hash fields remain one atomic artifact row.
 For a declared `source-label-target`, finalization verifies that the source
 still comes from the admitted cell. The compatible preparer may apply only the
-artifact's declared `source.label` transforms; missing and explicit-null source
-cells retain their distinct presence states. A selected route cannot replace
-that source target.
+artifact's declared `source.label` transforms; a conditionally gated source
+column may also retain the exact admitted cell when no input supplies that
+column. Missing and explicit-null source cells retain their distinct presence
+states. A selected route cannot replace that source target.
 An optional `processed-route` selects a named IOC plan for one versioned
 contract, with explicit source-cell inputs and authorized final-field outputs.
 The route cannot expand source authority or produce a second logical row for
@@ -65,10 +66,14 @@ the same artifact. An unselected processed contract retains the compatible
 preparer; `as-is` never invokes IOC routing. The compiled contract pin includes
 the selected plan, binding order and processing semantic epoch.
 When multiple selected inputs contribute to one artifact row, a null from an
-inapplicable mapping provider is no contribution. It does not clear an admitted
-cell or conflict with another input's value. Explicit CSV `NULL` remains an
-`ImportCell.NULL` instruction; distinct non-null contributions to the same
-target still reject the logical row.
+inapplicable mapping provider is no contribution and cannot conflict with
+another input's value. After all contributions are collected, a routed artifact
+with a non-null output replaces its route-owned targets as a group: a prior
+`VALUE` in an output target with no final contribution is cleared. Thus a URL
+input routed to a cleaned IP does not retain its old URL carrier or path in the
+final key. With no non-null route output, admitted cells remain unchanged.
+`ABSENT` and explicit CSV `NULL` remain distinct instructions; distinct
+non-null contributions to the same target still reject the logical row.
 Warnings from every accepted member of a compatible COALESCE group, including
 members whose cells are folded into the representative, are stored with the
 canonical receipt. Rejected rows do not contribute accepted warnings. Receipt

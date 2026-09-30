@@ -112,8 +112,20 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
         CsvArtifactDefinition definition = Objects.requireNonNull(definitions.get(artifact),
                 "processed artifact definition");
         ConfigurableRowMapper mapper = (ConfigurableRowMapper) definition.mapper();
+        // A gate may have skipped this column entirely, including its transforms.
+        if (Objects.equals(admitted, prepared) && mapper.columns().stream()
+                .filter(column -> column.name().equals(target) && "source.label".equals(column.from()))
+                .anyMatch(CsvProcessedImportRowPreparer::hasGate)) {
+            return true;
+        }
         String mapped = mapper.mapSourceLabel(target, admitted.value());
         return Objects.equals(mapped == null ? ImportCell.nullValue() : ImportCell.value(mapped), prepared);
+    }
+
+    private static boolean hasGate(ColumnSpec column) {
+        return column.whenType() != null
+                || column.whenTypes() != null && !column.whenTypes().isEmpty()
+                || column.when() != null && !column.when().isEmpty();
     }
 
     private List<ClassifiedIndicator> indicators(ImportDelimitedRecord record,

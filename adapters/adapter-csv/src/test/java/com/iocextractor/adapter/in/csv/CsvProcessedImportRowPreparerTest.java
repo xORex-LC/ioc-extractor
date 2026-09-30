@@ -12,6 +12,7 @@ import com.iocextractor.processing.mapping.IndicatorValueProvider;
 import com.iocextractor.processing.mapping.LowerHostTransform;
 import com.iocextractor.processing.mapping.MatchHostValueProvider;
 import com.iocextractor.processing.mapping.MatchUrlValueProvider;
+import com.iocextractor.processing.mapping.MappingValueException;
 import com.iocextractor.processing.mapping.SourceLabelValueProvider;
 import com.iocextractor.processing.mapping.StripPrefixTransform;
 import com.iocextractor.processing.mapping.ValueProvider;
@@ -21,9 +22,11 @@ import com.iocextractor.application.artifact.CanonicalArtifactKeyResolver;
 import com.iocextractor.application.artifact.CanonicalKeyDefinition;
 import com.iocextractor.application.artifact.CanonicalKeyMode;
 import com.iocextractor.processing.classification.IndicatorClassifier;
+import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.application.dataframeimport.contract.CompiledDataframeImportContract;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
 import com.iocextractor.application.dataframeimport.mapping.DataframeImportRowMapper;
+import com.iocextractor.application.dataframeimport.mapping.ImportRowMappingResult;
 import com.iocextractor.application.dataframeimport.model.DelimitedDialect;
 import com.iocextractor.application.dataframeimport.model.ImportArtifactRole;
 import com.iocextractor.application.dataframeimport.model.ImportCell;
@@ -50,6 +53,7 @@ import org.junit.jupiter.api.Test;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -161,8 +165,9 @@ class CsvProcessedImportRowPreparerTest {
         DataframeImportCatalogDraft.Artifact artifact = new DataframeImportCatalogDraft.Artifact(
                 "masks", ImportArtifactRole.PRIMARY, "mask-row-v1", List.of(), null, "source", null,
                 List.of(mapping("mask", "ioc"), mapping("source", "feed")));
+        CsvProcessedImportRowPreparer preparer = processed(List.of(definition));
         DataframeImportRowMapper mapper = new DataframeImportRowMapper(
-                (specification, value) -> value, keys, processed(List.of(definition)));
+                (specification, value) -> value, keys, preparer);
         CompiledDataframeImportContract contract = contract(artifact);
 
         var present = mapper.map(contract, new ImportDelimitedRecord(20,
@@ -181,6 +186,80 @@ class CsvProcessedImportRowPreparerTest {
         assertThat(explicitNull.issues()).isEmpty();
         assertThat(explicitNull.row().orElseThrow().branches().getFirst().cells())
                 .containsEntry("source", ImportCell.nullValue());
+        assertThat(preparer.authorizesSourceLabel(contract, "masks", "source",
+                ImportCell.value("Feed Alpha"), ImportCell.value("Feed Alpha"))).isFalse();
+        assertThat(preparer.authorizesSourceLabel(contract, "masks", "source",
+                ImportCell.value("Feed Alpha"), ImportCell.value("Forged"))).isFalse();
+    }
+
+    @Test
+    void sourceLabelTypeGateRetainsTheAdmittedValueForAnUnmatchedUrl() {
+        ColumnSpec source = new ColumnSpec("source", "source.label", null,
+                IndicatorType.DOMAIN, List.of("strip-prefix:Feed "));
+        var result = mapWithGatedSource(source, Map.of());
+
+        assertThat(result.issues()).isEmpty();
+        assertThat(result.row().orElseThrow().branches().getFirst().cells())
+                .containsEntry("source", ImportCell.value("Feed Alpha"));
+    }
+
+    @Test
+    void sourceLabelConditionRetainsTheAdmittedValueWhenNoInputMatches() {
+        ColumnSpec source = new ColumnSpec("source", "source.label", null, null,
+                List.of("strip-prefix:Feed "), null, List.of("domain-only"));
+        var result = mapWithGatedSource(source,
+                Map.of("domain-only", indicator -> indicator.indicator().type() == IndicatorType.DOMAIN));
+
+        assertThat(result.issues()).isEmpty();
+        assertThat(result.row().orElseThrow().branches().getFirst().cells())
+                .containsEntry("source", ImportCell.value("Feed Alpha"));
+    }
+
+    @Test
+    void sourceLabelConditionAppliesTransformsWhenAnInputMatches() {
+        ColumnSpec source = new ColumnSpec("source", "source.label", null, null,
+                List.of("strip-prefix:Feed "), null, List.of("url-only"));
+        var result = mapWithGatedSource(source,
+                Map.of("url-only", indicator -> indicator.indicator().type() == IndicatorType.URL));
+
+        assertThat(result.issues()).isEmpty();
+        assertThat(result.row().orElseThrow().branches().getFirst().cells())
+                .containsEntry("source", ImportCell.value("Alpha"));
+    }
+
+    @Test
+    void gatedOutSourceLabelDoesNotInvokeItsTransformDuringAuthorityCheck() {
+        ColumnSpec source = new ColumnSpec("source", "source.label", null,
+                IndicatorType.DOMAIN, List.of("reject"));
+        var result = mapWithGatedSource(source, Map.of());
+
+        assertThat(result.issues()).isEmpty();
+        assertThat(result.row().orElseThrow().branches().getFirst().cells())
+                .containsEntry("source", ImportCell.value("Feed Alpha"));
+    }
+
+    private ImportRowMappingResult mapWithGatedSource(
+            ColumnSpec sourceColumn, Map<String, Predicate<ClassifiedIndicator>> conditions) {
+        CanonicalArtifactKeyResolver keys = keys(new ArtifactIdentityDefinition(
+                "masks", new CanonicalKeyDefinition("mask-row-v1", CanonicalKeyMode.COMPOSITE,
+                        List.of("mask")), List.of(), 1));
+        CsvArtifactDefinition definition = new CsvArtifactDefinition("masks",
+                java.util.EnumSet.allOf(IndicatorType.class), ArtifactFilter.none(),
+                new ConfigurableRowMapper(List.of(column("mask", "value", "lower-host"), sourceColumn),
+                        providers(), Map.of("lower-host", new LowerHostTransform(),
+                                "strip-prefix", new StripPrefixTransform(),
+                                "reject", (value, argument) -> {
+                                    throw new MappingValueException("Gated source transform was called");
+                                }), conditions),
+                ArtifactIdStrategy.ASCENDING, 1);
+        DataframeImportCatalogDraft.Artifact artifact = new DataframeImportCatalogDraft.Artifact(
+                "masks", ImportArtifactRole.PRIMARY, "mask-row-v1", List.of(), null, "source", null,
+                List.of(mapping("mask", "ioc"), mapping("source", "feed")));
+        DataframeImportRowMapper mapper = new DataframeImportRowMapper(
+                (specification, value) -> value, keys, processed(List.of(definition)));
+
+        return mapper.map(contract(artifact), new ImportDelimitedRecord(23,
+                Map.of("ioc", "https://evil.example/path", "feed", "Feed Alpha")));
     }
 
     @Test
