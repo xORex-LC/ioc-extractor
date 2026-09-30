@@ -186,8 +186,9 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
             Map<String, String> produced = assembly.outputs.getOrDefault(branch.artifactName(), Map.of());
             if (!produced.isEmpty()) {
                 for (String target : outputTargets.getOrDefault(branch.artifactName(), Set.of())) {
-                    ImportCell admittedCell = cells.get(target);
-                    if (admittedCell != null && admittedCell.presence() == ImportCell.Presence.VALUE
+                    ImportCell admittedCell = Objects.requireNonNull(cells.get(target),
+                            "admitted route output " + branch.artifactName() + "." + target);
+                    if (admittedCell.presence() == ImportCell.Presence.VALUE
                             && !produced.containsKey(target)) {
                         cells.put(target, ImportCell.nullValue());
                     }

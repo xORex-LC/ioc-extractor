@@ -125,6 +125,12 @@ class RouterProcessedImportRowPreparerTest {
                         .containsEntry("forbidden_url", ImportCell.value("http://EVIL.example/drop"))
                         .containsEntry("forbidden_ip", ImportCell.value("192.0.2.44"));
             });
+            var explicitNull = fixture.mapper().map(withArtifacts(List.of(artifact)),
+                    new ImportDelimitedRecord(31, Map.of("url", "NULL", "ip", "192.0.2.44")));
+            assertThat(explicitNull.issues()).isEmpty();
+            assertThat(explicitNull.row().orElseThrow().branches().getFirst().cells())
+                    .containsEntry("forbidden_url", ImportCell.nullValue())
+                    .containsEntry("forbidden_ip", ImportCell.value("192.0.2.44"));
         }
     }
 
