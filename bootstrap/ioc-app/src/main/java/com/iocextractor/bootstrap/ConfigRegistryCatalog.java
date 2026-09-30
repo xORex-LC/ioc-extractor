@@ -126,7 +126,8 @@ final class ConfigRegistryCatalog {
     private static boolean hasAddressDetail(ClassifiedIndicator classified) {
         var features = classified.classification().features();
         return features.value().contains("://")
-                || features.hasPort() || features.hasPath() || features.hasQuery();
+                || features.hasPort() || features.hasPath() || features.hasQuery()
+                || features.hasFragment();
     }
 
     static Map<String, Transform> transforms() {

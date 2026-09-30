@@ -28,6 +28,6 @@ public final class DefaultIndicatorFeatureExtractor implements IndicatorFeatureE
         NetworkAddressParser.Address address = result.address();
         HostKind kind = hostClassifier.classify(address.host());
         return new IndicatorFeatures(value, address.host(), address.hasPort(),
-                address.hasPath(), address.hasQuery(), kind);
+                address.hasPath(), address.hasQuery(), address.hasFragment(), kind);
     }
 }

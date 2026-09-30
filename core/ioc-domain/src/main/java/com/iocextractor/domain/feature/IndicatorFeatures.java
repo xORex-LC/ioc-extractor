@@ -9,6 +9,7 @@ package com.iocextractor.domain.feature;
  * @param hasPort   authority carried a {@code :port}
  * @param hasPath   a path ({@code /…}) follows the authority
  * @param hasQuery  a query ({@code ?…}) is present
+ * @param hasFragment a fragment ({@code #…}) is present
  * @param hostKind  classified host kind (IP / registrable / subdomain / onion)
  */
 public record IndicatorFeatures(
@@ -17,7 +18,14 @@ public record IndicatorFeatures(
         boolean hasPort,
         boolean hasPath,
         boolean hasQuery,
+        boolean hasFragment,
         HostKind hostKind) {
+
+    /** Compatibility constructor for callers that describe addresses without fragments. */
+    public IndicatorFeatures(String value, String host, boolean hasPort, boolean hasPath,
+                             boolean hasQuery, HostKind hostKind) {
+        this(value, host, hasPort, hasPath, hasQuery, false, hostKind);
+    }
 
     public boolean isIp() {
         return hostKind == HostKind.IP;

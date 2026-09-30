@@ -4,6 +4,8 @@ import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.domain.classify.ClassificationDecision;
 import com.iocextractor.domain.feature.HostKind;
+import com.iocextractor.domain.feature.DefaultIndicatorFeatureExtractor;
+import com.iocextractor.domain.feature.DefaultIndicatorNormalizer;
 import com.iocextractor.domain.feature.IndicatorFeatures;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
@@ -162,6 +164,12 @@ class IocPropertiesTest {
         var ipPort = classified("192.0.2.1:8443", IndicatorType.IPV4, true, false, false);
         var domainQuery = classified("example.org?id=1", IndicatorType.DOMAIN, false, false, true);
         var hashWithDetailFeatures = classified("deadbeef", IndicatorType.MD5, true, true, true);
+        var fragmentIp = new Indicator("192.0.2.44#section", IndicatorType.IPV4,
+                new SourceContext(null, null));
+        var fragmentFeatures = new DefaultIndicatorFeatureExtractor(new DefaultIndicatorNormalizer(),
+                host -> HostKind.IP).extract(fragmentIp);
+        var fragmentClassified = new ClassifiedIndicator(fragmentIp,
+                new ClassificationDecision(fragmentFeatures, 0, List.of(), new MaskMatch(null, null)));
 
         assertThat(conditions.get("is-clean-host").test(cleanDomain)).isTrue();
         assertThat(conditions.get("is-clean-host").test(domainPath)).isFalse();
@@ -172,6 +180,12 @@ class IocPropertiesTest {
         assertThat(conditions.get("is-address-with-detail").test(domainQuery)).isTrue();
         assertThat(conditions.get("is-address-with-detail").test(cleanDomain)).isFalse();
         assertThat(conditions.get("is-address-with-detail").test(hashWithDetailFeatures)).isFalse();
+        assertThat(conditions.get("is-bare-ip").test(fragmentClassified)).isFalse();
+        assertThat(conditions.get("is-address-with-detail").test(fragmentClassified)).isTrue();
+        assertThat(ConfigRegistryCatalog.valueProviders().get("address.ip").provide(fragmentClassified))
+                .isNull();
+        assertThat(ConfigRegistryCatalog.valueProviders().get("address.url").provide(fragmentClassified))
+                .isEqualTo("192.0.2.44#section");
     }
 
     @Test
