@@ -9,6 +9,7 @@ import com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler;
 import com.iocextractor.adapter.out.store.jdbc.JdbcArtifactIdentityStore;
 import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalImportWriter;
 import com.iocextractor.adapter.out.store.jdbc.JdbcImportCommitEvidenceStore;
+import com.iocextractor.adapter.out.store.jdbc.JdbcImportDeliveryLedger;
 import com.iocextractor.adapter.out.store.jdbc.JdbcImportWorkspace;
 import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleClock;
 import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleControlStore;
@@ -17,6 +18,7 @@ import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceFactory;
 import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceSettings;
 import com.iocextractor.adapter.out.store.jdbc.SqlitePragmaPolicy;
 import com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator;
+import com.iocextractor.adapter.out.store.jdbc.ServiceSchemaMigrations;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.CanonicalKeyDefinition;
@@ -25,13 +27,20 @@ import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
 import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
 import com.iocextractor.application.artifact.lifecycle.LifecycleClockPolicy;
 import com.iocextractor.application.dataframeimport.DataframeImportStagingService;
+import com.iocextractor.application.dataframeimport.DataframeImportProcessingService;
 import com.iocextractor.application.dataframeimport.ImportStagingCommand;
+import com.iocextractor.application.dataframeimport.ImportStagingResult;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalog;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportRecognizer;
 import com.iocextractor.application.dataframeimport.model.ImportCatalogFingerprint;
+import com.iocextractor.application.dataframeimport.model.ImportClaimReservation;
+import com.iocextractor.application.dataframeimport.model.ImportDeliveryCheckpoint;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
 import com.iocextractor.application.dataframeimport.model.ImportDeliverySequence;
+import com.iocextractor.application.dataframeimport.model.ImportDeliveryState;
+import com.iocextractor.application.dataframeimport.model.ImportDeliveryTransition;
+import com.iocextractor.application.dataframeimport.model.ImportLedgerTransitionResult;
 import com.iocextractor.application.dataframeimport.model.ImportSha256;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshot;
 import com.iocextractor.application.dataframeimport.model.ImportSnapshotReference;
@@ -40,6 +49,11 @@ import com.iocextractor.application.dataframeimport.model.ImportSourceTransport;
 import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
 import com.iocextractor.application.dataframeimport.model.ImportWorkspaceLimits;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportCommand;
+import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceCommand;
+import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceResult;
+import com.iocextractor.application.port.out.dataframeimport.DispositionImportSourceCommand;
+import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
+import com.iocextractor.application.port.out.dataframeimport.PublishImportReportCommand;
 import com.iocextractor.application.tck.junit.IntegrationTest;
 import com.zaxxer.hikari.HikariDataSource;
 import java.nio.charset.StandardCharsets;
@@ -54,6 +68,8 @@ import java.time.ZoneOffset;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -145,7 +161,80 @@ class RouterSelectedImportDeliveryIT {
                     assertThat(rows.getString(1)).isEqualTo("evil.example");
                     assertThat(rows.next()).isFalse();
                 }
+                finalizeFromReceipt(delivery, source, snapshot, staged, workspace,
+                        new JdbcImportCommitEvidenceStore(dataSource));
             }
         }
+    }
+
+    private void finalizeFromReceipt(ImportDeliveryId delivery, ImportSourceId source,
+                                     ImportSnapshot snapshot, ImportStagingResult staged,
+                                     JdbcImportWorkspace workspace,
+                                     JdbcImportCommitEvidenceStore commits) {
+        try (HikariDataSource serviceData = new SqliteDataSourceFactory(new SqlitePragmaPolicy())
+                .create(new SqliteDataSourceSettings("service",
+                        "jdbc:sqlite:" + tempDir.resolve("service.db"), "low-memory", 4, 4))) {
+            new SqliteUserVersionSchemaMigrator(serviceData, ServiceSchemaMigrations.sqlite()).migrate();
+            var ledger = new JdbcImportDeliveryLedger(serviceData);
+            ledger.reserveClaim(new ImportClaimReservation(delivery, source, "selected-csv", NOW));
+            advance(ledger, delivery, ImportDeliveryState.DETECTED, ImportDeliveryState.CLAIMING,
+                    ImportDeliveryCheckpoint.none());
+            advance(ledger, delivery, ImportDeliveryState.CLAIMING, ImportDeliveryState.CLAIMED,
+                    ImportDeliveryCheckpoint.none());
+            advance(ledger, delivery, ImportDeliveryState.CLAIMED, ImportDeliveryState.SNAPSHOT_PINNED,
+                    ImportDeliveryCheckpoint.snapshot(snapshot));
+            advance(ledger, delivery, ImportDeliveryState.SNAPSHOT_PINNED, ImportDeliveryState.CONTRACT_PINNED,
+                    ImportDeliveryCheckpoint.contract(staged.contract()));
+            advance(ledger, delivery, ImportDeliveryState.CONTRACT_PINNED, ImportDeliveryState.STAGING,
+                    ImportDeliveryCheckpoint.none());
+            advance(ledger, delivery, ImportDeliveryState.STAGING, ImportDeliveryState.STAGED,
+                    ImportDeliveryCheckpoint.stage(staged.stage()));
+            advance(ledger, delivery, ImportDeliveryState.STAGED, ImportDeliveryState.PROMOTING,
+                    ImportDeliveryCheckpoint.none());
+            advance(ledger, delivery, ImportDeliveryState.PROMOTING, ImportDeliveryState.CANONICAL_COMMITTED,
+                    ImportDeliveryCheckpoint.none());
+
+            AtomicReference<PublishImportReportCommand> report = new AtomicReference<>();
+            AtomicReference<DispositionImportSourceCommand> disposition = new AtomicReference<>();
+            ManagedImportSourceLifecycle sourceLifecycle = new ManagedImportSourceLifecycle() {
+                @Override
+                public List<com.iocextractor.application.dataframeimport.model.ImportSourceCandidate> detect(
+                        ImportSourceId sourceId, Instant observedAt) {
+                    throw new AssertionError("Finalization must not list the source");
+                }
+
+                @Override
+                public ClaimImportSourceResult claim(ClaimImportSourceCommand command) {
+                    throw new AssertionError("Finalization must not reclaim the source");
+                }
+
+                @Override
+                public void disposition(DispositionImportSourceCommand command) {
+                    disposition.set(command);
+                }
+            };
+            var processor = new DataframeImportProcessingService(ledger,
+                    command -> { throw new AssertionError("Committed delivery must not restage"); },
+                    () -> { throw new AssertionError("Committed delivery must not promote again"); },
+                    workspace, commits, report::set, sourceLifecycle, CLOCK, Duration.ofSeconds(1));
+
+            assertThat(processor.processNext().workPerformed()).isTrue();
+            assertThat(ledger.find(delivery).orElseThrow().state()).isEqualTo(ImportDeliveryState.TERMINAL);
+            assertThat(report.get()).isNotNull();
+            assertThat(report.get().outcome()).isEqualTo(ImportTerminalOutcome.SUCCEEDED);
+            assertThat(report.get().acceptedRows()).isOne();
+            assertThat(disposition.get()).isNotNull();
+            assertThat(disposition.get().outcome()).isEqualTo(ImportTerminalOutcome.SUCCEEDED);
+        }
+    }
+
+    private void advance(JdbcImportDeliveryLedger ledger, ImportDeliveryId delivery,
+                         ImportDeliveryState expected, ImportDeliveryState next,
+                         ImportDeliveryCheckpoint checkpoint) {
+        var current = ledger.find(delivery).orElseThrow();
+        assertThat(current.state()).isEqualTo(expected);
+        assertThat(ledger.transition(new ImportDeliveryTransition(delivery, expected, current.version(), next,
+                Optional.empty(), checkpoint, Optional.empty(), NOW)))
+                .isEqualTo(ImportLedgerTransitionResult.APPLIED);
     }
 }

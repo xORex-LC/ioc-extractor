@@ -10,17 +10,17 @@ this release worknote records the evidence and its limits.
 |---|---|---|
 | Selected document through Router, canonical SQLite and projection | `CustomerRoutingPipelineIT`, using `application-customer-routes.yml` layered on the golden artifact catalog and exact `customer-routes/*.csv` fixtures | Two URL paths become one `masks.mask = best-malware.com`; an IP with port/path becomes `ip_list.ip = 10.93.12.187`; the original-view blacklist retains three complete network values; hash and aggregate branches still execute. All five public CSV byte streams are compared in an isolated output directory. |
 | Unselected document compatibility | `GoldenPipelineIT` and committed exact public CSV fixtures | Complete artifact bytes, row counts, revision and repeated-observation behavior are compared under unchanged configuration. |
-| Selected processed import | `RouterProcessedImportRowPreparerTest`, `RouterSelectedImportDeliveryIT`, `ProcessingPlanCatalogTest` | Whole-cell admission, explicit source/output authority, missing/NULL/VALUE, compound conflict, recovered warning and strict failure. A physical two-row CSV passes through the selected route, coalesces on the final host key in the sealed SQLite stage, promotes one canonical mask, then reads the terminal outcome from the durable receipt after stage removal. |
+| Selected processed import | `RouterProcessedImportRowPreparerTest`, `RouterSelectedImportDeliveryIT`, `ProcessingPlanCatalogTest` | Whole-cell admission, explicit source/output authority, missing/NULL/VALUE, compound conflict, recovered warning and strict failure. A physical two-row CSV passes through the selected route, coalesces on the final host key in the sealed SQLite stage and promotes one canonical mask. After stage removal, the real service ledger and processing service finalize the delivery from the durable receipt; terminal report/disposition ports are observed in the test. |
 | Final identity and multiplicity | `PrepareRoutedArtifactsStageTest` | Host-key reduction retains one mask while original blacklist URLs remain distinct. A synthetic `(IP, country)` identity retains two rows; an IP-only identity selects one. There is no production country field or artifact. |
 | Durable authority/recovery | P5 policy admission tests, `DataframeImportRecoveryServiceTest`, `JdbcCanonicalImportWriterContractIT`, `JdbcCanonicalLifecycleWriterIT` | Document policy changes require a drained intake; unsealed import pins are compared before restaging; committed imports finalize from receipts; document writes remain per artifact, import promotion cross-artifact. These existing receipt suites are shared with R5 rather than copied. |
 
 The selected-route fixture is a new synthetic document. It does not claim live
 customer feed or SMB evidence. The selected-import integration test now spans
-physical CSV parsing through canonical receipt replay and its terminal outcome.
-It does not execute the service-ledger terminal disposition/report handshake;
-that remains covered by the shared import recovery tests. Provisioned transport
-evidence and a comparable selected-route before/after resource measurement remain
-outside this local correctness qualification.
+physical CSV parsing through canonical receipt replay and service-ledger terminal
+finalization. Report and source-disposition ports are controlled test
+implementations; it does not claim live local/SMB transport ownership or archive
+behavior. Provisioned transport evidence and a comparable selected-route
+before/after resource measurement remain outside this local qualification.
 
 ## Resource observations
 
