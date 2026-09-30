@@ -134,6 +134,23 @@ class ConfigurableRowMapperTest {
     }
 
     @Test
+    void sourceLabelMappingUsesOnlyTheDeclaredColumnTransforms() {
+        ConfigurableRowMapper m = mapper(List.of(
+                new ColumnSpec("source", "source.label", null, null,
+                        List.of("strip-prefix:Письмо ", "upper")),
+                new ColumnSpec("value", "value", null, null, null)));
+
+        assertThat(m.mapSourceLabel("source", "Письмо Feed")).isEqualTo("FEED");
+        assertThat(m.mapSourceLabel("source", null)).isNull();
+        assertThatThrownBy(() -> m.mapSourceLabel("value", "Feed"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("not a source-label mapping");
+        assertThatThrownBy(() -> m.mapSourceLabel("unknown", "Feed"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown source-label column");
+    }
+
+    @Test
     void unknown_provider_fails_fast() {
         ConfigurableRowMapper m = mapper(List.of(new ColumnSpec("x", "nope", null, null, null)));
         assertThatThrownBy(() -> m.toRow(indicator("x", IndicatorType.URL, null)))
