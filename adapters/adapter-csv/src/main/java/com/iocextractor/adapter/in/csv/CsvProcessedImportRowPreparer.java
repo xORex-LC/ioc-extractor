@@ -205,10 +205,7 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
                 issues.add(issue(record, artifact.name(), COMPOUND_CONFLICT));
                 continue;
             }
-            if (column.name().equals(artifact.sourceLabelTarget())
-                    && (cells.get(column.name()) == null
-                            || cells.get(column.name()).presence() != ImportCell.Presence.VALUE
-                            || values.isEmpty())) {
+            if (retainsAdmittedSourceCell(artifact, column, cells, values)) {
                 continue;
             }
             cells.put(column.name(), values.isEmpty()
@@ -217,6 +214,16 @@ public final class CsvProcessedImportRowPreparer implements ProcessedImportRowPr
             policies.putIfAbsent(column.name(),
                     ImportMergePolicyResolver.resolve(contract, artifact, column.name()));
         }
+    }
+
+    private boolean retainsAdmittedSourceCell(DataframeImportCatalogDraft.Artifact artifact,
+                                              ColumnSpec column, Map<String, ImportCell> cells,
+                                              Set<String> values) {
+        if (!column.name().equals(artifact.sourceLabelTarget())) {
+            return false;
+        }
+        ImportCell admitted = cells.get(column.name());
+        return admitted == null || admitted.presence() != ImportCell.Presence.VALUE || values.isEmpty();
     }
 
     private String sourceLabel(Map<String, ImportCell> cells,
