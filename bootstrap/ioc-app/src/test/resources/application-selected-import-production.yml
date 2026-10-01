@@ -1,0 +1,98 @@
+# Exercises the production selected-import composition with isolated local storage.
+ioc:
+  runtime:
+    mode: daemon
+  storage:
+    service:
+      url: "jdbc:sqlite:${selected.import.root}/service.db"
+  lifecycle:
+    validity:
+      mode: fixed
+  ingestion:
+    dirs:
+      inbox: "${selected.import.root}/document-inbox"
+      processing: "${selected.import.root}/document-processing"
+      done: "${selected.import.root}/document-done"
+      failed: "${selected.import.root}/document-failed"
+    ledger:
+      path: "${selected.import.root}/document-ledger"
+  processing:
+    plans:
+      - name: imported-hosts
+        views:
+          - { name: host, operation: network.host, input: original }
+        classifications:
+          - { view: original, policy: configured }
+          - { view: host, policy: configured }
+        routing:
+          mode: all
+          on-unmatched: { action: skip }
+          branches:
+            - id: imported-mask
+              artifact: masks
+              default-view: host
+              eligibility:
+                'on': original
+                predicate: type-in
+                arguments: { types: [IPV4, DOMAIN, URL] }
+        omitted-artifacts: [ip_list, address_blacklist, hashes, ioc_aggregate]
+  dataframe-import:
+    enabled: true
+    sources:
+      - id: local-hosts
+        transport: local
+        location: "${selected.import.root}/inbox"
+        contracts: [host-masks-v1]
+        authority: host-masks
+    authority-profiles:
+      - id: host-masks
+        artifacts: [masks]
+        maximum-merge-policy: fill-missing
+    contracts:
+      - id: host-masks-v1
+        version: 1
+        charset: UTF-8
+        dialect:
+          delimiter: ";"
+          quote: "\""
+          record-separator: crlf-or-lf
+          header-required: true
+          null-literals: ["NULL"]
+        recognition:
+          required-columns: [ioc]
+          optional-columns: [source, url_match, host_match]
+        mode: processed
+        routing: target-only
+        row-failure-policy: accept-valid
+        duplicate-policy: coalesce
+        renew-unchanged: true
+        formula-policy: reject
+        merge-default: fill-missing
+        artifacts:
+          - name: masks
+            role: primary
+            record-key: mask-row-v1
+            match-keys: [mask-v1]
+            source-label-target: source
+            columns:
+              - { target: mask, source: ioc }
+              - { target: url_match, source: url_match }
+              - { target: host_match, source: host_match }
+              - { target: source, source: source }
+        processed-route:
+          plan: imported-hosts
+          inputs:
+            - { artifact: masks, target: mask }
+          outputs:
+            - { artifact: masks, targets: [mask, url_match, host_match] }
+    runtime:
+      dirs:
+        processing: "${selected.import.root}/import-processing"
+        snapshots: "${selected.import.root}/snapshots"
+        staging: "${selected.import.root}/staging"
+        terminal: "${selected.import.root}/terminal"
+        quarantine: "${selected.import.root}/quarantine"
+      stability:
+        quiet-period: 0ms
+      detect:
+        reconcile-interval: 1h

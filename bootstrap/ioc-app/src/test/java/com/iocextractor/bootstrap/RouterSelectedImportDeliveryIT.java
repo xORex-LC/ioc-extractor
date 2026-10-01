@@ -1,240 +1,225 @@
 package com.iocextractor.bootstrap;
 
-import com.iocextractor.adapter.in.csv.CommonsCsvDelimitedRecordReader;
-import com.iocextractor.adapter.out.store.jdbc.ArtifactIdAllocatorDefinition;
-import com.iocextractor.adapter.out.store.jdbc.DataframeArtifactSchema;
-import com.iocextractor.adapter.out.store.jdbc.DataframeColumn;
-import com.iocextractor.adapter.out.store.jdbc.DataframeFormatMigrations;
-import com.iocextractor.adapter.out.store.jdbc.DataframeSchemaReconciler;
-import com.iocextractor.adapter.out.store.jdbc.JdbcArtifactIdentityStore;
-import com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalImportWriter;
-import com.iocextractor.adapter.out.store.jdbc.JdbcImportCommitEvidenceStore;
-import com.iocextractor.adapter.out.store.jdbc.JdbcImportDeliveryLedger;
-import com.iocextractor.adapter.out.store.jdbc.JdbcImportWorkspace;
-import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleClock;
-import com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleControlStore;
-import com.iocextractor.adapter.out.store.jdbc.JdbcWriterAdmission;
-import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceFactory;
-import com.iocextractor.adapter.out.store.jdbc.SqliteDataSourceSettings;
-import com.iocextractor.adapter.out.store.jdbc.SqlitePragmaPolicy;
-import com.iocextractor.adapter.out.store.jdbc.SqliteUserVersionSchemaMigrator;
-import com.iocextractor.adapter.out.store.jdbc.ServiceSchemaMigrations;
-import com.iocextractor.application.artifact.ArtifactIdStrategy;
-import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
-import com.iocextractor.application.artifact.CanonicalKeyDefinition;
-import com.iocextractor.application.artifact.CanonicalKeyMode;
-import com.iocextractor.application.artifact.lifecycle.EffectiveTime;
-import com.iocextractor.application.artifact.lifecycle.FixedRecordValidityPolicy;
-import com.iocextractor.application.artifact.lifecycle.LifecycleClockPolicy;
+import com.iocextractor.adapter.processing.camel.runtime.CamelRouteRuntime;
 import com.iocextractor.application.dataframeimport.DataframeImportStagingService;
-import com.iocextractor.application.dataframeimport.DataframeImportProcessingService;
 import com.iocextractor.application.dataframeimport.ImportStagingCommand;
-import com.iocextractor.application.dataframeimport.ImportStagingResult;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalog;
-import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalogDraft;
-import com.iocextractor.application.dataframeimport.contract.DataframeImportRecognizer;
-import com.iocextractor.application.dataframeimport.model.ImportCatalogFingerprint;
+import com.iocextractor.application.dataframeimport.mapping.ImportHeaderPlan;
 import com.iocextractor.application.dataframeimport.model.ImportClaimReservation;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryCheckpoint;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
-import com.iocextractor.application.dataframeimport.model.ImportDeliverySequence;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryState;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryTransition;
+import com.iocextractor.application.dataframeimport.model.ImportDuplicatePolicy;
 import com.iocextractor.application.dataframeimport.model.ImportLedgerTransitionResult;
-import com.iocextractor.application.dataframeimport.model.ImportSha256;
-import com.iocextractor.application.dataframeimport.model.ImportSnapshot;
-import com.iocextractor.application.dataframeimport.model.ImportSnapshotReference;
 import com.iocextractor.application.dataframeimport.model.ImportSourceId;
-import com.iocextractor.application.dataframeimport.model.ImportSourceTransport;
 import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
-import com.iocextractor.application.dataframeimport.model.ImportWorkspaceLimits;
+import com.iocextractor.application.observation.ManagedImportObservationAdmission;
+import com.iocextractor.application.port.in.dataframeimport.AdmitDataframeImportCommand;
+import com.iocextractor.application.port.in.dataframeimport.AdmitDataframeImportUseCase;
+import com.iocextractor.application.port.in.dataframeimport.ProcessNextDataframeImportUseCase;
 import com.iocextractor.application.port.out.dataframeimport.CanonicalImportCommand;
-import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceCommand;
-import com.iocextractor.application.port.out.dataframeimport.ClaimImportSourceResult;
-import com.iocextractor.application.port.out.dataframeimport.DispositionImportSourceCommand;
+import com.iocextractor.application.port.out.dataframeimport.CanonicalImportWriter;
+import com.iocextractor.application.port.out.dataframeimport.DelimitedHeaderReadCommand;
+import com.iocextractor.application.port.out.dataframeimport.DelimitedRecordReader;
+import com.iocextractor.application.port.out.dataframeimport.ImportCommitEvidenceStore;
+import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
+import com.iocextractor.application.port.out.dataframeimport.ImportWorkspace;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
-import com.iocextractor.application.port.out.dataframeimport.PublishImportReportCommand;
-import com.iocextractor.application.tck.junit.IntegrationTest;
+import com.iocextractor.application.port.out.dataframeimport.ProcessedImportRowPreparer;
+import com.iocextractor.application.tck.junit.EndToEndTest;
+import com.iocextractor.domain.extract.IndicatorExtractor;
+import com.iocextractor.domain.refang.Refanger;
 import com.zaxxer.hikari.HikariDataSource;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.sql.Connection;
+import java.sql.DriverManager;
 import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Physical selected-route import through stage, coalescing and canonical receipt replay. */
-@IntegrationTest
-@Timeout(60)
+/** Qualifies the YAML-selected import with production Spring bindings and durable recovery. */
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
+        properties = "spring.main.banner-mode=off")
+@ActiveProfiles({"golden", "selected-import-production"})
+@EndToEndTest
+@Timeout(90)
 class RouterSelectedImportDeliveryIT {
-    private static final Instant NOW = Instant.parse("2026-09-30T12:00:00Z");
-    private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
+    private static final ImportSourceId SOURCE = new ImportSourceId("local-hosts");
+    private static final ImportDeliveryId DELIVERY = new ImportDeliveryId("selected-production-import");
 
-    @TempDir Path tempDir;
+    @TempDir static Path root;
+
+    @DynamicPropertySource
+    static void isolateStorage(DynamicPropertyRegistry registry) {
+        registry.add("selected.import.root", () -> root.toAbsolutePath().toString());
+        registry.add("golden.output-dir", () -> root.toAbsolutePath().toString());
+    }
+
+    @Autowired ManagedDataframeImportRuntime runtime;
+    @Autowired ConfigRegistryPreflight preflight;
+    @Autowired ProcessingPlanBindings plans;
+    @Autowired DataframeImportCatalog catalog;
+    @Autowired ProcessedImportRowPreparer preparer;
+    @Autowired Refanger refanger;
+    @Autowired IndicatorExtractor extractor;
+    @Autowired CamelRouteRuntime camel;
+    @Autowired @Qualifier("managedImportSourceLifecycle") ManagedImportSourceLifecycle sources;
+    @Autowired AdmitDataframeImportUseCase admission;
+    @Autowired ManagedImportObservationAdmission observations;
+    @Autowired DataframeImportStagingService staging;
+    @Autowired DelimitedRecordReader reader;
+    @Autowired ImportWorkspace workspace;
+    @Autowired ImportDeliveryLedger ledger;
+    @Autowired CanonicalImportWriter writer;
+    @Autowired ImportCommitEvidenceStore commits;
+    @Autowired @Qualifier("processNextDataframeImportUseCase")
+    ProcessNextDataframeImportUseCase processor;
+    @Autowired @Qualifier("dataframeStorageDataSource") HikariDataSource dataframe;
+    @Autowired @Qualifier("serviceStorageDataSource") HikariDataSource service;
+    @Autowired Clock clock;
 
     @Test
-    void selectedCsvRowsCoalesceOnFinalHostAndRecoverFromReceiptWithoutStage() throws Exception {
-        var routeFixture = new RouterProcessedImportRowPreparerTest();
-        try (var route = routeFixture.fixture()) {
-            Path input = tempDir.resolve("delivery.csv");
-            byte[] bytes = ("ioc\nhttps://EVIL.example/one\nhttp://evil.example/two\n")
-                    .getBytes(StandardCharsets.UTF_8);
-            Files.write(input, bytes);
-            var snapshot = new ImportSnapshot(new ImportSnapshotReference("snapshot:selected"),
-                    new ImportSha256(HexFormat.of().formatHex(
-                            MessageDigest.getInstance("SHA-256").digest(bytes))), bytes.length);
-            var delivery = new ImportDeliveryId("selected-import-delivery");
-            var source = new ImportSourceId("local-feed");
-            var contract = routeFixture.contract();
-            var catalog = new DataframeImportCatalog(true,
-                    Map.of(source, new DataframeImportCatalogDraft.Source(source.value(),
-                            ImportSourceTransport.LOCAL, tempDir.toString(), null,
-                            List.of(contract.id().value()), "standard")),
-                    Map.of(), Map.of(contract.id(), contract),
-                    new ImportCatalogFingerprint("b".repeat(64)));
-            var reader = new CommonsCsvDelimitedRecordReader(ignored -> input);
-            Path workspaceRoot = tempDir.resolve("workspace");
-            var workspace = new JdbcImportWorkspace(workspaceRoot, ImportWorkspaceLimits.defaults(), CLOCK);
-            var staging = new DataframeImportStagingService(
-                    new DataframeImportRecognizer(catalog, reader), route.mapper(), reader,
-                    workspace, ImportWorkspaceLimits.defaults());
-            var staged = staging.stage(new ImportStagingCommand(delivery, source, snapshot));
+    void configuredCsvRouteCoalescesAndFinalizesOnlyFromCanonicalReceipt() throws Exception {
+        // Stop background discovery so every durable transition below is deterministic.
+        runtime.close();
+        assertThat(preflight.processingPlanBindings()).isEqualTo(plans);
+        assertThat(plans.plans()).containsKey("imported-hosts");
+        assertThat(catalog.contracts()).containsKey(
+                new com.iocextractor.application.dataframeimport.model.ImportContractId("host-masks-v1"));
+        assertThat(preparer).isInstanceOf(SelectedProcessedImportRowPreparer.class);
+        assertThat(refanger).isNotNull();
+        assertThat(extractor).isNotNull();
+        assertThat(camel).isNotNull();
+        assertThat(service).isNotNull();
 
-            assertThat(staged.stage().sourceRows()).isEqualTo(2);
-            assertThat(staged.stage().acceptedRows()).isOne();
-            assertThat(staged.stage().rejectedRows()).isZero();
+        Path inbox = Files.createDirectories(root.resolve("inbox"));
+        String csv = "ioc;source\nhttps://EVIL.example/one;Feed Alpha\n"
+                + "http://evil.example/two;Feed Alpha\n";
+        Files.writeString(inbox.resolve("hosts.csv"), csv, StandardCharsets.UTF_8);
+        var candidate = sources.detect(SOURCE, clock.instant()).getFirst();
+        var admitted = admission.admit(new AdmitDataframeImportCommand(
+                new ImportClaimReservation(DELIVERY, SOURCE, candidate.candidateToken(), clock.instant())));
+        assertThat(admitted.delivery().state()).isEqualTo(ImportDeliveryState.SNAPSHOT_PINNED);
+        var snapshot = admitted.delivery().snapshot().orElseThrow();
+        var contract = catalog.contracts().values().iterator().next();
+        assertThat(contract.definition().duplicatePolicy()).isEqualTo(ImportDuplicatePolicy.COALESCE);
+        var headers = reader.readHeader(new DelimitedHeaderReadCommand(snapshot.reference(),
+                contract.definition().charset(), contract.dialect(),
+                com.iocextractor.application.dataframeimport.model.ImportWorkspaceLimits.defaults().inputLimits()));
+        assertThat(headers).containsExactly("ioc", "source");
+        ImportHeaderPlan.compile(headers, contract.definition().recognition());
+        var staged = staging.stage(new ImportStagingCommand(DELIVERY, SOURCE, snapshot));
 
-            try (HikariDataSource dataSource = new SqliteDataSourceFactory(new SqlitePragmaPolicy())
-                    .create(new SqliteDataSourceSettings("dataframe",
-                            "jdbc:sqlite:" + tempDir.resolve("canonical.db"), "low-memory", 4, 4))) {
-                var schemas = List.of(new DataframeArtifactSchema("masks", List.of(
-                        new DataframeColumn("id", "INTEGER"), new DataframeColumn("mask", "TEXT"),
-                        new DataframeColumn("alternate", "TEXT"),
-                        new DataframeColumn("source", "TEXT"))));
-                var identities = List.of(new ArtifactIdentityDefinition("masks",
-                        new CanonicalKeyDefinition("mask-row-v1", CanonicalKeyMode.COMPOSITE,
-                                List.of("mask")), List.of(), 1));
-                new SqliteUserVersionSchemaMigrator(dataSource, DataframeFormatMigrations.sqlite()).migrate();
-                new DataframeSchemaReconciler(dataSource).reconcile(schemas);
-                new JdbcArtifactIdentityStore(dataSource, CLOCK).ensureAll(identities);
-                var control = new JdbcLifecycleControlStore(dataSource, schemas);
-                var disabled = control.load();
-                var activating = disabled.beginActivation("selected-import-fixed-12h-v1");
-                assertThat(control.compareAndSet(disabled, activating)).isTrue();
-                assertThat(control.compareAndSet(activating,
-                        activating.completeActivation(EffectiveTime.at(NOW)))).isTrue();
+        assertThat(staged.stage().sourceRows()).isEqualTo(2);
+        assertThat(staged.stage().acceptedRows()).isOne();
+        assertThat(staged.stage().rejectedRows()).isZero();
+        assertCoalescedStage();
+        advance(ImportDeliveryState.SNAPSHOT_PINNED, ImportDeliveryState.CONTRACT_PINNED,
+                ImportDeliveryCheckpoint.contract(staged.contract()));
+        advance(ImportDeliveryState.CONTRACT_PINNED, ImportDeliveryState.STAGING,
+                ImportDeliveryCheckpoint.none());
+        advance(ImportDeliveryState.STAGING, ImportDeliveryState.STAGED,
+                ImportDeliveryCheckpoint.stage(staged.stage()));
+        advance(ImportDeliveryState.STAGED, ImportDeliveryState.PROMOTING,
+                ImportDeliveryCheckpoint.none());
 
-                var writer = new JdbcCanonicalImportWriter(dataSource, schemas,
-                        List.of(new ArtifactIdAllocatorDefinition("masks", ArtifactIdStrategy.ASCENDING, 1, 1)),
-                        identities, workspaceRoot,
-                        new JdbcLifecycleClock(dataSource, CLOCK,
-                                new LifecycleClockPolicy(Duration.ofSeconds(2), Duration.ofSeconds(30))),
-                        new FixedRecordValidityPolicy(Duration.ofHours(12)), CLOCK,
-                        new JdbcWriterAdmission());
-                var command = new CanonicalImportCommand(delivery, new ImportDeliverySequence(1), source,
-                        snapshot, staged.contract(), staged.stage());
-                writer.promote(command);
-                workspace.discard(delivery);
+        writer.promote(new CanonicalImportCommand(DELIVERY,
+                ledger.find(DELIVERY).orElseThrow().sequence(), SOURCE,
+                snapshot, staged.contract(), staged.stage(), observations.resume(DELIVERY)));
+        var receipt = commits.find(DELIVERY).orElseThrow();
+        assertThat(receipt.acceptedRows()).isOne();
+        assertThat(receipt.rejectedRows()).isZero();
+        assertThat(receipt.publicMutations()).isOne();
+        assertThat(receipt.affectedArtifacts()).containsExactly("masks");
+        assertThat(receipt.terminalOutcome()).isEqualTo(ImportTerminalOutcome.SUCCEEDED);
+        assertCanonicalRow();
 
-                var receipt = new JdbcImportCommitEvidenceStore(dataSource).find(delivery).orElseThrow();
-                assertThat(receipt.acceptedRows()).isOne();
-                assertThat(receipt.rejectedRows()).isZero();
-                assertThat(receipt.terminalOutcome()).isEqualTo(ImportTerminalOutcome.SUCCEEDED);
-                assertThat(receipt.affectedArtifacts()).containsExactly("masks");
-                try (Connection connection = dataSource.getConnection();
-                     var statement = connection.createStatement();
-                     var rows = statement.executeQuery("SELECT mask FROM masks")) {
-                    assertThat(rows.next()).isTrue();
-                    assertThat(rows.getString(1)).isEqualTo("evil.example");
-                    assertThat(rows.next()).isFalse();
-                }
-                finalizeFromReceipt(delivery, source, snapshot, staged, workspace,
-                        new JdbcImportCommitEvidenceStore(dataSource));
+        // A post-commit crash can lose the stage. The durable receipt still finalizes
+        // the delivery; the pinned CSV stays available for terminal archiving.
+        workspace.discard(DELIVERY);
+        assertThat(workspace.adoptSealed(DELIVERY, snapshot, staged.contract())).isEmpty();
+        advance(ImportDeliveryState.PROMOTING, ImportDeliveryState.CANONICAL_COMMITTED,
+                ImportDeliveryCheckpoint.none());
+        assertThat(processor.processNext().workPerformed()).isTrue();
+        assertThat(ledger.find(DELIVERY).orElseThrow().state())
+                .isEqualTo(ImportDeliveryState.TERMINAL);
+        assertThat(commits.find(DELIVERY)).contains(receipt);
+        assertThat(workspace.adoptSealed(DELIVERY, snapshot, staged.contract())).isEmpty();
+        assertCanonicalRow();
+        try (var terminal = Files.list(root.resolve("terminal"))) {
+            var unit = terminal.toList();
+            assertThat(unit).hasSize(1);
+            assertThat(Files.readString(unit.getFirst().resolve("source.csv"))).isEqualTo(csv);
+            assertThat(Files.readString(unit.getFirst().resolve("report.json")))
+                    .contains("\"outcome\":\"SUCCEEDED\"", "\"acceptedRows\":1",
+                            "\"rejectedRows\":0", "\"affectedArtifacts\":[\"masks\"]");
+        }
+        try (Connection connection = service.getConnection();
+             var statement = connection.prepareStatement(
+                     "SELECT state FROM import_delivery WHERE delivery_id = ?")) {
+            statement.setString(1, DELIVERY.value());
+            try (var rows = statement.executeQuery()) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getString(1)).isEqualTo("TERMINAL");
+                assertThat(rows.next()).isFalse();
             }
         }
     }
 
-    private void finalizeFromReceipt(ImportDeliveryId delivery, ImportSourceId source,
-                                     ImportSnapshot snapshot, ImportStagingResult staged,
-                                     JdbcImportWorkspace workspace,
-                                     JdbcImportCommitEvidenceStore commits) {
-        try (HikariDataSource serviceData = new SqliteDataSourceFactory(new SqlitePragmaPolicy())
-                .create(new SqliteDataSourceSettings("service",
-                        "jdbc:sqlite:" + tempDir.resolve("service.db"), "low-memory", 4, 4))) {
-            new SqliteUserVersionSchemaMigrator(serviceData, ServiceSchemaMigrations.sqlite()).migrate();
-            var ledger = new JdbcImportDeliveryLedger(serviceData);
-            ledger.reserveClaim(new ImportClaimReservation(delivery, source, "selected-csv", NOW));
-            advance(ledger, delivery, ImportDeliveryState.DETECTED, ImportDeliveryState.CLAIMING,
-                    ImportDeliveryCheckpoint.none());
-            advance(ledger, delivery, ImportDeliveryState.CLAIMING, ImportDeliveryState.CLAIMED,
-                    ImportDeliveryCheckpoint.none());
-            advance(ledger, delivery, ImportDeliveryState.CLAIMED, ImportDeliveryState.SNAPSHOT_PINNED,
-                    ImportDeliveryCheckpoint.snapshot(snapshot));
-            advance(ledger, delivery, ImportDeliveryState.SNAPSHOT_PINNED, ImportDeliveryState.CONTRACT_PINNED,
-                    ImportDeliveryCheckpoint.contract(staged.contract()));
-            advance(ledger, delivery, ImportDeliveryState.CONTRACT_PINNED, ImportDeliveryState.STAGING,
-                    ImportDeliveryCheckpoint.none());
-            advance(ledger, delivery, ImportDeliveryState.STAGING, ImportDeliveryState.STAGED,
-                    ImportDeliveryCheckpoint.stage(staged.stage()));
-            advance(ledger, delivery, ImportDeliveryState.STAGED, ImportDeliveryState.PROMOTING,
-                    ImportDeliveryCheckpoint.none());
-            advance(ledger, delivery, ImportDeliveryState.PROMOTING, ImportDeliveryState.CANONICAL_COMMITTED,
-                    ImportDeliveryCheckpoint.none());
-
-            AtomicReference<PublishImportReportCommand> report = new AtomicReference<>();
-            AtomicReference<DispositionImportSourceCommand> disposition = new AtomicReference<>();
-            ManagedImportSourceLifecycle sourceLifecycle = new ManagedImportSourceLifecycle() {
-                @Override
-                public List<com.iocextractor.application.dataframeimport.model.ImportSourceCandidate> detect(
-                        ImportSourceId sourceId, Instant observedAt) {
-                    throw new AssertionError("Finalization must not list the source");
-                }
-
-                @Override
-                public ClaimImportSourceResult claim(ClaimImportSourceCommand command) {
-                    throw new AssertionError("Finalization must not reclaim the source");
-                }
-
-                @Override
-                public void disposition(DispositionImportSourceCommand command) {
-                    disposition.set(command);
-                }
-            };
-            var processor = new DataframeImportProcessingService(ledger,
-                    command -> { throw new AssertionError("Committed delivery must not restage"); },
-                    () -> { throw new AssertionError("Committed delivery must not promote again"); },
-                    workspace, commits, report::set, sourceLifecycle, CLOCK, Duration.ofSeconds(1));
-
-            assertThat(processor.processNext().workPerformed()).isTrue();
-            assertThat(ledger.find(delivery).orElseThrow().state()).isEqualTo(ImportDeliveryState.TERMINAL);
-            assertThat(report.get()).isNotNull();
-            assertThat(report.get().outcome()).isEqualTo(ImportTerminalOutcome.SUCCEEDED);
-            assertThat(report.get().acceptedRows()).isOne();
-            assertThat(disposition.get()).isNotNull();
-            assertThat(disposition.get().outcome()).isEqualTo(ImportTerminalOutcome.SUCCEEDED);
+    private void assertCanonicalRow() throws Exception {
+        try (Connection connection = dataframe.getConnection();
+             var statement = connection.createStatement();
+             var rows = statement.executeQuery(
+                     "SELECT mask, url_match, host_match, source, row_key FROM masks")) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getString("mask")).isEqualTo("evil.example");
+            assertThat(rows.getString("url_match")).isEqualTo("u:hAS");
+            assertThat(rows.getString("host_match")).isEqualTo("h:dAS");
+            assertThat(rows.getString("source")).isEqualTo("Feed Alpha");
+            assertThat(rows.getString("row_key"))
+                    .isEqualTo("9aaee4061740463c0c7851a4e5900e7b82728a77261e3a9a5a51af43479850bb");
+            assertThat(rows.next()).isFalse();
         }
     }
 
-    private void advance(JdbcImportDeliveryLedger ledger, ImportDeliveryId delivery,
-                         ImportDeliveryState expected, ImportDeliveryState next,
+    private void assertCoalescedStage() throws Exception {
+        Path sealed;
+        try (var files = Files.list(root.resolve("staging"))) {
+            var stages = files.filter(file -> file.getFileName().toString().endsWith(".sealed.db")).toList();
+            assertThat(stages).hasSize(1);
+            sealed = stages.getFirst();
+        }
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + sealed);
+             var statement = connection.createStatement();
+             var rows = statement.executeQuery(
+                     "SELECT status FROM stage_input_row ORDER BY source_row_number")) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getString(1)).isEqualTo("ACCEPTED");
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getString(1)).isEqualTo("COALESCED");
+            assertThat(rows.next()).isFalse();
+        }
+    }
+
+    private void advance(ImportDeliveryState expected, ImportDeliveryState next,
                          ImportDeliveryCheckpoint checkpoint) {
-        var current = ledger.find(delivery).orElseThrow();
+        var current = ledger.find(DELIVERY).orElseThrow();
         assertThat(current.state()).isEqualTo(expected);
-        assertThat(ledger.transition(new ImportDeliveryTransition(delivery, expected, current.version(), next,
-                Optional.empty(), checkpoint, Optional.empty(), NOW)))
-                .isEqualTo(ImportLedgerTransitionResult.APPLIED);
+        assertThat(ledger.transition(new ImportDeliveryTransition(DELIVERY, expected,
+                current.version(), next, Optional.empty(), checkpoint, Optional.empty(),
+                clock.instant()))).isEqualTo(ImportLedgerTransitionResult.APPLIED);
     }
 }
