@@ -1,25 +1,17 @@
 package com.iocextractor.bootstrap;
 
 import com.iocextractor.adapter.processing.camel.runtime.CamelRouteRuntime;
-import com.iocextractor.application.dataframeimport.DataframeImportStagingService;
-import com.iocextractor.application.dataframeimport.ImportStagingCommand;
 import com.iocextractor.application.dataframeimport.contract.DataframeImportCatalog;
 import com.iocextractor.application.dataframeimport.mapping.ImportHeaderPlan;
 import com.iocextractor.application.dataframeimport.model.ImportClaimReservation;
-import com.iocextractor.application.dataframeimport.model.ImportDeliveryCheckpoint;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryId;
 import com.iocextractor.application.dataframeimport.model.ImportDeliveryState;
-import com.iocextractor.application.dataframeimport.model.ImportDeliveryTransition;
 import com.iocextractor.application.dataframeimport.model.ImportDuplicatePolicy;
-import com.iocextractor.application.dataframeimport.model.ImportLedgerTransitionResult;
 import com.iocextractor.application.dataframeimport.model.ImportSourceId;
 import com.iocextractor.application.dataframeimport.model.ImportTerminalOutcome;
-import com.iocextractor.application.observation.ManagedImportObservationAdmission;
 import com.iocextractor.application.port.in.dataframeimport.AdmitDataframeImportCommand;
 import com.iocextractor.application.port.in.dataframeimport.AdmitDataframeImportUseCase;
 import com.iocextractor.application.port.in.dataframeimport.ProcessNextDataframeImportUseCase;
-import com.iocextractor.application.port.out.dataframeimport.CanonicalImportCommand;
-import com.iocextractor.application.port.out.dataframeimport.CanonicalImportWriter;
 import com.iocextractor.application.port.out.dataframeimport.DelimitedHeaderReadCommand;
 import com.iocextractor.application.port.out.dataframeimport.DelimitedRecordReader;
 import com.iocextractor.application.port.out.dataframeimport.ImportCommitEvidenceStore;
@@ -37,7 +29,6 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.time.Clock;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -78,12 +69,9 @@ class RouterSelectedImportDeliveryIT {
     @Autowired CamelRouteRuntime camel;
     @Autowired @Qualifier("managedImportSourceLifecycle") ManagedImportSourceLifecycle sources;
     @Autowired AdmitDataframeImportUseCase admission;
-    @Autowired ManagedImportObservationAdmission observations;
-    @Autowired DataframeImportStagingService staging;
     @Autowired DelimitedRecordReader reader;
     @Autowired ImportWorkspace workspace;
     @Autowired ImportDeliveryLedger ledger;
-    @Autowired CanonicalImportWriter writer;
     @Autowired ImportCommitEvidenceStore commits;
     @Autowired @Qualifier("processNextDataframeImportUseCase")
     ProcessNextDataframeImportUseCase processor;
@@ -121,24 +109,19 @@ class RouterSelectedImportDeliveryIT {
                 com.iocextractor.application.dataframeimport.model.ImportWorkspaceLimits.defaults().inputLimits()));
         assertThat(headers).containsExactly("ioc", "source");
         ImportHeaderPlan.compile(headers, contract.definition().recognition());
-        var staged = staging.stage(new ImportStagingCommand(DELIVERY, SOURCE, snapshot));
+        assertThat(processor.processNext().workPerformed()).isTrue();
+        var staged = ledger.find(DELIVERY).orElseThrow();
+        assertThat(staged.state()).isEqualTo(ImportDeliveryState.STAGED);
+        var stage = staged.stage().orElseThrow();
+        var pinnedContract = staged.contract().orElseThrow();
 
-        assertThat(staged.stage().sourceRows()).isEqualTo(2);
-        assertThat(staged.stage().acceptedRows()).isOne();
-        assertThat(staged.stage().rejectedRows()).isZero();
+        assertThat(stage.sourceRows()).isEqualTo(2);
+        assertThat(stage.acceptedRows()).isOne();
+        assertThat(stage.rejectedRows()).isZero();
         assertCoalescedStage();
-        advance(ImportDeliveryState.SNAPSHOT_PINNED, ImportDeliveryState.CONTRACT_PINNED,
-                ImportDeliveryCheckpoint.contract(staged.contract()));
-        advance(ImportDeliveryState.CONTRACT_PINNED, ImportDeliveryState.STAGING,
-                ImportDeliveryCheckpoint.none());
-        advance(ImportDeliveryState.STAGING, ImportDeliveryState.STAGED,
-                ImportDeliveryCheckpoint.stage(staged.stage()));
-        advance(ImportDeliveryState.STAGED, ImportDeliveryState.PROMOTING,
-                ImportDeliveryCheckpoint.none());
-
-        writer.promote(new CanonicalImportCommand(DELIVERY,
-                ledger.find(DELIVERY).orElseThrow().sequence(), SOURCE,
-                snapshot, staged.contract(), staged.stage(), observations.resume(DELIVERY)));
+        assertThat(processor.processNext().workPerformed()).isTrue();
+        assertThat(ledger.find(DELIVERY).orElseThrow().state())
+                .isEqualTo(ImportDeliveryState.CANONICAL_COMMITTED);
         var receipt = commits.find(DELIVERY).orElseThrow();
         assertThat(receipt.acceptedRows()).isOne();
         assertThat(receipt.rejectedRows()).isZero();
@@ -150,14 +133,12 @@ class RouterSelectedImportDeliveryIT {
         // A post-commit crash can lose the stage. The durable receipt still finalizes
         // the delivery; the pinned CSV stays available for terminal archiving.
         workspace.discard(DELIVERY);
-        assertThat(workspace.adoptSealed(DELIVERY, snapshot, staged.contract())).isEmpty();
-        advance(ImportDeliveryState.PROMOTING, ImportDeliveryState.CANONICAL_COMMITTED,
-                ImportDeliveryCheckpoint.none());
+        assertThat(workspace.adoptSealed(DELIVERY, snapshot, pinnedContract)).isEmpty();
         assertThat(processor.processNext().workPerformed()).isTrue();
         assertThat(ledger.find(DELIVERY).orElseThrow().state())
                 .isEqualTo(ImportDeliveryState.TERMINAL);
         assertThat(commits.find(DELIVERY)).contains(receipt);
-        assertThat(workspace.adoptSealed(DELIVERY, snapshot, staged.contract())).isEmpty();
+        assertThat(workspace.adoptSealed(DELIVERY, snapshot, pinnedContract)).isEmpty();
         assertCanonicalRow();
         try (var terminal = Files.list(root.resolve("terminal"))) {
             var unit = terminal.toList();
@@ -214,12 +195,4 @@ class RouterSelectedImportDeliveryIT {
         }
     }
 
-    private void advance(ImportDeliveryState expected, ImportDeliveryState next,
-                         ImportDeliveryCheckpoint checkpoint) {
-        var current = ledger.find(DELIVERY).orElseThrow();
-        assertThat(current.state()).isEqualTo(expected);
-        assertThat(ledger.transition(new ImportDeliveryTransition(DELIVERY, expected,
-                current.version(), next, Optional.empty(), checkpoint, Optional.empty(),
-                clock.instant()))).isEqualTo(ImportLedgerTransitionResult.APPLIED);
-    }
 }
