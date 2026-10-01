@@ -47,10 +47,11 @@ correctness tests and from provisioned external-transport evidence.
 ### Paired production-composition comparison
 
 `tools/dev/processing-route-comparison.py --document-rows 8000 --import-rows
-2000 --pairs 3` ran on 2026-10-01 against commit `09cfdd57` plus the probe
-worktree. The [raw report](qualification/p6/processing-route-comparison-20261001.json)
-is versioned; per-run logs are retained locally under
-`.dev/processing-route-comparison-final-20261001/`. The probe starts a new
+2000 --pairs 3` was repeated on 2026-10-01 against commit `7d0c9844` plus the
+sampler fix. The [current raw report](qualification/p6/processing-route-comparison-sampler-fixed-20261001.json)
+and [earlier report](qualification/p6/processing-route-comparison-20261001.json)
+are versioned; current per-run logs are retained locally under
+`.dev/processing-route-comparison-sampler-fixed-20261001/`. The probe starts a new
 Spring context and isolated SQLite/workspace in each JVM, then measures only
 the synchronous workload after startup with `-Xms128m -Xmx512m`. Pair order
 alternates. Both configurations use the same real extractor, classifier, mapper
@@ -65,19 +66,21 @@ route for every occurrence/row. The script checks exact public CSV bytes and
 canonical keys for the document, plus final import fields/keys, 20 accepted and
 1,980 COALESCED stage rows, and the `(20 accepted, 0 rejected, 20 mutations)`
 canonical receipt in every pair. All three pairs passed.
+`ProcessingRouteComparisonTest` verifies that status-read failures and sampler
+interruption abort the probe instead of publishing partial memory metrics.
 
 | Workload, median of three fresh JVMs | Compatible | Selected | Selected / compatible |
 |---|---:|---:|---:|
-| Document wall time | 1,648 ms | 2,564 ms | 1.56× |
-| Document input throughput | 4,856 occurrences/s | 3,120 occurrences/s | 0.64× |
-| Document main-thread allocations | 217.6 MB | 528.9 MB | 2.43× |
-| Document sampled peak Java heap | 113.6 MB | 122.0 MB | 1.07× |
-| Document sampled process RSS high-water | 356,936 KiB | 372,528 KiB | 1.04× |
-| Import wall time through terminalization | 875 ms | 1,398 ms | 1.60× |
-| Import input throughput | 2,287 rows/s | 1,431 rows/s | 0.63× |
-| Import main-thread allocations | 78.3 MB | 121.6 MB | 1.55× |
-| Import sampled peak Java heap | 119.0 MB | 118.7 MB | 1.00× |
-| Import sampled process RSS high-water | 404,980 KiB | 412,856 KiB | 1.02× |
+| Document wall time | 1,631 ms | 2,728 ms | 1.67× |
+| Document input throughput | 4,904 occurrences/s | 2,933 occurrences/s | 0.60× |
+| Document main-thread allocations | 218.3 MB | 531.1 MB | 2.43× |
+| Document sampled peak Java heap | 112.6 MB | 123.0 MB | 1.09× |
+| Document sampled process RSS high-water | 358,704 KiB | 372,852 KiB | 1.04× |
+| Import wall time through terminalization | 870 ms | 1,615 ms | 1.86× |
+| Import input throughput | 2,300 rows/s | 1,239 rows/s | 0.54× |
+| Import main-thread allocations | 78.2 MB | 121.6 MB | 1.55× |
+| Import sampled peak Java heap | 119.1 MB | 118.8 MB | 1.00× |
+| Import sampled process RSS high-water | 406,332 KiB | 410,676 KiB | 1.01× |
 
 The time includes document read/extraction/preparation/canonical write or
 import admission/staging/promotion/terminalization, respectively; it excludes
@@ -85,7 +88,8 @@ Spring startup and fixture generation. The throughput denominator is all input
 occurrences or CSV rows, not only the 20 retained identities. Allocated bytes
 are the calling thread's `ThreadMXBean` delta, not process-wide allocations:
 background and short-lived threads are outside that counter. A 10 ms sampler
-records Java heap and Linux `VmHWM`; those memory peaks include previously
+records Java heap and Linux `VmHWM`; sampler failure or interruption aborts the
+run before metric publication. Those memory peaks include previously
 reached startup high-water and are not incremental route allocations. These
 limits make the allocation comparison directional, while paired time and
 equivalent-result checks establish the end-to-end overhead on this host.
@@ -97,7 +101,10 @@ existing duplicate-heavy aggregate load guard; 1 GiB is the service memory
 envelope used there. The allocation bound admits the observed per-occurrence
 selection and classification cost with some headroom, but the 2.43×
 document churn is a concrete optimization target if larger duplicate-heavy
-feeds or customer latency limits appear. All current medians pass. These are
+feeds or customer latency limits appear. All current medians pass, but import's
+1.86× time ratio has little margin to the 2× guard. Its three paired ratios
+range from 1.52× to 1.89×, so a customer SLO requires more runs and a
+representative input mix. These are
 local regression guards, not customer throughput SLOs; larger sizes, mixed
 IOC types and provisioned SMB remain separate qualification dimensions.
 

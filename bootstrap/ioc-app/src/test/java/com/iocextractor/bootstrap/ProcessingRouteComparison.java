@@ -14,6 +14,8 @@ import com.iocextractor.application.port.out.dataframeimport.ImportCommitEvidenc
 import com.iocextractor.application.port.out.dataframeimport.ImportDeliveryLedger;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
 import com.sun.management.ThreadMXBean;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,6 +23,8 @@ import java.time.Clock;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongSupplier;
 import org.springframework.boot.SpringApplication;
 
 /** Opt-in production-composition workload probe; invoked by the developer comparison script. */
@@ -52,25 +56,29 @@ public final class ProcessingRouteComparison {
             threads.setThreadAllocatedMemoryEnabled(true);
             long currentThread = Thread.currentThread().threadId();
             long allocatedBefore = threads.getThreadAllocatedBytes(currentThread);
-            try (PeakSampler sampler = new PeakSampler()) {
+            PeakSampler sampler = new PeakSampler();
+            int observations;
+            long elapsed;
+            long allocated;
+            try (sampler) {
                 long start = System.nanoTime();
-                int observations = switch (kind) {
+                observations = switch (kind) {
                     case "document" -> document(context.getBean(ExtractIocsUseCase.class), fixture);
                     case "import" -> importCsv(context, fixture);
                     default -> throw new IllegalArgumentException("Unknown workload: " + kind);
                 };
-                long elapsed = System.nanoTime() - start;
-                long allocated = threads.getThreadAllocatedBytes(currentThread) - allocatedBefore;
+                elapsed = System.nanoTime() - start;
+                allocated = threads.getThreadAllocatedBytes(currentThread) - allocatedBefore;
                 if (observations <= 0 || allocated < 0) {
                     throw new IllegalStateException("Incomplete workload measurement");
                 }
-                System.out.printf("ROUTE_COMPARISON kind=%s observations=%d elapsed_ms=%.3f "
-                                + "throughput_per_s=%.2f allocated_main_bytes=%d "
-                                + "sampled_peak_heap_bytes=%d sampled_peak_rss_kib=%d%n",
-                        kind, observations, elapsed / 1_000_000.0,
-                        observations * 1_000_000_000.0 / elapsed, allocated,
-                        sampler.peakHeap.get(), sampler.peakRss.get());
             }
+            System.out.printf("ROUTE_COMPARISON kind=%s observations=%d elapsed_ms=%.3f "
+                            + "throughput_per_s=%.2f allocated_main_bytes=%d "
+                            + "sampled_peak_heap_bytes=%d sampled_peak_rss_kib=%d%n",
+                    kind, observations, elapsed / 1_000_000.0,
+                    observations * 1_000_000_000.0 / elapsed, allocated,
+                    sampler.peakHeap.get(), sampler.peakRss.get());
         }
     }
 
@@ -113,27 +121,43 @@ public final class ProcessingRouteComparison {
         throw new IllegalStateException("Import did not reach terminal state");
     }
 
-    private static final class PeakSampler implements AutoCloseable {
+    static final class PeakSampler implements AutoCloseable {
         private final AtomicBoolean running = new AtomicBoolean(true);
         private final AtomicLong peakHeap = new AtomicLong();
         private final AtomicLong peakRss = new AtomicLong();
+        private final AtomicReference<Throwable> failure = new AtomicReference<>();
         private final Thread worker;
 
-        private PeakSampler() {
+        PeakSampler() {
+            this(PeakSampler::readRssHighWater);
+        }
+
+        PeakSampler(LongSupplier rssHighWater) {
             worker = Thread.ofPlatform().daemon().name("route-comparison-sampler").start(() -> {
-                while (running.get()) {
-                    peakHeap.accumulateAndGet(ManagementFactory.getMemoryMXBean()
-                            .getHeapMemoryUsage().getUsed(), Math::max);
-                    try (var status = Files.lines(Path.of("/proc/self/status"))) {
-                        status.filter(line -> line.startsWith("VmHWM:"))
-                                .findFirst().ifPresent(line -> peakRss.accumulateAndGet(
-                                        Long.parseLong(line.replaceAll("[^0-9]", "")), Math::max));
+                try {
+                    while (running.get()) {
+                        peakHeap.accumulateAndGet(ManagementFactory.getMemoryMXBean()
+                                .getHeapMemoryUsage().getUsed(), Math::max);
+                        peakRss.accumulateAndGet(rssHighWater.getAsLong(), Math::max);
                         TimeUnit.MILLISECONDS.sleep(10);
-                    } catch (Exception failure) {
-                        throw new IllegalStateException("Unable to sample process memory", failure);
                     }
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    failure.set(interrupted);
+                } catch (Throwable samplingFailure) {
+                    failure.set(samplingFailure);
                 }
             });
+        }
+
+        private static long readRssHighWater() {
+            try (var status = Files.lines(Path.of("/proc/self/status"))) {
+                return status.filter(line -> line.startsWith("VmHWM:"))
+                        .mapToLong(line -> Long.parseLong(line.replaceAll("[^0-9]", "")))
+                        .findFirst().orElseThrow(() -> new IllegalStateException("VmHWM is missing"));
+            } catch (IOException failure) {
+                throw new UncheckedIOException(failure);
+            }
         }
 
         @Override public void close() throws InterruptedException {
@@ -141,6 +165,12 @@ public final class ProcessingRouteComparison {
             worker.join(TimeUnit.SECONDS.toMillis(2));
             if (worker.isAlive()) {
                 throw new IllegalStateException("Memory sampler did not stop");
+            }
+            if (failure.get() != null) {
+                throw new IllegalStateException("Memory sampler failed", failure.get());
+            }
+            if (peakHeap.get() <= 0 || peakRss.get() <= 0) {
+                throw new IllegalStateException("Memory sampler produced no complete sample");
             }
         }
     }
