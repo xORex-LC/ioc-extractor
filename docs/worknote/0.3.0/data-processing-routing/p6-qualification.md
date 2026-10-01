@@ -19,8 +19,8 @@ customer feed or SMB evidence. The selected-import integration test uses a
 temporary local source, service/dataframe SQLite databases and private workspace.
 It exercises real local ownership and terminal archiving, but drives the
 post-commit crash seam explicitly in the test; it is not a process-kill test.
-Provisioned SMB evidence and a comparable selected-route before/after resource
-measurement remain outside this local qualification.
+Provisioned SMB evidence remains outside this local qualification. The paired
+selected-route resource measurement below closes the local before/after gap.
 
 ## Resource observations
 
@@ -41,9 +41,65 @@ heap and a 991,232-byte sealed stage. The local report is under
 `.dev/dataframe-import-load/insert-1000-20260929T141718Z/report.md`. This is
 the shared disk-workspace/canonical writer profile, not a selected IOC route;
 therefore its memory numbers are a downstream reference and cannot establish a
-before/after route overhead. No new SLO or hard resource limit is inferred from
-these samples. They are separate from deterministic offline correctness tests
-and from provisioned external-transport evidence.
+before/after route overhead. They are separate from deterministic offline
+correctness tests and from provisioned external-transport evidence.
+
+### Paired production-composition comparison
+
+`tools/dev/processing-route-comparison.py --document-rows 8000 --import-rows
+2000 --pairs 3` ran on 2026-10-01 against commit `09cfdd57` plus the probe
+worktree. The [raw report](qualification/p6/processing-route-comparison-20261001.json)
+is versioned; per-run logs are retained locally under
+`.dev/processing-route-comparison-final-20261001/`. The probe starts a new
+Spring context and isolated SQLite/workspace in each JVM, then measures only
+the synchronous workload after startup with `-Xms128m -Xmx512m`. Pair order
+alternates. Both configurations use the same real extractor, classifier, mapper
+and persistence; the selected path uses the real Camel runtime. The import
+configurations differ only by `processed-route`, while the document
+configurations differ by activation of the selected plan and its catalog. The
+physical document has 8,000 domain occurrences and 20 distinct domains
+(99.75% repeats); the CSV has 2,000 rows and the same 20
+distinct domains. Bare domains are deliberate: host-view selection must leave
+the output equal to the compatible view while still exercising the selected
+route for every occurrence/row. The script checks exact public CSV bytes and
+canonical keys for the document, plus final import fields/keys, 20 accepted and
+1,980 COALESCED stage rows, and the `(20 accepted, 0 rejected, 20 mutations)`
+canonical receipt in every pair. All three pairs passed.
+
+| Workload, median of three fresh JVMs | Compatible | Selected | Selected / compatible |
+|---|---:|---:|---:|
+| Document wall time | 1,648 ms | 2,564 ms | 1.56× |
+| Document input throughput | 4,856 occurrences/s | 3,120 occurrences/s | 0.64× |
+| Document main-thread allocations | 217.6 MB | 528.9 MB | 2.43× |
+| Document sampled peak Java heap | 113.6 MB | 122.0 MB | 1.07× |
+| Document sampled process RSS high-water | 356,936 KiB | 372,528 KiB | 1.04× |
+| Import wall time through terminalization | 875 ms | 1,398 ms | 1.60× |
+| Import input throughput | 2,287 rows/s | 1,431 rows/s | 0.63× |
+| Import main-thread allocations | 78.3 MB | 121.6 MB | 1.55× |
+| Import sampled peak Java heap | 119.0 MB | 118.7 MB | 1.00× |
+| Import sampled process RSS high-water | 404,980 KiB | 412,856 KiB | 1.02× |
+
+The time includes document read/extraction/preparation/canonical write or
+import admission/staging/promotion/terminalization, respectively; it excludes
+Spring startup and fixture generation. The throughput denominator is all input
+occurrences or CSV rows, not only the 20 retained identities. Allocated bytes
+are the calling thread's `ThreadMXBean` delta, not process-wide allocations:
+background and short-lived threads are outside that counter. A 10 ms sampler
+records Java heap and Linux `VmHWM`; those memory peaks include previously
+reached startup high-water and are not incremental route allocations. These
+limits make the allocation comparison directional, while paired time and
+equivalent-result checks establish the end-to-end overhead on this host.
+
+The provisional regression envelope is median selected/compatible wall time
+at most 2×, calling-thread allocations at most 3×, sampled heap and RSS each
+at most 1.25×, and selected RSS below 1 GiB. The 2× wall bound matches the
+existing duplicate-heavy aggregate load guard; 1 GiB is the service memory
+envelope used there. The allocation bound admits the observed per-occurrence
+selection and classification cost with some headroom, but the 2.43×
+document churn is a concrete optimization target if larger duplicate-heavy
+feeds or customer latency limits appear. All current medians pass. These are
+local regression guards, not customer throughput SLOs; larger sizes, mixed
+IOC types and provisioned SMB remain separate qualification dimensions.
 
 ## Retirement audit
 
@@ -66,10 +122,9 @@ the compatibility dispatch rather than running both.
   `forbidden_url`, even when `ip_list` stores the cleaned IP. Operators wanting a
   bare blacklist IP must select the cleaned view for that artifact and review
   its provider and identity contract.
-- A selected-import workload measuring route preparation together with the
-  disk workspace, or a complete provisioned local/SMB delivery, remains useful
-  if a customer throughput or memory SLO is introduced. The present reference
-  load is intentionally labeled separately.
+- A complete provisioned local/SMB delivery and larger mixed-type loads remain
+  useful if a customer throughput or memory SLO is introduced. The paired
+  local comparison above and the earlier reference load have distinct scopes.
 
 The final worktree must pass `make docs`, `make verify` and the separate
 `make pmd-analysis` gate. The exact-HEAD results are recorded by `make context`

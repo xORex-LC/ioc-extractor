@@ -23,6 +23,7 @@
 | `dataframe-import-load.sh …` | Выполнить opt-in 100k/1M полный JDBC import profile, проверить SLO/heap/query plans и сохранить evidence |
 | `ioc-aggregate-load.sh …` | Сравнить pre-feature JAR и aggregate candidate на одном duplicate-heavy daemon input; измерить end-to-end/write latency, VmHWM и query plans |
 | `router-qualification.sh --size 1000|100000` | Измерить синтетический Camel Router по матрице ветвей, потоков и исходов; отчёты в `.dev/router-qualification` |
+| `processing-route-comparison.py …` | Попарно сравнить совместимый и выбранный путь на одинаковом документе с повторами и processed import; проверить равенство результата и измерить время, throughput, allocations, heap/RSS |
 | `logs.sh …` | Читать и фильтровать ECS JSON по level/event/run/diagnostic |
 | `release-notes-context.sh …` | Собрать read-only Git/PR inventory для ручной подготовки release notes |
 
@@ -127,3 +128,13 @@ Router qualification запускает синтетические операц�
 профиль 100k запускается отдельно. CSV и метаданные остаются в
 `.dev/router-qualification`. Его throughput и allocation нельзя сравнивать с
 нынешним IOC preparer до появления документной и импортной интеграции.
+
+`processing-route-comparison.py` собирает test probe вместе с reactor, запускает
+каждый вариант в отдельной JVM/SQLite/workspace и чередует порядок в трёх парах.
+По умолчанию это 8 000 документных occurrences и 2 000 CSV строк при 20
+различных доменах; оба пути обязаны дать одинаковые public CSV, канонические
+ключи, импортные поля, receipt и COALESCE-статусы. Отчёт `report.json` содержит
+все отдельные наблюдения и медианы. Измеряются только синхронная обработка
+после старта Spring и аллокации вызывающего потока; подготовка JVM и
+конфигурации не входят во время. Подробности и текущие результаты находятся в
+`docs/worknote/0.3.0/data-processing-routing/p6-qualification.md`.

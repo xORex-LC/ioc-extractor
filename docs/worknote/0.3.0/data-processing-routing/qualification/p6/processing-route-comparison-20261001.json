@@ -1,0 +1,214 @@
+{
+  "commit": "09cfdd5747bdf701adc4ebe673f88e42f969db11",
+  "dirty": true,
+  "java": "openjdk version \"21.0.12.1\" 2026-08-18",
+  "host": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "inputs": {
+    "document": {
+      "rows": 8000,
+      "sha256": "b6c8f323f497c070fa5a7f47f03c3ae61393025ebb7dc97e18444c9153bd370c"
+    },
+    "import": {
+      "rows": 2000,
+      "sha256": "bf313845cab8fffc00c891e6b659f5cfe7b6b715c40ab291a9b39567d16c902d"
+    }
+  },
+  "metrics": [
+    {
+      "kind": "document",
+      "observations": "8000",
+      "elapsed_ms": "1663.589",
+      "throughput_per_s": "4808.88",
+      "allocated_main_bytes": "217631536",
+      "sampled_peak_heap_bytes": "113647616",
+      "sampled_peak_rss_kib": "356936",
+      "path": "compatible",
+      "iteration": 0
+    },
+    {
+      "kind": "document",
+      "observations": "8000",
+      "elapsed_ms": "2564.241",
+      "throughput_per_s": "3119.83",
+      "allocated_main_bytes": "528823952",
+      "sampled_peak_heap_bytes": "122689752",
+      "sampled_peak_rss_kib": "369604",
+      "path": "selected",
+      "iteration": 0
+    },
+    {
+      "kind": "document",
+      "observations": "8000",
+      "elapsed_ms": "2621.973",
+      "throughput_per_s": "3051.14",
+      "allocated_main_bytes": "529955336",
+      "sampled_peak_heap_bytes": "121979288",
+      "sampled_peak_rss_kib": "377288",
+      "path": "selected",
+      "iteration": 1
+    },
+    {
+      "kind": "document",
+      "observations": "8000",
+      "elapsed_ms": "1582.880",
+      "throughput_per_s": "5054.08",
+      "allocated_main_bytes": "218111680",
+      "sampled_peak_heap_bytes": "114722016",
+      "sampled_peak_rss_kib": "358240",
+      "path": "compatible",
+      "iteration": 1
+    },
+    {
+      "kind": "document",
+      "observations": "8000",
+      "elapsed_ms": "1647.515",
+      "throughput_per_s": "4855.80",
+      "allocated_main_bytes": "216764128",
+      "sampled_peak_heap_bytes": "113145856",
+      "sampled_peak_rss_kib": "354392",
+      "path": "compatible",
+      "iteration": 2
+    },
+    {
+      "kind": "document",
+      "observations": "8000",
+      "elapsed_ms": "2548.539",
+      "throughput_per_s": "3139.05",
+      "allocated_main_bytes": "528919320",
+      "sampled_peak_heap_bytes": "119263152",
+      "sampled_peak_rss_kib": "372528",
+      "path": "selected",
+      "iteration": 2
+    },
+    {
+      "kind": "import",
+      "observations": "2000",
+      "elapsed_ms": "874.559",
+      "throughput_per_s": "2286.87",
+      "allocated_main_bytes": "78307816",
+      "sampled_peak_heap_bytes": "119174680",
+      "sampled_peak_rss_kib": "398048",
+      "path": "compatible",
+      "iteration": 0
+    },
+    {
+      "kind": "import",
+      "observations": "2000",
+      "elapsed_ms": "1390.638",
+      "throughput_per_s": "1438.19",
+      "allocated_main_bytes": "121495272",
+      "sampled_peak_heap_bytes": "118665608",
+      "sampled_peak_rss_kib": "407960",
+      "path": "selected",
+      "iteration": 0
+    },
+    {
+      "kind": "import",
+      "observations": "2000",
+      "elapsed_ms": "1418.284",
+      "throughput_per_s": "1410.15",
+      "allocated_main_bytes": "121551848",
+      "sampled_peak_heap_bytes": "119864672",
+      "sampled_peak_rss_kib": "412856",
+      "path": "selected",
+      "iteration": 1
+    },
+    {
+      "kind": "import",
+      "observations": "2000",
+      "elapsed_ms": "890.434",
+      "throughput_per_s": "2246.10",
+      "allocated_main_bytes": "78204408",
+      "sampled_peak_heap_bytes": "117867168",
+      "sampled_peak_rss_kib": "410892",
+      "path": "compatible",
+      "iteration": 1
+    },
+    {
+      "kind": "import",
+      "observations": "2000",
+      "elapsed_ms": "874.232",
+      "throughput_per_s": "2287.72",
+      "allocated_main_bytes": "78310872",
+      "sampled_peak_heap_bytes": "118998368",
+      "sampled_peak_rss_kib": "404980",
+      "path": "compatible",
+      "iteration": 2
+    },
+    {
+      "kind": "import",
+      "observations": "2000",
+      "elapsed_ms": "1398.097",
+      "throughput_per_s": "1430.52",
+      "allocated_main_bytes": "121590592",
+      "sampled_peak_heap_bytes": "116754120",
+      "sampled_peak_rss_kib": "424336",
+      "path": "selected",
+      "iteration": 2
+    }
+  ],
+  "medians": {
+    "document": {
+      "elapsed_ms": {
+        "compatible_median": 1647.515,
+        "selected_median": 2564.241,
+        "selected_over_compatible": 1.5564295317493315
+      },
+      "throughput_per_s": {
+        "compatible_median": 4855.8,
+        "selected_median": 3119.83,
+        "selected_over_compatible": 0.6424955723052843
+      },
+      "allocated_main_bytes": {
+        "compatible_median": 217631536.0,
+        "selected_median": 528919320.0,
+        "selected_over_compatible": 2.430343183351883
+      },
+      "sampled_peak_heap_bytes": {
+        "compatible_median": 113647616.0,
+        "selected_median": 121979288.0,
+        "selected_over_compatible": 1.073311454241152
+      },
+      "sampled_peak_rss_kib": {
+        "compatible_median": 356936.0,
+        "selected_median": 372528.0,
+        "selected_over_compatible": 1.0436829011363382
+      }
+    },
+    "import": {
+      "elapsed_ms": {
+        "compatible_median": 874.559,
+        "selected_median": 1398.097,
+        "selected_over_compatible": 1.5986308528069575
+      },
+      "throughput_per_s": {
+        "compatible_median": 2286.87,
+        "selected_median": 1430.52,
+        "selected_over_compatible": 0.6255362132521743
+      },
+      "allocated_main_bytes": {
+        "compatible_median": 78307816.0,
+        "selected_median": 121551848.0,
+        "selected_over_compatible": 1.5522313634695162
+      },
+      "sampled_peak_heap_bytes": {
+        "compatible_median": 118998368.0,
+        "selected_median": 118665608.0,
+        "selected_over_compatible": 0.997203659129174
+      },
+      "sampled_peak_rss_kib": {
+        "compatible_median": 404980.0,
+        "selected_median": 412856.0,
+        "selected_over_compatible": 1.0194478739690849
+      }
+    }
+  },
+  "limits": {
+    "max_wall_ratio": 2.0,
+    "max_allocation_ratio": 3.0,
+    "max_rss_kib": 1048576,
+    "max_memory_ratio": 1.25
+  },
+  "equivalent_results": true,
+  "within_provisional_envelope": true
+}
