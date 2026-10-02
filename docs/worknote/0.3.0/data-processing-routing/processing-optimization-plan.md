@@ -1,10 +1,16 @@
 # IOC processing and Camel optimization plan
 
-Status: proposed execution plan, 2026-10-01. Production baseline:
+Status: accepted execution plan, originally prepared 2026-10-01. Production baseline:
 `08d30621876f546ba7f19061fd3fcbd9548b7e29`, branch `module/platform/router`.
 This plan refines the completed Router/IOC implementation; it does not reopen
-the customer data contract or claim performance acceptance. No implementation
-or new benchmark result is recorded by this document.
+the customer data contract or claim performance acceptance.
+
+Progress, 2026-10-03: O0 comparison/diagnostic tooling and O1–O2 implementation
+are recorded in [O0–O2 evidence](o0-o2-implementation.md). That evidence includes
+independent first/warmed workload pairs, invocation counters, preparation timing
+and a proposed resource budget. Customer budget agreement, broader workload
+qualification and final performance acceptance remain open. O3–O7 implementation
+has not started; O3 retains the explicit `prepareLegacy` exclusion below.
 
 Inputs: [cost analysis](router-cost-and-architecture-analysis.md),
 [Camel applicability](camel-optimization-applicability.md),

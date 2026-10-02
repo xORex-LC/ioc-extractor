@@ -236,3 +236,55 @@ its static lambda. The failed log/JFR remain local and are not successful sample
 Import signatures additionally retain stage/receipt warnings, canonical receipt
 outcome and durable terminal state. Receipt-only recovery remains covered by the
 real selected-import integration suite rather than counted as insertion work.
+
+The complete diagnostic comparison uses five alternating pairs per workload
+before and after O1–O2. Before-reference `85463fb8` is a detached qualification
+commit containing only the identical diagnostic probe overlay on `52517ceb`;
+its production code is the unoptimized baseline. After-reference `2d0dab82`
+contains the optimized runtime. Both worktrees were clean when compiled.
+Harness bytes, fixture/config digests and every same-path output signature
+match. Only the two intended invariant-work counters differ:
+
+| Selected workload | Argument splits before / after | String template sends before / after | Diagnostic preparation ms before / after |
+|---|---:|---:|---:|
+| 8k/20-key document | 32,000 / 0 | 16,000 / 0 | 1046.3 / 895.0 |
+| 2k/20-key import | 2,000 / 0 | 4,000 / 0 | 641.8 / 468.4 |
+
+All other recorded semantic operation counts are identical across revisions
+and stable across the five forks. The document still has 16,000 classifications,
+24,000 artifact candidates and 60 prepared rows; the compatible path has 20,
+8,040 and 60. Both document paths reserve 20 IDs with identical recorded ranges.
+Selected import still has 4,000 classifications and prepares all 2,000 rows;
+20 accepted representatives and 1,980 COALESCED participants remain in stage.
+Both complete diagnostic profiles retained equivalent results and happened to
+pass historical guards, which are not diagnostic acceptance criteria.
+
+See [before counters](qualification/optimization/o0-diagnostic.json) and
+[after counters](qualification/optimization/o2-diagnostic.json). The preparation
+durations above include instrumentation and JFR effects and do not prove primary
+timing gains. Forty JFR files/raw logs remain under the ignored worktrees for
+method/allocation triage. The standard JFR summary tool successfully read the
+optimized selected-document recording.
+
+## Proposed acceptance budget for discussion
+
+For the initial 8k/20-key document and 2k/20-key processed import profiles,
+propose selected/compatible median time at most 1.50 for the first workload and
+1.25 after a disjoint warm-up; calling-thread allocation at most 1.50 in both
+profiles. Propose sampled heap/current RSS ratios at most 1.15, and absolute
+workload peaks at most 256 MiB heap and 512 MiB current RSS under the existing
+`-Xms128m/-Xmx512m` launch settings. These absolute limits are scoped to those
+initial inputs, not to every possible 100k-row/concurrent workload.
+
+The first-workload allowance accounts for one-time lazy initialization; the
+warmed target limits continuous service processing cost. A 50% allocation
+allowance still requires substantial reduction from the current duplicate-heavy
+document path. The proposed memory headroom is above the observed baseline
+peaks while remaining materially below the historical 1 GiB RSS envelope.
+Require full observable-equivalence checks separately from resource thresholds.
+
+This is a proposal, not an agreed customer budget or a relaxed benchmark guard.
+The optimized document path currently misses the proposed time/allocation
+targets; passing the existing historical guards does not close performance
+acceptance. Before O7, agree the workload/concurrency envelope, pin logging and
+confirm or replace these proposed limits before collecting acceptance samples.
