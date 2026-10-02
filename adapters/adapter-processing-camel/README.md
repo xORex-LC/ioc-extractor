@@ -49,7 +49,7 @@ supplies Camel's `simple` language required during context startup, and
 runtime/analysis dependencies have no source imports in this module. The
 source-level Camel API, route model and list-aggregation processor dependencies
 are declared directly; `camel-support` is an explicit test dependency for
-exchange fixtures. Versions remain managed by the existing parent Camel BOM.
+exchange fixtures. Versions remain managed by the existing parent `camel.version` property.
 
 `RouterQualificationTest` runs the 1,000-input synthetic correctness matrix in
 Surefire. `make router-qualification SIZE=100000` runs the opt-in 100,000-input
