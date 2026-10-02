@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 /** One admitted condition graph; no descriptor tree is interpreted per invocation. */
 public final class CompiledSelector {
@@ -133,6 +134,8 @@ public final class CompiledSelector {
             Map<String, OperationCatalog.PredicateRegistration> predicates) {
         if (condition instanceof Condition.Leaf leaf) {
             OperationCatalog.PredicateRegistration registration = predicates.get(leaf.predicate());
+            var predicate = Objects.requireNonNull(registration.factory().bind(leaf.arguments()),
+                    "bound predicate " + leaf.predicate());
             return lookup -> {
                 ViewOutcome view = lookup.resolve(leaf.view(), registration.acceptsAbsent());
                 if (view instanceof ViewOutcome.Unavailable unavailable) {
@@ -142,7 +145,7 @@ public final class CompiledSelector {
                 }
                 Object value = view instanceof ViewOutcome.Absent ? view
                         : ((ViewOutcome.Available) view).value();
-                Decision decision = registration.binding().matches(value, leaf.arguments())
+                Decision decision = predicate.test(value)
                         ? Decision.MATCH : Decision.NO_MATCH;
                 lookup.traceLeaf(leaf.view(), leaf.predicate(), decision);
                 return decision;

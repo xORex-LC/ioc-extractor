@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.camel.ProducerTemplate;
+import org.apache.camel.Endpoint;
 
 /** Per-call view cache, explicit recovery executor and demanded-consumer ledger. */
 final class InvocationViews {
@@ -21,15 +22,18 @@ final class InvocationViews {
     private final Map<FailureOccurrence, Consumers> consumers = new LinkedHashMap<>();
     private final List<PlanExecutionResult.RecoveryAttempt> attempts = new ArrayList<>();
     private final ProducerTemplate producer;
+    private final Map<String, Endpoint> endpoints;
     private final CompiledRoutes.CompiledPlan plan;
     private final String planId;
     private final RoutingTraceSink trace;
 
-    InvocationViews(ProducerTemplate producer, Object original, CompiledRoutes.CompiledPlan plan,
+    InvocationViews(ProducerTemplate producer, Map<String, Endpoint> endpoints,
+                    Object original, CompiledRoutes.CompiledPlan plan,
                     String planId, RoutingTraceSink trace) {
         resolved.put("original", new ViewState(new ViewOutcome.Available(original),
                 List.of(), List.of()));
         this.producer = producer;
+        this.endpoints = endpoints;
         this.plan = plan;
         this.planId = planId;
         this.trace = trace;
@@ -76,7 +80,7 @@ final class InvocationViews {
                 || primary.outcome() instanceof ViewOutcome.Absent) {
             return primary;
         }
-        ViewOutcome outcome = producer.requestBody(route.uri(),
+        ViewOutcome outcome = producer.requestBody(endpoints.get(route.uri()),
                 ((ViewOutcome.Available) primary.outcome()).value(), ViewOutcome.class);
         if (outcome == null) {
             throw new IllegalStateException("Operation returned no view outcome: " + viewId);

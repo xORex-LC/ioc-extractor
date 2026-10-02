@@ -42,6 +42,40 @@ class CamelRuntimeLifecycleTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test void endpointBindingFailureStopsTheStartedContext() {
+        var seen = new AtomicReference<CamelContext>();
+        var routes = new CompiledRoutes(List.of(new RouteBuilder() {
+            @Override public void configure() {
+                seen.set(getContext());
+                from("direct:valid").process(exchange -> { });
+            }
+        }), List.of("missing-component:bound"), Map.of());
+        assertThatThrownBy(() -> new CamelRouteRuntime(routes))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("failed to start");
+        assertThat(seen.get().isStopped()).isTrue();
+    }
+
+    @Test void independentRuntimesOwnTheirEndpointsAndClosingOneLeavesTheOtherUsable() throws Exception {
+        var contexts = new java.util.HashSet<CamelContext>();
+        var catalog = catalog(exchange -> {
+            contexts.add(exchange.getContext());
+            exchange.getMessage().setBody(new ViewOutcome.Available(exchange.getMessage().getBody()));
+        });
+        var first = runtime(catalog, NoopRoutingTraceSink.INSTANCE, Duration.ofSeconds(2));
+        try (var second = runtime(catalog, NoopRoutingTraceSink.INSTANCE, Duration.ofSeconds(2))) {
+            try {
+                assertThat(candidate(first.execute("p", "first"))).isEqualTo("first");
+                assertThat(candidate(second.execute("p", "second"))).isEqualTo("second");
+                first.close();
+                assertThat(candidate(second.execute("p", "still-running"))).isEqualTo("still-running");
+                assertThat(second.isReady()).isTrue();
+                assertThat(contexts).hasSize(2);
+            } finally {
+                first.close();
+            }
+        }
+    }
+
     @Test void readinessDetectsStoppedRouteAndContext() throws Exception {
         AtomicReference<CamelContext> seen = new AtomicReference<>();
         var catalog = catalog(exchange -> {

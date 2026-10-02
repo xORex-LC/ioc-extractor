@@ -6,7 +6,11 @@ and binds ordered predicates to a selector while generating local view, branch
 and dispatch routes. `runtime` owns the embedded Camel context and selects an
 admitted plan by ID. It computes prerequisite and selected-branch mapping views
 on demand once per call, then dispatches eligible branches through a sequential
-Camel Recipient List.
+Camel Recipient List. Fixed endpoints are bound after context startup and owned
+by that runtime; templates and recipient lists receive endpoint references.
+Parameterized predicates bind validated arguments once per condition leaf at
+compilation. The bound predicates must be reusable across concurrent calls;
+invocation-specific values never enter a shared argument cache.
 `RoutingExecutionScopes` and `RoutingTraceSink` are optional neutral hooks:
 bootstrap supplies MDC scopes and maps value-free decisions with the pinned
 policy fingerprint to the existing application tracer. A registered plan

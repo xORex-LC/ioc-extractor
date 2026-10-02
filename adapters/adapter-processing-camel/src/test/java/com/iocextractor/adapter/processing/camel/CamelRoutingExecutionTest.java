@@ -49,6 +49,51 @@ class CamelRoutingExecutionTest {
                 return value.equals(args.get("value"));
             })));
 
+    @Test void bindsArgumentsOncePerLeafAndEvaluatesEveryReachedInvocation() throws Exception {
+        var bindings = new AtomicInteger();
+        var calls = new AtomicInteger();
+        var boundValues = new java.util.ArrayList<String>();
+        var predicates = Map.of("equals", PredicateRegistration.parameterized(Set.of("value"), args -> {
+            bindings.incrementAndGet();
+            String expected = args.get("value");
+            boundValues.add(expected);
+            return value -> {
+                calls.incrementAndGet();
+                return expected.equals(value);
+            };
+        }));
+        var boundCatalog = new OperationCatalog(catalog.operations(), catalog.destinations(), predicates);
+        var plan = plan(PlanDescriptor.Mode.ALL, List.of(
+                branch("first", equals("original", "hit")),
+                branch("second", equals("original", "miss"))), PlanDescriptor.Action.SKIP, null);
+        var compiled = compiler.compile(List.of(plan), boundCatalog);
+        assertThat(bindings).hasValue(2);
+        assertThat(boundValues).containsExactly("hit", "miss");
+        try (var runtime = new CamelRouteRuntime(compiled)) {
+            assertThat(runtime.execute("p", "hit").selection().selectedBranches()).containsExactly("first");
+            assertThat(runtime.execute("p", "miss").selection().selectedBranches()).containsExactly("second");
+            assertThat(runtime.execute("p", "hit").selection().selectedBranches()).containsExactly("first");
+        }
+        assertThat(bindings).hasValue(2);
+        assertThat(calls).hasValue(6);
+    }
+
+    @Test void invalidFactoryResultsFailDuringCompilation() {
+        var plan = plan(PlanDescriptor.Mode.FIRST, List.of(branch("first", equals("original", "hit"))),
+                PlanDescriptor.Action.SKIP, null);
+        var missing = new OperationCatalog(catalog.operations(), catalog.destinations(), Map.of(
+                "equals", PredicateRegistration.parameterized(Set.of("value"), args -> null)));
+        assertThatThrownBy(() -> compiler.compile(List.of(plan), missing))
+                .isInstanceOf(NullPointerException.class).hasMessage("bound predicate equals");
+        var failing = new OperationCatalog(catalog.operations(), catalog.destinations(), Map.of(
+                "equals", PredicateRegistration.parameterized(Set.of("value"), args -> {
+                    throw new IllegalArgumentException("invalid binding");
+                })));
+        assertThatThrownBy(() -> compiler.compile(List.of(plan), failing))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("invalid binding");
+        assertThat(destinationCalls).hasValue(0);
+    }
+
     @Test void firstStopsAtMatchAndNeverRetriesAfterDestinationFailure() throws Exception {
         var branches = List.of(branch("first", equals("original", "hit")),
                 branch("second", equals("original", "hit")));

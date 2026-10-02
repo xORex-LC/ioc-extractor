@@ -14,10 +14,12 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import org.apache.camel.ProducerTemplate;
+import org.apache.camel.Endpoint;
 import org.apache.camel.ServiceStatus;
 import org.apache.camel.impl.DefaultCamelContext;
 
@@ -25,6 +27,7 @@ import org.apache.camel.impl.DefaultCamelContext;
 public final class CamelRouteRuntime implements AutoCloseable {
     private final DefaultCamelContext context;
     private final ProducerTemplate producer;
+    private final Map<String, Endpoint> endpoints;
     private final Map<String, CompiledRoutes.CompiledPlan> plans;
     private final RoutingTraceSink trace;
     private final long shutdownTimeoutNanos;
@@ -56,6 +59,11 @@ public final class CamelRouteRuntime implements AutoCloseable {
                 context.addRoutes(route);
             }
             context.start();
+            Map<String, Endpoint> bound = new LinkedHashMap<>();
+            for (String uri : compiled.endpointUris()) {
+                bound.put(uri, Objects.requireNonNull(context.getEndpoint(uri), "local endpoint " + uri));
+            }
+            endpoints = Map.copyOf(bound);
             producer = context.createProducerTemplate();
         } catch (Exception failure) {
             try {
@@ -83,16 +91,16 @@ public final class CamelRouteRuntime implements AutoCloseable {
         if (plan == null) {
             throw new IllegalArgumentException("Unknown compiled plan: " + planId);
         }
-        InvocationViews views = new InvocationViews(producer, original, plan, planId, trace);
+        InvocationViews views = new InvocationViews(producer, endpoints, original, plan, planId, trace);
         PlanSelection selection = plan.selector().select(views::demand, planId, trace);
-        List<String> recipients = new ArrayList<>();
+        List<Endpoint> recipients = new ArrayList<>();
         List<PlanSelection.BlockedBranch> preparationBlocked = new ArrayList<>();
         for (String branchId : selection.selectedBranches()) {
             CompiledRoutes.BranchRoute branch = plan.branches().get(branchId);
             FailureReference failure = resolveRequiredViews(views, branchId,
                     branch.requiredViews());
             if (failure == null) {
-                recipients.add(branch.uri());
+                recipients.add(endpoints.get(branch.uri()));
             } else {
                 preparationBlocked.add(new PlanSelection.BlockedBranch(branchId, failure));
                 trace.emit(RoutingTraceEvent.Kind.BRANCH, planId, null, branchId,
@@ -105,7 +113,7 @@ public final class CamelRouteRuntime implements AutoCloseable {
         var input = new PlanExecutionResult.BranchInput(original, views.snapshot());
         var request = new DispatchRequest(input, recipients);
         DispatchRequest.Replies replies = Objects.requireNonNull(producer.requestBody(
-                plan.dispatchUri(), request, DispatchRequest.Replies.class), "dispatch replies");
+                endpoints.get(plan.dispatchUri()), request, DispatchRequest.Replies.class), "dispatch replies");
         for (PlanExecutionResult.BranchReply reply : replies.values()) {
             traceReply(planId, reply);
         }

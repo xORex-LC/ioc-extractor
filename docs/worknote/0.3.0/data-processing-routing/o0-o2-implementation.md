@@ -43,3 +43,29 @@ Existing 2x time / 3x allocation / 1.25x memory / 1 GiB RSS limits remain
 historical regression guards. Customer acceptance limits are still unresolved;
 O0–O2 do not close O7 performance acceptance. The wider workload matrix and
 longer diagnostic profiling remain required for final qualification.
+
+## O1 — invariant binding
+
+Runtime-owned endpoints are resolved once after context startup. Descriptor
+URIs remain neutral; only the adapter stores Camel endpoint references and
+uses them for view requests, dispatch and recipient selection. Existing producer
+reuse, admission and bounded close behavior remain in place.
+
+Predicate registrations now expose a startup factory. Existing argument-aware
+bindings adapt to that seam; each condition leaf binds once before runtime
+startup. The IOC `type-in` factory builds an immutable type set. Eager semantic
+preflight still validates configured types before compiling any route.
+No observation results or mutable invocation data are cached.
+
+Added regressions cover binding once with repeated reached evaluations,
+factory failure before startup, endpoint binding failure cleanup and two
+independent runtime contexts. Existing routing, recovery, concurrency, close and
+invalid-configuration suites remain part of qualification.
+
+O0 baseline on clean `52517ceb` used five pairs for each retained 8k-document /
+2k-import workload. All output signatures matched. Selected/compatible ratios
+were 1.938 time and 2.941 calling-thread allocation for the document; 1.564 and
+1.560 for import. See [raw baseline samples](qualification/optimization/o0-baseline.json).
+The historical guards passed; this is not an agreed acceptance budget.
+Focused O1 adapter tests and O0 sampler regressions passed; complete gates are
+recorded after the final O2 worktree is fixed.

@@ -72,9 +72,10 @@ final class IocProcessingOperations {
                     (value, args) -> entry.getValue().test(
                             ((ProcessingView) value).classified().classification().features())));
         }
-        registrations.put("type-in", new PredicateRegistration(Set.of("types"),
-                (value, args) -> java.util.Arrays.asList(args.get("types").split(","))
-                        .contains(((ProcessingView) value).classified().indicator().type().name())));
+        registrations.put("type-in", PredicateRegistration.parameterized(Set.of("types"), args -> {
+            Set<String> types = Set.copyOf(java.util.Arrays.asList(args.get("types").split(",")));
+            return value -> types.contains(((ProcessingView) value).classified().indicator().type().name());
+        }));
         return registrations;
     }
 
