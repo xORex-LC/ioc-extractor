@@ -17,6 +17,18 @@ SPEC.loader.exec_module(COMPARISON)
 
 
 class ComparisonTest(unittest.TestCase):
+    def test_missing_or_unreached_instrumentation_invalidates_diagnostic_fork(self):
+        for output in ("", "ROUTE_DIAGNOSTICS preparation_calls=1\n",
+                       "ROUTE_DIAGNOSTICS preparation_calls=1 preparation_nanos=0\n"):
+            with self.assertRaises(RuntimeError):
+                COMPARISON.diagnostic_counters(output)
+        result = COMPARISON.diagnostic_counters(
+            "ROUTE_DIAGNOSTICS preparation_calls=2 preparation_nanos=100 classifications=4 "
+            "derived_classifications=2\n")
+        self.assertEqual(result["original_classifications"], 2)
+        self.assertEqual(result["argument_splits"], 0)
+        self.assertEqual(result["string_template_sends"], 0)
+
     def test_fixture_cardinality_is_explicit_for_each_input(self):
         with tempfile.TemporaryDirectory() as root:
             paths = COMPARISON.fixtures(Path(root), 8, 6, 4, 6)

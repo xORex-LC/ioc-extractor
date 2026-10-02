@@ -75,7 +75,12 @@ public final class ProcessingRouteComparison {
             long collectionTime;
             long elapsed;
             long allocated;
+            boolean diagnostic = Boolean.getBoolean("comparison.diagnostics");
+            String counters = null;
             try (sampler) {
+                if (diagnostic) {
+                    ComparisonDiagnostics.begin();
+                }
                 long start = System.nanoTime();
                 outcome = switch (kind) {
                     case "document" -> document(context.getBean(ExtractIocsUseCase.class), fixture);
@@ -86,11 +91,17 @@ public final class ProcessingRouteComparison {
                 allocated = threads.getThreadAllocatedBytes(currentThread) - allocatedBefore;
                 collections = gcCount() - collectionsBefore;
                 collectionTime = gcTime() - gcTimeBefore;
+                if (diagnostic) {
+                    counters = ComparisonDiagnostics.end();
+                }
                 if (outcome.observations() <= 0 || allocated < 0) {
                     throw new IllegalStateException("Incomplete workload measurement");
                 }
             }
             int observations = outcome.observations();
+            if (counters != null) {
+                System.out.println("ROUTE_DIAGNOSTICS " + counters);
+            }
             System.out.println("ROUTE_OUTCOME " + outcome.summary());
             System.out.printf("ROUTE_COMPARISON kind=%s observations=%d elapsed_ms=%.3f "
                             + "throughput_per_s=%.2f allocated_main_bytes=%d "

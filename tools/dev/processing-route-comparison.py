@@ -22,6 +22,21 @@ RESOURCES = APP / "src/test/resources"
 METRIC = re.compile(r"^ROUTE_COMPARISON (.+)$", re.MULTILINE)
 
 
+def diagnostic_counters(output):
+    records = re.findall(r"^ROUTE_DIAGNOSTICS (.+)$", output, re.MULTILINE)
+    if len(records) != 1:
+        raise RuntimeError("Missing or duplicate diagnostic counters")
+    counters = {key: int(value) for key, value in
+                (item.split("=", 1) for item in records[0].split())}
+    if counters.get("preparation_calls", 0) <= 0 or counters.get("preparation_nanos", 0) <= 0:
+        raise RuntimeError("Preparation instrumentation was not reached")
+    counters["original_classifications"] = counters.get("classifications", 0) - counters.get(
+        "derived_classifications", 0)
+    for key in ("derived_classifications", "argument_splits", "string_template_sends"):
+        counters.setdefault(key, 0)
+    return counters
+
+
 def command(args, *, cwd=REPO, output=None, timeout=600):
     result = subprocess.run(args, cwd=cwd, text=True, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, timeout=timeout, check=False)
@@ -117,16 +132,32 @@ def result_signature(kind, root, input_rows, unique=20, warmups=0):
         with sqlite3.connect(selected_stages[0]) as stage:
             statuses = dict(stage.execute(
                 "SELECT status, COUNT(*) FROM stage_input_row GROUP BY status"))
+            stage_warnings = stage.execute(
+                "SELECT source_row_number, artifact, diagnostic_code FROM stage_row_warning "
+                "ORDER BY source_row_number, artifact, diagnostic_code").fetchall()
+        receipt_warnings = connection.execute(
+            "SELECT source_row_number, artifact, diagnostic_code FROM import_row_warning "
+            "WHERE delivery_id = 'comparison-import' "
+            "ORDER BY source_row_number, artifact, diagnostic_code").fetchall()
+        receipt_outcome = connection.execute(
+            "SELECT outcome FROM import_commit WHERE delivery_id = 'comparison-import'").fetchall()
+        with sqlite3.connect(root / "service.db") as service:
+            terminal = service.execute(
+                "SELECT state, terminal_outcome FROM import_delivery WHERE delivery_id = 'comparison-import'").fetchall()
         expected_statuses = {"ACCEPTED": expected}
         if input_rows > expected:
             expected_statuses["COALESCED"] = input_rows - expected
         if len(rows) != expected or receipt != [(expected, 0, expected)] \
-                or statuses != expected_statuses:
+                or statuses != expected_statuses or stage_warnings != receipt_warnings \
+                or terminal != [("TERMINAL", "SUCCEEDED")]:
             raise RuntimeError("Incomplete canonical import result")
-        return {"rows": rows, "receipt_counts": receipt, "stage_statuses": statuses}
+        return {"rows": rows, "receipt_counts": receipt, "stage_statuses": statuses,
+                "stage_warnings": stage_warnings, "receipt_warnings": receipt_warnings,
+                "receipt_outcome": receipt_outcome, "terminal_state": terminal}
 
 
-def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows, unique, warmups, resources=RESOURCES):
+def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows, unique, warmups,
+            resources=RESOURCES, diagnostics=False):
     name = "selected" if selected else "compatible"
     root = workspace / f"{kind}-{name}-{iteration}"
     root.mkdir()
@@ -141,6 +172,10 @@ def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows
             f"-Dspring.config.additional-location=file:{root}/configs/application.yml",
             "-cp", classpath, "com.iocextractor.bootstrap.ProcessingRouteComparison",
             kind, str(root), str(fixture), *map(str, warmup_paths)]
+    if diagnostics:
+        args[1:1] = [f"-javaagent:{workspace}/comparison-diagnostics.jar",
+                     "-Dcomparison.diagnostics=true",
+                     f"-XX:StartFlightRecording=filename={root}/diagnostic.jfr,settings=profile,dumponexit=true"]
     fork_start = time.monotonic()
     output = command(args, cwd=root, output=root / "run.log")
     fork_elapsed = time.monotonic() - fork_start
@@ -154,6 +189,10 @@ def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows
     if len(environments) != 1:
         raise RuntimeError("Missing environment metric")
     metrics.update(dict(item.split("=", 1) for item in environments[0].split()))
+    if diagnostics:
+        counters = diagnostic_counters(output)
+        metrics["diagnostic_counters"] = counters
+        metrics["preparation_ms"] = str(counters["preparation_nanos"] / 1_000_000)
     metrics["kind"], metrics["path"], metrics["iteration"] = kind, name, iteration
     metrics["config_sha256"] = hashlib.sha256((root / "configs/application.yml").read_bytes()).hexdigest()
     metrics["fork_wall_ms"] = str(fork_elapsed * 1000)
@@ -178,6 +217,8 @@ def summary(rows):
     columns = ("elapsed_ms", "throughput_per_s", "allocated_main_bytes",
                "sampled_peak_heap_bytes", "sampled_peak_rss_kib", "sampled_peak_current_rss_kib",
                "startup_ms", "gc_count", "gc_time_ms")
+    if rows and all("preparation_ms" in row for row in rows):
+        columns += ("preparation_ms",)
     result = {}
     for kind in ("document", "import"):
         result[kind] = {}
@@ -207,6 +248,8 @@ def main():
     parser.add_argument("--import-unique", type=int, default=20)
     parser.add_argument("--warmups", type=int, default=0,
                         help="Disjoint warm-up files per JVM before the measured insertion workload")
+    parser.add_argument("--diagnostics", action="store_true",
+                        help="Separate instrumented preparation/counter/JFR forks; not primary cost evidence")
     parser.add_argument("--max-wall-ratio", type=float, default=2.0)
     parser.add_argument("--max-allocation-ratio", type=float, default=3.0)
     parser.add_argument("--max-rss-kib", type=int, default=1048576)
@@ -253,6 +296,14 @@ def main():
     for compiled in (APP / "target/test-classes/com/iocextractor/bootstrap").glob(
             "ProcessingRouteComparison*.class"):
         shutil.copy2(compiled, probe / compiled.name)
+    if args.diagnostics:
+        with zipfile.ZipFile(workspace / "comparison-diagnostics.jar", "w") as agent:
+            agent.writestr("META-INF/MANIFEST.MF",
+                           "Manifest-Version: 1.0\nPremain-Class: com.iocextractor.bootstrap.ComparisonDiagnostics\n\n")
+            for compiled in (APP / "target/test-classes/com/iocextractor/bootstrap").glob(
+                    "ComparisonDiagnostics*.class"):
+                agent.write(compiled, "com/iocextractor/bootstrap/" + compiled.name)
+                shutil.copy2(compiled, probe / compiled.name)
     resources = workspace / "test-resources"
     shutil.copytree(RESOURCES, resources)
     classes = [workspace / "probe-classes", resources, app_classes]
@@ -270,7 +321,7 @@ def main():
                                              classpath, args.document_rows if kind == "document"
                                              else args.import_rows,
                                              args.document_unique if kind == "document" else args.import_unique,
-                                             args.warmups, resources)
+                                             args.warmups, resources, args.diagnostics)
                 rows.append(metrics)
                 pair.append(signature)
             if {key: value for key, value in pair[0].items() if key != "outcome"} != \
@@ -297,6 +348,9 @@ def main():
               "java": command(["java", "-version"]).splitlines()[0],
               "host": platform.platform(),
               "warmups": args.warmups, "pairs": args.pairs,
+              "measurement_mode": "diagnostic-instrumentation-and-jfr" if args.diagnostics else "primary",
+              "logging_environment_keys": sorted(key for key in os.environ
+                                                 if key in ("DEBUG", "TRACE") or key.startswith("LOGGING_")),
               "cpu_count": os.cpu_count(),
               "cgroup_limits": {name: Path(f"/sys/fs/cgroup/{name}").read_text().strip()
                                 if Path(f"/sys/fs/cgroup/{name}").exists() else "unavailable"
@@ -315,7 +369,7 @@ def main():
     print(f"Equivalent results in all {args.pairs} pairs per workload; "
           f"provisional envelope {'passed' if passing else 'FAILED'}; "
           f"{workspace}/report.json")
-    if not passing:
+    if not passing and not args.diagnostics:
         raise SystemExit(1)
 
 

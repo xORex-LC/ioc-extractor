@@ -159,16 +159,17 @@ See [row-copy samples](qualification/optimization/o2-row.json),
 [warmed O0 samples](qualification/optimization/o0-warmed.json) and
 [warmed O2 samples](qualification/optimization/o2-warmed.json).
 
-The Java probe includes outcome verification/summary construction in total
-workload time; it does not isolate preparation from read/commit/projection.
+The primary Java probe includes outcome verification/summary construction in
+total workload time. Preparation is isolated only in separate diagnostic forks,
+described below; those timings must not be substituted into primary ratios.
 Main-thread allocation does not account for sampler or other workers, and
 VmHWM includes startup/warm-up history. This host inherited `DEBUG=release`;
 Spring DEBUG records are visible in all retained workload logs. The same
 profile was used throughout, with configured per-item TRACE disabled; these
 are local probe-profile comparisons, not an independently qualified production
 logging/resource budget. Before O7 acceptance, pin logging explicitly and run
-the wider mixed-input/cardinality/fan-out matrix and separate diagnostic
-profiles/counters. No tail-latency or customer-acceptable-overhead claim is made.
+the wider mixed-input/cardinality/fan-out matrix and longer diagnostic
+profiles. No tail-latency or customer-acceptable-overhead claim is made.
 
 Sampler and independent-runtime fixtures now close owned resources even if
 coordination assertions or construction fail. Focused tests and the complete
@@ -192,6 +193,46 @@ No baseline, exclusion or suppression was changed. These are deterministic
 offline checks; no installed-service or external-transport claim is made.
 
 The implementation and initial first/warmed workload evidence are retained.
-Final performance acceptance remains O7 work: the agreed resource budget,
-wider workload matrix, separately timed preparation and detailed diagnostic
-counter/JFR profiles are not established by the current end-to-end probe.
+Final performance acceptance remains O7 work: the agreed resource budget and
+wider workload matrix are not established by the current end-to-end probe.
+
+## Separate O0 diagnostic instrumentation
+
+`--diagnostics` attaches a test-only Java agent and enables a per-fork JFR file.
+The agent weaves narrowly named production methods using the already present
+Spring ASM dependency. It preserves the real Spring composition and components;
+primary timing forks never attach it. Workload-scoped counters exclude startup,
+disjoint warm-ups and shutdown. Instrumentation failures and unfinished successful
+preparation scopes invalidate publication rather than becoming missing zeroes.
+
+Counters cover network parsing, PSL host classification/domain parsing, original
+and derived classifications, reached branch/predicate evaluations, view demands,
+evaluations, operation sends and maximum per-invocation cached views, template
+sends (including string overloads), predicate argument splits, mapped cells/rows,
+artifact candidates, prepared document rows per artifact, import row/warning
+counts and reserved ID counts/ranges. `max_prepared_rows` describes the checkpoint
+output, not a heap census or the peak candidate-list retention inside the current
+grouping implementation. Semantic cross-document caches do not exist yet.
+
+Successful document preparation is timed around its entire existing stage;
+import preparation is the sum of its existing per-row processed preparer calls.
+Those durations include counter overhead. JFR includes startup/warm-up too and
+must be filtered accordingly. Sparse JFR samples do not establish CPU shares.
+Instrumented runs retain historical-envelope outcomes but do not enforce them
+as performance acceptance; missing metrics or semantic/process failures still
+fail. The primary performance guards remain enforced unchanged.
+
+A 32-occurrence/24-import-row smoke profile reached the actual components and
+retained equivalent final outputs. Its selected document makes 64 classifications
+and 96 artifact candidates versus 20 and 72 in the compatible path; both prepare
+60 final rows and reserve 20 IDs. The selected import makes 48 classifications
+versus 24, with 24 admitted rows in both paths. These counters expose work before
+final-key reduction without requiring early deduplication or a new runtime cache.
+
+The first diagnostic smoke failed JVM verification because a map-cache hook was
+also applied to a static snapshot lambda. Restricting that hook to the constructor
+and instance resolver fixed it; a regression verifies the woven class including
+its static lambda. The failed log/JFR remain local and are not successful samples.
+Import signatures additionally retain stage/receipt warnings, canonical receipt
+outcome and durable terminal state. Receipt-only recovery remains covered by the
+real selected-import integration suite rather than counted as insertion work.
