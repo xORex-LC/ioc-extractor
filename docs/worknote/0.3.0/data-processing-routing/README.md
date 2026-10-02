@@ -32,6 +32,16 @@ routing and deterministic data precedence. The owner considers both configured
 operation sequences and operator-authored graphs viable; scope and extension
 cost should determine the choice.
 
+- [Router cost and architecture analysis](router-cost-and-architecture-analysis.md):
+  implementation-level cost mechanisms, diagnostic JFR evidence, framework
+  comparison and prioritized optimization experiments at `08d30621`.
+- [Camel optimization applicability](camel-optimization-applicability.md):
+  fixed-version framework mechanisms, semantic compatibility, an executed
+  six-variant dispatch comparison and a Camel-first optimization sequence.
+- [Processing optimization plan](processing-optimization-plan.md): common O0–O7
+  execution order, ownership and cache/session constraints, risk mitigation,
+  paired measurement and build-quality acceptance gates.
+
 - [Router implementation plan](router-implementation-plan.md): technical execution
   slices, framework admission, boundaries and quality gates.
 - [IOC processing implementation plan](ioc-processing-implementation-plan.md): shared
