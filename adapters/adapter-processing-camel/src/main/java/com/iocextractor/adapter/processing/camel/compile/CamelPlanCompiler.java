@@ -1,6 +1,8 @@
 package com.iocextractor.adapter.processing.camel.compile;
 
 import com.iocextractor.adapter.processing.camel.contract.PlanDescriptor;
+import com.iocextractor.adapter.processing.camel.contract.BranchOutcome;
+import com.iocextractor.adapter.processing.camel.contract.PlanExecutionResult.BranchReply;
 import com.iocextractor.adapter.processing.camel.contract.NoopRoutingExecutionScopes;
 import com.iocextractor.adapter.processing.camel.contract.RoutingExecutionScopes;
 import java.util.ArrayList;
@@ -11,6 +13,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.Exchange;
 
 /** Compiles bounded local operation and destination routes from admitted plans. */
 public final class CamelPlanCompiler {
@@ -97,6 +100,11 @@ public final class CamelPlanCompiler {
                             try (var ignored = scopes.openBranch(planId, branch.id())) {
                                 catalog.destinations().get(branch.destination()).process(exchange);
                             }
+                            String id = Objects.requireNonNull(exchange.getMessage().getHeader(
+                                    RouteProtocol.BRANCH_ID, String.class), "recipient branch ID");
+                            BranchOutcome outcome = Objects.requireNonNull(
+                                    exchange.getMessage().getBody(BranchOutcome.class), "recipient outcome");
+                            exchange.getMessage().setBody(new BranchReply(id, outcome));
                         });
             }
         });
@@ -117,9 +125,19 @@ public final class CamelPlanCompiler {
                         .recipientList(exchangeProperty(RouteProtocol.RECIPIENTS))
                         .aggregationStrategy(new BranchReplyAggregationStrategy())
                         .stopOnException()
-                        .allowedSchemes("direct");
+                        .allowedSchemes("direct")
+                        .end()
+                        .process(CamelPlanCompiler::freezeReplies);
             }
         };
+    }
+
+    private static void freezeReplies(Exchange exchange) {
+        // Only BranchReplyAggregationStrategy.getValue populates this Camel-owned list.
+        @SuppressWarnings("unchecked")
+        List<BranchReply> values = Objects.requireNonNull(
+                exchange.getMessage().getBody(List.class), "recipient replies");
+        exchange.getMessage().setBody(new DispatchRequest.Replies(values));
     }
 
     private static String address(String plan, String kind, String item) {

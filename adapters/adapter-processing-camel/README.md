@@ -6,7 +6,11 @@ and binds ordered predicates to a selector while generating local view, branch
 and dispatch routes. `runtime` owns the embedded Camel context and selects an
 admitted plan by ID. It computes prerequisite and selected-branch mapping views
 on demand once per call, then dispatches eligible branches through a sequential
-Camel Recipient List. Fixed endpoints are bound after context startup and owned
+Camel Recipient List. A single eligible recipient is sent directly only after
+complete selection and required-view resolution. Branch routes require a typed
+reply on both paths. Multiple replies accumulate in an exchange-owned Camel
+list and become immutable at completion, preserving order and call isolation.
+Fixed endpoints are bound after context startup and owned
 by that runtime; templates and recipient lists receive endpoint references.
 Parameterized predicates bind validated arguments once per condition leaf at
 compilation. The bound predicates must be reusable across concurrent calls;
@@ -43,7 +47,9 @@ persistence. This module is not independently published.
 supplies Camel's `simple` language required during context startup, and
 `jspecify` completes Camel's annotation types for bytecode analysis. These
 runtime/analysis dependencies have no source imports in this module. The
-source-level Camel API and route model dependencies are declared directly.
+source-level Camel API, route model and list-aggregation processor dependencies
+are declared directly; `camel-support` is an explicit test dependency for
+exchange fixtures. Versions remain managed by the existing parent Camel BOM.
 
 `RouterQualificationTest` runs the 1,000-input synthetic correctness matrix in
 Surefire. `make router-qualification SIZE=100000` runs the opt-in 100,000-input

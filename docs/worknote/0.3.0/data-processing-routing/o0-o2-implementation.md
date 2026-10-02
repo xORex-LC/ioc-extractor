@@ -69,3 +69,36 @@ were 1.938 time and 2.941 calling-thread allocation for the document; 1.564 and
 The historical guards passed; this is not an agreed acceptance budget.
 Focused O1 adapter tests and O0 sampler regressions passed; complete gates are
 recorded after the final O2 worktree is fixed.
+
+## O2 — reply aggregation and copies
+
+Each generated branch route validates and materializes its typed `BranchReply`
+inside Camel, so a missing destination outcome aborts both dispatch paths with
+the same cause. Multiple recipients use Camel 4.22.1's
+`AbstractListAggregationStrategy<BranchReply>` with exchange-owned mutable
+accumulation and one immutable snapshot in the normal processor after Recipient
+List completion. Camel owns the completion callback itself: the regression
+found that throwing while freezing a failed subexchange in that callback can
+prevent its async completion notification. Failed calls now propagate through
+the ordinary error path before the freezing processor. Null replies are rejected
+before Camel can omit them. No mutable list is stored on the strategy instance.
+
+Exactly one eligible recipient uses the bound branch endpoint directly, after
+full selector evaluation and all selected required-view resolution. The same
+public reply/result contract and tracing apply. FIRST never reselects;
+EXCLUSIVE must still establish uniqueness; zero recipients finalize normally.
+
+Regressions cover 64 ordered replies, interleaved invocation isolation, immutable
+completed lists, original input isolation, typed prepared/filtered/unavailable
+outcomes on both paths and missing destination outcomes. Existing recovery and
+concurrent lifecycle tests exercise the completed runtime.
+
+O1 clean `9936ade4` preserved every same-path signature from O0 across five
+pairs per workload. Selected medians changed from 1340.4 to 1185.5 ms and
+430.1 to 342.5 MB calling-thread allocation for the document; import changed
+from 1274.0 to 1239.9 ms and 119.7 to 107.9 MB. Timing spread prevents treating
+the small import time change as a firm conclusion. All historical guards
+passed. See [O1 samples](qualification/optimization/o1-binding.json).
+The final focused O2 dispatch test run passed after moving the immutable
+snapshot out of Camel's completion callback; the failed timeout evidence is
+retained locally and was not retried without a code change.

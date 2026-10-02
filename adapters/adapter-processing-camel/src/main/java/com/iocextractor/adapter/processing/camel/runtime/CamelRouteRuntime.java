@@ -13,13 +13,13 @@ import com.iocextractor.adapter.processing.camel.contract.ViewOutcome;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
-import org.apache.camel.ProducerTemplate;
 import org.apache.camel.Endpoint;
+import org.apache.camel.ProducerTemplate;
 import org.apache.camel.ServiceStatus;
 import org.apache.camel.impl.DefaultCamelContext;
 
@@ -111,13 +111,19 @@ public final class CamelRouteRuntime implements AutoCloseable {
             return result(selection, List.of(), preparationBlocked, views);
         }
         var input = new PlanExecutionResult.BranchInput(original, views.snapshot());
-        var request = new DispatchRequest(input, recipients);
-        DispatchRequest.Replies replies = Objects.requireNonNull(producer.requestBody(
-                endpoints.get(plan.dispatchUri()), request, DispatchRequest.Replies.class), "dispatch replies");
-        for (PlanExecutionResult.BranchReply reply : replies.values()) {
+        List<PlanExecutionResult.BranchReply> replies;
+        if (recipients.size() == 1) {
+            replies = List.of(Objects.requireNonNull(producer.requestBody(recipients.getFirst(),
+                    input, PlanExecutionResult.BranchReply.class), "recipient reply"));
+        } else {
+            var request = new DispatchRequest(input, recipients);
+            replies = Objects.requireNonNull(producer.requestBody(endpoints.get(plan.dispatchUri()),
+                    request, DispatchRequest.Replies.class), "dispatch replies").values();
+        }
+        for (PlanExecutionResult.BranchReply reply : replies) {
             traceReply(planId, reply);
         }
-        return result(selection, replies.values(), preparationBlocked, views);
+        return result(selection, replies, preparationBlocked, views);
     }
 
     private void traceReply(String planId, PlanExecutionResult.BranchReply reply) {

@@ -94,6 +94,64 @@ class CamelRoutingExecutionTest {
         assertThat(destinationCalls).hasValue(0);
     }
 
+    @Test void oneAndManyRecipientsRequireTypedResultsAndKeepDeclaredInput() throws Exception {
+        var observedInputs = new java.util.ArrayList<Object>();
+        Processor prepared = exchange -> {
+            var input = exchange.getMessage().getBody(PlanExecutionResult.BranchInput.class);
+            observedInputs.add(input.original());
+            assertThatThrownBy(() -> input.resolvedViews().clear())
+                    .isInstanceOf(UnsupportedOperationException.class);
+            exchange.getMessage().setBody(new BranchOutcome.Prepared("mapped"));
+        };
+        Processor filtered = exchange -> {
+            var input = exchange.getMessage().getBody(PlanExecutionResult.BranchInput.class);
+            observedInputs.add(input.original());
+            exchange.getMessage().setBody(new BranchOutcome.Filtered());
+        };
+        Processor unavailable = exchange -> {
+            var input = exchange.getMessage().getBody(PlanExecutionResult.BranchInput.class);
+            observedInputs.add(input.original());
+            exchange.getMessage().setBody(new BranchOutcome.Unavailable(new FailureReference("row", "BAD_ROW")));
+        };
+        var typed = new OperationCatalog(Map.of(), Map.of("one", prepared, "filter", filtered,
+                "missing", unavailable), Map.of());
+        var branches = List.of(new PlanDescriptor.Branch("prepared", "one", null),
+                new PlanDescriptor.Branch("filtered", "filter", null),
+                new PlanDescriptor.Branch("unavailable", "missing", null));
+        try (var runtime = runtime(plan(PlanDescriptor.Mode.ALL, branches, PlanDescriptor.Action.SKIP, null), typed)) {
+            var replies = runtime.execute("p", "original").replies();
+            assertThat(replies).extracting(PlanExecutionResult.BranchReply::branchId)
+                    .containsExactly("prepared", "filtered", "unavailable");
+            assertThat(replies).extracting(PlanExecutionResult.BranchReply::outcome)
+                    .containsExactly(new BranchOutcome.Prepared("mapped"), new BranchOutcome.Filtered(),
+                            new BranchOutcome.Unavailable(new FailureReference("row", "BAD_ROW")));
+            assertThat(observedInputs).containsExactly("original", "original", "original");
+            assertThatThrownBy(replies::clear).isInstanceOf(UnsupportedOperationException.class);
+        }
+        for (var branch : branches) {
+            try (var runtime = runtime(plan(PlanDescriptor.Mode.FIRST, List.of(branch),
+                    PlanDescriptor.Action.SKIP, null), typed)) {
+                assertThat(runtime.execute("p", "single").replies())
+                        .extracting(PlanExecutionResult.BranchReply::branchId).containsExactly(branch.id());
+            }
+        }
+        assertThat(observedInputs).containsExactly("original", "original", "original", "single", "single", "single");
+    }
+
+    @Test void missingDestinationOutcomeAbortsBothSingleAndMultipleRecipientCalls() throws Exception {
+        var empty = new OperationCatalog(Map.of(), Map.of("one", destination,
+                "empty", exchange -> exchange.getMessage().setBody(null)), Map.of());
+        var broken = new PlanDescriptor.Branch("empty", "empty", null);
+        for (var branches : List.of(List.of(broken), List.of(branch("first", null), broken))) {
+            try (var runtime = runtime(plan(PlanDescriptor.Mode.ALL, branches,
+                    PlanDescriptor.Action.SKIP, null), empty)) {
+                assertThatThrownBy(() -> runtime.execute("p", "hit"))
+                        .hasRootCauseInstanceOf(NullPointerException.class)
+                        .hasRootCauseMessage("recipient outcome");
+            }
+        }
+    }
+
     @Test void firstStopsAtMatchAndNeverRetriesAfterDestinationFailure() throws Exception {
         var branches = List.of(branch("first", equals("original", "hit")),
                 branch("second", equals("original", "hit")));
