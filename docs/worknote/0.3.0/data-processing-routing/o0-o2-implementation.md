@@ -121,3 +121,57 @@ new direct dependencies first needed parent version management, then
 `camel-support` had to retain compile scope because the Camel DSL inherits its
 builder classes. Both were fixed in separate build commits. They are not
 successful measurement runs and no failed pair was dropped.
+
+## Combined measurements and limitations
+
+All six committed-revision profiles use five independent pairs per workload,
+alternating compatible/selected fork order. Default cardinality is 8,000/20
+for documents (99.75% repeats) and 2,000/20 for import (99% repeats). Allocation
+figures below are calling-thread MB (decimal), not retained heap or total
+process allocation.
+
+| Profile | Selected document ms / MB | Selected import ms / MB |
+|---|---:|---:|
+| O0 first workload | 1340.4 / 430.1 | 1274.0 / 119.7 |
+| O1 invariant binding | 1185.5 / 342.5 | 1239.9 / 107.9 |
+| O2 dispatch | 1155.7 / 340.4 | 1083.6 / 101.7 |
+| O2 row copy | 1170.4 / 329.4 | 1086.3 / 99.0 |
+| O0 warmed, one disjoint file | 553.0 / 388.2 | 660.5 / 105.1 |
+| O2 warmed, one disjoint file | 463.3 / 290.8 | 612.9 / 85.4 |
+
+Every same-path signature is identical across the four first-workload revisions
+and across the two warmed revisions, including diagnostic counts. The row copy
+step independently reduced allocation by 3.3% for documents and 2.7% for import;
+its time medians did not improve, so no time gain is attributed to that copy.
+Combined first-workload allocation reduction is 23.4% / 17.3%; warmed reduction
+is 25.1% / 18.8%. Timing medians suggest 12.7% / 14.7% first-workload and
+16.2% / 7.2% warmed reductions. Inspect raw spreads before treating these as
+portable throughput expectations. Sampled heap/RSS first-workload medians did
+not show a material combined reduction.
+
+The optimized selected/compatible time and allocation ratios are 1.720 / 2.296
+for the first document workload, 1.361 / 1.313 for first import; warmed ratios
+are 1.687 / 2.482 for documents and 1.196 / 1.354 for import. O0 warmed exceeded
+the historical 3x allocation guard (3.22x document); O2 warmed passed every
+historical guard. Both reports are retained; thresholds were unchanged.
+
+See [row-copy samples](qualification/optimization/o2-row.json),
+[warmed O0 samples](qualification/optimization/o0-warmed.json) and
+[warmed O2 samples](qualification/optimization/o2-warmed.json).
+
+The Java probe includes outcome verification/summary construction in total
+workload time; it does not isolate preparation from read/commit/projection.
+Main-thread allocation does not account for sampler or other workers, and
+VmHWM includes startup/warm-up history. This host inherited `DEBUG=release`;
+Spring DEBUG records are visible in all retained workload logs. The same
+profile was used throughout, with configured per-item TRACE disabled; these
+are local probe-profile comparisons, not an independently qualified production
+logging/resource budget. Before O7 acceptance, pin logging explicitly and run
+the wider mixed-input/cardinality/fan-out matrix and separate diagnostic
+profiles/counters. No tail-latency or customer-acceptable-overhead claim is made.
+
+Sampler and independent-runtime fixtures now close owned resources even if
+coordination assertions or construction fail. Focused tests and the complete
+shell/Python tools contract suite passed. Production code and dependency
+membership remain inside the existing modules; no gate floor or analyzer
+baseline was changed.

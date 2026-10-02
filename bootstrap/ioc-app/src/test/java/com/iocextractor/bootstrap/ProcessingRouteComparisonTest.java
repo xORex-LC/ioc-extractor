@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Verifies that the opt-in measurement probe cannot publish partial memory samples. */
@@ -20,8 +19,11 @@ class ProcessingRouteComparisonTest {
             throw new IllegalStateException("synthetic status failure");
         });
 
-        assertThat(sampled.await(2, TimeUnit.SECONDS)).isTrue();
-        assertThatThrownBy(sampler::close)
+        assertThatThrownBy(() -> {
+            try (sampler) {
+                assertThat(sampled.await(2, TimeUnit.SECONDS)).isTrue();
+            }
+        })
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Memory sampler failed")
                 .hasRootCauseMessage("synthetic status failure");
@@ -37,8 +39,11 @@ class ProcessingRouteComparisonTest {
             return 42;
         });
 
-        assertThat(sampled.await(2, TimeUnit.SECONDS)).isTrue();
-        assertThatThrownBy(sampler::close)
+        assertThatThrownBy(() -> {
+            try (sampler) {
+                assertThat(sampled.await(2, TimeUnit.SECONDS)).isTrue();
+            }
+        })
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Memory sampler failed")
                 .hasRootCauseInstanceOf(InterruptedException.class);
@@ -53,7 +58,8 @@ class ProcessingRouteComparisonTest {
             return 42;
         });
 
-        assertThat(sampled.await(2, TimeUnit.SECONDS)).isTrue();
-        assertThatNoException().isThrownBy(sampler::close);
+        try (sampler) {
+            assertThat(sampled.await(2, TimeUnit.SECONDS)).isTrue();
+        }
     }
 }

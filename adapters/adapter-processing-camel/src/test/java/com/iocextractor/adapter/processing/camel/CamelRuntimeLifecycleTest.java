@@ -61,18 +61,14 @@ class CamelRuntimeLifecycleTest {
             contexts.add(exchange.getContext());
             exchange.getMessage().setBody(new ViewOutcome.Available(exchange.getMessage().getBody()));
         });
-        var first = runtime(catalog, NoopRoutingTraceSink.INSTANCE, Duration.ofSeconds(2));
-        try (var second = runtime(catalog, NoopRoutingTraceSink.INSTANCE, Duration.ofSeconds(2))) {
-            try {
-                assertThat(candidate(first.execute("p", "first"))).isEqualTo("first");
-                assertThat(candidate(second.execute("p", "second"))).isEqualTo("second");
-                first.close();
-                assertThat(candidate(second.execute("p", "still-running"))).isEqualTo("still-running");
-                assertThat(second.isReady()).isTrue();
-                assertThat(contexts).hasSize(2);
-            } finally {
-                first.close();
-            }
+        try (var first = runtime(catalog, NoopRoutingTraceSink.INSTANCE, Duration.ofSeconds(2));
+             var second = runtime(catalog, NoopRoutingTraceSink.INSTANCE, Duration.ofSeconds(2))) {
+            assertThat(candidate(first.execute("p", "first"))).isEqualTo("first");
+            assertThat(candidate(second.execute("p", "second"))).isEqualTo("second");
+            first.close();
+            assertThat(candidate(second.execute("p", "still-running"))).isEqualTo("still-running");
+            assertThat(second.isReady()).isTrue();
+            assertThat(contexts).hasSize(2);
         }
     }
 
