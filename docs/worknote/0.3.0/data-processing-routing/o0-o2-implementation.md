@@ -175,3 +175,23 @@ coordination assertions or construction fail. Focused tests and the complete
 shell/Python tools contract suite passed. Production code and dependency
 membership remain inside the existing modules; no gate floor or analyzer
 baseline was changed.
+
+## Deterministic qualification
+
+On implementation/test HEAD `92e04ce6`, `make verify`, `make pmd-analysis`,
+`make pmd-watchlist`, `make docs` and the tools contract suite passed.
+This includes real selected-import Spring/YAML composition and receipt recovery,
+the document integration corpus and the router lifecycle/routing/recovery tests.
+The test suite universe and coverage/analyzer inventories were not changed.
+
+Raw analyzer review: SpotBugs has 120 accepted findings and zero visible
+findings; CPD remains 24/24 groups; adopted PMD has zero blocking and 24/24
+advisory findings. None intersect the changed production files or duplication
+groups. The 30 watchlist findings likewise have no changed-file intersections.
+No baseline, exclusion or suppression was changed. These are deterministic
+offline checks; no installed-service or external-transport claim is made.
+
+The implementation and initial first/warmed workload evidence are retained.
+Final performance acceptance remains O7 work: the agreed resource budget,
+wider workload matrix, separately timed preparation and detailed diagnostic
+counter/JFR profiles are not established by the current end-to-end probe.
