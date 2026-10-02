@@ -13,6 +13,27 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class CanonicalArtifactKeyResolverTest {
 
     @Test
+    void ordered_row_preserves_null_cells_and_defensively_snapshots_column_order() {
+        var values = new LinkedHashMap<String, String>();
+        values.put("forbidden_url", "https://bad.test");
+        values.put("forbidden_ip", null);
+        ArtifactRow row = ArtifactRow.ordered(values);
+        values.put("forbidden_url", "https://different.test");
+        values.remove("forbidden_ip");
+        values.put("source", "other source");
+
+        assertThat(row.values().keySet()).containsExactly("forbidden_url", "forbidden_ip");
+        assertThat(row.value("forbidden_url")).isEqualTo("https://bad.test");
+        assertThat(row.values()).containsEntry("forbidden_ip", null).doesNotContainKey("source");
+        assertThatThrownBy(() -> row.values().put("source", "modified"))
+                .isInstanceOf(UnsupportedOperationException.class);
+        ArtifactRow changed = row.withValue("forbidden_url", null);
+        assertThat(changed.values().keySet()).containsExactly("forbidden_url", "forbidden_ip");
+        assertThat(changed.values()).containsEntry("forbidden_url", null);
+        assertThat(row.value("forbidden_url")).isEqualTo("https://bad.test");
+    }
+
+    @Test
     void resolves_compound_record_key_and_only_usable_match_aliases() {
         var definitions = new ArtifactIdentityDefinition(
                 "address_blacklist",

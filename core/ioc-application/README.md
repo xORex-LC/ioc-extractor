@@ -24,6 +24,9 @@ decisions материализуются один раз; application stages и�
 артефакта существующей policy. Прежний путь dedup/classify/prepare остаётся
 действующим без плана. Обе ветки сходятся в прежнем checkpoint и write stage;
 application не знает Camel и CSV.
+`ArtifactRow` владеет единственным упорядоченным защитным снимком колонок:
+фабрика `ordered` использует снимок конструктора, сохраняет `null` и порядок
+колонок, не раскрывает изменяемую карту вызывающего кода.
 Terminal ingestion rejection идемпотентен: driving adapter различает впервые
 записанный `REJECTED` и уже durable `ALREADY_REJECTED`, не читая ledger напрямую.
 `ObservationId` идентифицирует одну delivery/retry цепочку, а повторяемый

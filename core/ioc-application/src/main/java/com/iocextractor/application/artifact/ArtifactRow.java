@@ -23,7 +23,7 @@ public record ArtifactRow(Map<String, String> values) {
      * @return artifact row
      */
     public static ArtifactRow ordered(Map<String, String> values) {
-        return new ArtifactRow(new LinkedHashMap<>(values));
+        return new ArtifactRow(values);
     }
 
     /**

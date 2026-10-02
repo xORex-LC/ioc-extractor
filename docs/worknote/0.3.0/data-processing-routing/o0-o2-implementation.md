@@ -102,3 +102,22 @@ passed. See [O1 samples](qualification/optimization/o1-binding.json).
 The final focused O2 dispatch test run passed after moving the immutable
 snapshot out of Camel's completion callback; the failed timeout evidence is
 retained locally and was not retried without a code change.
+
+`ArtifactRow.ordered` now delegates directly to the record constructor's single
+ordered defensive snapshot. Its public map still preserves null cells and
+column order, rejects mutation and is isolated from subsequent caller-map
+changes. A regression also checks that `withValue` leaves the original row
+unchanged. This copy change is committed and measured separately from dispatch.
+
+O2 dispatch on clean `c05e3d23` preserved all same-path signatures. Relative to
+O1, calling-thread allocation changed by -0.6% for the three-recipient document
+and -5.7% for the single-recipient import. Selected time medians were 1155.7 and
+1083.6 ms. The small document change is not evidence of a large end-to-end gain
+from list aggregation; the asymptotic benefit matters with larger fan-out.
+See [dispatch samples](qualification/optimization/o2-dispatch.json).
+
+Two failed isolated build attempts were retained locally before measurement:
+new direct dependencies first needed parent version management, then
+`camel-support` had to retain compile scope because the Camel DSL inherits its
+builder classes. Both were fixed in separate build commits. They are not
+successful measurement runs and no failed pair was dropped.
