@@ -48,7 +48,7 @@ GITHUB ?= 0
 	context \
 	run stop runtime-up runtime-down runtime-status runtime-reset submit \
 	fixture fixture-1k fixture-5k fixture-100k smoke smoke-cli smoke-oneshot smoke-daemon \
-	lifecycle-smoke lifecycle-load dataframe-import-smoke dataframe-import-load dataframe-import-load-100k dataframe-import-load-1m ioc-aggregate-load router-qualification \
+	lifecycle-smoke lifecycle-load dataframe-import-smoke dataframe-import-load dataframe-import-load-100k dataframe-import-load-1m ioc-aggregate-load router-qualification processing-route-comparison \
 	db logs logs-errors release-notes-context \
 	lint-shell docs security-update security-scan security-report \
 	ci-build ci-pmd ci-packaging ci-docs ci pre-push
@@ -254,6 +254,9 @@ ioc-aggregate-load: package ## Compare duplicate-heavy aggregate candidate with 
 
 router-qualification: ## Run opt-in synthetic Camel Router profile; SIZE=1000|100000
 	@tools/dev/router-qualification.sh --size "$(SIZE)"
+
+processing-route-comparison: ## Paired production routing probe; COMPARISON_ARGS passes explicit profile options
+	@python3 tools/dev/processing-route-comparison.py $(COMPARISON_ARGS)
 
 db: ## Inspect SQLite read-only; DB=service|dataframe DB_COMMAND=shell|schema|tables
 	@tools/dev/database.sh --workspace "$(WORKSPACE)" --db "$(DB)" "$(DB_COMMAND)"

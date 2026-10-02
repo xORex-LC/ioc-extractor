@@ -21,3 +21,8 @@ boundary, а не запускает долгий daemon scenario.
 неизменности bundle, отказ при конфликте артефактов, частичную публикацию и
 повторное использование Central deployment. Подпись проверяется реальным GnuPG с одноразовым тестовым ключом.
 Сеть и рабочие секреты не используются.
+
+`python3 tools/tests/processing-route-comparison-test.py` проверяет независимое
+задание cardinality для документа/CSV, попарную статистику и отсутствие
+искусственного отношения для нулевых GC counters. Сам opt-in benchmark
+запускается отдельно через `make processing-route-comparison`.

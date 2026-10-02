@@ -38,6 +38,8 @@ cost should determine the choice.
 - [Camel optimization applicability](camel-optimization-applicability.md):
   fixed-version framework mechanisms, semantic compatibility, an executed
   six-variant dispatch comparison and a Camel-first optimization sequence.
+- [O0–O2 implementation](o0-o2-implementation.md): measurement harness, invariant
+  binding and dispatch/copy optimizations with scoped qualification evidence.
 - [Processing optimization plan](processing-optimization-plan.md): common O0–O7
   execution order, ownership and cache/session constraints, risk mitigation,
   paired measurement and build-quality acceptance gates.

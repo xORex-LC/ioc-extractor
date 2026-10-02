@@ -32,8 +32,8 @@ public final class ProcessingRouteComparison {
     private ProcessingRouteComparison() { }
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 3) {
-            throw new IllegalArgumentException("Expected: document|import root fixture");
+        if (args.length < 3) {
+            throw new IllegalArgumentException("Expected: document|import root fixture [warmup fixtures]");
         }
         String kind = args[0];
         Path root = Path.of(args[1]).toAbsolutePath();
@@ -45,9 +45,20 @@ public final class ProcessingRouteComparison {
         System.setProperty("server.address", "127.0.0.1");
         System.setProperty("server.port", "0");
         System.setProperty("ioc.ingestion.detect.use-watch-service", "false");
+        long startup = System.nanoTime();
         try (var context = SpringApplication.run(IocExtractorApplication.class)) {
+            startup = System.nanoTime() - startup;
             if ("import".equals(kind)) {
                 context.getBean(ManagedDataframeImportRuntime.class).close();
+            }
+            for (int index = 3; index < args.length; index++) {
+                Path warmup = Path.of(args[index]).toAbsolutePath();
+                if ("document".equals(kind)) {
+                    System.out.println("ROUTE_OUTCOME " + document(
+                            context.getBean(ExtractIocsUseCase.class), warmup).summary());
+                } else {
+                    System.out.println("ROUTE_OUTCOME " + importCsv(context, warmup, "warmup-" + index).summary());
+                }
             }
             ThreadMXBean threads = (ThreadMXBean) ManagementFactory.getThreadMXBean();
             if (!threads.isThreadAllocatedMemorySupported()) {
@@ -56,46 +67,70 @@ public final class ProcessingRouteComparison {
             threads.setThreadAllocatedMemoryEnabled(true);
             long currentThread = Thread.currentThread().threadId();
             long allocatedBefore = threads.getThreadAllocatedBytes(currentThread);
+            long collectionsBefore = gcCount();
+            long gcTimeBefore = gcTime();
             PeakSampler sampler = new PeakSampler();
-            int observations;
+            WorkloadOutcome outcome;
+            long collections;
+            long collectionTime;
             long elapsed;
             long allocated;
             try (sampler) {
                 long start = System.nanoTime();
-                observations = switch (kind) {
+                outcome = switch (kind) {
                     case "document" -> document(context.getBean(ExtractIocsUseCase.class), fixture);
-                    case "import" -> importCsv(context, fixture);
+                    case "import" -> importCsv(context, fixture, "comparison-import");
                     default -> throw new IllegalArgumentException("Unknown workload: " + kind);
                 };
                 elapsed = System.nanoTime() - start;
                 allocated = threads.getThreadAllocatedBytes(currentThread) - allocatedBefore;
-                if (observations <= 0 || allocated < 0) {
+                collections = gcCount() - collectionsBefore;
+                collectionTime = gcTime() - gcTimeBefore;
+                if (outcome.observations() <= 0 || allocated < 0) {
                     throw new IllegalStateException("Incomplete workload measurement");
                 }
             }
+            int observations = outcome.observations();
+            System.out.println("ROUTE_OUTCOME " + outcome.summary());
             System.out.printf("ROUTE_COMPARISON kind=%s observations=%d elapsed_ms=%.3f "
                             + "throughput_per_s=%.2f allocated_main_bytes=%d "
                             + "sampled_peak_heap_bytes=%d sampled_peak_rss_kib=%d%n",
                     kind, observations, elapsed / 1_000_000.0,
                     observations * 1_000_000_000.0 / elapsed, allocated,
                     sampler.peakHeap.get(), sampler.peakRss.get());
+            System.out.printf("ROUTE_ENV startup_ms=%.3f gc_count=%d gc_time_ms=%d "
+                            + "sampled_peak_current_rss_kib=%d%n", startup / 1_000_000.0,
+                    collections, collectionTime, sampler.peakCurrentRss.get());
         }
     }
 
-    private static int document(ExtractIocsUseCase useCase, Path fixture) {
-        var result = useCase.extract(new ExtractionCommand("comparison", fixture, false));
+    private record WorkloadOutcome(int observations, String summary) { }
+
+    private static WorkloadOutcome document(ExtractIocsUseCase useCase, Path fixture) {
+        var result = useCase.extract(new ExtractionCommand(fixture.getFileName().toString(), fixture, false));
         if (result.extracted() <= 0 || result.completionStatus().name().contains("ERROR")) {
             throw new IllegalStateException("Document extraction failed: " + result.completionStatus());
         }
-        return result.extracted();
+        var codes = new java.util.TreeMap<String, Long>();
+        result.diagnostics().forEach(diagnostic -> codes.merge(
+                diagnostic.code().id() + ":" + diagnostic.severity(), 1L, Long::sum));
+        var severities = new java.util.TreeMap<String, Long>();
+        result.diagnosticSummary().bySeverity().forEach((severity, count) ->
+                severities.put(severity.name(), count));
+        return new WorkloadOutcome(result.extracted(), String.format(
+                "extracted=%d retained=%d status=%s diagnostics=%d suppressed=%d severities=%s retained_codes=%s",
+                result.extracted(), result.retained(), result.completionStatus(),
+                result.diagnosticSummary().total(), result.diagnosticSummary().suppressed(),
+                severities, codes));
     }
 
-    private static int importCsv(org.springframework.context.ApplicationContext context, Path fixture)
+    private static WorkloadOutcome importCsv(org.springframework.context.ApplicationContext context, Path fixture,
+                                 String deliveryId)
             throws Exception {
         Path inbox = Files.createDirectories(Path.of(System.getProperty("selected.import.root"), "inbox"));
         Files.copy(fixture, inbox.resolve("hosts.csv"));
         var source = new ImportSourceId("local-hosts");
-        var delivery = new ImportDeliveryId("comparison-import");
+        var delivery = new ImportDeliveryId(deliveryId);
         var candidate = context.getBean("managedImportSourceLifecycle", ManagedImportSourceLifecycle.class)
                 .detect(source, context.getBean(Clock.class).instant()).getFirst();
         context.getBean(AdmitDataframeImportUseCase.class).admit(new AdmitDataframeImportCommand(
@@ -111,7 +146,8 @@ public final class ProcessingRouteComparison {
                     throw new IllegalStateException("Import receipt rejected or omitted rows");
                 }
                 try (var rows = Files.lines(fixture)) {
-                    return Math.toIntExact(rows.count() - 1);
+                    return new WorkloadOutcome(Math.toIntExact(rows.count() - 1), String.format(
+                            "accepted=%d rejected=%d", receipt.acceptedRows(), receipt.rejectedRows()));
                 }
             }
             if (!processor.processNext().workPerformed()) {
@@ -121,10 +157,29 @@ public final class ProcessingRouteComparison {
         throw new IllegalStateException("Import did not reach terminal state");
     }
 
+    private static long gcCount() {
+        return ManagementFactory.getGarbageCollectorMXBeans().stream().mapToLong(bean -> {
+            if (bean.getCollectionCount() < 0) {
+                throw new IllegalStateException("GC collection accounting is unavailable");
+            }
+            return bean.getCollectionCount();
+        }).sum();
+    }
+
+    private static long gcTime() {
+        return ManagementFactory.getGarbageCollectorMXBeans().stream().mapToLong(bean -> {
+            if (bean.getCollectionTime() < 0) {
+                throw new IllegalStateException("GC time accounting is unavailable");
+            }
+            return bean.getCollectionTime();
+        }).sum();
+    }
+
     static final class PeakSampler implements AutoCloseable {
         private final AtomicBoolean running = new AtomicBoolean(true);
         private final AtomicLong peakHeap = new AtomicLong();
         private final AtomicLong peakRss = new AtomicLong();
+        private final AtomicLong peakCurrentRss = new AtomicLong();
         private final AtomicReference<Throwable> failure = new AtomicReference<>();
         private final Thread worker;
 
@@ -139,6 +194,10 @@ public final class ProcessingRouteComparison {
                         peakHeap.accumulateAndGet(ManagementFactory.getMemoryMXBean()
                                 .getHeapMemoryUsage().getUsed(), Math::max);
                         peakRss.accumulateAndGet(rssHighWater.getAsLong(), Math::max);
+                        if (Thread.currentThread().isInterrupted()) {
+                            throw new InterruptedException("Memory sampler interrupted");
+                        }
+                        peakCurrentRss.accumulateAndGet(readStatusMetric("VmRSS:"), Math::max);
                         TimeUnit.MILLISECONDS.sleep(10);
                     }
                 } catch (InterruptedException interrupted) {
@@ -151,10 +210,14 @@ public final class ProcessingRouteComparison {
         }
 
         private static long readRssHighWater() {
+            return readStatusMetric("VmHWM:");
+        }
+
+        private static long readStatusMetric(String name) {
             try (var status = Files.lines(Path.of("/proc/self/status"))) {
-                return status.filter(line -> line.startsWith("VmHWM:"))
+                return status.filter(line -> line.startsWith(name))
                         .mapToLong(line -> Long.parseLong(line.replaceAll("[^0-9]", "")))
-                        .findFirst().orElseThrow(() -> new IllegalStateException("VmHWM is missing"));
+                        .findFirst().orElseThrow(() -> new IllegalStateException(name + " is missing"));
             } catch (IOException failure) {
                 throw new UncheckedIOException(failure);
             }
