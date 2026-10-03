@@ -128,6 +128,75 @@ class GoldenPipelineIT {
         assertOccurrencesIncrementedByOne(firstOccurrences, sourceOccurrences());
     }
 
+    @Test
+    @org.junit.jupiter.api.Timeout(120)
+    void legacyMappedCollisionsPreserveReservationAndProvenanceInBothWritePaths() throws Exception {
+        Path root = Files.createTempDirectory(Path.of("target"), "legacy-accounting-");
+        Path source = root.resolve("input.html");
+        Files.writeString(source, "<html><head><meta charset=\"utf-8\"></head><body><p>БИБ-first</p>"
+                + "<p>same.example same.example</p><p>БИБ-second</p><p>other.example</p></body></html>");
+        for (boolean lifecycle : List.of(false, true)) {
+            for (boolean deduplicate : List.of(false, true)) {
+                Path run = Files.createDirectories(root.resolve(lifecycle + "-" + deduplicate));
+                try (var context = org.springframework.boot.SpringApplication.run(IocExtractorApplication.class,
+                        "--spring.profiles.active=golden", "--spring.main.web-application-type=none",
+                        "--spring.main.banner-mode=off", "--golden.output-dir=" + run.toAbsolutePath(),
+                        "--ioc.storage.service.url=jdbc:sqlite:" + run.resolve("service.db").toAbsolutePath(),
+                        "--ioc.pipeline.deduplicate=" + deduplicate,
+                        "--ioc.lifecycle.validity.mode=" + (lifecycle ? "fixed" : "disabled"),
+                        "--ioc.lifecycle.validity.fixed-ttl=12h", "--ioc.lifecycle.validity.existing-records=expire",
+                        "--ioc.artifact-identity.artifacts[0].name=masks",
+                        "--ioc.artifact-identity.artifacts[0].key-columns[0]=mask",
+                        "--ioc.artifact-identity.artifacts[0].key-mode=composite",
+                        "--ioc.artifact-identity.artifacts[0].record-key=mask-row-v1",
+                        "--ioc.artifact-identity.artifacts[0].match-keys[0].name=mask-v1",
+                        "--ioc.artifact-identity.artifacts[0].match-keys[0].key-columns[0]=mask",
+                        "--ioc.sink.artifacts[0].name=masks",
+                        "--ioc.sink.artifacts[0].enabled=true",
+                        "--ioc.sink.artifacts[0].path=" + run.resolve("masks.csv").toAbsolutePath(),
+                        "--ioc.sink.artifacts[0].accepts[0]=DOMAIN",
+                        "--ioc.sink.artifacts[0].id.strategy=ascending",
+                        "--ioc.sink.artifacts[0].id.start=1",
+                        "--ioc.sink.artifacts[0].columns[0].name=id",
+                        "--ioc.sink.artifacts[0].columns[0].from=id",
+                        "--ioc.sink.artifacts[0].columns[1].name=mask",
+                        "--ioc.sink.artifacts[0].columns[1].from=const",
+                        "--ioc.sink.artifacts[0].columns[1].value=same-key",
+                        "--ioc.sink.artifacts[0].columns[2].name=source",
+                        "--ioc.sink.artifacts[0].columns[2].from=source.label")) {
+                    var useCase = context.getBean(ExtractIocsUseCase.class);
+                    var command = new ExtractionCommand("legacy-accounting", source, false);
+                    int expected = deduplicate ? 2 : 3;
+                    if (lifecycle) {
+                        org.assertj.core.api.Assertions.assertThatThrownBy(() -> useCase.extract(command))
+                                .isInstanceOf(com.iocextractor.diagnostics.DiagnosticException.class)
+                                .hasMessageContaining("Canonical confirmation contains duplicate row key");
+                    } else {
+                        var result = useCase.extract(command);
+                        assertThat(result.extracted()).isEqualTo(3);
+                        assertThat(result.retained()).isEqualTo(expected);
+                    }
+                    var data = context.getBean("dataframeStorageDataSource", HikariDataSource.class);
+                    try (var connection = data.getConnection(); var statement = connection.createStatement()) {
+                        try (var rows = statement.executeQuery("SELECT COUNT(*) FROM masks")) {
+                            assertThat(rows.next()).isTrue();
+                            assertThat(rows.getLong(1)).isEqualTo(lifecycle ? 0 : 1);
+                        }
+                        try (var rows = statement.executeQuery("SELECT SUM(occurrences) FROM masks_sources")) {
+                            assertThat(rows.next()).isTrue();
+                            assertThat(rows.getLong(1)).isEqualTo(lifecycle ? 0 : expected);
+                        }
+                        try (var rows = statement.executeQuery(
+                                "SELECT next_value FROM artifact_id_allocator WHERE artifact='masks'")) {
+                            assertThat(rows.next()).isTrue();
+                            assertThat(rows.getLong(1)).isOne();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private byte[] goldenCsvBytes(String resource) throws Exception {
         try (InputStream in = getClass().getClassLoader().getResourceAsStream(resource)) {
             if (in == null) {
