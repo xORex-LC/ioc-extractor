@@ -40,6 +40,8 @@ cost should determine the choice.
   six-variant dispatch comparison and a Camel-first optimization sequence.
 - [O0–O2 implementation](o0-o2-implementation.md): measurement harness, invariant
   binding and dispatch/copy optimizations with scoped qualification evidence.
+- [O3–O4 implementation](o3-o4-implementation.md): incremental document winners,
+  explicit bounded semantic sessions and isolated measurements.
 - [Processing optimization plan](processing-optimization-plan.md): common O0–O7
   execution order, ownership and cache/session constraints, risk mitigation,
   paired measurement and build-quality acceptance gates.

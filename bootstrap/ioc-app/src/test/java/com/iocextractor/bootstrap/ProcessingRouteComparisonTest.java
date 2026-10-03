@@ -57,6 +57,32 @@ class ProcessingRouteComparisonTest {
     }
 
     @Test
+    void derivedCountersSeparateRequestsFromPolicyComputations() {
+        ComparisonDiagnostics.premain("", org.mockito.Mockito.mock(Instrumentation.class));
+        ComparisonDiagnostics.begin();
+        ComparisonDiagnostics.derivedStart();
+        ComparisonDiagnostics.classified();
+        ComparisonDiagnostics.derivedFinish();
+        ComparisonDiagnostics.derivedStart();
+        ComparisonDiagnostics.derivedFinish();
+        ComparisonDiagnostics.classified();
+        assertThat(ComparisonDiagnostics.end()).contains("derived_classification_requests=2", "derived_classifications=1");
+    }
+
+    @Test
+    void winnerInstrumentationIsValidForTheNestedAccumulator() throws Exception {
+        String type = "com/iocextractor/application/artifact/policy/ArtifactOccurrenceSelector$Accumulator";
+        byte[] bytes;
+        try (var source = getClass().getClassLoader().getResourceAsStream(type + ".class")) {
+            bytes = ComparisonDiagnostics.instrument(type, java.util.Objects.requireNonNull(source).readAllBytes());
+        }
+        Class<?> woven = new ClassLoader(getClass().getClassLoader()) {
+            Class<?> loadProbe() { return defineClass(type.replace('/', '.'), bytes, 0, bytes.length); }
+        }.loadProbe();
+        assertThat(woven.getDeclaredMethods()).isNotEmpty();
+    }
+
+    @Test
     void incompleteDiagnosticTimingCannotProduceSuccessfulSnapshot() {
         ComparisonDiagnostics.premain("", org.mockito.Mockito.mock(Instrumentation.class));
         ComparisonDiagnostics.begin();

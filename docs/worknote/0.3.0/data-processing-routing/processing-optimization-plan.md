@@ -9,8 +9,12 @@ Progress, 2026-10-03: O0 comparison/diagnostic tooling and O1–O2 implementatio
 are recorded in [O0–O2 evidence](o0-o2-implementation.md). That evidence includes
 independent first/warmed workload pairs, invocation counters, preparation timing
 and a proposed resource budget. Customer budget agreement, broader workload
-qualification and final performance acceptance remain open. O3–O7 implementation
-has not started; O3 retains the explicit `prepareLegacy` exclusion below.
+qualification and final performance acceptance remain open. O3 incremental winner
+retention and O4 explicit semantic sessions are implemented; qualification is
+recorded in [O3–O4 evidence](o3-o4-implementation.md). O4 delivery-wide import
+reuse is deferred in favor of row-local scope. O3 retains the explicit
+`prepareLegacy` exclusion and the pre-existing lifecycle duplicate-key rejection.
+O5–O7 implementation has not started.
 
 Inputs: [cost analysis](router-cost-and-architecture-analysis.md),
 [Camel applicability](camel-optimization-applicability.md),

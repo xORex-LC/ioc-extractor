@@ -26,6 +26,7 @@ public final class ComparisonDiagnostics {
     private static final String HELPER = "com/iocextractor/bootstrap/ComparisonDiagnostics";
     private static final Map<String, String> ENTRIES = Map.ofEntries(
             entry("domain/feature/NetworkAddressParser", "parse", "parser_calls"),
+            entry("domain/feature/NetworkHostDeriver", "derive", "host_computations"),
             entry("adapter/out/psl/PslHostClassifier", "classify", "psl_host_calls"),
             entry("processing/classification/IndicatorClassifier", "classify", "classifications"),
             entry("adapter/processing/camel/runtime/InvocationViews", "demand", "view_demands"),
@@ -44,10 +45,12 @@ public final class ComparisonDiagnostics {
                     "com/iocextractor/application/artifact/ArtifactIdSequence",
                     "com/iocextractor/adapter/in/csv/CsvProcessedImportRowPreparer",
                     "com/iocextractor/bootstrap/RouterProcessedImportRowPreparer",
-                    "com/iocextractor/adapter/processing/camel/runtime/CamelRouteRuntime"))
+                    "com/iocextractor/adapter/processing/camel/runtime/CamelRouteRuntime",
+                    "com/iocextractor/application/artifact/policy/ArtifactOccurrenceSelector$Accumulator"))
             .collect(java.util.stream.Collectors.toUnmodifiableSet());
     private static final AtomicReference<Throwable> FAILURE = new AtomicReference<>();
     private static final ThreadLocal<Map<String, Long>> STARTS = ThreadLocal.withInitial(TreeMap::new);
+    private static final ThreadLocal<Boolean> DERIVED = new ThreadLocal<>();
     private static volatile boolean installed;
     private static volatile boolean active;
 
@@ -81,6 +84,7 @@ public final class ComparisonDiagnostics {
         COUNTS.clear();
         MAXIMA.clear();
         STARTS.remove();
+        DERIVED.remove();
         active = true;
     }
 
@@ -89,6 +93,10 @@ public final class ComparisonDiagnostics {
         if (FAILURE.get() != null) {
             throw new IllegalStateException("Comparison instrumentation failed", FAILURE.get());
         }
+        if (Boolean.TRUE.equals(DERIVED.get())) {
+            throw new IllegalStateException("Derived classification instrumentation did not complete");
+        }
+        DERIVED.remove();
         if (!STARTS.get().isEmpty()) {
             throw new IllegalStateException("Preparation instrumentation did not complete");
         }
@@ -151,6 +159,31 @@ public final class ComparisonDiagnostics {
         }
     }
 
+    /** Diagnostic-only origin tracking distinguishes requests from actual policy computations. */
+    public static void derivedStart() {
+        if (active) {
+            DERIVED.set(true);
+            count("derived_classification_requests");
+        }
+    }
+
+    public static void derivedFinish() {
+        DERIVED.remove();
+    }
+
+    public static void classified() {
+        if (active && Boolean.TRUE.equals(DERIVED.get())) {
+            count("derived_classifications");
+        }
+    }
+
+    public static void retainedWinners(Map<?, ?> winners) {
+        if (active) {
+            count("winner_updates");
+            maximum("max_winners_per_artifact", winners.size());
+        }
+    }
+
     private static void maximum(String name, long value) {
         MAXIMA.computeIfAbsent(name, ignored -> new java.util.concurrent.atomic.AtomicLong())
                 .accumulateAndGet(value, Math::max);
@@ -202,6 +235,9 @@ public final class ComparisonDiagnostics {
                         if (entryCounter != null) {
                             hook("count", entryCounter);
                         }
+                        if (type.endsWith("/IndicatorClassifier") && method.equals("classify")) {
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, HELPER, "classified", "()V", false);
+                        }
                         if (timer != null) {
                             hook("start", timer);
                             hook("count", "preparation_calls");
@@ -215,9 +251,11 @@ public final class ComparisonDiagnostics {
                                 || owner.endsWith("/OperationCatalog$PredicateBinding") && name.equals("matches"))) {
                             hook("count", "predicate_calls");
                         }
-                        if (type.endsWith("/IocProcessingOperations") && owner.endsWith("/IndicatorClassifier")
-                                && name.equals("classify")) {
-                            hook("count", "derived_classifications");
+                        boolean derivedClassification = type.endsWith("/IocProcessingOperations")
+                                && (owner.endsWith("/IndicatorClassifier") && name.equals("classify")
+                                || owner.endsWith("/IndicatorProcessingSession") && name.equals("classifyWith"));
+                        if (derivedClassification) {
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, HELPER, "derivedStart", "()V", false);
                         }
                         if ((type.endsWith("/InvocationViews") || type.endsWith("/CamelRouteRuntime"))
                                 && owner.equals("org/apache/camel/ProducerTemplate") && name.startsWith("request")) {
@@ -238,6 +276,16 @@ public final class ComparisonDiagnostics {
                             hook("count", "psl_domain_parses");
                         }
                         super.visitMethodInsn(opcode, owner, name, desc, isInterface);
+                        if (derivedClassification) {
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, HELPER, "derivedFinish", "()V", false);
+                        }
+                        if (type.endsWith("/ArtifactOccurrenceSelector$Accumulator") && method.equals("add")
+                                && owner.equals("java/util/Map") && name.equals("put")) {
+                            super.visitVarInsn(Opcodes.ALOAD, 0);
+                            super.visitFieldInsn(Opcodes.GETFIELD, type, "winners", "Ljava/util/Map;");
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, HELPER,
+                                    "retainedWinners", "(Ljava/util/Map;)V", false);
+                        }
                         if (type.endsWith("/InvocationViews") && owner.equals("java/util/Map")
                                 && name.equals("put") && (method.equals("<init>") || method.equals("resolve"))) {
                             super.visitVarInsn(Opcodes.ALOAD, 0);
