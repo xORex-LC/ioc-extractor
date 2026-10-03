@@ -194,6 +194,12 @@ def result_signature(kind, root, input_rows, unique=20, warmups=0, shape="domain
                 "receipt_outcome": receipt_outcome, "terminal_state": terminal}
 
 
+def expected_document_diagnostics(input_rows, unique, shape, selected):
+    values = fixture_values(unique, shape)
+    overlaps = sum(values[index % unique].startswith("https://") for index in range(input_rows))
+    return overlaps + (0 if selected else input_rows - min(input_rows, unique))
+
+
 def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows, unique, warmups,
             resources=RESOURCES, diagnostics=False, shape="domains"):
     name = "selected" if selected else "compatible"
@@ -243,9 +249,7 @@ def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows
     if kind == "document":
         outcome_counts = dict(item.split("=", 1) for item in outcomes[-1].split()[:5])
         # URL spans also produce supported extractor overlap diagnostics in both paths.
-        values = fixture_values(unique, shape)
-        overlaps = sum(values[index % unique].startswith("https://") for index in range(input_rows))
-        expected_diagnostics = overlaps + (0 if selected else input_rows - min(input_rows, unique))
+        expected_diagnostics = expected_document_diagnostics(input_rows, unique, shape, selected)
         if int(outcome_counts["retained"]) != min(input_rows, unique) or \
                 int(outcome_counts["diagnostics"]) != expected_diagnostics:
             raise RuntimeError("Unexpected retained/duplicate diagnostic counts")

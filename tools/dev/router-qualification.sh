@@ -36,11 +36,12 @@ for branches in 1 4 16 64; do
   for callers in 1 4; do
     for mode in SUCCESS FAILURE RECOVERY; do
       dev_log "router qualification: size=${SIZE} branches=${branches} callers=${callers} mode=${mode}"
+      RUN_PREFIX="${WORKSPACE}/router-${SIZE}-${branches}-${callers}-${mode}"
       timeout 180s java -Xms128m -Xmx512m -cp "${CLASSPATH}" \
         com.iocextractor.adapter.processing.camel.RouterQualification \
         "${SIZE}" "${branches}" "${callers}" "${mode}" \
-        > "${WORKSPACE}/last-run.out" 2> "${WORKSPACE}/last-run.err"
-      tail -n 1 "${WORKSPACE}/last-run.out" >> "${REPORT}"
+        > "${RUN_PREFIX}.out" 2> "${RUN_PREFIX}.err"
+      tail -n 1 "${RUN_PREFIX}.out" >> "${REPORT}"
     done
   done
 done

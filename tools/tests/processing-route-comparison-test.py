@@ -65,6 +65,13 @@ class ComparisonTest(unittest.TestCase):
             self.assertIn("default-view: original", config)
             self.assertIn("operation: network.host", config)
 
+    def test_url_overlap_diagnostics_are_preserved_in_both_paths(self):
+        self.assertEqual(COMPARISON.expected_document_diagnostics(10, 4, "mixed", True), 2)
+        self.assertEqual(COMPARISON.expected_document_diagnostics(10, 4, "mixed", False), 8)
+        self.assertEqual(COMPARISON.expected_document_diagnostics(10, 4, "long", True), 10)
+        self.assertEqual(COMPARISON.expected_document_diagnostics(10, 4, "long", False), 16)
+        self.assertEqual(COMPARISON.expected_document_diagnostics(10, 4, "domains", False), 6)
+
     def test_statistics_support_a_single_workload_without_fabricating_the_other(self):
         rows = [dict(kind="document", path=path, iteration=0, elapsed_ms=value,
                      throughput_per_s=value, allocated_main_bytes=value,
