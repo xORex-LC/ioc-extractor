@@ -8,6 +8,7 @@ sys.dont_write_bytecode = True
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 SPEC = importlib.util.spec_from_file_location(
@@ -17,6 +18,15 @@ SPEC.loader.exec_module(COMPARISON)
 
 
 class ComparisonTest(unittest.TestCase):
+    def test_timeout_retains_partial_output_and_never_returns_success(self):
+        with tempfile.TemporaryDirectory() as root:
+            output = Path(root) / "run.log"
+            failure = COMPARISON.subprocess.TimeoutExpired(["java"], 2, output=b"partial sample\n")
+            with patch.object(COMPARISON.subprocess, "run", side_effect=failure):
+                with self.assertRaises(COMPARISON.subprocess.TimeoutExpired):
+                    COMPARISON.command(["java"], output=output, timeout=2)
+            self.assertEqual(output.read_text(), "partial sample\n")
+
     def test_missing_or_unreached_instrumentation_invalidates_diagnostic_fork(self):
         for output in ("", "ROUTE_DIAGNOSTICS preparation_calls=1\n",
                        "ROUTE_DIAGNOSTICS preparation_calls=1 preparation_nanos=0\n"):

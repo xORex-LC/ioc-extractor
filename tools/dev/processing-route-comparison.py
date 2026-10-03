@@ -38,8 +38,14 @@ def diagnostic_counters(output):
 
 
 def command(args, *, cwd=REPO, output=None, timeout=600):
-    result = subprocess.run(args, cwd=cwd, text=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, timeout=timeout, check=False)
+    try:
+        result = subprocess.run(args, cwd=cwd, text=True, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, timeout=timeout, check=False)
+    except subprocess.TimeoutExpired as failure:
+        if output:
+            partial = failure.stdout or ""
+            output.write_text(partial.decode(errors="replace") if isinstance(partial, bytes) else partial)
+        raise
     if output:
         output.write_text(result.stdout)
     if result.returncode:
