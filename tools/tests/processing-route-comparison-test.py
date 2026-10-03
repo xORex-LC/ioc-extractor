@@ -8,6 +8,7 @@ sys.dont_write_bytecode = True
 from pathlib import Path
 import tempfile
 import unittest
+import sqlite3
 from unittest.mock import patch
 
 
@@ -18,6 +19,18 @@ SPEC.loader.exec_module(COMPARISON)
 
 
 class ComparisonTest(unittest.TestCase):
+    def test_import_signature_includes_internal_ids_and_occurrence_accounting(self):
+        with sqlite3.connect(":memory:") as connection:
+            connection.executescript("""
+                CREATE TABLE masks(id INTEGER, row_key TEXT);
+                CREATE TABLE masks_sources(row_id INTEGER, source_key TEXT, occurrences INTEGER);
+                INSERT INTO masks VALUES(8, 'second'), (3, 'first');
+                INSERT INTO masks_sources VALUES(8, 'feed', 1), (3, 'feed', 4);
+                """)
+            self.assertEqual(COMPARISON.canonical_import_accounting(connection), {
+                "canonical_ids": [(3, "first"), (8, "second")],
+                "provenance": [(3, "feed", 4), (8, "feed", 1)]})
+
     def test_timeout_retains_partial_output_and_never_returns_success(self):
         with tempfile.TemporaryDirectory() as root:
             output = Path(root) / "run.log"

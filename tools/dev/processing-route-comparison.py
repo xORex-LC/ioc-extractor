@@ -132,6 +132,13 @@ def config(kind, selected, target, resources=RESOURCES, shape="domains"):
     path.write_text(contents)
 
 
+def canonical_import_accounting(connection):
+    return {
+        "canonical_ids": connection.execute("SELECT id, row_key FROM masks ORDER BY id").fetchall(),
+        "provenance": connection.execute(
+            "SELECT row_id, source_key, occurrences FROM masks_sources ORDER BY row_id, source_key").fetchall()}
+
+
 def result_signature(kind, root, input_rows, unique=20, warmups=0, shape="domains"):
     database = root / "ioc-dataframe.db"
     with sqlite3.connect(database) as connection:
@@ -195,7 +202,8 @@ def result_signature(kind, root, input_rows, unique=20, warmups=0, shape="domain
                 or statuses != expected_statuses or stage_warnings != receipt_warnings \
                 or terminal != [("TERMINAL", "SUCCEEDED")]:
             raise RuntimeError("Incomplete canonical import result")
-        return {"rows": rows, "receipt_counts": receipt, "stage_statuses": statuses,
+        return {**canonical_import_accounting(connection),
+                "rows": rows, "receipt_counts": receipt, "stage_statuses": statuses,
                 "stage_warnings": stage_warnings, "receipt_warnings": receipt_warnings,
                 "receipt_outcome": receipt_outcome, "terminal_state": terminal}
 
