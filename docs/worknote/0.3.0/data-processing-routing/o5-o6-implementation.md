@@ -60,3 +60,43 @@ PMD pass followed removal of two newly unused private method parameters.
 Raw SpotBugs (120 accepted), CPD (24), PMD policy (24) and watchlist (30)
 reports were reviewed; no new finding or ratchet adjustment was introduced.
 The final combined slice will be verified again on its committed HEAD.
+
+## O6 experiment admission criteria (before candidate measurements)
+
+The isolated candidate keeps generated view and branch routes, binds each view's
+native consumer pipeline after context startup, and uses one plan-entry
+ProducerTemplate request per invocation. It retains a caller-owned invocation
+frame and native sequential Recipient List copies for selected branches,
+including one recipient. This is one producer entry, not one physical Exchange.
+Zero recipients now enter Camel, and a single recipient gains a dispatch copy;
+both are explicit potential costs to measure rather than hidden assumptions.
+
+Promotion requires unchanged conformance, native view UnitOfWork completion and
+failure cleanup, branch isolation and production document/import tests. Before
+examining candidate timing, a useful primary gain is defined as at least 10%
+less selected allocation or elapsed time on a repeat-heavy workload, with no
+more than 10% selected allocation regression on the other workload. Timing
+changes must exceed the paired spread; startup/unique/concurrent and sampled
+memory changes require investigation at a 15% regression. The original resource
+envelope remains unchanged. Failure to meet this local promotion screen removes
+the prototype and retains O1–O5; it does not authorize changing O7 acceptance.
+
+## O5 primary comparison
+
+Five alternating fresh-JVM pairs per workload, one disjoint warm-up, identical
+8,000/20-key document and 2,000/20-key import fixtures, logging and JVM settings.
+Before is the retained O4 production reference 2ddae036 (production-equivalent
+at starting e3b9248c); after is clean 7e0330bd. All input digests, per-path
+configuration digests, outcome counts and canonical/projection signatures match
+across revisions. Reviewed report: [O5 warmed comparison](qualification/optimization/o5-after-warm.json).
+
+| Selected workload | Median time O4 / O5 | Calling-thread allocation O4 / O5 | Sampled heap O4 / O5 | Current RSS O4 / O5 |
+|---|---:|---:|---:|---:|
+| Document | 399.5 / 376.5 ms | 256.1 / 243.7 MB | 120.3 / 120.5 MB | 386,864 / 374,608 KiB |
+| Import | 595.7 / 559.5 ms | 81.3 / 76.1 MB | 118.7 / 117.8 MB | 396,296 / 396,480 KiB |
+
+Allocation decreases 4.8% and 6.4% respectively. Timing falls approximately 6%
+but compatible timing also shifts; these independent runs do not establish a
+universal latency improvement. Whole-process memory is effectively unchanged.
+O5 selected/compatible caller allocation remains 2.089 for documents and 1.217
+for import; the historical envelope passes but O7/customer acceptance is open.
