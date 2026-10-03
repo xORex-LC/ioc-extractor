@@ -12,6 +12,7 @@ import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
 import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.DocumentProcessingPlan;
+import com.iocextractor.application.port.out.artifact.DocumentProcessingSession;
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.platform.etl.Envelope;
 import com.iocextractor.platform.etl.Stage;
@@ -53,7 +54,10 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
     @Override
     public Envelope<PreparedArtifacts> process(Envelope<AttributedIndicators> input) {
         Map<String, ArtifactWritePlan> emptyPlans = emptyPlans();
-        Grouped grouped = group(input.payload(), emptyPlans.keySet());
+        Grouped grouped;
+        try (var session = processing.openSession()) {
+            grouped = group(input.payload(), emptyPlans.keySet(), session);
+        }
         return input.withPayload(new PreparedArtifacts(grouped.extracted(), grouped.retained(),
                         selectPlans(emptyPlans, grouped.rows())))
                 .withDiagnostics(grouped.diagnostics());
@@ -70,7 +74,7 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
         return emptyPlans;
     }
 
-    private Grouped group(AttributedIndicators input, Set<String> artifacts) {
+    private Grouped group(AttributedIndicators input, Set<String> artifacts, DocumentProcessingSession session) {
         Map<String, ArtifactOccurrenceSelector.Accumulator<ArtifactRowKey, PreparedArtifactRow>> groups = new LinkedHashMap<>();
         List<Diagnostic> diagnostics = new ArrayList<>();
         Set<String> seenOriginals = new HashSet<>();
@@ -82,7 +86,7 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
             if (!deduplicate || seenOriginals.add(occurrence.indicator().dedupKey())) {
                 retained++;
             }
-            var result = processing.prepare(occurrence);
+            var result = session.prepare(occurrence);
             diagnostics.addAll(result.diagnostics());
             for (RoutedArtifactCandidate candidate : Objects.requireNonNull(result.value(), "routed candidates")) {
                 if (!artifacts.contains(candidate.artifact())) {

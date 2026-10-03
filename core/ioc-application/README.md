@@ -23,7 +23,11 @@ decisions материализуются один раз; application stages и�
 `DocumentProcessingPlan` port и разрешает конфликты по финальному ключу
 артефакта существующей policy. Прежний путь dedup/classify/prepare остаётся
 действующим без плана. Обе ветки сходятся в прежнем checkpoint и write stage;
-application не знает Camel и CSV.
+application не знает Camel и CSV. Stage владеет отдельным
+`DocumentProcessingSession`, закрывая его до checkpoint и при исключении;
+ключи семантического кеша остаются за портом. `ArtifactOccurrenceSelector`
+удерживает одного целого победителя на конечный ключ только в уже существующих
+reduction-путях; `prepareLegacy` сохраняет прежнюю кратность строк.
 `ArtifactRow` владеет единственным упорядоченным защитным снимком колонок:
 фабрика `ordered` использует снимок конструктора, сохраняет `null` и порядок
 колонок, не раскрывает изменяемую карту вызывающего кода.

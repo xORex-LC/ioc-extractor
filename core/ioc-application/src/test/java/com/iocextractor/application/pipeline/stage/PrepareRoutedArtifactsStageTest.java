@@ -172,6 +172,47 @@ class PrepareRoutedArtifactsStageTest {
                 .hasMessageContaining("unknown artifact");
     }
 
+    @Test
+    void preparationOwnsOneSessionAndClosesItOnSuccessAndFailure() {
+        for (boolean fail : List.of(false, true)) {
+            var opened = new AtomicInteger();
+            var closed = new AtomicInteger();
+            var visited = new AtomicInteger();
+            DocumentProcessingPlan plan = new DocumentProcessingPlan() {
+                @Override public Result<List<RoutedArtifactCandidate>> prepare(IndicatorOccurrence occurrence) {
+                    throw new AssertionError("The stage must use its document session");
+                }
+
+                @Override public com.iocextractor.application.port.out.artifact.DocumentProcessingSession openSession() {
+                    opened.incrementAndGet();
+                    return new com.iocextractor.application.port.out.artifact.DocumentProcessingSession() {
+                        @Override public Result<List<RoutedArtifactCandidate>> prepare(IndicatorOccurrence occurrence) {
+                            visited.incrementAndGet();
+                            if (fail) {
+                                throw new IllegalStateException("operation defect");
+                            }
+                            return Result.success(List.of(candidate("masks", "mask", "same.example", occurrence)));
+                        }
+                        @Override public void close() { closed.incrementAndGet(); }
+                    };
+                }
+            };
+            var source = StageTestSupport.indicator("same.example");
+            var input = StageTestSupport.envelope(StageTestSupport.attributedIndicators(source, source), false);
+            var stage = new PrepareRoutedArtifactsStage(plan, List.of(empty("masks", "mask")),
+                    (artifact, row) -> Optional.of(new ArtifactRowKey(row.value("mask"))),
+                    Map.of("masks", KEEP_FIRST), false);
+            if (fail) {
+                assertThatThrownBy(() -> stage.process(input)).hasMessage("operation defect");
+            } else {
+                assertThat(stage.process(input).payload().plans().getFirst().rows()).hasSize(1);
+            }
+            assertThat(opened).hasValue(1);
+            assertThat(closed).hasValue(1);
+            assertThat(visited).hasValue(fail ? 1 : 2);
+        }
+    }
+
     private static Map<String, String> row(String mask, String name) {
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("mask", mask);

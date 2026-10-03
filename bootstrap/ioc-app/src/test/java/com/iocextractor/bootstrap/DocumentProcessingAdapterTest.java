@@ -84,6 +84,54 @@ class DocumentProcessingAdapterTest {
     }
 
     @Test
+    void documentSessionReusesSemanticsWithoutSkippingMappingOrOccurrenceMetadata() throws Exception {
+        var descriptor = plan(PlanDescriptor.Mode.FIRST,
+                new PlanDescriptor.Branch("mask", "masks", null, List.of("host")));
+        var binding = new ProcessingPlanCatalog.CompiledPlan(descriptor,
+                Map.of("mask", new ProcessingPlanCatalog.BranchBinding("masks", "host", Map.of())),
+                Set.of("host"));
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        MatchPolicy policy = indicator -> {
+            calls.incrementAndGet();
+            return decision(indicator.value(), indicator.source().label());
+        };
+        var originalClassifier = new IndicatorClassifier(policy);
+        var operationClassifier = new IndicatorClassifier(policy);
+        var writePolicy = new com.iocextractor.application.artifact.policy.ArtifactWritePolicy(
+                com.iocextractor.application.artifact.policy.ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY,
+                "source", Map.of("source", com.iocextractor.application.artifact.policy.ArtifactWritePolicy
+                        .FieldUpdatePolicy.LATEST_REGISTERED_KEEP_EXISTING));
+        var definition = new CsvArtifactDefinition("masks", Set.of(IndicatorType.DOMAIN), ArtifactFilter.none(),
+                new ConfigurableRowMapper(List.of(column("mask", "value"), column("source", "source.label")),
+                        ConfigRegistryCatalog.valueProviders(), Map.of()), ArtifactIdStrategy.ASCENDING, 1, writePolicy);
+        var rows = new CsvArtifactPreparer(definition, new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 1),
+                new DiagnosticFactory(Clock.systemUTC()), "document", NoopPipelineDecisionTracer.INSTANCE);
+        var operations = new IocProcessingOperations(binding, Map.of("masks", rows), operationClassifier).catalog();
+        try (var runtime = new CamelRouteRuntime(new CamelPlanCompiler().compile(List.of(descriptor), operations))) {
+            var adapter = new DocumentProcessingAdapter(binding, runtime, originalClassifier, Clock.systemUTC());
+            try (var session = adapter.openSession()) {
+                for (int ordinal = 0; ordinal < 3; ordinal++) {
+                    var indicator = new Indicator("same.example", IndicatorType.DOMAIN,
+                            new SourceContext(ordinal == 2 ? "second" : "first", null));
+                    var occurrence = new IndicatorOccurrence(indicator,
+                            ordinal + 1, ordinal);
+                    var result = session.prepare(occurrence);
+                    assertThat(result.diagnostics()).isEmpty();
+                    assertThat(result.value()).singleElement().satisfies(candidate -> {
+                        assertThat(candidate.row().template().value("mask")).isEqualTo("same.example");
+                        assertThat(candidate.row().template().value("source")).isEqualTo(indicator.source().label());
+                        assertThat(candidate.row().orderedFieldPositions())
+                                .containsEntry("source", occurrence.orderingPosition());
+                    });
+                }
+                assertThat(calls).hasValue(2);
+            }
+            adapter.prepare(occurrence("same.example", 4));
+            assertThat(calls).hasValue(4);
+        }
+    }
+
+    @Test
     void host_branch_merges_final_mask_value_while_original_branch_keeps_full_url() throws Exception {
         var plan = plan(PlanDescriptor.Mode.ALL,
                 new PlanDescriptor.Branch("mask", "masks", typeIn("original", "URL"), List.of("host", "original")),

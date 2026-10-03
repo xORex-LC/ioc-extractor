@@ -3,12 +3,13 @@ package com.iocextractor.bootstrap;
 import com.iocextractor.application.observation.OccurrencePosition;
 import com.iocextractor.adapter.out.sink.csv.CsvArtifactPreparer;
 import com.iocextractor.processing.model.ClassifiedIndicator;
+import com.iocextractor.processing.session.IndicatorProcessingSession;
 import java.util.Map;
 import java.util.Objects;
 
 /** IOC view with invocation-local ordering, shared by document and import paths. */
 record ProcessingView(ClassifiedIndicator classified, OccurrencePosition position, int ordinal,
-                      Map<String, CsvArtifactPreparer> preparers) {
+                      Map<String, CsvArtifactPreparer> preparers, IndicatorProcessingSession session) {
     ProcessingView {
         Objects.requireNonNull(classified, "classified");
         Objects.requireNonNull(position, "position");
@@ -18,11 +19,16 @@ record ProcessingView(ClassifiedIndicator classified, OccurrencePosition positio
         preparers = Map.copyOf(preparers);
     }
 
+    ProcessingView(ClassifiedIndicator classified, OccurrencePosition position, int ordinal,
+                   Map<String, CsvArtifactPreparer> preparers) {
+        this(classified, position, ordinal, preparers, null);
+    }
+
     ProcessingView(ClassifiedIndicator classified, OccurrencePosition position, int ordinal) {
         this(classified, position, ordinal, Map.of());
     }
 
     ProcessingView derived(ClassifiedIndicator result) {
-        return new ProcessingView(result, position, ordinal, preparers);
+        return new ProcessingView(result, position, ordinal, preparers, session);
     }
 }

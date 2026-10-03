@@ -47,10 +47,12 @@ final class IocProcessingOperations {
         Processor host = exchange -> {
             ProcessingView input = Objects.requireNonNull(
                     exchange.getMessage().getBody(ProcessingView.class), "processing view");
-            var result = deriver.derive(input.classified().indicator());
+            var result = input.session() == null ? deriver.derive(input.classified().indicator())
+                    : input.session().deriveHost(input.classified().indicator());
             exchange.getMessage().setBody(result.isAvailable()
                     ? new ViewOutcome.Available(input.derived(new ClassifiedIndicator(
-                            result.indicator(), classifier.classify(result.indicator()))))
+                            result.indicator(), input.session() == null ? classifier.classify(result.indicator())
+                                    : input.session().classifyWith(result.indicator(), classifier))))
                     : new ViewOutcome.Unavailable(new FailureReference(NETWORK_HOST,
                             result.failure().name().toLowerCase(java.util.Locale.ROOT)
                                     .replace('_', '-'))));

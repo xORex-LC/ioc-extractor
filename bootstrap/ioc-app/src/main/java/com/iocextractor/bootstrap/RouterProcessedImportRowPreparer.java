@@ -22,6 +22,7 @@ import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.SourceContext;
 import com.iocextractor.domain.refang.Refanger;
 import com.iocextractor.processing.classification.IndicatorClassifier;
+import com.iocextractor.processing.session.IndicatorProcessingSession;
 import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.processing.parse.ExactIndicatorParser;
 import java.util.ArrayList;
@@ -97,8 +98,10 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
                                           ImportDelimitedRecord record, ImportLogicalRow admitted) {
         requireBinding(contract, admitted);
         RowAssembly assembly = new RowAssembly();
-        for (Input input : inputs) {
-            prepareInput(contract, record, admitted, input, assembly);
+        try (var session = new IndicatorProcessingSession(classifier)) {
+            for (Input input : inputs) {
+                prepareInput(contract, record, admitted, input, assembly, session);
+            }
         }
         requirePrimaryOutput(record, admitted, assembly);
         if (!assembly.issues.isEmpty()) {
@@ -109,7 +112,8 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
     }
 
     private void prepareInput(CompiledDataframeImportContract contract, ImportDelimitedRecord record,
-                              ImportLogicalRow admitted, Input input, RowAssembly assembly) {
+                              ImportLogicalRow admitted, Input input, RowAssembly assembly,
+                              IndicatorProcessingSession session) {
         ImportArtifactBranch branch = branch(admitted, input.artifact());
         ImportCell cell = Objects.requireNonNull(branch.cells().get(input.target()),
                 "admitted semantic input " + input);
@@ -123,8 +127,8 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
         }
         Indicator indicator = new Indicator(parsed.indicator().value(), parsed.indicator().type(),
                 new SourceContext(sourceLabel(contract, branch), null));
-        var original = new ProcessingView(new ClassifiedIndicator(indicator, classifier.classify(indicator)),
-                new OccurrencePosition(record.sourceRowNumber()), 0);
+        var original = new ProcessingView(new ClassifiedIndicator(indicator, session.classify(indicator)),
+                new OccurrencePosition(record.sourceRowNumber()), 0, Map.of(), session);
         var result = route.prepare(original);
         result.diagnostics().forEach(diagnostic -> {
             if (diagnostic.severity() == DiagnosticSeverity.WARN) {

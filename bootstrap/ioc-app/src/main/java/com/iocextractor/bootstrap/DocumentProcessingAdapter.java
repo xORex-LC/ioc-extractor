@@ -5,6 +5,8 @@ import com.iocextractor.adapter.out.sink.csv.CsvArtifactPreparer;
 import com.iocextractor.application.artifact.RoutedArtifactCandidate;
 import com.iocextractor.application.pipeline.payload.IndicatorOccurrence;
 import com.iocextractor.application.port.out.artifact.DocumentProcessingPlan;
+import com.iocextractor.application.port.out.artifact.DocumentProcessingSession;
+import com.iocextractor.processing.session.IndicatorProcessingSession;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.diagnostics.result.Result;
 import com.iocextractor.processing.classification.IndicatorClassifier;
@@ -51,9 +53,32 @@ final class DocumentProcessingAdapter implements DocumentProcessingPlan {
 
     @Override
     public Result<List<RoutedArtifactCandidate>> prepare(IndicatorOccurrence occurrence) {
+        try (var session = new IndicatorProcessingSession(classifier, 0, 0)) {
+            return prepare(occurrence, session);
+        }
+    }
+
+    @Override
+    public DocumentProcessingSession openSession() {
+        var semantics = new IndicatorProcessingSession(classifier);
+        return new DocumentProcessingSession() {
+            @Override
+            public Result<List<RoutedArtifactCandidate>> prepare(IndicatorOccurrence occurrence) {
+                return DocumentProcessingAdapter.this.prepare(occurrence, semantics);
+            }
+
+            @Override
+            public void close() {
+                semantics.close();
+            }
+        };
+    }
+
+    private Result<List<RoutedArtifactCandidate>> prepare(IndicatorOccurrence occurrence,
+                                                         IndicatorProcessingSession session) {
         var original = new ProcessingView(new ClassifiedIndicator(occurrence.indicator(),
-                classifier.classify(occurrence.indicator())),
-                occurrence.orderingPosition(), occurrence.tieOrdinal(), preparers);
+                session.classify(occurrence.indicator())),
+                occurrence.orderingPosition(), occurrence.tieOrdinal(), preparers, session);
         return route.prepare(original);
     }
 }

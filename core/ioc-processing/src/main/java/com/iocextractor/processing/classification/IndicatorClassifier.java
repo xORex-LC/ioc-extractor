@@ -46,6 +46,11 @@ public final class IndicatorClassifier {
         throw new IllegalArgumentException("Unsupported indicator category: " + indicator.type().category());
     }
 
+    /** True only when both wrappers pin the very same configured policy instance. */
+    public boolean sharesPolicyWith(IndicatorClassifier other) {
+        return networkPolicy == Objects.requireNonNull(other, "other").networkPolicy;
+    }
+
     /** Returns a value-free classifier name suitable for diagnostics. */
     public String name() {
         return networkPolicy.getClass().getSimpleName();

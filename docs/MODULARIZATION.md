@@ -67,6 +67,11 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 > ArtifactId имеют префикс `ioc-*`, например `ioc-platform-etl`,
 > `ioc-application`, `ioc-adapter-csv`, `ioc-app`.
 
+`ioc-processing/session` содержит ограниченное переиспользование успешной
+классификации и host-пар в рамках одного вызова. Владелец документной сессии —
+application stage; для одной строки импорта — bootstrap preparer. Camel не
+знает ключей семантического кеша и не владеет его жизненным циклом.
+
 ### Направление зависимостей между модулями
 
 ```
