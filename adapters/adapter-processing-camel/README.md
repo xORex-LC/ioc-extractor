@@ -67,3 +67,8 @@ workspace load is measured separately from this synthetic Router profile.
 See [routing capability](../../docs/dev/processing.md),
 [module map](../../docs/MODULARIZATION.md) and
 [ADR 0031](../../docs/ADR/0031-bounded-camel-preparation-runtime.md).
+
+The execution conformance suite checks native view UnitOfWork success/failure
+completion, stopped-route refusal and isolation of mutable exchange headers and
+properties between views and recipients. These guarantees also constrain future
+changes to execution granularity.

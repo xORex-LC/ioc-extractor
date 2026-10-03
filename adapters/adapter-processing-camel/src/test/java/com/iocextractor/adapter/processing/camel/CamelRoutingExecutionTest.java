@@ -459,6 +459,54 @@ class CamelRoutingExecutionTest {
                 "default branch requires route action");
     }
 
+    @Test void nativeViewConsumersCompleteTheirUnitOfWorkAndKeepExchangesIsolated() throws Exception {
+        var completed = new AtomicInteger();
+        var failed = new AtomicInteger();
+        Processor view = exchange -> {
+            assertThat(exchange.getUnitOfWork()).isNotNull();
+            assertThat(exchange.getMessage().getHeader("leaked")).isNull();
+            assertThat(exchange.getProperty("leaked")).isNull();
+            exchange.getUnitOfWork().addSynchronization(new org.apache.camel.spi.Synchronization() {
+                @Override public void onComplete(org.apache.camel.Exchange value) { completed.incrementAndGet(); }
+                @Override public void onFailure(org.apache.camel.Exchange value) { failed.incrementAndGet(); }
+            });
+            exchange.getMessage().setHeader("leaked", "view");
+            exchange.setProperty("leaked", "view");
+            if (exchange.getMessage().getBody().equals("fail")) {
+                throw new IllegalArgumentException("unexpected view failure");
+            }
+            exchange.getMessage().setBody(new ViewOutcome.Available("host"));
+        };
+        Processor recipient = exchange -> {
+            assertThat(completed).hasValue(2);
+            assertThat(exchange.getMessage().getHeader("leaked")).isNull();
+            assertThat(exchange.getProperty("leaked")).isNull();
+            var input = exchange.getMessage().getBody(PlanExecutionResult.BranchInput.class);
+            assertThat(input.original()).isEqualTo("ok");
+            assertThat(input.resolvedViews()).containsEntry("host", new ViewOutcome.Available("host"));
+            exchange.getMessage().setHeader("leaked", "recipient");
+            exchange.setProperty("leaked", "recipient");
+            exchange.getMessage().setBody(new BranchOutcome.Prepared("prepared"));
+        };
+        var bindings = new OperationCatalog(Map.of("view", view), Map.of("one", recipient), Map.of());
+        var required = List.of("host", "second");
+        var branches = List.of(new PlanDescriptor.Branch("one", "one", null, required),
+                new PlanDescriptor.Branch("two", "one", null, required));
+        var plan = plan(PlanDescriptor.Mode.ALL, branches, PlanDescriptor.Action.SKIP, null,
+                new PlanDescriptor.View("host", "view", "original"),
+                new PlanDescriptor.View("second", "view", "host"));
+        try (var runtime = runtime(plan, bindings)) {
+            assertThat(runtime.execute("p", "ok").replies()).hasSize(2);
+            assertThat(completed).hasValue(2);
+            assertThat(failed).hasValue(0);
+            assertThatThrownBy(() -> runtime.execute("p", "fail"))
+                    .hasRootCauseInstanceOf(IllegalArgumentException.class)
+                    .hasRootCauseMessage("unexpected view failure");
+            assertThat(completed).hasValue(2);
+            assertThat(failed).hasValue(1);
+        }
+    }
+
     private CamelRouteRuntime runtime(PlanDescriptor plan) throws Exception {
         return runtime(plan, catalog);
     }

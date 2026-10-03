@@ -83,6 +83,8 @@ class CamelRuntimeLifecycleTest {
             assertThat(runtime.isReady()).isTrue();
             seen.get().getRouteController().stopRoute(seen.get().getRoutes().getFirst().getId());
             assertThat(runtime.isReady()).isFalse();
+            assertThatThrownBy(() -> runtime.execute("p", "must-not-invoke-stopped-view"))
+                    .isInstanceOf(RuntimeException.class);
             seen.get().stop();
             assertThat(runtime.isReady()).isFalse();
         }

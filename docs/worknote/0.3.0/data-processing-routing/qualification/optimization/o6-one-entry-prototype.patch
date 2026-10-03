@@ -1,0 +1,294 @@
+diff --git a/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/CamelPlanCompiler.java b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/CamelPlanCompiler.java
+index a0461ce7..c9638ace 100644
+--- a/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/CamelPlanCompiler.java
++++ b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/CamelPlanCompiler.java
+@@ -76,3 +76,3 @@ public final class CamelPlanCompiler {
+-            String dispatchUri = address(plan.id(), "dispatch", "selected");
+-            uris.add(dispatchUri);
+-            routes.add(dispatchRoute(plan.id(), dispatchUri));
++            String entryUri = address(plan.id(), "entry", "selected");
++            uris.add(entryUri);
++            routes.add(entryRoute(plan.id(), entryUri));
+@@ -80 +80 @@ public final class CamelPlanCompiler {
+-                    viewRoutes, branchRoutes, dispatchUri,
++                    viewRoutes, branchRoutes, entryUri,
+@@ -115 +115 @@ public final class CamelPlanCompiler {
+-    private static RouteBuilder dispatchRoute(String planId, String uri) {
++    private static RouteBuilder entryRoute(String planId, String uri) {
+@@ -119 +119 @@ public final class CamelPlanCompiler {
+-                from(uri).routeId(routeId(planId, "dispatch", "selected"))
++                from(uri).routeId(routeId(planId, "entry", "selected"))
+@@ -122,2 +122,2 @@ public final class CamelPlanCompiler {
+-                                    exchange.getMessage().getBody(DispatchRequest.class),
+-                                    "dispatch request");
++                                    exchange.getMessage().getBody(PlanEntryRequest.class),
++                                    "plan entry request").prepare();
+@@ -126,0 +127,4 @@ public final class CamelPlanCompiler {
++                        .choice()
++                        .when(exchange -> exchange.getProperty(RouteProtocol.RECIPIENTS, List.class).isEmpty())
++                        .process(exchange -> exchange.getMessage().setBody(new DispatchRequest.Replies(List.of())))
++                        .otherwise()
+@@ -132 +136,2 @@ public final class CamelPlanCompiler {
+-                        .process(CamelPlanCompiler::freezeReplies);
++                        .process(CamelPlanCompiler::freezeReplies)
++                        .end();
+diff --git a/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/CompiledRoutes.java b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/CompiledRoutes.java
+index 3de4acb4..919095f1 100644
+--- a/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/CompiledRoutes.java
++++ b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/CompiledRoutes.java
+@@ -19 +19 @@ public record CompiledRoutes(List<RouteBuilder> routes, List<String> endpointUri
+-                               String dispatchUri, CompiledSelector selector) {
++                               String entryUri, CompiledSelector selector) {
+diff --git a/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/PlanEntryRequest.java b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/PlanEntryRequest.java
+new file mode 100644
+index 00000000..ccf9e630
+--- /dev/null
++++ b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/compile/PlanEntryRequest.java
+@@ -0,0 +1,7 @@
++package com.iocextractor.adapter.processing.camel.compile;
++
++/** Invocation-owned preparation executed inside the generated local entry route. */
++@FunctionalInterface
++public interface PlanEntryRequest {
++    DispatchRequest prepare();
++}
+diff --git a/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/CamelRouteRuntime.java b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/CamelRouteRuntime.java
+index 8aed7f3b..2647bf14 100644
+--- a/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/CamelRouteRuntime.java
++++ b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/CamelRouteRuntime.java
+@@ -4,0 +5 @@ import com.iocextractor.adapter.processing.camel.compile.DispatchRequest;
++import com.iocextractor.adapter.processing.camel.compile.PlanEntryRequest;
+@@ -30,0 +32 @@ public final class CamelRouteRuntime implements AutoCloseable {
++    private final Map<String, LocalViewRoute> viewRoutes;
+@@ -66,0 +69,12 @@ public final class CamelRouteRuntime implements AutoCloseable {
++            Map<String, LocalViewRoute> views = new LinkedHashMap<>();
++            for (var plan : plans.values()) {
++                for (var view : plan.views().values()) {
++                    if (view.uri() != null) {
++                        var route = context.getRoutes().stream()
++                                .filter(candidate -> candidate.getEndpoint() == endpoints.get(view.uri()))
++                                .findFirst().orElseThrow();
++                        views.put(view.uri(), new LocalViewRoute(context, route));
++                    }
++                }
++            }
++            viewRoutes = Map.copyOf(views);
+@@ -94,20 +108 @@ public final class CamelRouteRuntime implements AutoCloseable {
+-        InvocationViews views = new InvocationViews(producer, endpoints, original, plan, planId, trace);
+-        PlanSelection selection = plan.selector().select(views::demand, planId, trace);
+-        List<Endpoint> recipients = new ArrayList<>();
+-        List<PlanSelection.BlockedBranch> preparationBlocked = new ArrayList<>();
+-        for (String branchId : selection.selectedBranches()) {
+-            CompiledRoutes.BranchRoute branch = plan.branches().get(branchId);
+-            FailureReference failure = resolveRequiredViews(views, branchId,
+-                    branch.requiredViews());
+-            if (failure == null) {
+-                recipients.add(endpoints.get(branch.uri()));
+-            } else {
+-                preparationBlocked.add(new PlanSelection.BlockedBranch(branchId, failure));
+-                trace.emit(RoutingTraceEvent.Kind.BRANCH, planId, null, branchId,
+-                        null, "blocked", failure.reasonCode());
+-            }
+-        }
+-        if (recipients.isEmpty()) {
+-            return result(selection, List.of(), preparationBlocked, views);
+-        }
+-        var input = new PlanExecutionResult.BranchInput(original, views.snapshot());
++        var call = new PlanCall(planId, original, plan);
+@@ -115,7 +110,8 @@ public final class CamelRouteRuntime implements AutoCloseable {
+-        if (recipients.size() == 1) {
+-            replies = List.of(Objects.requireNonNull(producer.requestBody(recipients.getFirst(),
+-                    input, PlanExecutionResult.BranchReply.class), "recipient reply"));
+-        } else {
+-            var request = new DispatchRequest(input, recipients);
+-            replies = Objects.requireNonNull(producer.requestBody(endpoints.get(plan.dispatchUri()),
+-                    request, DispatchRequest.Replies.class), "dispatch replies").values();
++        try {
++            replies = Objects.requireNonNull(producer.requestBody(endpoints.get(plan.entryUri()),
++                    call, DispatchRequest.Replies.class), "dispatch replies").values();
++        } catch (org.apache.camel.CamelExecutionException failure) {
++            if (call.preparationFailure != null) {
++                throw call.preparationFailure;
++            }
++            throw failure;
+@@ -126 +122,45 @@ public final class CamelRouteRuntime implements AutoCloseable {
+-        return result(selection, replies, preparationBlocked, views);
++        return result(call.selection, replies, call.preparationBlocked, call.views);
++    }
++
++    /** Retained by the caller, never copied into a recipient's mutable exchange state. */
++    private final class PlanCall implements PlanEntryRequest {
++        private final String planId;
++        private final Object original;
++        private final CompiledRoutes.CompiledPlan plan;
++        private final InvocationViews views;
++        private final List<PlanSelection.BlockedBranch> preparationBlocked = new ArrayList<>();
++        private PlanSelection selection;
++        private RuntimeException preparationFailure;
++
++        private PlanCall(String planId, Object original, CompiledRoutes.CompiledPlan plan) {
++            this.planId = planId;
++            this.original = original;
++            this.plan = plan;
++            views = new InvocationViews(viewRoutes, original, plan, planId, trace);
++        }
++
++        @Override public DispatchRequest prepare() {
++            try {
++                return prepareSelected();
++            } catch (RuntimeException failure) {
++                preparationFailure = failure;
++                throw failure;
++            }
++        }
++
++        private DispatchRequest prepareSelected() {
++            selection = plan.selector().select(views::demand, planId, trace);
++            List<Endpoint> recipients = new ArrayList<>();
++            for (String branchId : selection.selectedBranches()) {
++                var branch = plan.branches().get(branchId);
++                FailureReference failure = resolveRequiredViews(views, branchId, branch.requiredViews());
++                if (failure == null) {
++                    recipients.add(endpoints.get(branch.uri()));
++                } else {
++                    preparationBlocked.add(new PlanSelection.BlockedBranch(branchId, failure));
++                    trace.emit(RoutingTraceEvent.Kind.BRANCH, planId, null, branchId,
++                            null, "blocked", failure.reasonCode());
++                }
++            }
++            return new DispatchRequest(new PlanExecutionResult.BranchInput(original, views.snapshot()), recipients);
++        }
+diff --git a/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/InvocationViews.java b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/InvocationViews.java
+index 844e3b56..2efd4009 100644
+--- a/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/InvocationViews.java
++++ b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/InvocationViews.java
+@@ -16,2 +15,0 @@ import java.util.Set;
+-import org.apache.camel.ProducerTemplate;
+-import org.apache.camel.Endpoint;
+@@ -24,2 +22 @@ final class InvocationViews {
+-    private final ProducerTemplate producer;
+-    private final Map<String, Endpoint> endpoints;
++    private final Map<String, LocalViewRoute> routes;
+@@ -30 +27 @@ final class InvocationViews {
+-    InvocationViews(ProducerTemplate producer, Map<String, Endpoint> endpoints,
++    InvocationViews(Map<String, LocalViewRoute> routes,
+@@ -35,2 +32 @@ final class InvocationViews {
+-        this.producer = producer;
+-        this.endpoints = endpoints;
++        this.routes = routes;
+@@ -83,2 +79,2 @@ final class InvocationViews {
+-        ViewOutcome outcome = producer.requestBody(endpoints.get(route.uri()),
+-                ((ViewOutcome.Available) primary.outcome()).value(), ViewOutcome.class);
++        ViewOutcome outcome = routes.get(route.uri()).evaluate(
++                ((ViewOutcome.Available) primary.outcome()).value());
+diff --git a/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/LocalViewRoute.java b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/LocalViewRoute.java
+new file mode 100644
+index 00000000..d515100a
+--- /dev/null
++++ b/adapters/adapter-processing-camel/src/main/java/com/iocextractor/adapter/processing/camel/runtime/LocalViewRoute.java
+@@ -0,0 +1,45 @@
++package com.iocextractor.adapter.processing.camel.runtime;
++
++import com.iocextractor.adapter.processing.camel.contract.ViewOutcome;
++import org.apache.camel.CamelContext;
++import org.apache.camel.CamelExecutionException;
++import org.apache.camel.Consumer;
++import org.apache.camel.ExchangePattern;
++import org.apache.camel.Route;
++import org.apache.camel.ServiceStatus;
++
++/** Bound Camel consumer pipeline; the context owns its processor and UnitOfWork lifecycle. */
++final class LocalViewRoute {
++    private final CamelContext context;
++    private final String routeId;
++    private final Consumer consumer;
++
++    LocalViewRoute(CamelContext context, Route route) {
++        this.context = context;
++        this.routeId = route.getId();
++        this.consumer = route.getConsumer();
++    }
++
++    ViewOutcome evaluate(Object input) {
++        if (context.getRouteController().getRouteStatus(routeId) != ServiceStatus.Started) {
++            throw new IllegalStateException("View route is not started: " + routeId);
++        }
++        var exchange = consumer.createExchange(false);
++        try {
++            exchange.setPattern(ExchangePattern.InOut);
++            exchange.getMessage().setBody(input);
++            consumer.getProcessor().process(exchange);
++            if (exchange.getException() != null) {
++                throw exchange.getException();
++            }
++            return exchange.getMessage().getBody(ViewOutcome.class);
++        } catch (Exception failure) {
++            if (failure instanceof InterruptedException) {
++                Thread.currentThread().interrupt();
++            }
++            throw new CamelExecutionException("View route execution failed: " + routeId, exchange, failure);
++        } finally {
++            consumer.releaseExchange(exchange, false);
++        }
++    }
++}
+diff --git a/adapters/adapter-processing-camel/src/test/java/com/iocextractor/adapter/processing/camel/CamelRoutingExecutionTest.java b/adapters/adapter-processing-camel/src/test/java/com/iocextractor/adapter/processing/camel/CamelRoutingExecutionTest.java
+index be10c68d..c737212f 100644
+--- a/adapters/adapter-processing-camel/src/test/java/com/iocextractor/adapter/processing/camel/CamelRoutingExecutionTest.java
++++ b/adapters/adapter-processing-camel/src/test/java/com/iocextractor/adapter/processing/camel/CamelRoutingExecutionTest.java
+@@ -461,0 +462,48 @@ class CamelRoutingExecutionTest {
++    @Test void nativeViewConsumersCompleteTheirUnitOfWorkAndKeepExchangesIsolated() throws Exception {
++        var completed = new AtomicInteger();
++        var failed = new AtomicInteger();
++        Processor view = exchange -> {
++            assertThat(exchange.getUnitOfWork()).isNotNull();
++            assertThat(exchange.getMessage().getHeader("leaked")).isNull();
++            assertThat(exchange.getProperty("leaked")).isNull();
++            exchange.getUnitOfWork().addSynchronization(new org.apache.camel.spi.Synchronization() {
++                @Override public void onComplete(org.apache.camel.Exchange value) { completed.incrementAndGet(); }
++                @Override public void onFailure(org.apache.camel.Exchange value) { failed.incrementAndGet(); }
++            });
++            exchange.getMessage().setHeader("leaked", "view");
++            exchange.setProperty("leaked", "view");
++            if (exchange.getMessage().getBody().equals("fail")) {
++                throw new IllegalArgumentException("unexpected view failure");
++            }
++            exchange.getMessage().setBody(new ViewOutcome.Available("host"));
++        };
++        Processor recipient = exchange -> {
++            assertThat(completed).hasValue(2);
++            assertThat(exchange.getMessage().getHeader("leaked")).isNull();
++            assertThat(exchange.getProperty("leaked")).isNull();
++            var input = exchange.getMessage().getBody(PlanExecutionResult.BranchInput.class);
++            assertThat(input.original()).isEqualTo("ok");
++            assertThat(input.resolvedViews()).containsEntry("host", new ViewOutcome.Available("host"));
++            exchange.getMessage().setHeader("leaked", "recipient");
++            exchange.setProperty("leaked", "recipient");
++            exchange.getMessage().setBody(new BranchOutcome.Prepared("prepared"));
++        };
++        var bindings = new OperationCatalog(Map.of("view", view), Map.of("one", recipient), Map.of());
++        var required = List.of("host", "second");
++        var branches = List.of(new PlanDescriptor.Branch("one", "one", null, required),
++                new PlanDescriptor.Branch("two", "one", null, required));
++        var plan = plan(PlanDescriptor.Mode.ALL, branches, PlanDescriptor.Action.SKIP, null,
++                new PlanDescriptor.View("host", "view", "original"),
++                new PlanDescriptor.View("second", "view", "host"));
++        try (var runtime = runtime(plan, bindings)) {
++            assertThat(runtime.execute("p", "ok").replies()).hasSize(2);
++            assertThat(completed).hasValue(2);
++            assertThat(failed).hasValue(0);
++            assertThatThrownBy(() -> runtime.execute("p", "fail"))
++                    .hasRootCauseInstanceOf(IllegalArgumentException.class)
++                    .hasRootCauseMessage("unexpected view failure");
++            assertThat(completed).hasValue(2);
++            assertThat(failed).hasValue(1);
++        }
++    }
++
+diff --git a/adapters/adapter-processing-camel/src/test/java/com/iocextractor/adapter/processing/camel/CamelRuntimeLifecycleTest.java b/adapters/adapter-processing-camel/src/test/java/com/iocextractor/adapter/processing/camel/CamelRuntimeLifecycleTest.java
+index f4ff0ef0..1f2e82c7 100644
+--- a/adapters/adapter-processing-camel/src/test/java/com/iocextractor/adapter/processing/camel/CamelRuntimeLifecycleTest.java
++++ b/adapters/adapter-processing-camel/src/test/java/com/iocextractor/adapter/processing/camel/CamelRuntimeLifecycleTest.java
+@@ -85,0 +86,2 @@ class CamelRuntimeLifecycleTest {
++            assertThatThrownBy(() -> runtime.execute("p", "must-not-invoke-stopped-view"))
++                    .isInstanceOf(RuntimeException.class);

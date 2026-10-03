@@ -14,7 +14,11 @@ retention and O4 explicit semantic sessions are implemented; qualification is
 recorded in [O3–O4 evidence](o3-o4-implementation.md). O4 delivery-wide import
 reuse is deferred in favor of row-local scope. O3 retains the explicit
 `prepareLegacy` exclusion and the pre-existing lifecycle duplicate-key rejection.
-O5–O7 implementation has not started.
+O5 immutable import metadata and measured secondary allocations are implemented.
+O6 one-entry Camel execution was prototyped and rejected by its predeclared
+promotion screen; the branch retains O1–O5 and added conformance tests.
+See [O5–O6 evidence](o5-o6-implementation.md) for measurements and the reproducible
+rejected candidate. O7 qualification and performance acceptance remain open.
 
 Inputs: [cost analysis](router-cost-and-architecture-analysis.md),
 [Camel applicability](camel-optimization-applicability.md),

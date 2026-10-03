@@ -1,6 +1,7 @@
 # O5–O6 optimization implementation
 
-Status: O5 implemented; O6 experiment and final qualification pending.
+Status: O5 implemented and measured; O6 prototype rejected. Final committed-HEAD
+quality verification follows this evidence commit; O7 remains open.
 Starting reference: e3b9248c, branch module/platform/router, 2026-10-03.
 Scope follows [the optimization plan](processing-optimization-plan.md) and
 [Camel applicability](camel-optimization-applicability.md). O7 acceptance is separate.
@@ -98,5 +99,114 @@ across revisions. Reviewed report: [O5 warmed comparison](qualification/optimiza
 Allocation decreases 4.8% and 6.4% respectively. Timing falls approximately 6%
 but compatible timing also shifts; these independent runs do not establish a
 universal latency improvement. Whole-process memory is effectively unchanged.
-O5 selected/compatible caller allocation remains 2.089 for documents and 1.217
+O5 selected/compatible caller allocation remains 2.117 for documents and 1.217
 for import; the historical envelope passes but O7/customer acceptance is open.
+
+## O6 result: do not promote the one-entry prototype
+
+Candidate 513c489e applies the [retained patch](qualification/optimization/o6-one-entry-prototype.patch)
+to clean O5 reference 7e0330bd. It was built and exercised in an isolated worktree;
+none of its production changes are included in the working branch. The existing
+57 Camel tests (including added UnitOfWork/isolation coverage) and integration
+module command passed. Production `CustomerRoutingPipelineIT` and
+`RouterSelectedImportDeliveryIT` passed unchanged, including YAML/preflight,
+actual preparation operations, canonical commit, COALESCE and receipt recovery.
+The stopped-route regression also passes on the retained O5 runtime.
+
+Five alternating primary pairs per workload use the same harness, input/config
+hashes, logging/JVM settings and one disjoint warm-up as O5. Every same-path
+outcome and canonical/projection signature matches across revisions. Report:
+[O6 warmed prototype comparison](qualification/optimization/o6-prototype-warm.json).
+
+| Selected workload | Median time O5 / prototype | Calling-thread allocation O5 / prototype | Sampled heap O5 / prototype | Current RSS O5 / prototype |
+|---|---:|---:|---:|---:|
+| Document | 376.5 / 380.3 ms | 243.7 / 243.0 MB | 120.5 / 120.4 MB | 374,608 / 383,860 KiB |
+| Import | 559.5 / 610.4 ms | 76.1 / 81.6 MB | 117.8 / 117.9 MB | 396,480 / 389,564 KiB |
+
+Document allocation changes -0.27%, elapsed time +1.01%; import allocation
++7.28%, elapsed time +9.09%. Startup medians increase 8.64% and 4.14%.
+Sampled memory is effectively unchanged, with overlapping RSS ranges.
+The historical compatible/selected envelope passes; the predeclared O6 promotion
+screen fails because neither workload gains 10% in allocation or elapsed time.
+There is no reason to spend the remaining unique/cold/concurrent performance
+qualification budget promoting this candidate. Those performance profiles were
+not run for it. Lifecycle/concurrency *correctness* tests did run.
+
+### Complexity and ownership inventory
+
+| Concern | O5 | Prototype |
+|---|---|---|
+| Generated routes | one per operation view, one per branch, one dispatch | same count; entry replaces dispatch |
+| ProducerTemplate calls, measured plans | host view + destination/dispatch | one plan entry |
+| View execution | bound endpoint template send | bound native consumer processor with fresh child Exchange |
+| Branch execution | single bound send or sequential Recipient List | sequential Recipient List, even for one recipient |
+| Invocation state | InvocationViews plus selection/blocked locals | same state plus caller-owned PlanCall frame |
+| New binding state | bound endpoints | bound endpoints plus LocalViewRoute per operation view |
+| Selection/recovery mechanisms | CompiledSelector / InvocationViews | unchanged; moved into entry callback |
+| Resource lifecycle | context/template and route-managed UnitOfWork | same owners plus explicit consumer Exchange release wrapper |
+| Exception seam | Java preparation exceptions propagate directly | frame retains preparation failure to undo Camel wrapping |
+
+The prototype adds 93 net production lines and two internal types while removing
+nested template sends; it does not eliminate view child Exchanges or custom
+three-state selection/recovery. Native consumer pipelines preserve route-owned
+UnitOfWork completion; the wrapper explicitly releases its child Exchange after
+reading the typed outcome. This uses the pinned
+[Consumer API](https://raw.githubusercontent.com/apache/camel/camel-4.22.1/core/camel-api/src/main/java/org/apache/camel/Consumer.java)
+and the same processor invocation used by
+[DirectProducer](https://raw.githubusercontent.com/apache/camel/camel-4.22.1/components/camel-direct/src/main/java/org/apache/camel/component/direct/DirectProducer.java).
+
+Single-recipient import gains an entry/Recipient List boundary that offsets
+removing its view template request. Empty selection also gains a Camel entry.
+Tests preserve complete preselection before dispatch, lazy shared views,
+FIRST/EXCLUSIVE blockage, unexpected exceptions without fallback/redelivery,
+recovery severity, ordered replies, immutable input, native completion/failure
+callbacks and header/property isolation. The completion/isolation test and stopped-route assertion remain
+in the adopted branch; the production prototype is removed from consideration.
+
+This rejects this concrete execution layout, not every possible Camel compiler
+specialization. Inlining all operations into one shared mutable Exchange was
+not tested: proving restoration, independent completion scopes and branch
+isolation would be a separate experiment. No second runtime, feature toggle,
+new dependency, schema migration or superseding architecture decision is added.
+
+### Reproduce the rejected candidate
+
+From a clean repository root, create an isolated checkout at 7e0330bd, apply the
+retained zero-context patch (only on that exact base), commit that experimental snapshot, and run the same facade:
+
+```bash
+git worktree add --detach .dev/o6-reproduce 7e0330bd
+git -C .dev/o6-reproduce apply --unidiff-zero ../../docs/worknote/0.3.0/data-processing-routing/qualification/optimization/o6-one-entry-prototype.patch
+git -C .dev/o6-reproduce add adapters/adapter-processing-camel/src
+git -C .dev/o6-reproduce commit -m 'experiment: reproduce rejected O6 layout'
+cd .dev/o6-reproduce
+make test-module MODULE=adapters/adapter-processing-camel
+make test-integration-module MODULE=bootstrap/ioc-app
+DEBUG=false LOGGING_LEVEL_ROOT=WARN make processing-route-comparison \
+  COMPARISON_ARGS='--pairs 5 --warmups 1 --workspace .dev/o6-reproduce-warm'
+```
+
+Raw logs remain under ignored .dev workspaces; primary reports and source patch
+are retained above. No primary comparison ran alongside another Maven/test job.
+The rejected candidate has no whole-reactor release qualification; production
+quality checks apply to the retained implementation, not to an unadopted engine.
+
+### Separate mechanism counters
+
+One diagnostic pair per workload uses the unchanged observer/JFR harness on the
+same clean candidate: [diagnostic report](qualification/optimization/o6-prototype-diagnostic.json).
+Timing and allocation in this instrumented run are not primary evidence.
+Template sends are 8,000 for 8,000 document observations and 2,000 for 2,000
+import rows, versus 16,000 and 4,000 in the retained
+[O4 diagnostic reference](qualification/optimization/o4-after-diagnostic.json).
+O5 does not change those send sites. All other counted semantic work agrees:
+24,000 document candidates, 136,000 mapped cells, 20 host computations,
+60 retained output rows and 20 reserved IDs; import retains 2,000 prepared rows,
+20,000 mapped cells and 2,000 host computations. View demands/evaluations,
+predicates, classification and winner updates also agree. Missing view-template
+send counters mean no such call site, not skipped view evaluation.
+
+Thus fewer producer entry boundaries alone did not reduce real preparation
+cost enough. The candidate keeps view Exchanges and gains a single-recipient
+fan-out. The evidence supports retaining the existing specialization instead
+of introducing the extra frame/resource/exception machinery without a gain.
