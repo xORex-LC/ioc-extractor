@@ -272,6 +272,29 @@ class CsvArtifactPreparerTest {
                 .satisfies(row -> assertThat(row.template().value("value")).isEqualTo("good"));
     }
 
+    @Test
+    void legacyBatchPreservesDuplicatesAndMappedCollisionsAndReservesEveryId() {
+        var mapper = new ConfigurableRowMapper(List.of(
+                new ColumnSpec("id", "id", null, null, null),
+                new ColumnSpec("value", "constant", null, null, null),
+                new ColumnSpec("source", "source", null, null, null)),
+                Map.of("id", new IdValueProvider(), "constant", ignored -> "same-key",
+                        "source", classified -> classified.indicator().source().label()), Map.of());
+        var first = indicator("one", IndicatorType.MD5, "first");
+        var second = indicator("two", IndicatorType.MD5, "second");
+        for (List<ClassifiedIndicator> retained : List.of(List.of(first, first), List.of(first, second))) {
+            var preparer = preparer(mapper);
+            var plan = preparer.prepare(new ArtifactPreparationBatch(retained, List.of())).value();
+            assertThat(plan.rows()).hasSize(2);
+            assertThat(plan.rows()).extracting(row -> row.template().value("source"))
+                    .containsExactlyElementsOf(retained.stream().map(value -> value.indicator().source().label()).toList());
+            assertThat(plan.materialize().rows()).extracting(row -> row.value("id"))
+                    .containsExactly("100", "101");
+            assertThat(preparer.prepare(List.of(first)).value().materialize().rows())
+                    .singleElement().satisfies(row -> assertThat(row.value("id")).isEqualTo("102"));
+        }
+    }
+
     private CsvArtifactPreparer preparer(RowMapper mapper) {
         var definition = new CsvArtifactDefinition(
                 "hashes", Set.of(IndicatorType.MD5), mapper, ArtifactIdStrategy.ASCENDING, 100);

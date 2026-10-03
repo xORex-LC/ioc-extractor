@@ -71,7 +71,7 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
     }
 
     private Grouped group(AttributedIndicators input, Set<String> artifacts) {
-        Map<String, Map<ArtifactRowKey, List<PreparedArtifactRow>>> groups = new LinkedHashMap<>();
+        Map<String, ArtifactOccurrenceSelector.Accumulator<ArtifactRowKey, PreparedArtifactRow>> groups = new LinkedHashMap<>();
         List<Diagnostic> diagnostics = new ArrayList<>();
         Set<String> seenOriginals = new HashSet<>();
         int retained = 0;
@@ -92,31 +92,31 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
                 ArtifactRowKey key = identityResolver.keyOf(candidate.artifact(), candidate.row().template())
                         .orElseThrow(() -> new IllegalStateException(
                                 "Routed candidate has no final identity: " + candidate.artifact()));
-                groups.computeIfAbsent(candidate.artifact(), ignored -> new LinkedHashMap<>())
-                        .computeIfAbsent(key, ignored -> new ArrayList<>()).add(candidate.row());
+                groups.computeIfAbsent(candidate.artifact(), artifact -> {
+                    ArtifactWritePolicy policy = Objects.requireNonNull(policies.get(artifact),
+                            "write policy for " + artifact);
+                    return selector.accumulator(policy,
+                            row -> row.template().value(policy.selectionColumn()));
+                }).add(key, candidate.row());
             }
         }
         return new Grouped(ordinal, retained, groups, diagnostics);
     }
 
     private List<ArtifactWritePlan> selectPlans(Map<String, ArtifactWritePlan> emptyPlans,
-            Map<String, Map<ArtifactRowKey, List<PreparedArtifactRow>>> groups) {
+            Map<String, ArtifactOccurrenceSelector.Accumulator<ArtifactRowKey, PreparedArtifactRow>> groups) {
         List<ArtifactWritePlan> plans = new ArrayList<>(preparers.size());
         for (ArtifactWritePlan empty : emptyPlans.values()) {
-            ArtifactWritePolicy policy = Objects.requireNonNull(policies.get(empty.artifactName()),
+            Objects.requireNonNull(policies.get(empty.artifactName()),
                     "write policy for " + empty.artifactName());
-            List<PreparedArtifactRow> rows = new ArrayList<>();
-            for (List<PreparedArtifactRow> candidates : groups
-                    .getOrDefault(empty.artifactName(), Map.of()).values()) {
-                rows.add(selector.select(candidates, policy,
-                        row -> row.template().value(policy.selectionColumn())));
-            }
+            var accumulator = groups.get(empty.artifactName());
+            List<PreparedArtifactRow> rows = accumulator == null ? List.of() : accumulator.winners();
             plans.add(new ArtifactWritePlan(empty.artifactName(), empty.header(), rows, empty.idSequence()));
         }
         return plans;
     }
 
     private record Grouped(int extracted, int retained,
-                           Map<String, Map<ArtifactRowKey, List<PreparedArtifactRow>>> rows,
+                           Map<String, ArtifactOccurrenceSelector.Accumulator<ArtifactRowKey, PreparedArtifactRow>> rows,
                            List<Diagnostic> diagnostics) { }
 }

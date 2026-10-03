@@ -149,7 +149,9 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
 
     private Result<ArtifactWritePlan> prepareOccurrences(
             List<ClassifiedIndicatorOccurrence> occurrences) {
-        var groups = new LinkedHashMap<ArtifactRowKey, List<OccurrenceCandidate>>();
+        var policy = definition.writePolicy();
+        var winners = occurrenceSelector.<ArtifactRowKey, PreparedArtifactRow>accumulator(
+                policy, row -> row.template().value(policy.selectionColumn()));
         var diagnostics = new ArrayList<Diagnostic>();
         for (int ordinal = 0; ordinal < occurrences.size(); ordinal++) {
             ClassifiedIndicatorOccurrence occurrence = occurrences.get(ordinal);
@@ -169,23 +171,14 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
                 ArtifactRowKey key = identityResolver.keyOf(definition.name(), prepared.template())
                         .orElseThrow(() -> new IllegalStateException(
                                 "Mapped row has no canonical identity: " + definition.name()));
-                groups.computeIfAbsent(key, ignored -> new ArrayList<>())
-                        .add(new OccurrenceCandidate(prepared));
+                winners.add(key, prepared);
                 trace(classified, "routed");
             } catch (RowMappingException failure) {
                 trace(classified, "mapping_failed");
                 diagnostics.add(mappingDiagnostic(classified, failure, ordinal));
             }
         }
-        var rows = new ArrayList<PreparedArtifactRow>(groups.size());
-        for (List<OccurrenceCandidate> candidates : groups.values()) {
-            rows.add(occurrenceSelector.select(
-                    candidates,
-                    definition.writePolicy(),
-                    candidate -> candidate.row().template().value(
-                            definition.writePolicy().selectionColumn())).row());
-        }
-        return Result.of(plan(rows), diagnostics);
+        return Result.of(plan(winners.winners()), diagnostics);
     }
 
     private boolean accepted(ClassifiedIndicator classified) {
@@ -252,6 +245,4 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
                 : failure.getMessage();
     }
 
-    private record OccurrenceCandidate(PreparedArtifactRow row) {
-    }
 }
