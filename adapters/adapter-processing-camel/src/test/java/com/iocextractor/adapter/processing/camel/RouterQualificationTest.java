@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.*;
 @Timeout(120)
 class RouterQualificationTest {
     @Test void syntheticWorkloadPreservesOutcomesAcrossFanoutAndConcurrentCallers() throws Exception {
-        for (int branches : new int[] { 1, 4, 16 }) {
+        for (int branches : new int[] { 1, 4, 16, 64 }) {
             for (int callers : new int[] { 1, 4 }) {
                 for (Mode mode : Mode.values()) {
                     var result = RouterQualification.measure(1_000, branches, callers, mode);

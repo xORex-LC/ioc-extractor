@@ -62,20 +62,53 @@ def source_identity():
             "worktree_diff_sha256": digest.hexdigest()}
 
 
-def fixtures(workspace, document_rows, import_rows, document_unique=20, import_unique=20):
-    values = [f"benchmark-{number}.example.com" for number in range(document_unique)]
+def fixture_values(unique, shape="domains", kind="document", offset=0):
+    """Independent, disjoint identities; shape changes never silently change routing policy."""
+    values = []
+    for index in range(unique):
+        identity = offset * unique + index
+        domain = f"benchmark-{identity}.example.com"
+        variant = index % (4 if kind == "document" else 2)
+        if shape == "long" or (shape == "mixed" and variant == 2):
+            value = f"https://{domain}/" + "segment/" * (512 if shape == "long" else 4)
+        elif shape == "mixed" and kind == "import" and variant == 1:
+            value = f"https://{domain}/one"
+        elif shape == "mixed" and variant == 1:
+            if identity >= 131072:
+                raise ValueError("Mixed IPv4 fixture exceeds the reserved benchmark address range")
+            value = f"198.{18 + identity // 65536}.{identity // 256 % 256}.{identity % 256}"
+        elif shape == "mixed" and variant == 3:
+            value = f"{identity + 1:032x}"
+        else:
+            value = domain
+        values.append(value)
+    return values
+
+
+def fixtures(workspace, document_rows, import_rows, document_unique=20, import_unique=20,
+             shape="domains", offset=0):
+    values = fixture_values(document_unique, shape, "document", offset)
     document = workspace / "document.html"
     document.write_text("<html><body><h2>БИБ-0001</h2>\n" + "".join(
         f"<p>{values[index % len(values)]}</p>\n" for index in range(document_rows))
         + "</body></html>\n")
-    values = [f"benchmark-{number}.example.com" for number in range(import_unique)]
+    values = fixture_values(import_unique, shape, "import", offset)
     csv = workspace / "import.csv"
     csv.write_text("ioc;source\n" + "".join(
         f"{values[index % len(values)]};Feed Alpha\n" for index in range(import_rows)))
     return {"document": document, "import": csv}
 
 
-def config(kind, selected, target, resources=RESOURCES):
+def expected_document_counts(rows, unique, shape):
+    count = min(rows, unique)
+    if shape == "mixed":
+        types = [sum(index % 4 == variant for index in range(count)) for variant in range(4)]
+        return dict(masks=types[0] + types[2], ip_list=types[1],
+                    address_blacklist=sum(types[:3]), hashes=types[3], ioc_aggregate=count)
+    return dict(masks=count, ip_list=0, address_blacklist=count, hashes=0, ioc_aggregate=count)
+
+
+def config(kind, selected, target, resources=RESOURCES, shape="domains"):
     if kind == "document":
         contents = (resources / "application-customer-routes.yml").read_text() \
             if selected else "ioc: {}\n"
@@ -85,12 +118,15 @@ def config(kind, selected, target, resources=RESOURCES):
             begin = contents.index("        processed-route:\n")
             end = contents.index("    runtime:\n", begin)
             contents = contents[:begin] + contents[end:]
+    if selected and shape != "domains":
+        # Matched output semantics for mixed/long profiles; cleanup is qualified separately.
+        contents = contents.replace("default-view: host", "default-view: original")
     path = target / "configs/application.yml"
     path.parent.mkdir(parents=True)
     path.write_text(contents)
 
 
-def result_signature(kind, root, input_rows, unique=20, warmups=0):
+def result_signature(kind, root, input_rows, unique=20, warmups=0, shape="domains"):
     database = root / "ioc-dataframe.db"
     with sqlite3.connect(database) as connection:
         if kind == "document":
@@ -102,9 +138,10 @@ def result_signature(kind, root, input_rows, unique=20, warmups=0):
                 f"SELECT row_key FROM {artifact} ORDER BY row_key").fetchall()
                 for artifact in ("masks", "ip_list", "address_blacklist", "hashes",
                                  "ioc_aggregate")}
-            if any(len(keys[name]) != min(input_rows, unique) * (warmups + 1)
-                   for name in ("masks", "address_blacklist", "ioc_aggregate")):
-                raise RuntimeError("Document did not retain the expected domain set")
+            expected_counts = expected_document_counts(input_rows, unique, shape)
+            if any(len(keys[name]) != count * (warmups + 1)
+                   for name, count in expected_counts.items()):
+                raise RuntimeError("Document did not retain the expected typed indicator set")
             provenance = {artifact: connection.execute(
                 f"SELECT row_id, source_key, occurrences FROM {artifact}_sources "
                 "ORDER BY row_id, source_key").fetchall() for artifact in keys}
@@ -113,9 +150,10 @@ def result_signature(kind, root, input_rows, unique=20, warmups=0):
                    for artifact in keys}
             return {"projections": projections, "canonical_keys": keys,
                     "canonical_ids": ids, "provenance": provenance}
-        rows = connection.execute(
-            "SELECT mask, row_key, url_match, host_match, source "
-            "FROM masks WHERE mask LIKE 'benchmark-%' ORDER BY mask").fetchall()
+        expected_values = set(fixture_values(min(input_rows, unique), shape, "import"))
+        rows = [row for row in connection.execute(
+            "SELECT mask, row_key, url_match, host_match, source FROM masks ORDER BY mask")
+                if row[0] in expected_values]
         receipt = connection.execute("SELECT accepted_rows, rejected_rows, "
                                      "public_mutations FROM import_commit WHERE delivery_id = 'comparison-import'").fetchall()
         expected = min(input_rows, unique)
@@ -157,15 +195,18 @@ def result_signature(kind, root, input_rows, unique=20, warmups=0):
 
 
 def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows, unique, warmups,
-            resources=RESOURCES, diagnostics=False):
+            resources=RESOURCES, diagnostics=False, shape="domains"):
     name = "selected" if selected else "compatible"
     root = workspace / f"{kind}-{name}-{iteration}"
     root.mkdir()
-    config(kind, selected, root, resources)
+    config(kind, selected, root, resources, shape)
     warmup_paths = []
     for number in range(warmups):
-        path = root / f"warmup-{number}{fixture.suffix}"
-        path.write_text(fixture.read_text().replace("benchmark-", f"warmup-{number}-"))
+        warmup_root = root / f"warmup-{number}"
+        warmup_root.mkdir()
+        paths = fixtures(warmup_root, input_rows, input_rows, unique, unique, shape, number + 1)
+        path = warmup_root / f"warmup-{number}{fixture.suffix}"
+        paths[kind].rename(path)
         warmup_paths.append(path)
     profiles = "golden"
     args = ["java", "-Xms128m", "-Xmx512m", f"-Dspring.profiles.active={profiles}",
@@ -205,7 +246,7 @@ def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows
         if int(outcome_counts["retained"]) != min(input_rows, unique) or \
                 int(outcome_counts["diagnostics"]) != expected_diagnostics:
             raise RuntimeError("Unexpected retained/duplicate diagnostic counts")
-    signature = result_signature(kind, root, input_rows, unique, warmups)
+    signature = result_signature(kind, root, input_rows, unique, warmups, shape)
     metrics["outcome"] = outcomes[-1]
     signature["outcome"] = outcomes[-1]
     (root / "signature.json").write_text(json.dumps(signature, sort_keys=True, indent=2) + "\n")
@@ -220,7 +261,7 @@ def summary(rows):
     if rows and all("preparation_ms" in row for row in rows):
         columns += ("preparation_ms",)
     result = {}
-    for kind in ("document", "import"):
+    for kind in sorted({row["kind"] for row in rows}):
         result[kind] = {}
         for column in columns:
             baseline = [float(row[column]) for row in rows
@@ -244,6 +285,9 @@ def main():
     parser.add_argument("--document-rows", type=int, default=8000)
     parser.add_argument("--import-rows", type=int, default=2000)
     parser.add_argument("--pairs", type=int, default=5)
+    parser.add_argument("--workload", choices=("both", "document", "import"), default="both")
+    parser.add_argument("--shape", choices=("domains", "mixed", "long"), default="domains",
+                        help="Mixed/long use original-view routing for matched public fields")
     parser.add_argument("--document-unique", type=int, default=20)
     parser.add_argument("--import-unique", type=int, default=20)
     parser.add_argument("--warmups", type=int, default=0,
@@ -309,24 +353,34 @@ def main():
     classes = [workspace / "probe-classes", resources, app_classes]
     classpath = ":".join(map(str, classes + sorted(libraries.glob("*.jar"))))
     inputs = fixtures(workspace, args.document_rows, args.import_rows,
-                      args.document_unique, args.import_unique)
+                      args.document_unique, args.import_unique, args.shape)
+    if args.workload != "both":
+        inputs = {args.workload: inputs[args.workload]}
     rows = []
-    for kind, fixture in inputs.items():
-        for iteration in range(args.pairs):
-            pair = []
-            for selected in ([False, True] if iteration % 2 == 0 else [True, False]):
-                print(f"{kind} pair={iteration + 1} path={'selected' if selected else 'compatible'}",
-                      flush=True)
-                metrics, signature = run_one(workspace, fixture, kind, selected, iteration,
-                                             classpath, args.document_rows if kind == "document"
-                                             else args.import_rows,
-                                             args.document_unique if kind == "document" else args.import_unique,
-                                             args.warmups, resources, args.diagnostics)
-                rows.append(metrics)
-                pair.append(signature)
-            if {key: value for key, value in pair[0].items() if key != "outcome"} != \
-                    {key: value for key, value in pair[1].items() if key != "outcome"}:
-                raise RuntimeError(f"{kind} output differs in pair {iteration + 1}")
+    try:
+        for kind, fixture in inputs.items():
+            for iteration in range(args.pairs):
+                pair = []
+                for selected in ([False, True] if iteration % 2 == 0 else [True, False]):
+                    print(f"{kind} pair={iteration + 1} path={'selected' if selected else 'compatible'}",
+                          flush=True)
+                    metrics, signature = run_one(workspace, fixture, kind, selected, iteration,
+                                                 classpath, args.document_rows if kind == "document"
+                                                 else args.import_rows,
+                                                 args.document_unique if kind == "document" else args.import_unique,
+                                                 args.warmups, resources, args.diagnostics, args.shape)
+                    rows.append(metrics)
+                    (workspace / "samples.json").write_text(json.dumps(rows, indent=2) + "\n")
+                    pair.append(signature)
+                if {key: value for key, value in pair[0].items() if key != "outcome"} != \
+                        {key: value for key, value in pair[1].items() if key != "outcome"}:
+                    raise RuntimeError(f"{kind} output differs in pair {iteration + 1}")
+    except Exception as failure:
+        (workspace / "failure.json").write_text(json.dumps({
+            **identity, "profile": vars(args) | {"workspace": str(workspace)},
+            "completed_metrics": rows, "error": str(failure),
+            "equivalent_results": False, "acceptance": "invalid measurement"}, indent=2) + "\n")
+        raise
     medians = summary(rows)
     limits = {"max_wall_ratio": args.max_wall_ratio,
               "max_allocation_ratio": args.max_allocation_ratio,
@@ -351,6 +405,10 @@ def main():
               "measurement_mode": "diagnostic-instrumentation-and-jfr" if args.diagnostics else "primary",
               "logging_environment_keys": sorted(key for key in os.environ
                                                  if key in ("DEBUG", "TRACE") or key.startswith("LOGGING_")),
+              "logging_controls": {key: os.environ.get(key, "unset")
+                                   for key in ("DEBUG", "TRACE", "LOGGING_LEVEL_ROOT")},
+              "shape": args.shape,
+              "routing_semantics": "host cleanup" if args.shape == "domains" else "original view",
               "cpu_count": os.cpu_count(),
               "cgroup_limits": {name: Path(f"/sys/fs/cgroup/{name}").read_text().strip()
                                 if Path(f"/sys/fs/cgroup/{name}").exists() else "unavailable"
@@ -361,6 +419,10 @@ def main():
               "inputs": {kind: {"rows": args.document_rows if kind == "document" else args.import_rows,
                                 "unique": min(args.document_rows, args.document_unique) if kind == "document"
                                 else min(args.import_rows, args.import_unique),
+                                "duplicate_fraction": 1 - min(
+                                    args.document_rows, args.document_unique) / args.document_rows
+                                    if kind == "document" else 1 - min(
+                                        args.import_rows, args.import_unique) / args.import_rows,
                                 "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
                          for kind, path in inputs.items()},
               "metrics": rows, "medians": medians, "limits": limits,

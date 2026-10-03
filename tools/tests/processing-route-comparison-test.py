@@ -40,6 +40,40 @@ class ComparisonTest(unittest.TestCase):
             for number in range(4):
                 self.assertEqual(document.count(f"benchmark-{number}.example.com"), 2)
 
+    def test_mixed_long_and_warmup_identities_are_disjoint(self):
+        for shape in ("domains", "mixed", "long"):
+            for kind in ("document", "import"):
+                measured = COMPARISON.fixture_values(20, shape, kind)
+                warmup = COMPARISON.fixture_values(20, shape, kind, 1)
+                self.assertEqual(len(set(measured)), 20)
+                self.assertTrue(set(measured).isdisjoint(warmup))
+        mixed = COMPARISON.fixture_values(4, "mixed")
+        self.assertEqual(mixed[0], "benchmark-0.example.com")
+        self.assertEqual(mixed[1], "198.18.0.1")
+        self.assertTrue(mixed[2].startswith("https://benchmark-2.example.com/"))
+        self.assertEqual(mixed[3], "00000000000000000000000000000004")
+        self.assertGreater(len(COMPARISON.fixture_values(1, "long")[0]), 4096)
+
+    def test_shape_cardinality_and_original_view_configuration_are_explicit(self):
+        counts = COMPARISON.expected_document_counts(8, 4, "mixed")
+        self.assertEqual(counts, dict(masks=2, ip_list=1, address_blacklist=3,
+                                     hashes=1, ioc_aggregate=4))
+        with tempfile.TemporaryDirectory() as root:
+            COMPARISON.config("document", True, Path(root), shape="mixed")
+            config = (Path(root) / "configs/application.yml").read_text()
+            self.assertNotIn("default-view: host", config)
+            self.assertIn("default-view: original", config)
+            self.assertIn("operation: network.host", config)
+
+    def test_statistics_support_a_single_workload_without_fabricating_the_other(self):
+        rows = [dict(kind="document", path=path, iteration=0, elapsed_ms=value,
+                     throughput_per_s=value, allocated_main_bytes=value,
+                     sampled_peak_heap_bytes=value, sampled_peak_rss_kib=value,
+                     sampled_peak_current_rss_kib=value, startup_ms=value,
+                     gc_count=0, gc_time_ms=0)
+                for path, value in (("compatible", 1), ("selected", 2))]
+        self.assertEqual(set(COMPARISON.summary(rows)), {"document"})
+
     def test_statistics_preserve_pairs_and_zero_gc_is_not_a_ratio(self):
         rows = []
         for kind in ("document", "import"):

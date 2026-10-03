@@ -32,7 +32,7 @@ MODULE="${DEV_REPO_ROOT}/adapters/adapter-processing-camel"
 CLASSPATH="${MODULE}/target/test-classes:${MODULE}/target/classes:$(cat "${WORKSPACE}/classpath.txt")"
 REPORT="${WORKSPACE}/router-${SIZE}.csv"
 printf '%s\n' 'size,branches,callers,mode,compile_ms,start_ms,run_ms,rows_per_second,allocated_bytes_per_input,started_heap_bytes,retained_growth_bytes,prepared,blocked,recovered' > "${REPORT}"
-for branches in 1 4 16; do
+for branches in 1 4 16 64; do
   for callers in 1 4; do
     for mode in SUCCESS FAILURE RECOVERY; do
       dev_log "router qualification: size=${SIZE} branches=${branches} callers=${callers} mode=${mode}"

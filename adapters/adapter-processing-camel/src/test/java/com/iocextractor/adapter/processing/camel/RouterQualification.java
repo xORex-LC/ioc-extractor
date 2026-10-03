@@ -43,8 +43,8 @@ public final class RouterQualification {
 
     /** Runs one deterministic profile, including a warmup excluded from reported execution cost. */
     public static Measurement measure(int size, int branches, int callers, Mode mode) throws Exception {
-        if (size < 1 || !Set.of(1, 4, 16).contains(branches) || !Set.of(1, 4).contains(callers)) {
-            throw new IllegalArgumentException("size must be positive; branches=1/4/16; callers=1/4");
+        if (size < 1 || !Set.of(1, 4, 16, 64).contains(branches) || !Set.of(1, 4).contains(callers)) {
+            throw new IllegalArgumentException("size must be positive; branches=1/4/16/64; callers=1/4");
         }
         long baselineHeap = usedHeapAfterGc();
         long compileStart = System.nanoTime();
