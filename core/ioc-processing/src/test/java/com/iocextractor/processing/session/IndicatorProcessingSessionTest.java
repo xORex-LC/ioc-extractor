@@ -54,12 +54,17 @@ class IndicatorProcessingSessionTest {
         var calls = new AtomicInteger();
         var policyCalls = new AtomicInteger();
         var pinned = classifier(calls);
-        var foreign = classifier(policyCalls);
+        var foreign = new IndicatorClassifier(value -> {
+            policyCalls.incrementAndGet();
+            return new ClassificationDecision(new IndicatorFeatures(value.value(), value.value(),
+                    false, false, false, HostKind.REGISTRABLE), 0, List.of(),
+                    new MaskMatch("foreign-policy", null));
+        });
         var indicator = indicator("same.example", IndicatorType.DOMAIN, "source", null);
         try (var session = new IndicatorProcessingSession(pinned)) {
             session.classify(indicator);
-            session.classifyWith(indicator, foreign);
-            session.classifyWith(indicator, foreign);
+            assertThat(session.classifyWith(indicator, foreign).match().urlMatch()).isEqualTo("foreign-policy");
+            assertThat(session.classifyWith(indicator, foreign).match().urlMatch()).isEqualTo("foreign-policy");
             session.classifyWith(indicator, pinned);
             assertThat(calls).hasValue(1);
             assertThat(policyCalls).hasValue(2);
