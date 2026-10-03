@@ -242,7 +242,10 @@ def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows
         raise RuntimeError("Missing measured outcome summary")
     if kind == "document":
         outcome_counts = dict(item.split("=", 1) for item in outcomes[-1].split()[:5])
-        expected_diagnostics = 0 if selected else input_rows - min(input_rows, unique)
+        # URL spans also produce supported extractor overlap diagnostics in both paths.
+        values = fixture_values(unique, shape)
+        overlaps = sum(values[index % unique].startswith("https://") for index in range(input_rows))
+        expected_diagnostics = overlaps + (0 if selected else input_rows - min(input_rows, unique))
         if int(outcome_counts["retained"]) != min(input_rows, unique) or \
                 int(outcome_counts["diagnostics"]) != expected_diagnostics:
             raise RuntimeError("Unexpected retained/duplicate diagnostic counts")
