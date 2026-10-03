@@ -210,3 +210,24 @@ Thus fewer producer entry boundaries alone did not reduce real preparation
 cost enough. The candidate keeps view Exchanges and gains a single-recipient
 fan-out. The evidence supports retaining the existing specialization instead
 of introducing the extra frame/resource/exception machinery without a gain.
+
+## Final gate failure retained and shutdown coverage disposition
+
+The first final `make verify` at c6f89fa6 passed all tests but failed the unchanged
+adapter-ingest branch ratchet: 136 missed versus baseline 135. Raw failed log,
+aggregate/local coverage, execution data and suite reports are retained under
+.dev/o5-o6-gate-failure-c6f89fa6. This is failed evidence, not a passed release gate.
+No coverage baseline, floor, exclusion or report label was changed.
+
+The local WatchService suite acknowledged callbacks before its worker had
+terminated and lacked a containing timeout. Shutdown can leave through different
+watch-loop paths (invalidated key, interruption or closed service), so incidental
+coverage is timing-sensitive. The suite now captures its actual notification
+worker and joins it within a bound after close. A controlled in-flight callback
+scenario closes the source before releasing the callback and proves worker
+termination with no subsequent doorbell. It covers key invalidation deterministically
+rather than relying on incidental shutdown scheduling. This is test-only lifecycle
+qualification; production ingestion behavior is unchanged. There is no automatic
+retry of the failed gate. The updated suite is tested first, then the complete
+gate is run again on the new committed snapshot. Exact-HEAD success/failure is
+recorded by the existing local verification mechanism.
