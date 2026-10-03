@@ -59,6 +59,23 @@ class MdcScopeTest {
     }
 
     @Test
+    void repeatedWritesRestoreTheInitialValueAndLeaveUnownedChangesIntactOnFailure() {
+        MDC.put(LogField.IOC_RUN_ID.key(), "ambient");
+        try {
+            try (var scope = MdcScope.open()) {
+                scope.put(LogField.IOC_RUN_ID, "first").hide(LogField.IOC_RUN_ID)
+                        .put(LogField.IOC_RUN_ID, "last");
+                MDC.put(LogField.IOC_SOURCE_ID.key(), "unowned");
+                throw new IllegalStateException("operation failed");
+            }
+        } catch (IllegalStateException expected) {
+            assertThat(expected).hasMessage("operation failed");
+        }
+        assertThat(MDC.get(LogField.IOC_RUN_ID.key())).isEqualTo("ambient");
+        assertThat(MDC.get(LogField.IOC_SOURCE_ID.key())).isEqualTo("unowned");
+    }
+
+    @Test
     void rejects_writes_after_close() {
         var scope = MdcScope.open();
         scope.close();

@@ -1,0 +1,40 @@
+{
+  "before": [
+    {
+      "bytes": 53957088,
+      "nanos": 52960532
+    },
+    {
+      "bytes": 53990184,
+      "nanos": 54592735
+    },
+    {
+      "bytes": 54320688,
+      "nanos": 63134517
+    }
+  ],
+  "after": [
+    {
+      "bytes": 36427832,
+      "nanos": 41552791
+    },
+    {
+      "bytes": 36766712,
+      "nanos": 34702362
+    },
+    {
+      "bytes": 36770632,
+      "nanos": 48371001
+    }
+  ],
+  "before_reference": "e3b9248c",
+  "warmups": 20000,
+  "iterations": 100000,
+  "forks_per_variant": 3,
+  "jvm_args": [
+    "-Xms128m",
+    "-Xmx512m"
+  ],
+  "source": "import com.iocextractor.observability.LogField;\nimport com.iocextractor.observability.MdcScope;\nimport java.lang.management.ManagementFactory;\nimport org.slf4j.MDC;\npublic class O5MdcProbe {\n  static void scope() {\n    try (var ignored = MdcScope.open().put(LogField.IOC_ROUTER_PLAN, \"plan\")\n        .hide(LogField.IOC_ROUTER_BRANCH).put(LogField.IOC_ROUTER_VIEW, \"host\")) {\n      if (!\"host\".equals(MDC.get(LogField.IOC_ROUTER_VIEW.key()))) throw new AssertionError(\"view\");\n    }\n    if (!\"ambient\".equals(MDC.get(LogField.IOC_ROUTER_PLAN.key()))) throw new AssertionError(\"restore\");\n  }\n  public static void main(String[] args) {\n    MDC.put(LogField.IOC_ROUTER_PLAN.key(), \"ambient\");\n    for (int i=0;i<20000;i++) scope();\n    var bean = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();\n    long id = Thread.currentThread().threadId(), start = bean.getThreadAllocatedBytes(id), time=System.nanoTime();\n    for (int i=0;i<100000;i++) scope();\n    System.out.println(\"MDC_PROBE bytes=\"+(bean.getThreadAllocatedBytes(id)-start)+\" nanos=\"+(System.nanoTime()-time));\n    MDC.clear();\n  }\n}\n",
+  "after_mdc_source_sha256": "753cb21258d68b6f2bb5590e2098cd4b8f79688f87ad93cd206fb24b43364424"
+}

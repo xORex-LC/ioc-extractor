@@ -42,6 +42,8 @@ cost should determine the choice.
   binding and dispatch/copy optimizations with scoped qualification evidence.
 - [O3–O4 implementation](o3-o4-implementation.md): incremental document winners,
   explicit bounded semantic sessions and isolated measurements.
+- [O5–O6 implementation](o5-o6-implementation.md): compiled import authority,
+  secondary allocation changes and the one-entry Camel experiment.
 - [Processing optimization plan](processing-optimization-plan.md): common O0–O7
   execution order, ownership and cache/session constraints, risk mitigation,
   paired measurement and build-quality acceptance gates.

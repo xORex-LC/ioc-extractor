@@ -264,6 +264,38 @@ class RouterProcessedImportRowPreparerTest {
     }
 
     @Test
+    void pinnedBindingRejectsSameIdPolicyDriftAndStillChecksEachAdmittedRow() throws Exception {
+        try (Fixture fixture = fixture()) {
+            var configured = contract();
+            var source = new ImportDelimitedRecord(40, Map.of("ioc", "https://evil.example/path"));
+            var admitted = fixture.mapper().admit(configured, source).row().orElseThrow();
+            var preparer = fixture.preparer(configured,
+                    List.of(new RouterProcessedImportRowPreparer.Input(ARTIFACT, "mask")),
+                    Map.of(ARTIFACT, Set.of("mask")));
+            assertThat(preparer.prepare(contract(), source, admitted).issues()).isEmpty();
+            assertThatThrownBy(() -> preparer.prepare(contractWithSourceLabel(), source, admitted))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("pinned contract");
+            var fingerprintDrift = new CompiledDataframeImportContract(configured.id(), configured.version(),
+                    configured.definition(), configured.dialect(), new ImportContractFingerprint("b".repeat(64)));
+            assertThatThrownBy(() -> preparer.prepare(fingerprintDrift, source, admitted))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("pinned contract");
+            var branch = admitted.branches().getFirst();
+            var missingCell = new com.iocextractor.application.dataframeimport.model.ImportArtifactBranch(branch.artifactName(), branch.role(),
+                    Map.of(), branch.requestedSlot(), branch.recordKey(), branch.matchKeys());
+            var missingRow = new com.iocextractor.application.dataframeimport.model.ImportLogicalRow(
+                    40, List.of(missingCell));
+            assertThatThrownBy(() -> preparer.prepare(configured, source, missingRow))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("input is not admitted");
+            var unknownBranch = new com.iocextractor.application.dataframeimport.model.ImportArtifactBranch(
+                    "unknown", ImportArtifactRole.RELATED, Map.of(), java.util.OptionalLong.empty());
+            var unknownRow = new com.iocextractor.application.dataframeimport.model.ImportLogicalRow(
+                    40, List.of(branch, unknownBranch));
+            assertThatThrownBy(() -> preparer.prepare(configured, source, unknownRow))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("contract artifact");
+        }
+    }
+
+    @Test
     void bindingRefusesOutputOmissionAndUnboundArtifacts() throws Exception {
         try (Fixture fixture = fixture()) {
             var configured = contract();
@@ -294,8 +326,8 @@ class RouterProcessedImportRowPreparerTest {
                     .isInstanceOf(IllegalArgumentException.class);
             assertThatThrownBy(() -> fixture.preparer(" ", List.of(input), Map.of()))
                     .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("contract ID");
-            assertThatThrownBy(() -> fixture.preparer(null, List.of(input), Map.of()))
-                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("contract ID");
+            assertThatThrownBy(() -> fixture.preparer((CompiledDataframeImportContract) null, List.of(input), Map.of()))
+                    .isInstanceOf(NullPointerException.class).hasMessageContaining("pinned contract");
             assertThatThrownBy(() -> fixture.preparer(CONTRACT, List.of(), Map.of()))
                     .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("bounded and unique");
             assertThatThrownBy(() -> fixture.preparer(CONTRACT, List.of(input, input), Map.of()))
@@ -335,11 +367,11 @@ class RouterProcessedImportRowPreparerTest {
             var admitted = fixture.mapper().admit(configured, source).row().orElseThrow();
             var input = new RouterProcessedImportRowPreparer.Input(ARTIFACT, "mask");
 
-            assertThatThrownBy(() -> fixture.preparer(CONTRACT, List.of(input),
+            assertThatThrownBy(() -> fixture.preparer(configured, List.of(input),
                     Map.of(ARTIFACT, Set.of("alternate"))).prepare(configured, source, admitted))
                     .isInstanceOf(IllegalStateException.class).hasMessageContaining("source authority");
 
-            var prepared = fixture.preparer(CONTRACT, List.of(input),
+            var prepared = fixture.preparer(configured, List.of(input),
                     Map.of(ARTIFACT, Set.of("mask"))).prepare(configured, source, admitted);
             assertThat(prepared.issues()).isEmpty();
             assertThat(prepared.row()).hasValueSatisfying(row ->
@@ -349,7 +381,7 @@ class RouterProcessedImportRowPreparerTest {
             var nullSource = new ImportDelimitedRecord(12,
                     Map.of("ioc", "https://evil.example/path", "other", "NULL"));
             var nullAdmitted = fixture.mapper().admit(configured, nullSource).row().orElseThrow();
-            var withoutSource = fixture.preparer(CONTRACT, List.of(input),
+            var withoutSource = fixture.preparer(configured, List.of(input),
                     Map.of(ARTIFACT, Set.of("mask"))).prepare(configured, nullSource, nullAdmitted);
             assertThat(withoutSource.row()).hasValueSatisfying(row ->
                     assertThat(row.branches().getFirst().cells())
@@ -386,7 +418,7 @@ class RouterProcessedImportRowPreparerTest {
         }
     }
 
-    private CompiledDataframeImportContract withContractId(String id) {
+    private static CompiledDataframeImportContract withContractId(String id) {
         var base = contract();
         return new CompiledDataframeImportContract(new ImportContractId(id), base.version(),
                 base.definition(), base.dialect(), base.fingerprint());
@@ -399,7 +431,7 @@ class RouterProcessedImportRowPreparerTest {
             var source = new ImportDelimitedRecord(13,
                     Map.of("ioc", "https://evil.example/path", "note", "provenance"));
             var admitted = fixture.mapper().admit(configured, source).row().orElseThrow();
-            var prepared = fixture.preparer(CONTRACT,
+            var prepared = fixture.preparer(configured,
                     List.of(new RouterProcessedImportRowPreparer.Input(ARTIFACT, "mask")),
                     Map.of(ARTIFACT, Set.of("mask"))).prepare(configured, source, admitted);
 
@@ -506,7 +538,7 @@ class RouterProcessedImportRowPreparerTest {
         }
         var runtime = new CamelRouteRuntime(new CamelPlanCompiler().compile(List.of(plan), catalog));
         var route = new IocProcessingRouteAdapter(binding, runtime, Clock.systemUTC());
-        var processed = new RouterProcessedImportRowPreparer(CONTRACT,
+        var processed = new RouterProcessedImportRowPreparer(ARTIFACT.equals(artifact) ? contract() : blacklistContract(),
                 inputs, Map.of(artifact, outputs),
                 text -> new RefangOutcome(text.replace("hxxp", "http"), List.of()),
                 text -> new ExtractionOutcome(List.of(new RawIndicator(text,
@@ -519,7 +551,7 @@ class RouterProcessedImportRowPreparerTest {
                 runtime, route, classifier);
     }
 
-    CompiledDataframeImportContract contract() {
+    static CompiledDataframeImportContract contract() {
         var artifact = new DataframeImportCatalogDraft.Artifact(ARTIFACT, ImportArtifactRole.PRIMARY,
                 "mask-row-v1", List.of(), ImportMergePolicy.AUTHORITATIVE,
                 List.of(new DataframeImportCatalogDraft.Column("mask", "ioc", List.of(), null),
@@ -534,6 +566,13 @@ class RouterProcessedImportRowPreparerTest {
         return new CompiledDataframeImportContract(new ImportContractId(CONTRACT), 1, definition,
                 new DelimitedDialect(',', '"', ImportRecordSeparator.LF, true, List.of("NULL")),
                 new ImportContractFingerprint("a".repeat(64)));
+    }
+
+    private static CompiledDataframeImportContract blacklistContract() {
+        return withArtifacts(List.of(new DataframeImportCatalogDraft.Artifact("address_blacklist",
+                ImportArtifactRole.PRIMARY, "address-row-v2", List.of(), ImportMergePolicy.AUTHORITATIVE,
+                List.of(new DataframeImportCatalogDraft.Column("forbidden_url", "url", List.of(), null),
+                        new DataframeImportCatalogDraft.Column("forbidden_ip", "ip", List.of(), null)))));
     }
 
     private CompiledDataframeImportContract contractWithSourceLabel() {
@@ -552,7 +591,7 @@ class RouterProcessedImportRowPreparerTest {
         return withArtifacts(List.of(primary, related));
     }
 
-    private CompiledDataframeImportContract withArtifacts(List<DataframeImportCatalogDraft.Artifact> artifacts) {
+    private static CompiledDataframeImportContract withArtifacts(List<DataframeImportCatalogDraft.Artifact> artifacts) {
         var base = contract();
         var definition = base.definition();
         var changed = new DataframeImportCatalogDraft.Contract(definition.id(), definition.version(),
@@ -570,7 +609,12 @@ class RouterProcessedImportRowPreparerTest {
         private RouterProcessedImportRowPreparer preparer(String contractId,
                 List<RouterProcessedImportRowPreparer.Input> inputs,
                 Map<String, Set<String>> outputs) {
-            return new RouterProcessedImportRowPreparer(contractId, inputs, outputs,
+            return preparer(withContractId(contractId), inputs, outputs);
+        }
+
+        private RouterProcessedImportRowPreparer preparer(CompiledDataframeImportContract contract,
+                List<RouterProcessedImportRowPreparer.Input> inputs, Map<String, Set<String>> outputs) {
+            return new RouterProcessedImportRowPreparer(contract, inputs, outputs,
                     text -> new RefangOutcome(text.replace("hxxp", "http"), List.of()),
                     text -> new ExtractionOutcome(List.of(new RawIndicator(text, IndicatorType.URL, 0)),
                             List.of()), classifier, route);

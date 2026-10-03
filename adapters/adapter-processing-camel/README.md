@@ -13,7 +13,9 @@ list and become immutable at completion, preserving order and call isolation.
 Fixed endpoints are bound after context startup and owned
 by that runtime; templates and recipient lists receive endpoint references.
 Parameterized predicates bind validated arguments once per condition leaf at
-compilation. The bound predicates must be reusable across concurrent calls;
+compilation. Operation and destination processors are also captured during
+compilation; condition trace status labels are immutable constants, so disabled
+tracing performs no status-name formatting. The bound predicates must be reusable across concurrent calls;
 invocation-specific values never enter a shared argument cache.
 `RoutingExecutionScopes` and `RoutingTraceSink` are optional neutral hooks:
 bootstrap supplies MDC scopes and maps value-free decisions with the pinned

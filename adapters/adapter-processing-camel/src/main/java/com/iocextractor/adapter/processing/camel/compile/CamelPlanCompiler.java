@@ -51,13 +51,14 @@ public final class CamelPlanCompiler {
                     String uri = address(plan.id(), "view", view.id());
                     uris.add(uri);
                     viewRoutes.put(view.id(), new CompiledRoutes.ViewRoute(view.input(), uri, null));
+                    var operation = catalog.operations().get(view.operation());
                     routes.add(new RouteBuilder() {
                         @Override public void configure() {
                             errorHandler(noErrorHandler());
                             from(uri).routeId(routeId(plan.id(), "view", view.id()))
                                     .process(exchange -> {
                                         try (var ignored = scopes.openView(plan.id(), view.id())) {
-                                            catalog.operations().get(view.operation()).process(exchange);
+                                            operation.process(exchange);
                                         }
                                     });
                         }
@@ -90,6 +91,7 @@ public final class CamelPlanCompiler {
         String uri = address(planId, "branch", branch.id());
         uris.add(uri);
         branchRoutes.put(branch.id(), new CompiledRoutes.BranchRoute(uri, branch.requiredViews()));
+        var destination = catalog.destinations().get(branch.destination());
         routes.add(new RouteBuilder() {
             @Override public void configure() {
                 errorHandler(noErrorHandler());
@@ -98,7 +100,7 @@ public final class CamelPlanCompiler {
                         .setHeader(RouteProtocol.BRANCH_ID, constant(branch.id()))
                         .process(exchange -> {
                             try (var ignored = scopes.openBranch(planId, branch.id())) {
-                                catalog.destinations().get(branch.destination()).process(exchange);
+                                destination.process(exchange);
                             }
                             String id = Objects.requireNonNull(exchange.getMessage().getHeader(
                                     RouteProtocol.BRANCH_ID, String.class), "recipient branch ID");

@@ -273,7 +273,7 @@ class DataframeImportRuntimeConfiguration {
             var adapter = new IocProcessingRouteAdapter(bindings.plans().get(route.plan()),
                     routerRuntime.getObject(), clock);
             routed.put(contract.id().value(), new RouterProcessedImportRowPreparer(
-                    contract.id().value(), inputs, outputs, refanger, extractor,
+                    contract, inputs, outputs, refanger, extractor,
                     classifier, adapter));
         });
         return new SelectedProcessedImportRowPreparer(compatible, routed);

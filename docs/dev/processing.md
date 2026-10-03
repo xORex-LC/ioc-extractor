@@ -32,6 +32,14 @@ Host-пара сохраняет лишь значение и тип; source п�
 reuse отложено, receipt recovery её не открывает. Решение:
 [ADR 0032](../ADR/0032-invocation-owned-ioc-semantic-reuse.md).
 
+Статические разрешения выбранного processed-import preparer проверяются один раз
+при его создании: набор артефактов, output targets, запрет изменения source и
+эффективные merge policies закреплены за полным immutable compiled contract.
+На каждой строке проверяются соответствие закреплённому контракту, наличие
+admitted branches/cells и все прежние правила source authority и сборки carriers.
+Один ID контракта не разрешает подмену definition, version или fingerprint.
+
+
 ## Runtime flow
 
 Порядок стадий является частью application contract и собирается явно:

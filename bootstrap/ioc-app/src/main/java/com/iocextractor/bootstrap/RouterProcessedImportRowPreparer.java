@@ -54,7 +54,9 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
         }
     }
 
-    private final String contractId;
+    private final CompiledDataframeImportContract pinnedContract;
+    private final Map<String, DataframeImportCatalogDraft.Artifact> artifacts;
+    private final Map<String, Map<String, ImportMergePolicy>> outputPolicies;
     private final List<Input> inputs;
     private final Map<String, Set<String>> outputTargets;
     private final Refanger refanger;
@@ -62,14 +64,11 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
     private final IndicatorClassifier classifier;
     private final IocProcessingRouteAdapter route;
 
-    RouterProcessedImportRowPreparer(String contractId, List<Input> inputs,
+    RouterProcessedImportRowPreparer(CompiledDataframeImportContract contract, List<Input> inputs,
                                      Map<String, Set<String>> outputTargets,
                                      Refanger refanger, IndicatorExtractor extractor,
                                      IndicatorClassifier classifier, IocProcessingRouteAdapter route) {
-        if (contractId == null || contractId.isBlank()) {
-            throw new IllegalArgumentException("Processed import binding requires a contract ID");
-        }
-        this.contractId = contractId;
+        this.pinnedContract = Objects.requireNonNull(contract, "pinned contract");
         this.inputs = List.copyOf(inputs);
         if (this.inputs.isEmpty() || this.inputs.size() > MAX_INPUTS
                 || new LinkedHashSet<>(this.inputs).size() != this.inputs.size()) {
@@ -86,6 +85,10 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
             targets.put(artifact, java.util.Collections.unmodifiableSet(new LinkedHashSet<>(fields)));
         });
         this.outputTargets = java.util.Collections.unmodifiableMap(targets);
+        Map<String, DataframeImportCatalogDraft.Artifact> definitions = new LinkedHashMap<>();
+        contract.definition().artifacts().forEach(artifact -> definitions.put(artifact.name(), artifact));
+        this.artifacts = Map.copyOf(definitions);
+        this.outputPolicies = bindOutputPolicies(contract);
         this.refanger = Objects.requireNonNull(refanger, "refanger");
         this.parser = new ExactIndicatorParser(Objects.requireNonNull(extractor, "extractor"),
                 new NetworkAddressParser());
@@ -100,18 +103,18 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
         RowAssembly assembly = new RowAssembly();
         try (var session = new IndicatorProcessingSession(classifier)) {
             for (Input input : inputs) {
-                prepareInput(contract, record, admitted, input, assembly, session);
+                prepareInput(record, admitted, input, assembly, session);
             }
         }
         requirePrimaryOutput(record, admitted, assembly);
         if (!assembly.issues.isEmpty()) {
             return ImportRowMappingResult.rejected(assembly.issues);
         }
-        return ImportRowMappingResult.accepted(assembledRow(contract, record, admitted, assembly),
+        return ImportRowMappingResult.accepted(assembledRow(record, admitted, assembly),
                 assembly.warnings);
     }
 
-    private void prepareInput(CompiledDataframeImportContract contract, ImportDelimitedRecord record,
+    private void prepareInput(ImportDelimitedRecord record,
                               ImportLogicalRow admitted, Input input, RowAssembly assembly,
                               IndicatorProcessingSession session) {
         ImportArtifactBranch branch = branch(admitted, input.artifact());
@@ -126,7 +129,7 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
             return;
         }
         Indicator indicator = new Indicator(parsed.indicator().value(), parsed.indicator().type(),
-                new SourceContext(sourceLabel(contract, branch), null));
+                new SourceContext(sourceLabel(branch), null));
         var original = new ProcessingView(new ClassifiedIndicator(indicator, session.classify(indicator)),
                 new OccurrencePosition(record.sourceRowNumber()), 0, Map.of(), session);
         var result = route.prepare(original);
@@ -179,14 +182,12 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
         }
     }
 
-    private ImportLogicalRow assembledRow(CompiledDataframeImportContract contract,
-                                          ImportDelimitedRecord record, ImportLogicalRow admitted,
+    private ImportLogicalRow assembledRow(ImportDelimitedRecord record, ImportLogicalRow admitted,
                                           RowAssembly assembly) {
         List<ImportArtifactBranch> branches = new ArrayList<>(admitted.branches().size());
         for (ImportArtifactBranch branch : admitted.branches()) {
             Map<String, ImportCell> cells = new LinkedHashMap<>(branch.cells());
             Map<String, ImportMergePolicy> policies = new LinkedHashMap<>(branch.mergePolicies());
-            DataframeImportCatalogDraft.Artifact artifact = artifact(contract, branch.artifactName());
             Map<String, String> produced = assembly.outputs.getOrDefault(branch.artifactName(), Map.of());
             if (!produced.isEmpty()) {
                 for (String target : outputTargets.getOrDefault(branch.artifactName(), Set.of())) {
@@ -200,7 +201,7 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
             }
             produced.forEach((target, value) -> {
                 cells.put(target, ImportCell.value(value));
-                policies.putIfAbsent(target, ImportMergePolicyResolver.resolve(contract, artifact, target));
+                policies.putIfAbsent(target, outputPolicies.get(branch.artifactName()).get(target));
             });
             branches.add(new ImportArtifactBranch(branch.artifactName(), branch.role(), cells,
                     policies, branch.requestedSlot(), java.util.Optional.empty(), List.of()));
@@ -215,34 +216,54 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
         private final Set<String> preparedArtifacts = new LinkedHashSet<>();
     }
 
-    private void requireBinding(CompiledDataframeImportContract contract, ImportLogicalRow row) {
-        if (!contract.definition().id().equals(contractId)) {
-            throw new IllegalStateException("Processed import plan does not match pinned contract");
-        }
-        Set<String> artifacts = new LinkedHashSet<>();
-        contract.definition().artifacts().forEach(artifact -> artifacts.add(artifact.name()));
-        if (!artifacts.containsAll(outputTargets.keySet())) {
+    /** Validates immutable authority once, before this preparer is published to callers. */
+    private Map<String, Map<String, ImportMergePolicy>> bindOutputPolicies(
+            CompiledDataframeImportContract contract) {
+        if (!artifacts.keySet().containsAll(outputTargets.keySet())) {
             throw new IllegalStateException("Processed route targets exceed contract authority");
         }
+        Map<String, Map<String, ImportMergePolicy>> policies = new LinkedHashMap<>();
         outputTargets.forEach((name, targets) -> {
+            var artifact = artifacts.get(name);
             Set<String> authorized = new LinkedHashSet<>();
-            artifact(contract, name).columns().forEach(column -> authorized.add(column.target()));
+            artifact.columns().forEach(column -> authorized.add(column.target()));
             if (!authorized.containsAll(targets)) {
                 throw new IllegalStateException("Processed output fields exceed contract authority: " + name);
             }
+            if (artifact.sourceLabelTarget() != null && targets.contains(artifact.sourceLabelTarget())) {
+                throw new IllegalStateException("Route cannot replace import source authority");
+            }
+            Map<String, ImportMergePolicy> fields = new LinkedHashMap<>();
+            targets.forEach(target -> fields.put(target,
+                    ImportMergePolicyResolver.resolve(contract, artifact, target)));
+            policies.put(name, Map.copyOf(fields));
         });
         for (Input input : inputs) {
-            if (!artifacts.contains(input.artifact()) || !branch(row, input.artifact()).cells()
-                    .containsKey(input.target())) {
+            var artifact = artifacts.get(input.artifact());
+            if (artifact == null || artifact.columns().stream()
+                    .noneMatch(column -> column.target().equals(input.target()))) {
                 throw new IllegalStateException("Processed input is not admitted by contract");
             }
         }
-        contract.definition().artifacts().forEach(artifact -> {
-            if (artifact.sourceLabelTarget() != null && outputTargets
-                    .getOrDefault(artifact.name(), Set.of()).contains(artifact.sourceLabelTarget())) {
-                throw new IllegalStateException("Route cannot replace import source authority");
+        return Map.copyOf(policies);
+    }
+
+    private void requireBinding(CompiledDataframeImportContract contract, ImportLogicalRow row) {
+        // The normal path uses the same immutable catalog object; equality also admits
+        // reconstructed identical contracts without accepting same-ID policy drift.
+        if (!pinnedContract.equals(contract)) {
+            throw new IllegalStateException("Processed import plan does not match pinned contract");
+        }
+        for (ImportArtifactBranch admitted : row.branches()) {
+            if (!artifacts.containsKey(admitted.artifactName())) {
+                throw new IllegalStateException("No admitted contract artifact: " + admitted.artifactName());
             }
-        });
+        }
+        for (Input input : inputs) {
+            if (!branch(row, input.artifact()).cells().containsKey(input.target())) {
+                throw new IllegalStateException("Processed input is not admitted by contract");
+            }
+        }
     }
 
     private static ImportArtifactBranch branch(ImportLogicalRow row, String artifact) {
@@ -250,15 +271,10 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
                 .findFirst().orElseThrow(() -> new IllegalStateException("No admitted import branch: " + artifact));
     }
 
-    private static DataframeImportCatalogDraft.Artifact artifact(
-            CompiledDataframeImportContract contract, String name) {
-        return contract.definition().artifacts().stream().filter(candidate -> candidate.name().equals(name))
-                .findFirst().orElseThrow();
-    }
-
-    private static String sourceLabel(CompiledDataframeImportContract contract,
-                                      ImportArtifactBranch branch) {
-        String target = artifact(contract, branch.artifactName()).sourceLabelTarget();
+    private String sourceLabel(ImportArtifactBranch branch) {
+        var artifact = Objects.requireNonNull(artifacts.get(branch.artifactName()),
+                "admitted contract artifact " + branch.artifactName());
+        String target = artifact.sourceLabelTarget();
         ImportCell cell = target == null ? null : branch.cells().get(target);
         return cell != null && cell.presence() == ImportCell.Presence.VALUE ? cell.value() : null;
     }

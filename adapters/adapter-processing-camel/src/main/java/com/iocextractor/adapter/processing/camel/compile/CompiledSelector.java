@@ -9,7 +9,6 @@ import com.iocextractor.adapter.processing.camel.contract.RoutingTraceSink;
 import com.iocextractor.adapter.processing.camel.contract.ViewOutcome;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -115,7 +114,7 @@ public final class CompiledSelector {
     private static void traceDecision(RoutingTraceSink trace, String planId, String viewId,
                                       String branchId, String predicateId, Decision decision) {
         trace.emit(RoutingTraceEvent.Kind.CONDITION, planId, viewId, branchId, predicateId,
-                decision.status().name().toLowerCase(Locale.ROOT),
+                decision.status().label,
                 decision.failure() == null ? null : decision.failure().reasonCode());
     }
 
@@ -226,6 +225,11 @@ public final class CompiledSelector {
             };
         }
 
-        private enum Status { MATCH, NO_MATCH, BLOCKED }
+        private enum Status {
+            MATCH("match"), NO_MATCH("no_match"), BLOCKED("blocked");
+
+            private final String label;
+            Status(String label) { this.label = label; }
+        }
     }
 }
