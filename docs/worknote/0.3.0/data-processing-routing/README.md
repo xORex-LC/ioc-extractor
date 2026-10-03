@@ -45,6 +45,9 @@ cost should determine the choice.
   secondary allocation changes and the one-entry Camel experiment.
 - [O7 qualification](o7-qualification.md): final paired matrix, original references,
   resource-guard failures, cache/concurrency evidence and deferred acceptance.
+- [O7 URL-to-host/IP qualification](o7-host-collapse-qualification.md): many
+  distinct detailed URLs collapsing to 20 final host/IP keys, multiple sources,
+  selected before/after equivalence, full primary metrics and computation counts.
 - [Processing optimization plan](processing-optimization-plan.md): common O0–O7
   execution order, ownership and cache/session constraints, risk mitigation,
   paired measurement and build-quality acceptance gates.

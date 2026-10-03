@@ -5,6 +5,9 @@ deferred and historical resource guards are not all satisfied. Production
 candidate starts at `4dd238f4`.
 O1–O5 are adopted; O6 remains rejected. This qualification introduces no runtime,
 policy, dependency or schema change. Customer performance acceptance is separate.
+The subsequent [mass URL-to-host/IP extension](o7-host-collapse-qualification.md)
+qualifies detailed URL collapse with the host view in both selected revisions.
+Its measurements are separate; none replace or pool the original matrix below.
 
 ## Protocol fixed before sampling
 
@@ -214,8 +217,9 @@ Remaining limits are explicit:
   suppressed diagnostics, increased cache budget or relaxed gate hides them.
 - Base host-cleanup timing uses already-bare domains. Mixed/long timing retains
   original views for equivalent outputs; it does not qualify URL/IP detail-heavy
-  cleanup performance. Those transformations have correctness coverage. Choose
-  the customer's representative cleanup workload before resource acceptance.
+  cleanup performance. The subsequent extension qualifies a specific detailed
+  URL-collapse workload with multiple sources; choose the customer's representative
+  workload/concurrency/resource budget before acceptance.
 - Compatible import disables contract selection but retains the configured plan
   catalog, which starts idle Camel too. Its startup/RSS comparison is incremental
   path cost, not a no-Camel/Camel deployment comparison.

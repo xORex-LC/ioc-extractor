@@ -23,6 +23,10 @@ mechanism/capacity evidence and risk dispositions are recorded in
 [O7 qualification](o7-qualification.md). Three document profiles exceed historical
 resource guards; the operator explicitly deferred customer budget agreement.
 Qualification execution is complete; performance acceptance remains open.
+The subsequent [mass URL-to-host/IP qualification](o7-host-collapse-qualification.md)
+extends O7 with detailed URL collapse, multiple sources, independent final-field/
+key/winner/provenance assertions and same-semantics selected revision comparisons.
+Original O7 samples and guard failures remain unchanged.
 
 Inputs: [cost analysis](router-cost-and-architecture-analysis.md),
 [Camel applicability](camel-optimization-applicability.md),
