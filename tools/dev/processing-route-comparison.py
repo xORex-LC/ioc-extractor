@@ -12,6 +12,7 @@ import sqlite3
 import statistics
 import time
 import subprocess
+from urllib.parse import urlsplit
 import zipfile
 from pathlib import Path
 
@@ -68,10 +69,20 @@ def source_identity():
             "worktree_diff_sha256": digest.hexdigest()}
 
 
-def fixture_values(unique, shape="domains", kind="document", offset=0):
+def fixture_values(unique, shape="domains", kind="document", offset=0, collapse_hosts=20):
     """Independent, disjoint identities; shape changes never silently change routing policy."""
     values = []
     for index in range(unique):
+        if shape == "host-collapse":
+            host_index = offset * collapse_hosts + index % collapse_hosts
+            host = (f"benchmark-{host_index}.example.com" if host_index % 2 == 0
+                    else f"198.18.{host_index // 256}.{host_index % 256}")
+            if host_index >= 65536:
+                raise ValueError("Host-collapse IPv4 fixture exceeds the benchmark address range")
+            scheme = "https" if index // collapse_hosts % 2 == 0 else "http"
+            values.append(f"{scheme}://{host}:{8000 + index % 1000}/endpoint/{index}"
+                          f"?variant={index}&download=true#section")
+            continue
         identity = offset * unique + index
         domain = f"benchmark-{identity}.example.com"
         variant = index % (4 if kind == "document" else 2)
@@ -92,9 +103,20 @@ def fixture_values(unique, shape="domains", kind="document", offset=0):
 
 
 def fixtures(workspace, document_rows, import_rows, document_unique=20, import_unique=20,
-             shape="domains", offset=0):
-    values = fixture_values(document_unique, shape, "document", offset)
+             shape="domains", offset=0, collapse_hosts=20):
+    values = fixture_values(document_unique, shape, "document", offset, collapse_hosts)
     document = workspace / "document.html"
+    if shape == "host-collapse":
+        document.write_text("<html><body>\n" + "".join(
+            f"<h2>БИБ-000{section + 1}</h2>\n" + "".join(
+                f"<p>{values[(index // 2) % len(values)]}</p>\n"
+                for index in range(document_rows // 2)) for section in range(2)) + "</body></html>\n")
+        values = fixture_values(import_unique, shape, "import", offset, collapse_hosts)
+        csv = workspace / "import.csv"
+        csv.write_text("ioc;source\n" + "".join(
+            f"{values[(index // 2) % len(values)]};Feed {'Alpha' if index // 2 % collapse_hosts % 2 == 0 else 'Beta'}\n"
+            for index in range(import_rows)))
+        return {"document": document, "import": csv}
     document.write_text("<html><body><h2>БИБ-0001</h2>\n" + "".join(
         f"<p>{values[index % len(values)]}</p>\n" for index in range(document_rows))
         + "</body></html>\n")
@@ -124,7 +146,15 @@ def config(kind, selected, target, resources=RESOURCES, shape="domains"):
             begin = contents.index("        processed-route:\n")
             end = contents.index("    runtime:\n", begin)
             contents = contents[:begin] + contents[end:]
-    if selected and shape != "domains":
+    if shape == "host-collapse":
+        if not selected:
+            raise ValueError("Host-collapse compares selected revisions with identical cleanup semantics")
+        # Complete artifact elements preserve strict binder list ownership. Both
+        # document/import admit cleaned IPv4 in masks as well as domain hosts.
+        contents = contents.replace("default-view: original", "default-view: host")
+        policy = (resources / "application-golden.yml").read_text().split("  sink:\n", 1)[1]
+        contents += "  sink:\n" + policy.replace("exclude: [ is-bare-ip ]", "exclude: []")
+    elif selected and shape != "domains":
         # Matched output semantics for mixed/long profiles; cleanup is qualified separately.
         contents = contents.replace("default-view: host", "default-view: original")
     path = target / "configs/application.yml"
@@ -139,7 +169,50 @@ def canonical_import_accounting(connection):
             "SELECT row_id, source_key, occurrences FROM masks_sources ORDER BY row_id, source_key").fetchall()}
 
 
-def result_signature(kind, root, input_rows, unique=20, warmups=0, shape="domains"):
+def canonical_digest(values):
+    return hashlib.sha256(json.dumps(values, separators=(",", ":")).encode()).hexdigest()
+
+
+def host_collapse_fields(connection, kind, hosts, warmups):
+    """Independent final-field/key/winner oracle; never uses the production parser or mapper."""
+    expected = {name: [] for name in ("masks", "ip_list", "address_blacklist", "ioc_aggregate")}
+    for offset in range(warmups + 1):
+        for index in range(hosts):
+            identity = offset * hosts + index
+            ip = index % 2 == 1
+            host = f"198.18.{identity // 256}.{identity % 256}" if ip else f"benchmark-{identity}.example.com"
+            source = ("Feed Beta" if ip else "Feed Alpha") if kind == "import" else "БИБ-0001"
+            expected["masks"].append((host, "u:hAS" if ip else "u:hEX",
+                                      "h:dAS" if ip else "h:dEX", source, canonical_digest([host])))
+            if ip:
+                expected["ip_list"].append((host, source, canonical_digest([host])))
+            carriers = [None, host] if ip else [host, None]
+            expected["address_blacklist"].append((*carriers, canonical_digest(carriers)))
+            aggregate = [host, None, None, None] if ip else [None, None, host, None]
+            expected["ioc_aggregate"].append(("БИБ-0002", *aggregate, canonical_digest(aggregate)))
+    columns = {"masks": "mask, url_match, host_match, source, row_key",
+               "ip_list": "ip, source, row_key",
+               "address_blacklist": "forbidden_url, forbidden_ip, row_key",
+               "ioc_aggregate": "name, ip_address, url_match, host_match, hash, row_key"}
+    result = {}
+    for artifact in (["masks"] if kind == "import" else expected):
+        rows = [tuple(None if value == "NULL" else value for value in row)
+                for row in connection.execute(f"SELECT {columns[artifact]} FROM {artifact}")]
+        if sorted(rows, key=str) != sorted(expected[artifact], key=str):
+            raise RuntimeError(f"Host-collapse {kind}/{artifact} final fields, keys or winner differ")
+        expected_source = ("dataframe-import:local-hosts" if kind == "import" else
+                           "БИБ-0002" if artifact == "ioc_aggregate" else "БИБ-0001")
+        provenance = connection.execute(
+            f"SELECT row_id, source_key, occurrences FROM {artifact}_sources ORDER BY row_id").fetchall()
+        canonical_ids = {row[0] for row in connection.execute(f"SELECT id FROM {artifact}")}
+        if len(provenance) != len(rows) or {row[0] for row in provenance} != canonical_ids \
+                or any(row[1:] != (expected_source, 1) for row in provenance):
+            raise RuntimeError(f"Host-collapse {artifact} winner provenance accounting differs")
+        result[artifact] = sorted(rows, key=str)
+    return result
+
+
+def result_signature(kind, root, input_rows, unique=20, warmups=0, shape="domains", collapse_hosts=20):
     database = root / "ioc-dataframe.db"
     with sqlite3.connect(database) as connection:
         if kind == "document":
@@ -151,7 +224,9 @@ def result_signature(kind, root, input_rows, unique=20, warmups=0, shape="domain
                 f"SELECT row_key FROM {artifact} ORDER BY row_key").fetchall()
                 for artifact in ("masks", "ip_list", "address_blacklist", "hashes",
                                  "ioc_aggregate")}
-            expected_counts = expected_document_counts(input_rows, unique, shape)
+            expected_counts = (dict(masks=collapse_hosts, ip_list=collapse_hosts // 2,
+                                    address_blacklist=collapse_hosts, hashes=0, ioc_aggregate=collapse_hosts)
+                               if shape == "host-collapse" else expected_document_counts(input_rows, unique, shape))
             if any(len(keys[name]) != count * (warmups + 1)
                    for name, count in expected_counts.items()):
                 raise RuntimeError("Document did not retain the expected typed indicator set")
@@ -161,15 +236,20 @@ def result_signature(kind, root, input_rows, unique=20, warmups=0, shape="domain
             ids = {artifact: connection.execute(
                 f"SELECT id, row_key FROM {artifact} ORDER BY id").fetchall()
                    for artifact in keys}
+            fields = host_collapse_fields(connection, kind, collapse_hosts, warmups) \
+                if shape == "host-collapse" else {}
             return {"projections": projections, "canonical_keys": keys,
-                    "canonical_ids": ids, "provenance": provenance}
-        expected_values = set(fixture_values(min(input_rows, unique), shape, "import"))
+                    "canonical_ids": ids, "provenance": provenance, "final_fields": fields}
+        expected_values = set(fixture_values(min(input_rows, unique), shape, "import",
+                                            collapse_hosts=collapse_hosts))
+        if shape == "host-collapse":
+            expected_values = {urlsplit(value).hostname for value in expected_values}
         rows = [row for row in connection.execute(
             "SELECT mask, row_key, url_match, host_match, source FROM masks ORDER BY mask")
                 if row[0] in expected_values]
         receipt = connection.execute("SELECT accepted_rows, rejected_rows, "
                                      "public_mutations FROM import_commit WHERE delivery_id = 'comparison-import'").fetchall()
-        expected = min(input_rows, unique)
+        expected = collapse_hosts if shape == "host-collapse" else min(input_rows, unique)
         stages = list((root / "staging").glob("*.sealed.db"))
         if len(stages) != warmups + 1:
             raise RuntimeError("Expected one sealed import stage")
@@ -202,7 +282,9 @@ def result_signature(kind, root, input_rows, unique=20, warmups=0, shape="domain
                 or statuses != expected_statuses or stage_warnings != receipt_warnings \
                 or terminal != [("TERMINAL", "SUCCEEDED")]:
             raise RuntimeError("Incomplete canonical import result")
-        return {**canonical_import_accounting(connection),
+        fields = host_collapse_fields(connection, kind, collapse_hosts, warmups) \
+            if shape == "host-collapse" else {}
+        return {**canonical_import_accounting(connection), "final_fields": fields,
                 "rows": rows, "receipt_counts": receipt, "stage_statuses": statuses,
                 "stage_warnings": stage_warnings, "receipt_warnings": receipt_warnings,
                 "receipt_outcome": receipt_outcome, "terminal_state": terminal}
@@ -210,12 +292,12 @@ def result_signature(kind, root, input_rows, unique=20, warmups=0, shape="domain
 
 def expected_document_diagnostics(input_rows, unique, shape, selected):
     values = fixture_values(unique, shape)
-    overlaps = sum(values[index % unique].startswith("https://") for index in range(input_rows))
+    overlaps = sum(values[index % unique].startswith(("https://", "http://")) for index in range(input_rows))
     return overlaps + (0 if selected else input_rows - min(input_rows, unique))
 
 
 def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows, unique, warmups,
-            resources=RESOURCES, diagnostics=False, shape="domains"):
+            resources=RESOURCES, diagnostics=False, shape="domains", collapse_hosts=20):
     name = "selected" if selected else "compatible"
     root = workspace / f"{kind}-{name}-{iteration}"
     root.mkdir()
@@ -224,7 +306,7 @@ def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows
     for number in range(warmups):
         warmup_root = root / f"warmup-{number}"
         warmup_root.mkdir()
-        paths = fixtures(warmup_root, input_rows, input_rows, unique, unique, shape, number + 1)
+        paths = fixtures(warmup_root, input_rows, input_rows, unique, unique, shape, number + 1, collapse_hosts)
         path = warmup_root / f"warmup-{number}{fixture.suffix}"
         paths[kind].rename(path)
         warmup_paths.append(path)
@@ -267,7 +349,11 @@ def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows
         if int(outcome_counts["retained"]) != min(input_rows, unique) or \
                 int(outcome_counts["diagnostics"]) != expected_diagnostics:
             raise RuntimeError("Unexpected retained/duplicate diagnostic counts")
-    signature = result_signature(kind, root, input_rows, unique, warmups, shape)
+        if shape == "host-collapse" and (outcome_counts["status"] != "COMPLETED"
+                or f"severities={{DEBUG={input_rows}}}" not in outcomes[-1]
+                or "EXTRACTION.INDICATOR_SKIPPED:DEBUG=" not in outcomes[-1]):
+            raise RuntimeError("Unexpected host-collapse diagnostic severity or code")
+    signature = result_signature(kind, root, input_rows, unique, warmups, shape, collapse_hosts)
     metrics["outcome"] = outcomes[-1]
     signature["outcome"] = outcomes[-1]
     (root / "signature.json").write_text(json.dumps(signature, sort_keys=True, indent=2) + "\n")
@@ -291,11 +377,12 @@ def summary(rows):
                         if row["kind"] == kind and row["path"] == "selected"]
             ratios = [s / b for b, s in zip(baseline, selected) if b > 0]
             result[kind][column] = {
-                "compatible_median": statistics.median(baseline),
+                "compatible_median": statistics.median(baseline) if baseline else None,
                 "selected_median": statistics.median(selected),
                 "selected_over_compatible": statistics.median(selected)
-                / statistics.median(baseline) if statistics.median(baseline) else None,
-                "compatible_min": min(baseline), "compatible_max": max(baseline),
+                / statistics.median(baseline) if baseline and statistics.median(baseline) else None,
+                "compatible_min": min(baseline) if baseline else None,
+                "compatible_max": max(baseline) if baseline else None,
                 "selected_min": min(selected), "selected_max": max(selected),
                 "paired_ratios": ratios}
     return result
@@ -307,8 +394,11 @@ def main():
     parser.add_argument("--import-rows", type=int, default=2000)
     parser.add_argument("--pairs", type=int, default=5)
     parser.add_argument("--workload", choices=("both", "document", "import"), default="both")
-    parser.add_argument("--shape", choices=("domains", "mixed", "long"), default="domains",
+    parser.add_argument("--shape", choices=("domains", "mixed", "long", "host-collapse"), default="domains",
                         help="Mixed/long use original-view routing for matched public fields")
+    parser.add_argument("--selected-only", action="store_true",
+                        help="Host-collapse qualification across selected revisions; no inequivalent compatible ratio")
+    parser.add_argument("--collapse-hosts", type=int, default=20)
     parser.add_argument("--document-unique", type=int, default=20)
     parser.add_argument("--import-unique", type=int, default=20)
     parser.add_argument("--warmups", type=int, default=0,
@@ -325,6 +415,15 @@ def main():
         parser.error("Warmups must be nonnegative")
     if min(args.document_rows, args.import_rows, args.pairs, args.document_unique, args.import_unique) <= 0:
         parser.error("All counts must be positive")
+    if args.selected_only != (args.shape == "host-collapse"):
+        parser.error("Host-collapse requires --selected-only; other shapes retain paired paths")
+    if args.shape == "host-collapse" and (args.collapse_hosts <= 0 or args.collapse_hosts % 2
+            or args.document_unique < args.collapse_hosts or args.import_unique < args.collapse_hosts
+            or args.document_unique % args.collapse_hosts or args.import_unique % args.collapse_hosts
+            or args.document_rows % (4 * args.document_unique)
+            or args.import_rows % (2 * args.import_unique)):
+        parser.error("Host-collapse needs positive even hosts, unique URL counts divisible by hosts, "
+                     "document rows divisible by 4*unique and import rows by 2*unique")
     if min(args.max_wall_ratio, args.max_allocation_ratio,
            args.max_memory_ratio) < 1 or args.max_rss_kib <= 0:
         parser.error("Limits must be positive ratios >= 1 and positive RSS")
@@ -374,28 +473,35 @@ def main():
     classes = [workspace / "probe-classes", resources, app_classes]
     classpath = ":".join(map(str, classes + sorted(libraries.glob("*.jar"))))
     inputs = fixtures(workspace, args.document_rows, args.import_rows,
-                      args.document_unique, args.import_unique, args.shape)
+                      args.document_unique, args.import_unique, args.shape, collapse_hosts=args.collapse_hosts)
     if args.workload != "both":
         inputs = {args.workload: inputs[args.workload]}
     rows = []
+    previous = {}
     try:
         for kind, fixture in inputs.items():
             for iteration in range(args.pairs):
                 pair = []
-                for selected in ([False, True] if iteration % 2 == 0 else [True, False]):
+                for selected in ([True] if args.selected_only else
+                                 [False, True] if iteration % 2 == 0 else [True, False]):
                     print(f"{kind} pair={iteration + 1} path={'selected' if selected else 'compatible'}",
                           flush=True)
                     metrics, signature = run_one(workspace, fixture, kind, selected, iteration,
                                                  classpath, args.document_rows if kind == "document"
                                                  else args.import_rows,
                                                  args.document_unique if kind == "document" else args.import_unique,
-                                                 args.warmups, resources, args.diagnostics, args.shape)
+                                                 args.warmups, resources, args.diagnostics, args.shape,
+                                                 args.collapse_hosts)
                     rows.append(metrics)
                     (workspace / "samples.json").write_text(json.dumps(rows, indent=2) + "\n")
                     pair.append(signature)
+                comparison = previous.get(kind, pair[0]) if args.selected_only else pair[1]
+                if args.selected_only and pair[0] != comparison:
+                    raise RuntimeError(f"{kind} selected revision outcome differs in run {iteration + 1}")
                 if {key: value for key, value in pair[0].items() if key != "outcome"} != \
-                        {key: value for key, value in pair[1].items() if key != "outcome"}:
+                        {key: value for key, value in comparison.items() if key != "outcome"}:
                     raise RuntimeError(f"{kind} output differs in pair {iteration + 1}")
+                previous[kind] = pair[0]
     except Exception as failure:
         (workspace / "failure.json").write_text(json.dumps({
             **identity, "profile": vars(args) | {"workspace": str(workspace)},
@@ -407,7 +513,7 @@ def main():
               "max_allocation_ratio": args.max_allocation_ratio,
               "max_rss_kib": args.max_rss_kib,
               "max_memory_ratio": args.max_memory_ratio}
-    passing = all(
+    passing = None if args.selected_only else all(
         medians[kind]["elapsed_ms"]["selected_over_compatible"] <= args.max_wall_ratio
         and medians[kind]["allocated_main_bytes"]["selected_over_compatible"]
         <= args.max_allocation_ratio
@@ -429,7 +535,9 @@ def main():
               "logging_controls": {key: os.environ.get(key, "unset")
                                    for key in ("DEBUG", "TRACE", "LOGGING_LEVEL_ROOT")},
               "shape": args.shape,
-              "routing_semantics": "host cleanup" if args.shape == "domains" else "original view",
+              "routing_semantics": "host cleanup" if args.shape in ("domains", "host-collapse") else "original view",
+              "selected_only": args.selected_only,
+              "collapse_hosts": args.collapse_hosts if args.selected_only else None,
               "cpu_count": os.cpu_count(),
               "cgroup_limits": {name: Path(f"/sys/fs/cgroup/{name}").read_text().strip()
                                 if Path(f"/sys/fs/cgroup/{name}").exists() else "unavailable"
@@ -438,6 +546,8 @@ def main():
               "runtime_jars": [p.name for p in sorted(libraries.glob("*.jar"))],
               "acceptance_budget": "not agreed; limits are historical regression guards",
               "inputs": {kind: {"rows": args.document_rows if kind == "document" else args.import_rows,
+                                "final_hosts": args.collapse_hosts if args.selected_only else None,
+                                "source_labels": 2 if args.selected_only else 1,
                                 "unique": min(args.document_rows, args.document_unique) if kind == "document"
                                 else min(args.import_rows, args.import_unique),
                                 "duplicate_fraction": 1 - min(
@@ -450,9 +560,9 @@ def main():
               "equivalent_results": True, "within_provisional_envelope": passing}
     (workspace / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(f"Equivalent results in all {args.pairs} pairs per workload; "
-          f"provisional envelope {'passed' if passing else 'FAILED'}; "
+          f"provisional envelope {'not evaluated (qualification only)' if passing is None else 'passed' if passing else 'FAILED'}; "
           f"{workspace}/report.json")
-    if not passing and not args.diagnostics:
+    if passing is False and not args.diagnostics:
         raise SystemExit(1)
 
 

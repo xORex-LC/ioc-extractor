@@ -19,6 +19,81 @@ SPEC.loader.exec_module(COMPARISON)
 
 
 class ComparisonTest(unittest.TestCase):
+    def test_host_collapse_has_distinct_urls_shared_hosts_repeats_and_sources(self):
+        values = COMPARISON.fixture_values(8, "host-collapse", collapse_hosts=4)
+        self.assertEqual(len(set(values)), 8)
+        self.assertEqual({COMPARISON.urlsplit(value).hostname for value in values},
+                         {"benchmark-0.example.com", "benchmark-2.example.com", "198.18.0.1", "198.18.0.3"})
+        self.assertEqual(values[0], "https://benchmark-0.example.com:8000/endpoint/0?variant=0&download=true#section")
+        self.assertTrue(values[4].startswith("http://benchmark-0.example.com:8004/endpoint/4?"))
+        self.assertEqual(COMPARISON.expected_document_diagnostics(80, 40, "host-collapse", True), 80)
+        warmed = COMPARISON.fixture_values(8, "host-collapse", offset=1, collapse_hosts=4)
+        self.assertTrue({COMPARISON.urlsplit(v).hostname for v in values}.isdisjoint(
+            {COMPARISON.urlsplit(v).hostname for v in warmed}))
+        with tempfile.TemporaryDirectory() as root:
+            paths = COMPARISON.fixtures(Path(root), 32, 16, 8, 8, "host-collapse", collapse_hosts=4)
+            sections = paths["document"].read_text().split("<h2>БИБ-0002</h2>")
+            self.assertEqual(len(sections), 2)
+            for value in values:
+                self.assertEqual(sections[0].count(f"<p>{value}</p>"), 2)
+                self.assertEqual(sections[1].count(f"<p>{value}</p>"), 2)
+            rows = paths["import"].read_text().splitlines()[1:]
+            self.assertEqual(len(rows), 16)
+            self.assertEqual(rows[0], rows[1])
+            self.assertTrue(any(row.endswith(";Feed Alpha") for row in rows))
+            self.assertTrue(any(row.endswith(";Feed Beta") for row in rows))
+
+    def test_host_collapse_keeps_host_routes_and_complete_ipv4_mask_policy(self):
+        for kind in ("document", "import"):
+            with tempfile.TemporaryDirectory() as root:
+                COMPARISON.config(kind, True, Path(root), shape="host-collapse")
+                contents = (Path(root) / "configs/application.yml").read_text()
+                self.assertNotIn("default-view: original", contents)
+                self.assertIn("default-view: host", contents)
+                self.assertIn("exclude: []", contents)
+                self.assertIn("selection-column: name", contents)
+                self.assertIn("operation: network.host", contents)
+                with self.assertRaises(ValueError):
+                    COMPARISON.config(kind, False, Path(root), shape="host-collapse")
+
+    def test_cleanup_oracle_rejects_wrong_final_key_source_and_provenance(self):
+        with sqlite3.connect(":memory:") as connection:
+            connection.executescript("""
+                CREATE TABLE masks(id INTEGER, mask TEXT, url_match TEXT, host_match TEXT, source TEXT, row_key TEXT);
+                CREATE TABLE masks_sources(row_id INTEGER, source_key TEXT, occurrences INTEGER);
+                INSERT INTO masks VALUES(1, 'benchmark-0.example.com', 'u:hEX', 'h:dEX', 'Feed Alpha',
+                    '7d5637c40422caa36f70688376b88739910b20a68c5c0a4773b6461c7b03ae74');
+                INSERT INTO masks VALUES(2, '198.18.0.1', 'u:hAS', 'h:dAS', 'Feed Beta', 'invalid');
+                INSERT INTO masks_sources VALUES(1, 'dataframe-import:local-hosts', 1),
+                    (2, 'dataframe-import:local-hosts', 1);
+                """)
+            # Independent wire literals establish expected SHA-256 inputs.
+            import hashlib
+            connection.execute("UPDATE masks SET row_key = ? WHERE id=1",
+                               (hashlib.sha256(b'["benchmark-0.example.com"]').hexdigest(),))
+            with self.assertRaisesRegex(RuntimeError, "final fields, keys or winner"):
+                COMPARISON.host_collapse_fields(connection, "import", 2, 0)
+            connection.execute("UPDATE masks SET row_key = ? WHERE id=2",
+                               (hashlib.sha256(b'["198.18.0.1"]').hexdigest(),))
+            self.assertEqual(len(COMPARISON.host_collapse_fields(connection, "import", 2, 0)["masks"]), 2)
+            connection.execute("UPDATE masks SET source='Feed Alpha' WHERE id=2")
+            with self.assertRaisesRegex(RuntimeError, "final fields, keys or winner"):
+                COMPARISON.host_collapse_fields(connection, "import", 2, 0)
+            connection.execute("UPDATE masks SET source='Feed Beta' WHERE id=2")
+            connection.execute("UPDATE masks_sources SET occurrences=2 WHERE row_id=2")
+            with self.assertRaisesRegex(RuntimeError, "provenance accounting"):
+                COMPARISON.host_collapse_fields(connection, "import", 2, 0)
+
+    def test_selected_revision_statistics_never_fabricate_compatible_ratio(self):
+        row = dict(kind="document", path="selected", iteration=0, elapsed_ms=3,
+                   throughput_per_s=3, allocated_main_bytes=3, sampled_peak_heap_bytes=3,
+                   sampled_peak_rss_kib=3, sampled_peak_current_rss_kib=3, startup_ms=3,
+                   gc_count=0, gc_time_ms=0)
+        result = COMPARISON.summary([row])["document"]["elapsed_ms"]
+        self.assertEqual(result["selected_median"], 3)
+        self.assertIsNone(result["compatible_median"])
+        self.assertIsNone(result["selected_over_compatible"])
+
     def test_import_signature_includes_internal_ids_and_occurrence_accounting(self):
         with sqlite3.connect(":memory:") as connection:
             connection.executescript("""
