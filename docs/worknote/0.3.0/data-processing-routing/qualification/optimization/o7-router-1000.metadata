@@ -1,0 +1,7 @@
+head=8ee4e4d8e21cdfb2b0d940232626ea294fe43064
+dirty=false
+size=1000
+java=openjdk version "21.0.12.1" 2026-08-18
+processors=12
+jvm=-Xms128m -Xmx512m
+report=/opt/ioc-extractor/.dev/router-qualification/router-1000.csv

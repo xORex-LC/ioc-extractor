@@ -1,0 +1,4 @@
+profile=duplicate sessions=1 policy_calls=20 retained_entries=40 charged_bytes=348420 live_heap=1507152 VmRSS:	   76972 kB elapsed_ms=85.8
+profile=unique sessions=1 policy_calls=8000 retained_entries=120 charged_bytes=1045460 live_heap=1887896 VmRSS:	  120364 kB elapsed_ms=99.7
+profile=long sessions=1 policy_calls=8000 retained_entries=0 charged_bytes=0 live_heap=1745016 VmRSS:	  141484 kB elapsed_ms=806.6
+profile=concurrent sessions=4 policy_calls=32000 retained_entries=480 charged_bytes=4181840 live_heap=2320792 VmRSS:	  142892 kB elapsed_ms=73.0

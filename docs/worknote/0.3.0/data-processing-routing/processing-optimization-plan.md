@@ -18,7 +18,11 @@ O5 immutable import metadata and measured secondary allocations are implemented.
 O6 one-entry Camel execution was prototyped and rejected by its predeclared
 promotion screen; the branch retains O1–O5 and added conformance tests.
 See [O5–O6 evidence](o5-o6-implementation.md) for measurements and the reproducible
-rejected candidate. O7 qualification and performance acceptance remain open.
+rejected candidate. O7's final workload matrix, original-reference comparison,
+mechanism/capacity evidence and risk dispositions are recorded in
+[O7 qualification](o7-qualification.md). Three document profiles exceed historical
+resource guards; the operator explicitly deferred customer budget agreement.
+Qualification execution is complete; performance acceptance remains open.
 
 Inputs: [cost analysis](router-cost-and-architecture-analysis.md),
 [Camel applicability](camel-optimization-applicability.md),

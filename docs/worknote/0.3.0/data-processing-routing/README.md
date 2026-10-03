@@ -1,11 +1,10 @@
 # Configurable data processing and routing
 
-Status: design accepted for staged implementation, 2026-09-27. R0 bounded
-admission, R1 module/compiler skeleton, R2 selection/execution, R3 typed
-outcomes/recovery and R4 lifecycle/observability hooks are complete; R5 has
-synthetic qualification, while production integration and R5 handover remain
-outstanding. Historical
-proposal status in earlier assessments records their place in the decision process.
+Status: Router/IOC staged implementation and production selected-import integration
+are implemented. O1–O5 optimizations are retained; O6's one-entry experiment was
+rejected. O7's production comparison and mechanism/capacity qualification have
+executed, with document resource-guard failures and customer performance acceptance
+still open. Earlier proposal/qualification statuses retain their historical context.
 
 - [R0 admission](r0-admission.md): minimal contracts, module disposition and executed
   runtime probe; durable decision in ADR 0031.
@@ -44,6 +43,8 @@ cost should determine the choice.
   explicit bounded semantic sessions and isolated measurements.
 - [O5–O6 implementation](o5-o6-implementation.md): compiled import authority,
   secondary allocation changes and the one-entry Camel experiment.
+- [O7 qualification](o7-qualification.md): final paired matrix, original references,
+  resource-guard failures, cache/concurrency evidence and deferred acceptance.
 - [Processing optimization plan](processing-optimization-plan.md): common O0–O7
   execution order, ownership and cache/session constraints, risk mitigation,
   paired measurement and build-quality acceptance gates.
