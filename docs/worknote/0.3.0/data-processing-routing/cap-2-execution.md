@@ -2,8 +2,10 @@
 
 Scope: CAP-2 only from [the capacity plan](data-processing-capacity-plan.md).
 Status (2026-10-05): CAP-2.1–CAP-2.6 implemented and G2 passed.
-Baseline: `36873beab79a8fbd856725a955300daea55b830f`, clean tree, fresh passed
-verify and PMD evidence. CAP-0/1 resource results remain unchanged.
+Baseline: `b4c984b3`, clean tree, fresh passed verify and PMD evidence at the
+original identity `36873beab79a8fbd856725a955300daea55b830f`. Commit messages
+were subsequently rewritten; candidate files are unchanged. CAP-0/1 resource
+results remain unchanged.
 
 ## Contract and implementation notes
 
@@ -39,10 +41,10 @@ sufficient; acknowledgement accepts partial covered progress while keeping newer
 work pending. A separate connection lease for safe-clock sampling also avoids a
 nested pool lease in a one-connection configuration.
 
-Implementation commit: `f7783dce` (shared owner, snapshot coverage,
+Implementation commit: `53983057` (shared owner, snapshot coverage,
 acknowledgement contract, baseline race regression and
 [ADR 0035](../../../ADR/0035-generation-owned-mutable-projections.md)).
-Qualification commit: `61eb89b4` (fault recovery, concurrent writer families,
+Qualification commit: `0c5e4737` (fault recovery, concurrent writer families,
 expiry-only coverage and production bean ownership).
 
 Focused qualification passed:
@@ -86,7 +88,7 @@ after the closeout commit and the final `make verify` / `make pmd-analysis` runs
 | Check | Result |
 |---|---|
 | `make verify` | PASS; 27 reactor projects; test lifecycle: 222 fast, 73 integration, 5 property-gated external suites, 290 deterministic offline suites |
-| Coverage integrity/ratchets | PASS; 21 production modules and 20 local reports; 91.05% lines, 82.88% branches; no floor lowered |
+| Coverage integrity/ratchets | PASS; 21 production modules and 20 local reports; approximately 91.1% lines, 82.9% branches; no floor lowered |
 | SpotBugs | PASS; 126 exact reviewed findings accepted, 0 visible |
 | CPD | PASS; 24/24 groups; the touched existing catalog-validation duplication was reviewed |
 | `make pmd-analysis` | PASS; 0 blocking, 20/20 advisory findings; changed `AppConfig` retains its existing parameter-list advisories |
