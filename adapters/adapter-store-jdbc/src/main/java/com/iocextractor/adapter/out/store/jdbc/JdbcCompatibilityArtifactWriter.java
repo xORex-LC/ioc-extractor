@@ -73,11 +73,7 @@ final class JdbcCompatibilityArtifactWriter {
 
     CanonicalWriteResult write(CanonicalWriteCommand command) {
         Objects.requireNonNull(command, "command");
-        boolean ordered = command.rows().stream()
-                .anyMatch(row -> !row.orderedFieldPositions().isEmpty());
-        if (!ordered) {
-            return write(command.artifactName(), command.artifact());
-        }
+        boolean ordered = command.rows().anyMatch(row -> !row.orderedFieldPositions().isEmpty());
         DataframeArtifactSchema schema = schema(command.artifactName());
         if (!header(schema).equals(command.header())) {
             throw new IllegalArgumentException(
@@ -88,11 +84,21 @@ final class JdbcCompatibilityArtifactWriter {
             connection.setAutoCommit(false);
             try {
                 acquireWriteOwnership(connection);
-                var registration = command.registrationOptional().orElseThrow();
-                orderedFields.validateRegistration(connection, registration);
-                long identityEpoch = identityEpoch(connection, command.artifactName());
-                MutationCounts counts = applyRows(
-                        connection, schema, command, identityEpoch, registration);
+                var registration = command.registration();
+                if (ordered) { orderedFields.validateRegistration(connection, Objects.requireNonNull(registration)); }
+                long identityEpoch = ordered ? identityEpoch(connection, command.artifactName()) : 0;
+                MutationCounts counts;
+                if (ordered) {
+                    counts = applyRows(connection, schema, command, identityEpoch, registration);
+                } else {
+                    int inserted = 0;
+                    try (var cursor = command.rows().open()) {
+                        while (cursor.next()) {
+                            if (insertRow(connection, schema, cursor.value().row())) { inserted++; }
+                        }
+                    }
+                    counts = new MutationCounts(inserted, 0, 0);
+                }
                 int publicChanges = Math.addExact(counts.inserted(), counts.updated());
                 long revision = publicChanges > 0
                         ? bumpRevision(connection, command.artifactName(), clock.instant().toString())
@@ -121,7 +127,9 @@ final class JdbcCompatibilityArtifactWriter {
         int inserted = 0;
         int updated = 0;
         int metadataOnly = 0;
-        for (var row : command.rows()) {
+        try (var cursor = command.rows().open()) {
+        while (cursor.next()) {
+            var row = cursor.value();
             var rowKey = identityResolver.keyOf(command.artifactName(), row.row())
                     .orElseThrow(() -> new IocExtractorException(
                             "Cannot resolve row_key for artifact " + command.artifactName()));
@@ -152,6 +160,7 @@ final class JdbcCompatibilityArtifactWriter {
             }
             recordSource(connection, command.artifactName(), rowKey.value(),
                     sourceKey(row.row()), clock.instant().toString());
+        }
         }
         return new MutationCounts(inserted, updated, metadataOnly);
     }

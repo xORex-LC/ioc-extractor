@@ -19,6 +19,18 @@ mapped-коллизий. Это сохраняет резервирование 
 резервирования ID и commit; план с `retained-observations` не скрывает эту ошибку.
 Основание перехода: [ADR 0034](../ADR/0034-required-router-processing-plans.md).
 
+Подготовка документа использует принадлежащий extraction invocation приватный
+SQLite workspace. Каждый occurrence проходит Router и validation; losing
+candidates также сохраняются. Глобальный выбор сравнивает полную каноническую
+идентичность, сохраняет порядок первого ключа и целую строку победителя.
+Все артефакты sealing завершают до failure-policy checkpoint; ID до него не
+резервируются. `ArtifactWritePlan` содержит повторно читаемый `RowSource`, а
+writer и receipts читают его через закрываемый `RowCursor` без общего списка
+победителей. Один workspace/cache обслуживает все артефакты; лимиты находятся
+в `ioc.processing.workspace`. Это не ограничивает буферы исходного текста и
+извлечённых occurrences. Состояния, pins и recovery:
+[ADR 0036](../ADR/0036-sealed-document-preparation-workspace.md).
+
 Document plan открывает отдельную `DocumentProcessingSession` на
 подготовку документа; stage закрывает её до checkpoint и при исключениях.
 Чистый `IndicatorProcessingSession` из `ioc-processing` переиспользует только

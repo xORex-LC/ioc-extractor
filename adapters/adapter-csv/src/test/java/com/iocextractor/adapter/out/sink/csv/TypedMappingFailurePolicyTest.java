@@ -153,12 +153,10 @@ class TypedMappingFailurePolicyTest {
         return Pipeline.<AttributedIndicators>start()
                  .then(new PrepareRoutedArtifactsStage(occurrence -> {
                     var result = preparer.prepare(List.of(classified(occurrence.indicator().value())));
-                    return com.iocextractor.diagnostics.result.Result.of(result.value().rows().stream().map(row ->
+                    return com.iocextractor.diagnostics.result.Result.of(result.value().rows().snapshot().stream().map(row ->
                             new com.iocextractor.application.artifact.RoutedArtifactCandidate(preparer.name(), row)).toList(),
                             result.diagnostics());
-                }, List.of(preparer), (artifact, row) -> java.util.Optional.of(
-                        new com.iocextractor.application.artifact.ArtifactRowKey(row.value("mask"))),
-                        Map.of("masks", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst()), false))
+                }, List.of(preparer), false))
                 .then(new WriteArtifactsStage(repository, ignored -> {
                     projections.incrementAndGet();
                     return ArtifactProjectionResult.clean(0);
@@ -172,13 +170,31 @@ class TypedMappingFailurePolicyTest {
     }
 
     private Envelope<AttributedIndicators> input() {
+        var rows = new java.util.ArrayList<com.iocextractor.application.artifact.PreparedArtifactRow>();
+        var workspace = new com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspace() {
+            public java.nio.file.Path source() { return java.nio.file.Path.of("unused.docx"); }
+            public void discard() { }
+            public void beginPromotion() { }
+            public boolean promotionStarted() { return false; }
+            public void close() { }
+            public boolean firstOriginal(String key) { return true; }
+            public void append(com.iocextractor.application.artifact.RoutedArtifactCandidate candidate,
+                    boolean eligible, boolean retain) { rows.add(candidate.row()); }
+            public List<com.iocextractor.application.artifact.ArtifactWritePlan> seal(
+                    List<com.iocextractor.application.artifact.ArtifactWritePlan> plans,
+                    com.iocextractor.application.artifact.DocumentPreparationSummary summary) {
+                return plans.stream().map(plan -> new com.iocextractor.application.artifact.ArtifactWritePlan(
+                        plan.artifactName(), plan.header(), rows, plan.idSequence())).toList();
+            }
+        };
         var indicators = List.of(classified("bad.example"), classified("good.example"));
         return Envelope.of(
                 new AttributedIndicators(new com.iocextractor.domain.attribute.AttributionOutcome(List.of(),
                         indicators.stream().map(value -> new com.iocextractor.domain.attribute.AttributionDecision(
                                 new com.iocextractor.domain.extract.RawIndicator(value.indicator().value(),
                                         value.indicator().type(), 0), java.util.Optional.empty())).toList())),
-                EnvelopeMeta.initial("run-17", "source", CLOCK));
+                EnvelopeMeta.initial("run-17", "source", CLOCK)
+                        .withAttribute(com.iocextractor.application.pipeline.PipelineMetaAttributes.DOCUMENT_PREPARATION_WORKSPACE, workspace));
     }
 
     private ClassifiedIndicator classified(String value) {

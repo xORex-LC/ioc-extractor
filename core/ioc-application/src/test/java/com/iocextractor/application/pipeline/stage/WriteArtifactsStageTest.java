@@ -181,7 +181,7 @@ class WriteArtifactsStageTest {
         assertThat(confirmations).singleElement().satisfies(confirmation -> {
             assertThat(confirmation.observationId()).isEqualTo(context.observationId());
             assertThat(confirmation.sourceKey()).isEqualTo("source-key");
-            assertThat(confirmation.records()).singleElement()
+            assertThat(confirmation.records().snapshot()).singleElement()
                     .satisfies(record -> assertThat(record.rowKey().value()).isEqualTo("masks:masks"));
         });
     }

@@ -1044,12 +1044,14 @@ class IngestionServiceTest {
                     var classified = new ClassifiedIndicator(occurrence.indicator(),
                             classificationDecision(occurrence.indicator()));
                     return Result.success(preparers.stream().flatMap(preparer ->
-                            preparer.prepare(List.of(classified)).value().rows().stream().map(row ->
+                            preparer.prepare(List.of(classified)).value().rows().snapshot().stream().map(row ->
                                     new com.iocextractor.application.artifact.RoutedArtifactCandidate(preparer.name(), row)))
                             .toList());
                 }, java.util.Map.of("masks", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst(),
                         "hashes", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst(),
-                        "ip_list", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst()));
+                        "ip_list", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst()),
+                com.iocextractor.application.TestDocumentWorkspace.factory((artifact, row) -> Optional.of(
+                        new com.iocextractor.application.artifact.ArtifactRowKey(row.value("value")))));
     }
 
     private IocExtractionServiceFactory failingExtractionFactory() {
@@ -1073,12 +1075,14 @@ class IngestionServiceTest {
                     var classified = new ClassifiedIndicator(occurrence.indicator(),
                             classificationDecision(occurrence.indicator()));
                     return Result.success(preparers.stream().flatMap(preparer ->
-                            preparer.prepare(List.of(classified)).value().rows().stream().map(row ->
+                            preparer.prepare(List.of(classified)).value().rows().snapshot().stream().map(row ->
                                     new com.iocextractor.application.artifact.RoutedArtifactCandidate(preparer.name(), row)))
                             .toList());
                 }, java.util.Map.of("masks", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst(),
                         "hashes", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst(),
-                        "ip_list", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst()));
+                        "ip_list", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst()),
+                com.iocextractor.application.TestDocumentWorkspace.factory((artifact, row) -> Optional.of(
+                        new com.iocextractor.application.artifact.ArtifactRowKey(row.value("value")))));
     }
 
     private ClassificationDecision classificationDecision(Indicator indicator) {

@@ -93,6 +93,21 @@ Dataframe database — канонический источник бизнес-д
 
 ## Планы обработки IOC
 
+Подготовка документа всегда использует приватный дисковый workspace. Физические лимиты не меняют семантическую идентичность canonical receipts. Исходный текст и extracted occurrences не входят в этот бюджет.
+
+| Параметр | По умолчанию | Значение |
+| --- | --- | --- |
+| `ioc.processing.workspace.directory` | `./var/document-preparation` | Приватный каталог сервиса на локальном диске. |
+| `ioc.processing.workspace.memory-bytes` | `67108864` | Общий бюджет admission для кеша и буферов строк всех артефактов. |
+| `ioc.processing.workspace.cache-kib` | `4096` | Размер кеша SQLite на workspace; mmap отключён. |
+| `ioc.processing.workspace.maximum-row-bytes` | `262144` | Максимальный размер закодированной подготовленной строки. |
+| `ioc.processing.workspace.maximum-field-bytes` | `65536` | Максимальный размер поля в UTF-8. |
+| `ioc.processing.workspace.workspace-bytes` | `2147483648` | Квота source snapshot, базы и журнала одного запуска. |
+| `ioc.processing.workspace.total-disk-bytes` | `8589934592` | Общая квота каталога, включая сохранённые pins. |
+| `ioc.processing.workspace.batch-rows` | `128` | Максимум append между commit и проверками квоты (1..4096). |
+| `ioc.processing.workspace.retention` | `24h` | Неактивные просроченные pins удаляются при следующем admission; активные защищены lease. |
+
+
 Дерево `ioc.processing` содержит обязательный `document-plan`. Именованные планы
 проверяются при запуске и исполняются для документа или processed-контракта
 импорта. Поставляемый `original-document` сохраняет исходные значения IOC;

@@ -76,7 +76,7 @@ read (SourceReader)
   → refang (Refanger)
   → extract (IndicatorExtractor / PatternEngine)
   → attribute source (SourceAttributor)
-  → route and prepare (обязательный именованный план, без IO и финальных id)
+  → route and prepare (именованный план → private workspace, без canonical id)
   → failure-policy checkpoint
   → commit canonical rows → project derived CSV
 ```
@@ -90,6 +90,14 @@ read (SourceReader)
 артефактов: сетевые маски, bare-IP list, address blacklist, файловые хэши и
 standalone IOC aggregate.
 
+Подготовка документа использует один private SQLite workspace с общим бюджетом
+памяти для всех артефактов. Он закрепляет исходный файл и identity наблюдения,
+выполняет глобальный выбор целых строк и запечатывается до failure-policy
+checkpoint. Writer и receipts читают повторяемые курсоры с ограниченными
+буферами; каноническая атомарность остаётся на уровне артефакта. Владение,
+квоты и восстановление описаны в
+[ADR-0036](ADR/0036-sealed-document-preparation-workspace.md).
+
 ## Порты (контракты)
 
 | Порт | Тип | Назначение |
@@ -97,6 +105,7 @@ standalone IOC aggregate.
 | `ExtractIocsUseCase` | driving (in) | Единая точка входа прикладного ядра |
 | `SourceReader` | driven (out) | Формат-независимая граница извлечения текста из документа |
 | `ArtifactPreparer` | driven (out) | Side-effect-free routing/mapping одного артефакта до policy checkpoint |
+| `DocumentPreparationWorkspaceFactory` / `DocumentPreparationWorkspace` / `RowSource` | driven (out) | Private preparation, seal и повторяемые owned-курсоры; JDBC остаётся в адаптере |
 | `PipelineDecisionTracer` | driven (out) | Gated TRACE уже вычисленных per-item outcomes без logging dependency в application/domain |
 | `ArtifactIdBaseline` | driven (out) | Чтение текущего public `max(id)` из canonical storage для продолжения id-последовательностей |
 | `CanonicalArtifactRepository` / `ArtifactProjection` | driven (out) | Canonical write/read с provenance и генерация CSV-проекций |

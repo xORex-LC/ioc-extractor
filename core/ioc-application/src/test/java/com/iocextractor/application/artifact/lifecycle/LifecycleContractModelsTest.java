@@ -19,6 +19,55 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class LifecycleContractModelsTest {
 
+    @Test
+    void streamedRowsCloseOnEarlyExitMappingFailureAndConsumerFailure() {
+        var closed = new AtomicInteger();
+        var source = new com.iocextractor.application.port.out.artifact.RowSource<String>() {
+            public int size() { return 2; }
+            public com.iocextractor.application.port.out.artifact.RowCursor<String> open() {
+                var delegate = com.iocextractor.application.port.out.artifact.RowSource.of(List.of("a", "b")).open();
+                return new com.iocextractor.application.port.out.artifact.RowCursor<>() {
+                    public boolean next() { return delegate.next(); }
+                    public String value() { return delegate.value(); }
+                    public void close() { delegate.close(); closed.incrementAndGet(); }
+                };
+            }
+        };
+        assertThat(source.anyMatch("a"::equals)).isTrue();
+        assertThatThrownBy(() -> source.map(value -> { throw new IllegalStateException("mapping"); }).snapshot())
+                .hasMessage("mapping");
+        assertThatThrownBy(() -> source.forEach(value -> { throw new IllegalStateException("consumer"); }))
+                .hasMessage("consumer");
+        assertThat(closed).hasValue(3);
+        assertThat(source.snapshot()).containsExactly("a", "b");
+        assertThat(closed).hasValue(4);
+    }
+
+    @Test
+    void mappedCursorComputesOnceAndCannotReadAfterCloseOrEnd() {
+        var calls = new AtomicInteger();
+        try (var cursor = com.iocextractor.application.port.out.artifact.RowSource.of(List.of("row"))
+                .map(value -> { calls.incrementAndGet(); return value; }).open()) {
+            assertThatThrownBy(cursor::value).isInstanceOf(NullPointerException.class);
+            assertThat(cursor.next()).isTrue();
+            assertThat(cursor.value()).isEqualTo("row");
+            assertThat(cursor.value()).isEqualTo("row");
+            assertThat(calls).hasValue(1);
+            assertThat(cursor.next()).isFalse();
+            assertThatThrownBy(cursor::value).isInstanceOf(NullPointerException.class);
+        }
+        var cursor = com.iocextractor.application.port.out.artifact.RowSource.of(List.of("row")).open();
+        assertThatThrownBy(cursor::value).isInstanceOf(IllegalStateException.class);
+        assertThat(cursor.next()).isTrue();
+        assertThat(cursor.value()).isEqualTo("row");
+        assertThat(cursor.next()).isFalse();
+        assertThat(cursor.next()).isFalse();
+        assertThatThrownBy(cursor::value).isInstanceOf(IllegalStateException.class);
+        cursor.close();
+        assertThatThrownBy(cursor::next).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(cursor::value).isInstanceOf(IllegalStateException.class);
+    }
+
     private static final EffectiveTime NOW =
             EffectiveTime.at(Instant.parse("2026-08-16T00:00:00Z"));
 
@@ -413,7 +462,7 @@ class LifecycleContractModelsTest {
 
         assertThat(new CanonicalArtifactConfirmation(
                 new ObservationId("observation-1"), "source-1", context,
-                "masks", List.of("mask"), List.of(record)).records()).containsExactly(record);
+                "masks", List.of("mask"), List.of(record)).records().snapshot()).containsExactly(record);
         assertThatThrownBy(() -> new CanonicalArtifactConfirmation(
                 new ObservationId("observation-1"), "source-1", context,
                 "masks", List.of(), List.of(record)))

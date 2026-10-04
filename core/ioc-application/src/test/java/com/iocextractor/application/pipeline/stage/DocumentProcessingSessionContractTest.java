@@ -1,5 +1,9 @@
 package com.iocextractor.application.pipeline.stage;
 
+import com.iocextractor.application.pipeline.payload.AttributedIndicators;
+import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
+
+
 import com.iocextractor.application.artifact.RoutedArtifactCandidate;
 import com.iocextractor.application.pipeline.payload.IndicatorOccurrence;
 import com.iocextractor.application.port.out.artifact.DocumentProcessingPlan;
@@ -43,8 +47,8 @@ class DocumentProcessingSessionContractTest {
         assertThat(prepared).hasValue(1);
     }
 
-    private PrepareRoutedArtifactsStage stage(DocumentProcessingPlan plan) {
-        return new PrepareRoutedArtifactsStage(plan, List.of(), (artifact, row) -> Optional.empty(), Map.of(), true);
+    private com.iocextractor.platform.etl.Stage<AttributedIndicators, PreparedArtifacts> stage(DocumentProcessingPlan plan) {
+        return com.iocextractor.application.TestDocumentWorkspace.stage(plan, List.of(), (artifact, row) -> Optional.empty(), Map.of(), true);
     }
 
     private DocumentProcessingPlan plan(AtomicInteger opened, AtomicInteger closed,

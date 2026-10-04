@@ -1,5 +1,8 @@
 package com.iocextractor.application.pipeline.stage;
 
+import com.iocextractor.application.pipeline.payload.AttributedIndicators;
+import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
+
 import com.iocextractor.application.artifact.*;
 import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.application.pipeline.payload.IndicatorOccurrence;
@@ -25,7 +28,7 @@ class DocumentObservationSelectionTest {
 
         assertThat(output.payload().extracted()).isEqualTo(2);
         assertThat(output.payload().retained()).isOne();
-        assertThat(output.payload().plans().getFirst().rows()).singleElement()
+        assertThat(output.payload().plans().getFirst().rows().snapshot()).singleElement()
                 .satisfies(row -> assertThat(row.template().value("source")).isEqualTo("first"));
         assertThat(output.diagnostics()).singleElement().satisfies(diagnostic -> {
             assertThat(diagnostic.code()).isEqualTo(PipelineDiagnosticCodes.ITEM_SKIPPED);
@@ -62,11 +65,11 @@ class DocumentObservationSelectionTest {
         var output = stage(true, true, true).process(StageTestSupport.envelope(
                 StageTestSupport.attributedIndicators(indicator("one", "first"), indicator("one", "later")), false));
         assertThat(output.payload().retained()).isOne();
-        assertThat(output.payload().plans().getFirst().rows()).singleElement()
+        assertThat(output.payload().plans().getFirst().rows().snapshot()).singleElement()
                 .satisfies(row -> assertThat(row.template().value("source")).isEqualTo("later"));
     }
 
-    private PrepareRoutedArtifactsStage stage(boolean deduplicate, boolean sourceSelection, boolean last) {
+    private com.iocextractor.platform.etl.Stage<AttributedIndicators, PreparedArtifacts> stage(boolean deduplicate, boolean sourceSelection, boolean last) {
         var ids = new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 100);
         ArtifactPreparer preparer = new ArtifactPreparer() {
             @Override public String name() { return "test"; }
@@ -86,7 +89,7 @@ class DocumentObservationSelectionTest {
         };
         var policy = new ArtifactWritePolicy(last ? ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY
                 : ArtifactWritePolicy.DuplicateSelection.KEEP_FIRST, last ? "source" : null, Map.of());
-        return new PrepareRoutedArtifactsStage(plan, List.of(preparer),
+        return com.iocextractor.application.TestDocumentWorkspace.stage(plan, List.of(preparer),
                 (artifact, row) -> Optional.of(new ArtifactRowKey(row.value("value"))), Map.of("test", policy), deduplicate);
     }
 

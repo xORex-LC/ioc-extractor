@@ -139,6 +139,16 @@ ioc:
 
   # Every document uses a named Router plan. Retain complete IOC values by default.
   processing:
+    workspace:
+      directory: "./var/document-preparation"
+      memory-bytes: 67108864
+      cache-kib: 4096
+      maximum-row-bytes: 262144
+      maximum-field-bytes: 65536
+      workspace-bytes: 2147483648
+      total-disk-bytes: 8589934592
+      batch-rows: 128
+      retention: 24h
     document-plan: original-document
     plans:
       - name: original-document

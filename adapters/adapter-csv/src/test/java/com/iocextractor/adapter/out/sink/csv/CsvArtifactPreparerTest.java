@@ -124,7 +124,7 @@ class CsvArtifactPreparerTest {
                             .containsEntry("componentName", "validated");
                     assertThat(diagnostic.cause()).isEmpty();
                 });
-        assertThat(result.value().rows()).hasSize(1);
+        assertThat(result.value().rows().snapshot()).hasSize(1);
         assertThat(result.value().materialize().rows()).singleElement().satisfies(row -> {
             assertThat(row.value("id")).isEqualTo("100");
             assertThat(row.value("value")).isEqualTo("good");
@@ -186,7 +186,7 @@ class CsvArtifactPreparerTest {
                 Map.of(), new OccurrencePosition(2), 1);
 
         assertThat(accepted.value()).isPresent();
-        assertThat(batch.value().rows()).singleElement().satisfies(row ->
+        assertThat(batch.value().rows().snapshot()).singleElement().satisfies(row ->
                 assertThat(row.template()).isEqualTo(accepted.value().orElseThrow().template()));
         assertThat(filtered.value()).isEmpty();
         assertThat(filtered.diagnostics()).isEmpty();
@@ -248,7 +248,7 @@ class CsvArtifactPreparerTest {
                 "aggregate", mapper.header(), winners.winners(), new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 1)));
 
         assertThat(result.diagnostics()).isEmpty();
-        assertThat(result.value().rows()).singleElement().satisfies(row -> {
+        assertThat(result.value().rows().snapshot()).singleElement().satisfies(row -> {
             assertThat(row.template().value("name")).isEqualTo("last");
             assertThat(row.template().value("hash")).isEqualTo("same-hash");
             assertThat(row.orderedFieldPositions()).containsEntry("name", new OccurrencePosition(3));
@@ -303,8 +303,8 @@ class CsvArtifactPreparerTest {
         for (List<ClassifiedIndicator> retained : List.of(List.of(first, first), List.of(first, second))) {
             var preparer = preparer(mapper);
             var plan = preparer.prepare(retained).value();
-            assertThat(plan.rows()).hasSize(2);
-            assertThat(plan.rows()).extracting(row -> row.template().value("source"))
+            assertThat(plan.rows().snapshot()).hasSize(2);
+            assertThat(plan.rows().snapshot()).extracting(row -> row.template().value("source"))
                     .containsExactlyElementsOf(retained.stream().map(value -> value.indicator().source().label()).toList());
             assertThat(plan.materialize().rows()).extracting(row -> row.value("id"))
                     .containsExactly("100", "101");

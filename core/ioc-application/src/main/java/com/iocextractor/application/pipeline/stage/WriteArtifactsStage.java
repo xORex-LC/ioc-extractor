@@ -1,5 +1,6 @@
 package com.iocextractor.application.pipeline.stage;
 
+import com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspace;
 import com.iocextractor.application.artifact.ArtifactWritePlan;
 import com.iocextractor.application.pipeline.payload.ArtifactWriteSummary;
 import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
@@ -88,6 +89,10 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
         LifecycleWriteContext lifecycle = lifecycleContext(input);
         validateExpectedArtifactCount(lifecycle, payload.plans().size());
         RegisteredObservation registration = registration(input);
+        Object owner = input.meta().attributes().get(PipelineMetaAttributes.DOCUMENT_PREPARATION_WORKSPACE);
+        if (owner instanceof DocumentPreparationWorkspace workspace) {
+            workspace.beginPromotion();
+        }
         var written = new LinkedHashMap<String, Integer>();
         var changedArtifacts = new LinkedHashSet<String>();
         var diagnostics = new ArrayList<Diagnostic>();
@@ -141,13 +146,14 @@ public final class WriteArtifactsStage implements Stage<PreparedArtifacts, Artif
         if (lifecycleWriter == null || identityResolver == null) {
             throw new IllegalStateException("Lifecycle-aware canonical writer is not configured");
         }
-        var records = plan.rows().stream()
+        var records = plan.rows()
                 .map(row -> new CanonicalRecordConfirmation(
                         identityResolver.keyOf(plan.artifactName(), row.template())
                                 .orElseThrow(() -> new IllegalArgumentException(
                                         "Prepared row has no canonical identity: " + plan.artifactName())),
-                        row))
-                .toList();
+                        row));
+        // Validate the complete artifact before handing ownership to a writer.
+        records.forEach(record -> Objects.requireNonNull(record.rowKey(), "canonical row key"));
         var result = lifecycleWriter.confirm(new CanonicalArtifactConfirmation(
                 context.observationId(),
                 context.sourceKey(),

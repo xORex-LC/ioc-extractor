@@ -28,9 +28,55 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class IocExtractionServiceFactoryTest {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void sourceFailureClosesOwnershipAndPreservesOnlyAPreviousPromotionPin(boolean promoting) {
+        Path snapshot = Path.of("pinned-source.html");
+        var discarded = new AtomicInteger();
+        var closed = new AtomicInteger();
+        var workspace = new com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspace() {
+            public Path source() { return snapshot; }
+            public boolean promotionStarted() { return promoting; }
+            public void discard() { discarded.incrementAndGet(); }
+            public void close() { closed.incrementAndGet(); }
+            public void beginPromotion() { throw new AssertionError("source failure must not promote"); }
+            public boolean firstOriginal(String key) { throw new AssertionError("source failure must not route"); }
+            public void append(RoutedArtifactCandidate candidate, boolean eligible, boolean retained) {
+                throw new AssertionError("source failure must not prepare");
+            }
+            public List<com.iocextractor.application.artifact.ArtifactWritePlan> seal(
+                    List<com.iocextractor.application.artifact.ArtifactWritePlan> descriptors,
+                    com.iocextractor.application.artifact.DocumentPreparationSummary summary) {
+                throw new AssertionError("source failure must not seal");
+            }
+        };
+        var factory = new IocExtractionServiceFactory(
+                source -> {
+                    assertThat(source).isEqualTo(snapshot);
+                    throw new IllegalStateException("source failure");
+                },
+                text -> new RefangOutcome(text, List.of()),
+                text -> new ExtractionOutcome(List.of(), List.of()),
+                (text, indicators) -> new AttributionOutcome(List.of(), List.of()),
+                false, "oneshot", new NoopPipelineObserver(), NoopDiagnosticSink.INSTANCE,
+                FailurePolicy.failFast(), 100, new NoWriteRepository(), null,
+                new CanonicalArtifactIdentityResolver(List.of()), NoopPipelineDecisionTracer.INSTANCE,
+                preparers -> occurrence -> Result.success(List.<RoutedArtifactCandidate>of()),
+                Map.of(), (command, policies) -> workspace);
+        assertThatThrownBy(() -> factory.create(List.of(), request -> {
+            throw new AssertionError("source failure must not project");
+        }).extract(new ExtractionCommand("failure", Path.of("original.html"), false)))
+                .isInstanceOf(com.iocextractor.diagnostics.DiagnosticException.class);
+        assertThat(discarded).hasValue(promoting ? 0 : 1);
+        assertThat(closed).hasValue(1);
+    }
+
     @Test
     void selectedDocumentPlanReceivesEachOccurrenceDuringExtraction() {
         var routed = new AtomicInteger();
@@ -47,7 +93,7 @@ class IocExtractionServiceFactoryTest {
                 preparers -> occurrence -> {
                     routed.incrementAndGet();
                     return Result.success(List.<RoutedArtifactCandidate>of());
-                }, Map.of());
+                }, Map.of(), com.iocextractor.application.TestDocumentWorkspace.factory((artifact, row) -> Optional.empty()));
 
         var result = factory.create(List.of(), request -> {
             throw new AssertionError("dry-run must not project");

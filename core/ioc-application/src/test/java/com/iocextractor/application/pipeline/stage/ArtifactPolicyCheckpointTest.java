@@ -88,9 +88,9 @@ class ArtifactPolicyCheckpointTest {
             ArtifactPreparer preparer,
             CanonicalArtifactRepository repository) {
         return Pipeline.<AttributedIndicators>start()
-                 .then(new PrepareRoutedArtifactsStage(occurrence -> {
+                 .then(com.iocextractor.application.TestDocumentWorkspace.stage(occurrence -> {
                     var result = preparer.prepare(List.of(StageTestSupport.classifiedIndicator(occurrence.indicator())));
-                    return Result.of(result.value().rows().stream().map(row ->
+                    return Result.of(result.value().rows().snapshot().stream().map(row ->
                             new com.iocextractor.application.artifact.RoutedArtifactCandidate(preparer.name(), row)).toList(),
                             result.diagnostics());
                 }, List.of(preparer), (artifact, row) -> Optional.of(

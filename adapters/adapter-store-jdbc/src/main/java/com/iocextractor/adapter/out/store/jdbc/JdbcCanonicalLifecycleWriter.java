@@ -1,5 +1,6 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
+import com.iocextractor.application.port.out.artifact.RowSource;
 import com.iocextractor.application.artifact.ArtifactIdReservation;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.CanonicalRecordMutationKind;
@@ -159,7 +160,7 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
         if (prior.isPresent()) {
             return prior.orElseThrow();
         }
-
+        validateRows(confirmation, schema);
         ReservedIds ids = reserveWorstCase(schema, confirmation.records());
         return writerAdmission.execute(() -> confirmAdmitted(schema, confirmation, ids));
     }
@@ -200,8 +201,8 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
                     timeSource.now(connection), "lifecycle effective time");
             ValidityDecision validity = validityPolicy.decide(asOf).requireValidAt(asOf);
             ensureObservation(connection, confirmation, asOf);
-            boolean hasOrderedFields = confirmation.records().stream()
-                    .anyMatch(record -> !record.preparedRow().orderedFieldPositions().isEmpty());
+            var records = JdbcRowSources.onConnection(confirmation.records(), connection);
+            boolean hasOrderedFields = records.anyMatch(record -> !record.preparedRow().orderedFieldPositions().isEmpty());
             if (hasOrderedFields) {
                 mutationEngine.validateRegistration(connection,
                         Objects.requireNonNull(confirmation.registration(),
@@ -215,8 +216,10 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
             int metadataOnly = 0;
             int publicOffset = 0;
             int lifecycleOffset = 0;
-            try (var session = mutationEngine.openSession(connection, schema, asOf, validity)) {
-                for (CanonicalRecordConfirmation record : confirmation.records()) {
+            try (var session = mutationEngine.openSession(connection, schema, asOf, validity);
+                 var cursor = records.open()) {
+                while (cursor.next()) {
+                    CanonicalRecordConfirmation record = cursor.value();
                     var outcome = session.confirm(
                             confirmation.sourceKey(), record,
                             ids.publicId(publicOffset, record), ids.lifecycleIds().idAt(lifecycleOffset),
@@ -278,31 +281,44 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
             throw new IllegalArgumentException("Canonical confirmation header does not match artifact schema: "
                     + confirmation.artifactName());
         }
-        boolean hasPublicId = expectedHeader.contains("id");
-        for (CanonicalRecordConfirmation record : confirmation.records()) {
-            Optional<String> idColumn = record.preparedRow().idColumn();
-            boolean validIdSlot = hasPublicId
-                    ? idColumn.filter("id"::equals).isPresent()
-                    : idColumn.isEmpty();
-            if (!validIdSlot) {
-                throw new IllegalArgumentException(
-                        "Prepared public-id slot does not match artifact schema: " + confirmation.artifactName());
-            }
-            if (idColumn.isPresent()) {
-                String supplied = record.preparedRow().template().value(idColumn.orElseThrow());
-                if (supplied != null && !supplied.isBlank()) {
-                    throw new IllegalArgumentException("Service-owned public id must remain deferred");
-                }
-            }
-        }
         return schema;
     }
 
+    private void validateRows(CanonicalArtifactConfirmation confirmation, DataframeArtifactSchema schema) {
+        try (var connection = dataSource.getConnection()) {
+            int tempStore;
+            try (var pragma = connection.createStatement(); var result = pragma.executeQuery("PRAGMA temp_store")) {
+                result.next(); tempStore = result.getInt(1);
+            }
+            try (var pragma = connection.createStatement()) { pragma.execute("PRAGMA temp_store=FILE"); }
+            boolean autoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            Exception validationFailure = null;
+            try {
+                JdbcConfirmationValidator.validate(connection, confirmation, publicHeader(schema).contains("id"));
+                connection.commit();
+            } catch (SQLException | RuntimeException failure) {
+                validationFailure = failure;
+                JdbcLifecycleTransactions.rollback(connection, failure);
+                throw failure;
+            } finally {
+                JdbcLifecycleTransactions.restoreAutoCommit(connection, autoCommit, validationFailure);
+                try (var pragma = connection.createStatement()) { pragma.execute("PRAGMA temp_store=" + tempStore); }
+                catch (SQLException restoreFailure) {
+                    if (validationFailure == null) { throw restoreFailure; }
+                    validationFailure.addSuppressed(restoreFailure);
+                }
+            }
+        } catch (SQLException failure) {
+            throw new IocExtractorException("Cannot validate streamed confirmation", failure);
+        }
+    }
+
     private ReservedIds reserveWorstCase(DataframeArtifactSchema schema,
-                                         List<CanonicalRecordConfirmation> records) {
-        int publicCount = Math.toIntExact(records.stream()
-                .filter(record -> record.preparedRow().idColumn().isPresent())
-                .count());
+                                         RowSource<CanonicalRecordConfirmation> records) {
+        int[] publicRows = {0};
+        records.forEach(record -> { if (record.preparedRow().idColumn().isPresent()) { publicRows[0]++; } });
+        int publicCount = publicRows[0];
         ArtifactIdReservation publicIds = null;
         if (publicCount > 0) {
             JdbcArtifactIdAllocator allocator = publicIdAllocators.get(schema.artifactName());

@@ -1,5 +1,7 @@
 package com.iocextractor.application.pipeline.stage;
 
+import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
+
 import com.iocextractor.application.pipeline.payload.AttributedIndicators;
 import com.iocextractor.domain.extract.RawIndicator;
 import com.iocextractor.domain.model.IndicatorType;
@@ -50,7 +52,7 @@ class PrepareRoutedArtifactsStageTest {
         var error = StageTestSupport.DIAGNOSTICS.create(PipelineDiagnosticCodes.ROUTING_REJECTED)
                 .with("plan", "test").with("indicator", "bad.example").with("reason", "REJECTED").build();
         DocumentProcessingPlan plan = occurrence -> Result.of(List.of(), List.of(error));
-        var stage = new PrepareRoutedArtifactsStage(plan, List.of(empty("masks", "mask")),
+        var stage = com.iocextractor.application.TestDocumentWorkspace.stage(plan, List.of(empty("masks", "mask")),
                 (artifact, row) -> Optional.empty(), Map.of("masks", KEEP_FIRST), false,
                 StageTestSupport.DIAGNOSTICS, 3);
         var sink = new CollectingDiagnosticSink();
@@ -89,7 +91,7 @@ class PrepareRoutedArtifactsStageTest {
                     return new CanonicalWriteResult(0, 0);
                 }
             };
-            var stage = new PrepareRoutedArtifactsStage(plan, List.of(empty("masks", "mask", ids)),
+            var stage = com.iocextractor.application.TestDocumentWorkspace.stage(plan, List.of(empty("masks", "mask", ids)),
                     (artifact, row) -> Optional.empty(), Map.of("masks", KEEP_FIRST), false,
                     StageTestSupport.DIAGNOSTICS, 3);
             var sink = new CollectingDiagnosticSink();
@@ -123,7 +125,7 @@ class PrepareRoutedArtifactsStageTest {
                 return Result.of(List.of(candidate("masks", "mask", "same.example", occurrence)), List.of(warning));
             }
         };
-        var stage = new PrepareRoutedArtifactsStage(plan, List.of(empty("masks", "mask")),
+        var stage = com.iocextractor.application.TestDocumentWorkspace.stage(plan, List.of(empty("masks", "mask")),
                 (artifact, row) -> Optional.of(new ArtifactRowKey(row.value("mask"))),
                 Map.of("masks", KEEP_FIRST), true, StageTestSupport.DIAGNOSTICS, 3);
 
@@ -131,7 +133,7 @@ class PrepareRoutedArtifactsStageTest {
 
         assertThat(output.payload().extracted()).isEqualTo(100_000);
         assertThat(output.payload().retained()).isOne();
-        assertThat(output.payload().plans().getFirst().rows()).hasSize(1);
+        assertThat(output.payload().plans().getFirst().rows().snapshot()).hasSize(1);
         assertThat(mapped).hasValue(100_000);
         assertThat(output.diagnostics()).hasSize(3);
         assertThat(output.diagnosticSummary().total()).isEqualTo(199_999);
@@ -158,7 +160,7 @@ class PrepareRoutedArtifactsStageTest {
         DocumentProcessingPlan routing = occurrence -> Result.success(List.of(
                 candidate("masks", "mask", "best-malware.com", occurrence),
                 candidate("address_blacklist", "forbidden_url", occurrence.indicator().value(), occurrence)));
-        var stage = new PrepareRoutedArtifactsStage(routing,
+        var stage = com.iocextractor.application.TestDocumentWorkspace.stage(routing,
                 List.of(empty("masks", "mask"), empty("address_blacklist", "forbidden_url")),
                 (artifact, row) -> Optional.of(new ArtifactRowKey(row.value(
                         "masks".equals(artifact) ? "mask" : "forbidden_url"))),
@@ -168,10 +170,10 @@ class PrepareRoutedArtifactsStageTest {
 
         assertThat(output.extracted()).isEqualTo(2);
         assertThat(output.retained()).isEqualTo(2);
-        assertThat(output.plans().get(0).rows()).hasSize(1);
-        assertThat(output.plans().get(0).rows().getFirst().template().value("mask"))
+        assertThat(output.plans().get(0).rows().snapshot()).hasSize(1);
+        assertThat(output.plans().get(0).rows().snapshot().getFirst().template().value("mask"))
                 .isEqualTo("best-malware.com");
-        assertThat(output.plans().get(1).rows()).extracting(row -> row.template().value("forbidden_url"))
+        assertThat(output.plans().get(1).rows().snapshot()).extracting(row -> row.template().value("forbidden_url"))
                 .containsExactly("https://best-malware.com/a", "https://best-malware.com/b");
     }
 
@@ -185,18 +187,18 @@ class PrepareRoutedArtifactsStageTest {
                                 occurrence.tieOrdinal() == 0 ? "A" : "B")), Optional.empty()))));
         var preparers = List.of(empty("synthetic", "ip"));
         var policies = Map.of("synthetic", KEEP_FIRST);
-        var composite = new PrepareRoutedArtifactsStage(routing, preparers,
+        var composite = com.iocextractor.application.TestDocumentWorkspace.stage(routing, preparers,
                 (artifact, row) -> Optional.of(new ArtifactRowKey(
                         row.value("ip") + ":" + row.value("country"))), policies, true);
-        var ipOnly = new PrepareRoutedArtifactsStage(routing, preparers,
+        var ipOnly = com.iocextractor.application.TestDocumentWorkspace.stage(routing, preparers,
                 (artifact, row) -> Optional.of(new ArtifactRowKey(row.value("ip"))), policies, true);
 
         assertThat(composite.process(StageTestSupport.envelope(source, false)).payload()
-                .plans().getFirst().rows())
+                .plans().getFirst().rows().snapshot())
                 .extracting(row -> row.template().value("country"))
                 .containsExactly("A", "B");
         assertThat(ipOnly.process(StageTestSupport.envelope(source, false)).payload()
-                .plans().getFirst().rows())
+                .plans().getFirst().rows().snapshot())
                 .extracting(row -> row.template().value("country"))
                 .containsExactly("A");
     }
@@ -212,13 +214,13 @@ class PrepareRoutedArtifactsStageTest {
                         Optional.empty()))));
         var policy = new ArtifactWritePolicy(ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY,
                 "name", Map.of());
-        var stage = new PrepareRoutedArtifactsStage(routing, List.of(empty("masks", "mask")),
+        var stage = com.iocextractor.application.TestDocumentWorkspace.stage(routing, List.of(empty("masks", "mask")),
                 (artifact, row) -> Optional.of(new ArtifactRowKey(row.value("mask"))),
                 Map.of("masks", policy), true);
 
         var output = stage.process(StageTestSupport.envelope(source, false)).payload();
 
-        assertThat(output.plans().getFirst().rows()).singleElement()
+        assertThat(output.plans().getFirst().rows().snapshot()).singleElement()
                 .satisfies(row -> assertThat(row.template().value("name")).isEqualTo("last"));
     }
 
@@ -240,7 +242,7 @@ class PrepareRoutedArtifactsStageTest {
             }
         };
         var pipeline = Pipeline.<AttributedIndicators>start()
-                .then(new PrepareRoutedArtifactsStage(routing, List.of(preparer),
+                .then(com.iocextractor.application.TestDocumentWorkspace.stage(routing, List.of(preparer),
                         (artifact, row) -> Optional.of(new ArtifactRowKey(row.value("mask"))),
                         Map.of("masks", KEEP_FIRST), true))
                 .then(new WriteArtifactsStage(repository,
@@ -265,9 +267,9 @@ class PrepareRoutedArtifactsStageTest {
         var identity = (com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver)
                 (artifact, row) -> Optional.of(new ArtifactRowKey(row.value("mask")));
 
-        assertThat(new PrepareRoutedArtifactsStage(routing, preparers, identity,
+        assertThat(com.iocextractor.application.TestDocumentWorkspace.stage(routing, preparers, identity,
                 Map.of("masks", KEEP_FIRST), true).process(input).payload().retained()).isEqualTo(1);
-        assertThat(new PrepareRoutedArtifactsStage(routing, preparers, identity,
+        assertThat(com.iocextractor.application.TestDocumentWorkspace.stage(routing, preparers, identity,
                 Map.of("masks", KEEP_FIRST), false).process(input).payload().retained()).isEqualTo(2);
     }
 
@@ -277,7 +279,7 @@ class PrepareRoutedArtifactsStageTest {
                 StageTestSupport.indicator("example.com")), false);
         DocumentProcessingPlan routing = occurrence -> Result.success(List.of(
                 candidate("unknown", "mask", "example.com", occurrence)));
-        var stage = new PrepareRoutedArtifactsStage(routing, List.of(empty("masks", "mask")),
+        var stage = com.iocextractor.application.TestDocumentWorkspace.stage(routing, List.of(empty("masks", "mask")),
                 (artifact, row) -> Optional.of(new ArtifactRowKey(row.value("mask"))),
                 Map.of("masks", KEEP_FIRST), true);
 
@@ -312,13 +314,13 @@ class PrepareRoutedArtifactsStageTest {
             };
             var source = StageTestSupport.indicator("same.example");
             var input = StageTestSupport.envelope(StageTestSupport.attributedIndicators(source, source), false);
-            var stage = new PrepareRoutedArtifactsStage(plan, List.of(empty("masks", "mask")),
+            var stage = com.iocextractor.application.TestDocumentWorkspace.stage(plan, List.of(empty("masks", "mask")),
                     (artifact, row) -> Optional.of(new ArtifactRowKey(row.value("mask"))),
                     Map.of("masks", KEEP_FIRST), false);
             if (fail) {
                 assertThatThrownBy(() -> stage.process(input)).hasMessage("operation defect");
             } else {
-                assertThat(stage.process(input).payload().plans().getFirst().rows()).hasSize(1);
+                assertThat(stage.process(input).payload().plans().getFirst().rows().snapshot()).hasSize(1);
             }
             assertThat(opened).hasValue(1);
             assertThat(closed).hasValue(1);

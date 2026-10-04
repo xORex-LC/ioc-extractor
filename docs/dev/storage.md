@@ -25,6 +25,19 @@ Application работает через storage-neutral ports. Spring JDBC, Hika
 Xerial SQLite, SQL, migrations и transaction mechanics принадлежат
 `adapter-store-jdbc`; composition и datasource lifecycle — `bootstrap/ioc-app`.
 
+Document preparation хранится отдельно от canonical truth: один приватный
+SQLite workspace на invocation, с общим admission budget и дисковыми квотами.
+Sealed winners читаются по одной строке; canonical mutation и typed receipts
+используют повторяемые курсоры. Receipt JDBC batch ограничен 128 строками и
+1 MiB расчётного удержания; positions пишутся без накопления общего batch.
+Проверка повторных row keys перед ID reservation использует дисковый TEMP
+индекс с кешем 64 KiB и пределом 256 MiB. Committed observation/artifact marker
+проверяется до чтения подготовленных строк, включая STAGING whole-document
+receipt. Полный receipt остаётся достаточен после удаления workspace.
+При replay reader использует connection writer, поэтому pool из одного slot
+не приводит к взаимному ожиданию. Решение:
+[ADR 0036](../ADR/0036-sealed-document-preparation-workspace.md).
+
 ## Canonical write
 
 ```text

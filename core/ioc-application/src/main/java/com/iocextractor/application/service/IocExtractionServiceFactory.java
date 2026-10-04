@@ -1,5 +1,6 @@
 package com.iocextractor.application.service;
 
+import com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspaceFactory;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.out.SourceReader;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
@@ -29,6 +30,7 @@ import java.util.Objects;
  */
 public final class IocExtractionServiceFactory {
 
+    private final DocumentPreparationWorkspaceFactory workspaces;
     private final SourceReader reader;
     private final Refanger refanger;
     private final IndicatorExtractor extractor;
@@ -62,7 +64,9 @@ public final class IocExtractionServiceFactory {
                                        ArtifactIdentityResolver identityResolver,
                                        PipelineDecisionTracer decisionTracer,
                                        DocumentProcessingPlanFactory documentPlanFactory,
-                                       Map<String, ArtifactWritePolicy> routedWritePolicies) {
+                                       Map<String, ArtifactWritePolicy> routedWritePolicies,
+                                       DocumentPreparationWorkspaceFactory workspaces) {
+        this.workspaces = Objects.requireNonNull(workspaces, "workspaces");
         this.reader = Objects.requireNonNull(reader, "reader");
         this.refanger = Objects.requireNonNull(refanger, "refanger");
         this.extractor = Objects.requireNonNull(extractor, "extractor");
@@ -101,7 +105,7 @@ public final class IocExtractionServiceFactory {
                                      Map<String, ArtifactWritePolicy> writePolicies) {
         var components = new IocExtractionService.Components(reader, refanger, extractor,
                 attributor, preparers, repository, lifecycleWriter,
-                identityResolver, projection);
+                identityResolver, projection, workspaces);
         var settings = new IocExtractionService.Settings(deduplicate, observabilityMode,
                 observer, diagnosticSink, failurePolicy, maxDiagnosticsPerRun, decisionTracer,
                 Objects.requireNonNull(documentPlan, "documentPlan"), Map.copyOf(writePolicies));

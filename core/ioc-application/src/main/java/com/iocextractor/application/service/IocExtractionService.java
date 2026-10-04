@@ -1,5 +1,9 @@
 package com.iocextractor.application.service;
 
+import com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspaceFactory;
+import com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspace;
+import com.iocextractor.diagnostics.DiagnosticException;
+import java.nio.file.Path;
 import com.iocextractor.application.port.in.ExtractIocsUseCase;
 import com.iocextractor.application.port.in.ExtractionCommand;
 import com.iocextractor.application.port.in.ExtractionResult;
@@ -50,6 +54,8 @@ import java.util.Objects;
  */
 public final class IocExtractionService implements ExtractIocsUseCase {
 
+    private final DocumentPreparationWorkspaceFactory workspaces;
+    private final Map<String, ArtifactWritePolicy> writePolicies;
     private final PipelineRunner runner;
     private final Pipeline<ExtractionCommand, ArtifactWriteSummary> pipeline;
     private final Clock clock;
@@ -63,7 +69,7 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                         settings.maxDiagnosticsPerRun()),
                 pipeline(components, settings, Clock.systemUTC()),
                 Clock.systemUTC(),
-                settings.observabilityMode());
+                settings.observabilityMode(), components.workspaces(), settings.writePolicies());
     }
 
     /**
@@ -79,6 +85,16 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                                 Pipeline<ExtractionCommand, ArtifactWriteSummary> pipeline,
                                 Clock clock,
                                 String observabilityMode) {
+        this(runner, pipeline, clock, observabilityMode, null, Map.of());
+    }
+
+    private IocExtractionService(PipelineRunner runner,
+                                Pipeline<ExtractionCommand, ArtifactWriteSummary> pipeline,
+                                Clock clock, String observabilityMode,
+                                DocumentPreparationWorkspaceFactory workspaces,
+                                Map<String, ArtifactWritePolicy> writePolicies) {
+        this.workspaces = workspaces;
+        this.writePolicies = Map.copyOf(writePolicies);
         this.runner = Objects.requireNonNull(runner, "runner");
         this.pipeline = Objects.requireNonNull(pipeline, "pipeline");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -87,7 +103,30 @@ public final class IocExtractionService implements ExtractIocsUseCase {
 
     @Override
     public ExtractionResult extract(ExtractionCommand command) {
-        var normalizedSource = command.source().toAbsolutePath().normalize();
+        if (workspaces == null) { return extractOwned(command, null); }
+        try (var workspace = workspaces.open(command, writePolicies)) {
+            var pinned = new ExtractionCommand(command.runId(), workspace.source(), command.dryRun(),
+                    command.lifecycleWriteContext(), command.registration());
+            try {
+                var result = extractOwned(pinned, workspace, command.source());
+                workspace.discard();
+                return result;
+            } catch (DiagnosticException failure) {
+                // Rejection is precommit. Storage/projection failures retain a sealed promotion pin.
+                if (!workspace.promotionStarted()) { workspace.discard(); }
+                throw failure;
+            }
+        }
+    }
+
+    private ExtractionResult extractOwned(ExtractionCommand command,
+            DocumentPreparationWorkspace workspace) {
+        return extractOwned(command, workspace, command.source());
+    }
+
+    private ExtractionResult extractOwned(ExtractionCommand command,
+            DocumentPreparationWorkspace workspace, Path originalSource) {
+        var normalizedSource = originalSource.toAbsolutePath().normalize();
         var meta = EnvelopeMeta.initial(command.runId(), normalizedSource.toString(), clock)
                 .withAttribute(PipelineMetaAttributes.SOURCE_PATH, normalizedSource)
                 .withAttribute(PipelineMetaAttributes.DRY_RUN, command.dryRun())
@@ -100,6 +139,7 @@ public final class IocExtractionService implements ExtractIocsUseCase {
             meta = meta.withAttribute(
                     PipelineMetaAttributes.REGISTERED_OBSERVATION, command.registration());
         }
+        if (workspace != null) { meta = meta.withAttribute(com.iocextractor.application.pipeline.PipelineMetaAttributes.DOCUMENT_PREPARATION_WORKSPACE, workspace); }
         var pipelineResult = runner.runWithOutcome(Envelope.of(command, meta), pipeline);
         var output = pipelineResult.envelope();
         var summary = output.payload();
@@ -128,8 +168,7 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                         settings.decisionTracer()));
         var prepared = attributed.then(new PrepareRoutedArtifactsStage(
                 Objects.requireNonNull(settings.documentPlan(), "documentPlan"), components.preparers(),
-                Objects.requireNonNull(components.identityResolver(), "identityResolver"),
-                settings.writePolicies(), settings.deduplicate(), diagnostics, settings.maxDiagnosticsPerRun()));
+                settings.deduplicate(), diagnostics, settings.maxDiagnosticsPerRun()));
         return prepared.then(new WriteArtifactsStage(
                 components.repository(), components.lifecycleWriter(),
                 components.identityResolver(), components.projection(), diagnostics));
@@ -140,7 +179,8 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                       SourceAttributor attributor,
                       List<ArtifactPreparer> preparers, CanonicalArtifactRepository repository,
                       CanonicalArtifactWriter lifecycleWriter,
-                      ArtifactIdentityResolver identityResolver, ArtifactProjection projection) { }
+                      ArtifactIdentityResolver identityResolver, ArtifactProjection projection,
+                      DocumentPreparationWorkspaceFactory workspaces) { }
 
     /** Immutable execution settings selected by the composition root. */
     record Settings(boolean deduplicate, String observabilityMode, PipelineObserver observer,

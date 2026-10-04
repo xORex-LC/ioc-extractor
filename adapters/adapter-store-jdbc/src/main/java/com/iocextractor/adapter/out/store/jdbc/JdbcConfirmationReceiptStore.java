@@ -1,9 +1,5 @@
 package com.iocextractor.adapter.out.store.jdbc;
 
-import com.iocextractor.application.artifact.ArtifactRow;
-import com.iocextractor.application.artifact.ArtifactRowKey;
-import com.iocextractor.application.artifact.PreparedArtifactRow;
-import com.iocextractor.application.artifact.lifecycle.CanonicalRecordConfirmation;
 import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptArtifact;
 import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptId;
 import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptSnapshot;
@@ -26,7 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import com.iocextractor.application.observation.OccurrencePosition;
 
 /** SQLite complete-receipt reader, retention reaper and observation acknowledgement. */
 public final class JdbcConfirmationReceiptStore
@@ -194,8 +189,8 @@ public final class JdbcConfirmationReceiptStore
                         throw new IocExtractorException(
                                 "Complete receipt references unknown artifact: " + artifact);
                     }
-                    List<CanonicalRecordConfirmation> rows = loadRows(
-                            connection, schema, header.id());
+                    var rows = new JdbcReceiptRowSource(dataSource, schema, header.id(), resultSet.getInt("row_count"));
+                    rows.validateCount(connection);
                     if (rows.size() != resultSet.getInt("row_count")) {
                         throw new IocExtractorException(
                                 "Complete receipt row count mismatch for artifact: " + artifact);
@@ -210,67 +205,6 @@ public final class JdbcConfirmationReceiptStore
             throw new IocExtractorException("Complete receipt structural totals do not match its header");
         }
         return List.copyOf(artifacts);
-    }
-
-    private List<CanonicalRecordConfirmation> loadRows(Connection connection,
-                                                       DataframeArtifactSchema schema,
-                                                       ConfirmationReceiptId receiptId) throws SQLException {
-        List<String> businessColumns = publicHeader(schema).stream()
-                .filter(column -> !"id".equals(column))
-                .toList();
-        Map<Integer, Map<String, OccurrencePosition>> positions = loadFieldPositions(
-                connection, schema.artifactName(), receiptId);
-        String sql = "SELECT " + quote("ordinal") + ", " + quote("row_key")
-                + (businessColumns.isEmpty() ? "" : ", " + joinedQuoted(businessColumns))
-                + " FROM " + quote(schema.artifactName() + "_receipt_rows")
-                + " WHERE " + quote("receipt_id") + " = ? ORDER BY " + quote("ordinal");
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, receiptId.value());
-            try (ResultSet resultSet = statement.executeQuery()) {
-                var rows = new ArrayList<CanonicalRecordConfirmation>();
-                while (resultSet.next()) {
-                    var values = new LinkedHashMap<String, String>();
-                    for (DataframeColumn column : schema.columns()) {
-                        values.put(column.name(), "id".equals(column.name())
-                                ? null : resultSet.getString(column.name()));
-                    }
-                    Optional<String> idColumn = publicHeader(schema).contains("id")
-                            ? Optional.of("id") : Optional.empty();
-                    rows.add(new CanonicalRecordConfirmation(
-                            new ArtifactRowKey(resultSet.getString("row_key")),
-                            new PreparedArtifactRow(
-                                    ArtifactRow.ordered(values), idColumn,
-                                    positions.getOrDefault(resultSet.getInt("ordinal"), Map.of()))));
-                }
-                return List.copyOf(rows);
-            }
-        }
-    }
-
-    private Map<Integer, Map<String, OccurrencePosition>> loadFieldPositions(
-            Connection connection,
-            String artifact,
-            ConfirmationReceiptId receiptId) throws SQLException {
-        var result = new LinkedHashMap<Integer, Map<String, OccurrencePosition>>();
-        try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT ordinal, field_name, occurrence_position
-                FROM confirmation_receipt_field_position
-                WHERE receipt_id = ? AND artifact = ?
-                ORDER BY ordinal, field_name
-                """)) {
-            statement.setString(1, receiptId.value());
-            statement.setString(2, artifact);
-            try (ResultSet rows = statement.executeQuery()) {
-                while (rows.next()) {
-                    int ordinal = rows.getInt("ordinal");
-                    Map<String, OccurrencePosition> positions = result.computeIfAbsent(
-                            ordinal, ignored -> new LinkedHashMap<>());
-                    positions.put(rows.getString("field_name"),
-                            new OccurrencePosition(rows.getLong("occurrence_position")));
-                }
-            }
-        }
-        return result;
     }
 
     private int purgeReceipts(Connection connection,
@@ -344,14 +278,6 @@ public final class JdbcConfirmationReceiptStore
 
     private List<String> publicHeader(DataframeArtifactSchema schema) {
         return schema.columns().stream().map(DataframeColumn::name).toList();
-    }
-
-    private String joinedQuoted(List<String> identifiers) {
-        return identifiers.stream().map(this::quote).collect(java.util.stream.Collectors.joining(", "));
-    }
-
-    private String quote(String identifier) {
-        return "\"" + DataframeColumn.requireSqlIdentifier(identifier, "identifier") + "\"";
     }
 
     private record ReceiptHeader(ConfirmationReceiptId id, int expectedArtifacts, long rowCount) {

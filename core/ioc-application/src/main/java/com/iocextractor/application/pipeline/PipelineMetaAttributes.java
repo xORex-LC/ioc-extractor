@@ -20,6 +20,9 @@ public final class PipelineMetaAttributes {
     /** Optional durable delivery precedence used by ordered mutable fields. */
     public static final String REGISTERED_OBSERVATION = "ioc.observation.registration";
 
+    /** Invocation-owned private preparation state, closed by the extraction use case. */
+    public static final String DOCUMENT_PREPARATION_WORKSPACE = "ioc.document.workspace";
+
     private PipelineMetaAttributes() {
     }
 }

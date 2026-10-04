@@ -762,17 +762,6 @@
         </suppression>
         <rationale>Reviewed false positive: the artifact comes from the validated immutable schema catalog and identifiers are quoted; an optional due boundary is bound.</rationale>
     </finding>
-    <finding id="DATA-TTL-P5-SB-001" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="b20bff5512a661790e6aeb8503aabcf8" occurrence="0" priority="2" rank="12" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P5-SQL-TRUST" review="sql-schema-map-binding-change">
-        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcConfirmationReceiptStore" />
-        <method name="loadRows" signature="(Ljava/sql/Connection;Lcom/iocextractor/adapter/out/store/jdbc/DataframeArtifactSchema;Lcom/iocextractor/application/artifact/lifecycle/ConfirmationReceiptId;)Ljava/util/List;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcConfirmationReceiptStore.java" startLine="227" bytecode="117" />
-        <suppression>
-            <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
-            <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcConfirmationReceiptStore" />
-            <Method name="loadRows" />
-        </suppression>
-        <rationale>Reviewed false positive: receipt table and projected columns come only from the validated immutable schema catalog and are quoted; receipt identity is bound.</rationale>
-    </finding>
     <finding id="DATA-TTL-P5-SB-002" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="f622435ff518b04bf0dfb531f23317f5" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-TTL-01" evidence="P5-SQL-TRUST" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcLifecycleActivationStore" />
         <method name="hasLegacyRowsAfter" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/lang/Long;)Z" />
@@ -1431,5 +1420,33 @@
             <Method name="projectOwned" />
         </suppression>
         <rationale>Reviewed exception-policy signal: the owner preserves the exact installer or acknowledgement failure, records failure only against its observed snapshot generation, and suppresses a separate journal failure. The outer finally always releases ownership; no failed attempt populates the reuse cache. GenerationOwnedArtifactProjectionTest and MutableProjectionOwnershipIT qualify acknowledgement rejection, cancellation, real SQL acknowledgement rollback and recovery without new canonical mutation.</rationale>
+    </finding>
+    <finding id="CAP-4-SB-001" module="adapters/adapter-store-jdbc" type="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" hash="38bc2aa391729fc2543be36ec6d0f828" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-4-SQL-TRUST" review="sqlite-pragma-policy-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspace" />
+        <method name="&lt;init&gt;" signature="(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcom/iocextractor/adapter/out/store/jdbc/DocumentPreparationLimits;Lcom/iocextractor/application/port/out/artifact/ArtifactIdentityResolver;Ljava/util/Map;Ljava/lang/Runnable;Ljava/lang/Runnable;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcDocumentPreparationWorkspace.java" startLine="77" bytecode="170" />
+        <suppression><Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE" /><Class name="com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspace" /><Method name="&lt;init&gt;" /></suppression>
+        <rationale>Reviewed false positive: variable PRAGMA operands are validated integral cache and page-count limits. No operator string, row value or SQL identifier enters this grammar. Invalid physical budgets and disk exhaustion fail before promotion in JdbcDocumentPreparationWorkspaceIT.</rationale>
+    </finding>
+    <finding id="CAP-4-SB-002" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="ae68a03c5fe478b3e1e575fb24e73a94" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-4-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspace" />
+        <method name="&lt;init&gt;" signature="(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcom/iocextractor/adapter/out/store/jdbc/DocumentPreparationLimits;Lcom/iocextractor/application/port/out/artifact/ArtifactIdentityResolver;Ljava/util/Map;Ljava/lang/Runnable;Ljava/lang/Runnable;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcDocumentPreparationWorkspace.java" startLine="95" bytecode="395" />
+        <suppression><Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" /><Class name="com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspace" /><Method name="&lt;init&gt;" /></suppression>
+        <rationale>Reviewed false positive: reducer SQL combines fixed adapter-owned INSERT and conflict clauses only. Artifact, full equality key, ordinal and payload are bound parameters. Both whole-row policies are compared to an independent oracle with small and large native caches.</rationale>
+    </finding>
+    <finding id="CAP-4-SB-003" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="a026b81990bb995acec5f5296ef99fd4" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-4-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcReceiptRowSource" />
+        <method name="cursor" signature="(Ljava/sql/Connection;Z)Lcom/iocextractor/application/port/out/artifact/RowCursor;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcReceiptRowSource.java" startLine="79" bytecode="67" />
+        <suppression><Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" /><Class name="com.iocextractor.adapter.out.store.jdbc.JdbcReceiptRowSource" /><Method name="cursor" /></suppression>
+        <rationale>Reviewed relocation of former receipt-list SQL: typed table and columns come exclusively from the immutable admitted schema, each identifier is revalidated and quoted, and receipt identity is bound. Single-slot receipt replay and complete semantic fixtures exercise the cursor contract.</rationale>
+    </finding>
+    <finding id="CAP-4-SB-004" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="a95919505ca036a97e3762f808a2ed3" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-4-SQL-TRUST" review="sql-schema-map-binding-change">
+        <class name="com.iocextractor.adapter.out.store.jdbc.JdbcReceiptRowSource" />
+        <method name="validateCount" signature="(Ljava/sql/Connection;)V" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcReceiptRowSource.java" startLine="44" bytecode="136" />
+        <suppression><Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" /><Class name="com.iocextractor.adapter.out.store.jdbc.JdbcReceiptRowSource" /><Method name="validateCount" /></suppression>
+        <rationale>Reviewed false positive: COUNT uses the same quoted schema-owned receipt-table identifier and binds receipt identity. The COMPLETE header and exact row count are checked in the cursor transaction; a removed zero-row receipt is rejected by JdbcCanonicalLifecycleWriterIT.</rationale>
     </finding>
 </spotbugs-accepted-findings>

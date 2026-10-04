@@ -60,7 +60,7 @@ class StageContractTest {
                         false),
                 diagnostic);
         assertPreservesContract(
-                new PrepareRoutedArtifactsStage(occurrence -> com.iocextractor.diagnostics.result.Result.success(List.of()),
+                com.iocextractor.application.TestDocumentWorkspace.stage(occurrence -> com.iocextractor.diagnostics.result.Result.success(List.of()),
                         List.of(), (artifact, row) -> java.util.Optional.empty(), java.util.Map.of(), true),
                 StageTestSupport.envelope(StageTestSupport.attributedIndicators(), false), diagnostic);
         assertPreservesContract(

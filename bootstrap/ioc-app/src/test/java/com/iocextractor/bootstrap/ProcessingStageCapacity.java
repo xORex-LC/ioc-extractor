@@ -149,14 +149,38 @@ public final class ProcessingStageCapacity {
         com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver identity = (artifact, row) -> Optional.empty();
         PrepareRoutedArtifactsStage stage;
         try {
-            stage = PrepareRoutedArtifactsStage.class.getConstructor(DocumentProcessingPlan.class, List.class,
-                    com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver.class, Map.class,
-                    boolean.class, DiagnosticFactory.class, int.class)
-                    .newInstance(plan, List.of(), identity, Map.of(), false, DIAGNOSTICS, LIMIT);
-        } catch (NoSuchMethodException baseline) {
-            stage = new PrepareRoutedArtifactsStage(plan, List.of(), identity, Map.of(), false, DIAGNOSTICS);
+            stage = PrepareRoutedArtifactsStage.class.getConstructor(DocumentProcessingPlan.class, List.class, boolean.class, DiagnosticFactory.class, int.class)
+                    .newInstance(plan, List.of(), false, DIAGNOSTICS, LIMIT);
+        } catch (NoSuchMethodException current) {
+            try {
+                stage = PrepareRoutedArtifactsStage.class.getConstructor(DocumentProcessingPlan.class, List.class,
+                        com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver.class, Map.class,
+                        boolean.class, DiagnosticFactory.class, int.class)
+                        .newInstance(plan, List.of(), identity, Map.of(), false, DIAGNOSTICS, LIMIT);
+            } catch (NoSuchMethodException baseline) {
+                stage = PrepareRoutedArtifactsStage.class.getConstructor(DocumentProcessingPlan.class, List.class,
+                        com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver.class, Map.class,
+                        boolean.class, DiagnosticFactory.class)
+                        .newInstance(plan, List.of(), identity, Map.of(), false, DIAGNOSTICS);
+            }
         }
-        return diagnosticWorkload(stage, Envelope.of(input, EnvelopeMeta.initial("probe", "probe", CLOCK)));
+        // This diagnostic workload produces no rows. It deliberately isolates diagnostic retention,
+        // independently of the disk reducer measured by DocumentWorkspaceCapacity.
+        var workspace = new com.iocextractor.application.port.out.artifact.DocumentPreparationWorkspace() {
+            public java.nio.file.Path source() { return java.nio.file.Path.of("unused"); }
+            public void discard() { }
+            public void beginPromotion() { }
+            public boolean promotionStarted() { return false; }
+            public boolean firstOriginal(String key) { return true; }
+            public void append(com.iocextractor.application.artifact.RoutedArtifactCandidate candidate,
+                    boolean eligible, boolean retained) { throw new AssertionError("Unexpected prepared row"); }
+            public List<com.iocextractor.application.artifact.ArtifactWritePlan> seal(
+                    List<com.iocextractor.application.artifact.ArtifactWritePlan> descriptors,
+                    com.iocextractor.application.artifact.DocumentPreparationSummary summary) { return descriptors; }
+            public void close() { }
+        };
+        return diagnosticWorkload(stage, Envelope.of(input, EnvelopeMeta.initial("probe", "probe", CLOCK))
+                .withMetaAttribute("ioc.document.workspace", workspace));
     }
 
     private static <I, O> Supplier<Outcome> diagnosticWorkload(Stage<I, O> stage, Envelope<I> input) {

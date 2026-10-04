@@ -23,7 +23,12 @@ decisions материализуются один раз; application stages и�
 и при исключениях; application не знает Camel и CSV. Поставляемый план сохраняет
 исходные наблюдения `keep-first` после source-дедупликации, включая кратность
 mapped-коллизий. Для `last-nonempty` и планов с выбором по конечному ключу
-`ArtifactOccurrenceSelector` удерживает одного целого победителя на ключ.
+победитель выбирается глобально в `DocumentPreparationWorkspace`. Invocation
+владеет закреплённым исходным документом и закрывает workspace на каждом пути.
+`ArtifactWritePlan`, canonical confirmations и typed receipts передают
+повторяемый `RowSource`, а вызывающий код закрывает каждый `RowCursor`.
+Framework-free ports задают контракт; дисковый reducer, квоты и SQLite
+соединения принадлежат JDBC adapter.
 Альтернативного dedup/classify/prepare dispatcher нет.
 `ArtifactRow` владеет единственным упорядоченным защитным снимком колонок:
 фабрика `ordered` использует снимок конструктора, сохраняет `null` и порядок

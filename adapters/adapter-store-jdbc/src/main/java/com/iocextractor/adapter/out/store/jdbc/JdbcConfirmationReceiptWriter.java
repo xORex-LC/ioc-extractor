@@ -52,18 +52,33 @@ final class JdbcConfirmationReceiptWriter {
         columns.addAll(businessColumns);
         String sql = "INSERT INTO " + quote(schema.artifactName() + "_receipt_rows") + " ("
                 + joinedQuoted(columns) + ") VALUES (" + placeholders(columns.size()) + ")";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql);
+             var cursor = JdbcRowSources.onConnection(confirmation.records(), connection).open()) {
             int ordinal = 0;
-            for (CanonicalRecordConfirmation record : confirmation.records()) {
+            long batchBytes = 0;
+            while (cursor.next()) {
+                CanonicalRecordConfirmation record = cursor.value();
                 List<Object> values = new ArrayList<>(List.of(
                         receiptId, ordinal, record.rowKey().value(), confirmation.sourceKey(), epochMillis(asOf)));
                 for (String column : businessColumns) {
                     values.add(record.preparedRow().template().value(column));
                 }
+                long rowBytes = 128;
+                for (Object value : values) {
+                    if (value instanceof String text) { rowBytes += text.length() * 4L + 64; }
+                }
+                if (batchBytes > 0 && batchBytes + rowBytes > 1048576) {
+                    statement.executeBatch(); statement.clearBatch(); batchBytes = 0;
+                }
                 bind(statement, values);
                 statement.addBatch();
+                batchBytes += rowBytes;
                 ordinal++;
+                if (ordinal % 128 == 0 || batchBytes >= 1048576) {
+                    statement.executeBatch(); statement.clearBatch(); batchBytes = 0;
+                }
             }
+            if (ordinal != confirmation.records().size()) { throw new IocExtractorException("Confirmation row count mismatch"); }
             statement.executeBatch();
         }
         try (PreparedStatement statement = connection.prepareStatement("""
@@ -96,20 +111,21 @@ final class JdbcConfirmationReceiptWriter {
                 INSERT INTO confirmation_receipt_field_position(
                     receipt_id, artifact, ordinal, field_name, occurrence_position)
                 VALUES (?, ?, ?, ?, ?)
-                """)) {
+                """);
+             var cursor = JdbcRowSources.onConnection(confirmation.records(), connection).open()) {
             int ordinal = 0;
-            for (CanonicalRecordConfirmation record : confirmation.records()) {
+            while (cursor.next()) {
+                CanonicalRecordConfirmation record = cursor.value();
                 for (var field : record.preparedRow().orderedFieldPositions().entrySet()) {
                     statement.setString(1, confirmation.receipt().id().value());
                     statement.setString(2, confirmation.artifactName());
                     statement.setInt(3, ordinal);
                     statement.setString(4, field.getKey());
                     statement.setLong(5, field.getValue().value());
-                    statement.addBatch();
+                    statement.executeUpdate();
                 }
                 ordinal++;
             }
-            statement.executeBatch();
         }
     }
 

@@ -1,5 +1,6 @@
 package com.iocextractor.application.artifact.lifecycle;
 
+import com.iocextractor.application.port.out.artifact.RowSource;
 import com.iocextractor.application.observation.RegisteredObservation;
 
 import java.util.HashSet;
@@ -21,26 +22,32 @@ public record CanonicalArtifactConfirmation(ObservationId observationId,
                                             ConfirmationReceiptContext receipt,
                                             String artifactName,
                                             List<String> header,
-                                            List<CanonicalRecordConfirmation> records,
+                                            RowSource<CanonicalRecordConfirmation> records,
                                             RegisteredObservation registration) {
 
-    /** Copies collections and rejects ambiguous duplicate row keys. */
+    /** Copies metadata; the writer validates streamed rows before reserving identities. */
     public CanonicalArtifactConfirmation {
         Objects.requireNonNull(observationId, "observationId");
         sourceKey = requireText(sourceKey, "sourceKey");
         Objects.requireNonNull(receipt, "receipt");
         artifactName = requireText(artifactName, "artifactName");
         header = List.copyOf(Objects.requireNonNull(header, "header"));
-        records = List.copyOf(Objects.requireNonNull(records, "records"));
+        Objects.requireNonNull(records, "records");
         if (header.isEmpty()) {
             throw new IllegalArgumentException("Artifact header must not be empty");
         }
+    }
+
+    public CanonicalArtifactConfirmation(ObservationId observationId, String sourceKey,
+            ConfirmationReceiptContext receipt, String artifactName, List<String> header,
+            List<CanonicalRecordConfirmation> records, RegisteredObservation registration) {
+        this(observationId, sourceKey, receipt, artifactName, header,
+                RowSource.of(records), registration);
         var keys = new HashSet<>();
-        for (CanonicalRecordConfirmation record : records) {
-            Objects.requireNonNull(record, "records element");
+        for (var record : records) {
             if (!keys.add(record.rowKey())) {
-                throw new IllegalArgumentException(
-                        "Canonical confirmation contains duplicate row key: " + record.rowKey().value());
+                throw new IllegalArgumentException("Canonical confirmation contains duplicate row key: "
+                        + record.rowKey().value());
             }
         }
     }

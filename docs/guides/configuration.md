@@ -92,6 +92,21 @@ the service is stopped or after a coordinated SQLite backup.
 
 ## IOC processing plans
 
+Document preparation always uses a private disk workspace. Physical budgets do not change canonical receipt policy identity. Whole-text/extracted-occurrence buffers remain outside this budget.
+
+| Property | Default | Meaning |
+| --- | --- | --- |
+| `ioc.processing.workspace.directory` | `./var/document-preparation` | Private owned root; keep it on local storage. |
+| `ioc.processing.workspace.memory-bytes` | `67108864` | Factory-wide cache/row admission budget; shared across artifacts. |
+| `ioc.processing.workspace.cache-kib` | `4096` | SQLite page-cache target per live workspace; mmap is disabled. |
+| `ioc.processing.workspace.maximum-row-bytes` | `262144` | Maximum encoded prepared row. |
+| `ioc.processing.workspace.maximum-field-bytes` | `65536` | Maximum UTF-8 field size. |
+| `ioc.processing.workspace.workspace-bytes` | `2147483648` | Per-invocation source/database/journal disk quota. |
+| `ioc.processing.workspace.total-disk-bytes` | `8589934592` | Root-wide disk admission quota, including retained pins. |
+| `ioc.processing.workspace.batch-rows` | `128` | Maximum append group between commits/quota checks (1..4096). |
+| `ioc.processing.workspace.retention` | `24h` | Expired inactive pins are pruned on the next admission; live leases are protected. |
+
+
 The `ioc.processing` tree includes a required `document-plan`. Named plans are
 checked at startup and execute when selected by a document or processed-import
 contract. The shipped `original-document` retains full original IOC values;

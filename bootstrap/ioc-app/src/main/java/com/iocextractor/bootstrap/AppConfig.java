@@ -370,6 +370,13 @@ public class AppConfig {
                                                                    Clock clock,
                                                                    IocProperties props) {
         var documentPlan = processingPlans.requireDocumentPlan();
+        var workspace = props.processing().workspace();
+        var workspaces = new com.iocextractor.adapter.out.store.jdbc.JdbcDocumentPreparationWorkspaceFactory(
+                java.nio.file.Path.of(workspace.directory()),
+                new com.iocextractor.adapter.out.store.jdbc.DocumentPreparationLimits(
+                        workspace.memoryBytes(), workspace.cacheKib(), workspace.maximumRowBytes(),
+                        workspace.maximumFieldBytes(), workspace.workspaceBytes(), workspace.totalDiskBytes(), workspace.batchRows()),
+                artifactIdentityResolver, ProcessingPolicyFingerprint.from(props), workspace.retention());
         DocumentProcessingPlanFactory documentPlanFactory = preparers ->
                 new DocumentProcessingAdapter(documentPlan, routerRuntime.getObject(),
                         new com.iocextractor.processing.classification.IndicatorClassifier(matchPolicy),
@@ -379,7 +386,7 @@ public class AppConfig {
                 new LoggingPipelineObserver(), diagnosticSink,
                 props.pipeline().failurePolicy().toPolicy(), props.pipeline().maxDiagnosticsPerRun(),
                 repository, canonicalArtifactWriter, artifactIdentityResolver, decisionTracer,
-                documentPlanFactory, ArtifactPolicyCatalog.compile(props));
+                documentPlanFactory, ArtifactPolicyCatalog.compile(props), workspaces);
     }
 
     @Bean

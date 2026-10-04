@@ -70,6 +70,13 @@ runtime JDBC drivers.
   identity state; a collision aborts the whole backfill. Compound v2 record
   keys for `address_blacklist` and `hashes` preserve public/canonical/lifecycle
   IDs, revisions and export-slot ownership.
+- `JdbcDocumentPreparationWorkspaceFactory` owns private source pins, process-wide
+  memory admission, root-wide disk reservations, leases and inactive-pin retention.
+  One workspace/cache serves all artifacts; its global reducer compares complete
+  identity material and preserves whole-row selection and first-key order.
+  Sealed repeatable cursors feed canonical writers and typed receipts. Receipt
+  cursors can borrow the writer connection; receipt batches are capped at 128
+  rows or 1 MiB estimated bytes. No document-wide winner/receipt list is retained.
 - `JdbcCanonicalMatchPlanner` resolves batch key material by digest and exact
   canonical equality against active rows only. Its thread-confined matching
   session uses a direct complete-key singleton query or bounded request staging;

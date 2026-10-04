@@ -32,6 +32,24 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class IocPropertiesTest {
 
     @Test
+    void documentWorkspaceBudgetsBindAndDoNotInvalidateCanonicalReceipts() throws Exception {
+        IocProperties defaults = bind(Map.of());
+        IocProperties constrained = bind(Map.of(
+                "ioc.processing.workspace.memory-bytes", "2097152",
+                "ioc.processing.workspace.cache-kib", "64",
+                "ioc.processing.workspace.maximum-row-bytes", "4096",
+                "ioc.processing.workspace.maximum-field-bytes", "2048",
+                "ioc.processing.workspace.batch-rows", "2",
+                "ioc.processing.workspace.retention", "2h"));
+        assertThat(constrained.processing().workspace().cacheKib()).isEqualTo(64);
+        assertThat(constrained.processing().workspace().retention()).isEqualTo(java.time.Duration.ofHours(2));
+        assertThat(constrained.processing().workspace().isBudgetValid()).isTrue();
+        assertThat(ProcessingPolicyFingerprint.from(constrained)).isEqualTo(ProcessingPolicyFingerprint.from(defaults));
+        IocProperties invalid = bind(Map.of("ioc.processing.workspace.memory-bytes", "1"));
+        assertThat(invalid.processing().workspace().isBudgetValid()).isFalse();
+    }
+
+    @Test
     void defaultConfigurationBindsPipelineDedup() throws Exception {
         IocProperties properties = bind(Map.of());
 

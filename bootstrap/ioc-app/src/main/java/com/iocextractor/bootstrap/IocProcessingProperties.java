@@ -8,9 +8,40 @@ import java.util.List;
 import java.util.Map;
 
 /** Operator syntax for named IOC processing plans; document selection is required. */
-public record IocProcessingProperties(String documentPlan, List<Plan> plans) {
+public record IocProcessingProperties(String documentPlan, List<Plan> plans,
+                                      @jakarta.validation.Valid Workspace workspace) {
+    @org.springframework.boot.context.properties.bind.ConstructorBinding
     public IocProcessingProperties {
         plans = snapshot(plans);
+        workspace = workspace == null ? Workspace.defaults() : workspace;
+    }
+
+    public IocProcessingProperties(String documentPlan, List<Plan> plans) {
+        this(documentPlan, plans, Workspace.defaults());
+    }
+
+    /** Global preparation budgets, shared by all artifacts and document invocations. */
+    public record Workspace(@jakarta.validation.constraints.NotBlank String directory,
+                            @jakarta.validation.constraints.Positive long memoryBytes,
+                            @jakarta.validation.constraints.Min(64) int cacheKib,
+                            @jakarta.validation.constraints.Positive int maximumRowBytes,
+                            @jakarta.validation.constraints.Positive int maximumFieldBytes,
+                            @jakarta.validation.constraints.Positive long workspaceBytes,
+                            @jakarta.validation.constraints.Positive long totalDiskBytes,
+                            @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(4096) int batchRows,
+                            @jakarta.validation.constraints.NotNull java.time.Duration retention) {
+        static Workspace defaults() {
+            return new Workspace("./var/document-preparation", 64L * 1024 * 1024, 4096,
+                    256 * 1024, 64 * 1024, 2L * 1024 * 1024 * 1024, 8L * 1024 * 1024 * 1024, 128, java.time.Duration.ofDays(1));
+        }
+
+        @jakarta.validation.constraints.AssertTrue(message = "Document workspace budgets are inconsistent")
+        public boolean isBudgetValid() {
+            return retention != null && !retention.isNegative() && !retention.isZero()
+                    && maximumRowBytes >= maximumFieldBytes && maximumRowBytes <= 16 * 1024 * 1024
+                    && workspaceBytes >= 65536 && totalDiskBytes >= workspaceBytes
+                    && memoryBytes >= cacheKib * 1024L + maximumRowBytes * 8L + 65536;
+        }
     }
 
     static IocProcessingProperties unconfigured() {

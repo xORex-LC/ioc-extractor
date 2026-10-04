@@ -761,7 +761,7 @@ class LifecycleRuntimeServicesTest {
         assertThat(confirmations).singleElement().satisfies(confirmation -> {
             assertThat(confirmation.observationId()).isEqualTo(currentObservation);
             assertThat(confirmation.receipt().id().value()).isEqualTo("receipt-current");
-            assertThat(confirmation.records()).isEmpty();
+            assertThat(confirmation.records().snapshot()).isEmpty();
         });
     }
 

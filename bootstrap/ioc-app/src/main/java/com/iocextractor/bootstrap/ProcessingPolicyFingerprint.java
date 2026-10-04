@@ -117,6 +117,14 @@ final class ProcessingPolicyFingerprint {
             items.forEach(item -> addValue(digest, item));
             return;
         }
+        if (value instanceof IocProcessingProperties processing) {
+            add(digest, value.getClass().getName());
+            add(digest, "documentPlan");
+            addValue(digest, processing.documentPlan());
+            add(digest, "plans");
+            addValue(digest, processing.plans());
+            return;
+        }
         if (value.getClass().isRecord()) {
             add(digest, value.getClass().getName());
             for (RecordComponent component : value.getClass().getRecordComponents()) {

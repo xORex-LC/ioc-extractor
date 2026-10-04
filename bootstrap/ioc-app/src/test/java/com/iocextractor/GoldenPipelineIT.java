@@ -73,6 +73,9 @@ class GoldenPipelineIT {
 
     private final ReferenceArtifactConsumer consumer = new ReferenceArtifactConsumer();
 
+    @org.junit.jupiter.api.io.TempDir
+    Path temporary;
+
     @Autowired
     ExtractIocsUseCase useCase;
 
@@ -91,6 +94,7 @@ class GoldenPipelineIT {
 
     @DynamicPropertySource
     static void pristineOutput(DynamicPropertyRegistry registry) {
+        registry.add("ioc.processing.workspace.directory", () -> "target/golden/workspace");
         Path dir = Path.of("target/golden");
         if (Files.notExists(dir)) {
             return;
@@ -148,7 +152,7 @@ class GoldenPipelineIT {
     @Test
     @org.junit.jupiter.api.Timeout(120)
     void originalRouteMappedCollisionsPreserveReservationAndProvenanceInBothWritePaths() throws Exception {
-        Path root = Files.createTempDirectory(Path.of("target"), "original-route-accounting-");
+        Path root = temporary;
         Path source = root.resolve("input.html");
         Files.writeString(source, "<html><head><meta charset=\"utf-8\"></head><body><p>БИБ-first</p>"
                 + "<p>same.example same.example</p><p>БИБ-second</p><p>other.example</p></body></html>");
@@ -158,6 +162,7 @@ class GoldenPipelineIT {
                 try (var context = org.springframework.boot.SpringApplication.run(IocExtractorApplication.class,
                         "--spring.profiles.active=golden", "--spring.main.web-application-type=none",
                         "--spring.main.banner-mode=off", "--golden.output-dir=" + run.toAbsolutePath(),
+                        "--ioc.processing.workspace.directory=" + run.resolve("workspace").toAbsolutePath(),
                         "--ioc.storage.service.url=jdbc:sqlite:" + run.resolve("service.db").toAbsolutePath(),
                         "--ioc.pipeline.deduplicate=" + deduplicate,
                         "--ioc.lifecycle.validity.mode=" + (lifecycle ? "fixed" : "disabled"),

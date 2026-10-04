@@ -19,7 +19,7 @@ public interface CanonicalArtifactRepository {
 
     /** Writes a compatibility-mode command with optional ordered fields. */
     default CanonicalWriteResult write(CanonicalWriteCommand command) {
-        if (command.rows().stream().anyMatch(row -> !row.orderedFieldPositions().isEmpty())) {
+        if (command.rows().anyMatch(row -> !row.orderedFieldPositions().isEmpty())) {
             throw new UnsupportedOperationException("Canonical repository does not support ordered fields");
         }
         return write(command.artifactName(), command.artifact());

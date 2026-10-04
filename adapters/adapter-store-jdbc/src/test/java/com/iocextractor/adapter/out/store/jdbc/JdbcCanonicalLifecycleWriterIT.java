@@ -58,6 +58,106 @@ class JdbcCanonicalLifecycleWriterIT {
     private List<DataframeArtifactSchema> schemas;
     private MutableTimeSource timeSource;
 
+    @Test
+    @Timeout(15)
+    void receiptReplayUsesTheWriterConnectionWhenPoolHasOnlyOneSlot() {
+        dataSource.setMinimumIdle(1);
+        dataSource.setMaximumPoolSize(1);
+        dataSource.setConnectionTimeout(1000);
+        dataSource.getHikariPoolMXBean().softEvictConnections();
+        var writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        writer.confirm(command("original", "masks", receipt("original-receipt", 1), row("a", "a.example")));
+        var original = new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30))
+                .findComplete("source-key", "policy-v1", EffectiveTime.at(START)).orElseThrow().artifacts().getFirst();
+        var replay = new CanonicalArtifactConfirmation(new ObservationId("new-observation"), "source-key",
+                receipt("new-receipt", 1), original.artifactName(), original.header(), original.records(), null);
+        assertThat(writer.confirm(replay).renewed()).isOne();
+        assertThat(original.records().snapshot()).hasSize(1);
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @Test
+    void streamedDuplicateAndCountMismatchFailBeforeIdReservations() throws Exception {
+        var writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        var source = com.iocextractor.application.port.out.artifact.RowSource.of(List.of(row("same", "a"), row("same", "b")));
+        var confirmation = new CanonicalArtifactConfirmation(new ObservationId("invalid-stream"), "source-key",
+                receipt("invalid-stream", 1), "masks", publicHeader(), source, null);
+        assertThatThrownBy(() -> writer.confirm(confirmation)).hasMessageContaining("duplicate row key");
+        var shortSource = new com.iocextractor.application.port.out.artifact.RowSource<CanonicalRecordConfirmation>() {
+            public int size() { return 3; }
+            public com.iocextractor.application.port.out.artifact.RowCursor<CanonicalRecordConfirmation> open() {
+                return com.iocextractor.application.port.out.artifact.RowSource.of(List.of(row("a", "a"), row("b", "b"))).open();
+            }
+        };
+        assertThatThrownBy(() -> writer.confirm(new CanonicalArtifactConfirmation(new ObservationId("short-stream"), "source-key",
+                receipt("short-stream", 1), "masks", publicHeader(), shortSource, null)))
+                .hasMessageContaining("row count mismatch");
+        assertThat(queryLong("SELECT COUNT(*) FROM masks")).isZero();
+        assertThat(queryLong("SELECT next_value FROM artifact_id_allocator WHERE artifact='masks'")).isOne();
+    }
+
+    @Test
+    void committedArtifactCanResumeWithoutReadingAnUnavailablePreparationHandleWhileReceiptIsStaging() {
+        var writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        var receipt = receipt("partial", 2);
+        writer.confirm(command("partial", "masks", receipt, row("a", "a")));
+        var unavailable = new com.iocextractor.application.port.out.artifact.RowSource<CanonicalRecordConfirmation>() {
+            public int size() { return 1; }
+            public com.iocextractor.application.port.out.artifact.RowCursor<CanonicalRecordConfirmation> open() {
+                throw new IllegalStateException("workspace already removed");
+            }
+        };
+        assertThat(writer.confirm(new CanonicalArtifactConfirmation(new ObservationId("partial"), "source-key",
+                receipt, "masks", publicHeader(), unavailable, null)).replayed()).isTrue();
+        writer.confirm(command("partial", "hashes", receipt, row("b", "b")));
+        assertThat(new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30))
+                .findComplete("source-key", "policy-v1", EffectiveTime.at(START))).isPresent();
+    }
+
+    @Test
+    void receiptCursorFailureRollsBackArtifactAndClosesEveryReadWhileReservationsStayBurned() throws Exception {
+        var opens = new AtomicInteger();
+        var closes = new AtomicInteger();
+        var source = new com.iocextractor.application.port.out.artifact.RowSource<CanonicalRecordConfirmation>() {
+            public int size() { return 2; }
+            public com.iocextractor.application.port.out.artifact.RowCursor<CanonicalRecordConfirmation> open() {
+                int attempt = opens.incrementAndGet();
+                var delegate = com.iocextractor.application.port.out.artifact.RowSource.of(List.of(row("a", "a"), row("b", "b"))).open();
+                return new com.iocextractor.application.port.out.artifact.RowCursor<>() {
+                    public boolean next() {
+                        if (attempt == 5) { throw new IllegalStateException("receipt cursor fault"); }
+                        return delegate.next();
+                    }
+                    public CanonicalRecordConfirmation value() { return delegate.value(); }
+                    public void close() { delegate.close(); closes.incrementAndGet(); }
+                };
+            }
+        };
+        var writer = writer(JdbcLifecycleTransactionObserver.NOOP);
+        var confirmation = new CanonicalArtifactConfirmation(new ObservationId("cursor-fault"), "source-key",
+                receipt("cursor-fault", 1), "masks", publicHeader(), source, null);
+        assertThatThrownBy(() -> writer.confirm(confirmation)).hasRootCauseMessage("receipt cursor fault");
+        assertThat(opens).hasValue(5);
+        assertThat(closes).hasValue(5);
+        assertThat(queryLong("SELECT COUNT(*) FROM masks")).isZero();
+        assertThat(queryLong("SELECT COUNT(*) FROM confirmation_receipt")).isZero();
+        assertThat(queryLong("SELECT next_value FROM artifact_id_allocator WHERE artifact='masks'")).isEqualTo(3);
+        assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
+    @Test
+    void removedEmptyReceiptCannotBeReplayedThroughAnAlreadyIssuedHandle() throws Exception {
+        writer(JdbcLifecycleTransactionObserver.NOOP).confirm(command("empty", "masks", receipt("empty", 1)));
+        var source = new JdbcConfirmationReceiptStore(dataSource, schemas, Duration.ofDays(30))
+                .findComplete("source-key", "policy-v1", EffectiveTime.at(START)).orElseThrow().artifacts().getFirst().records();
+        execute("DELETE FROM confirmation_receipt WHERE receipt_id='empty'");
+        assertThatThrownBy(source::snapshot).hasRootCauseMessage("Complete receipt disappeared before replay");
+    }
+
+    private static List<String> publicHeader() {
+        return List.of("id", "value", "source", "time_first_seen", "time_last_seen");
+    }
+
     @BeforeEach
     void setUp() {
         dataSource = new SqliteDataSourceFactory(new SqlitePragmaPolicy()).create(
@@ -143,7 +243,7 @@ class JdbcCanonicalLifecycleWriterIT {
         assertThat(snapshot.artifacts()).allSatisfy(artifact -> {
             assertThat(artifact.header())
                     .containsExactly("id", "value", "source", "time_first_seen", "time_last_seen");
-            assertThat(artifact.records()).singleElement().satisfies(record -> {
+            assertThat(artifact.records().snapshot()).singleElement().satisfies(record -> {
                 assertThat(record.preparedRow().template().value("id")).isNull();
                 assertThat(record.preparedRow().template().value("source")).isEqualTo("feed-name");
                 assertThat(record.preparedRow().template().value("time_first_seen")).isNull();
@@ -489,7 +589,7 @@ class JdbcCanonicalLifecycleWriterIT {
                 .findComplete("source-key", "ordered-policy-v2", EffectiveTime.at(START))
                 .orElseThrow();
         assertThat(replayable.artifacts()).singleElement().satisfies(artifact ->
-                assertThat(artifact.records()).singleElement().satisfies(record ->
+                assertThat(artifact.records().snapshot()).singleElement().satisfies(record ->
                         assertThat(record.preparedRow().orderedFieldPositions())
                                 .containsEntry("value", new OccurrencePosition(30))));
     }
