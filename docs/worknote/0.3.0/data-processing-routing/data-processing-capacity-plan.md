@@ -2,8 +2,9 @@
 
 Status: CAP-0–CAP-1B implementation authorized; acceptance budgets adopted by
 the owner on 2026-10-04. Prepared from the
-[capacity review](data-processing-capacity-review.md). Implementation has not
-started. The user supplied desired local-processing times, excluding external
+[capacity review](data-processing-capacity-review.md). CAP-1A selective SQL and
+its JDBC regressions are implemented; stage acceptance and measurement remain
+in progress. The user supplied desired local-processing times, excluding external
 network/cadence waits, and asked for an engineering recommendation. The absolute
 budgets and technical stage gates below are frozen in
 [the target manifest](qualification/capacity/cap-targets.json) before primary

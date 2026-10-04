@@ -67,15 +67,17 @@ public final class JdbcCanonicalMatchPlanner implements CanonicalMatchPlanner {
 
         Map<String, List<CanonicalMatchCandidate>> hits = new LinkedHashMap<>();
         ordered.forEach(request -> hits.put(request.requestId(), new ArrayList<>()));
+        // SQLite preserves CROSS JOIN loop order: bounded requests probe the full
+        // alias key before reading canonical rows, regardless of artifact size.
         String sql = """
                 SELECT DISTINCT r.request_id, a.canonical_row_id, a.lifecycle_id, c.row_key
                 FROM temp.ioc_match_request r
-                JOIN canonical_match_alias a
+                CROSS JOIN canonical_match_alias a
                   ON a.artifact = ?
                  AND a.definition_id = r.definition_id
                  AND a.key_hash = r.key_hash
                  AND a.key_canonical = r.key_canonical
-                JOIN ${artifact} c
+                CROSS JOIN ${artifact} c
                   ON c.id = a.canonical_row_id
                  AND c._lifecycle_id = a.lifecycle_id
                 WHERE c._valid_until_epoch_ms > ?

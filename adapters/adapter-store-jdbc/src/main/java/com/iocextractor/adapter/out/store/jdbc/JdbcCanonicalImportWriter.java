@@ -470,6 +470,8 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
     private void planActiveMatches(Connection connection, EffectiveTime asOf) throws SQLException {
         for (DataframeArtifactSchema schema : schemas.values()) {
             String artifact = schema.artifactName();
+            // Keep staged keys outside the alias/canonical loops; an artifact-only
+            // alias scan makes promotion quadratic as canonical storage grows.
             String aliases = """
                     INSERT OR IGNORE INTO temp_import_match(branch_id, canonical_row_id, lifecycle_id)
                     SELECT branch.branch_id, alias.canonical_row_id, alias.lifecycle_id
@@ -478,12 +480,12 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
                       ON input.source_row_number = branch.source_row_number
                     JOIN import_stage.stage_match_key match
                       ON match.branch_id = branch.branch_id
-                    JOIN canonical_match_alias alias
+                    CROSS JOIN canonical_match_alias alias
                       ON alias.artifact = branch.artifact
                      AND alias.definition_id = match.definition_id
                      AND alias.key_hash = match.key_hash
                      AND alias.key_canonical = match.key_canonical
-                    JOIN ${artifact} active
+                    CROSS JOIN ${artifact} active
                       ON active.${id} = alias.canonical_row_id
                      AND active.${lifecycle} = alias.lifecycle_id
                     WHERE input.status = 'ACCEPTED'

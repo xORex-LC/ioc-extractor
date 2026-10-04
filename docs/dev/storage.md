@@ -249,7 +249,11 @@ export-slot ownership сохраняются. Named match definitions остаю
 
 `JdbcCanonicalMatchPlanner` принимает batch requests, помещает key material в
 connection-local TEMP table и одним set-based join возвращает zero/exact-one/
-multi plan в исходном порядке. `JdbcCanonicalMutationEngine` использует этот
+multi plan в исходном порядке. SQLite `CROSS JOIN` закрепляет порядок обхода:
+request → полный `(artifact, definition_id, key_hash, key_canonical)` alias key →
+canonical row; размер таблицы артефакта не определяет число проверяемых aliases.
+Staged import также ищет aliases по полному key material, сохраняя исходные
+границы preplanning. `JdbcCanonicalMutationEngine` использует этот
 же connection-scoped механизм для ordinary lifecycle writer и managed-import
 promotion. Insert/restart/renew/archive поддерживают aliases атомарно; public
 mutation отдельно сообщает update, clear, no-op или TTL confirmation. Изменение
