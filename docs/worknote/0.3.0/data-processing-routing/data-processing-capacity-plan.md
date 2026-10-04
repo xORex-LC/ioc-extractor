@@ -7,8 +7,9 @@ its JDBC regressions and CAP-1B resource sessions are implemented. Stage G0/G1A/
 qualification is recorded in the [execution report](cap-0-1-execution.md);
 CAP-2 ownership implementation and G2 evidence are tracked in its separate
 [execution report](cap-2-execution.md).
-CAP-3 progress is recorded in its [execution report](cap-3-execution.md).
-whole-service resource acceptance remains open. The user supplied desired local-processing times, excluding external
+CAP-3 implementation and scoped G3 qualification are complete in its
+[execution report](cap-3-execution.md). Whole-service resource acceptance remains
+open. The user supplied desired local-processing times, excluding external
 network/cadence waits, and asked for an engineering recommendation. The absolute
 budgets and technical stage gates below are frozen in
 [the target manifest](qualification/capacity/cap-targets.json) before primary
@@ -596,9 +597,13 @@ execution plan, not runtime truth.
 Current status (2026-10-05): CAP-0, CAP-1A and CAP-1B implementation and scoped
 qualification are recorded in the [execution report](cap-0-1-execution.md).
 CAP-2 implementation and G2 qualification are complete in the
-[projection ownership report](cap-2-execution.md). CAP-3–CAP-7 remain
-unimplemented. The 100k document RSS and maximum writer-hold budgets remain open;
-scoped stage qualification is not whole-service acceptance.
+[projection ownership report](cap-2-execution.md). CAP-3 implementation and G3
+qualification are complete in the [stage mechanism report](cap-3-execution.md):
+ordered/unordered attribution bounds, construction-time diagnostic retention,
+exact counts and rejecting checkpoints have regression and paired measurement
+evidence. CAP-4–CAP-7 remain unimplemented. The 100k document RSS and maximum
+writer-hold budgets remain open; scoped stage qualification is not whole-service
+acceptance.
 
 Historical planning validation: `make docs`, an explicit offline link check of this plan,
 the review and their index/evidence README files, and `git diff --check` passed.

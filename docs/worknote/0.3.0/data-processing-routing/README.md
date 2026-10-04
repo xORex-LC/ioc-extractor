@@ -148,3 +148,7 @@ private SQL experiments and qualification still required after implementation.
 [Capacity implementation plan](data-processing-capacity-plan.md) prioritizes
 the corrective and architectural stages, decomposes their tasks and defines
 functional, scaling, resource, recovery and deployment gates.
+
+[CAP-3 execution](cap-3-execution.md) records the completed attribution and
+construction-time diagnostic changes, their G3 regressions and 60 paired stage
+measurement forks. Whole-service resource acceptance remains a later gate.

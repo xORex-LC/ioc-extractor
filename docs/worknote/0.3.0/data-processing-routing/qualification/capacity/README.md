@@ -14,6 +14,7 @@ CAP-0/1 evidence additionally qualifies isolated corrected executables.
 | [sqlite-matcher-scaling.json](sqlite-matcher-scaling.json) | All retained JDBC samples, median summaries, VM-work counts and exact-driver live EXPLAIN |
 | [SqliteMatcherProbe.java](SqliteMatcherProbe.java) | Reproducible private SQL mechanism experiment |
 | [cap-0-1-20261004.json](cap-0-1-20261004.json) | CAP-0/1 frozen identities, 40 paired primary forks, ten diagnostic phase forks, exact-driver work/plans and all-five live SMB/oracle checks |
+| [cap-3-stages.json](cap-3-stages.json) | CAP-3 stage mechanisms: 60 alternating primary JVM forks, 100k/1m attribution and bounded 100k diagnostics, identical semantic signatures, no retained database state |
 
 `artifact_revision.changed_at` is transaction effective time sampled before
 the mutation loop. It must not be used as commit completion wall time. The
@@ -97,3 +98,8 @@ signatures are compressed and share disk storage locally; replayable per-fork
 SQLite/CSV state is removed after checks by default. Only explicitly selected
 coherent state samples remain compressed. No SQLite database, JAR, credential
 or remote authentication file is versioned in this bundle.
+
+[CAP-3 execution](../../cap-3-execution.md) records attribution complexity,
+construction-time diagnostic retention, late checkpoint failures and the
+distinction between sampled garbage-containing heap and retained detail.
+Its stage measurements are not full-service resource acceptance.

@@ -1,0 +1,1303 @@
+{
+  "baseline_commit": "c31da8c38121782eb47fa84dce4ad76adb8004d2",
+  "candidate_commit": "94a82fa44fbf33fbd5dbdbe3a4830ca333ff1b72",
+  "source_dirty": false,
+  "runtimes": {
+    "before": {
+      "files": 19,
+      "sha256": "7f3f06a87b6566f7a897618e1b65239fe27c7fe2f6380c908a1d8b33d194b4ec"
+    },
+    "after": {
+      "files": 23,
+      "sha256": "44278b9279f378608fb17abf1853effcad7f0e06c6ae8ac6435e1cf7a1fec356"
+    },
+    "common": {
+      "files": 1551,
+      "sha256": "23dd95b07ff4b069c47027a8a93582cf20c49b72e056e870213cf45f17b07504"
+    },
+    "probe": {
+      "files": 3,
+      "sha256": "c3aa53b385f1d51f62ec30965306a26de54ec9286a753132a6f75d6db6c87431"
+    }
+  },
+  "jvm_flags": [
+    "-Xms128m",
+    "-Xmx512m"
+  ],
+  "driver_sha256": "d9e40f7f705c3bc4b421eca7b2e594ca464d0b39ebbdc0b049b0469e9f4dc89c",
+  "java": "openjdk version \"21.0.12.1\" 2026-08-18",
+  "host": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "cgroup": {},
+  "scope": "Focused stage mechanisms, one full warmup per fork; no agent, Spring, storage or SMB",
+  "memory_scope": "10ms sampled phase heap/current RSS; retained heap includes fixture and final outcome",
+  "attribution_fixture": "250 occurrences per section at its inclusive position; unordered seed 302031",
+  "diagnostic_fixture": "Repeated decision carrier; actual diagnostic constructed per item; limit 128; preparation ends with ERROR",
+  "pairs": 5,
+  "samples": [
+    {
+      "profile": "attribution-ordered",
+      "count": 100000,
+      "elapsed_ms": 19.628,
+      "allocated_bytes": 6026752,
+      "sampled_peak_heap_bytes": 4010864,
+      "sampled_current_rss_kib": 64032,
+      "retained_heap_bytes": 6696568,
+      "stage_retained_diagnostics": 0,
+      "signature": "c7eec1263c69c4567b984ef644d3699dad57bd332a4b0e55d3d8360bc806a6da",
+      "revision": "before",
+      "pair": 0
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 100000,
+      "elapsed_ms": 7.457,
+      "allocated_bytes": 5598304,
+      "sampled_peak_heap_bytes": 1913712,
+      "sampled_current_rss_kib": 63024,
+      "retained_heap_bytes": 6698328,
+      "stage_retained_diagnostics": 0,
+      "signature": "c7eec1263c69c4567b984ef644d3699dad57bd332a4b0e55d3d8360bc806a6da",
+      "revision": "after",
+      "pair": 0
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 100000,
+      "elapsed_ms": 11.655,
+      "allocated_bytes": 5598304,
+      "sampled_peak_heap_bytes": 6108016,
+      "sampled_current_rss_kib": 63788,
+      "retained_heap_bytes": 6698328,
+      "stage_retained_diagnostics": 0,
+      "signature": "c7eec1263c69c4567b984ef644d3699dad57bd332a4b0e55d3d8360bc806a6da",
+      "revision": "after",
+      "pair": 1
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 100000,
+      "elapsed_ms": 21.744,
+      "allocated_bytes": 6082784,
+      "sampled_peak_heap_bytes": 7156592,
+      "sampled_current_rss_kib": 65156,
+      "retained_heap_bytes": 6696568,
+      "stage_retained_diagnostics": 0,
+      "signature": "c7eec1263c69c4567b984ef644d3699dad57bd332a4b0e55d3d8360bc806a6da",
+      "revision": "before",
+      "pair": 1
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 100000,
+      "elapsed_ms": 19.774,
+      "allocated_bytes": 6090976,
+      "sampled_peak_heap_bytes": 4010864,
+      "sampled_current_rss_kib": 63892,
+      "retained_heap_bytes": 6696568,
+      "stage_retained_diagnostics": 0,
+      "signature": "c7eec1263c69c4567b984ef644d3699dad57bd332a4b0e55d3d8360bc806a6da",
+      "revision": "before",
+      "pair": 2
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 100000,
+      "elapsed_ms": 8.619,
+      "allocated_bytes": 5598304,
+      "sampled_peak_heap_bytes": 1913712,
+      "sampled_current_rss_kib": 63140,
+      "retained_heap_bytes": 6698328,
+      "stage_retained_diagnostics": 0,
+      "signature": "c7eec1263c69c4567b984ef644d3699dad57bd332a4b0e55d3d8360bc806a6da",
+      "revision": "after",
+      "pair": 2
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 100000,
+      "elapsed_ms": 7.645,
+      "allocated_bytes": 5598304,
+      "sampled_peak_heap_bytes": 1913712,
+      "sampled_current_rss_kib": 63080,
+      "retained_heap_bytes": 6698328,
+      "stage_retained_diagnostics": 0,
+      "signature": "c7eec1263c69c4567b984ef644d3699dad57bd332a4b0e55d3d8360bc806a6da",
+      "revision": "after",
+      "pair": 3
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 100000,
+      "elapsed_ms": 26.211,
+      "allocated_bytes": 6045632,
+      "sampled_peak_heap_bytes": 6108016,
+      "sampled_current_rss_kib": 65376,
+      "retained_heap_bytes": 6712968,
+      "stage_retained_diagnostics": 0,
+      "signature": "c7eec1263c69c4567b984ef644d3699dad57bd332a4b0e55d3d8360bc806a6da",
+      "revision": "before",
+      "pair": 3
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 100000,
+      "elapsed_ms": 21.022,
+      "allocated_bytes": 6107168,
+      "sampled_peak_heap_bytes": 7156592,
+      "sampled_current_rss_kib": 64308,
+      "retained_heap_bytes": 6696568,
+      "stage_retained_diagnostics": 0,
+      "signature": "c7eec1263c69c4567b984ef644d3699dad57bd332a4b0e55d3d8360bc806a6da",
+      "revision": "before",
+      "pair": 4
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 100000,
+      "elapsed_ms": 8.569,
+      "allocated_bytes": 5598304,
+      "sampled_peak_heap_bytes": 1913712,
+      "sampled_current_rss_kib": 63156,
+      "retained_heap_bytes": 6698328,
+      "stage_retained_diagnostics": 0,
+      "signature": "c7eec1263c69c4567b984ef644d3699dad57bd332a4b0e55d3d8360bc806a6da",
+      "revision": "after",
+      "pair": 4
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 100000,
+      "elapsed_ms": 14.399,
+      "allocated_bytes": 5598272,
+      "sampled_peak_heap_bytes": 5061472,
+      "sampled_current_rss_kib": 63648,
+      "retained_heap_bytes": 6700360,
+      "stage_retained_diagnostics": 0,
+      "signature": "2fdc555fc3a454f5b3eb31f073bd49fb4f58715d1f5e8e4d1f48ba01cbbcded2",
+      "revision": "before",
+      "pair": 0
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 100000,
+      "elapsed_ms": 13.979,
+      "allocated_bytes": 5598304,
+      "sampled_peak_heap_bytes": 5061472,
+      "sampled_current_rss_kib": 63480,
+      "retained_heap_bytes": 6700360,
+      "stage_retained_diagnostics": 0,
+      "signature": "2fdc555fc3a454f5b3eb31f073bd49fb4f58715d1f5e8e4d1f48ba01cbbcded2",
+      "revision": "after",
+      "pair": 0
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 100000,
+      "elapsed_ms": 11.62,
+      "allocated_bytes": 5598304,
+      "sampled_peak_heap_bytes": 6110048,
+      "sampled_current_rss_kib": 64316,
+      "retained_heap_bytes": 6700360,
+      "stage_retained_diagnostics": 0,
+      "signature": "2fdc555fc3a454f5b3eb31f073bd49fb4f58715d1f5e8e4d1f48ba01cbbcded2",
+      "revision": "after",
+      "pair": 1
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 100000,
+      "elapsed_ms": 14.705,
+      "allocated_bytes": 5598272,
+      "sampled_peak_heap_bytes": 5061472,
+      "sampled_current_rss_kib": 63980,
+      "retained_heap_bytes": 6700360,
+      "stage_retained_diagnostics": 0,
+      "signature": "2fdc555fc3a454f5b3eb31f073bd49fb4f58715d1f5e8e4d1f48ba01cbbcded2",
+      "revision": "before",
+      "pair": 1
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 100000,
+      "elapsed_ms": 20.058,
+      "allocated_bytes": 5598272,
+      "sampled_peak_heap_bytes": 5061472,
+      "sampled_current_rss_kib": 63860,
+      "retained_heap_bytes": 6700360,
+      "stage_retained_diagnostics": 0,
+      "signature": "2fdc555fc3a454f5b3eb31f073bd49fb4f58715d1f5e8e4d1f48ba01cbbcded2",
+      "revision": "before",
+      "pair": 2
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 100000,
+      "elapsed_ms": 12.477,
+      "allocated_bytes": 5598304,
+      "sampled_peak_heap_bytes": 6110048,
+      "sampled_current_rss_kib": 63908,
+      "retained_heap_bytes": 6700360,
+      "stage_retained_diagnostics": 0,
+      "signature": "2fdc555fc3a454f5b3eb31f073bd49fb4f58715d1f5e8e4d1f48ba01cbbcded2",
+      "revision": "after",
+      "pair": 2
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 100000,
+      "elapsed_ms": 15.135,
+      "allocated_bytes": 5598304,
+      "sampled_peak_heap_bytes": 5061472,
+      "sampled_current_rss_kib": 64168,
+      "retained_heap_bytes": 6700360,
+      "stage_retained_diagnostics": 0,
+      "signature": "2fdc555fc3a454f5b3eb31f073bd49fb4f58715d1f5e8e4d1f48ba01cbbcded2",
+      "revision": "after",
+      "pair": 3
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 100000,
+      "elapsed_ms": 18.433,
+      "allocated_bytes": 5598272,
+      "sampled_peak_heap_bytes": 5061472,
+      "sampled_current_rss_kib": 63424,
+      "retained_heap_bytes": 6700360,
+      "stage_retained_diagnostics": 0,
+      "signature": "2fdc555fc3a454f5b3eb31f073bd49fb4f58715d1f5e8e4d1f48ba01cbbcded2",
+      "revision": "before",
+      "pair": 3
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 100000,
+      "elapsed_ms": 19.627,
+      "allocated_bytes": 5598272,
+      "sampled_peak_heap_bytes": 4012896,
+      "sampled_current_rss_kib": 63376,
+      "retained_heap_bytes": 6700360,
+      "stage_retained_diagnostics": 0,
+      "signature": "2fdc555fc3a454f5b3eb31f073bd49fb4f58715d1f5e8e4d1f48ba01cbbcded2",
+      "revision": "before",
+      "pair": 4
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 100000,
+      "elapsed_ms": 14.181,
+      "allocated_bytes": 5598304,
+      "sampled_peak_heap_bytes": 5061472,
+      "sampled_current_rss_kib": 64028,
+      "retained_heap_bytes": 6700360,
+      "stage_retained_diagnostics": 0,
+      "signature": "2fdc555fc3a454f5b3eb31f073bd49fb4f58715d1f5e8e4d1f48ba01cbbcded2",
+      "revision": "after",
+      "pair": 4
+    },
+    {
+      "profile": "extraction",
+      "count": 100000,
+      "elapsed_ms": 39.507,
+      "allocated_bytes": 78926544,
+      "sampled_peak_heap_bytes": 56253072,
+      "sampled_current_rss_kib": 135244,
+      "retained_heap_bytes": 2128168,
+      "stage_retained_diagnostics": 100000,
+      "signature": "5a59ff76343d3eb33761c125c3beebd5fc3663b452631ffb6227f40ed5ebc1e7",
+      "revision": "before",
+      "pair": 0
+    },
+    {
+      "profile": "extraction",
+      "count": 100000,
+      "elapsed_ms": 35.002,
+      "allocated_bytes": 77625752,
+      "sampled_peak_heap_bytes": 45825208,
+      "sampled_current_rss_kib": 127384,
+      "retained_heap_bytes": 2179448,
+      "stage_retained_diagnostics": 128,
+      "signature": "5a59ff76343d3eb33761c125c3beebd5fc3663b452631ffb6227f40ed5ebc1e7",
+      "revision": "after",
+      "pair": 0
+    },
+    {
+      "profile": "extraction",
+      "count": 100000,
+      "elapsed_ms": 49.93,
+      "allocated_bytes": 77625752,
+      "sampled_peak_heap_bytes": 66796728,
+      "sampled_current_rss_kib": 129764,
+      "retained_heap_bytes": 2179448,
+      "stage_retained_diagnostics": 128,
+      "signature": "5a59ff76343d3eb33761c125c3beebd5fc3663b452631ffb6227f40ed5ebc1e7",
+      "revision": "after",
+      "pair": 1
+    },
+    {
+      "profile": "extraction",
+      "count": 100000,
+      "elapsed_ms": 63.998,
+      "allocated_bytes": 81286624,
+      "sampled_peak_heap_bytes": 54155976,
+      "sampled_current_rss_kib": 132924,
+      "retained_heap_bytes": 2128128,
+      "stage_retained_diagnostics": 100000,
+      "signature": "5a59ff76343d3eb33761c125c3beebd5fc3663b452631ffb6227f40ed5ebc1e7",
+      "revision": "before",
+      "pair": 1
+    },
+    {
+      "profile": "extraction",
+      "count": 100000,
+      "elapsed_ms": 62.146,
+      "allocated_bytes": 81286624,
+      "sampled_peak_heap_bytes": 54155976,
+      "sampled_current_rss_kib": 136540,
+      "retained_heap_bytes": 2128128,
+      "stage_retained_diagnostics": 100000,
+      "signature": "5a59ff76343d3eb33761c125c3beebd5fc3663b452631ffb6227f40ed5ebc1e7",
+      "revision": "before",
+      "pair": 2
+    },
+    {
+      "profile": "extraction",
+      "count": 100000,
+      "elapsed_ms": 40.552,
+      "allocated_bytes": 77625808,
+      "sampled_peak_heap_bytes": 64699520,
+      "sampled_current_rss_kib": 129376,
+      "retained_heap_bytes": 2179264,
+      "stage_retained_diagnostics": 128,
+      "signature": "5a59ff76343d3eb33761c125c3beebd5fc3663b452631ffb6227f40ed5ebc1e7",
+      "revision": "after",
+      "pair": 2
+    },
+    {
+      "profile": "extraction",
+      "count": 100000,
+      "elapsed_ms": 34.09,
+      "allocated_bytes": 77625752,
+      "sampled_peak_heap_bytes": 43728056,
+      "sampled_current_rss_kib": 127724,
+      "retained_heap_bytes": 2179224,
+      "stage_retained_diagnostics": 128,
+      "signature": "5a59ff76343d3eb33761c125c3beebd5fc3663b452631ffb6227f40ed5ebc1e7",
+      "revision": "after",
+      "pair": 3
+    },
+    {
+      "profile": "extraction",
+      "count": 100000,
+      "elapsed_ms": 48.996,
+      "allocated_bytes": 78320640,
+      "sampled_peak_heap_bytes": 36681664,
+      "sampled_current_rss_kib": 137984,
+      "retained_heap_bytes": 2128168,
+      "stage_retained_diagnostics": 100000,
+      "signature": "5a59ff76343d3eb33761c125c3beebd5fc3663b452631ffb6227f40ed5ebc1e7",
+      "revision": "before",
+      "pair": 3
+    },
+    {
+      "profile": "extraction",
+      "count": 100000,
+      "elapsed_ms": 46.25,
+      "allocated_bytes": 81286624,
+      "sampled_peak_heap_bytes": 51010248,
+      "sampled_current_rss_kib": 129080,
+      "retained_heap_bytes": 2128128,
+      "stage_retained_diagnostics": 100000,
+      "signature": "5a59ff76343d3eb33761c125c3beebd5fc3663b452631ffb6227f40ed5ebc1e7",
+      "revision": "before",
+      "pair": 4
+    },
+    {
+      "profile": "extraction",
+      "count": 100000,
+      "elapsed_ms": 40.26,
+      "allocated_bytes": 77625752,
+      "sampled_peak_heap_bytes": 65748152,
+      "sampled_current_rss_kib": 123092,
+      "retained_heap_bytes": 2179224,
+      "stage_retained_diagnostics": 128,
+      "signature": "5a59ff76343d3eb33761c125c3beebd5fc3663b452631ffb6227f40ed5ebc1e7",
+      "revision": "after",
+      "pair": 4
+    },
+    {
+      "profile": "preparation",
+      "count": 100000,
+      "elapsed_ms": 65.823,
+      "allocated_bytes": 79613344,
+      "sampled_peak_heap_bytes": 64654904,
+      "sampled_current_rss_kib": 160736,
+      "retained_heap_bytes": 2134080,
+      "stage_retained_diagnostics": 100000,
+      "signature": "b7cf59390a50a122b1b59381985238f8486219d68b8f5afe43612f7d9b1026a1",
+      "revision": "before",
+      "pair": 0
+    },
+    {
+      "profile": "preparation",
+      "count": 100000,
+      "elapsed_ms": 60.353,
+      "allocated_bytes": 79324984,
+      "sampled_peak_heap_bytes": 72070760,
+      "sampled_current_rss_kib": 137588,
+      "retained_heap_bytes": 2202640,
+      "stage_retained_diagnostics": 129,
+      "signature": "b7cf59390a50a122b1b59381985238f8486219d68b8f5afe43612f7d9b1026a1",
+      "revision": "after",
+      "pair": 0
+    },
+    {
+      "profile": "preparation",
+      "count": 100000,
+      "elapsed_ms": 62.757,
+      "allocated_bytes": 77574360,
+      "sampled_peak_heap_bytes": 67876456,
+      "sampled_current_rss_kib": 134568,
+      "retained_heap_bytes": 2202640,
+      "stage_retained_diagnostics": 129,
+      "signature": "b7cf59390a50a122b1b59381985238f8486219d68b8f5afe43612f7d9b1026a1",
+      "revision": "after",
+      "pair": 1
+    },
+    {
+      "profile": "preparation",
+      "count": 100000,
+      "elapsed_ms": 57.247,
+      "allocated_bytes": 80591520,
+      "sampled_peak_heap_bytes": 54169144,
+      "sampled_current_rss_kib": 160160,
+      "retained_heap_bytes": 2134080,
+      "stage_retained_diagnostics": 100000,
+      "signature": "b7cf59390a50a122b1b59381985238f8486219d68b8f5afe43612f7d9b1026a1",
+      "revision": "before",
+      "pair": 1
+    },
+    {
+      "profile": "preparation",
+      "count": 100000,
+      "elapsed_ms": 66.959,
+      "allocated_bytes": 80120752,
+      "sampled_peak_heap_bytes": 62557752,
+      "sampled_current_rss_kib": 161732,
+      "retained_heap_bytes": 2134080,
+      "stage_retained_diagnostics": 100000,
+      "signature": "b7cf59390a50a122b1b59381985238f8486219d68b8f5afe43612f7d9b1026a1",
+      "revision": "before",
+      "pair": 2
+    },
+    {
+      "profile": "preparation",
+      "count": 100000,
+      "elapsed_ms": 52.762,
+      "allocated_bytes": 78554856,
+      "sampled_peak_heap_bytes": 61585000,
+      "sampled_current_rss_kib": 130960,
+      "retained_heap_bytes": 2202640,
+      "stage_retained_diagnostics": 129,
+      "signature": "b7cf59390a50a122b1b59381985238f8486219d68b8f5afe43612f7d9b1026a1",
+      "revision": "after",
+      "pair": 2
+    },
+    {
+      "profile": "preparation",
+      "count": 100000,
+      "elapsed_ms": 59.736,
+      "allocated_bytes": 78335016,
+      "sampled_peak_heap_bytes": 69973608,
+      "sampled_current_rss_kib": 135756,
+      "retained_heap_bytes": 2202640,
+      "stage_retained_diagnostics": 129,
+      "signature": "b7cf59390a50a122b1b59381985238f8486219d68b8f5afe43612f7d9b1026a1",
+      "revision": "after",
+      "pair": 3
+    },
+    {
+      "profile": "preparation",
+      "count": 100000,
+      "elapsed_ms": 67.91,
+      "allocated_bytes": 80166944,
+      "sampled_peak_heap_bytes": 65703480,
+      "sampled_current_rss_kib": 160032,
+      "retained_heap_bytes": 2134080,
+      "stage_retained_diagnostics": 100000,
+      "signature": "b7cf59390a50a122b1b59381985238f8486219d68b8f5afe43612f7d9b1026a1",
+      "revision": "before",
+      "pair": 3
+    },
+    {
+      "profile": "preparation",
+      "count": 100000,
+      "elapsed_ms": 66.406,
+      "allocated_bytes": 79909312,
+      "sampled_peak_heap_bytes": 61509176,
+      "sampled_current_rss_kib": 161000,
+      "retained_heap_bytes": 2134080,
+      "stage_retained_diagnostics": 100000,
+      "signature": "b7cf59390a50a122b1b59381985238f8486219d68b8f5afe43612f7d9b1026a1",
+      "revision": "before",
+      "pair": 4
+    },
+    {
+      "profile": "preparation",
+      "count": 100000,
+      "elapsed_ms": 52.173,
+      "allocated_bytes": 79326968,
+      "sampled_peak_heap_bytes": 68925032,
+      "sampled_current_rss_kib": 134060,
+      "retained_heap_bytes": 2202864,
+      "stage_retained_diagnostics": 129,
+      "signature": "b7cf59390a50a122b1b59381985238f8486219d68b8f5afe43612f7d9b1026a1",
+      "revision": "after",
+      "pair": 4
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 1000000,
+      "elapsed_ms": 1725.437,
+      "allocated_bytes": 55912824,
+      "sampled_peak_heap_bytes": 67157904,
+      "sampled_current_rss_kib": 137604,
+      "retained_heap_bytes": 51741664,
+      "stage_retained_diagnostics": 0,
+      "signature": "c1d3924af8503b62be603991265c5319e6694b047070e3b7aab17d3c30b5d904",
+      "revision": "before",
+      "pair": 0
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 1000000,
+      "elapsed_ms": 70.68,
+      "allocated_bytes": 55912912,
+      "sampled_peak_heap_bytes": 60342048,
+      "sampled_current_rss_kib": 139056,
+      "retained_heap_bytes": 51801048,
+      "stage_retained_diagnostics": 0,
+      "signature": "c1d3924af8503b62be603991265c5319e6694b047070e3b7aab17d3c30b5d904",
+      "revision": "after",
+      "pair": 0
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 1000000,
+      "elapsed_ms": 70.344,
+      "allocated_bytes": 55912912,
+      "sampled_peak_heap_bytes": 59817872,
+      "sampled_current_rss_kib": 139144,
+      "retained_heap_bytes": 51778128,
+      "stage_retained_diagnostics": 0,
+      "signature": "c1d3924af8503b62be603991265c5319e6694b047070e3b7aab17d3c30b5d904",
+      "revision": "after",
+      "pair": 1
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 1000000,
+      "elapsed_ms": 1734.887,
+      "allocated_bytes": 55912880,
+      "sampled_peak_heap_bytes": 68206480,
+      "sampled_current_rss_kib": 138824,
+      "retained_heap_bytes": 51773480,
+      "stage_retained_diagnostics": 0,
+      "signature": "c1d3924af8503b62be603991265c5319e6694b047070e3b7aab17d3c30b5d904",
+      "revision": "before",
+      "pair": 1
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 1000000,
+      "elapsed_ms": 1688.543,
+      "allocated_bytes": 55912880,
+      "sampled_peak_heap_bytes": 67682080,
+      "sampled_current_rss_kib": 137880,
+      "retained_heap_bytes": 51779752,
+      "stage_retained_diagnostics": 0,
+      "signature": "c1d3924af8503b62be603991265c5319e6694b047070e3b7aab17d3c30b5d904",
+      "revision": "before",
+      "pair": 2
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 1000000,
+      "elapsed_ms": 63.676,
+      "allocated_bytes": 55912912,
+      "sampled_peak_heap_bytes": 59817152,
+      "sampled_current_rss_kib": 138616,
+      "retained_heap_bytes": 51738464,
+      "stage_retained_diagnostics": 0,
+      "signature": "c1d3924af8503b62be603991265c5319e6694b047070e3b7aab17d3c30b5d904",
+      "revision": "after",
+      "pair": 2
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 1000000,
+      "elapsed_ms": 66.379,
+      "allocated_bytes": 55912912,
+      "sampled_peak_heap_bytes": 60342160,
+      "sampled_current_rss_kib": 138384,
+      "retained_heap_bytes": 51739416,
+      "stage_retained_diagnostics": 0,
+      "signature": "c1d3924af8503b62be603991265c5319e6694b047070e3b7aab17d3c30b5d904",
+      "revision": "after",
+      "pair": 3
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 1000000,
+      "elapsed_ms": 1134.354,
+      "allocated_bytes": 55912824,
+      "sampled_peak_heap_bytes": 62439312,
+      "sampled_current_rss_kib": 157244,
+      "retained_heap_bytes": 51782248,
+      "stage_retained_diagnostics": 0,
+      "signature": "c1d3924af8503b62be603991265c5319e6694b047070e3b7aab17d3c30b5d904",
+      "revision": "before",
+      "pair": 3
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 1000000,
+      "elapsed_ms": 1643.085,
+      "allocated_bytes": 55912880,
+      "sampled_peak_heap_bytes": 68206480,
+      "sampled_current_rss_kib": 136672,
+      "retained_heap_bytes": 51740320,
+      "stage_retained_diagnostics": 0,
+      "signature": "c1d3924af8503b62be603991265c5319e6694b047070e3b7aab17d3c30b5d904",
+      "revision": "before",
+      "pair": 4
+    },
+    {
+      "profile": "attribution-ordered",
+      "count": 1000000,
+      "elapsed_ms": 70.946,
+      "allocated_bytes": 55912912,
+      "sampled_peak_heap_bytes": 59817872,
+      "sampled_current_rss_kib": 138060,
+      "retained_heap_bytes": 51739400,
+      "stage_retained_diagnostics": 0,
+      "signature": "c1d3924af8503b62be603991265c5319e6694b047070e3b7aab17d3c30b5d904",
+      "revision": "after",
+      "pair": 4
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 1000000,
+      "elapsed_ms": 1119.267,
+      "allocated_bytes": 55912880,
+      "sampled_peak_heap_bytes": 61917056,
+      "sampled_current_rss_kib": 138088,
+      "retained_heap_bytes": 51742232,
+      "stage_retained_diagnostics": 0,
+      "signature": "7b516bc26d58193a476c22a726ca8a2382b593d4db202a9453d75f936194d274",
+      "revision": "before",
+      "pair": 0
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 1000000,
+      "elapsed_ms": 145.284,
+      "allocated_bytes": 55912856,
+      "sampled_peak_heap_bytes": 51955584,
+      "sampled_current_rss_kib": 137784,
+      "retained_heap_bytes": 51839848,
+      "stage_retained_diagnostics": 0,
+      "signature": "7b516bc26d58193a476c22a726ca8a2382b593d4db202a9453d75f936194d274",
+      "revision": "after",
+      "pair": 0
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 1000000,
+      "elapsed_ms": 147.355,
+      "allocated_bytes": 55912912,
+      "sampled_peak_heap_bytes": 61392768,
+      "sampled_current_rss_kib": 139732,
+      "retained_heap_bytes": 51744632,
+      "stage_retained_diagnostics": 0,
+      "signature": "7b516bc26d58193a476c22a726ca8a2382b593d4db202a9453d75f936194d274",
+      "revision": "after",
+      "pair": 1
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 1000000,
+      "elapsed_ms": 1110.352,
+      "allocated_bytes": 55912880,
+      "sampled_peak_heap_bytes": 62440624,
+      "sampled_current_rss_kib": 132808,
+      "retained_heap_bytes": 51818888,
+      "stage_retained_diagnostics": 0,
+      "signature": "7b516bc26d58193a476c22a726ca8a2382b593d4db202a9453d75f936194d274",
+      "revision": "before",
+      "pair": 1
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 1000000,
+      "elapsed_ms": 1161.023,
+      "allocated_bytes": 55912824,
+      "sampled_peak_heap_bytes": 57722640,
+      "sampled_current_rss_kib": 136560,
+      "retained_heap_bytes": 51784968,
+      "stage_retained_diagnostics": 0,
+      "signature": "7b516bc26d58193a476c22a726ca8a2382b593d4db202a9453d75f936194d274",
+      "revision": "before",
+      "pair": 2
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 1000000,
+      "elapsed_ms": 146.477,
+      "allocated_bytes": 55912912,
+      "sampled_peak_heap_bytes": 60868480,
+      "sampled_current_rss_kib": 139084,
+      "retained_heap_bytes": 51744864,
+      "stage_retained_diagnostics": 0,
+      "signature": "7b516bc26d58193a476c22a726ca8a2382b593d4db202a9453d75f936194d274",
+      "revision": "after",
+      "pair": 2
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 1000000,
+      "elapsed_ms": 155.096,
+      "allocated_bytes": 55912912,
+      "sampled_peak_heap_bytes": 61392768,
+      "sampled_current_rss_kib": 137844,
+      "retained_heap_bytes": 51744600,
+      "stage_retained_diagnostics": 0,
+      "signature": "7b516bc26d58193a476c22a726ca8a2382b593d4db202a9453d75f936194d274",
+      "revision": "after",
+      "pair": 3
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 1000000,
+      "elapsed_ms": 1047.331,
+      "allocated_bytes": 55912880,
+      "sampled_peak_heap_bytes": 62965632,
+      "sampled_current_rss_kib": 136900,
+      "retained_heap_bytes": 51770152,
+      "stage_retained_diagnostics": 0,
+      "signature": "7b516bc26d58193a476c22a726ca8a2382b593d4db202a9453d75f936194d274",
+      "revision": "before",
+      "pair": 3
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 1000000,
+      "elapsed_ms": 1161.001,
+      "allocated_bytes": 55912880,
+      "sampled_peak_heap_bytes": 61916944,
+      "sampled_current_rss_kib": 136072,
+      "retained_heap_bytes": 51742680,
+      "stage_retained_diagnostics": 0,
+      "signature": "7b516bc26d58193a476c22a726ca8a2382b593d4db202a9453d75f936194d274",
+      "revision": "before",
+      "pair": 4
+    },
+    {
+      "profile": "attribution-unordered",
+      "count": 1000000,
+      "elapsed_ms": 145.458,
+      "allocated_bytes": 55912912,
+      "sampled_peak_heap_bytes": 61917056,
+      "sampled_current_rss_kib": 141260,
+      "retained_heap_bytes": 51752704,
+      "stage_retained_diagnostics": 0,
+      "signature": "7b516bc26d58193a476c22a726ca8a2382b593d4db202a9453d75f936194d274",
+      "revision": "after",
+      "pair": 4
+    }
+  ],
+  "summary": {
+    "attribution-ordered-100000": {
+      "elapsed_ms": {
+        "before_median": 21.022,
+        "after_median": 8.569,
+        "after_over_before": 0.4076205879554753,
+        "before_range": [
+          19.628,
+          26.211
+        ],
+        "after_range": [
+          7.457,
+          11.655
+        ]
+      },
+      "allocated_bytes": {
+        "before_median": 6082784,
+        "after_median": 5598304,
+        "after_over_before": 0.9203522597547439,
+        "before_range": [
+          6026752,
+          6107168
+        ],
+        "after_range": [
+          5598304,
+          5598304
+        ]
+      },
+      "sampled_peak_heap_bytes": {
+        "before_median": 6108016,
+        "after_median": 1913712,
+        "after_over_before": 0.31331155648577214,
+        "before_range": [
+          4010864,
+          7156592
+        ],
+        "after_range": [
+          1913712,
+          6108016
+        ]
+      },
+      "sampled_current_rss_kib": {
+        "before_median": 64308,
+        "after_median": 63140,
+        "after_over_before": 0.9818374074765193,
+        "before_range": [
+          63892,
+          65376
+        ],
+        "after_range": [
+          63024,
+          63788
+        ]
+      },
+      "retained_heap_bytes": {
+        "before_median": 6696568,
+        "after_median": 6698328,
+        "after_over_before": 1.000262821194379,
+        "before_range": [
+          6696568,
+          6712968
+        ],
+        "after_range": [
+          6698328,
+          6698328
+        ]
+      },
+      "stage_retained_diagnostics": {
+        "before_median": 0,
+        "after_median": 0,
+        "after_over_before": null,
+        "before_range": [
+          0,
+          0
+        ],
+        "after_range": [
+          0,
+          0
+        ]
+      }
+    },
+    "attribution-ordered-1000000": {
+      "elapsed_ms": {
+        "before_median": 1688.543,
+        "after_median": 70.344,
+        "after_over_before": 0.041659584624140454,
+        "before_range": [
+          1134.354,
+          1734.887
+        ],
+        "after_range": [
+          63.676,
+          70.946
+        ]
+      },
+      "allocated_bytes": {
+        "before_median": 55912880,
+        "after_median": 55912912,
+        "after_over_before": 1.0000005723189362,
+        "before_range": [
+          55912824,
+          55912880
+        ],
+        "after_range": [
+          55912912,
+          55912912
+        ]
+      },
+      "sampled_peak_heap_bytes": {
+        "before_median": 67682080,
+        "after_median": 59817872,
+        "after_over_before": 0.8838066442402479,
+        "before_range": [
+          62439312,
+          68206480
+        ],
+        "after_range": [
+          59817152,
+          60342160
+        ]
+      },
+      "sampled_current_rss_kib": {
+        "before_median": 137880,
+        "after_median": 138616,
+        "after_over_before": 1.0053379750507687,
+        "before_range": [
+          136672,
+          157244
+        ],
+        "after_range": [
+          138060,
+          139144
+        ]
+      },
+      "retained_heap_bytes": {
+        "before_median": 51773480,
+        "after_median": 51739416,
+        "after_over_before": 0.9993420569758881,
+        "before_range": [
+          51740320,
+          51782248
+        ],
+        "after_range": [
+          51738464,
+          51801048
+        ]
+      },
+      "stage_retained_diagnostics": {
+        "before_median": 0,
+        "after_median": 0,
+        "after_over_before": null,
+        "before_range": [
+          0,
+          0
+        ],
+        "after_range": [
+          0,
+          0
+        ]
+      }
+    },
+    "attribution-unordered-100000": {
+      "elapsed_ms": {
+        "before_median": 18.433,
+        "after_median": 13.979,
+        "after_over_before": 0.7583681440894048,
+        "before_range": [
+          14.399,
+          20.058
+        ],
+        "after_range": [
+          11.62,
+          15.135
+        ]
+      },
+      "allocated_bytes": {
+        "before_median": 5598272,
+        "after_median": 5598304,
+        "after_over_before": 1.000005716049524,
+        "before_range": [
+          5598272,
+          5598272
+        ],
+        "after_range": [
+          5598304,
+          5598304
+        ]
+      },
+      "sampled_peak_heap_bytes": {
+        "before_median": 5061472,
+        "after_median": 5061472,
+        "after_over_before": 1.0,
+        "before_range": [
+          4012896,
+          5061472
+        ],
+        "after_range": [
+          5061472,
+          6110048
+        ]
+      },
+      "sampled_current_rss_kib": {
+        "before_median": 63648,
+        "after_median": 64028,
+        "after_over_before": 1.0059703368526898,
+        "before_range": [
+          63376,
+          63980
+        ],
+        "after_range": [
+          63480,
+          64316
+        ]
+      },
+      "retained_heap_bytes": {
+        "before_median": 6700360,
+        "after_median": 6700360,
+        "after_over_before": 1.0,
+        "before_range": [
+          6700360,
+          6700360
+        ],
+        "after_range": [
+          6700360,
+          6700360
+        ]
+      },
+      "stage_retained_diagnostics": {
+        "before_median": 0,
+        "after_median": 0,
+        "after_over_before": null,
+        "before_range": [
+          0,
+          0
+        ],
+        "after_range": [
+          0,
+          0
+        ]
+      }
+    },
+    "attribution-unordered-1000000": {
+      "elapsed_ms": {
+        "before_median": 1119.267,
+        "after_median": 146.477,
+        "after_over_before": 0.1308686845944712,
+        "before_range": [
+          1047.331,
+          1161.023
+        ],
+        "after_range": [
+          145.284,
+          155.096
+        ]
+      },
+      "allocated_bytes": {
+        "before_median": 55912880,
+        "after_median": 55912912,
+        "after_over_before": 1.0000005723189362,
+        "before_range": [
+          55912824,
+          55912880
+        ],
+        "after_range": [
+          55912856,
+          55912912
+        ]
+      },
+      "sampled_peak_heap_bytes": {
+        "before_median": 61917056,
+        "after_median": 61392768,
+        "after_over_before": 0.9915324139442289,
+        "before_range": [
+          57722640,
+          62965632
+        ],
+        "after_range": [
+          51955584,
+          61917056
+        ]
+      },
+      "sampled_current_rss_kib": {
+        "before_median": 136560,
+        "after_median": 139084,
+        "after_over_before": 1.0184827182190979,
+        "before_range": [
+          132808,
+          138088
+        ],
+        "after_range": [
+          137784,
+          141260
+        ]
+      },
+      "retained_heap_bytes": {
+        "before_median": 51770152,
+        "after_median": 51744864,
+        "after_over_before": 0.9995115332093288,
+        "before_range": [
+          51742232,
+          51818888
+        ],
+        "after_range": [
+          51744600,
+          51839848
+        ]
+      },
+      "stage_retained_diagnostics": {
+        "before_median": 0,
+        "after_median": 0,
+        "after_over_before": null,
+        "before_range": [
+          0,
+          0
+        ],
+        "after_range": [
+          0,
+          0
+        ]
+      }
+    },
+    "extraction-100000": {
+      "elapsed_ms": {
+        "before_median": 48.996,
+        "after_median": 40.26,
+        "after_over_before": 0.8216997305902521,
+        "before_range": [
+          39.507,
+          63.998
+        ],
+        "after_range": [
+          34.09,
+          49.93
+        ]
+      },
+      "allocated_bytes": {
+        "before_median": 81286624,
+        "after_median": 77625752,
+        "after_over_before": 0.9549634143989053,
+        "before_range": [
+          78320640,
+          81286624
+        ],
+        "after_range": [
+          77625752,
+          77625808
+        ]
+      },
+      "sampled_peak_heap_bytes": {
+        "before_median": 54155976,
+        "after_median": 64699520,
+        "after_over_before": 1.1946884679910488,
+        "before_range": [
+          36681664,
+          56253072
+        ],
+        "after_range": [
+          43728056,
+          66796728
+        ]
+      },
+      "sampled_current_rss_kib": {
+        "before_median": 135244,
+        "after_median": 127724,
+        "after_over_before": 0.9443967939427996,
+        "before_range": [
+          129080,
+          137984
+        ],
+        "after_range": [
+          123092,
+          129764
+        ]
+      },
+      "retained_heap_bytes": {
+        "before_median": 2128128,
+        "after_median": 2179264,
+        "after_over_before": 1.0240286298568506,
+        "before_range": [
+          2128128,
+          2128168
+        ],
+        "after_range": [
+          2179224,
+          2179448
+        ]
+      },
+      "stage_retained_diagnostics": {
+        "before_median": 100000,
+        "after_median": 128,
+        "after_over_before": 0.00128,
+        "before_range": [
+          100000,
+          100000
+        ],
+        "after_range": [
+          128,
+          128
+        ]
+      }
+    },
+    "preparation-100000": {
+      "elapsed_ms": {
+        "before_median": 66.406,
+        "after_median": 59.736,
+        "after_over_before": 0.8995572689214829,
+        "before_range": [
+          57.247,
+          67.91
+        ],
+        "after_range": [
+          52.173,
+          62.757
+        ]
+      },
+      "allocated_bytes": {
+        "before_median": 80120752,
+        "after_median": 78554856,
+        "after_over_before": 0.9804558000154566,
+        "before_range": [
+          79613344,
+          80591520
+        ],
+        "after_range": [
+          77574360,
+          79326968
+        ]
+      },
+      "sampled_peak_heap_bytes": {
+        "before_median": 62557752,
+        "after_median": 68925032,
+        "after_over_before": 1.1017824297778476,
+        "before_range": [
+          54169144,
+          65703480
+        ],
+        "after_range": [
+          61585000,
+          72070760
+        ]
+      },
+      "sampled_current_rss_kib": {
+        "before_median": 160736,
+        "after_median": 134568,
+        "after_over_before": 0.8371988851284093,
+        "before_range": [
+          160032,
+          161732
+        ],
+        "after_range": [
+          130960,
+          137588
+        ]
+      },
+      "retained_heap_bytes": {
+        "before_median": 2134080,
+        "after_median": 2202640,
+        "after_over_before": 1.0321262558104662,
+        "before_range": [
+          2134080,
+          2134080
+        ],
+        "after_range": [
+          2202640,
+          2202864
+        ]
+      },
+      "stage_retained_diagnostics": {
+        "before_median": 100000,
+        "after_median": 129,
+        "after_over_before": 0.00129,
+        "before_range": [
+          100000,
+          100000
+        ],
+        "after_range": [
+          129,
+          129
+        ]
+      }
+    }
+  },
+  "semantic_equivalence": true,
+  "acceptance": "G3 mechanism evidence; whole-service resource acceptance remains CAP-6",
+  "temporary_state": "No databases; source/class snapshots removed on success and failure"
+}

@@ -110,7 +110,10 @@ standalone IOC aggregate.
 
 Pipeline возвращает `ExtractionResult` с `CompletionStatus`, bounded diagnostics и
 `DiagnosticSummary`. `fail-fast`/`collect-and-continue` применяются до canonical
-commit после preparation stage. Saga-контуры ingest/export/sync остаются
+commit после preparation stage. Extraction/preparation ограничивают diagnostic
+details внутри своих циклов: `DiagnosticBatch` передаёт выборку и точные
+severity counts через `Envelope`; runner сохраняет поздние ERROR/FATAL и
+доставляет один итоговый suppression summary. Saga-контуры ingest/export/sync остаются
 ledger-first: diagnostic наблюдает final transition, но не заменяет его.
 
 Remote sync не меняет extraction pipeline: fetch заканчивается в штатном inbox, а
