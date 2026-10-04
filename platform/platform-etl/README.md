@@ -10,6 +10,12 @@ Generic Pipes-and-Filters ETL kernel: `Envelope`, `EnvelopeMeta`, `Stage`,
 Run-level observation scope охватывает все стадии и terminal suppression
 delivery; stage scope содержит только метаданные текущей стадии.
 
+`Envelope` сохраняет отдельно retained diagnostics и точные observed counts.
+Высокочастотные stage loops используют `BoundedDiagnosticCollector` и добавляют
+`DiagnosticBatch`; копирование payload/meta сохраняет counts. Runner проверяет
+append-only delta, объединяет counts подавленных деталей и создаёт ровно одно
+terminal suppression summary, не учитывая его как входную occurrence.
+
 **Правило слоя:** ETL kernel не знает о IOC-предметке, конкретных payload,
 stage names, logging implementation или IO adapters.
 

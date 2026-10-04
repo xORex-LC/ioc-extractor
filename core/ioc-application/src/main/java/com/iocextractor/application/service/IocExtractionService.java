@@ -123,13 +123,13 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                 .then(new ReadSourceStage(components.reader(), diagnostics))
                 .then(new RefangStage(components.refanger(), settings.decisionTracer()))
                 .then(new ExtractIndicatorsStage(components.extractor(), diagnostics,
-                        settings.decisionTracer()))
+                        settings.decisionTracer(), settings.maxDiagnosticsPerRun()))
                 .then(new AttributeSourceStage(components.attributor(), clock,
                         settings.decisionTracer()));
         var prepared = attributed.then(new PrepareRoutedArtifactsStage(
                 Objects.requireNonNull(settings.documentPlan(), "documentPlan"), components.preparers(),
                 Objects.requireNonNull(components.identityResolver(), "identityResolver"),
-                settings.writePolicies(), settings.deduplicate(), diagnostics));
+                settings.writePolicies(), settings.deduplicate(), diagnostics, settings.maxDiagnosticsPerRun()));
         return prepared.then(new WriteArtifactsStage(
                 components.repository(), components.lifecycleWriter(),
                 components.identityResolver(), components.projection(), diagnostics));

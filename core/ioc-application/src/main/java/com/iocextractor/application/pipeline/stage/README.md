@@ -36,3 +36,8 @@ Per-item TRACE идёт через application-owned `PipelineDecisionTracer`: �
 Обычная diagnostic occurrence использует ровно один путь: stage либо прикрепляет
 её к возвращаемому envelope, либо бросает typed `DiagnosticException`, если
 валидный payload вернуть невозможно.
+
+Extraction и document preparation ограничивают diagnostic detail внутри циклов
+через per-invocation `BoundedDiagnosticCollector`. Его `DiagnosticBatch`
+передаёт точные severity counts в envelope отдельно от retained samples;
+поздние ERROR/FATAL достигают checkpoint даже при исчерпанном лимите.

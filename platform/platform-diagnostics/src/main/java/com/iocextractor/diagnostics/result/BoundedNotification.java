@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * Per-run diagnostic accumulator with a retained-item budget for element and run occurrences.
@@ -44,6 +45,26 @@ public final class BoundedNotification {
     /** Adds a collection in encounter order. */
     public void addAll(Collection<Diagnostic> diagnostics) {
         Objects.requireNonNull(diagnostics, "diagnostics").forEach(this::add);
+    }
+
+    /** Merges an independently bounded batch without treating its omitted details as lost counts. */
+    public void addAll(DiagnosticBatch batch) {
+        addAll(batch, diagnostic -> { });
+    }
+
+    /** Merges a batch and delivers each newly retained occurrence once. Collector failures propagate. */
+    public void addAll(DiagnosticBatch batch, Consumer<Diagnostic> delivery) {
+        Objects.requireNonNull(batch, "batch");
+        Objects.requireNonNull(delivery, "delivery");
+        for (Diagnostic diagnostic : batch.retained()) {
+            if (offer(diagnostic)) {
+                delivery.accept(diagnostic);
+            }
+        }
+        batch.suppressedBySeverity().forEach((severity, count) -> {
+            suppressed += count;
+            suppressedBySeverity.merge(severity, count, Long::sum);
+        });
     }
 
     /** Adds one diagnostic while preserving the first error and fatal signals. */
@@ -102,6 +123,11 @@ public final class BoundedNotification {
     /** Returns counts for all observed diagnostics, including suppressed ones. */
     public DiagnosticSummary summary() {
         return DiagnosticSummary.of(retained, suppressedBySeverity);
+    }
+
+    /** Snapshots exact observed facts and retained detail without a synthetic summary occurrence. */
+    public DiagnosticBatch batch() {
+        return new DiagnosticBatch(retained, summary());
     }
 
     private void suppress(Diagnostic diagnostic) {

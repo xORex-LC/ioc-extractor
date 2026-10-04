@@ -30,6 +30,24 @@ public record DiagnosticSummary(long total,
         return new DiagnosticSummary(0, 0, Map.of());
     }
 
+    /** Combines independent occurrence batches, including their suppressed totals. */
+    public DiagnosticSummary plus(DiagnosticSummary additional) {
+        Objects.requireNonNull(additional, "additional");
+        var counts = new EnumMap<DiagnosticSeverity, Long>(DiagnosticSeverity.class);
+        counts.putAll(bySeverity);
+        additional.bySeverity().forEach((severity, count) -> counts.merge(severity, count, Long::sum));
+        return new DiagnosticSummary(total + additional.total(), suppressed + additional.suppressed(), counts);
+    }
+
+    /** Returns a stage delta; removing observed occurrences is rejected. */
+    public DiagnosticSummary since(DiagnosticSummary previous) {
+        Objects.requireNonNull(previous, "previous");
+        var counts = new EnumMap<DiagnosticSeverity, Long>(DiagnosticSeverity.class);
+        counts.putAll(bySeverity);
+        previous.bySeverity().forEach((severity, count) -> counts.merge(severity, -count, Long::sum));
+        return new DiagnosticSummary(total - previous.total(), suppressed - previous.suppressed(), counts);
+    }
+
     /**
      * Returns this summary extended with retained terminal diagnostics.
      *

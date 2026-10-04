@@ -1,6 +1,8 @@
 package com.iocextractor.platform.etl;
 
 import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.diagnostics.result.DiagnosticBatch;
+import com.iocextractor.diagnostics.result.DiagnosticSummary;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -13,9 +15,16 @@ import java.util.Objects;
  * @param payload stage payload
  * @param meta pipeline metadata
  * @param diagnostics accumulated diagnostics
+ * @param diagnosticSummary exact observed counts, including omitted detail
  * @param <T> payload type
  */
-public record Envelope<T>(T payload, EnvelopeMeta meta, List<Diagnostic> diagnostics) {
+public record Envelope<T>(T payload, EnvelopeMeta meta, List<Diagnostic> diagnostics,
+                          DiagnosticSummary diagnosticSummary) {
+
+    /** Creates an envelope whose diagnostic detail is complete. */
+    public Envelope(T payload, EnvelopeMeta meta, List<Diagnostic> diagnostics) {
+        this(payload, meta, diagnostics, DiagnosticSummary.empty().plusDiagnostics(diagnostics));
+    }
 
     /**
      * Creates an envelope with defensive diagnostics copying.
@@ -23,6 +32,7 @@ public record Envelope<T>(T payload, EnvelopeMeta meta, List<Diagnostic> diagnos
     public Envelope {
         Objects.requireNonNull(meta, "meta");
         diagnostics = List.copyOf(Objects.requireNonNull(diagnostics, "diagnostics"));
+        Objects.requireNonNull(diagnosticSummary, "diagnosticSummary");
     }
 
     /**
@@ -45,7 +55,7 @@ public record Envelope<T>(T payload, EnvelopeMeta meta, List<Diagnostic> diagnos
      * @return envelope with the new payload
      */
     public <R> Envelope<R> withPayload(R nextPayload) {
-        return new Envelope<>(nextPayload, meta, diagnostics);
+        return new Envelope<>(nextPayload, meta, diagnostics, diagnosticSummary);
     }
 
     /**
@@ -55,7 +65,7 @@ public record Envelope<T>(T payload, EnvelopeMeta meta, List<Diagnostic> diagnos
      * @return envelope at the supplied stage
      */
     public Envelope<T> atStage(StageId stage) {
-        return new Envelope<>(payload, meta.atStage(stage), diagnostics);
+        return new Envelope<>(payload, meta.atStage(stage), diagnostics, diagnosticSummary);
     }
 
     /**
@@ -68,7 +78,7 @@ public record Envelope<T>(T payload, EnvelopeMeta meta, List<Diagnostic> diagnos
         Objects.requireNonNull(diagnostic, "diagnostic");
         var next = new ArrayList<>(diagnostics);
         next.add(diagnostic);
-        return new Envelope<>(payload, meta, next);
+        return new Envelope<>(payload, meta, next, diagnosticSummary.plusDiagnostics(List.of(diagnostic)));
     }
 
     /**
@@ -80,7 +90,15 @@ public record Envelope<T>(T payload, EnvelopeMeta meta, List<Diagnostic> diagnos
     public Envelope<T> withDiagnostics(Collection<Diagnostic> additional) {
         var next = new ArrayList<>(diagnostics);
         next.addAll(Objects.requireNonNull(additional, "additional"));
-        return new Envelope<>(payload, meta, next);
+        return new Envelope<>(payload, meta, next, diagnosticSummary.plusDiagnostics(additional));
+    }
+
+    /** Appends an independently bounded stage batch while retaining its exact counts. */
+    public Envelope<T> withDiagnostics(DiagnosticBatch additional) {
+        Objects.requireNonNull(additional, "additional");
+        var next = new ArrayList<>(diagnostics);
+        next.addAll(additional.retained());
+        return new Envelope<>(payload, meta, next, diagnosticSummary.plus(additional.summary()));
     }
 
     /**
@@ -91,6 +109,6 @@ public record Envelope<T>(T payload, EnvelopeMeta meta, List<Diagnostic> diagnos
      * @return envelope with updated metadata
      */
     public Envelope<T> withMetaAttribute(String key, Object value) {
-        return new Envelope<>(payload, meta.withAttribute(key, value), diagnostics);
+        return new Envelope<>(payload, meta.withAttribute(key, value), diagnostics, diagnosticSummary);
     }
 }

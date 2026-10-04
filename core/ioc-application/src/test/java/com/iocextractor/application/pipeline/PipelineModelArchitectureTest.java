@@ -68,6 +68,9 @@ class PipelineModelArchitectureTest {
         if (type == boolean.class) {
             return false;
         }
+        if (type == int.class) {
+            return 10_000;
+        }
         if (java.util.Map.class.equals(type)) {
             return java.util.Map.of();
         }

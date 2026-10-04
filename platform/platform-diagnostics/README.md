@@ -9,6 +9,8 @@ Catalog codes несут immutable `ELEMENT | RUN | OPERATION` impact.
 `BoundedNotification`/`DiagnosticSummary` дают точный bounded run outcome:
 ELEMENT/RUN occurrences ограничены бюджетом, low-cardinality OPERATION
 occurrences остаются видимыми, first ERROR/FATAL не скрывается от failure policy.
+`BoundedDiagnosticCollector` ограничивает детали уже внутри stage loop;
+`DiagnosticBatch` переносит samples и точные severity counts независимо.
 
 **Правило слоя:** diagnostics core не пишет в SLF4J и не знает про pipeline,
 domain, adapters или bootstrap.

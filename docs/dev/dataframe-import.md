@@ -155,7 +155,10 @@ continues when notifications are disabled, lost, duplicated or reconnecting.
   the canonical transaction copies warnings into the dataframe receipt so
   post-commit report recovery reproduces them without reprocessing input.
   Warnings from the accepted representative and compatible COALESCED members
-  are published; rejected rows do not contribute warnings.
+  are published; rejected rows do not contribute warnings. The workspace retains
+  at most `maximum-row-errors` warning details (default 100,000); further warning
+  details are omitted by the current writer. This is a detail cap, not an exact
+  count of every warning observed during preparation.
 - `adapter-ingest` owns local claim/terminal filesystem mechanics, the one
   local-filesystem immutable snapshot-store implementation shared by every
   source transport, and local WatchService hints.

@@ -63,6 +63,18 @@ admitted branches/cells и все прежние правила source authority
 путей. Подсчёт IOC без источника использует attribution decisions и не создаёт
 дополнительный полный список `Indicator`.
 
+Лимит `ioc.pipeline.max-diagnostics-per-run` действует внутри циклов extraction
+и document preparation. Каждый stage-local collector удерживает первые
+ELEMENT/RUN occurrences до лимита и первые ERROR/FATAL сверх него, сохраняя
+порядок поступления. Точные counts по severity передаются через `DiagnosticBatch`
+и `Envelope` отдельно от details. Runner применяет общий лимит, сохраняет
+прежние samples и доставку retained occurrences exactly once, добавляя одно
+итоговое `PIPELINE.DIAGNOSTICS_SUPPRESSED`. Это итоговое сообщение не входит в
+observed counts. OPERATION diagnostics остаются вне occurrence-бюджета по
+прежнему контракту. Отказ collector/delivery не скрывается; failure policy
+видит поздние ERROR/FATAL до резервирования ID и canonical write. TRACE остаётся
+отдельной явно включаемой доставкой решений, а не хранилищем diagnostic details.
+
 Исторический `make processing-route-comparison` сравнивал совместимый и выбранный
 пути через штатную Spring-конфигурацию в отдельных JVM/SQLite/workspaces. После
 полного перехода текущий код поддерживает только выбранные маршруты;

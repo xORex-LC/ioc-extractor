@@ -18,18 +18,33 @@ equal positions, adjacent/overlapping markers and seeded randomized fixtures
 against an independent linear oracle. The diagnostic agent counts actual marker
 position comparisons; primary timing forks do not attach the agent.
 
-## Diagnostics design in progress
+## Diagnostics
 
 The current runner already bounds retention and sink delivery, but extraction
 and document preparation construct full diagnostic lists before returning.
-Construction-time collectors will carry retained samples and exact severity
-counts as separate facts. The global runner must merge those facts without
-counting a synthetic suppression summary as another occurrence, and must
-preserve the rejecting error/fatal signal before canonical writes.
+Construction-time collectors now carry retained samples and exact severity
+counts as separate facts in `DiagnosticBatch`. A local collector keeps the first
+`limit` ELEMENT/RUN occurrences and, when needed, up to two additional first
+ERROR/FATAL representatives in encounter order. It does not displace an early
+sample: doing so before global merging could change the original run sample.
+The global runner merges omitted counts, applies its original retention and
+delivery rules and creates one terminal synthetic summary, excluded from
+observed totals. Low-cardinality OPERATION diagnostics remain budget-exempt.
+Collectors are owned by synchronous stage invocations, not shared run state.
 
 Managed import has a separate participant-warning and receipt contract. Its
 complete detail requirements must be checked before changing any import path.
-No new diagnostic disk spool is justified solely by a sampled pipeline result.
+No complete-detail document diagnostic spool is part of the supported contract:
+the document outcome and sink are explicitly sampled. Import's retained accepted
+participant warnings already stream through the existing private SQLite stage
+and canonical receipt. Warning detail has an existing cap at
+`ImportWorkspaceLimits.maximumRowErrors()` (default 100,000 per stage); above
+that cap the current writer omits further warnings. This is separate from
+document diagnostic counts, and CAP-3 does not claim full import warning detail
+beyond that cap. Workspace byte limits and explicit storage failures remain
+the authority. Adding a second spool would duplicate ownership and introduce
+new disk consumption without a consumer requirement. CAP-3 changes neither
+import warnings nor receipt schema/recovery.
 
 ## Validation
 

@@ -1,5 +1,13 @@
 package com.iocextractor.application.pipeline.stage;
 
+import com.iocextractor.application.pipeline.payload.AttributedIndicators;
+import com.iocextractor.domain.extract.RawIndicator;
+import com.iocextractor.domain.model.IndicatorType;
+import com.iocextractor.domain.attribute.AttributionDecision;
+import com.iocextractor.domain.attribute.AttributionOutcome;
+import com.iocextractor.platform.etl.Envelope;
+import com.iocextractor.diagnostics.DiagnosticSeverity;
+
 import com.iocextractor.application.artifact.ArtifactIdSequence;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
 import com.iocextractor.application.artifact.ArtifactRow;
@@ -36,6 +44,112 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PrepareRoutedArtifactsStageTest {
     private static final ArtifactWritePolicy KEEP_FIRST = ArtifactWritePolicy.keepFirst();
+
+    @Test
+    void high_error_preparation_retains_bounded_detail_and_exact_outcome_and_delivery() {
+        var error = StageTestSupport.DIAGNOSTICS.create(PipelineDiagnosticCodes.ROUTING_REJECTED)
+                .with("plan", "test").with("indicator", "bad.example").with("reason", "REJECTED").build();
+        DocumentProcessingPlan plan = occurrence -> Result.of(List.of(), List.of(error));
+        var stage = new PrepareRoutedArtifactsStage(plan, List.of(empty("masks", "mask")),
+                (artifact, row) -> Optional.empty(), Map.of("masks", KEEP_FIRST), false,
+                StageTestSupport.DIAGNOSTICS, 3);
+        var sink = new CollectingDiagnosticSink();
+        var runner = new PipelineRunner(FailurePolicy.collectAndContinue(), new NoopPipelineObserver(),
+                sink, StageTestSupport.DIAGNOSTICS, 3);
+
+        var result = runner.runWithOutcome(manyOccurrences(100_000),
+                Pipeline.<AttributedIndicators>start().then(stage));
+
+        assertThat(result.envelope().payload().extracted()).isEqualTo(100_000);
+        assertThat(result.envelope().diagnostics()).hasSize(4);
+        assertThat(result.diagnosticSummary().total()).isEqualTo(100_000);
+        assertThat(result.diagnosticSummary().suppressed()).isEqualTo(99_997);
+        assertThat(result.diagnosticSummary().count(DiagnosticSeverity.ERROR))
+                .isEqualTo(100_000);
+        assertThat(sink.diagnostics()).containsExactlyElementsOf(result.envelope().diagnostics());
+    }
+
+    @Test
+    void late_error_and_fatal_reject_before_id_reservation_and_durable_write() {
+        for (var severity : List.of(DiagnosticSeverity.ERROR,
+                DiagnosticSeverity.FATAL)) {
+            var warning = StageTestSupport.DIAGNOSTICS.create(PipelineDiagnosticCodes.ITEM_SKIPPED)
+                    .with("item", "sample").with("stage", "test").with("reason", "warning").build();
+            var rejection = StageTestSupport.DIAGNOSTICS.create(PipelineDiagnosticCodes.ROUTING_REJECTED)
+                    .severity(severity).with("plan", "test").with("indicator", "bad.example")
+                    .with("reason", "late rejection").build();
+            DocumentProcessingPlan plan = occurrence -> Result.of(List.of(),
+                    List.of(occurrence.tieOrdinal() == 99_999 ? rejection : warning));
+            var ids = new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 17);
+            var writes = new AtomicInteger();
+            CanonicalArtifactRepository repository = new CanonicalArtifactRepository() {
+                @Override public CanonicalArtifact load(String name) { throw new AssertionError("write checkpoint"); }
+                @Override public CanonicalWriteResult write(String name, CanonicalArtifact artifact) {
+                    writes.incrementAndGet();
+                    return new CanonicalWriteResult(0, 0);
+                }
+            };
+            var stage = new PrepareRoutedArtifactsStage(plan, List.of(empty("masks", "mask", ids)),
+                    (artifact, row) -> Optional.empty(), Map.of("masks", KEEP_FIRST), false,
+                    StageTestSupport.DIAGNOSTICS, 3);
+            var sink = new CollectingDiagnosticSink();
+            var policy = severity == DiagnosticSeverity.ERROR
+                    ? FailurePolicy.failFast() : FailurePolicy.collectAndContinue();
+            var runner = new PipelineRunner(policy, new NoopPipelineObserver(), sink, StageTestSupport.DIAGNOSTICS, 3);
+            var pipeline = Pipeline.<AttributedIndicators>start()
+                    .then(stage).then(new WriteArtifactsStage(repository,
+                            ignored -> ArtifactProjectionResult.clean(0), StageTestSupport.DIAGNOSTICS));
+
+            assertThatThrownBy(() -> runner.run(manyOccurrences(100_000), pipeline))
+                    .isInstanceOf(DiagnosticException.class).extracting("diagnostic").isEqualTo(rejection);
+            assertThat(writes).hasValue(0);
+            assertThat(ids.reserve(1).start()).isEqualTo(17);
+            assertThat(sink.diagnostics()).hasSize(5).containsOnlyOnce(rejection);
+            assertThat(sink.diagnostics().getLast().context()).containsEntry("suppressedCount", 99_997L);
+        }
+    }
+
+    @Test
+    void duplicate_and_mapping_diagnostics_remain_counted_for_losing_occurrences() {
+        var warning = StageTestSupport.DIAGNOSTICS.create(PipelineDiagnosticCodes.ITEM_SKIPPED)
+                .with("item", "sample").with("stage", "mapping").with("reason", "warning").build();
+        var mapped = new AtomicInteger();
+        DocumentProcessingPlan plan = new DocumentProcessingPlan() {
+            @Override public com.iocextractor.application.artifact.DocumentObservationSelection observationSelection() {
+                return com.iocextractor.application.artifact.DocumentObservationSelection.RETAINED_OBSERVATIONS;
+            }
+            @Override public Result<List<RoutedArtifactCandidate>> prepare(IndicatorOccurrence occurrence) {
+                mapped.incrementAndGet();
+                return Result.of(List.of(candidate("masks", "mask", "same.example", occurrence)), List.of(warning));
+            }
+        };
+        var stage = new PrepareRoutedArtifactsStage(plan, List.of(empty("masks", "mask")),
+                (artifact, row) -> Optional.of(new ArtifactRowKey(row.value("mask"))),
+                Map.of("masks", KEEP_FIRST), true, StageTestSupport.DIAGNOSTICS, 3);
+
+        var output = stage.process(manyOccurrences(100_000));
+
+        assertThat(output.payload().extracted()).isEqualTo(100_000);
+        assertThat(output.payload().retained()).isOne();
+        assertThat(output.payload().plans().getFirst().rows()).hasSize(1);
+        assertThat(mapped).hasValue(100_000);
+        assertThat(output.diagnostics()).hasSize(3);
+        assertThat(output.diagnosticSummary().total()).isEqualTo(199_999);
+        assertThat(output.diagnosticSummary().suppressed()).isEqualTo(199_996);
+        assertThat(output.diagnostics()).extracting(diagnostic -> diagnostic.context().get("stage"))
+                .containsExactly("mapping", StageNames.DEDUPLICATE.value(), "mapping");
+    }
+
+    private static Envelope<
+            AttributedIndicators> manyOccurrences(int count) {
+        var raw = new RawIndicator("same.example",
+                IndicatorType.DOMAIN, 0);
+        var decision = new AttributionDecision(raw, Optional.empty());
+        var outcome = new AttributionOutcome(List.of(),
+                java.util.Collections.nCopies(count, decision));
+        return StageTestSupport.envelope(
+                new AttributedIndicators(outcome), false);
+    }
 
     @Test
     void final_host_key_merges_masks_but_original_urls_remain_distinct_in_blacklist() {
@@ -126,7 +240,7 @@ class PrepareRoutedArtifactsStageTest {
                 return new CanonicalWriteResult(0, 0);
             }
         };
-        var pipeline = Pipeline.<com.iocextractor.application.pipeline.payload.AttributedIndicators>start()
+        var pipeline = Pipeline.<AttributedIndicators>start()
                 .then(new PrepareRoutedArtifactsStage(routing, List.of(preparer),
                         (artifact, row) -> Optional.of(new ArtifactRowKey(row.value("mask"))),
                         Map.of("masks", KEEP_FIRST), true))

@@ -14,9 +14,10 @@ import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.DocumentProcessingPlan;
 import com.iocextractor.application.port.out.artifact.DocumentProcessingSession;
-import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.diagnostics.codes.PipelineDiagnosticCodes;
+import com.iocextractor.diagnostics.result.BoundedDiagnosticCollector;
+import com.iocextractor.diagnostics.result.DiagnosticBatch;
 import com.iocextractor.platform.etl.Envelope;
 import com.iocextractor.platform.etl.Stage;
 import com.iocextractor.platform.etl.StageId;
@@ -38,6 +39,7 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
     private final boolean deduplicate;
     private final ArtifactOccurrenceSelector selector = new ArtifactOccurrenceSelector();
     private final DiagnosticFactory diagnostics;
+    private final int diagnosticLimit;
 
     public PrepareRoutedArtifactsStage(DocumentProcessingPlan processing,
                                        List<ArtifactPreparer> preparers,
@@ -53,6 +55,19 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
                                        ArtifactIdentityResolver identityResolver,
                                        Map<String, ArtifactWritePolicy> policies,
                                        boolean deduplicate, DiagnosticFactory diagnostics) {
+        this(processing, preparers, identityResolver, policies, deduplicate, diagnostics, 10_000);
+    }
+
+    /** Creates the stage with the same retained-occurrence budget as its runner. */
+    public PrepareRoutedArtifactsStage(DocumentProcessingPlan processing,
+                                       List<ArtifactPreparer> preparers,
+                                       ArtifactIdentityResolver identityResolver,
+                                       Map<String, ArtifactWritePolicy> policies,
+                                       boolean deduplicate, DiagnosticFactory diagnostics, int diagnosticLimit) {
+        if (diagnosticLimit < 1) {
+            throw new IllegalArgumentException("diagnosticLimit must be positive");
+        }
+        this.diagnosticLimit = diagnosticLimit;
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
         this.processing = Objects.requireNonNull(processing, "processing");
         this.preparers = List.copyOf(preparers);
@@ -93,14 +108,15 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
         boolean retainObservations = processing.observationSelection()
                 == DocumentObservationSelection.RETAINED_OBSERVATIONS;
         CandidateAccumulator rows = new CandidateAccumulator(artifacts, retainObservations);
-        List<Diagnostic> diagnostics = new ArrayList<>();
+        var diagnostics = new BoundedDiagnosticCollector(diagnosticLimit);
         Set<String> seenOriginals = new HashSet<>();
         int retained = 0;
         int ordinal = 0;
         for (var decision : input.outcome().decisions()) {
-            boolean keep = !deduplicate || seenOriginals.add(decision.indicator().dedupKey());
+            var indicator = decision.indicator();
+            boolean keep = !deduplicate || seenOriginals.add(indicator.dedupKey());
             IndicatorOccurrence occurrence = new IndicatorOccurrence(
-                    decision.indicator(), decision.rawIndicator().position(), ordinal++,
+                    indicator, decision.rawIndicator().position(), ordinal++,
                     !retainObservations || keep);
             if (keep) {
                 retained++;
@@ -117,7 +133,7 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
                 rows.add(candidate, keep);
             }
         }
-        return new Grouped(ordinal, retained, rows, diagnostics);
+        return new Grouped(ordinal, retained, rows, diagnostics.batch());
     }
 
     private List<ArtifactWritePlan> selectPlans(Map<String, ArtifactWritePlan> emptyPlans,
@@ -175,5 +191,5 @@ public final class PrepareRoutedArtifactsStage implements Stage<AttributedIndica
     }
 
     private record Grouped(int extracted, int retained, CandidateAccumulator rows,
-                           List<Diagnostic> diagnostics) { }
+                           DiagnosticBatch diagnostics) { }
 }
