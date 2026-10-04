@@ -12,6 +12,7 @@
     <review-trigger id="export-query-shape-contract-change">Review when export artifacts or columns bypass schema membership, identifier validation, quoting, or bound values.</review-trigger>
     <review-trigger id="sparse-preferred-slot-query-shape-change">Review when preferred-slot allocation accepts runtime SQL identifiers, bypasses identifier validation or value binding, or changes adapter-owned scratch-table shapes.</review-trigger>
     <review-trigger id="cleanup-ownership-accounting-change">Review when cleanup becomes asynchronous or resource ownership, accounting, or primary-failure propagation changes.</review-trigger>
+    <review-trigger id="projection-ownership-failure-contract-change">Review when artifact-lock release, snapshot-generation failure journaling, successful-result reuse or suppression of a separate journal failure changes.</review-trigger>
     <review-trigger id="event-listener-failure-contract-change">Review when event listeners or their keyed executor adopt retry, swallow, or exception translation semantics.</review-trigger>
     <review-trigger id="recovery-diagnostic-contract-change">Review when recovery diagnostic taxonomy, wrapping, or already-diagnosed failure propagation changes.</review-trigger>
     <review-trigger id="pipeline-observer-failure-contract-change">Review when run-scope cleanup, observer delivery, suppression summaries, or primary-failure precedence changes.</review-trigger>
@@ -277,25 +278,25 @@
     </finding>
     <finding id="DATA-IMPORT-P1-SB-001" module="adapters/adapter-store-jdbc" type="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" hash="eb6cb367bb6055513f4dba67783f99e3" occurrence="0" priority="3" rank="15" category="SECURITY" disposition="false-positive" owner="DATA-IMPORT-01" evidence="P1-SQL-TRUST" review="sql-schema-map-binding-change">
         <class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
-        <method name="stream" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/util/List;Lcom/iocextractor/application/artifact/lifecycle/LifecycleActivationState;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;Lcom/iocextractor/application/port/out/artifact/CanonicalArtifactRowConsumer;)I" />
-        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalArtifactRepository.java" startLine="112" bytecode="98" />
+        <method name="stream" signature="(Ljava/sql/Connection;Ljava/lang/String;Ljava/util/List;Lcom/iocextractor/application/artifact/lifecycle/LifecycleActivationState;Lcom/iocextractor/application/artifact/lifecycle/EffectiveTime;Lcom/iocextractor/application/port/out/artifact/CanonicalArtifactRowConsumer;)Lcom/iocextractor/application/port/out/artifact/CanonicalArtifactStreamResult;" />
+        <anchor sourcePath="com/iocextractor/adapter/out/store/jdbc/JdbcCanonicalArtifactRepository.java" startLine="119" bytecode="106" />
         <suppression>
             <Bug pattern="SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING" />
             <Class name="com.iocextractor.adapter.out.store.jdbc.JdbcCanonicalArtifactRepository" />
             <Method name="stream" />
         </suppression>
-        <rationale>Reviewed false positive: artifact and projected-column identifiers come from the immutable validated dataframe schema and are revalidated on quoting; lifecycle values are bound.</rationale>
+        <rationale>Reviewed false positive: artifact and projected-column identifiers come from the immutable validated dataframe schema and are revalidated on quoting; lifecycle values are bound. CAP-2 returns generation from the same read transaction using a separate constant parameter-bound SELECT; it does not introduce an external SQL grammar source.</rationale>
     </finding>
     <finding id="DATA-IMPORT-P1-SB-002" module="adapters/adapter-csv" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="f56a56a24ae9a2c06d035d24e988bb8a" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-IMPORT-01" evidence="P1-ATOMIC-PROJECTION" review="cleanup-ownership-accounting-change">
         <class name="com.iocextractor.adapter.out.sink.csv.CsvArtifactProjection" />
         <method name="write" signature="(Ljava/lang/String;Ljava/nio/file/Path;Ljava/util/List;)Lcom/iocextractor/adapter/out/sink/csv/CsvArtifactProjection$ProjectionWriteResult;" />
-        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/CsvArtifactProjection.java" startLine="126" bytecode="252" />
+        <anchor sourcePath="com/iocextractor/adapter/out/sink/csv/CsvArtifactProjection.java" startLine="130" bytecode="259" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.adapter.out.sink.csv.CsvArtifactProjection" />
             <Method name="write" />
         </suppression>
-        <rationale>Reviewed exception-policy signal: the private atomic-projection boundary removes its temporary file and rethrows the original runtime failure so the application-level failure contract is preserved.</rationale>
+        <rationale>Reviewed exception-policy signal: the private atomic-projection boundary removes its temporary file and rethrows the original runtime failure so the application-level failure contract is preserved. CAP-2 qualifies cursor and cancellation cleanup plus atomic rename failure using real temporary CSV/SQLite.</rationale>
     </finding>
     <finding id="DATA-IMPORT-P1-SB-003" module="core/ioc-application" type="EI_EXPOSE_REP" hash="ae1d90e2a0b58d8b07cbda5c3f6149a5" occurrence="0" priority="2" rank="18" category="MALICIOUS_CODE" disposition="false-positive" owner="DATA-IMPORT-01" evidence="P1-IMMUTABLE-EVENT" review="immutable-snapshot-construction-change">
         <class name="com.iocextractor.application.artifact.CanonicalArtifactsChanged" />
@@ -841,13 +842,13 @@
     <finding id="DATA-TTL-P4-SB-007" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="a4671c0c8959d51cfacdf4d3f12a5e8" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P4-FAILURE-CONTRACT" review="lifecycle-failure-contract-change">
         <class name="com.iocextractor.application.artifact.lifecycle.ArtifactProjectionConvergenceService" />
         <method name="convergePending" signature="()Lcom/iocextractor/application/artifact/lifecycle/ArtifactProjectionConvergenceResult;" />
-        <anchor sourcePath="com/iocextractor/application/artifact/lifecycle/ArtifactProjectionConvergenceService.java" startLine="61" bytecode="189" />
+        <anchor sourcePath="com/iocextractor/application/artifact/lifecycle/ArtifactProjectionConvergenceService.java" startLine="65" bytecode="196" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.application.artifact.lifecycle.ArtifactProjectionConvergenceService" />
             <Method name="convergePending" />
         </suppression>
-        <rationale>Reviewed policy signal: projection work records durable failure state and preserves the exact runtime failure for scheduler diagnostics and reconcile retry.</rationale>
+        <rationale>Reviewed policy signal: the shared generation owner now records durable failure state. Convergence attempts independent artifacts and rethrows the first original failure with later failures suppressed for scheduler diagnostics and reconcile retry; LifecycleRuntimeServicesTest qualifies this accounting.</rationale>
     </finding>
     <finding id="DATA-TTL-P4-SB-008" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="1209c16458804247a9f773bffe3aa10b" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P4-FAILURE-CONTRACT" review="lifecycle-failure-contract-change">
         <class name="com.iocextractor.application.artifact.lifecycle.LifecycleAdmissionService" />
@@ -1419,5 +1420,16 @@
             <Method name="upsert" />
         </suppression>
         <rationale>Reviewed false positive: Scope.upsertSql chooses between two adapter-owned constant UPSERT templates. Identity, field name and observation origin are bound; the scope cannot supply SQL grammar.</rationale>
+    </finding>
+    <finding id="CAP-2-SB-001" module="core/ioc-application" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="1fcdfc3655a36ddfe968dd77cbfe6dd0" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-PROCESSING-CAPACITY" evidence="CAP-2-G2-FAULT-RECOVERY" review="projection-ownership-failure-contract-change">
+        <class name="com.iocextractor.application.artifact.lifecycle.GenerationOwnedArtifactProjection" />
+        <method name="projectOwned" signature="(Lcom/iocextractor/application/artifact/lifecycle/GenerationOwnedArtifactProjection$Owner;Lcom/iocextractor/application/port/out/artifact/ArtifactProjectionCommand;)Lcom/iocextractor/application/port/out/artifact/ArtifactProjectionResult;" />
+        <anchor sourcePath="com/iocextractor/application/artifact/lifecycle/GenerationOwnedArtifactProjection.java" startLine="97" bytecode="224" />
+        <suppression>
+            <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
+            <Class name="com.iocextractor.application.artifact.lifecycle.GenerationOwnedArtifactProjection" />
+            <Method name="projectOwned" />
+        </suppression>
+        <rationale>Reviewed exception-policy signal: the owner preserves the exact installer or acknowledgement failure, records failure only against its observed snapshot generation, and suppresses a separate journal failure. The outer finally always releases ownership; no failed attempt populates the reuse cache. GenerationOwnedArtifactProjectionTest and MutableProjectionOwnershipIT qualify acknowledgement rejection, cancellation, real SQL acknowledgement rollback and recovery without new canonical mutation.</rationale>
     </finding>
 </spotbugs-accepted-findings>

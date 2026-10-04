@@ -209,8 +209,10 @@ mutation changes with query correction in one untraceable result.
 ## CAP-2 — One generation-aware mutable projection owner
 
 Primary ownership: application convergence/run recovery, CSV projection,
-JDBC projection-work state and bootstrap wiring. This is a correctness fix with
-a plausible interleaving; its occurrence in the incident has not been proven.
+JDBC projection-work state and bootstrap wiring. The stale-install interleaving
+was reproduced deterministically during CAP-2; its occurrence in the original
+incident has not been proven. CAP-2.1–CAP-2.6 and G2 are complete; see the
+[qualification report](cap-2-execution.md).
 
 | Task | Deliverable |
 |---|---|
@@ -590,12 +592,15 @@ Document completion promotes durable decisions into an ADR, capability docs,
 operator guide/root map or known-issue disposition; this worknote remains an
 execution plan, not runtime truth.
 
-Current status (2026-10-04): CAP-0, CAP-1A and CAP-1B implementation and scoped
+Current status (2026-10-05): CAP-0, CAP-1A and CAP-1B implementation and scoped
 qualification are recorded in the [execution report](cap-0-1-execution.md).
-CAP-2–CAP-7 remain unimplemented. The 100k document RSS and maximum writer-hold
-budgets remain open; scoped stage qualification is not whole-service acceptance.
+CAP-2 implementation and G2 qualification are complete in the
+[projection ownership report](cap-2-execution.md). CAP-3–CAP-7 remain
+unimplemented. The 100k document RSS and maximum writer-hold budgets remain open;
+scoped stage qualification is not whole-service acceptance.
 
 Historical planning validation: `make docs`, an explicit offline link check of this plan,
 the review and their index/evidence README files, and `git diff --check` passed.
-Only documentation changed in this planning step. Current repository verify/PMD
-evidence belongs to an earlier HEAD and is not fresh candidate-runtime evidence.
+Only documentation changed in that planning step. Its historical verify/PMD
+evidence does not substitute for candidate-runtime checks; current stage evidence
+is recorded separately in the execution reports.

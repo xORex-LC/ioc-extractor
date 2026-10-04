@@ -250,13 +250,24 @@ another path. Introduce one generation-aware projection owner shared by ingest,
 recovery and lifecycle; qualify stale-install ordering with a deterministic
 latch-based regression before changing production.
 
+**CAP-2 follow-up (2026-10-05): resolved and qualified.** The original
+interleaving was reproduced with real temporary SQLite/CSV and timed latches.
+The shared per-artifact owner now serializes snapshot/build/install/ack across
+all production callers. Snapshot coverage advances monotonically; newer
+canonical mutations stay pending and fault recovery needs no later mutation.
+G2, including concurrent ingest/import/expiry and immutable-output regressions,
+passed. See the [execution report](cap-2-execution.md) and
+[ADR 0035](../../../ADR/0035-generation-owned-mutable-projections.md).
+This correction does not establish that the historical stand incident exercised
+the race or close the independent scheduling and memory findings.
+
 ## Finding priority and confidence
 
 | Finding | Priority | Evidence | Required outcome |
 |---|---|---|---|
 | C1 alias-range search per row | P1 | Live exact-driver EXPLAIN, two hot-stack samples, private scaling/semantic probe | Selective indexed matching with work independent of unrelated artifact rows |
 | C2 long writer occupancy | P1 | Lock owner/waiter samples and transaction code | Bounded admitted work or an explicit transaction architecture that meets control/export latency |
-| C8 competing projection installs | P1 | Reachable interleaving in code; deterministic reproduction pending | One generation-aware install/ack owner |
+| C8 competing projection installs | P1, resolved in CAP-2 | Deterministic original-path reproduction; corrected G2 regression/fault qualification passed | Shared generation-aware install/ack owner implemented |
 | C4 all winners retained | P2 | List contracts and preparation/writer ownership | Working-set budget independent of total distinct winners |
 | C5 poller/profile coupling | P2 | Synchronous call path and sequential profile loop | Durable job execution separated from detection; independent profile progress |
 | C6 marker rescanning | P2 | Nested-loop algorithm | Cursor/binary-search attribution preserving semantics |
@@ -748,8 +759,8 @@ Open evidence boundaries are explicit:
   mechanism, not its exact percentage of the 36m55s cycle.
 - Probe variants have one key/request and a synthetic schema; general batching
   and mutation/receipt equivalence remain to be qualified.
-- The projection race has a code-derived interleaving; no claim of its
-  occurrence in this live run is made.
+- The projection race was subsequently reproduced and corrected in CAP-2;
+  no claim of its occurrence in the historical live run is made.
 - Physical publication integrity is verified; this capacity investigation did
   not perform a complete independent row-by-row IOC oracle for the 90,203-row
   accumulated stand output.
