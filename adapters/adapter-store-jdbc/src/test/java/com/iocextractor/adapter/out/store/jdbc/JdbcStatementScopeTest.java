@@ -73,6 +73,55 @@ class JdbcStatementScopeTest {
     }
 
     @Test
+    void never_evicts_live_leases_when_the_statement_limit_is_reached() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:sqlite::memory:");
+             var scope = new JdbcStatementScope(connection)) {
+            var leases = new ArrayList<JdbcStatementScope.Lease>();
+            try {
+                for (int index = 0; index < 32; index++) {
+                    leases.add(scope.borrow("SELECT " + index));
+                }
+                assertThatThrownBy(() -> scope.borrow("SELECT 32"))
+                        .isInstanceOf(IllegalStateException.class).hasMessage("All bounded statements are leased");
+                PreparedStatement released = leases.get(16).statement();
+                leases.get(16).close();
+                try (var replacement = scope.borrow("SELECT 32")) {
+                    assertThat(released.isClosed()).isTrue();
+                    try (var rows = leases.getFirst().statement().executeQuery()) {
+                        assertThat(rows.next()).isTrue();
+                        assertThat(rows.getInt(1)).isZero();
+                    }
+                    assertThat(replacement.statement().isClosed()).isFalse();
+                }
+            } finally {
+                for (var lease : leases) {
+                    lease.close();
+                }
+            }
+        }
+    }
+
+    @Test
+    void released_leases_cannot_access_a_statement_reborrowed_by_the_next_caller() throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:sqlite::memory:");
+             var scope = new JdbcStatementScope(connection)) {
+            var previous = scope.borrow("SELECT ?");
+            previous.statement().setInt(1, 10);
+            previous.close();
+            assertThatThrownBy(previous::statement).isInstanceOf(IllegalStateException.class)
+                    .hasMessage("JDBC statement lease is closed");
+            try (var current = scope.borrow("SELECT ?")) {
+                current.statement().setInt(1, 20);
+                previous.close();
+                try (var rows = current.statement().executeQuery()) {
+                    assertThat(rows.next()).isTrue();
+                    assertThat(rows.getInt(1)).isEqualTo(20);
+                }
+            }
+        }
+    }
+
+    @Test
     void closes_all_statements_and_preserves_close_failures() throws Exception {
         try (var actual = DriverManager.getConnection("jdbc:sqlite::memory:")) {
             List<PreparedStatement> prepared = new ArrayList<>();

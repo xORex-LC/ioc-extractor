@@ -28,6 +28,8 @@ import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -147,6 +149,68 @@ class JdbcCanonicalMatchAndMutationIT {
             connection.commit();
             assertThat(queryLong(connection, "SELECT COUNT(*) FROM masks_sources WHERE source_key='import:test'"))
                     .isEqualTo(1);
+        }
+    }
+
+    @Test
+    void mutation_sessions_require_a_transaction_and_reject_cross_thread_or_closed_use() throws Exception {
+        var engine = new JdbcCanonicalMutationEngine(dataSource, List.of(schema), List.of(identity));
+        var asOf = EffectiveTime.at(START.plusMillis(300));
+        var validity = new FixedRecordValidityPolicy(Duration.ofHours(1)).decide(asOf);
+        try (var connection = dataSource.getConnection()) {
+            assertThatThrownBy(() -> engine.openSession(connection, schema, asOf, validity))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("Mutation session requires a caller-owned transaction");
+            connection.setAutoCommit(false);
+            try (var sessions = new JdbcCanonicalMutationSessions(engine, connection, asOf, validity)) {
+                var session = sessions.forArtifact(schema);
+                assertThat(sessions.forArtifact(schema)).isSameAs(session);
+                var worker = Executors.newSingleThreadExecutor();
+                try {
+                    worker.submit(() -> {
+                        assertThatThrownBy(() -> sessions.forArtifact(schema))
+                                .isInstanceOf(IllegalStateException.class).hasMessageContaining("another thread");
+                        assertThatThrownBy(sessions::close)
+                                .isInstanceOf(IllegalStateException.class).hasMessageContaining("another thread");
+                    }).get(3, TimeUnit.SECONDS);
+                } finally {
+                    worker.shutdownNow();
+                    assertThat(worker.awaitTermination(3, TimeUnit.SECONDS)).isTrue();
+                }
+                assertThat(session.mutateExisting(11L, row("one.example", "transaction-owned"), false, null)
+                        .kind()).isEqualTo(CanonicalRecordMutationKind.UPDATED);
+                sessions.close();
+                assertThatThrownBy(() -> sessions.forArtifact(schema))
+                        .isInstanceOf(IllegalStateException.class).hasMessage("Canonical mutation sessions are closed");
+            }
+            assertThat(connection.isClosed()).isFalse();
+            assertThat(connection.getAutoCommit()).isFalse();
+            connection.rollback();
+            try (var session = engine.openSession(connection, schema, asOf, validity)) {
+                assertThat(session.mutateExisting(11L, row("one.example", "shared"), false, null).kind())
+                        .isEqualTo(CanonicalRecordMutationKind.NO_OP);
+            }
+        }
+    }
+
+    @Test
+    void rejects_missing_canonical_rows_and_corrupt_lifecycle_metadata() throws Exception {
+        var reader = new JdbcCanonicalStoredRowReader(schema);
+        try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(reader.sql())) {
+            assertThatThrownBy(() -> reader.load(statement, 999L)).isInstanceOf(IocExtractorException.class)
+                    .hasMessageContaining("missing row");
+            connection.setAutoCommit(false);
+            try (var update = connection.createStatement()) {
+                for (String invalid : List.of("_lifecycle_id=NULL", "_lifecycle_id=0",
+                        "_first_confirmed_at_epoch_ms=_last_confirmed_at_epoch_ms+1",
+                        "_last_confirmed_at_epoch_ms=_valid_until_epoch_ms")) {
+                    update.executeUpdate("UPDATE masks SET " + invalid + " WHERE id=11");
+                    assertThatThrownBy(() -> reader.load(statement, 11L)).isInstanceOf(IocExtractorException.class)
+                            .hasMessageContaining("metadata");
+                    connection.rollback();
+                }
+            }
+            assertThat(reader.load(statement, 11L).publicRow()).isEqualTo(row("one.example", "shared"));
         }
     }
 

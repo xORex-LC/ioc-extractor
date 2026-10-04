@@ -38,11 +38,44 @@ scope tests exercise bounded eviction, thread/reentrant ownership, clearing
 failure and preservation of close failures. Interrupted admission never runs
 the cancelled work and permits a later fresh attempt.
 
+The final resource regressions also verify that a full pool never evicts a live
+lease, a released lease cannot interfere with its next borrower, mutation
+sessions require a caller-owned transaction, and closed/cross-thread session
+access cannot mutate state. Missing canonical rows and NULL, nonpositive or
+misordered lifecycle metadata fail closed. Focused suites execute seven
+statement-scope cases and fourteen matcher/mutation cases.
+
 The JDBC integration module passed 251 executed test cases and one explicit load
 skip. The new resource test increases the fast suite universe from 220 to 221
 and the deterministic universe from 287 to 288; no test/coverage/analyzer
 threshold is lowered. Exact-HEAD verify/PMD results belong to the repository's
 gate evidence rather than to an earlier frozen runtime manifest.
+
+### CAP-1B-SQL-TRUST analyzer review
+
+The resource refactor changes eight existing SpotBugs finding identities and
+adds five query call sites, producing 125 raw findings instead of 120. All
+thirteen candidates are reviewed individually in the accepted-findings XML;
+the exact method/signature/hash/bytecode selectors replace the eight stale
+identities. No analyzer rule, scope or threshold changes.
+
+| Query owner | Reviewed SQL boundary |
+|---|---|
+| Match session: singleton/readStaged | Validated and quoted artifact identifier; complete key, artifact and deadline values bound; staged values bound on insertion |
+| Mutation engine/session: loadForImport/loadStored | Row-reader projection uses validated schema and fixed internal columns; canonical ID bound |
+| Mutation session: findStored/requireRowId | Prebuilt query uses quoted schema identifier and fixed columns; row key bound |
+| Mutation session: insertActive | Validated schema/internal columns quoted; all public, identity, source and lifecycle values bound |
+| Mutation session: updatePublicRow | Changed names derive only from immutable schema iteration and are quoted; public values including NULL and canonical ID bound |
+| Mutation session: renewLifecycleOnly | Quoted schema identifier; timestamps, ID and active deadline predicate bound |
+| Source recorder and mutation session: record/recordSource | Schema-derived source table revalidated on quoting; source, ID and timestamps bound |
+| Ordered field store: load/upsert | Scope chooses one of two constant adapter-owned templates; identity, field and origin values bound |
+
+The retained statement scope changes resource ownership without allowing IOC
+values into SQL grammar. The existing `sql-schema-map-binding-change` review
+trigger remains applicable. The first full gate exposed a nine-branch coverage
+regression and this undisposed analyzer delta; the added resource/failure cases
+and explicit review address them without relaxing coverage ratchets. Final gate
+status must still be checked against delivery HEAD.
 
 ## Measurement protocol
 
