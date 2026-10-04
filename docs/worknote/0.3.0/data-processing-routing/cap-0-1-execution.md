@@ -77,6 +77,34 @@ regression and this undisposed analyzer delta; the added resource/failure cases
 and explicit review address them without relaxing coverage ratchets. Final gate
 status must still be checked against delivery HEAD.
 
+### Resource watchlist and final validation
+
+The PMD watchlist reports 40 `CloseResource`, four `PreserveStackTrace` and
+zero `NcssCount` findings. Fourteen ownership findings touch changed JDBC files:
+
+| Ownership boundary | Disposition |
+|---|---|
+| Match/mutation sessions and ordered-field store: twelve borrowed statements | Each statement is accessed through a try-with-resources lease. The lease clears parameters/batches; the owning bounded scope closes physical statements on eviction or session close. Closing the statement after each row would defeat the reviewed reuse contract. |
+| Import writer: one borrowed mutation session | The enclosing try-with-resources registry owns every per-artifact session and closes them before the caller commits. |
+| Mutation-session registry: one close-loop finding | The loop explicitly closes each session, continues after a close failure and preserves suppressed failures. The caller's connection remains caller-owned. |
+
+These are analyzer limitations at explicit ownership boundaries, verified by
+the resource/failure regressions above. No watchlist suppression or baseline is
+introduced. The existing stack-trace findings are unchanged by CAP-1B.
+
+The adopted PMD policy remains at zero blocking and 20/20 advisory findings.
+Review of the import writer's affected findings confirms preserved detach/
+restore failure handling, branch planning and ordered mutation accounting.
+CPD remains at 24/24 groups; the affected lifecycle-reader/writer schema helpers
+are existing duplication, with no new session-resource duplication.
+
+Final deterministic verification passes all 288 suites, report-integrity checks
+and coverage ratchets. Aggregate coverage is 91.01% line / 82.90% branch;
+SpotBugs reports 125 individually accepted findings and zero visible findings.
+Documentation links and tools/packaging contracts pass. The delivery check must
+confirm both `verify.fresh=true` and `pmd.fresh=true` at the committed HEAD;
+offline suites do not replace the provisioned SMB evidence below.
+
 ## Measurement protocol
 
 [Raw measurements and identities](qualification/capacity/cap-0-1-20261004.json)
@@ -202,7 +230,8 @@ at least 1 GiB free. Forced OS termination cannot execute `finally`; incomplete
 workspaces retain failure evidence and require explicit cleanup.
 
 Obsolete generated state in 75 private benchmark workspaces was removed and
-full signatures compressed, releasing about 15 GiB. One compressed 100k stand
+full signatures compressed and duplicate archives shared, releasing about
+15.9 GiB. One compressed 100k stand
 canonical/service pair and one 10k processed-import pair remain for follow-up;
 production/stand databases and Git worktrees are preserved. Frozen production
 runtime identities match primary evidence. Twenty-eight offline harness
