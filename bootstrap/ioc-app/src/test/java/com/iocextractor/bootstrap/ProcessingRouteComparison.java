@@ -192,6 +192,7 @@ public final class ProcessingRouteComparison {
         private final AtomicLong peakRss = new AtomicLong();
         private final AtomicLong peakCurrentRss = new AtomicLong();
         private final AtomicReference<Throwable> failure = new AtomicReference<>();
+        private final java.util.concurrent.CountDownLatch firstSample = new java.util.concurrent.CountDownLatch(1);
         private final Thread worker;
 
         PeakSampler() {
@@ -209,6 +210,7 @@ public final class ProcessingRouteComparison {
                             throw new InterruptedException("Memory sampler interrupted");
                         }
                         peakCurrentRss.accumulateAndGet(readStatusMetric("VmRSS:"), Math::max);
+                        firstSample.countDown();
                         TimeUnit.MILLISECONDS.sleep(10);
                     }
                 } catch (InterruptedException interrupted) {
@@ -216,8 +218,23 @@ public final class ProcessingRouteComparison {
                     failure.set(interrupted);
                 } catch (Throwable samplingFailure) {
                     failure.set(samplingFailure);
+                } finally {
+                    firstSample.countDown();
                 }
             });
+        }
+
+        long peakHeapBytes() { return peakHeap.get(); }
+
+        long peakCurrentRssKiB() { return peakCurrentRss.get(); }
+
+        void awaitFirstSample() throws InterruptedException {
+            if (!firstSample.await(2, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Memory sampler did not start");
+            }
+            if (failure.get() != null) {
+                throw new IllegalStateException("Memory sampler failed", failure.get());
+            }
         }
 
         private static long readRssHighWater() {

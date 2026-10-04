@@ -364,5 +364,6 @@ UNPINNED_ACTIONS="$(
   || fail "GitHub Actions must use a local path or full commit SHA: ${UNPINNED_ACTIONS}"
 
 python3 "${TEST_DIR}/processing-route-comparison-test.py"
+python3 "${TEST_DIR}/processing-stage-capacity-test.py"
 
 printf '[tools-contract] PASS\n'

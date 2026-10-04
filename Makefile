@@ -266,6 +266,10 @@ processing-optimization-comparison: ## Alternate frozen before/after selected JV
 data-processing-capacity: ## CAP-0/1 exact-driver SQL or private production-policy SMB qualification; CAPACITY_ARGS is required
 	@python3 tools/dev/data-processing-capacity.py $(CAPACITY_ARGS)
 
+.PHONY: processing-stage-capacity
+processing-stage-capacity: ## CAP-3 paired stage probes; STAGE_CAPACITY_ARGS selects baseline, output and sizes
+	@python3 tools/dev/processing-stage-capacity.py $(STAGE_CAPACITY_ARGS)
+
 db: ## Inspect SQLite read-only; DB=service|dataframe DB_COMMAND=shell|schema|tables
 	@tools/dev/database.sh --workspace "$(WORKSPACE)" --db "$(DB)" "$(DB_COMMAND)"
 

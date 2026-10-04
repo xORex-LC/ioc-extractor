@@ -254,6 +254,9 @@ class ProcessingRouteComparisonTest {    @Test
 
         try (sampler) {
             assertThat(sampled.await(2, TimeUnit.SECONDS)).isTrue();
+            sampler.awaitFirstSample();
         }
+        assertThat(sampler.peakHeapBytes()).isPositive();
+        assertThat(sampler.peakCurrentRssKiB()).isPositive();
     }
 }

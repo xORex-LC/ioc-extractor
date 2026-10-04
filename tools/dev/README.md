@@ -24,6 +24,7 @@
 | `ioc-aggregate-load.sh …` | Сравнить pre-feature JAR и aggregate candidate на одном duplicate-heavy daemon input; измерить end-to-end/write latency, VmHWM и query plans |
 | `router-qualification.sh --size 1000|100000` | Измерить синтетический Camel Router по матрице ветвей, потоков и исходов; отчёты в `.dev/router-qualification` |
 | `processing-route-comparison.py …` | Попарно сравнить совместимый и выбранный путь на одинаковом документе с повторами и processed import; проверить равенство результата и измерить время, throughput, allocations, heap/RSS |
+| `processing-stage-capacity.py …` | Измерить CAP-3 attribution/diagnostics в попарных JVM со снимками классов; автоматически удалить временные файлы |
 | `logs.sh …` | Читать и фильтровать ECS JSON по level/event/run/diagnostic |
 | `release-notes-context.sh …` | Собрать read-only Git/PR inventory для ручной подготовки release notes |
 
@@ -167,6 +168,20 @@ workspace, не проходит по symlinks и не затрагивает fr
 `--mode sql --database .dev/STATE.db` дополнительно проверяет планы на
 read-only public-path состоянии; VM counters при этом относятся только к
 отдельной mechanism fixture. Планы и business workload timings не смешиваются.
+
+`make processing-stage-capacity STAGE_CAPACITY_ARGS='--baseline REV --output
+PATH.json --counts 100000 --large-attribution-count 1000000 --pairs 5'` измеряет
+отдельные механизмы CAP-3: ordered/unordered attribution и construction-time
+diagnostics. Перед запуском закоммитьте изменения и выполните `make test-one
+MODULE=bootstrap/ioc-app TEST=ProcessingRouteComparisonTest`. Скрипт компилирует
+затронутые классы из baseline и текущих исходников, фиксирует общие классы и
+RE2/J, чередует JVM before/after и проверяет signatures всех результатов.
+Каждая JVM выполняет полный прогрев перед измерением; Java agent отсутствует.
+Временные снимки классов автоматически удаляются, базы не создаются. JSON
+содержит время, caller allocations, sampled phase heap/current RSS и retained
+heap после GC (включая fixture и конечный результат). Это измерение стадий,
+а не полный цикл сервиса. `--profiles` выбирает отдельные стадии; нестандартный
+Maven-кэш можно указать через `--re2j-jar`.
 
 `processing-route-comparison.py` собирает test probe вместе с reactor и запускает
 Router в отдельных JVM/SQLite/workspace. После полного перехода на Router

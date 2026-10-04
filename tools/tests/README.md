@@ -35,6 +35,11 @@ Capacity contracts проверяют независимую очистку host
 потерянных либо изменённых public CSV rows. Provisioned SMB запуск остаётся
 отдельным opt-in evidence через `make data-processing-capacity`.
 
+`python3 tools/tests/processing-stage-capacity-test.py` проверяет чередование
+CAP-3 JVM pairs, отказ при потере samples или semantic mismatch, разделение
+статистики по размеру и удаление временных классов при ошибке без публикации
+неполного отчёта.
+
 Контракты retention проверяют очистку тяжёлого состояния после успешного и
 ошибочного fork, сохранность входов/логов/frozen fixtures, явный opt-in для
 баз и отказ от очистки чужих каталогов и symlink targets. При нехватке места
