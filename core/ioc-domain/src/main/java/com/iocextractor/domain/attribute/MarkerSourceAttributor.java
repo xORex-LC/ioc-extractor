@@ -10,7 +10,10 @@ import java.util.List;
 
 /**
  * Default {@link SourceAttributor}. Locates all section-marker occurrences, then
- * assigns each indicator the label of the nearest marker that precedes it.
+ * assigns each indicator the label of the nearest marker at or before it.
+ * Position-ordered input uses one advancing cursor; unordered input uses binary
+ * search without changing encounter order. Marker discovery and overlap
+ * precedence are identical for both paths.
  * Indicators with no preceding marker get a {@code null} source label, which the
  * sink renders as the CSV null literal (an empty {@code source} cell).
  */
@@ -30,11 +33,33 @@ public final class MarkerSourceAttributor implements SourceAttributor {
     public AttributionOutcome attribute(String text, List<RawIndicator> indicators) {
         List<SourceMarker> markers = collectMarkers(text);
         List<AttributionDecision> decisions = new ArrayList<>(indicators.size());
+        boolean ordered = isPositionOrdered(indicators);
+        int cursor = -1;
         for (RawIndicator raw : indicators) {
+            if (ordered) {
+                while (cursor + 1 < markers.size()
+                        && markers.get(cursor + 1).position() <= raw.position()) {
+                    cursor++;
+                }
+            }
+            SourceMarker marker = ordered
+                    ? (cursor < 0 ? null : markers.get(cursor))
+                    : markerAt(markers, raw.position());
             decisions.add(new AttributionDecision(raw,
-                    java.util.Optional.ofNullable(markerAt(markers, raw.position()))));
+                    java.util.Optional.ofNullable(marker)));
         }
         return new AttributionOutcome(markers, decisions);
+    }
+
+    private boolean isPositionOrdered(List<RawIndicator> indicators) {
+        int previous = -1;
+        for (RawIndicator indicator : indicators) {
+            if (indicator.position() < previous) {
+                return false;
+            }
+            previous = indicator.position();
+        }
+        return true;
     }
 
     private List<SourceMarker> collectMarkers(String text) {
@@ -74,15 +99,17 @@ public final class MarkerSourceAttributor implements SourceAttributor {
 
     /** Nearest marker whose position is at or before {@code position}, or {@code null} if none. */
     private SourceMarker markerAt(List<SourceMarker> markers, int position) {
-        SourceMarker selected = null;
-        for (SourceMarker marker : markers) {
-            if (marker.position() <= position) {
-                selected = marker;
+        int lower = 0;
+        int upper = markers.size();
+        while (lower < upper) {
+            int middle = lower + (upper - lower) / 2;
+            if (markers.get(middle).position() <= position) {
+                lower = middle + 1;
             } else {
-                break;
+                upper = middle;
             }
         }
-        return selected;
+        return lower == 0 ? null : markers.get(lower - 1);
     }
 
     private String normalize(String raw) {

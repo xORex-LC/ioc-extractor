@@ -1,12 +1,13 @@
 # Data processing capacity implementation plan
 
-Status: CAP-0–CAP-2 implementation authorized; acceptance budgets adopted by
+Status: CAP-0–CAP-3 implementation authorized; acceptance budgets adopted by
 the owner on 2026-10-04. Prepared from the
 [capacity review](data-processing-capacity-review.md). CAP-1A selective SQL and
 its JDBC regressions and CAP-1B resource sessions are implemented. Stage G0/G1A/G1B
 qualification is recorded in the [execution report](cap-0-1-execution.md);
 CAP-2 ownership implementation and G2 evidence are tracked in its separate
 [execution report](cap-2-execution.md).
+CAP-3 progress is recorded in its [execution report](cap-3-execution.md).
 whole-service resource acceptance remains open. The user supplied desired local-processing times, excluding external
 network/cadence waits, and asked for an engineering recommendation. The absolute
 budgets and technical stage gates below are frozen in

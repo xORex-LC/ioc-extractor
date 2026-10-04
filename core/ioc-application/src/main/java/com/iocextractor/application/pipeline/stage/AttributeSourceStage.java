@@ -11,10 +11,8 @@ import com.iocextractor.application.port.out.observability.PipelineDecisionTrace
 import com.iocextractor.diagnostics.Diagnostic;
 import com.iocextractor.diagnostics.codes.SourceDiagnosticCodes;
 import com.iocextractor.domain.attribute.SourceAttributor;
-import com.iocextractor.domain.model.Indicator;
 
 import java.time.Clock;
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -62,14 +60,13 @@ public final class AttributeSourceStage implements Stage<ExtractedIndicators, At
                         .build());
             });
         }
-        List<Indicator> attributed = outcome.indicators();
         Envelope<AttributedIndicators> output = input.withPayload(new AttributedIndicators(outcome));
 
-        long unattributed = attributed.stream().filter(i -> i.source().label() == null).count();
+        long unattributed = outcome.decisions().stream().filter(decision -> decision.marker().isEmpty()).count();
         if (unattributed > 0) {
             output = output.withDiagnostic(Diagnostic.builder(SourceDiagnosticCodes.MARKERS_UNMATCHED, clock)
                     .with("unattributed", unattributed)
-                    .with("total", attributed.size())
+                    .with("total", outcome.decisions().size())
                     .build());
         }
         return output;

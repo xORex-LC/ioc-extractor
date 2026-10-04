@@ -1,5 +1,17 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.adapter.out.regex.Re2jPatternEngine;
+import com.iocextractor.domain.attribute.AttributionOutcome;
+import com.iocextractor.domain.attribute.MarkerSourceAttributor;
+import com.iocextractor.domain.attribute.SourceAttributor;
+import com.iocextractor.domain.extract.RawIndicator;
+import com.iocextractor.domain.model.IndicatorType;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
+import static org.mockito.Mockito.mock;
+
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.lang.instrument.Instrumentation;
@@ -13,7 +25,76 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Verifies that the opt-in measurement probe cannot publish partial memory samples. */
-class ProcessingRouteComparisonTest {
+class ProcessingRouteComparisonTest {    @Test
+    void ordered_lookup_is_linear_and_unordered_lookup_is_logarithmic() throws Exception {
+        var attributor = instrumentedAttributor();
+        int sections = 400;
+        int occurrences = 100_000;
+        var text = new StringBuilder();
+        var indicators = new ArrayList<RawIndicator>();
+        for (int section = 0; section < sections; section++) {
+            int position = text.length();
+            text.append("SECTION-").append(section).append('\n');
+            for (int index = 0; index < occurrences / sections; index++) {
+                indicators.add(new RawIndicator("example.test", IndicatorType.DOMAIN, position));
+            }
+        }
+        assertComparisons(attributor, text.toString(), indicators, occurrences + sections);
+        Collections.shuffle(indicators, new Random(302_031L));
+        int binarySearchBound = 32 - Integer.numberOfLeadingZeros(sections);
+        assertComparisons(attributor, text.toString(), indicators, (long) occurrences * binarySearchBound);
+    }
+
+    private static void assertComparisons(SourceAttributor attributor, String text,
+                                          List<RawIndicator> input, long upperBound) {
+        ComparisonDiagnostics.premain("", mock(Instrumentation.class));
+        ComparisonDiagnostics.begin();
+        AttributionOutcome outcome;
+        String counters;
+        try {
+            outcome = attributor.attribute(text, input);
+        } finally {
+            counters = ComparisonDiagnostics.end();
+        }
+        assertThat(outcome.decisions()).extracting(decision -> decision.rawIndicator())
+                .containsExactlyElementsOf(input);
+        assertThat(outcome.decisions()).allSatisfy(decision ->
+                assertThat(decision.marker().orElseThrow().position()).isEqualTo(decision.rawIndicator().position()));
+        long comparisons = Long.parseLong(counters.replaceAll(
+                ".*attribution_marker_comparisons=(\\d+).*", "$1"));
+        assertThat(comparisons).isPositive().isLessThanOrEqualTo(upperBound);
+    }
+
+    private static SourceAttributor instrumentedAttributor() throws Exception {
+        String prefix = MarkerSourceAttributor.class.getName();
+        var loader = new ClassLoader(MarkerSourceAttributor.class.getClassLoader()) {
+            @Override
+            protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+                if (!name.equals(prefix) && !name.startsWith(prefix + "$")) {
+                    return super.loadClass(name, resolve);
+                }
+                Class<?> loaded = findLoadedClass(name);
+                if (loaded == null) {
+                    String path = name.replace('.', '/');
+                    try (var source = getParent().getResourceAsStream(path + ".class")) {
+                        byte[] bytes = ComparisonDiagnostics.instrument(path,
+                                java.util.Objects.requireNonNull(source).readAllBytes());
+                        loaded = defineClass(name, bytes, 0, bytes.length);
+                    } catch (java.io.IOException failure) {
+                        throw new ClassNotFoundException(name, failure);
+                    }
+                }
+                if (resolve) {
+                    resolveClass(loaded);
+                }
+                return loaded;
+            }
+        };
+        return (SourceAttributor) loader.loadClass(prefix)
+                .getConstructor(com.iocextractor.domain.extract.PatternEngine.class, List.class)
+                .newInstance(new Re2jPatternEngine(), List.of("SECTION-\\d+"));
+    }
+
     @Test
     void diagnosticAdmissionAnchorsSurroundTheActualWriterGuard() throws Exception {
         String type = "com/iocextractor/adapter/out/store/jdbc/JdbcWriterAdmission";

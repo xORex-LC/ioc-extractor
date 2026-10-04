@@ -26,6 +26,7 @@ public final class ComparisonDiagnostics {
     private static final String HELPER = "com/iocextractor/bootstrap/ComparisonDiagnostics";
     private static final Map<String, String> ENTRIES = Map.ofEntries(
             entry("domain/feature/NetworkAddressParser", "parse", "parser_calls"),
+            entry("domain/attribute/MarkerSourceAttributor", "attribute", "attribution_calls"),
             entry("domain/feature/NetworkHostDeriver", "derive", "host_computations"),
             entry("adapter/out/psl/PslHostClassifier", "classify", "psl_host_calls"),
             entry("processing/classification/IndicatorClassifier", "classify", "classifications"),
@@ -257,6 +258,10 @@ public final class ComparisonDiagnostics {
 
                     @Override public void visitMethodInsn(int opcode, String owner, String name,
                                                           String desc, boolean isInterface) {
+                        if (type.endsWith("/MarkerSourceAttributor") && owner.endsWith("/SourceMarker")
+                                && name.equals("position")) {
+                            hook("count", "attribution_marker_comparisons");
+                        }
                         boolean admission = type.endsWith("/JdbcWriterAdmission")
                                 && owner.equals("java/util/concurrent/locks/ReentrantLock");
                         boolean canonicalWrite = type.endsWith("/JdbcCanonicalLifecycleWriter")
