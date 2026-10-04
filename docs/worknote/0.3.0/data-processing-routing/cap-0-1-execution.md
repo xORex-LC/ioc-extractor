@@ -50,3 +50,28 @@ daemon/SMB cycle, version-pinned work screen and repeated scaling evidence.
 CAP-1B will be compared to a frozen CAP-1A executable with identical probes,
 configuration and physical inputs. Primary runs carry no Java agent or JFR;
 diagnostic instrumentation remains a separate measurement mode.
+
+## CAP-1B implementation checkpoint
+
+Mutation resources now belong to a caller-owned connection/transaction. The
+immutable engine opens one session per ordinary artifact write and one per
+affected artifact during import promotion. Sessions retain at most 32 prepared
+statements, clear bindings and batches between leases, close all resources
+before commit and never commit or close the caller's connection. Matching uses
+a complete-key singleton query or a lazily created TEMP request table, with
+256-request chunks and 256-key driver batches. Row-local match key material is
+reused for a newly inserted/restarted row; there is no content-keyed global
+cache. Catalog/schema/effective time are immutable session inputs.
+
+Alias delete/reinsert remains unchanged. Import prematching still finishes
+before promotion; sequential ordinary confirmations still see their own writes.
+Import planning/final-cell decoding and lifecycle archival remain separate
+resource owners and are not claimed as optimized by this step.
+
+The new `JdbcStatementScopeTest` adds five fast scenarios for resource reuse,
+bounded eviction, reentrant/thread ownership, clearing failure and preservation
+of close failures. The source universe deliberately increases from 220 to 221
+fast suites and from 287 to 288 deterministic suites; integration/external
+counts and every coverage/analyzer threshold remain unchanged. Three additions
+to the existing matcher integration suite cover repeated calls, independent
+connections, chunk boundaries and rollback/retry. Final gates are pending.

@@ -65,11 +65,15 @@ runtime JDBC drivers.
   keys for `address_blacklist` and `hashes` preserve public/canonical/lifecycle
   IDs, revisions and export-slot ownership.
 - `JdbcCanonicalMatchPlanner` resolves batch key material by digest and exact
-  canonical equality against active rows only. `JdbcCanonicalMutationEngine`
-  is the connection-scoped insert/renew/restart/update/clear/no-op kernel shared
-  by the ordinary lifecycle writer and later import promotion; the caller still
-  owns the surrounding transaction, ID reservations, revision aggregation and
-  receipt publication.
+  canonical equality against active rows only. Its thread-confined matching
+  session uses a direct complete-key singleton query or bounded request staging;
+  a lazily created TEMP table is reused until close. `JdbcCanonicalMutationEngine`
+  is an immutable factory for transaction-scoped insert/renew/restart/update/clear/no-op
+  sessions. Ordinary writes retain one session per artifact; import promotion
+  retains one per affected artifact. Each session owns at most 32 prepared
+  statements, clears bindings/batches between leases and closes before commit.
+  The caller owns the connection, transaction, ID reservations, revision
+  aggregation and receipt publication. No session or JDBC resource is global.
 - `JdbcLifecycleControlStore` uses one-way CAS and refuses `ACTIVE` until one
   set-based invariant scan proves that every configured active row has complete,
   ordered lifecycle metadata. Lifecycle/canonical-row ID ranges are reserved by

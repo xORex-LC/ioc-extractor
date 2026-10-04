@@ -52,7 +52,9 @@ final class JdbcOrderedFieldStore {
                                 ArtifactRow current,
                                 PreparedArtifactRow incoming,
                                 RegisteredObservation registration) throws SQLException {
-        return resolve(connection, Scope.lifecycle(artifact, lifecycleId), current, incoming, registration);
+        try (var statements = new JdbcStatementScope(connection)) {
+            return resolve(statements, Scope.lifecycle(artifact, lifecycleId), current, incoming, registration);
+        }
     }
 
     Resolution resolveCompatibility(Connection connection,
@@ -62,8 +64,10 @@ final class JdbcOrderedFieldStore {
                                     ArtifactRow current,
                                     PreparedArtifactRow incoming,
                                     RegisteredObservation registration) throws SQLException {
-        return resolve(connection, Scope.compatibility(artifact, rowKey, identityEpoch),
+        try (var statements = new JdbcStatementScope(connection)) {
+            return resolve(statements, Scope.compatibility(artifact, rowKey, identityEpoch),
                 current, incoming, registration);
+        }
     }
 
     void initializeLifecycle(Connection connection,
@@ -71,7 +75,9 @@ final class JdbcOrderedFieldStore {
                              long lifecycleId,
                              PreparedArtifactRow incoming,
                              RegisteredObservation registration) throws SQLException {
-        initialize(connection, Scope.lifecycle(artifact, lifecycleId), incoming, registration);
+        try (var statements = new JdbcStatementScope(connection)) {
+            initialize(statements, Scope.lifecycle(artifact, lifecycleId), incoming, registration);
+        }
     }
 
     void initializeCompatibility(Connection connection,
@@ -80,10 +86,23 @@ final class JdbcOrderedFieldStore {
                                  long identityEpoch,
                                  PreparedArtifactRow incoming,
                                  RegisteredObservation registration) throws SQLException {
-        initialize(connection, Scope.compatibility(artifact, rowKey, identityEpoch), incoming, registration);
+        try (var statements = new JdbcStatementScope(connection)) {
+            initialize(statements, Scope.compatibility(artifact, rowKey, identityEpoch), incoming, registration);
+        }
     }
 
-    private Resolution resolve(Connection connection,
+    Resolution resolveLifecycle(JdbcStatementScope statements, String artifact, long lifecycleId,
+                                ArtifactRow current, PreparedArtifactRow incoming,
+                                RegisteredObservation registration) throws SQLException {
+        return resolve(statements, Scope.lifecycle(artifact, lifecycleId), current, incoming, registration);
+    }
+
+    void initializeLifecycle(JdbcStatementScope statements, String artifact, long lifecycleId,
+                             PreparedArtifactRow incoming, RegisteredObservation registration) throws SQLException {
+        initialize(statements, Scope.lifecycle(artifact, lifecycleId), incoming, registration);
+    }
+
+    private Resolution resolve(JdbcStatementScope statements,
                                Scope scope,
                                ArtifactRow current,
                                PreparedArtifactRow incoming,
@@ -95,23 +114,23 @@ final class JdbcOrderedFieldStore {
             String name = field.getKey();
             String incomingValue = incoming.template().value(name);
             FieldValueOrigin incomingOrigin = origin(registration, field.getValue());
-            FieldValueOrigin currentOrigin = load(connection, scope, name);
+            FieldValueOrigin currentOrigin = load(statements, scope, name);
             FieldUpdateDecision decision = policy.decide(
                     current.value(name), currentOrigin, incomingValue, incomingOrigin);
             if (decision == FieldUpdateDecision.CHANGE_PUBLIC_VALUE) {
                 finalRow = finalRow.withValue(name, incomingValue);
                 changed.add(name);
-                upsert(connection, scope, name, incomingOrigin);
+                upsert(statements, scope, name, incomingOrigin);
                 metadataChanged = true;
             } else if (decision == FieldUpdateDecision.ADVANCE_ORIGIN_ONLY) {
-                upsert(connection, scope, name, incomingOrigin);
+                upsert(statements, scope, name, incomingOrigin);
                 metadataChanged = true;
             }
         }
         return new Resolution(finalRow, changed, metadataChanged);
     }
 
-    private void initialize(Connection connection,
+    private void initialize(JdbcStatementScope statements,
                             Scope scope,
                             PreparedArtifactRow incoming,
                             RegisteredObservation registration) throws SQLException {
@@ -122,7 +141,7 @@ final class JdbcOrderedFieldStore {
         for (var field : incoming.orderedFieldPositions().entrySet()) {
             String value = incoming.template().value(field.getKey());
             if (value != null && !value.isBlank()) {
-                upsert(connection, scope, field.getKey(), origin(registration, field.getValue()));
+                upsert(statements, scope, field.getKey(), origin(registration, field.getValue()));
             }
         }
     }
@@ -135,8 +154,9 @@ final class JdbcOrderedFieldStore {
                 registration.admissionOrder(), position, registration.observationId());
     }
 
-    private FieldValueOrigin load(Connection connection, Scope scope, String field) throws SQLException {
-        try (PreparedStatement statement = scope.prepareSelect(connection)) {
+    private FieldValueOrigin load(JdbcStatementScope statements, Scope scope, String field) throws SQLException {
+        try (var lease = statements.borrow(scope.selectSql())) {
+            PreparedStatement statement = lease.statement();
             int index = scope.bindIdentity(statement);
             statement.setString(index, field);
             try (ResultSet result = statement.executeQuery()) {
@@ -151,11 +171,12 @@ final class JdbcOrderedFieldStore {
         }
     }
 
-    private void upsert(Connection connection,
+    private void upsert(JdbcStatementScope statements,
                         Scope scope,
                         String field,
                         FieldValueOrigin origin) throws SQLException {
-        try (PreparedStatement statement = scope.prepareUpsert(connection)) {
+        try (var lease = statements.borrow(scope.upsertSql())) {
+            PreparedStatement statement = lease.statement();
             int index = scope.bindIdentity(statement);
             statement.setString(index++, field);
             statement.setLong(index++, origin.admissionOrder().value());
@@ -191,24 +212,24 @@ final class JdbcOrderedFieldStore {
             return lifecycleId != null;
         }
 
-        private PreparedStatement prepareSelect(Connection connection) throws SQLException {
+        private String selectSql() {
             if (lifecycle()) {
-                return connection.prepareStatement("""
+                return """
                         SELECT admission_order, occurrence_position, occurrence_id
                         FROM canonical_lifecycle_field_origin
                         WHERE artifact = ? AND lifecycle_id = ? AND field_name = ?
-                        """);
+                        """;
             }
-            return connection.prepareStatement("""
+            return """
                     SELECT admission_order, occurrence_position, occurrence_id
                     FROM canonical_compat_field_origin
                     WHERE artifact = ? AND row_key = ? AND identity_epoch = ? AND field_name = ?
-                    """);
+                    """;
         }
 
-        private PreparedStatement prepareUpsert(Connection connection) throws SQLException {
+        private String upsertSql() {
             if (lifecycle()) {
-                return connection.prepareStatement("""
+                return """
                         INSERT INTO canonical_lifecycle_field_origin(
                             artifact, lifecycle_id, field_name, admission_order,
                             occurrence_position, occurrence_id)
@@ -217,9 +238,9 @@ final class JdbcOrderedFieldStore {
                             admission_order = excluded.admission_order,
                             occurrence_position = excluded.occurrence_position,
                             occurrence_id = excluded.occurrence_id
-                        """);
+                        """;
             }
-            return connection.prepareStatement("""
+            return """
                     INSERT INTO canonical_compat_field_origin(
                         artifact, row_key, identity_epoch, field_name, admission_order,
                         occurrence_position, occurrence_id)
@@ -228,7 +249,7 @@ final class JdbcOrderedFieldStore {
                         admission_order = excluded.admission_order,
                         occurrence_position = excluded.occurrence_position,
                         occurrence_id = excluded.occurrence_id
-                    """);
+                    """;
         }
 
         private int bindIdentity(PreparedStatement statement) throws SQLException {

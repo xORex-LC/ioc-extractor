@@ -865,7 +865,8 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
         if (hasOrderedFields) {
             mutationEngine.validateRegistration(connection, registration);
         }
-        try (PreparedStatement statement = connection.prepareStatement("""
+        try (var sessions = new JdbcCanonicalMutationSessions(mutationEngine, connection, asOf, validity);
+             PreparedStatement statement = connection.prepareStatement("""
                 SELECT branch_id, source_row_number, artifact, record_key_hash, canonical_row_id,
                        renew_ttl, requested_slot
                 FROM temp_import_plan
@@ -875,6 +876,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
                 long branchId = rows.getLong("branch_id");
                 String artifact = rows.getString("artifact");
                 DataframeArtifactSchema schema = requireSchema(artifact);
+                var session = sessions.forArtifact(schema);
                 ArtifactRow finalRow = loadFinalRow(connection, branchId, schema);
                 PreparedArtifactRow prepared = loadPreparedRow(
                         connection, branchId, finalRow);
@@ -882,14 +884,14 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
                 CanonicalRecordMutationOutcome outcome;
                 if (canonicalRowId.isPresent()) {
                     outcome = prepared.orderedFieldPositions().isEmpty()
-                            ? mutationEngine.mutateExisting(
-                                    connection, schema, canonicalRowId.orElseThrow(), finalRow,
+                            ? session.mutateExisting(
+                                    canonicalRowId.orElseThrow(), finalRow,
                                     rows.getInt("renew_ttl") == 1,
-                                    IMPORT_SOURCE_PREFIX + command.sourceId().value(), asOf, validity)
-                            : mutationEngine.mutateExistingOrdered(
-                                    connection, schema, canonicalRowId.orElseThrow(), finalRow,
+                                    IMPORT_SOURCE_PREFIX + command.sourceId().value())
+                            : session.mutateExistingOrdered(
+                                    canonicalRowId.orElseThrow(), finalRow,
                                     prepared, rows.getInt("renew_ttl") == 1,
-                                    IMPORT_SOURCE_PREFIX + command.sourceId().value(), asOf, validity,
+                                    IMPORT_SOURCE_PREFIX + command.sourceId().value(),
                                     registration);
                 } else {
                     ArtifactRow insertRow = materializePublicId(
@@ -897,14 +899,14 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
                     PreparedArtifactRow insertPrepared = new PreparedArtifactRow(
                             insertRow, Optional.empty(), prepared.orderedFieldPositions());
                     outcome = prepared.orderedFieldPositions().isEmpty()
-                            ? mutationEngine.insertPlanned(
-                                    connection, schema, IMPORT_SOURCE_PREFIX + command.sourceId().value(),
+                            ? session.insertPlanned(
+                                    IMPORT_SOURCE_PREFIX + command.sourceId().value(),
                                     insertRow, new ArtifactRowKey(rows.getString("record_key_hash")),
-                                    reservations.lifecycleIds().idAt(lifecycleOffset++), asOf, validity)
-                            : mutationEngine.insertPlannedOrdered(
-                                    connection, schema, IMPORT_SOURCE_PREFIX + command.sourceId().value(),
+                                    reservations.lifecycleIds().idAt(lifecycleOffset++))
+                            : session.insertPlannedOrdered(
+                                    IMPORT_SOURCE_PREFIX + command.sourceId().value(),
                                     insertPrepared, new ArtifactRowKey(rows.getString("record_key_hash")),
-                                    reservations.lifecycleIds().idAt(lifecycleOffset++), asOf, validity,
+                                    reservations.lifecycleIds().idAt(lifecycleOffset++),
                                     registration);
                 }
                 if (outcome.publicMutation()) {

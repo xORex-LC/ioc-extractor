@@ -215,29 +215,31 @@ public final class JdbcCanonicalLifecycleWriter implements CanonicalArtifactWrit
             int metadataOnly = 0;
             int publicOffset = 0;
             int lifecycleOffset = 0;
-            for (CanonicalRecordConfirmation record : confirmation.records()) {
-                var outcome = mutationEngine.confirm(
-                        connection, schema, confirmation.sourceKey(), record,
-                        ids.publicId(publicOffset, record), ids.lifecycleIds().idAt(lifecycleOffset),
-                        asOf, validity, confirmation.registration());
-                if (outcome.kind() == CanonicalRecordMutationKind.INSERTED) {
-                    publicOffset += publicIdIncrement(record);
-                    lifecycleOffset++;
-                    created++;
-                } else if (outcome.kind() == CanonicalRecordMutationKind.TTL_CONFIRMED) {
-                    renewed++;
-                } else if (outcome.kind() == CanonicalRecordMutationKind.RESTARTED) {
-                    publicOffset += publicIdIncrement(record);
-                    lifecycleOffset++;
-                    restarted++;
-                } else if (outcome.kind() == CanonicalRecordMutationKind.UPDATED) {
-                    updated++;
-                } else {
-                    throw new IocExtractorException("Unexpected ordinary-ingest mutation outcome: "
-                            + outcome.kind());
-                }
-                if (outcome.metadataMutation() && !outcome.publicMutation()) {
-                    metadataOnly++;
+            try (var session = mutationEngine.openSession(connection, schema, asOf, validity)) {
+                for (CanonicalRecordConfirmation record : confirmation.records()) {
+                    var outcome = session.confirm(
+                            confirmation.sourceKey(), record,
+                            ids.publicId(publicOffset, record), ids.lifecycleIds().idAt(lifecycleOffset),
+                            confirmation.registration());
+                    if (outcome.kind() == CanonicalRecordMutationKind.INSERTED) {
+                        publicOffset += publicIdIncrement(record);
+                        lifecycleOffset++;
+                        created++;
+                    } else if (outcome.kind() == CanonicalRecordMutationKind.TTL_CONFIRMED) {
+                        renewed++;
+                    } else if (outcome.kind() == CanonicalRecordMutationKind.RESTARTED) {
+                        publicOffset += publicIdIncrement(record);
+                        lifecycleOffset++;
+                        restarted++;
+                    } else if (outcome.kind() == CanonicalRecordMutationKind.UPDATED) {
+                        updated++;
+                    } else {
+                        throw new IocExtractorException("Unexpected ordinary-ingest mutation outcome: "
+                                + outcome.kind());
+                    }
+                    if (outcome.metadataMutation() && !outcome.publicMutation()) {
+                        metadataOnly++;
+                    }
                 }
             }
 

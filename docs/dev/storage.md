@@ -247,15 +247,21 @@ export-slot ownership сохраняются. Named match definitions остаю
 альтернативными ключами поиска; совпадение нескольких active lifecycles
 является конфликтом и не склеивает records автоматически.
 
-`JdbcCanonicalMatchPlanner` принимает batch requests, помещает key material в
-connection-local TEMP table и одним set-based join возвращает zero/exact-one/
-multi plan в исходном порядке. SQLite `CROSS JOIN` закрепляет порядок обхода:
+`JdbcCanonicalMatchPlanner` принимает batch requests и возвращает zero/exact-one/
+multi plan в исходном порядке. Для одного request с одним key применяется прямой
+запрос; общий поиск использует connection-local TEMP table, создаваемую один раз
+за matching session, и порции по 256 requests / 256 driver batch keys.
+SQLite `CROSS JOIN` закрепляет порядок обхода:
 request → полный `(artifact, definition_id, key_hash, key_canonical)` alias key →
 canonical row; размер таблицы артефакта не определяет число проверяемых aliases.
 Staged import также ищет aliases по полному key material, сохраняя исходные
-границы preplanning. `JdbcCanonicalMutationEngine` использует этот
-же connection-scoped механизм для ordinary lifecycle writer и managed-import
-promotion. Insert/restart/renew/archive поддерживают aliases атомарно; public
+границы preplanning. Неизменяемый `JdbcCanonicalMutationEngine` создаёт
+transaction-scoped sessions для ordinary lifecycle writer и managed-import
+promotion. Одна session принадлежит одному артефакту, connection и effective time;
+до 32 prepared statements переиспользуются с очисткой bindings/batches между
+leases. Session закрывает statements и TEMP state до commit, не закрывая
+connection и не владея commit/rollback. Импорт держит отдельную session на каждый
+затронутый артефакт в общей транзакции. Insert/restart/renew/archive поддерживают aliases атомарно; public
 mutation отдельно сообщает update, clear, no-op или TTL confirmation. Изменение
 record key, включая очистку всех его значений, не допускается in-place и должно
 создать новую canonical record.

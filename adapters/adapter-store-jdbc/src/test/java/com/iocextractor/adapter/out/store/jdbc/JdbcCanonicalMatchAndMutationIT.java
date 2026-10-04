@@ -17,6 +17,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
@@ -25,12 +26,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @IntegrationTest
+@Timeout(20)
 class JdbcCanonicalMatchAndMutationIT {
 
     private static final Instant START = Instant.parse("2026-08-23T00:00:00Z");
@@ -66,6 +69,85 @@ class JdbcCanonicalMatchAndMutationIT {
     @AfterEach
     void close() {
         dataSource.close();
+    }
+
+    @Test
+    void matching_sessions_rebind_requests_and_isolate_temp_state_between_connections() throws Exception {
+        var planner = new JdbcCanonicalMatchPlanner(dataSource, List.of(schema));
+        var resolver = new CanonicalArtifactKeyResolver(List.of(identity));
+        var asOf = EffectiveTime.at(START.plusMillis(500));
+        var one = request("same-request-id", resolver, row("one.example", null), true);
+        var two = request("same-request-id", resolver, row("two.example", null), true);
+        var many = request("many", resolver, row("unused.example", "shared"), false);
+        try (var first = dataSource.getConnection(); var second = dataSource.getConnection();
+             var left = planner.openSession(first, schema, asOf);
+             var right = planner.openSession(second, schema, asOf)) {
+            assertThat(left.plan(List.of(one)).getFirst().candidates())
+                    .extracting(candidate -> candidate.canonicalRowId()).containsExactly(11L);
+            assertThat(queryLong(first, "SELECT COUNT(*) FROM sqlite_temp_master WHERE name='ioc_match_request'"))
+                    .isZero();
+            assertThat(left.plan(List.of(many, one)).getFirst().candidates())
+                    .extracting(candidate -> candidate.canonicalRowId()).containsExactly(11L, 12L);
+            assertThat(right.plan(List.of(two, many)).getFirst().candidates())
+                    .extracting(candidate -> candidate.canonicalRowId()).containsExactly(12L);
+            assertThat(left.plan(List.of(two)).getFirst().candidates())
+                    .extracting(candidate -> candidate.canonicalRowId()).containsExactly(12L);
+            assertThat(left.plan(List.of(new CanonicalMatchRequest("empty", List.of()))).getFirst().candidates())
+                    .isEmpty();
+            left.close();
+            assertThat(queryLong(first, "SELECT COUNT(*) FROM sqlite_temp_master WHERE name='ioc_match_request'"))
+                    .isZero();
+            assertThatThrownBy(() -> left.plan(List.of())).isInstanceOf(IllegalStateException.class);
+            assertThat(right.plan(List.of(many, two)).getFirst().candidates())
+                    .extracting(candidate -> candidate.canonicalRowId()).containsExactly(11L, 12L);
+        }
+    }
+
+    @Test
+    void chunk_boundaries_preserve_duplicate_request_id_union_and_candidate_order() throws Exception {
+        var planner = new JdbcCanonicalMatchPlanner(dataSource, List.of(schema));
+        var resolver = new CanonicalArtifactKeyResolver(List.of(identity));
+        var requests = new ArrayList<CanonicalMatchRequest>();
+        requests.add(request("repeated", resolver, row("two.example", null), true));
+        for (int index = 1; index < 300; index++) {
+            requests.add(new CanonicalMatchRequest("empty-" + index, List.of()));
+        }
+        requests.add(request("repeated", resolver, row("one.example", null), true));
+        try (var connection = dataSource.getConnection();
+             var session = planner.openSession(connection, schema, EffectiveTime.at(START.plusMillis(500)))) {
+            var plans = session.plan(requests);
+            assertThat(plans).hasSize(301);
+            assertThat(plans.getFirst().candidates()).extracting(candidate -> candidate.canonicalRowId())
+                    .containsExactly(12L, 11L);
+            assertThat(plans.getLast()).isEqualTo(plans.getFirst());
+            assertThat(plans.subList(1, 300)).allSatisfy(plan -> assertThat(plan.candidates()).isEmpty());
+        }
+    }
+
+    @Test
+    void mutation_session_failure_rolls_back_and_a_fresh_session_can_retry_on_the_connection() throws Exception {
+        var engine = new JdbcCanonicalMutationEngine(dataSource, List.of(schema), List.of(identity));
+        var asOf = EffectiveTime.at(START.plusMillis(300));
+        var validity = new FixedRecordValidityPolicy(Duration.ofHours(1)).decide(asOf);
+        try (var connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try (var session = engine.openSession(connection, schema, asOf, validity)) {
+                assertThat(session.mutateExisting(11L, row("one.example", "rollback-source"), true, "import:test")
+                        .kind()).isEqualTo(CanonicalRecordMutationKind.UPDATED);
+                assertThatThrownBy(() -> session.mutateExisting(11L, row("different.example", null), false, null))
+                        .isInstanceOf(IocExtractorException.class);
+            }
+            connection.rollback();
+            try (var session = engine.openSession(connection, schema, asOf, validity)) {
+                assertThat(session.mutateExisting(11L, row("one.example", "shared"), false, null).kind())
+                        .isEqualTo(CanonicalRecordMutationKind.NO_OP);
+                assertThat(session.mutateExisting(11L, row("one.example", "retry-source"), false, "import:test")
+                        .kind()).isEqualTo(CanonicalRecordMutationKind.UPDATED);
+            }
+            connection.commit();
+            assertThat(queryLong(connection, "SELECT COUNT(*) FROM masks_sources WHERE source_key='import:test'"))
+                    .isEqualTo(1);
+        }
     }
 
     @Test
