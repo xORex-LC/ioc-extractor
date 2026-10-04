@@ -173,6 +173,19 @@ class CanonicalArtifactKeyResolverTest {
     }
 
     @Test
+    void key_hash_requires_exactly_sixtyFour_lowercase_ascii_hex_characters() {
+        String valid = "0123456789abcdef".repeat(4);
+        assertThat(new CanonicalKeyMaterial("row-v1", valid, "[]").keyHash()).isEqualTo(valid);
+        for (String invalid : List.of("", valid.substring(1), valid + "0", valid + "\n",
+                "A" + valid.substring(1), "g" + valid.substring(1), "/" + valid.substring(1),
+                ":" + valid.substring(1), "`" + valid.substring(1), "０" + valid.substring(1),
+                valid.substring(0, 63) + " ")) {
+            assertThatThrownBy(() -> new CanonicalKeyMaterial("row-v1", invalid, "[]"))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("lower-case SHA-256");
+        }
+    }
+
+    @Test
     void match_request_requires_a_stable_correlation_identity() {
         String hash = ArtifactIdentityDefinition.sha256("value");
         CanonicalKeyMaterial key = new CanonicalKeyMaterial("row-v1", hash, "[\"value\"]");

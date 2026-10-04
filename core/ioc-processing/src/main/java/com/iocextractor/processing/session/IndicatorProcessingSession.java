@@ -6,28 +6,24 @@ import com.iocextractor.domain.feature.NetworkHostDeriver;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.processing.classification.IndicatorClassifier;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.Objects;
 
 /**
  * Thread-confined, invocation-owned reuse of successful immutable semantic results.
  * The classifier and its policy must remain fixed during this scope. Classification
  * uses the complete indicator, including source; host derivation reconstructs source.
- * Exhausted admission budgets change computation cost only, never accepted results.
+ * Bounded LRU partitions change computation cost only, never accepted results.
  */
 public final class IndicatorProcessingSession implements AutoCloseable {
-    /** Conservative defaults; limits apply jointly to both caches, not to total input memory. */
+    /** Conservative total limits, divided between classification and host reuse. */
     public static final int DEFAULT_MAX_ENTRIES = 256;
     public static final long DEFAULT_MAX_RETAINED_BYTES = 1_048_576;
     private static final long MAX_ENTRY_BYTES = 65_536;
     private final IndicatorClassifier classifier;
     private final NetworkHostDeriver deriver = new NetworkHostDeriver(new NetworkAddressParser());
-    private final int maxEntries;
-    private final long maxRetainedBytes;
-    private final Map<Indicator, ClassificationDecision> classifications = new HashMap<>();
-    private final Map<HostKey, HostValue> hosts = new HashMap<>();
-    private long retainedBytes;
+    private final Cache<Indicator, ClassificationDecision> classifications;
+    private final Cache<HostKey, HostValue> hosts;
     private boolean closed;
 
     public IndicatorProcessingSession(IndicatorClassifier classifier) {
@@ -40,8 +36,9 @@ public final class IndicatorProcessingSession implements AutoCloseable {
         if (maxEntries < 0 || maxRetainedBytes < 0) {
             throw new IllegalArgumentException("Semantic admission budgets must be nonnegative");
         }
-        this.maxEntries = maxEntries;
-        this.maxRetainedBytes = maxRetainedBytes;
+        classifications = new Cache<>(maxEntries - maxEntries / 2,
+                maxRetainedBytes - maxRetainedBytes / 2);
+        hosts = new Cache<>(maxEntries / 2, maxRetainedBytes / 2);
     }
 
     /** Computes with the existing policy; no occurrence diagnostics or prepared rows are retained. */
@@ -54,9 +51,7 @@ public final class IndicatorProcessingSession implements AutoCloseable {
         }
         ClassificationDecision result = Objects.requireNonNull(classifier.classify(indicator), "classification");
         long bytes = classificationBytes(indicator, result);
-        if (admit(bytes)) {
-            classifications.put(indicator, result);
-        }
+        classifications.put(indicator, result, bytes);
         return result;
     }
 
@@ -78,19 +73,11 @@ public final class IndicatorProcessingSession implements AutoCloseable {
                     new Indicator(existing.value(), existing.type(), indicator.source()), null);
         }
         NetworkHostDeriver.Result result = deriver.derive(indicator);
-        if (result.isAvailable() && admit(256L + textBytes(key.value()) + textBytes(result.indicator().value()))) {
-            hosts.put(key, new HostValue(result.indicator().value(), result.indicator().type()));
+        if (result.isAvailable()) {
+            hosts.put(key, new HostValue(result.indicator().value(), result.indicator().type()),
+                    256L + textBytes(key.value()) + textBytes(result.indicator().value()));
         }
         return result;
-    }
-
-    private boolean admit(long bytes) {
-        if (classifications.size() + hosts.size() >= maxEntries || bytes > MAX_ENTRY_BYTES
-                || bytes > maxRetainedBytes - retainedBytes) {
-            return false;
-        }
-        retainedBytes += bytes;
-        return true;
     }
 
     private static long classificationBytes(Indicator key, ClassificationDecision value) {
@@ -119,8 +106,44 @@ public final class IndicatorProcessingSession implements AutoCloseable {
     public void close() {
         classifications.clear();
         hosts.clear();
-        retainedBytes = 0;
         closed = true;
+    }
+
+    /** Local implementation only: access order keeps hot derived hosts through URL churn. */
+    private static final class Cache<K, V> {
+        private final int maxEntries;
+        private final long maxBytes;
+        private final LinkedHashMap<K, Entry<V>> entries = new LinkedHashMap<>(16, 0.75f, true);
+        private long retainedBytes;
+
+        private Cache(int maxEntries, long maxBytes) {
+            this.maxEntries = maxEntries;
+            this.maxBytes = maxBytes;
+        }
+
+        private V get(K key) {
+            Entry<V> entry = entries.get(key);
+            return entry == null ? null : entry.value();
+        }
+
+        /** Called only on a cache miss. Oversized values never evict useful entries. */
+        private void put(K key, V value, long bytes) {
+            if (maxEntries == 0 || bytes > MAX_ENTRY_BYTES || bytes > maxBytes) {
+                return;
+            }
+            while (entries.size() >= maxEntries || bytes > maxBytes - retainedBytes) {
+                retainedBytes -= entries.pollFirstEntry().getValue().bytes();
+            }
+            entries.put(key, new Entry<>(value, bytes));
+            retainedBytes += bytes;
+        }
+
+        private void clear() {
+            entries.clear();
+            retainedBytes = 0;
+        }
+
+        private record Entry<V>(V value, long bytes) { }
     }
 
     private record HostKey(String value, IndicatorType type) { }

@@ -273,6 +273,17 @@ class RouterProcessedImportRowPreparerTest {
                     List.of(new RouterProcessedImportRowPreparer.Input(ARTIFACT, "mask")),
                     Map.of(ARTIFACT, Set.of("mask")));
             assertThat(preparer.prepare(contract(), source, admitted).issues()).isEmpty();
+            try (var session = preparer.openSession(configured)) {
+                assertThat(session.prepare(configured, source, admitted))
+                        .isEqualTo(session.prepare(configured, source, admitted));
+                assertThatThrownBy(() -> session.prepare(contractWithSourceLabel(), source, admitted))
+                        .isInstanceOf(IllegalStateException.class).hasMessageContaining("pinned contract");
+                session.close();
+                assertThatThrownBy(() -> session.prepare(configured, source, admitted))
+                        .isInstanceOf(IllegalStateException.class).hasMessageContaining("session is closed");
+            }
+            assertThatThrownBy(() -> preparer.openSession(contractWithSourceLabel()))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("pinned contract");
             assertThatThrownBy(() -> preparer.prepare(contractWithSourceLabel(), source, admitted))
                     .isInstanceOf(IllegalStateException.class).hasMessageContaining("pinned contract");
             var fingerprintDrift = new CompiledDataframeImportContract(configured.id(), configured.version(),

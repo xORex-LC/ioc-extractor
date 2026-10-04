@@ -31,6 +31,7 @@ public final class ConfigurableRowMapper implements RowMapper {
     private final Map<String, ValueProvider> providers;
     private final Map<String, Transform> transforms;
     private final Map<String, Predicate<ClassifiedIndicator>> conditions;
+    private final Map<String, BoundTransform> boundTransforms;
     private final List<String> header;
     private final Optional<String> idColumn;
 
@@ -48,6 +49,17 @@ public final class ConfigurableRowMapper implements RowMapper {
         this.providers = Map.copyOf(providers);
         this.transforms = Map.copyOf(transforms);
         this.conditions = Map.copyOf(conditions);
+        var bound = new java.util.HashMap<String, BoundTransform>();
+        for (ColumnSpec column : this.columns) {
+            if (column.transform() != null) {
+                for (String spec : column.transform()) {
+                    if (spec != null) {
+                        bound.computeIfAbsent(spec, this::bindTransform);
+                    }
+                }
+            }
+        }
+        this.boundTransforms = Map.copyOf(bound);
         this.header = this.columns.stream().map(ColumnSpec::name).toList();
         this.idColumn = this.columns.stream()
                 .filter(column -> "id".equals(column.from()))
@@ -155,18 +167,24 @@ public final class ConfigurableRowMapper implements RowMapper {
         }
     }
 
-    private String applyTransform(ColumnSpec column, String spec, String value) {
+    private BoundTransform bindTransform(String spec) {
         int sep = spec.indexOf(':');
         String name = sep < 0 ? spec : spec.substring(0, sep);
         String arg = sep < 0 ? null : spec.substring(sep + 1);
-        Transform transform = transforms.get(name);
-        if (transform == null) {
-            throw new IocExtractorException("Unknown transform: " + name);
+        return new BoundTransform(name, arg, transforms.get(name));
+    }
+
+    private String applyTransform(ColumnSpec column, String spec, String value) {
+        BoundTransform bound = boundTransforms.get(spec);
+        if (bound.transform() == null) {
+            throw new IocExtractorException("Unknown transform: " + bound.name());
         }
         try {
-            return transform.apply(value, arg);
+            return bound.transform().apply(value, bound.argument());
         } catch (MappingValueException failure) {
-            throw new RowMappingException(column.name(), TRANSFORM, name, failure);
+            throw new RowMappingException(column.name(), TRANSFORM, bound.name(), failure);
         }
     }
+
+    private record BoundTransform(String name, String argument, Transform transform) { }
 }

@@ -99,12 +99,44 @@ final class RouterProcessedImportRowPreparer implements ProcessedImportRowPrepar
     @Override
     public ImportRowMappingResult prepare(CompiledDataframeImportContract contract,
                                           ImportDelimitedRecord record, ImportLogicalRow admitted) {
+        try (var session = new IndicatorProcessingSession(classifier)) {
+            return prepareInSession(contract, record, admitted, session);
+        }
+    }
+
+    @Override
+    public Session openSession(CompiledDataframeImportContract contract) {
+        if (!pinnedContract.equals(contract)) {
+            throw new IllegalStateException("Processed import plan does not match pinned contract");
+        }
+        var semantics = new IndicatorProcessingSession(classifier);
+        return new Session() {
+            private boolean closed;
+
+            @Override
+            public ImportRowMappingResult prepare(CompiledDataframeImportContract pinned,
+                                                   ImportDelimitedRecord record, ImportLogicalRow admitted) {
+                if (closed) {
+                    throw new IllegalStateException("Import preparation session is closed");
+                }
+                return RouterProcessedImportRowPreparer.this.prepareInSession(pinned, record, admitted, semantics);
+            }
+
+            @Override
+            public void close() {
+                closed = true;
+                semantics.close();
+            }
+        };
+    }
+
+    private ImportRowMappingResult prepareInSession(CompiledDataframeImportContract contract,
+                                            ImportDelimitedRecord record, ImportLogicalRow admitted,
+                                            IndicatorProcessingSession session) {
         requireBinding(contract, admitted);
         RowAssembly assembly = new RowAssembly();
-        try (var session = new IndicatorProcessingSession(classifier)) {
-            for (Input input : inputs) {
-                prepareInput(record, admitted, input, assembly, session);
-            }
+        for (Input input : inputs) {
+            prepareInput(record, admitted, input, assembly, session);
         }
         requirePrimaryOutput(record, admitted, assembly);
         if (!assembly.issues.isEmpty()) {

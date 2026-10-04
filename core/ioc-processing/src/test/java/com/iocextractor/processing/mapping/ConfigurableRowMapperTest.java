@@ -158,6 +158,30 @@ class ConfigurableRowMapperTest {
     }
 
     @Test
+    void boundTransformsPreserveArgumentsOrderAndLazyFailures() {
+        var calls = new java.util.ArrayList<String>();
+        var mapper = new ConfigurableRowMapper(List.of(
+                new ColumnSpec("source", "source.label", null, null,
+                        List.of("append:a:b", "append:", "append")),
+                new ColumnSpec("gated", "const", "value", IndicatorType.IPV4,
+                        List.of("unregistered:argument")),
+                new ColumnSpec("empty", "const", null, null, List.of("unregistered"))),
+                Map.of("source.label", classified -> classified.indicator().source().label()),
+                Map.of("append", (value, argument) -> {
+                    calls.add(argument == null ? "<absent>" : argument);
+                    return value + "!";
+                }));
+        assertThat(mapper.toRow(indicator("example.com", IndicatorType.DOMAIN, "Feed")))
+                .containsExactly("Feed!!!", null, null);
+        assertThat(calls).containsExactly("a:b", "", "<absent>");
+        calls.clear();
+        assertThat(mapper.mapSourceLabel("source", "Other")).isEqualTo("Other!!!");
+        assertThat(calls).containsExactly("a:b", "", "<absent>");
+        assertThatThrownBy(() -> mapper.toRow(indicator("192.0.2.1", IndicatorType.IPV4, "Feed")))
+                .isInstanceOf(IocExtractorException.class).hasMessage("Unknown transform: unregistered");
+    }
+
+    @Test
     void translatesOnlyTypedProviderRejectionAndAddsMappingLocation() {
         var m = new ConfigurableRowMapper(
                 List.of(new ColumnSpec("mask", "validated", null, null, null)),

@@ -103,6 +103,76 @@ class DataframeImportStagingServiceTest {
         assertThat(reader.rowsRead).isZero();
     }
 
+    @Test
+    void eachStagingAttemptClosesItsProcessingScopeIncludingReaderFailureAndAsIsBypass() {
+        for (var mode : ImportProcessingMode.values()) {
+            var contract = contract(mode);
+            var opened = new java.util.concurrent.atomic.AtomicInteger();
+            var closed = new java.util.concurrent.atomic.AtomicInteger();
+            var prepared = new java.util.concurrent.atomic.AtomicInteger();
+            var failPreparation = new java.util.concurrent.atomic.AtomicBoolean();
+            var preparer = new com.iocextractor.application.port.out.dataframeimport.ProcessedImportRowPreparer() {
+                @Override
+                public com.iocextractor.application.dataframeimport.mapping.ImportRowMappingResult prepare(
+                        CompiledDataframeImportContract pinned,
+                        com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord record,
+                        ImportLogicalRow row) {
+                    throw new AssertionError("Staging must use its attempt session");
+                }
+                @Override
+                public Session openSession(CompiledDataframeImportContract pinned) {
+                    assertThat(pinned).isEqualTo(contract);
+                    opened.incrementAndGet();
+                    return new Session() {
+                        @Override
+                        public com.iocextractor.application.dataframeimport.mapping.ImportRowMappingResult prepare(
+                                CompiledDataframeImportContract actual,
+                                com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord record,
+                                ImportLogicalRow row) {
+                            prepared.incrementAndGet();
+                            if (failPreparation.get()) {
+                                throw new IllegalStateException("preparation failure");
+                            }
+                            return com.iocextractor.application.dataframeimport.mapping.ImportRowMappingResult.accepted(row);
+                        }
+                        @Override public void close() { closed.incrementAndGet(); }
+                    };
+                }
+            };
+            var mapper = new DataframeImportRowMapper((specification, value) -> value,
+                    new CanonicalArtifactKeyResolver(List.of(
+                            new ArtifactIdentityDefinition("ip_list", List.of("ip"), false, 1))), preparer);
+            var reader = new FakeReader();
+            var workspace = new RecordingWorkspace();
+            var service = new DataframeImportStagingService(new DataframeImportRecognizer(catalog(contract), reader),
+                    mapper, reader, workspace, ImportWorkspaceLimits.defaults());
+            var command = new ImportStagingCommand(new ImportDeliveryId("delivery"), SOURCE, SNAPSHOT);
+            reader.failAfterFirst = true;
+            assertThatThrownBy(() -> service.stage(command)).hasMessage("reader failure");
+            assertThat(workspace.verified).isFalse();
+            assertThat(closed).hasValue(mode == ImportProcessingMode.AS_IS ? 0 : 1);
+            reader.failAfterFirst = false;
+            workspace.beforeSeal = () -> assertThat(closed).hasValue(opened.get());
+            service.stage(command);
+            assertThat(opened).hasValue(mode == ImportProcessingMode.AS_IS ? 0 : 2);
+            assertThat(closed).hasValue(opened.get());
+            assertThat(prepared).hasValue(mode == ImportProcessingMode.AS_IS ? 0 : 2);
+            workspace.failAppend = true;
+            assertThatThrownBy(() -> service.stage(command)).hasMessage("append failure");
+            assertThat(closed).hasValue(opened.get());
+            workspace.failAppend = false;
+            if (mode == ImportProcessingMode.PROCESSED) {
+                failPreparation.set(true);
+                assertThatThrownBy(() -> service.stage(command)).hasMessage("preparation failure");
+                assertThat(closed).hasValue(opened.get());
+            }
+            var session = mapper.openSession(contract);
+            session.close();
+            session.close();
+            assertThatThrownBy(() -> session.map(null)).hasMessage("Import mapping session is closed");
+        }
+    }
+
     private DataframeImportCatalog catalog(CompiledDataframeImportContract contract) {
         return new DataframeImportCatalog(true,
                 Map.of(SOURCE, new DataframeImportCatalogDraft.Source(
@@ -113,13 +183,17 @@ class DataframeImportStagingServiceTest {
     }
 
     private CompiledDataframeImportContract contract() {
+        return contract(ImportProcessingMode.AS_IS);
+    }
+
+    private CompiledDataframeImportContract contract(ImportProcessingMode mode) {
         var definition = new DataframeImportCatalogDraft.Contract(
                 "ip-list-v1", 1, "UTF-8",
                 new DataframeImportCatalogDraft.Dialect(
                         ";", "\"", ImportRecordSeparator.CRLF_OR_LF, true, List.of("NULL")),
                 new DataframeImportCatalogDraft.Recognition(
                         List.of("ip"), List.of("description"), List.of(), Map.of()),
-                ImportProcessingMode.AS_IS, ImportRoutingPolicy.TARGET_ONLY,
+                mode, ImportRoutingPolicy.TARGET_ONLY,
                 ImportRowFailurePolicy.ACCEPT_VALID, ImportDuplicatePolicy.COALESCE, true,
                 ImportFormulaPolicy.REJECT, ImportMergePolicy.FILL_MISSING,
                 List.of(new DataframeImportCatalogDraft.Artifact(
@@ -137,6 +211,7 @@ class DataframeImportStagingServiceTest {
 
     private static final class FakeReader implements DelimitedRecordReader {
         private int rowsRead;
+        private boolean failAfterFirst;
         @Override
         public List<String> readHeader(DelimitedHeaderReadCommand command) {
             return List.of("description", "ip");
@@ -147,6 +222,9 @@ class DataframeImportStagingServiceTest {
             rowsRead++;
             consumer.accept(new com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord(
                     2, Map.of("ip", "192.0.2.1", "description", "malicious")));
+            if (failAfterFirst) {
+                throw new IllegalStateException("reader failure");
+            }
             consumer.accept(new com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord(
                     3, Map.of("ip", "198.51.100.2", "description", "=formula")));
         }
@@ -157,6 +235,8 @@ class DataframeImportStagingServiceTest {
         private final List<ImportRejectedLogicalRow> rejected = new ArrayList<>();
         private CreateImportWorkspaceCommand command;
         private boolean verified;
+        private boolean failAppend;
+        private Runnable beforeSeal = () -> { };
 
         @Override
         public ImportWorkspaceWriter create(CreateImportWorkspaceCommand createCommand) {
@@ -196,6 +276,9 @@ class DataframeImportStagingServiceTest {
 
         @Override
         public void append(ImportLogicalRow row) {
+            if (failAppend) {
+                throw new IllegalStateException("append failure");
+            }
             accepted.add(row);
         }
 
@@ -206,6 +289,7 @@ class DataframeImportStagingServiceTest {
 
         @Override
         public ImportStage seal() {
+            beforeSeal.run();
             return new ImportStage(new ImportStageReference("stage:delivery"),
                     new ImportSha256("d".repeat(64)), accepted.size() + rejected.size(),
                     accepted.size(), rejected.size());

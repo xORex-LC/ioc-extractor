@@ -84,10 +84,12 @@ public final class DataframeImportStagingService implements DataframeImportStage
                 contract.definition().duplicateSelectionColumn(),
                 promotionPolicy(contract));
         try (ImportWorkspaceWriter writer = workspace.rebuild(workspaceCommand)) {
-            reader.read(new DelimitedReadCommand(
+            try (var session = mapper.openSession(contract)) {
+                reader.read(new DelimitedReadCommand(
                             command.snapshot().reference(), contract.definition().charset(), contract.dialect(),
                             contract.definition().recognition(), limits.inputLimits()),
-                    record -> append(writer, mapper.map(contract, record)));
+                        record -> append(writer, session.map(record)));
+            }
             ImportStage stage = writer.seal();
             workspace.verifySealed(workspaceCommand, stage);
             return new ImportStagingResult(pin, stage);

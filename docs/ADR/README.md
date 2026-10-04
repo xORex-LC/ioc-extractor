@@ -51,6 +51,8 @@
 
 | [0032-invocation-owned-ioc-semantic-reuse.md](0032-invocation-owned-ioc-semantic-reuse.md) | Ограниченное переиспользование семантики IOC в документной сессии и одной строке импорта; полный ключ классификации, текущий source при host reuse и явное закрытие до checkpoint. |
 
+| [0033-bounded-semantic-reuse-during-import-staging.md](0033-bounded-semantic-reuse-during-import-staging.md) | Bounded LRU partitions and application-owned processed-import staging sessions; unchanged row participation and canonical authority. |
+
 ## Формат
 
 `Статус` · `Контекст` · `Решения` (выбор + обоснование + отклонённые варианты) ·

@@ -83,7 +83,7 @@ class IndicatorProcessingSessionTest {
             session.deriveHost(other);
             session.classify(other);
             session.classify(other);
-            assertThat(calls).hasValue(3);
+            assertThat(calls).hasValue(2);
         }
         calls.set(0);
         try (var session = new IndicatorProcessingSession(classifier, 10, 1)) {
@@ -95,6 +95,55 @@ class IndicatorProcessingSessionTest {
             var large = indicator("x".repeat(40_000), IndicatorType.DOMAIN, "source", null);
             assertThat(session.classify(large)).isEqualTo(session.classify(large));
             assertThat(calls).hasValue(2);
+        }
+    }
+
+    @Test
+    void recentOriginalsAndHotDerivedHostsSurviveUniqueUrlChurnAndSourceChanges() {
+        var calls = new AtomicInteger();
+        var classifier = classifier(calls);
+        try (var session = new IndicatorProcessingSession(classifier)) {
+            for (String source : List.of("first", "second")) {
+                for (int index = 0; index < 300; index++) {
+                    var original = indicator("https://host" + index % 20 + ".example/" + index,
+                            IndicatorType.URL, source, null);
+                    session.classify(original);
+                    var host = session.deriveHost(original).indicator();
+                    assertThat(session.classifyWith(host, classifier).match().urlMatch()).isEqualTo(source);
+                    session.classify(original);
+                    assertThat(session.deriveHost(original).indicator()).isEqualTo(host);
+                }
+            }
+            assertThat(calls).hasValue(640);
+        }
+    }
+
+    @Test
+    void evictionUsesAccessOrderAndOversizedBypassDoesNotDisplaceHotEntries() {
+        var calls = new AtomicInteger();
+        var first = indicator("first.example", IndicatorType.DOMAIN, "source", null);
+        var second = indicator("second.example", IndicatorType.DOMAIN, "source", null);
+        var third = indicator("third.example", IndicatorType.DOMAIN, "source", null);
+        try (var session = new IndicatorProcessingSession(classifier(calls), 4, 20_000)) {
+            session.classify(first);
+            session.classify(second);
+            session.classify(first);
+            session.classify(third);
+            session.classify(first);
+            assertThat(calls).hasValue(3);
+            session.classify(indicator("x".repeat(40_000), IndicatorType.DOMAIN, "source", null));
+            session.classify(first);
+            assertThat(calls).hasValue(4);
+            session.classify(second);
+            assertThat(calls).hasValue(5);
+        }
+        calls.set(0);
+        try (var session = new IndicatorProcessingSession(classifier(calls), 20, 2600)) {
+            session.classify(first);
+            session.classify(second);
+            session.classify(second);
+            session.classify(first);
+            assertThat(calls).hasValue(3);
         }
     }
 

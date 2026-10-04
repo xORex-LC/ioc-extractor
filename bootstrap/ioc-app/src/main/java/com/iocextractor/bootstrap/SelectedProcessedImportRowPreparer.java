@@ -27,6 +27,11 @@ final class SelectedProcessedImportRowPreparer implements ProcessedImportRowPrep
     }
 
     @Override
+    public Session openSession(CompiledDataframeImportContract contract) {
+        return selected(contract).openSession(contract);
+    }
+
+    @Override
     public boolean authorizesSourceLabel(CompiledDataframeImportContract contract,
                                          String artifact, String target,
                                          ImportCell admitted, ImportCell prepared) {

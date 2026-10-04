@@ -87,6 +87,44 @@ public final class DataframeImportRowMapper {
                         prepared.row().orElseThrow(), prepared.warnings());
     }
 
+    /** Owns preparation and authority checks under the same pinned staging-attempt scope. */
+    public Session openSession(CompiledDataframeImportContract contract) {
+        return new Session(Objects.requireNonNull(contract, "contract"));
+    }
+
+    /** Thread-confined mapping handle; as-is imports never open a processing session. */
+    public final class Session implements AutoCloseable {
+        private final CompiledDataframeImportContract contract;
+        private final ProcessedImportRowPreparer.Session preparation;
+        private final DataframeImportRowMapper scoped;
+        private boolean closed;
+
+        private Session(CompiledDataframeImportContract contract) {
+            this.contract = contract;
+            preparation = contract.definition().mode() == ImportProcessingMode.AS_IS
+                    ? null : Objects.requireNonNull(processed.openSession(contract), "processing session");
+            scoped = preparation == null ? DataframeImportRowMapper.this
+                    : new DataframeImportRowMapper(transforms, validators, keyResolver, preparation);
+        }
+
+        public ImportRowMappingResult map(ImportDelimitedRecord record) {
+            if (closed) {
+                throw new IllegalStateException("Import mapping session is closed");
+            }
+            return scoped.map(contract, record);
+        }
+
+        @Override
+        public void close() {
+            if (!closed) {
+                closed = true;
+                if (preparation != null) {
+                    preparation.close();
+                }
+            }
+        }
+    }
+
     /** Applies declared input transforms and validation without interpreting output identity. */
     public ImportRowMappingResult admit(CompiledDataframeImportContract contract,
                                         ImportDelimitedRecord record) {

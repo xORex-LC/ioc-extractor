@@ -79,6 +79,15 @@ members whose cells are folded into the representative, are stored with the
 canonical receipt. Rejected rows do not contribute accepted warnings. Receipt
 recovery reproduces the same warning list without reopening the sealed stage.
 
+Processed staging opens an application-owned preparation session after contract
+pin validation and closes it before sealing, including read/map/append failures.
+Selected routes reuse successful bounded semantics across rows in that attempt;
+all rows still reach ordinary validation, authority checks and staging. Stateless
+preparers forward both mapping and source authority through the session. Restaging
+starts a new session; sealed-stage and receipt recovery open none. Direct mapping
+and advisory validation retain row-local behavior. See
+[ADR 0033](../ADR/0033-bounded-semantic-reuse-during-import-staging.md).
+
 ## Source ownership
 
 Local and SMB sources implement the same application lifecycle port, but retain

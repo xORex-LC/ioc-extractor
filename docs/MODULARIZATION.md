@@ -69,7 +69,8 @@ ioc-extractor/                     (parent pom: <packaging>pom</packaging>, <mod
 
 `ioc-processing/session` содержит ограниченное переиспользование успешной
 классификации и host-пар в рамках одного вызова. Владелец документной сессии —
-application stage; для одной строки импорта — bootstrap preparer. Camel не
+application stage; для попытки staging импорта — application staging service
+через порт session, для прямого вызова одной строки — bootstrap preparer. Camel не
 знает ключей семантического кеша и не владеет его жизненным циклом.
 
 ### Направление зависимостей между модулями
