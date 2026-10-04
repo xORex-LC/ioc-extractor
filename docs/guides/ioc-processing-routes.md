@@ -1,7 +1,8 @@
 # Activate IOC processing routes
 
-Named processing plans select views and artifacts for new document observations
-and for explicitly bound `processed` import contracts. The canonical SQLite
+Every document uses a named processing plan; every `processed` import contract
+must explicitly bind one. The shipped `original-document` routes full original
+IOC values and preserves source observation accounting. The canonical SQLite
 record key and write policy remain configured per artifact. Enabling a route
 does not rewrite existing rows.
 
@@ -84,13 +85,14 @@ from the shipped `masks` artifact and admitted by `ip_list`. To retain the
 original address in one field of a cleaned branch, set that column's
 `field-views` entry to `original`; its provider must actually read an IOC value.
 A `const` provider remains constant, and source/ID providers cannot be rebound.
-Never assume that selecting a plan adds to legacy dispatch: it replaces dispatch
-for the selected document scenario. A disabled artifact cannot be routed; an
+Router is the only document dispatch path. Select `observation-selection:
+final-key` for derived-view collapse; the supplied original-value plan uses
+`retained-observations` to preserve source-level ID/provenance accounting. A disabled artifact cannot be routed; an
 enabled artifact must be routed or explicitly listed in `omitted-artifacts`.
 
 ## Bind a processed import contract
 
-An existing `mode: processed` contract can select a named plan with an explicit
+Every `mode: processed` contract must select a named plan with an explicit
 source-cell list and output allowlist. For a contract whose `masks.mask` column
 maps from the CSV `ioc` column, a fragment inside that contract is:
 
@@ -112,7 +114,7 @@ source authority or create a second branch for the same contract artifact.
 Structured input cells must contain one whole IOC. Missing, explicit null and
 value cells retain their distinct meanings. Two inputs that produce conflicting
 identity-bearing values reject the one logical row. `as-is` contracts never run
-IOC routing; unselected `processed` contracts retain their compatible path.
+IOC routing; a `processed` contract without a route fails configuration admission.
 Use [`ioc import validate`](dataframe-import.md#validate-without-importing) on
 the exact candidate before submitting a delivery.
 

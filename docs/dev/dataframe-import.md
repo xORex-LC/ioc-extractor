@@ -54,17 +54,16 @@ replace imported copies, while operator-owned metadata retains tri-state merge
 semantics. Every populated IOC carrier must contain one whole-cell IOC; compound
 URL/IP or multi-hash fields remain one atomic artifact row.
 For a declared `source-label-target`, finalization verifies that the source
-still comes from the admitted cell. The compatible preparer may apply only the
-artifact's declared `source.label` transforms; a conditionally gated source
-column may also retain the exact admitted cell when no input supplies that
-column. Missing and explicit-null source cells retain their distinct presence
-states. A selected route cannot replace that source target.
-An optional `processed-route` selects a named IOC plan for one versioned
-contract, with explicit source-cell inputs and authorized final-field outputs.
-The route cannot expand source authority or produce a second logical row for
-the same artifact. An unselected processed contract retains the compatible
-preparer; `as-is` never invokes IOC routing. The compiled contract pin includes
-the selected plan, binding order and processing semantic epoch.
+still comes from the admitted cell. Missing and explicit-null source cells
+retain their distinct presence states. A route cannot replace that source target.
+Every `processed` contract requires a `processed-route` selecting a named IOC
+plan with explicit source-cell inputs and authorized final-field outputs.
+A missing binding fails startup even when import intake is disabled; there is no
+provider-inferred preparer or alternate processing path. The route cannot expand
+source authority or produce a second logical row for the same artifact.
+`as-is` remains independent and never invokes IOC routing. The compiled contract
+pin includes the selected plan, binding order and processing semantic epoch.
+See [ADR 0034](../ADR/0034-required-router-processing-plans.md).
 When multiple selected inputs contribute to one artifact row, a null from an
 inapplicable mapping provider is no contribution and cannot conflict with
 another input's value. After all contributions are collected, a routed artifact

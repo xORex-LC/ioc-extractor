@@ -137,3 +137,10 @@ The final worktree must pass `make docs`, `make verify` and the separate
 `make pmd-analysis` gate. The exact-HEAD results are recorded by `make context`
 and summarized in the implementation handoff; analyzer reports must be
 reviewed, not just their exit status.
+
+## Full cutover follow-up, 2026-10-04
+
+The retirement audit above describes the initial optional rollout.
+[The complete cutover](router-cutover.md) supersedes its retention boundary and
+requires original-value document defaults and explicit processed-import bindings.
+Historical measurements remain evidence for the previous implementation only.

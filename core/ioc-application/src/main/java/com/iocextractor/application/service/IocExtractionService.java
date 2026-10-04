@@ -12,12 +12,9 @@ import com.iocextractor.platform.etl.PipelineObserver;
 import com.iocextractor.platform.etl.PipelineRunner;
 import com.iocextractor.application.pipeline.payload.ArtifactWriteSummary;
 import com.iocextractor.application.pipeline.stage.AttributeSourceStage;
-import com.iocextractor.application.pipeline.stage.ClassifyIndicatorsStage;
-import com.iocextractor.application.pipeline.stage.DeduplicateIndicatorsStage;
 import com.iocextractor.application.pipeline.stage.ExtractIndicatorsStage;
 import com.iocextractor.application.pipeline.stage.ReadSourceStage;
 import com.iocextractor.application.pipeline.stage.RefangStage;
-import com.iocextractor.application.pipeline.stage.PrepareArtifactsStage;
 import com.iocextractor.application.pipeline.stage.PrepareRoutedArtifactsStage;
 import com.iocextractor.application.pipeline.stage.WriteArtifactsStage;
 import com.iocextractor.application.port.out.SourceReader;
@@ -30,7 +27,6 @@ import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.application.port.out.artifact.lifecycle.CanonicalArtifactWriter;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.domain.attribute.SourceAttributor;
-import com.iocextractor.domain.classify.MatchPolicy;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.refang.Refanger;
 import com.iocextractor.diagnostics.result.FailurePolicy;
@@ -47,7 +43,7 @@ import java.util.Objects;
  * Application core: the ETL pipeline expressed against ports only.
  *
  * <pre>
- *   read → refang → extract → attribute → deduplicate → classify NETWORK → prepare → commit
+ *   read → refang → extract → attribute → route and prepare → commit
  * </pre>
  *
  * Framework-free by design; wired in the composition root (bootstrap).
@@ -58,51 +54,6 @@ public final class IocExtractionService implements ExtractIocsUseCase {
     private final Pipeline<ExtractionCommand, ArtifactWriteSummary> pipeline;
     private final Clock clock;
     private final String observabilityMode;
-
-    /** Creates the production extraction use case with explicit policies and ports. */
-    public IocExtractionService(SourceReader reader,
-                                Refanger refanger,
-                                IndicatorExtractor extractor,
-                                SourceAttributor attributor,
-                                MatchPolicy matchPolicy,
-                                List<ArtifactPreparer> preparers,
-                                CanonicalArtifactRepository repository,
-                                ArtifactProjection projection,
-                                boolean deduplicate,
-                                String observabilityMode,
-                                PipelineObserver observer,
-                                DiagnosticSink diagnosticSink,
-                                FailurePolicy failurePolicy,
-                                int maxDiagnosticsPerRun,
-                                PipelineDecisionTracer decisionTracer) {
-        this(reader, refanger, extractor, attributor, matchPolicy, preparers, repository,
-                null, null, projection, deduplicate, observabilityMode, observer,
-                diagnosticSink, failurePolicy, maxDiagnosticsPerRun, decisionTracer);
-    }
-
-    /** Creates the production extraction use case with optional lifecycle-aware persistence. */
-    public IocExtractionService(SourceReader reader,
-                                Refanger refanger,
-                                IndicatorExtractor extractor,
-                                SourceAttributor attributor,
-                                MatchPolicy matchPolicy,
-                                List<ArtifactPreparer> preparers,
-                                CanonicalArtifactRepository repository,
-                                CanonicalArtifactWriter lifecycleWriter,
-                                ArtifactIdentityResolver identityResolver,
-                                ArtifactProjection projection,
-                                boolean deduplicate,
-                                String observabilityMode,
-                                PipelineObserver observer,
-                                DiagnosticSink diagnosticSink,
-                                FailurePolicy failurePolicy,
-                                int maxDiagnosticsPerRun,
-                                PipelineDecisionTracer decisionTracer) {
-        this(new Components(reader, refanger, extractor, attributor, matchPolicy, preparers,
-                        repository, lifecycleWriter, identityResolver, projection),
-                new Settings(deduplicate, observabilityMode, observer, diagnosticSink,
-                        failurePolicy, maxDiagnosticsPerRun, decisionTracer, null, Map.of()));
-    }
 
     /** Builds the occurrence-preserving document path for an admitted processing plan. */
     IocExtractionService(Components components, Settings settings) {
@@ -175,17 +126,10 @@ public final class IocExtractionService implements ExtractIocsUseCase {
                         settings.decisionTracer()))
                 .then(new AttributeSourceStage(components.attributor(), clock,
                         settings.decisionTracer()));
-        var prepared = settings.documentPlan() == null
-                ? attributed
-                .then(new DeduplicateIndicatorsStage(settings.deduplicate(), diagnostics,
-                        settings.decisionTracer()))
-                .then(new ClassifyIndicatorsStage(components.matchPolicy(), diagnostics,
-                        settings.decisionTracer()))
-                .then(new PrepareArtifactsStage(components.preparers()))
-                : attributed.then(new PrepareRoutedArtifactsStage(settings.documentPlan(),
-                        components.preparers(),
-                        Objects.requireNonNull(components.identityResolver(), "identityResolver"),
-                        settings.writePolicies(), settings.deduplicate()));
+        var prepared = attributed.then(new PrepareRoutedArtifactsStage(
+                Objects.requireNonNull(settings.documentPlan(), "documentPlan"), components.preparers(),
+                Objects.requireNonNull(components.identityResolver(), "identityResolver"),
+                settings.writePolicies(), settings.deduplicate(), diagnostics));
         return prepared.then(new WriteArtifactsStage(
                 components.repository(), components.lifecycleWriter(),
                 components.identityResolver(), components.projection(), diagnostics));
@@ -193,7 +137,7 @@ public final class IocExtractionService implements ExtractIocsUseCase {
 
     /** Ports that define one extraction pipeline without choosing its routing policy. */
     record Components(SourceReader reader, Refanger refanger, IndicatorExtractor extractor,
-                      SourceAttributor attributor, MatchPolicy matchPolicy,
+                      SourceAttributor attributor,
                       List<ArtifactPreparer> preparers, CanonicalArtifactRepository repository,
                       CanonicalArtifactWriter lifecycleWriter,
                       ArtifactIdentityResolver identityResolver, ArtifactProjection projection) { }

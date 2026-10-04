@@ -611,7 +611,7 @@ public final class JdbcCanonicalImportWriter implements CanonicalImportWriter {
         Map<String, String> values = new LinkedHashMap<>();
         Map<String, String> orderedValues = new LinkedHashMap<>();
         ArtifactWritePolicy writePolicy = writePolicies.getOrDefault(
-                candidate.artifact(), ArtifactWritePolicy.legacy());
+                candidate.artifact(), ArtifactWritePolicy.keepFirst());
         for (DataframeColumn column : schema.columns()) {
             values.put(column.name(), stored == null ? null : stored.publicRow().value(column.name()));
         }

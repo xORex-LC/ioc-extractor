@@ -15,14 +15,14 @@ public final class JdbcDocumentProcessingPolicyGate {
     }
 
     /** Changes the active policy only when both external and journaled work is drained. */
-    public void ensure(String fingerprint, boolean selected, BooleanSupplier externalWorkDrained) {
+    public void ensure(String fingerprint, BooleanSupplier externalWorkDrained) {
         Objects.requireNonNull(externalWorkDrained, "externalWorkDrained");
         if (fingerprint == null || !fingerprint.matches("[0-9a-f]{64}")) {
             throw new IllegalArgumentException("Document policy fingerprint must be SHA-256 hex");
         }
         try (Connection connection = dataSource.getConnection()) {
             String current = current(connection);
-            if (Objects.equals(current, fingerprint) || current == null && !selected) {
+            if (Objects.equals(current, fingerprint)) {
                 return;
             }
         } catch (SQLException failure) {

@@ -2,8 +2,8 @@ package com.iocextractor.bootstrap;
 
 
 import com.iocextractor.adapter.in.csv.CommonsCsvDelimitedRecordReader;
+import com.iocextractor.application.port.out.artifact.ArtifactIdBaseline;
 import com.iocextractor.adapter.in.csv.CommonsCsvImportValueTransformRegistry;
-import com.iocextractor.adapter.in.csv.CsvProcessedImportRowPreparer;
 import com.iocextractor.adapter.processing.camel.runtime.CamelRouteRuntime;
 import com.iocextractor.adapter.in.csv.CsvImportValueValidatorRegistry;
 import com.iocextractor.adapter.in.csv.ImportSnapshotPathResolver;
@@ -78,7 +78,6 @@ import com.iocextractor.application.port.out.dataframeimport.ImportWorkspace;
 import com.iocextractor.application.port.out.dataframeimport.ManagedImportSourceLifecycle;
 import com.iocextractor.application.port.out.dataframeimport.ProcessedImportRowPreparer;
 import com.iocextractor.application.port.out.dataframeimport.ImportValueValidatorRegistry;
-import com.iocextractor.application.port.out.artifact.ArtifactIdBaseline;
 import com.iocextractor.application.port.out.observation.ObservationRegistrationStore;
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.platform.concurrent.BoundedKeyedSerialExecutor;
@@ -244,9 +243,6 @@ class DataframeImportRuntimeConfiguration {
 
     @Bean
     ProcessedImportRowPreparer dataframeImportProcessedRowPreparer(
-            AppConfig appConfig,
-            IocProperties properties,
-            ArtifactIdBaseline artifactIdBaseline,
             Refanger refanger,
             IndicatorExtractor extractor,
             MatchPolicy matchPolicy,
@@ -255,9 +251,6 @@ class DataframeImportRuntimeConfiguration {
             org.springframework.beans.factory.ObjectProvider<CamelRouteRuntime> routerRuntime,
             Clock clock) {
         var classifier = new IndicatorClassifier(matchPolicy);
-        ProcessedImportRowPreparer compatible = new CsvProcessedImportRowPreparer(
-                appConfig.artifactDefinitions(properties, artifactIdBaseline),
-                refanger, extractor, classifier);
         Map<String, ProcessedImportRowPreparer> routed = new LinkedHashMap<>();
         catalog.contracts().values().forEach(contract -> {
             var route = contract.definition().processedRoute();
@@ -276,7 +269,7 @@ class DataframeImportRuntimeConfiguration {
                     contract, inputs, outputs, refanger, extractor,
                     classifier, adapter));
         });
-        return new SelectedProcessedImportRowPreparer(compatible, routed);
+        return new SelectedProcessedImportRowPreparer(routed);
     }
 
     @Bean

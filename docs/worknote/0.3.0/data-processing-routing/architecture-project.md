@@ -21,7 +21,7 @@ needed. Apply the policy to document extraction and explicitly contracted import
 | [ConfigurableRowMapper](../../../../core/ioc-processing/src/main/java/com/iocextractor/processing/mapping/ConfigurableRowMapper.java): type/condition gates precede cell transforms | A new string transform alone cannot reroute a URL into an IP field |
 | [RuleBasedMatchPolicy](../../../../core/ioc-domain/src/main/java/com/iocextractor/domain/classify/RuleBasedMatchPolicy.java): first matching configured rule over extracted features | Codes are operator-owned; facts still depend on the selected value |
 | `IocExtractionService`: classify before artifact preparation | One classification currently precedes independently formatted outputs |
-| [CsvProcessedImportRowPreparer](../../../../adapters/adapter-csv/src/main/java/com/iocextractor/adapter/in/csv/CsvProcessedImportRowPreparer.java): CSV definitions, concrete mapper, hardcoded IOC provider names | Adding a provider alone does not establish shared import semantics |
+| [CsvProcessedImportRowPreparer](https://github.com/xORex-LC/ioc-extractor/blob/f43037ee87ef3f4647a90615f04d27a3eb429198/adapters/adapter-csv/src/main/java/com/iocextractor/adapter/in/csv/CsvProcessedImportRowPreparer.java): CSV definitions, concrete mapper, hardcoded IOC provider names | Adding a provider alone does not establish shared import semantics |
 | Canonical keys are derived from prepared fields | Host reduction changes identity, deduplication and potentially mutable-field conflicts |
 | [ProcessingPolicyFingerprint](../../../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/ProcessingPolicyFingerprint.java): versions current processing policy | New view/route/operation semantics must participate in policy identity |
 

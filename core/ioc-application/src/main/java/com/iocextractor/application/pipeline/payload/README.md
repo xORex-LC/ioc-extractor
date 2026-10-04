@@ -17,10 +17,7 @@ pipeline runner, logging или adapters. Коллекции и map копиру
 | `RefangedText.java` | `RefangOutcome`: текст + применённые правила |
 | `ExtractedIndicators.java` | Refanged text + `ExtractionOutcome` |
 | `AttributedIndicators.java` | `AttributionOutcome` после source attribution |
-| `DeduplicationDecision.java` | Pure keep/drop outcome одного batch-local dedup candidate |
-| `DeduplicatedIndicators.java` | Исходный count + retained indicators + dedup decisions |
-| `ClassifiedIndicatorOccurrence.java` | Позиция occurrence с единым `ClassifiedIndicator` из `ioc-processing` |
-| `RetainedIndicators.java` | Исходный count + classified indicators для artifact preparation |
+| `IndicatorOccurrence.java` | Позиция, порядок и признак сохранённого исходного наблюдения для Router |
 | `PreparedArtifacts.java` | Artifact write plans после mapping и до policy/commit |
 | `ArtifactWriteSummary.java` | Итог записи артефактов |
 

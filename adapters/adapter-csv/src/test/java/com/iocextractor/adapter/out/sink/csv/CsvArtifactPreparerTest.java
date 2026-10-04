@@ -10,13 +10,11 @@ import com.iocextractor.processing.mapping.ValueProvider;
 
 import com.iocextractor.application.artifact.ArtifactIdSequence;
 import com.iocextractor.application.artifact.ArtifactIdStrategy;
-import com.iocextractor.application.artifact.ArtifactPreparationBatch;
 import com.iocextractor.application.artifact.ArtifactIdentityDefinition;
 import com.iocextractor.application.artifact.CanonicalArtifactIdentityResolver;
 import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.application.observation.OccurrencePosition;
 import com.iocextractor.processing.model.ClassifiedIndicator;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicatorOccurrence;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.observability.PipelineItemDecision;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
@@ -142,6 +140,29 @@ class CsvArtifactPreparerTest {
         assertThatThrownBy(() -> preparer.prepare(List.of(indicator("bad"))))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("mapper defect");
+        assertThatThrownBy(() -> preparer.prepareRouted(indicator("bad"),
+                Map.of("value", indicator("different")), new OccurrencePosition(1), 0))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Field views require a configurable row mapper: hashes");
+    }
+
+    @Test
+    void routed_rows_preserve_oneshot_source_provenance_without_a_delivery_key() {
+        var definition = new CsvArtifactDefinition("hashes", Set.of(IndicatorType.MD5),
+                new TestMapper(ignored -> { }), ArtifactIdStrategy.ASCENDING, 100);
+        var preparer = new CsvArtifactPreparer(definition,
+                new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 100),
+                new DiagnosticFactory(Clock.systemUTC()), null, NoopPipelineDecisionTracer.INSTANCE);
+
+        var attributed = preparer.prepareRouted(indicator("md5", IndicatorType.MD5, "Feed Alpha"),
+                Map.of(), new OccurrencePosition(1), 0);
+        var unattributed = preparer.prepareRouted(indicator("md5", IndicatorType.MD5, null),
+                Map.of(), new OccurrencePosition(2), 1);
+
+        assertThat(attributed.value().orElseThrow().template().value("_source_key")).isEqualTo("Feed Alpha");
+        assertThat(unattributed.value().orElseThrow().template().value("_source_key")).isEqualTo("oneshot");
+        assertThat(attributed.diagnostics()).isEmpty();
+        assertThat(unattributed.diagnostics()).isEmpty();
     }
 
     @Test
@@ -157,11 +178,22 @@ class CsvArtifactPreparerTest {
                 "source-key",
                 tracer);
 
-        preparer.prepare(List.of(indicator("md5", IndicatorType.MD5), indicator("sha1", IndicatorType.SHA1)));
+        var batch = preparer.prepare(List.of(indicator("md5", IndicatorType.MD5),
+                indicator("sha1", IndicatorType.SHA1)));
+        var accepted = preparer.prepareRouted(indicator("md5", IndicatorType.MD5),
+                Map.of(), new OccurrencePosition(1), 0);
+        var filtered = preparer.prepareRouted(indicator("sha1", IndicatorType.SHA1),
+                Map.of(), new OccurrencePosition(2), 1);
+
+        assertThat(accepted.value()).isPresent();
+        assertThat(batch.value().rows()).singleElement().satisfies(row ->
+                assertThat(row.template()).isEqualTo(accepted.value().orElseThrow().template()));
+        assertThat(filtered.value()).isEmpty();
+        assertThat(filtered.diagnostics()).isEmpty();
 
         assertThat(tracer.decisions)
                 .extracting(PipelineItemDecision::outcome)
-                .containsExactly("routed", "filtered");
+                .containsExactly("routed", "filtered", "routed", "filtered");
         assertThat(tracer.decisions).allSatisfy(decision ->
                 assertThat(decision.artifact()).isEqualTo("hashes"));
     }
@@ -197,17 +229,23 @@ class CsvArtifactPreparerTest {
         var preparer = new CsvArtifactPreparer(
                 definition, new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 1),
                 new DiagnosticFactory(Clock.systemUTC()), "source-key",
-                NoopPipelineDecisionTracer.INSTANCE, identity);
+                NoopPipelineDecisionTracer.INSTANCE);
         ClassifiedIndicator first = indicator("same-hash", IndicatorType.MD5, "first");
         ClassifiedIndicator unnamed = indicator("same-hash", IndicatorType.MD5, null);
         ClassifiedIndicator last = indicator("same-hash", IndicatorType.MD5, "last");
 
-        var result = preparer.prepare(new ArtifactPreparationBatch(
-                List.of(first),
-                List.of(
-                        new ClassifiedIndicatorOccurrence(first, new OccurrencePosition(1)),
-                        new ClassifiedIndicatorOccurrence(unnamed, new OccurrencePosition(2)),
-                        new ClassifiedIndicatorOccurrence(last, new OccurrencePosition(3)))));
+        var winners = new com.iocextractor.application.artifact.policy.ArtifactOccurrenceSelector()
+                .<com.iocextractor.application.artifact.ArtifactRowKey, com.iocextractor.application.artifact.PreparedArtifactRow>
+                        accumulator(policy, row -> row.template().value("name"));
+        for (int index = 0; index < 3; index++) {
+            var prepared = preparer.prepareRouted(List.of(first, unnamed, last).get(index), Map.of(),
+                    new OccurrencePosition(index + 1), index);
+            assertThat(prepared.diagnostics()).isEmpty();
+            var row = prepared.value().orElseThrow();
+            winners.add(identity.keyOf("aggregate", row.template()).orElseThrow(), row);
+        }
+        var result = com.iocextractor.diagnostics.result.Result.success(new com.iocextractor.application.artifact.ArtifactWritePlan(
+                "aggregate", mapper.header(), winners.winners(), new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 1)));
 
         assertThat(result.diagnostics()).isEmpty();
         assertThat(result.value().rows()).singleElement().satisfies(row -> {
@@ -215,25 +253,6 @@ class CsvArtifactPreparerTest {
             assertThat(row.template().value("hash")).isEqualTo("same-hash");
             assertThat(row.orderedFieldPositions()).containsEntry("name", new OccurrencePosition(3));
         });
-    }
-
-    @Test
-    void occurrencePolicyRequiresCanonicalIdentityBeforePreparingRows() {
-        var policy = new ArtifactWritePolicy(
-                ArtifactWritePolicy.DuplicateSelection.LAST_NONEMPTY, "value", Map.of());
-        var definition = new CsvArtifactDefinition(
-                "hashes", Set.of(IndicatorType.MD5), ArtifactFilter.none(),
-                new TestMapper(ignored -> { }), ArtifactIdStrategy.ASCENDING, 1, policy);
-        var preparer = new CsvArtifactPreparer(definition,
-                new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 1),
-                new DiagnosticFactory(Clock.systemUTC()), "source-key",
-                NoopPipelineDecisionTracer.INSTANCE);
-
-        assertThatThrownBy(() -> preparer.prepare(new ArtifactPreparationBatch(
-                List.of(), List.of(new ClassifiedIndicatorOccurrence(indicator("x"),
-                        new OccurrencePosition(1))))))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("canonical identity");
     }
 
     @Test
@@ -257,23 +276,22 @@ class CsvArtifactPreparerTest {
         var preparer = new CsvArtifactPreparer(definition,
                 new ArtifactIdSequence(ArtifactIdStrategy.ASCENDING, 1),
                 new DiagnosticFactory(Clock.systemUTC()), "source-key",
-                NoopPipelineDecisionTracer.INSTANCE, identity);
+                NoopPipelineDecisionTracer.INSTANCE);
         var bad = indicator("bad");
         var good = indicator("good");
 
-        var result = preparer.prepare(new ArtifactPreparationBatch(List.of(good), List.of(
-                new ClassifiedIndicatorOccurrence(bad, new OccurrencePosition(1)),
-                new ClassifiedIndicatorOccurrence(good, new OccurrencePosition(2)))));
-
-        assertThat(result.diagnostics()).singleElement()
-                .satisfies(diagnostic -> assertThat(diagnostic.code())
-                        .isEqualTo(SinkDiagnosticCodes.ROW_MAPPING_FAILED));
-        assertThat(result.value().rows()).singleElement()
-                .satisfies(row -> assertThat(row.template().value("value")).isEqualTo("good"));
+        var rejected = preparer.prepareRouted(bad, Map.of(), new OccurrencePosition(1), 0);
+        var accepted = preparer.prepareRouted(good, Map.of(), new OccurrencePosition(2), 1);
+        assertThat(rejected.diagnostics()).singleElement()
+                .satisfies(diagnostic -> assertThat(diagnostic.code()).isEqualTo(SinkDiagnosticCodes.ROW_MAPPING_FAILED));
+        assertThat(rejected.value()).isEmpty();
+        assertThat(accepted.diagnostics()).isEmpty();
+        assertThat(accepted.value()).hasValueSatisfying(row ->
+                assertThat(row.template().value("value")).isEqualTo("good"));
     }
 
     @Test
-    void legacyBatchPreservesDuplicatesAndMappedCollisionsAndReservesEveryId() {
+    void rowPreparationPreservesDuplicatesAndMappedCollisionsAndReservesEveryId() {
         var mapper = new ConfigurableRowMapper(List.of(
                 new ColumnSpec("id", "id", null, null, null),
                 new ColumnSpec("value", "constant", null, null, null),
@@ -284,7 +302,7 @@ class CsvArtifactPreparerTest {
         var second = indicator("two", IndicatorType.MD5, "second");
         for (List<ClassifiedIndicator> retained : List.of(List.of(first, first), List.of(first, second))) {
             var preparer = preparer(mapper);
-            var plan = preparer.prepare(new ArtifactPreparationBatch(retained, List.of())).value();
+            var plan = preparer.prepare(retained).value();
             assertThat(plan.rows()).hasSize(2);
             assertThat(plan.rows()).extracting(row -> row.template().value("source"))
                     .containsExactlyElementsOf(retained.stream().map(value -> value.indicator().source().label()).toList());

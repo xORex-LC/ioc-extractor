@@ -15,8 +15,8 @@ arguments and lazy errors for reached cells; providers still run per occurrence.
 
 Dependencies point only to `ioc-domain` and `ioc-platform-errors`. Spring,
 Camel, CSV, JDBC and transport libraries are forbidden by Maven and ArchUnit.
-The CSV adapter consumes this evaluator for both compatible processing and
-selected IOC routes; there is one field-mapping implementation.
+The CSV adapter consumes this evaluator for document and processed-import
+Router branches; there is one field-mapping implementation.
 
 `IndicatorProcessingSession` is thread-confined and closed by the document stage
 or the processed-import staging attempt through application handles. Direct

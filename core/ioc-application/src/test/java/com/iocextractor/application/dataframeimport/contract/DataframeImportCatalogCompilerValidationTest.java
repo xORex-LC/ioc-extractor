@@ -869,9 +869,13 @@ class DataframeImportCatalogCompilerValidationTest {
                 new DataframeImportCatalogDraft.Recognition(
                         List.of("ip", "name"), List.of(), List.of(), Map.of()),
                 mode, ImportRoutingPolicy.TARGET_ONLY,
-                ImportRowFailurePolicy.ACCEPT_VALID, ImportDuplicatePolicy.COALESCE, true,
+                ImportRowFailurePolicy.ACCEPT_VALID, ImportDuplicatePolicy.COALESCE, null, true,
                 ImportFormulaPolicy.REJECT, ImportMergePolicy.AUTHORITATIVE,
-                List.of(artifact), null);
+                List.of(artifact), null, mode == ImportProcessingMode.PROCESSED
+                        ? new DataframeImportCatalogDraft.ProcessedRoute("original-import",
+                                List.of(new DataframeImportCatalogDraft.RouteInput(artifact.name(), "ip")),
+                                List.of(new DataframeImportCatalogDraft.RouteOutput(artifact.name(), List.of("ip"))))
+                        : null);
     }
 
     private static DataframeImportCatalogEnvironment processedEnvironment(

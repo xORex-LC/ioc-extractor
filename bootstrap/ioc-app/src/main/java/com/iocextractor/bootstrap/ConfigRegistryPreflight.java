@@ -30,6 +30,9 @@ final class ConfigRegistryPreflight implements InitializingBean {
         validateSinkArtifacts(errors);
         ArtifactPolicyCatalog.compile(props, errors);
         processingPlans = ProcessingPlanCatalog.compile(props, errors);
+        if (props.processing().documentPlan() == null || props.processing().documentPlan().isBlank()) {
+            errors.add("ioc.processing.document-plan is required; configure an explicit Router plan");
+        }
         validateImportProcessingPlans(errors);
         if (!errors.isEmpty()) {
             throw new IllegalStateException("CONFIG.REGISTRY invalid IOC configuration:\n- "
@@ -52,11 +55,17 @@ final class ConfigRegistryPreflight implements InitializingBean {
 
     private void validateImportProcessingPlan(IocProperties.DataframeImport.Contract contract,
                                               int index, List<String> errors) {
-        if (contract == null || contract.processedRoute() == null) {
+        if (contract == null) {
             return;
         }
         String path = "ioc.dataframe-import.contracts[" + index + "].processed-route";
         var route = contract.processedRoute();
+        if (route == null) {
+            if (contract.mode() == com.iocextractor.application.dataframeimport.model.ImportProcessingMode.PROCESSED) {
+                errors.add(path + " is required for mode processed; configure a named Router plan");
+            }
+            return;
+        }
         var plan = route.plan() == null ? null : processingPlans.get(route.plan());
         if (plan == null) {
             errors.add(path + ".plan must reference a valid named IOC plan");

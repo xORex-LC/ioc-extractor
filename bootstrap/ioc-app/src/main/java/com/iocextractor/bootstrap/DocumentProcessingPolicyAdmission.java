@@ -7,18 +7,14 @@ import java.util.function.BooleanSupplier;
 final class DocumentProcessingPolicyAdmission {
     private DocumentProcessingPolicyAdmission() { }
 
-    static void ensure(LazyServiceStorage storage, String fingerprint, boolean selected,
+    static void ensure(LazyServiceStorage storage, String fingerprint,
                        BooleanSupplier ledgerDrained, BooleanSupplier processingFilesDrained) {
         if (storage == null) {
-            if (selected) {
-                throw new IllegalStateException(
-                        "Document processing plan requires durable service storage in daemon mode");
-            }
-            return;
+            throw new IllegalStateException("Document processing requires durable service storage in daemon mode");
         }
         storage.migration();
         new JdbcDocumentProcessingPolicyGate(storage.dataSource()).ensure(
-                fingerprint, selected,
+                fingerprint,
                 () -> ledgerDrained.getAsBoolean() && processingFilesDrained.getAsBoolean());
     }
 }

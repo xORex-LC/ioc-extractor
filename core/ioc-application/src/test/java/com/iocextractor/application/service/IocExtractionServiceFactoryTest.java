@@ -41,9 +41,6 @@ class IocExtractionServiceFactoryTest {
                         List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of()),
                 (text, indicators) -> new AttributionOutcome(List.of(),
                         List.of(new AttributionDecision(indicators.getFirst(), Optional.empty()))),
-                indicator -> new ClassificationDecision(
-                        new IndicatorFeatures(indicator.value(), indicator.value(), false, false, false,
-                                HostKind.REGISTRABLE), 0, List.of(), new MaskMatch("u:hAS", "h:dAS")),
                 false, "oneshot", new NoopPipelineObserver(), NoopDiagnosticSink.INSTANCE,
                 FailurePolicy.failFast(), 100, new NoWriteRepository(), null,
                 new CanonicalArtifactIdentityResolver(List.of()), NoopPipelineDecisionTracer.INSTANCE,

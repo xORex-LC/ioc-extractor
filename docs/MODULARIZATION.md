@@ -105,8 +105,9 @@ ioc-app ─▶ adapters/* ─▶ ioc-application ─▶ ioc-processing ─▶ io
 - `ioc-application-tck` содержит test-scope contract tests; реализации портов
   подключают его только в тестовом scope.
 - `ioc-app` (bootstrap) собирает исполняемый артефакт и зависит от подключённых
-  runtime-адаптеров. `adapter-processing-camel` запускается для явно выбранного
-  плана документа или processed import; без выбора действуют совместимые пути.
+  runtime-адаптеров. `adapter-processing-camel` исполняет обязательный документный
+  план и явно связанные processed-import планы; альтернативных путей dispatch нет.
+  Runtime допускает весь проверенный каталог планов при запуске.
 - `build-quality` не является Maven-модулем: root `validate` компилирует его
   JDK-only verifier и synthetic-reactor contract harness напрямую.
 - `coverage-report` зависит на все production-модули только для формирования

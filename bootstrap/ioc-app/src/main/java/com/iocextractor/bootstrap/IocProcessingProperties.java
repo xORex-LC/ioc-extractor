@@ -7,13 +7,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Operator syntax for named IOC processing plans; absent means legacy processing. */
+/** Operator syntax for named IOC processing plans; document selection is required. */
 public record IocProcessingProperties(String documentPlan, List<Plan> plans) {
     public IocProcessingProperties {
         plans = snapshot(plans);
     }
 
-    static IocProcessingProperties disabled() {
+    static IocProcessingProperties unconfigured() {
         return new IocProcessingProperties(null, List.of());
     }
 
@@ -30,11 +30,20 @@ public record IocProcessingProperties(String documentPlan, List<Plan> plans) {
     }
 
     public record Plan(String name, List<View> views, List<Classification> classifications,
-                       Routing routing, List<String> omittedArtifacts) {
+                       Routing routing, List<String> omittedArtifacts,
+                       ObservationSelection observationSelection) {
+        public Plan(String name, List<View> views, List<Classification> classifications,
+                    Routing routing, List<String> omittedArtifacts) {
+            this(name, views, classifications, routing, omittedArtifacts, ObservationSelection.FINAL_KEY);
+        }
+
+        @org.springframework.boot.context.properties.bind.ConstructorBinding
         public Plan {
             views = snapshot(views);
             classifications = snapshot(classifications);
             omittedArtifacts = snapshot(omittedArtifacts);
+            observationSelection = observationSelection == null
+                    ? ObservationSelection.FINAL_KEY : observationSelection;
         }
 
         public List<View> views() {
@@ -49,6 +58,8 @@ public record IocProcessingProperties(String documentPlan, List<Plan> plans) {
             return snapshot(omittedArtifacts);
         }
     }
+
+    public enum ObservationSelection { RETAINED_OBSERVATIONS, FINAL_KEY }
 
     public record View(String name, String operation, String input, RecoveryArguments arguments) {
     }

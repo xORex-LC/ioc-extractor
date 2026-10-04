@@ -9,7 +9,7 @@ import com.iocextractor.application.artifact.ArtifactWritePlan;
 import com.iocextractor.application.artifact.CanonicalArtifact;
 import com.iocextractor.application.artifact.CanonicalWriteResult;
 import com.iocextractor.application.artifact.PreparedArtifactRow;
-import com.iocextractor.application.pipeline.payload.RetainedIndicators;
+import com.iocextractor.application.pipeline.payload.AttributedIndicators;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionResult;
@@ -84,11 +84,18 @@ class ArtifactPolicyCheckpointTest {
         assertThat(ids.reserve(1).start()).isEqualTo(FIRST_ID + INPUT_SIZE);
     }
 
-    private Pipeline<RetainedIndicators, com.iocextractor.application.pipeline.payload.ArtifactWriteSummary> pipeline(
+    private Pipeline<AttributedIndicators, com.iocextractor.application.pipeline.payload.ArtifactWriteSummary> pipeline(
             ArtifactPreparer preparer,
             CanonicalArtifactRepository repository) {
-        return Pipeline.<RetainedIndicators>start()
-                .then(new PrepareArtifactsStage(List.of(preparer)))
+        return Pipeline.<AttributedIndicators>start()
+                 .then(new PrepareRoutedArtifactsStage(occurrence -> {
+                    var result = preparer.prepare(List.of(StageTestSupport.classifiedIndicator(occurrence.indicator())));
+                    return Result.of(result.value().rows().stream().map(row ->
+                            new com.iocextractor.application.artifact.RoutedArtifactCandidate(preparer.name(), row)).toList(),
+                            result.diagnostics());
+                }, List.of(preparer), (artifact, row) -> Optional.of(
+                        new com.iocextractor.application.artifact.ArtifactRowKey(row.value("mask"))),
+                        java.util.Map.of("masks", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst()), false))
                 .then(new WriteArtifactsStage(repository, ignored -> ArtifactProjectionResult.clean(0),
                         new DiagnosticFactory(StageTestSupport.CLOCK)));
     }
@@ -98,10 +105,11 @@ class ArtifactPolicyCheckpointTest {
                 new CollectingDiagnosticSink(), new DiagnosticFactory(StageTestSupport.CLOCK));
     }
 
-    private Envelope<RetainedIndicators> input() {
-        var classified = StageTestSupport.classifiedIndicator(StageTestSupport.indicator("example.com"));
-        var indicators = Collections.nCopies(INPUT_SIZE, classified);
-        return StageTestSupport.envelope(new RetainedIndicators(INPUT_SIZE, indicators), false);
+    private Envelope<AttributedIndicators> input() {
+        var indicators = java.util.stream.IntStream.range(0, INPUT_SIZE)
+                .mapToObj(index -> StageTestSupport.indicator("example.com-" + index))
+                .toArray(com.iocextractor.domain.model.Indicator[]::new);
+        return StageTestSupport.envelope(StageTestSupport.attributedIndicators(indicators), false);
     }
 
     private ArtifactPreparer preparer(ArtifactIdSequence ids, boolean oneInvalid) {
@@ -114,15 +122,17 @@ class ArtifactPolicyCheckpointTest {
             @Override
             public Result<ArtifactWritePlan> prepare(
                     List<com.iocextractor.processing.model.ClassifiedIndicator> indicators) {
-                int valid = indicators.size() - (oneInvalid ? 1 : 0);
+                boolean invalid = oneInvalid && !indicators.isEmpty()
+                        && indicators.getFirst().indicator().value().equals("example.com-4999");
+                int valid = indicators.size() - (invalid ? 1 : 0);
                 var rows = new ArrayList<PreparedArtifactRow>(valid);
                 for (int index = 0; index < valid; index++) {
                     rows.add(new PreparedArtifactRow(
-                            ArtifactRow.ordered(java.util.Map.of("id", "0", "mask", "example.com-" + index)),
+                            ArtifactRow.ordered(java.util.Map.of("id", "0", "mask", indicators.get(index).indicator().value())),
                             Optional.of("id")));
                 }
                 var plan = new ArtifactWritePlan("masks", List.of("id", "mask"), rows, ids);
-                if (!oneInvalid) {
+                if (!invalid) {
                     return Result.success(plan);
                 }
                 Diagnostic diagnostic = Diagnostic.builder(SinkDiagnosticCodes.ROW_MAPPING_FAILED,

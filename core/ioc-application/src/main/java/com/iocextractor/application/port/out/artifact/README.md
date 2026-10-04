@@ -9,7 +9,8 @@ Driven-порты для canonical artifact storage, artifact identity, CSV proj
 
 | Файл | Назначение |
 |---|---|
-| `ArtifactPreparer.java` | Side-effect-free routing/mapping: classified indicators → write plan + diagnostics |
+| `ArtifactPreparer.java` | Side-effect-free field mapping: classified indicators → write plan + diagnostics |
+| `DocumentProcessingPlan.java` / `DocumentProcessingSession.java` | Обязательный план документа и ограниченная сессия подготовки кандидатов через Router; без durable writes |
 | `CanonicalArtifactRepository.java` | Чтение/запись canonical artifacts; write возвращает actual inserts и revision |
 | `ArtifactIdentityResolver.java` | Artifact-specific row key extraction |
 | `ArtifactIdentityStore.java` | Guardrail-хранилище identity formula hash + epoch |

@@ -31,11 +31,11 @@ import static org.assertj.core.api.Assertions.*;
 @IntegrationTest
 @Timeout(20)
 class RouterRuntimeConfigurationIT {
-    @Test void noRegistrationLeavesLegacyRuntimeUnchanged() {
+    @Test void missingRequiredRegistrationFailsStartup() {
         baseRunner().withPropertyValues("ioc.runtime.mode=daemon").run(context -> {
-            assertThat(context).hasNotFailed();
-            assertThat(context).doesNotHaveBean(CamelRouteRuntime.class);
-            assertThat(context).doesNotHaveBean(RouterHealthIndicator.class);
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).hasRootCauseInstanceOf(
+                    org.springframework.beans.factory.NoSuchBeanDefinitionException.class);
         });
     }
 

@@ -14,7 +14,6 @@ import com.iocextractor.application.port.out.observability.PipelineDecisionTrace
 import com.iocextractor.diagnostics.sink.DiagnosticSink;
 import com.iocextractor.diagnostics.result.FailurePolicy;
 import com.iocextractor.domain.attribute.SourceAttributor;
-import com.iocextractor.domain.classify.MatchPolicy;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.refang.Refanger;
 import com.iocextractor.platform.etl.PipelineObserver;
@@ -34,7 +33,6 @@ public final class IocExtractionServiceFactory {
     private final Refanger refanger;
     private final IndicatorExtractor extractor;
     private final SourceAttributor attributor;
-    private final MatchPolicy matchPolicy;
     private final boolean deduplicate;
     private final String observabilityMode;
     private final PipelineObserver observer;
@@ -48,53 +46,11 @@ public final class IocExtractionServiceFactory {
     private final DocumentProcessingPlanFactory documentPlanFactory;
     private final Map<String, ArtifactWritePolicy> routedWritePolicies;
 
-    /** Creates the factory with explicit extraction policies and canonical storage. */
+    /** Creates a factory that requires an admitted route for each document run. */
     public IocExtractionServiceFactory(SourceReader reader,
                                        Refanger refanger,
                                        IndicatorExtractor extractor,
                                        SourceAttributor attributor,
-                                       MatchPolicy matchPolicy,
-                                       boolean deduplicate,
-                                       String observabilityMode,
-                                       PipelineObserver observer,
-                                       DiagnosticSink diagnosticSink,
-                                       FailurePolicy failurePolicy,
-                                       int maxDiagnosticsPerRun,
-                                       CanonicalArtifactRepository repository,
-                                       PipelineDecisionTracer decisionTracer) {
-        this(reader, refanger, extractor, attributor, matchPolicy, deduplicate,
-                observabilityMode, observer, diagnosticSink, failurePolicy,
-                maxDiagnosticsPerRun, repository, null, null, decisionTracer);
-    }
-
-    /** Creates a factory that supports both compatibility and fixed-validity writes. */
-    public IocExtractionServiceFactory(SourceReader reader,
-                                       Refanger refanger,
-                                       IndicatorExtractor extractor,
-                                       SourceAttributor attributor,
-                                       MatchPolicy matchPolicy,
-                                       boolean deduplicate,
-                                       String observabilityMode,
-                                       PipelineObserver observer,
-                                       DiagnosticSink diagnosticSink,
-                                       FailurePolicy failurePolicy,
-                                       int maxDiagnosticsPerRun,
-                                       CanonicalArtifactRepository repository,
-                                       CanonicalArtifactWriter lifecycleWriter,
-                                       ArtifactIdentityResolver identityResolver,
-                                       PipelineDecisionTracer decisionTracer) {
-        this(reader, refanger, extractor, attributor, matchPolicy, deduplicate,
-                observabilityMode, observer, diagnosticSink, failurePolicy,
-                maxDiagnosticsPerRun, repository, lifecycleWriter, identityResolver,
-                decisionTracer, null, Map.of());
-    }
-
-    /** Creates a factory that activates a selected route for each document run. */
-    public IocExtractionServiceFactory(SourceReader reader,
-                                       Refanger refanger,
-                                       IndicatorExtractor extractor,
-                                       SourceAttributor attributor,
-                                       MatchPolicy matchPolicy,
                                        boolean deduplicate,
                                        String observabilityMode,
                                        PipelineObserver observer,
@@ -111,7 +67,6 @@ public final class IocExtractionServiceFactory {
         this.refanger = Objects.requireNonNull(refanger, "refanger");
         this.extractor = Objects.requireNonNull(extractor, "extractor");
         this.attributor = Objects.requireNonNull(attributor, "attributor");
-        this.matchPolicy = Objects.requireNonNull(matchPolicy, "matchPolicy");
         this.deduplicate = deduplicate;
         this.observabilityMode = Objects.requireNonNull(observabilityMode, "observabilityMode");
         this.observer = Objects.requireNonNull(observer, "observer");
@@ -123,9 +78,9 @@ public final class IocExtractionServiceFactory {
         this.maxDiagnosticsPerRun = maxDiagnosticsPerRun;
         this.repository = Objects.requireNonNull(repository, "repository");
         this.lifecycleWriter = lifecycleWriter;
-        this.identityResolver = identityResolver;
+        this.identityResolver = Objects.requireNonNull(identityResolver, "identityResolver");
         this.decisionTracer = Objects.requireNonNull(decisionTracer, "decisionTracer");
-        this.documentPlanFactory = documentPlanFactory;
+        this.documentPlanFactory = Objects.requireNonNull(documentPlanFactory, "documentPlanFactory");
         this.routedWritePolicies = Map.copyOf(routedWritePolicies);
     }
 
@@ -137,13 +92,7 @@ public final class IocExtractionServiceFactory {
      * @return extraction use case
      */
     public ExtractIocsUseCase create(List<ArtifactPreparer> preparers, ArtifactProjection projection) {
-        if (documentPlanFactory != null) {
-            return create(preparers, projection, documentPlanFactory.create(preparers), routedWritePolicies);
-        }
-        return new IocExtractionService(reader, refanger, extractor, attributor, matchPolicy,
-                preparers, repository, lifecycleWriter, identityResolver, projection,
-                deduplicate, observabilityMode, observer, diagnosticSink,
-                failurePolicy, maxDiagnosticsPerRun, decisionTracer);
+        return create(preparers, projection, documentPlanFactory.create(preparers), routedWritePolicies);
     }
 
     /** Creates a document use case that resolves candidates after routing on final fields. */
@@ -151,7 +100,7 @@ public final class IocExtractionServiceFactory {
                                      DocumentProcessingPlan documentPlan,
                                      Map<String, ArtifactWritePolicy> writePolicies) {
         var components = new IocExtractionService.Components(reader, refanger, extractor,
-                attributor, matchPolicy, preparers, repository, lifecycleWriter,
+                attributor, preparers, repository, lifecycleWriter,
                 identityResolver, projection);
         var settings = new IocExtractionService.Settings(deduplicate, observabilityMode,
                 observer, diagnosticSink, failurePolicy, maxDiagnosticsPerRun, decisionTracer,

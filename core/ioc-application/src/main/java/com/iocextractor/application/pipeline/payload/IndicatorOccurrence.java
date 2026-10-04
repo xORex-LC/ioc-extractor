@@ -6,7 +6,13 @@ import com.iocextractor.domain.model.Indicator;
 import java.util.Objects;
 
 /** One attributed IOC occurrence with deterministic document ordering. */
-public record IndicatorOccurrence(Indicator indicator, int textPosition, int tieOrdinal) {
+public record IndicatorOccurrence(Indicator indicator, int textPosition, int tieOrdinal,
+                                  boolean retainedObservation) {
+
+    /** Creates an observation admitted by source-level selection. */
+    public IndicatorOccurrence(Indicator indicator, int textPosition, int tieOrdinal) {
+        this(indicator, textPosition, tieOrdinal, true);
+    }
 
     public IndicatorOccurrence {
         Objects.requireNonNull(indicator, "indicator");

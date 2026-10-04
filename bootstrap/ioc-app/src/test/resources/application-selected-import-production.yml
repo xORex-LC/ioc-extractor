@@ -17,6 +17,7 @@ ioc:
     ledger:
       path: "${selected.import.root}/document-ledger"
   processing:
+    document-plan: imported-hosts
     plans:
       - name: imported-hosts
         views:

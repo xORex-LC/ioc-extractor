@@ -100,3 +100,10 @@ processed-import selections. P6 qualifies a selected plan against canonical
 outputs and publishes the operator activation procedure. Unselected processed
 contracts still require the compatible CSV preparer; removing it would change
 the accepted legacy behavior, so it is not retired by this decision.
+
+## Superseded scope, 2026-10-04
+
+[ADR 0034](0034-required-router-processing-plans.md) supersedes optional document
+selection and retained compatible processed-import dispatch. Router now requires
+explicit bindings; original-value defaults preserve source observation accounting.
+The bounded Camel ownership and canonical authority decisions remain unchanged.

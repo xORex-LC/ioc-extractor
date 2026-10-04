@@ -23,6 +23,12 @@ OPTIMIZATION_SPEC.loader.exec_module(OPTIMIZATION)
 
 
 class ComparisonTest(unittest.TestCase):
+    def test_retired_engine_cannot_be_configured(self):
+        with tempfile.TemporaryDirectory() as root:
+            for kind in ("document", "import"):
+                with self.assertRaisesRegex(ValueError, "compatible processing engine is retired"):
+                    COMPARISON.config(kind, False, Path(root))
+
     def test_selected_optimization_comparison_rejects_diagnostic_changes(self):
         baseline = {"fields": ["same"], "outcome": "DEBUG overlap"}
         OPTIMIZATION.compare(baseline, dict(baseline))

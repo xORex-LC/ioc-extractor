@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in paired IOC workload comparison using the production Spring composition."""
+"""Router-only IOC qualification; historical paired-report statistics remain readable."""
 
 import argparse
 import hashlib
@@ -137,18 +137,13 @@ def expected_document_counts(rows, unique, shape):
 
 
 def config(kind, selected, target, resources=RESOURCES, shape="domains"):
+    if not selected:
+        raise ValueError("The compatible processing engine is retired; use Router-only qualification")
     if kind == "document":
-        contents = (resources / "application-customer-routes.yml").read_text() \
-            if selected else "ioc: {}\n"
+        contents = (resources / "application-customer-routes.yml").read_text()
     else:
         contents = (resources / "application-selected-import-production.yml").read_text()
-        if not selected:
-            begin = contents.index("        processed-route:\n")
-            end = contents.index("    runtime:\n", begin)
-            contents = contents[:begin] + contents[end:]
     if shape == "host-collapse":
-        if not selected:
-            raise ValueError("Host-collapse compares selected revisions with identical cleanup semantics")
         # Complete artifact elements preserve strict binder list ownership. Both
         # document/import admit cleaned IPv4 in masks as well as domain hosts.
         contents = contents.replace("default-view: original", "default-view: host")
@@ -396,8 +391,8 @@ def main():
     parser.add_argument("--workload", choices=("both", "document", "import"), default="both")
     parser.add_argument("--shape", choices=("domains", "mixed", "long", "host-collapse"), default="domains",
                         help="Mixed/long use original-view routing for matched public fields")
-    parser.add_argument("--selected-only", action="store_true",
-                        help="Host-collapse qualification across selected revisions; no inequivalent compatible ratio")
+    parser.add_argument("--selected-only", action="store_true", default=True,
+                        help="Router-only qualification (required since the complete cutover)")
     parser.add_argument("--collapse-hosts", type=int, default=20)
     parser.add_argument("--document-unique", type=int, default=20)
     parser.add_argument("--import-unique", type=int, default=20)
@@ -415,8 +410,6 @@ def main():
         parser.error("Warmups must be nonnegative")
     if min(args.document_rows, args.import_rows, args.pairs, args.document_unique, args.import_unique) <= 0:
         parser.error("All counts must be positive")
-    if args.selected_only != (args.shape == "host-collapse"):
-        parser.error("Host-collapse requires --selected-only; other shapes retain paired paths")
     if args.shape == "host-collapse" and (args.collapse_hosts <= 0 or args.collapse_hosts % 2
             or args.document_unique < args.collapse_hosts or args.import_unique < args.collapse_hosts
             or args.document_unique % args.collapse_hosts or args.import_unique % args.collapse_hosts
@@ -481,27 +474,18 @@ def main():
     try:
         for kind, fixture in inputs.items():
             for iteration in range(args.pairs):
-                pair = []
-                for selected in ([True] if args.selected_only else
-                                 [False, True] if iteration % 2 == 0 else [True, False]):
-                    print(f"{kind} pair={iteration + 1} path={'selected' if selected else 'compatible'}",
-                          flush=True)
-                    metrics, signature = run_one(workspace, fixture, kind, selected, iteration,
-                                                 classpath, args.document_rows if kind == "document"
-                                                 else args.import_rows,
-                                                 args.document_unique if kind == "document" else args.import_unique,
-                                                 args.warmups, resources, args.diagnostics, args.shape,
-                                                 args.collapse_hosts)
-                    rows.append(metrics)
-                    (workspace / "samples.json").write_text(json.dumps(rows, indent=2) + "\n")
-                    pair.append(signature)
-                comparison = previous.get(kind, pair[0]) if args.selected_only else pair[1]
-                if args.selected_only and pair[0] != comparison:
-                    raise RuntimeError(f"{kind} selected revision outcome differs in run {iteration + 1}")
-                if {key: value for key, value in pair[0].items() if key != "outcome"} != \
-                        {key: value for key, value in comparison.items() if key != "outcome"}:
-                    raise RuntimeError(f"{kind} output differs in pair {iteration + 1}")
-                previous[kind] = pair[0]
+                print(f"{kind} run={iteration + 1} path=selected", flush=True)
+                metrics, signature = run_one(workspace, fixture, kind, True, iteration,
+                                             classpath, args.document_rows if kind == "document"
+                                             else args.import_rows,
+                                             args.document_unique if kind == "document" else args.import_unique,
+                                             args.warmups, resources, args.diagnostics, args.shape,
+                                             args.collapse_hosts)
+                rows.append(metrics)
+                (workspace / "samples.json").write_text(json.dumps(rows, indent=2) + "\n")
+                if signature != previous.get(kind, signature):
+                    raise RuntimeError(f"{kind} Router outcome differs in run {iteration + 1}")
+                previous[kind] = signature
     except Exception as failure:
         (workspace / "failure.json").write_text(json.dumps({
             **identity, "profile": vars(args) | {"workspace": str(workspace)},
@@ -513,17 +497,7 @@ def main():
               "max_allocation_ratio": args.max_allocation_ratio,
               "max_rss_kib": args.max_rss_kib,
               "max_memory_ratio": args.max_memory_ratio}
-    passing = None if args.selected_only else all(
-        medians[kind]["elapsed_ms"]["selected_over_compatible"] <= args.max_wall_ratio
-        and medians[kind]["allocated_main_bytes"]["selected_over_compatible"]
-        <= args.max_allocation_ratio
-        and medians[kind]["sampled_peak_heap_bytes"]["selected_over_compatible"]
-        <= args.max_memory_ratio
-        and medians[kind]["sampled_peak_rss_kib"]["selected_over_compatible"]
-        <= args.max_memory_ratio
-        and all(float(row["sampled_peak_rss_kib"]) <= args.max_rss_kib
-                for row in rows if row["kind"] == kind and row["path"] == "selected")
-        for kind in inputs)
+    passing = None  # Historical compatible ratios cannot qualify the mandatory Router path.
     report = {**identity,
               "bootable_jar_sha256": jar_digest,
               "java": command(["java", "-version"]).splitlines()[0],
@@ -537,7 +511,7 @@ def main():
               "shape": args.shape,
               "routing_semantics": "host cleanup" if args.shape in ("domains", "host-collapse") else "original view",
               "selected_only": args.selected_only,
-              "collapse_hosts": args.collapse_hosts if args.selected_only else None,
+              "collapse_hosts": args.collapse_hosts if args.shape == "host-collapse" else None,
               "cpu_count": os.cpu_count(),
               "cgroup_limits": {name: Path(f"/sys/fs/cgroup/{name}").read_text().strip()
                                 if Path(f"/sys/fs/cgroup/{name}").exists() else "unavailable"
@@ -546,8 +520,8 @@ def main():
               "runtime_jars": [p.name for p in sorted(libraries.glob("*.jar"))],
               "acceptance_budget": "not agreed; limits are historical regression guards",
               "inputs": {kind: {"rows": args.document_rows if kind == "document" else args.import_rows,
-                                "final_hosts": args.collapse_hosts if args.selected_only else None,
-                                "source_labels": 2 if args.selected_only else 1,
+                                "final_hosts": args.collapse_hosts if args.shape == "host-collapse" else None,
+                                "source_labels": 2 if args.shape == "host-collapse" else 1,
                                 "unique": min(args.document_rows, args.document_unique) if kind == "document"
                                 else min(args.import_rows, args.import_unique),
                                 "duplicate_fraction": 1 - min(
@@ -559,7 +533,7 @@ def main():
               "metrics": rows, "medians": medians, "limits": limits,
               "equivalent_results": True, "within_provisional_envelope": passing}
     (workspace / "report.json").write_text(json.dumps(report, indent=2) + "\n")
-    print(f"Equivalent results in all {args.pairs} pairs per workload; "
+    print(f"Equivalent results in all {args.pairs} Router runs per workload; "
           f"provisional envelope {'not evaluated (qualification only)' if passing is None else 'passed' if passing else 'FAILED'}; "
           f"{workspace}/report.json")
     if passing is False and not args.diagnostics:

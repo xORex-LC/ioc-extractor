@@ -76,9 +76,7 @@ read (SourceReader)
   → refang (Refanger)
   → extract (IndicatorExtractor / PatternEngine)
   → attribute source (SourceAttributor)
-  → de-duplicate (within-batch)
-  → classify NETWORK (один materialized ClassificationDecision на retained IOC)
-  → prepare rows (ArtifactPreparer, без IO и финальных id)
+  → route and prepare (обязательный именованный план, без IO и финальных id)
   → failure-policy checkpoint
   → commit canonical rows → project derived CSV
 ```
@@ -150,7 +148,7 @@ publish начинается только после локального export
 
 Колонки и правила заполнения артефактов **декларативны в конфиге**, не в коде
 (provider/transform-модель). Детали — [processing.md](dev/processing.md).
-Именованный план может явно выбирать представление и артефакт для новых
+Обязательный именованный план выбирает представление и артефакт для новых
 document/processed-import наблюдений; ограниченный Camel-адаптер исполняет
 маршрут, а canonical identity, commit и recovery остаются за application и
 storage. Порядок включения описан в
@@ -222,8 +220,8 @@ export-shaped CSV как отдельные occurrences по versioned contracts
 вторую систему записи. После ownership claim создаётся immutable local snapshot;
 exact-one recognition, streaming tri-state mapping и sealed staging завершаются
 одной cross-artifact dataframe transaction. `as-is` использует объявленные
-source values, `processed` переиспользует обычные refang/extract/classify и
-artifact policies. Только active rows участвуют в matching; отсутствующие в
+source values, `processed` требует явный `processed-route` и применяет обычные
+refang/extract/classify и artifact policies через Router. Только active rows участвуют в matching; отсутствующие в
 delivery rows не меняются. Service ledger + dataframe receipt являются truth,
 а WatchService/SMB `CHANGE_NOTIFY` — только latency hints. Детали:
 [dev/dataframe-import.md](dev/dataframe-import.md) и

@@ -79,6 +79,14 @@ class ConfigurationDocumentationContractTest {
     @Test
     void productionTemplateBindsAndPassesConfigurationPreflights() throws Exception {
         IocProperties properties = bindProductionTemplate();
+        assertThat(properties.processing().documentPlan()).isEqualTo("original-document");
+        assertThat(properties.processing().plans().getFirst().observationSelection())
+                .isEqualTo(IocProcessingProperties.ObservationSelection.RETAINED_OBSERVATIONS);
+        assertThat(properties.dataframeImport().contracts()).allSatisfy(contract -> {
+            assertThat(contract.processedRoute()).isNotNull();
+            assertThat(contract.processedRoute().plan()).isEqualTo("original-aggregate-import");
+            assertThat(contract.processedRoute().inputs()).hasSize(4);
+        });
 
         try (var validatorFactory = Validation.buildDefaultValidatorFactory()) {
             assertThat(validatorFactory.getValidator().validate(properties))
@@ -117,6 +125,14 @@ class ConfigurationDocumentationContractTest {
         assertThat(missing)
                 .as("typed fields absent from the full production template")
                 .isEmpty();
+    }
+
+    @Test
+    void optionalHostPlanIllustrationBindsAndPassesRealRegistryAdmission() throws Exception {
+        var properties = bindProductionTemplate(true);
+        var preflight = new ConfigRegistryPreflight(properties);
+        assertThatNoException().isThrownBy(preflight::afterPropertiesSet);
+        assertThat(preflight.processingPlanBindings().plans()).containsKey("masks-host-example");
     }
 
     @Test
@@ -233,10 +249,22 @@ class ConfigurationDocumentationContractTest {
     }
 
     private IocProperties bindProductionTemplate() throws Exception {
+        return bindProductionTemplate(false);
+    }
+
+    private IocProperties bindProductionTemplate(boolean activateExample) throws Exception {
         var loader = new YamlPropertySourceLoader();
         var sources = new MutablePropertySources();
         Path template = reactorRoot().resolve("packaging/templates/application.yml");
-        sources.addFirst(loader.load("production-template", new FileSystemResource(template)).getFirst());
+        String yaml = java.nio.file.Files.readString(template);
+        if (activateExample) {
+            int start = yaml.indexOf("  #     - name: masks-host-example");
+            int end = yaml.indexOf("  # Keep durable SQLite state", start);
+            String example = yaml.substring(start, end);
+            yaml = yaml.substring(0, start) + example.replace("  # ", "  ") + yaml.substring(end);
+        }
+        sources.addFirst(loader.load("production-template", new org.springframework.core.io.ByteArrayResource(
+                yaml.getBytes(java.nio.charset.StandardCharsets.UTF_8))).getFirst());
         sources.addLast(loader.load("packaged-defaults", new ClassPathResource("application.yml")).getFirst());
 
         ApplicationConversionService conversionService = new ApplicationConversionService();
@@ -327,7 +355,7 @@ class ConfigurationDocumentationContractTest {
 
     private static boolean containsYamlField(String yaml, String field) {
         return Pattern.compile("(?m)(?:^\\s*#?\\s*(?:-\\s*)?|[,{]\\s*)"
-                        + Pattern.quote(field) + "\\s*:")
+                        + "[\"']?" + Pattern.quote(field) + "[\"']?\\s*:")
                 .matcher(yaml)
                 .find();
     }

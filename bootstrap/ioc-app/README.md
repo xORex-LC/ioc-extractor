@@ -81,12 +81,14 @@ stages передают ему только уже вычисленные реш
 `PipelineDecisionTracer`; итоговые диагностики остаются у application.
 `IocRouterConfiguration` регистрирует проверенные IOC-планы в одном Camel
 runtime. `DocumentProcessingAdapter` переводит результат в application port и
-использует preparer конкретного запуска. При выбранном `document-plan` фабрика
-выбирает этот путь для oneshot и daemon; без выбора сохраняется прежний путь.
+использует preparer конкретного запуска. Обязательный `document-plan`
+задаёт этот путь для oneshot и daemon; отсутствие выбора отклоняется preflight.
 `IocProcessingOperations` и `IocProcessingRouteAdapter` общие для document и
 processed-import seams. `RouterProcessedImportRowPreparer` собирает одну
 логическую import-строку из явно названных IOC-входов и выходных колонок;
-контракт выбирает этот путь через явный `processed-route`.
+каждый processed-контракт обязан выбрать путь через явный `processed-route`,
+даже при выключенном intake. Поставляемый документный план использует исходные
+значения и `retained-observations`; очистка host/IP требует явного нового плана.
 `IocProcessingProperties` связывает операторские планы типизированно, а
 `ProcessingPlanCatalog` при старте проверяет ссылки и формирует
 `ProcessingPlanBindings` для document/import точек входа. Отпечаток политики

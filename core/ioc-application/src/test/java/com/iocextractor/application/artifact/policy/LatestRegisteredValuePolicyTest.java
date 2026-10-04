@@ -81,7 +81,7 @@ class LatestRegisteredValuePolicyTest {
                 new Candidate(null, "10.0.0.1"),
                 new Candidate("later", "10.0.0.2"));
 
-        assertThat(selector.select(candidates, ArtifactWritePolicy.legacy(), Candidate::name))
+        assertThat(selector.select(candidates, ArtifactWritePolicy.keepFirst(), Candidate::name))
                 .isSameAs(candidates.getFirst());
     }
 

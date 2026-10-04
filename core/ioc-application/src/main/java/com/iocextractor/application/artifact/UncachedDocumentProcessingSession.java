@@ -7,7 +7,7 @@ import com.iocextractor.diagnostics.result.Result;
 import java.util.List;
 import java.util.Objects;
 
-/** Stateless compatibility adaptation for plans without invocation-owned semantic state. */
+/** Stateless delegation for plans without invocation-owned semantic state. */
 public final class UncachedDocumentProcessingSession implements DocumentProcessingSession {
     private final DocumentProcessingPlan plan;
 

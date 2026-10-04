@@ -137,6 +137,25 @@ ioc:
   #  (RE2 has no lookaround/backreferences).
   engine: re2j
 
+  # Every document uses a named Router plan. Retain complete IOC values by default.
+  processing:
+    document-plan: original-document
+    plans:
+      - name: original-document
+        observation-selection: retained-observations
+        views: []
+        classifications:
+          - { view: original, policy: configured }
+        routing:
+          mode: all
+          on-unmatched: { action: skip }
+          branches:
+            - { id: masks-original, artifact: masks, default-view: original }
+            - { id: ip-original, artifact: ip_list, default-view: original }
+            - { id: blacklist-original, artifact: address_blacklist, default-view: original }
+            - { id: hashes-original, artifact: hashes, default-view: original }
+            - { id: aggregate-original, artifact: ioc_aggregate, default-view: original }
+
   # ---- Indicator detection: type -> regex (applied to refanged text) ---------
   #  Order = priority. URL/IP win over DOMAIN when spans overlap (the host of a
   #  URL must not be re-emitted as a bare domain) — resolved by the extractor.

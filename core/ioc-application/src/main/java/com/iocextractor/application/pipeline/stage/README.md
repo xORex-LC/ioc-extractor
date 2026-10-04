@@ -17,9 +17,7 @@ composition.
 | `RefangStage.java` | `Refanger` → `RefangedText` |
 | `ExtractIndicatorsStage.java` | `IndicatorExtractor` → `ExtractedIndicators` + overlap diagnostics |
 | `AttributeSourceStage.java` | `SourceAttributor` → `AttributedIndicators` |
-| `DeduplicateIndicatorsStage.java` | within-batch dedup decisions + `PIPELINE.ITEM_SKIPPED` batch |
-| `ClassifyIndicatorsStage.java` | one materialized decision per retained indicator; NETWORK rules + unsupported-category guard |
-| `PrepareArtifactsStage.java` | side-effect-free artifact routing/mapping и сбор element diagnostics |
+| `PrepareRoutedArtifactsStage.java` | Обязательный план документа; учёт исходных наблюдений, routing/classification/mapping diagnostics и выбор по конечному ключу согласно плану |
 | `WriteArtifactsStage.java` | deferred-id materialization, canonical commit, projection / dry-run summary |
 
 ## Зависимости

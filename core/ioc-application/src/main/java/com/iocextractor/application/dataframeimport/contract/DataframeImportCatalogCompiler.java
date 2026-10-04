@@ -188,6 +188,10 @@ public final class DataframeImportCatalogCompiler {
                                         List<ImportContractViolation> violations) {
         var route = contract.processedRoute();
         if (route == null) {
+            if (contract.mode() == ImportProcessingMode.PROCESSED) {
+                violations.add(violation(path + ".processed-route",
+                        "mode processed requires an explicit named route"));
+            }
             return;
         }
         String at = path + ".processed-route";

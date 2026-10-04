@@ -816,25 +816,25 @@
         </suppression>
         <rationale>Reviewed false positive: legacy archive tables and columns derive solely from the validated schema catalog and are quoted; lifecycle identity and activation time are bound.</rationale>
     </finding>
-    <finding id="DATA-TTL-P5-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="d1b449412e978faea40fad4dd04309f4" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P5-FAILURE-CONTRACT" review="ingestion-cleanup-propagation-change">
+    <finding id="DATA-TTL-P5-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="6d2bd2ae9abeb8c8156584ca883652c5" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P5-FAILURE-CONTRACT" review="ingestion-cleanup-propagation-change">
         <class name="com.iocextractor.bootstrap.AppConfig" />
-        <method name="lambda$extractIocsUseCase$5" signature="(Lcom/iocextractor/application/port/in/artifact/lifecycle/PrepareLifecycleAdmissionUseCase;Lcom/iocextractor/bootstrap/IocProperties;Lcom/iocextractor/application/port/in/ExtractIocsUseCase;Lcom/iocextractor/bootstrap/ProcessingPolicyIdentity;Ljava/util/List;Lcom/iocextractor/application/port/out/artifact/lifecycle/CanonicalObservationStore;Lcom/iocextractor/adapter/out/store/jdbc/JdbcLifecycleClock;Lcom/iocextractor/application/port/in/ExtractionCommand;)Lcom/iocextractor/application/port/in/ExtractionResult;" />
-        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="444" bytecode="223" />
+        <method name="lambda$extractIocsUseCase$4" signature="(Lcom/iocextractor/application/port/in/artifact/lifecycle/PrepareLifecycleAdmissionUseCase;Lcom/iocextractor/bootstrap/IocProperties;Lcom/iocextractor/application/port/in/ExtractIocsUseCase;Lcom/iocextractor/bootstrap/ProcessingPolicyIdentity;Ljava/util/List;Lcom/iocextractor/application/port/out/artifact/lifecycle/CanonicalObservationStore;Lcom/iocextractor/adapter/out/store/jdbc/JdbcLifecycleClock;Lcom/iocextractor/application/port/in/ExtractionCommand;)Lcom/iocextractor/application/port/in/ExtractionResult;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="437" bytecode="223" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.bootstrap.AppConfig" />
-            <Method name="lambda$extractIocsUseCase$5" />
+            <Method name="lambda$extractIocsUseCase$4" />
         </suppression>
         <rationale>Reviewed policy signal: stateful one-shot extraction marks the observation terminal on every outcome while preserving the exact primary runtime failure and attaching cleanup failure as suppressed.</rationale>
     </finding>
-    <finding id="DATA-TTL-P4-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="9011c888e6a5fa18b9eccf2726590f1c" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P4-FAILURE-CONTRACT" review="lifecycle-failure-contract-change">
+    <finding id="DATA-TTL-P4-SB-006" module="bootstrap/ioc-app" type="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" hash="ff994348437ec8f05945a1daa1411847" occurrence="0" priority="3" rank="19" category="BAD_PRACTICE" disposition="policy-noise" owner="DATA-TTL-01" evidence="P4-FAILURE-CONTRACT" review="lifecycle-failure-contract-change">
         <class name="com.iocextractor.bootstrap.AppConfig" />
-        <method name="lambda$prepareLifecycleAdmissionUseCase$8" signature="(Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionService;Lcom/iocextractor/bootstrap/LifecycleRuntimeObserver;)Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionResult;" />
-        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="909" bytecode="19" />
+        <method name="lambda$prepareLifecycleAdmissionUseCase$7" signature="(Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionService;Lcom/iocextractor/bootstrap/LifecycleRuntimeObserver;)Lcom/iocextractor/application/artifact/lifecycle/LifecycleAdmissionResult;" />
+        <anchor sourcePath="com/iocextractor/bootstrap/AppConfig.java" startLine="901" bytecode="19" />
         <suppression>
             <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION" />
             <Class name="com.iocextractor.bootstrap.AppConfig" />
-            <Method name="lambda$prepareLifecycleAdmissionUseCase$8" />
+            <Method name="lambda$prepareLifecycleAdmissionUseCase$7" />
         </suppression>
         <rationale>Reviewed policy signal: bootstrap reports admission failure and deliberately rethrows the exact runtime failure so startup and command admission remain fail-closed.</rationale>
     </finding>

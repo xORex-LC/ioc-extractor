@@ -56,9 +56,19 @@ Composition root и конфигурация. Единственное мест�
 | `DaemonSliceRetentionScheduler.java` | Отдельный late-phase lifecycle для profile-scoped slice retention |
 | `*HealthIndicator.java` | Actuator contributors, включая export freshness/failure/revision lag |
 
+## Маршрутизация
+
+`IocProcessingProperties` задаёт обязательный план документа и именованные планы.
+`ProcessingPlanBindings` и `ConfigRegistryPreflight` проверяют выборы до запуска
+`RouterRuntimeConfiguration`. `DocumentProcessingAdapter` и
+`RouterProcessedImportRowPreparer` используют один Camel runtime;
+`SelectedProcessedImportRowPreparer` требует точного binding для processed-контракта.
+`ProcessingConditionBinding` связывает вложенный `not`, сохраняя типизированную
+модель и строгую проверку ключей. Подмена Router прежним preparer отсутствует.
+
 ## Заметки
 
-Артефакты собираются из конфигурации (`buildSinks`): маппер + id-стратегия +
+Артефакты собираются из конфигурации (`artifactPreparers`): маппер + id-стратегия +
 диалект CSV. В daemon mode здесь же связываются ingest flow, JDBC storage,
 projection и health contributors. Доменные объекты остаются framework-free —
 Spring живёт здесь.

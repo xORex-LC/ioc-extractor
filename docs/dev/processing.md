@@ -5,20 +5,21 @@
 владеет обнаружением файлов, долговременным lifecycle источника, физической
 схемой SQLite или доставкой export slices.
 
-При выборе победителя по конечному ключу routed document stage и
-`CsvArtifactPreparer.prepareOccurrences` удерживают только одну целую строку
-на ключ, сохраняя порядок первого появления ключей. `last-nonempty` заменяет
-строку только при непустом значении выбранной колонки; метаданные позиции
-принадлежат той же строке. Все occurrences проходят mapping и диагностику,
-включая проигравшие. Совместимый `prepareLegacy` не группирует строки: повторы
-и коллизии mapped key сохраняют прежнее резервирование ID и учёт provenance.
-Ограничение относится к удержанию кандидатов, а не к памяти всего документа.
-Существующий lifecycle writer отклоняет подтверждение с повторными конечными
-ключами до резервирования ID и commit. Поэтому legacy mapping-коллизии, в том
-числе при отключённой upstream-дедупликации, в этом режиме завершаются ошибкой;
-оптимизация не заменяет их неявным объединением строк.
+Каждый документ обрабатывается через обязательный именованный Router-план.
+Поставляемый `original-document` сохраняет полные исходные значения и использует
+`observation-selection: retained-observations`: для `keep-first` готовятся только
+исходные наблюдения, разрешённые `ioc.pipeline.deduplicate`, без объединения
+mapped-коллизий. Это сохраняет резервирование ID и учёт provenance.
+`last-nonempty` рассматривает все occurrences и удерживает последнюю целую строку
+с непустым selection field по конечному ключу артефакта. Режим `final-key` также
+выбирает победителей `keep-first` по конечному ключу и подходит для сведения URL
+к host/IP. Оба режима исполняют один Router; прежних стадий dispatch нет.
+Диагностики mapping сохраняются для участвующих наблюдений. Lifecycle writer
+по-прежнему отклоняет подтверждение с повторными конечными ключами до
+резервирования ID и commit; план с `retained-observations` не скрывает эту ошибку.
+Основание перехода: [ADR 0034](../ADR/0034-required-router-processing-plans.md).
 
-Выбранный document plan открывает отдельную `DocumentProcessingSession` на
+Document plan открывает отдельную `DocumentProcessingSession` на
 подготовку документа; stage закрывает её до checkpoint и при исключениях.
 Чистый `IndicatorProcessingSession` из `ioc-processing` переиспользует только
 успешные семантические результаты. Ключ классификации включает value, type,
@@ -55,8 +56,10 @@ admitted branches/cells и все прежние правила source authority
 
 ## Квалификация стоимости
 
-`make processing-route-comparison` запускает совместимый и выбранный пути через
-штатную Spring-конфигурацию в отдельных JVM/SQLite/workspaces. Сравнение включает
+Исторический `make processing-route-comparison` сравнивал совместимый и выбранный
+пути через штатную Spring-конфигурацию в отдельных JVM/SQLite/workspaces. После
+полного перехода текущий код поддерживает только выбранные маршруты;
+`--selected-only` остаётся способом сравнивать закреплённые версии одного плана. Сравнение включает
 выходные поля/ключи, canonical IDs, source occurrences, import COALESCE и receipt.
 Время относится к обработке после старта контекста, allocations — к вызывающему
 потоку; heap и текущий RSS снимаются с интервалом 10 ms. Первое выполнение и
@@ -87,18 +90,19 @@ URL заполняет bounded session. LRU позволяет переиспо�
 снижение времени на 11,3% и allocations вызывающего потока на 16,4%. Sampled peak
 heap вырос на 4,8%, поэтому это не доказательство снижения всей памяти процесса
 и не закрытие OUT-4.
-Совместимый import отключает выбор
-`processed-route`, сохраняя каталог планов: наличие каталога запускает idle Camel
-даже без выбранного импортного маршрута. Startup/RSS этого профиля показывает
-стоимость выбора пути, а не разницу deployments без Camel и с Camel.
+
+Исторический совместимый import отключал `processed-route`, сохраняя каталог
+планов и idle Camel. Его startup/RSS показывал стоимость выбора пути, а не
+разницу deployments без Camel и с Camel. Такая конфигурация после полного
+перехода больше не допускается.
 
 ## Runtime flow
 
 Порядок стадий является частью application contract и собирается явно:
 
 ```text
-read -> refang -> extract -> attribute -> deduplicate(batch-local)
-     -> classify -> prepare rows -> failure-policy checkpoint
+read -> refang -> extract -> attribute
+     -> required Router plan -> observation selection -> failure-policy checkpoint
      -> canonical commit -> mutable CSV projection
 ```
 
@@ -115,7 +119,7 @@ EXCLUSIVE учитывает недоступные представления �
 затронутые ветки и исход каждой выбранной ветки: кандидат, фильтрация либо
 ожидаемый отказ. Представления, нужные только для mapping, вычисляются лишь
 после выбора соответствующей ветки. R4 добавил изолированный lifecycle Camel:
-bootstrap запускает runtime только при наличии зарегистрированного плана,
+bootstrap требует зарегистрированные планы и запускает общий runtime,
 проверяет готовность маршрутов и ограничивает время остановки с ожиданием
 активных вызовов. Типизированные события выбора, вычисления представлений,
 восстановления и исполнения веток переводятся в существующий application
@@ -123,23 +127,21 @@ tracer с fingerprint политики, но без значений IOC; MDC-к
 представления и ветки
 восстанавливает родительские поля даже при ошибке. Диагностика и её итоговая
 серьёзность остаются у application, а Camel не делает повторных попыток.
-Для документа реализован отдельный исполняемый путь после атрибуции источника:
-каждое вхождение передаётся в технический Router через композиционный
-`DocumentProcessingAdapter`; выбранные ветки используют общий CSV mapper и
-настроенные представления для отдельных колонок. `PrepareRoutedArtifactsStage`
-группирует кандидатов по ключу уже заполненной строки и применяет прежний
-`ArtifactOccurrenceSelector`. Пустые планы для включённых, но не выбранных
-артефактов сохраняют контракт количества записей lifecycle receipt.
-`IocExtractionServiceFactory` выбирает этот путь, когда указан
-`ioc.processing.document-plan`, и привязывает к Router preparer конкретного
-запуска, сохраняя его `_source_key`. Отсутствие выбора оставляет прежний путь.
-Контракт processed import может независимо выбрать именованный план через
-`processed-route`; `as-is` остаётся прежним. Оценка серьёзности диагностик,
-правила IOC и canonical-запись
-сохраняют текущих владельцев.
-
-Необязательный `ioc.processing` описывает именованные планы и выбранный
-`document-plan`. При отсутствии выбора действует прежняя обработка. На старте
+После атрибуции источника документ всегда использует
+`DocumentProcessingAdapter`: каждый occurrence передаётся в Router, выбранные
+ветки используют CSV mapper и представления для отдельных колонок.
+`PrepareRoutedArtifactsStage` применяет `observation-selection` плана:
+`retained-observations` сохраняет допущенные исходные строки для KEEP_FIRST,
+а `final-key` выбирает победителей по ключам заполненных строк.
+LAST_NONEMPTY в обоих случаях видит все occurrences и выбирает целую строку по
+конечному ключу. Пустые планы для явно пропущенных артефактов сохраняют контракт
+количества записей lifecycle receipt. `IocExtractionServiceFactory` требует
+`ioc.processing.document-plan` и привязывает к Router preparer конкретного
+запуска с его `_source_key`. Каждый processed-контракт требует свой явный
+`processed-route`; режим `as-is` не вызывает processed preparation.
+Оценка серьёзности диагностик, правила IOC и canonical-запись сохраняют текущих
+владельцев. Именованные планы, выбор документа и привязки processed-контрактов
+обязательны; отсутствие выбора является ошибкой конфигурации. На старте
 `ProcessingPlanCatalog` проверяет ссылки на активные артефакты, представления,
 колонки, классификации и предикаты, форму условий AND/OR/NOT, типизированные
 аргументы `type-in` и явный список `omitted-artifacts` для каждого включённого,
@@ -203,18 +205,18 @@ Tika, RE2/J, Guava PSL и Commons CSV изолированы адаптерам�
    `IndicatorClassifier` materializes the same network/file decision for
    ordinary ingest and managed import; callers own diagnostics and gated TRACE
    without repeating the domain rule.
-5. **Dedup и classification зависят от выбранного пути.** Прежний путь
-   устраняет batch-дубликаты до классификации. Маршрутизируемый путь сохраняет
-   каждое вхождение до mapping и выбирает победителя по финальному
-   артефактному ключу; источник и позиция каждого вхождения сохраняются.
+5. **Dedup принадлежит политике плана.** Штатный `retained-observations`
+   учитывает `ioc.pipeline.deduplicate` для KEEP_FIRST без схлопывания разных
+   исходных IOC в одну строку после mapping. `final-key` сохраняет occurrences
+   до mapping и выбирает целые строки по конечному ключу. Classification
+   выполняется в требуемом представлении через один Router и общую сессию.
    Durable dedup отдельно выполняет canonical storage по `row_key`.
 6. **Mapping не делает IO.** `ArtifactPreparer` применяет `accepts`, filters,
-   column providers и transforms и возвращает write plan. `from: id` остаётся
-   deferred slot до materialization непосредственно перед commit. Артефакт может
-   явно выбрать whole-row `last-nonempty` по mapped column: тогда mapper сначала
-   строит кандидата для каждого occurrence, группирует по canonical identity и
-   выбирает одну строку целиком. Без этой policy сохраняется прежний путь с
-   одной строкой на deduplicated indicator.
+   column providers и transforms. `from: id` остаётся deferred slot до
+   materialization непосредственно перед commit. LAST_NONEMPTY выбирает одну
+   целую строку с непустым mapped `selection-column` по конечному ключу;
+   этот выбор выполняется application после Router. KEEP_FIRST следует
+   `observation-selection` плана.
 7. **Failure policy применяется до durable write.** Ожидаемый data-dependent
    отказ provider/transform становится `SINK.ROW_MAPPING_FAILED`; неожиданный
    exception остаётся run failure. Rejected run не резервирует id и не пишет
@@ -236,11 +238,10 @@ Tika, RE2/J, Guava PSL и Commons CSV изолированы адаптерам�
     `ProcessedImportRowPreparer` применяет ordinary refang/extract/classify и
     declarative artifact mapping к уже структурированной logical row. Он не
     читает source, не владеет staging/transaction и сохраняет compound-row
-    grouping; `as-is` этот path не вызывает. Для нового Router-пути входные
+    grouping; `as-is` этот path не вызывает. Для processed-маршрута входные
     IOC-ячейки и производные выходные колонки указываются явно: из имён
     provider-ов они не выводятся. Application вычисляет record/match keys и
-    проверяет форму строки только после обработки. Предупреждения успешного
-    fallback отделены от rejection issues и проходят через sealed stage и
+    проверяет форму строки только после обработки. Предупреждения явного восстановления представления отделены от rejection issues и проходят через sealed stage и
     canonical receipt к terminal-отчёту.
 
 Для daemon выбранная политика документа закрепляется в service DB (schema v12).

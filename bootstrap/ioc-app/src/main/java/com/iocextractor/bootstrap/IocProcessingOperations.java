@@ -93,6 +93,11 @@ final class IocProcessingOperations {
         ProcessingView selected = resolved(input, binding.defaultView());
         CsvArtifactPreparer preparer = selected.preparers().getOrDefault(artifact,
                 Objects.requireNonNull(preparers.get(artifact), "artifact preparer " + artifact));
+        if (!selected.retainedObservation() && preparer.writePolicy().duplicateSelection()
+                == com.iocextractor.application.artifact.policy.ArtifactWritePolicy.DuplicateSelection.KEEP_FIRST) {
+            exchange.getMessage().setBody(new BranchOutcome.Filtered());
+            return;
+        }
         Map<String, ClassifiedIndicator> columnViews = new HashMap<>();
         binding.fieldViews().forEach((column, view) ->
                 columnViews.put(column, resolved(input, view).classified()));

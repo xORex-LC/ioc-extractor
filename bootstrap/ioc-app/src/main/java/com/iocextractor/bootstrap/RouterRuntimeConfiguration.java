@@ -10,18 +10,16 @@ import com.iocextractor.observability.logging.LogEvents;
 import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** Activates only a supplied plan; Spring owns startup, readiness and shutdown. */
+/** Starts the required admitted plans; Spring owns readiness and shutdown. */
 @Configuration(proxyBeanMethods = false)
 public class RouterRuntimeConfiguration {
     private static final Logger LOG = LoggerFactory.getLogger(RouterRuntimeConfiguration.class);
 
     @Bean(destroyMethod = "close")
-    @ConditionalOnBean(RouterPlanRegistration.class)
     CamelRouteRuntime camelRouteRuntime(RouterPlanRegistration registration,
                                        PipelineDecisionTracer tracer) {
         var compiled = new CamelPlanCompiler().compile(registration.plans(),
@@ -46,7 +44,6 @@ public class RouterRuntimeConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(CamelRouteRuntime.class)
     @ConditionalOnProperty(prefix = "ioc.runtime", name = "mode", havingValue = "daemon")
     RouterHealthIndicator routerHealthIndicator(CamelRouteRuntime runtime) {
         return new RouterHealthIndicator(runtime);

@@ -40,10 +40,8 @@ public final class ComparisonDiagnostics {
     private static final java.util.Set<String> TARGETS = java.util.stream.Stream.concat(
             ENTRIES.keySet().stream().map(name -> name.substring(0, name.lastIndexOf('.'))),
             java.util.stream.Stream.of(
-                    "com/iocextractor/application/pipeline/stage/PrepareArtifactsStage",
                     "com/iocextractor/application/pipeline/stage/PrepareRoutedArtifactsStage",
                     "com/iocextractor/application/artifact/ArtifactIdSequence",
-                    "com/iocextractor/adapter/in/csv/CsvProcessedImportRowPreparer",
                     "com/iocextractor/bootstrap/RouterProcessedImportRowPreparer",
                     "com/iocextractor/adapter/processing/camel/runtime/CamelRouteRuntime",
                     "com/iocextractor/application/artifact/policy/ArtifactOccurrenceSelector$Accumulator"))
@@ -228,11 +226,10 @@ public final class ComparisonDiagnostics {
                 }
                 String entryCounter = counter;
                 boolean documentPreparation = type.startsWith("com/iocextractor/application/pipeline/stage/")
-                        && (type.endsWith("/PrepareArtifactsStage") || type.endsWith("/PrepareRoutedArtifactsStage"))
+                        && type.endsWith("/PrepareRoutedArtifactsStage")
                         && method.equals("process") && descriptor.endsWith("Lcom/iocextractor/platform/etl/Envelope;");
                 boolean importPreparation = type.endsWith("/ProcessedImportRowPreparer")
-                        || type.endsWith("/RouterProcessedImportRowPreparer")
-                        || type.endsWith("/CsvProcessedImportRowPreparer");
+                        || type.endsWith("/RouterProcessedImportRowPreparer");
                 importPreparation &= method.equals(methods.contains("prepareInSession") ? "prepareInSession" : "prepare")
                         && descriptor.startsWith(
                         "(Lcom/iocextractor/application/dataframeimport/contract/CompiledDataframeImportContract;");

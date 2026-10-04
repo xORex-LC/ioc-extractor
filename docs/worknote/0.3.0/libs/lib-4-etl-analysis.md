@@ -36,7 +36,7 @@ processing documentation; ADR-0017 and the existing library proposals.
 | [Module API](../../../../platform/platform-etl/src/main/java/com/iocextractor/platform/etl/README.md) | Generic stages, envelopes, runner and observer; no IOC payloads or Spring imports |
 | [IOC assembly](../../../../core/ioc-application/src/main/java/com/iocextractor/application/service/IocExtractionService.java), lines 98–104, 126–175 | Only production pipeline assembly/runner construction found; eight stages |
 | [Logging observer](../../../../platform/platform-observability/src/main/java/com/iocextractor/observability/logging/LoggingPipelineObserver.java) | Second direct consuming module, but an integration for the same IOC flow, not a second processing use case |
-| [Processed import](../../../../adapters/adapter-csv/src/main/java/com/iocextractor/adapter/in/csv/CsvProcessedImportRowPreparer.java) | Reuses refanging, extraction, classification and mapping without the generic runner |
+| [Processed import](https://github.com/xORex-LC/ioc-extractor/blob/f43037ee87ef3f4647a90615f04d27a3eb429198/adapters/adapter-csv/src/main/java/com/iocextractor/adapter/in/csv/CsvProcessedImportRowPreparer.java) | Reuses refanging, extraction, classification and mapping without the generic runner |
 | [Processing contract](../../../dev/processing.md) | Stage order and prepare/checkpoint/commit semantics belong to the application |
 | [Inventory](../evidence/shared-code-inventory.md) | LIB-4 already deferred until consumer and dependency-closure review |
 

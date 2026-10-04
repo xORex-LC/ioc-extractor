@@ -92,9 +92,10 @@ the service is stopped or after a coordinated SQLite backup.
 
 ## IOC processing plans
 
-The `ioc.processing` tree is optional. Named plans are checked at startup and
-execute only when selected by `document-plan` or an import contract. An absent
-selection keeps the compatible path. A policy change affects new observations;
+The `ioc.processing` tree includes a required `document-plan`. Named plans are
+checked at startup and execute when selected by a document or processed-import
+contract. The shipped `original-document` retains full original IOC values;
+missing selections fail admission. A policy change affects new observations;
 existing canonical rows are not rewritten. In daemon mode, changing a selected
 document policy requires all unfinished document admissions and processing files
 to drain under the previous policy before the service starts with the new one.
@@ -108,7 +109,8 @@ Run only one active daemon per service database during a policy change. Committe
 imports finalize from receipts.
 
 - `ioc.dataframe-import.contracts[].processed-route.plan` selects a named IOC
-  plan for one `processed` contract. `as-is` contracts cannot select a route.
+  plan for one `processed` contract. This binding is required even when intake is
+  disabled. `as-is` contracts cannot select a route.
   `ioc.dataframe-import.contracts[].processed-route.inputs` is an ordered list
   of source cells; each `ioc.dataframe-import.contracts[].processed-route.inputs[].artifact`
   and `ioc.dataframe-import.contracts[].processed-route.inputs[].target` must
@@ -122,6 +124,12 @@ imports finalize from receipts.
 - `ioc.processing.document-plan` selects one entry in `ioc.processing.plans` by
   `ioc.processing.plans[].name`. A selected document plan must route each
   enabled artifact or list it in `ioc.processing.plans[].omitted-artifacts`.
+- `ioc.processing.plans[].observation-selection` accepts `retained-observations`
+  or `final-key` (the default for a newly declared plan). The shipped document
+  plan uses `retained-observations`: KEEP_FIRST preserves source-level selection,
+  mapped-collision multiplicity and ID/provenance accounting; LAST_NONEMPTY still
+  examines every occurrence. `final-key` selects whole-row winners per artifact
+  after routing, including derived host/IP collapse.
 - `ioc.processing.plans[].views` declares unary derived values. Each entry has
   `ioc.processing.plans[].views[].name`,
   `ioc.processing.plans[].views[].operation` and

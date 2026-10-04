@@ -37,7 +37,13 @@ final class ProcessingPlanCatalog {
     }
 
     record CompiledPlan(PlanDescriptor router, Map<String, BranchBinding> bindings,
-                        Set<String> classifiedViews) {
+                        Set<String> classifiedViews,
+                        IocProcessingProperties.ObservationSelection observationSelection) {
+        CompiledPlan(PlanDescriptor router, Map<String, BranchBinding> bindings,
+                     Set<String> classifiedViews) {
+            this(router, bindings, classifiedViews, IocProcessingProperties.ObservationSelection.FINAL_KEY);
+        }
+
         CompiledPlan {
             bindings = Map.copyOf(bindings);
             classifiedViews = Set.copyOf(classifiedViews);
@@ -147,7 +153,7 @@ final class ProcessingPlanCatalog {
             errors.add(path + ": " + failure.getMessage());
             return null;
         }
-        return new CompiledPlan(descriptor, bindings, classified);
+        return new CompiledPlan(descriptor, bindings, classified, plan.observationSelection());
     }
 
     private static List<PlanDescriptor.View> compileViews(List<IocProcessingProperties.View> configured,

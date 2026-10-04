@@ -493,7 +493,7 @@ runs are not full test or static-analysis evidence. At initial inspection,
 ## Source navigation
 
 - [Document preparation stage](../../../../core/ioc-application/src/main/java/com/iocextractor/application/pipeline/stage/PrepareRoutedArtifactsStage.java)
-- [Compatible classification stage](../../../../core/ioc-application/src/main/java/com/iocextractor/application/pipeline/stage/ClassifyIndicatorsStage.java)
+- [Current document preparation stage](../../../../core/ioc-application/src/main/java/com/iocextractor/application/pipeline/stage/PrepareRoutedArtifactsStage.java)
 - [Document adapter](../../../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/DocumentProcessingAdapter.java)
 - [Shared operation bindings](../../../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/IocProcessingOperations.java)
 - [Import adapter](../../../../bootstrap/ioc-app/src/main/java/com/iocextractor/bootstrap/RouterProcessedImportRowPreparer.java)

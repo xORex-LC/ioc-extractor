@@ -22,6 +22,7 @@ Actuator. Он работает только через ports из `application.
 | `CanonicalWriteResult.java` | Фактические public inserts и canonical revision после атомарной записи |
 | `CanonicalArtifactsChanged.java` | Use-case-neutral post-commit control fact для export fast path |
 | `ArtifactWritePlan.java` / `PreparedArtifactRow.java` | Side-effect-free результат mapping с deferred public-id slot |
+| `DocumentObservationSelection.java` | Политика плана: исходные наблюдения или выбор по конечному ключу; общий Router для обоих вариантов |
 | `ArtifactIdSequence.java` / `ArtifactIdReservation.java` | Thread-safe монотонное резервирование непересекающихся id-range перед commit |
 | `StableArtifactId.java` | Результат stable id allocation |
 | `FingerprintFraming.java` | Единый length-prefixed UTF-8 framing для durable application fingerprints |

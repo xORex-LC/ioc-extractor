@@ -4,18 +4,13 @@ import com.iocextractor.processing.mapping.RowMappingException;
 import com.iocextractor.processing.mapping.ConfigurableRowMapper;
 
 import com.iocextractor.application.artifact.ArtifactIdSequence;
-import com.iocextractor.application.artifact.ArtifactPreparationBatch;
 import com.iocextractor.application.artifact.ArtifactRow;
-import com.iocextractor.application.artifact.ArtifactRowKey;
 import com.iocextractor.application.artifact.ArtifactWritePlan;
 import com.iocextractor.application.artifact.PreparedArtifactRow;
-import com.iocextractor.application.artifact.policy.ArtifactOccurrenceSelector;
 import com.iocextractor.application.artifact.policy.ArtifactWritePolicy;
 import com.iocextractor.application.observability.PipelineDecisionKind;
 import com.iocextractor.application.observability.PipelineItemDecision;
 import com.iocextractor.processing.model.ClassifiedIndicator;
-import com.iocextractor.application.pipeline.payload.ClassifiedIndicatorOccurrence;
-import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.observability.PipelineDecisionTracer;
 import com.iocextractor.diagnostics.Diagnostic;
@@ -40,31 +35,18 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
     private final DiagnosticFactory diagnosticFactory;
     private final String sourceKey;
     private final PipelineDecisionTracer tracer;
-    private final ArtifactIdentityResolver identityResolver;
-    private final ArtifactOccurrenceSelector occurrenceSelector = new ArtifactOccurrenceSelector();
 
-    /** Creates a legacy-compatible preparer. */
+    /** Creates a mapper; canonical identity and winner selection belong to the application. */
     public CsvArtifactPreparer(CsvArtifactDefinition definition,
                                ArtifactIdSequence ids,
                                DiagnosticFactory diagnosticFactory,
                                String sourceKey,
                                PipelineDecisionTracer tracer) {
-        this(definition, ids, diagnosticFactory, sourceKey, tracer, null);
-    }
-
-    /** Creates a preparer with canonical identity support for occurrence policies. */
-    public CsvArtifactPreparer(CsvArtifactDefinition definition,
-                               ArtifactIdSequence ids,
-                               DiagnosticFactory diagnosticFactory,
-                               String sourceKey,
-                               PipelineDecisionTracer tracer,
-                               ArtifactIdentityResolver identityResolver) {
         this.definition = Objects.requireNonNull(definition, "definition");
         this.ids = Objects.requireNonNull(ids, "ids");
         this.diagnosticFactory = Objects.requireNonNull(diagnosticFactory, "diagnosticFactory");
         this.sourceKey = sourceKey;
         this.tracer = Objects.requireNonNull(tracer, "tracer");
-        this.identityResolver = identityResolver;
     }
 
     @Override
@@ -110,24 +92,15 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
 
     @Override
     public Result<ArtifactWritePlan> prepare(List<ClassifiedIndicator> indicators) {
-        return prepareLegacy(indicators);
+        return prepareRows(indicators);
     }
 
-    @Override
-    public Result<ArtifactWritePlan> prepare(ArtifactPreparationBatch batch) {
-        Objects.requireNonNull(batch, "batch");
-        if (definition.writePolicy().duplicateSelection()
-                == ArtifactWritePolicy.DuplicateSelection.KEEP_FIRST) {
-            return prepareLegacy(batch.retained());
-        }
-        if (identityResolver == null) {
-            throw new IllegalStateException(
-                    "Occurrence-aware artifact preparation requires canonical identity: " + definition.name());
-        }
-        return prepareOccurrences(batch.occurrences());
+    /** Returns the configured observation and field update policy for this artifact. */
+    public ArtifactWritePolicy writePolicy() {
+        return definition.writePolicy();
     }
 
-    private Result<ArtifactWritePlan> prepareLegacy(List<ClassifiedIndicator> indicators) {
+    private Result<ArtifactWritePlan> prepareRows(List<ClassifiedIndicator> indicators) {
         var rows = new ArrayList<PreparedArtifactRow>();
         var diagnostics = new ArrayList<Diagnostic>();
         for (int ordinal = 0; ordinal < indicators.size(); ordinal++) {
@@ -145,40 +118,6 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
             }
         }
         return Result.of(plan(rows), diagnostics);
-    }
-
-    private Result<ArtifactWritePlan> prepareOccurrences(
-            List<ClassifiedIndicatorOccurrence> occurrences) {
-        var policy = definition.writePolicy();
-        var winners = occurrenceSelector.<ArtifactRowKey, PreparedArtifactRow>accumulator(
-                policy, row -> row.template().value(policy.selectionColumn()));
-        var diagnostics = new ArrayList<Diagnostic>();
-        for (int ordinal = 0; ordinal < occurrences.size(); ordinal++) {
-            ClassifiedIndicatorOccurrence occurrence = occurrences.get(ordinal);
-            ClassifiedIndicator classified = occurrence.classified();
-            if (!accepted(classified)) {
-                trace(classified, "filtered");
-                continue;
-            }
-            try {
-                PreparedArtifactRow mapped = prepareRow(classified);
-                var positions = new LinkedHashMap<String,
-                        com.iocextractor.application.observation.OccurrencePosition>();
-                definition.writePolicy().fields().keySet()
-                        .forEach(field -> positions.put(field, occurrence.position()));
-                var prepared = new PreparedArtifactRow(
-                        mapped.template(), mapped.idColumn(), positions);
-                ArtifactRowKey key = identityResolver.keyOf(definition.name(), prepared.template())
-                        .orElseThrow(() -> new IllegalStateException(
-                                "Mapped row has no canonical identity: " + definition.name()));
-                winners.add(key, prepared);
-                trace(classified, "routed");
-            } catch (RowMappingException failure) {
-                trace(classified, "mapping_failed");
-                diagnostics.add(mappingDiagnostic(classified, failure, ordinal));
-            }
-        }
-        return Result.of(plan(winners.winners()), diagnostics);
     }
 
     private boolean accepted(ClassifiedIndicator classified) {
@@ -227,7 +166,7 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
                 .with(DiagnosticContextKeys.TYPE, classified.indicator().type())
                 .with(DiagnosticContextKeys.SOURCE, sourceKey(classified))
                 .with(DiagnosticContextKeys.ORDINAL, ordinal)
-                .with("reason", reason(failure))
+                .with("reason", failure.getMessage())
                 .build();
     }
 
@@ -237,12 +176,6 @@ public final class CsvArtifactPreparer implements ArtifactPreparer {
         }
         String label = classified.indicator().source().label();
         return label == null || label.isBlank() ? "oneshot" : label;
-    }
-
-    private static String reason(RuntimeException failure) {
-        return failure.getMessage() == null || failure.getMessage().isBlank()
-                ? failure.getClass().getSimpleName()
-                : failure.getMessage();
     }
 
 }

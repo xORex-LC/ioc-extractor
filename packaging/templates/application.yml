@@ -57,15 +57,39 @@ ioc:
     failure-policy: collect-and-continue
     max-diagnostics-per-run: 10000
 
-  # ---- IOC processing plan syntax (inactive until flow attachment) ---------
-  # Keep this example commented: plan admission does not yet activate the
-  # document/import route, and a real document plan must cover or explicitly
-  # omit every enabled artifact.
-  # processing:
-  #   document-plan: network
-  #   plans:
-  #     - name: network
-  #       omitted-artifacts: [ioc_aggregate]
+  # Every document uses a named Router plan. Retain complete IOC values by default.
+  processing:
+    document-plan: original-document
+    plans:
+      - name: original-document
+        observation-selection: retained-observations
+        views: []
+        classifications:
+          - { view: original, policy: configured }
+        routing:
+          mode: all
+          on-unmatched: { action: skip }
+          branches:
+            - { id: masks-original, artifact: masks, default-view: original }
+            - { id: ip-original, artifact: ip_list, default-view: original }
+            - { id: blacklist-original, artifact: address_blacklist, default-view: original }
+            - { id: hashes-original, artifact: hashes, default-view: original }
+            - { id: aggregate-original, artifact: ioc_aggregate, default-view: original }
+      - name: original-aggregate-import
+        views: []
+        classifications:
+          - { view: original, policy: configured }
+        routing:
+          mode: all
+          on-unmatched: { action: skip }
+          branches:
+            - { id: aggregate-original, artifact: ioc_aggregate, default-view: original }
+  # Optional mask-only plan illustration. To activate, add this complete plan
+  # to the catalog and select it explicitly. Its omissions are intentional;
+  # use the routes guide for a plan that retains every artifact.
+  #     - name: masks-host-example
+  #       observation-selection: final-key
+  #       omitted-artifacts: [ip_list, address_blacklist, hashes, ioc_aggregate]
   #       views:
   #         - { name: host, operation: network.host, input: original }
   #         - name: usable
@@ -74,20 +98,21 @@ ioc:
   #           arguments: { on-reasons: [unsupported-address-form], use-view: original }
   #       classifications:
   #         - { view: original, policy: configured }
+  #         - { view: host, policy: configured }
   #       routing:
   #         mode: first
-  #         on-unmatched: { action: route, branch: fallback }
+  #         on-unmatched: { action: route, branch: masks-original }
   #         branches:
-  #           - id: masks-original
+  #           - id: masks-host
   #             artifact: masks
   #             default-view: original
   #             eligibility:
   #               all:
-  #                 - { on: original, predicate: type-in, arguments: { types: [DOMAIN, URL] } }
-  #                 - any: [{ on: original, predicate: has-path }]
-  #                 - not: { on: original, predicate: has-query }
+  #                 - { 'on': original, predicate: type-in, arguments: { types: [DOMAIN, URL] } }
+  #                 - any: [{ 'on': original, predicate: has-path }]
+  #                 - not: { 'on': original, predicate: has-query }
   #             field-views: { mask: host }
-  #         default-branch: { id: fallback, artifact: masks, default-view: original }
+  #         default-branch: { id: masks-original, artifact: masks, default-view: original }
   # Keep durable SQLite state separate from CSV references/projections. SQLite
   # creates WAL/SHM sidecars next to each DB, so var/db is the backup unit.
   storage:
@@ -132,8 +157,8 @@ ioc:
     SHA1:   "\\b[0-9a-fA-F]{40}\\b"
     MD5:    "\\b[0-9a-fA-F]{32}\\b"
     URL:    "https?://[^\\s;,<>\"']+"
-    IPV4:   "\\b(?:\\d{1,3}\\.){3}\\d{1,3}(?:[:/][^\\s;,<>\"']*)?"
-    DOMAIN: "\\b(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,}(?:/[^\\s;,<>\"']*)?"
+    IPV4:   "\\b(?:\\d{1,3}\\.){3}\\d{1,3}(?:[:/?#][^\\s;,<>\"']*)?"
+    DOMAIN: "\\b(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,}(?:[:/?#][^\\s;,<>\"']*)?"
 
   # First-match-wins network-mask classification.
   classify:
@@ -307,14 +332,15 @@ ioc:
         renew-unchanged: true
         formula-policy: reject
         merge-default: keep-existing
-        # Optional IOC route for this processed contract. Activate only with a
-        # qualified named plan whose branches match these authorized outputs.
-        # processed-route:
-        #   plan: named-import-plan
-        #   inputs:
-        #     - { artifact: ioc_aggregate, target: ip_address }
-        #   outputs:
-        #     - { artifact: ioc_aggregate, targets: [ ip_address ] }
+        processed-route:
+          plan: original-aggregate-import
+          inputs:
+            - { artifact: ioc_aggregate, target: ip_address }
+            - { artifact: ioc_aggregate, target: url_match }
+            - { artifact: ioc_aggregate, target: host_match }
+            - { artifact: ioc_aggregate, target: hash }
+          outputs:
+            - { artifact: ioc_aggregate, targets: [ip_address, url_match, host_match, hash] }
         artifacts:
           - name: ioc_aggregate
             role: primary

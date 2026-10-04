@@ -77,6 +77,12 @@ class GoldenPipelineIT {
     ExtractIocsUseCase useCase;
 
     @Autowired
+    com.iocextractor.adapter.processing.camel.runtime.CamelRouteRuntime router;
+
+    @Autowired
+    com.iocextractor.bootstrap.IocProperties properties;
+
+    @Autowired
     @Qualifier("dataframeStorageDataSource")
     HikariDataSource dataframeStorageDataSource;
 
@@ -101,6 +107,8 @@ class GoldenPipelineIT {
 
     @Test
     void pipeline_output_matches_golden_and_repeated_extract_updates_only_provenance() throws Exception {
+        assertThat(router).isNotNull();
+        assertThat(properties.processing().documentPlan()).isEqualTo("original-document");
         useCase.extract(new ExtractionCommand(
                 "golden-first", Path.of("src/test/resources/golden/source.html"), false));
 
@@ -130,8 +138,8 @@ class GoldenPipelineIT {
 
     @Test
     @org.junit.jupiter.api.Timeout(120)
-    void legacyMappedCollisionsPreserveReservationAndProvenanceInBothWritePaths() throws Exception {
-        Path root = Files.createTempDirectory(Path.of("target"), "legacy-accounting-");
+    void originalRouteMappedCollisionsPreserveReservationAndProvenanceInBothWritePaths() throws Exception {
+        Path root = Files.createTempDirectory(Path.of("target"), "original-route-accounting-");
         Path source = root.resolve("input.html");
         Files.writeString(source, "<html><head><meta charset=\"utf-8\"></head><body><p>БИБ-first</p>"
                 + "<p>same.example same.example</p><p>БИБ-second</p><p>other.example</p></body></html>");
@@ -151,6 +159,17 @@ class GoldenPipelineIT {
                         "--ioc.artifact-identity.artifacts[0].record-key=mask-row-v1",
                         "--ioc.artifact-identity.artifacts[0].match-keys[0].name=mask-v1",
                         "--ioc.artifact-identity.artifacts[0].match-keys[0].key-columns[0]=mask",
+                        "--ioc.processing.document-plan=original-accounting",
+                        "--ioc.processing.plans[0].name=original-accounting",
+                        "--ioc.processing.plans[0].views=",
+                        "--ioc.processing.plans[0].observation-selection=retained-observations",
+                        "--ioc.processing.plans[0].classifications[0].view=original",
+                        "--ioc.processing.plans[0].classifications[0].policy=configured",
+                        "--ioc.processing.plans[0].routing.mode=all",
+                        "--ioc.processing.plans[0].routing.on-unmatched.action=skip",
+                        "--ioc.processing.plans[0].routing.branches[0].id=masks-original",
+                        "--ioc.processing.plans[0].routing.branches[0].artifact=masks",
+                        "--ioc.processing.plans[0].routing.branches[0].default-view=original",
                         "--ioc.sink.artifacts[0].name=masks",
                         "--ioc.sink.artifacts[0].enabled=true",
                         "--ioc.sink.artifacts[0].path=" + run.resolve("masks.csv").toAbsolutePath(),
@@ -165,7 +184,7 @@ class GoldenPipelineIT {
                         "--ioc.sink.artifacts[0].columns[2].name=source",
                         "--ioc.sink.artifacts[0].columns[2].from=source.label")) {
                     var useCase = context.getBean(ExtractIocsUseCase.class);
-                    var command = new ExtractionCommand("legacy-accounting", source, false);
+                    var command = new ExtractionCommand("original-route-accounting", source, false);
                     int expected = deduplicate ? 2 : 3;
                     if (lifecycle) {
                         org.assertj.core.api.Assertions.assertThatThrownBy(() -> useCase.extract(command))

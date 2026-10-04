@@ -88,7 +88,7 @@ final class ArtifactPolicyCatalog {
         }
         var configured = artifact.writePolicy();
         if (configured == null) {
-            return ArtifactWritePolicy.legacy();
+            return ArtifactWritePolicy.keepFirst();
         }
         String path = "ioc.sink.artifacts[" + index + "].write-policy";
         Set<String> columns = columnNames(artifact);

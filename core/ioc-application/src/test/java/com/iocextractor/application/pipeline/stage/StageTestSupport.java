@@ -9,8 +9,6 @@ import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.SourceContext;
 import com.iocextractor.application.pipeline.payload.AttributedIndicators;
 import com.iocextractor.processing.model.ClassifiedIndicator;
-import com.iocextractor.application.pipeline.payload.DeduplicationDecision;
-import com.iocextractor.application.pipeline.payload.DeduplicatedIndicators;
 import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.diagnostics.DiagnosticFactory;
 import com.iocextractor.domain.attribute.AttributionDecision;
@@ -82,11 +80,4 @@ final class StageTestSupport {
                 new ClassificationDecision(features, 0, List.of(), new MaskMatch("u:hAS", "h:dAS")));
     }
 
-    static DeduplicatedIndicators deduplicatedIndicators(Indicator... indicators) {
-        var retained = List.of(indicators);
-        var decisions = retained.stream()
-                .map(indicator -> new DeduplicationDecision(indicator, true))
-                .toList();
-        return new DeduplicatedIndicators(indicators.length, retained, decisions);
-    }
 }

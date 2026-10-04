@@ -33,7 +33,7 @@ public record CsvArtifactDefinition(String name,
     public CsvArtifactDefinition {
         accepts = accepts == null ? null : Collections.unmodifiableSet(new LinkedHashSet<>(accepts));
         filter = filter == null ? ArtifactFilter.none() : filter;
-        writePolicy = writePolicy == null ? ArtifactWritePolicy.legacy() : writePolicy;
+        writePolicy = writePolicy == null ? ArtifactWritePolicy.keepFirst() : writePolicy;
     }
 
     /**
@@ -44,16 +44,16 @@ public record CsvArtifactDefinition(String name,
                                  RowMapper mapper,
                                  ArtifactIdStrategy idStrategy,
                                  long idStart) {
-        this(name, accepts, ArtifactFilter.none(), mapper, idStrategy, idStart, ArtifactWritePolicy.legacy());
+        this(name, accepts, ArtifactFilter.none(), mapper, idStrategy, idStart, ArtifactWritePolicy.keepFirst());
     }
 
-    /** Creates a legacy definition with feature filtering. */
+    /** Creates a definition with feature filtering and KEEP_FIRST selection. */
     public CsvArtifactDefinition(String name,
                                  Set<IndicatorType> accepts,
                                  ArtifactFilter filter,
                                  RowMapper mapper,
                                  ArtifactIdStrategy idStrategy,
                                  long idStart) {
-        this(name, accepts, filter, mapper, idStrategy, idStart, ArtifactWritePolicy.legacy());
+        this(name, accepts, filter, mapper, idStrategy, idStart, ArtifactWritePolicy.keepFirst());
     }
 }

@@ -31,8 +31,34 @@ class ConfigRegistryPreflightIT {
             assertThat(context).hasSingleBean(IocProperties.class);
             assertThat(context).hasSingleBean(ConfigRegistryPreflight.class);
             assertThat(context).hasSingleBean(ProcessingPlanBindings.class);
-            assertThat(context.getBean(ProcessingPlanBindings.class).selectedDocumentPlan()).isEmpty();
+            assertThat(context.getBean(ProcessingPlanBindings.class).requireDocumentPlan().router().id())
+                    .isEqualTo("original-document");
         });
+    }
+
+    @Test
+    void rejectsMissingDocumentSelectionInsteadOfChoosingAnotherExecutionModel() throws Exception {
+        var source = defaults();
+        var missing = new IocProperties(source.engine(), source.runtime(), source.storage(), source.source(),
+                source.refang(), source.patterns(), source.classify(), source.sink(), source.pipeline(),
+                source.ingestion(), source.artifactIdentity(), source.dataframeImport(), source.export(),
+                source.sync(), source.maintenance(), source.lifecycle(), source.observability(),
+                new IocProcessingProperties(null, source.processing().plans()));
+        contextRunner(missing).run(context -> assertRegistryFailure(context.getStartupFailure(),
+                "ioc.processing.document-plan is required"));
+    }
+
+    @Test
+    void rejectsUnboundProcessedContractEvenWithImportIntakeDisabled() throws Exception {
+        var source = defaults();
+        var contract = new IocProperties.DataframeImport.Contract("unbound", 1, "UTF-8", null, null,
+                com.iocextractor.application.dataframeimport.model.ImportProcessingMode.PROCESSED,
+                null, null, null, null, false, null, null, List.of(), null, null);
+        var imports = source.dataframeImport();
+        contextRunner(withDataframeImport(source, new IocProperties.DataframeImport(false, imports.sources(),
+                imports.authorityProfiles(), List.of(contract), imports.runtime())))
+                .run(context -> assertRegistryFailure(context.getStartupFailure(),
+                        "processed-route is required for mode processed"));
     }
 
     @Test
@@ -132,7 +158,7 @@ class ConfigRegistryPreflightIT {
                 source.source(), source.refang(), source.patterns(), source.classify(), source.sink(),
                 source.pipeline(), source.ingestion(), source.artifactIdentity(), imports,
                 source.export(), source.sync(), source.maintenance(), source.lifecycle(),
-                source.observability(), new IocProcessingProperties(null, List.of(plan)));
+                source.observability(), new IocProcessingProperties("selected", List.of(plan)));
     }
 
     private static IocProperties withDataframeImport(IocProperties source,

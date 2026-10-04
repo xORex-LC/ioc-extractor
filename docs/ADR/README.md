@@ -53,6 +53,8 @@
 
 | [0033-bounded-semantic-reuse-during-import-staging.md](0033-bounded-semantic-reuse-during-import-staging.md) | Bounded LRU partitions and application-owned processed-import staging sessions; unchanged row participation and canonical authority. |
 
+| [0034-required-router-processing-plans.md](0034-required-router-processing-plans.md) | Required document/processed-import Router plans, original-value production defaults and explicit observation selection; supersedes optional dispatch in ADR 0031. |
+
 ## Формат
 
 `Статус` · `Контекст` · `Решения` (выбор + обоснование + отклонённые варианты) ·

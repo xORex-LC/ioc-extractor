@@ -3,7 +3,7 @@ package com.iocextractor.application.artifact.policy;
 import java.util.Map;
 import java.util.Objects;
 
-/** Immutable per-artifact policy; absent configuration compiles to legacy keep-first behavior. */
+/** Immutable per-artifact policy; absent configuration compiles to keep-first observation behavior. */
 public record ArtifactWritePolicy(DuplicateSelection duplicateSelection,
                                   String selectionColumn,
                                   Map<String, FieldUpdatePolicy> fields) {
@@ -17,7 +17,7 @@ public record ArtifactWritePolicy(DuplicateSelection duplicateSelection,
         }
     }
 
-    public static ArtifactWritePolicy legacy() {
+    public static ArtifactWritePolicy keepFirst() {
         return new ArtifactWritePolicy(DuplicateSelection.KEEP_FIRST, null, Map.of());
     }
 

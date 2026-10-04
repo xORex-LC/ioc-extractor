@@ -9,9 +9,12 @@ import com.iocextractor.application.port.out.artifact.DocumentProcessingSession;
 import com.iocextractor.processing.session.IndicatorProcessingSession;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.diagnostics.result.Result;
+import com.iocextractor.diagnostics.DiagnosticFactory;
+import com.iocextractor.diagnostics.codes.ClassificationDiagnosticCodes;
 import com.iocextractor.processing.classification.IndicatorClassifier;
 import com.iocextractor.processing.model.ClassifiedIndicator;
 import java.time.Clock;
+import com.iocextractor.application.artifact.DocumentObservationSelection;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -22,6 +25,8 @@ final class DocumentProcessingAdapter implements DocumentProcessingPlan {
     private final IndicatorClassifier classifier;
     private final IocProcessingRouteAdapter route;
     private final Map<String, CsvArtifactPreparer> preparers;
+    private final DocumentObservationSelection observationSelection;
+    private final DiagnosticFactory diagnostics;
 
     DocumentProcessingAdapter(ProcessingPlanCatalog.CompiledPlan plan,
                               CamelRouteRuntime runtime, IndicatorClassifier classifier,
@@ -41,6 +46,8 @@ final class DocumentProcessingAdapter implements DocumentProcessingPlan {
         this.classifier = Objects.requireNonNull(classifier, "classifier");
         this.route = new IocProcessingRouteAdapter(plan, runtime, clock);
         this.preparers = Map.copyOf(preparers);
+        this.observationSelection = DocumentObservationSelection.valueOf(plan.observationSelection().name());
+        this.diagnostics = new DiagnosticFactory(clock);
     }
 
     private static Map<String, CsvArtifactPreparer> byArtifact(List<ArtifactPreparer> preparers) {
@@ -49,6 +56,11 @@ final class DocumentProcessingAdapter implements DocumentProcessingPlan {
             result.put(preparer.name(), (CsvArtifactPreparer) preparer);
         }
         return result;
+    }
+
+    @Override
+    public DocumentObservationSelection observationSelection() {
+        return observationSelection;
     }
 
     @Override
@@ -76,9 +88,16 @@ final class DocumentProcessingAdapter implements DocumentProcessingPlan {
 
     private Result<List<RoutedArtifactCandidate>> prepare(IndicatorOccurrence occurrence,
                                                          IndicatorProcessingSession session) {
+        if (!classifier.supports(occurrence.indicator())) {
+            return Result.of(List.of(), List.of(diagnostics.create(
+                    ClassificationDiagnosticCodes.UNSUPPORTED_INDICATOR_TYPE)
+                    .with("type", occurrence.indicator().type()).with("classifier", classifier.name())
+                    .with("indicator", occurrence.indicator().value()).build()));
+        }
         var original = new ProcessingView(new ClassifiedIndicator(occurrence.indicator(),
                 session.classify(occurrence.indicator())),
-                occurrence.orderingPosition(), occurrence.tieOrdinal(), preparers, session);
+                occurrence.orderingPosition(), occurrence.tieOrdinal(), preparers, session,
+                occurrence.retainedObservation());
         return route.prepare(original);
     }
 }

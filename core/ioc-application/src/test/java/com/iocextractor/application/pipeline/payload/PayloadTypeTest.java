@@ -44,51 +44,14 @@ class PayloadTypeTest {
     }
 
     @Test
-    void retained_indicators_copy_lists() {
-        var classified = new ClassifiedIndicator(indicator("example.com"),
-                new com.iocextractor.domain.classify.ClassificationDecision(
-                        new com.iocextractor.domain.feature.IndicatorFeatures(
-                                "example.com", "example.com", false, false, false,
-                                com.iocextractor.domain.feature.HostKind.REGISTRABLE),
-                        0, List.of(), new com.iocextractor.domain.model.MaskMatch("u:hAS", "h:dAS")));
-        var indicators = new ArrayList<>(List.of(classified));
-
-        var retained = new RetainedIndicators(1, indicators);
-        indicators.clear();
-
-        assertThat(retained.extracted()).isEqualTo(1);
-        assertThat(retained.retained()).containsExactly(classified);
-    }
-
-    @Test
-    void retained_indicators_reject_impossible_counts() {
-        assertThatThrownBy(() -> new RetainedIndicators(-1, List.of()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("extracted must be non-negative");
-        assertThatThrownBy(() -> new RetainedIndicators(
-                        0, List.of(new ClassifiedIndicator(indicator("example.com"),
-                                new com.iocextractor.domain.classify.ClassificationDecision(
-                                        new com.iocextractor.domain.feature.IndicatorFeatures(
-                                                "example.com", "example.com", false, false, false,
-                                                com.iocextractor.domain.feature.HostKind.REGISTRABLE),
-                                        0, List.of(),
-                                        new com.iocextractor.domain.model.MaskMatch("u:hAS", "h:dAS"))))))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("retained size must not exceed extracted count");
-    }
-
-    @Test
-    void deduplicated_indicators_copy_retained_list() {
-        var indicator = indicator("example.com");
-        var indicators = new ArrayList<>(List.of(indicator));
-
-        var decisions = List.of(new DeduplicationDecision(indicator, true),
-                new DeduplicationDecision(indicator, false));
-        var deduplicated = new DeduplicatedIndicators(2, indicators, decisions);
-        indicators.clear();
-
-        assertThat(deduplicated.extracted()).isEqualTo(2);
-        assertThat(deduplicated.retained()).containsExactly(indicator);
+    void occurrenceRejectsInvalidCoordinatesAndKeepsObservationSelection() {
+        assertThatThrownBy(() -> new IndicatorOccurrence(indicator("example.com"), -1, 0))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new IndicatorOccurrence(indicator("example.com"), 0, -1))
+                .isInstanceOf(IllegalArgumentException.class);
+        var occurrence = new IndicatorOccurrence(indicator("example.com"), 3, 2, false);
+        assertThat(occurrence.retainedObservation()).isFalse();
+        assertThat(occurrence.orderingPosition().value()).isEqualTo((3L << 32) | 2);
     }
 
     private Indicator indicator(String value) {

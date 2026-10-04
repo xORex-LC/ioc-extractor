@@ -41,7 +41,7 @@ class ArtifactOccurrenceSelectorTest {
 
     @Test
     void keepFirstDoesNotEvaluateSelectionField() {
-        var accumulator = selector.<String, String>accumulator(ArtifactWritePolicy.legacy(), ignored -> {
+        var accumulator = selector.<String, String>accumulator(ArtifactWritePolicy.keepFirst(), ignored -> {
             throw new AssertionError("KEEP_FIRST has no selection field");
         });
         accumulator.add("key", "first");

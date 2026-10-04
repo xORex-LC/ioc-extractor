@@ -368,13 +368,12 @@ public class AppConfig {
                                                                    ObjectProvider<CamelRouteRuntime> routerRuntime,
                                                                    Clock clock,
                                                                    IocProperties props) {
-        DocumentProcessingPlanFactory documentPlanFactory = processingPlans.selectedDocumentPlan()
-                .map(plan -> (DocumentProcessingPlanFactory) preparers -> {
-                    return new DocumentProcessingAdapter(plan, routerRuntime.getObject(),
-                            new com.iocextractor.processing.classification.IndicatorClassifier(matchPolicy),
-                            clock, preparers);
-                }).orElse(null);
-        return new IocExtractionServiceFactory(reader, refanger, extractor, attributor, matchPolicy,
+        var documentPlan = processingPlans.requireDocumentPlan();
+        DocumentProcessingPlanFactory documentPlanFactory = preparers ->
+                new DocumentProcessingAdapter(documentPlan, routerRuntime.getObject(),
+                        new com.iocextractor.processing.classification.IndicatorClassifier(matchPolicy),
+                        clock, preparers);
+        return new IocExtractionServiceFactory(reader, refanger, extractor, attributor,
                 props.pipeline().deduplicate(), props.observability().mode().token(),
                 new LoggingPipelineObserver(), diagnosticSink,
                 props.pipeline().failurePolicy().toPolicy(), props.pipeline().maxDiagnosticsPerRun(),
@@ -406,8 +405,7 @@ public class AppConfig {
                                                  Clock clock,
                                                  IocProperties props) {
         List<ArtifactPreparer> preparers = artifactPreparers(
-                artifactDefinitions(props, artifactIdBaseline), null, clock, decisionTracer,
-                artifactIdentityResolver);
+                artifactDefinitions(props, artifactIdBaseline), null, clock, decisionTracer);
         ExtractIocsUseCase delegate = factory.create(preparers, csvArtifactProjection);
         ExtractIocsUseCase lifecycleAware = command -> {
             lifecycleAdmission.prepare();
@@ -454,7 +452,6 @@ public class AppConfig {
     public SourcePreparerFactory sourcePreparerFactory(IocProperties props,
                                                        ArtifactIdBaseline artifactIdBaseline,
                                                        PipelineDecisionTracer decisionTracer,
-                                                       ArtifactIdentityResolver artifactIdentityResolver,
                                                        Clock clock) {
         var artifacts = artifactDefinitions(props, artifactIdBaseline);
         Map<String, ArtifactIdSequence> ids = new LinkedHashMap<>();
@@ -464,7 +461,7 @@ public class AppConfig {
         return source -> new com.iocextractor.application.ingest.SourcePreparers(artifacts.stream()
                 .map(artifact -> new CsvArtifactPreparer(
                         artifact, ids.get(artifact.name()), new DiagnosticFactory(clock),
-                        source.key().value(), decisionTracer, artifactIdentityResolver))
+                        source.key().value(), decisionTracer))
                 .map(ArtifactPreparer.class::cast)
                 .toList());
     }
@@ -1307,12 +1304,10 @@ public class AppConfig {
                                              DocumentAdmissionService documentAdmissions,
                                              ObservationOrderingPolicy orderingPolicy,
                                              ObjectProvider<LazyServiceStorage> serviceStorage,
-                                             ProcessingPlanBindings processingPlans,
                                              IocProperties props,
                                              Clock clock) {
-        boolean selected = processingPlans.selectedDocumentPlan().isPresent();
         LazyServiceStorage storage = serviceStorage.getIfAvailable();
-        DocumentProcessingPolicyAdmission.ensure(storage, processingPolicyIdentity.value(), selected,
+        DocumentProcessingPolicyAdmission.ensure(storage, processingPolicyIdentity.value(),
                 () -> ledger.findIncomplete().isEmpty(),
                 () -> sourceLifecycle.findProcessingSources().isEmpty());
         IngestionLifecycleSupport lifecycleSupport = props.lifecycle().validity().mode()
@@ -1459,16 +1454,14 @@ public class AppConfig {
     List<ArtifactPreparer> artifactPreparers(List<CsvArtifactDefinition> artifacts,
                                                      String sourceKey,
                                                      Clock clock,
-                                                     PipelineDecisionTracer decisionTracer,
-                                                     ArtifactIdentityResolver artifactIdentityResolver) {
+                                                     PipelineDecisionTracer decisionTracer) {
         return artifacts.stream()
                 .map(artifact -> new CsvArtifactPreparer(
                         artifact,
                         new ArtifactIdSequence(artifact.idStrategy(), artifact.idStart()),
                         new DiagnosticFactory(clock),
                         sourceKey,
-                        decisionTracer,
-                        artifactIdentityResolver))
+                        decisionTracer))
                 .map(ArtifactPreparer.class::cast)
                 .toList();
     }
@@ -1495,7 +1488,7 @@ public class AppConfig {
                     startOf(artifact.name(), artifact, artifactIdBaseline),
                     writePolicies.getOrDefault(
                             artifact.name(),
-                            com.iocextractor.application.artifact.policy.ArtifactWritePolicy.legacy())));
+                            com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst())));
         }
         return artifacts;
     }

@@ -1033,13 +1033,23 @@ class IngestionServiceTest {
                         List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of()),
                 (text, indicators) -> new AttributionOutcome(List.of(),
                         List.of(new AttributionDecision(indicators.getFirst(), Optional.empty()))),
-                indicator -> classificationDecision(indicator),
                 false,
                 "daemon",
                 new NoopPipelineObserver(),
                 NoopDiagnosticSink.INSTANCE,
-                FailurePolicy.failFast(), 10_000, new MemoryRepository(),
-                NoopPipelineDecisionTracer.INSTANCE);
+                FailurePolicy.failFast(), 10_000, new MemoryRepository(), null,
+                (artifact, row) -> Optional.of(new com.iocextractor.application.artifact.ArtifactRowKey(row.value("value"))),
+                NoopPipelineDecisionTracer.INSTANCE,
+                preparers -> occurrence -> {
+                    var classified = new ClassifiedIndicator(occurrence.indicator(),
+                            classificationDecision(occurrence.indicator()));
+                    return Result.success(preparers.stream().flatMap(preparer ->
+                            preparer.prepare(List.of(classified)).value().rows().stream().map(row ->
+                                    new com.iocextractor.application.artifact.RoutedArtifactCandidate(preparer.name(), row)))
+                            .toList());
+                }, java.util.Map.of("masks", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst(),
+                        "hashes", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst(),
+                        "ip_list", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst()));
     }
 
     private IocExtractionServiceFactory failingExtractionFactory() {
@@ -1052,13 +1062,23 @@ class IngestionServiceTest {
                         List.of(new RawIndicator("example.com", IndicatorType.DOMAIN, 0)), List.of()),
                 (text, indicators) -> new AttributionOutcome(List.of(),
                         List.of(new AttributionDecision(indicators.getFirst(), Optional.empty()))),
-                indicator -> classificationDecision(indicator),
                 false,
                 "daemon",
                 new NoopPipelineObserver(),
                 NoopDiagnosticSink.INSTANCE,
-                FailurePolicy.failFast(), 10_000, new MemoryRepository(),
-                NoopPipelineDecisionTracer.INSTANCE);
+                FailurePolicy.failFast(), 10_000, new MemoryRepository(), null,
+                (artifact, row) -> Optional.of(new com.iocextractor.application.artifact.ArtifactRowKey(row.value("value"))),
+                NoopPipelineDecisionTracer.INSTANCE,
+                preparers -> occurrence -> {
+                    var classified = new ClassifiedIndicator(occurrence.indicator(),
+                            classificationDecision(occurrence.indicator()));
+                    return Result.success(preparers.stream().flatMap(preparer ->
+                            preparer.prepare(List.of(classified)).value().rows().stream().map(row ->
+                                    new com.iocextractor.application.artifact.RoutedArtifactCandidate(preparer.name(), row)))
+                            .toList());
+                }, java.util.Map.of("masks", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst(),
+                        "hashes", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst(),
+                        "ip_list", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst()));
     }
 
     private ClassificationDecision classificationDecision(Indicator indicator) {

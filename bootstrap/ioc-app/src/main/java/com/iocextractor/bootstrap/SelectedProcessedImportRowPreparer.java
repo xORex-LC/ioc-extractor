@@ -7,16 +7,12 @@ import com.iocextractor.application.dataframeimport.model.ImportDelimitedRecord;
 import com.iocextractor.application.dataframeimport.model.ImportLogicalRow;
 import com.iocextractor.application.port.out.dataframeimport.ProcessedImportRowPreparer;
 import java.util.Map;
-import java.util.Objects;
 
 /** Selects the pinned contract's preparer for both mapping and authority checks. */
 final class SelectedProcessedImportRowPreparer implements ProcessedImportRowPreparer {
-    private final ProcessedImportRowPreparer compatible;
     private final Map<String, ProcessedImportRowPreparer> routed;
 
-    SelectedProcessedImportRowPreparer(ProcessedImportRowPreparer compatible,
-                                      Map<String, ProcessedImportRowPreparer> routed) {
-        this.compatible = Objects.requireNonNull(compatible);
+    SelectedProcessedImportRowPreparer(Map<String, ProcessedImportRowPreparer> routed) {
         this.routed = Map.copyOf(routed);
     }
 
@@ -39,6 +35,11 @@ final class SelectedProcessedImportRowPreparer implements ProcessedImportRowPrep
     }
 
     private ProcessedImportRowPreparer selected(CompiledDataframeImportContract contract) {
-        return routed.getOrDefault(contract.id().value(), compatible);
+        var selected = routed.get(contract.id().value());
+        if (selected == null) {
+            throw new IllegalStateException("Processed contract has no admitted Router binding: "
+                    + contract.id().value());
+        }
+        return selected;
     }
 }

@@ -18,16 +18,13 @@ decisions материализуются один раз; application stages и�
 `ExtractionCommand.runId` обязателен и задаётся driving boundary: oneshot CLI
 создаёт новый correlation id, daemon передаёт durable `ingest_run.run_id`.
 `ExtractionResult` возвращает тот же id из terminal envelope.
-Для явно переданного document plan `PrepareRoutedArtifactsStage` сохраняет
-исходные вхождения после атрибуции, получает кандидатов через
-`DocumentProcessingPlan` port и разрешает конфликты по финальному ключу
-артефакта существующей policy. Прежний путь dedup/classify/prepare остаётся
-действующим без плана. Обе ветки сходятся в прежнем checkpoint и write stage;
-application не знает Camel и CSV. Stage владеет отдельным
-`DocumentProcessingSession`, закрывая его до checkpoint и при исключении;
-ключи семантического кеша остаются за портом. `ArtifactOccurrenceSelector`
-удерживает одного целого победителя на конечный ключ только в уже существующих
-reduction-путях; `prepareLegacy` сохраняет прежнюю кратность строк.
+Каждый документ использует обязательный `DocumentProcessingPlan` port и
+`PrepareRoutedArtifactsStage`. Stage закрывает собственную сессию до checkpoint
+и при исключениях; application не знает Camel и CSV. Поставляемый план сохраняет
+исходные наблюдения `keep-first` после source-дедупликации, включая кратность
+mapped-коллизий. Для `last-nonempty` и планов с выбором по конечному ключу
+`ArtifactOccurrenceSelector` удерживает одного целого победителя на ключ.
+Альтернативного dedup/classify/prepare dispatcher нет.
 `ArtifactRow` владеет единственным упорядоченным защитным снимком колонок:
 фабрика `ordered` использует снимок конструктора, сохраняет `null` и порядок
 колонок, не раскрывает изменяемую карту вызывающего кода.
@@ -114,3 +111,8 @@ diagnostics, control events и keyed concurrency. Точный прямой Mave
 inventory.
 
 **Не импортируется:** adapters, bootstrap, Spring, Tika, CSV, picocli, Logback.
+
+Processed-import staging owns an optional preparation session after contract-pin
+validation and closes it before sealing on all exit paths. Every input still
+participates in ordinary admission, source authority and workspace accounting.
+See [ADR 0033](../../docs/ADR/0033-bounded-semantic-reuse-during-import-staging.md).

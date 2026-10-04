@@ -9,7 +9,8 @@ import java.util.Objects;
 
 /** IOC view with invocation-local ordering, shared by document and import paths. */
 record ProcessingView(ClassifiedIndicator classified, OccurrencePosition position, int ordinal,
-                      Map<String, CsvArtifactPreparer> preparers, IndicatorProcessingSession session) {
+                      Map<String, CsvArtifactPreparer> preparers, IndicatorProcessingSession session,
+                      boolean retainedObservation) {
     ProcessingView {
         Objects.requireNonNull(classified, "classified");
         Objects.requireNonNull(position, "position");
@@ -17,6 +18,11 @@ record ProcessingView(ClassifiedIndicator classified, OccurrencePosition positio
             throw new IllegalArgumentException("Processing ordinal must be nonnegative");
         }
         preparers = Map.copyOf(preparers);
+    }
+
+    ProcessingView(ClassifiedIndicator classified, OccurrencePosition position, int ordinal,
+                   Map<String, CsvArtifactPreparer> preparers, IndicatorProcessingSession session) {
+        this(classified, position, ordinal, preparers, session, true);
     }
 
     ProcessingView(ClassifiedIndicator classified, OccurrencePosition position, int ordinal,
@@ -29,6 +35,6 @@ record ProcessingView(ClassifiedIndicator classified, OccurrencePosition positio
     }
 
     ProcessingView derived(ClassifiedIndicator result) {
-        return new ProcessingView(result, position, ordinal, preparers, session);
+        return new ProcessingView(result, position, ordinal, preparers, session, retainedObservation);
     }
 }

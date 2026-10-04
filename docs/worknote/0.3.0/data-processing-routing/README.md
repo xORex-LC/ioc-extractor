@@ -131,3 +131,8 @@ Related context: [processing](../../../dev/processing.md),
 
 - [O8 local processing optimization](o8-local-optimization.md): bounded LRU reuse,
   staging-attempt sessions and canonical-key lexical validation.
+
+## Complete cutover
+
+[Router cutover](router-cutover.md) records the 2026-10-04 accepted removal of
+optional dispatch and the required original-value production defaults.

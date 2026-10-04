@@ -35,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PrepareRoutedArtifactsStageTest {
-    private static final ArtifactWritePolicy KEEP_FIRST = ArtifactWritePolicy.legacy();
+    private static final ArtifactWritePolicy KEEP_FIRST = ArtifactWritePolicy.keepFirst();
 
     @Test
     void final_host_key_merges_masks_but_original_urls_remain_distinct_in_blacklist() {

@@ -4,7 +4,6 @@ import com.iocextractor.platform.etl.Envelope;
 import com.iocextractor.platform.etl.Stage;
 import com.iocextractor.application.pipeline.payload.ExtractedIndicators;
 import com.iocextractor.application.pipeline.payload.RefangedText;
-import com.iocextractor.application.pipeline.payload.RetainedIndicators;
 import com.iocextractor.application.pipeline.payload.PreparedArtifacts;
 import com.iocextractor.application.pipeline.payload.SourceText;
 import com.iocextractor.diagnostics.Diagnostic;
@@ -61,21 +60,9 @@ class StageContractTest {
                         false),
                 diagnostic);
         assertPreservesContract(
-                new DeduplicateIndicatorsStage(true, StageTestSupport.DIAGNOSTICS, StageTestSupport.TRACER),
-                StageTestSupport.envelope(StageTestSupport.attributedIndicators(
-                                StageTestSupport.indicator("example.com")),
-                        false),
-                diagnostic);
-        assertPreservesContract(
-                new ClassifyIndicatorsStage(indicator -> StageTestSupport.classifiedIndicator(indicator)
-                        .classification(), StageTestSupport.DIAGNOSTICS, StageTestSupport.TRACER),
-                StageTestSupport.envelope(StageTestSupport.deduplicatedIndicators(
-                        StageTestSupport.indicator("example.com")), false),
-                diagnostic);
-        assertPreservesContract(
-                new PrepareArtifactsStage(List.of()),
-                StageTestSupport.envelope(new RetainedIndicators(0, List.of()), false),
-                diagnostic);
+                new PrepareRoutedArtifactsStage(occurrence -> com.iocextractor.diagnostics.result.Result.success(List.of()),
+                        List.of(), (artifact, row) -> java.util.Optional.empty(), java.util.Map.of(), true),
+                StageTestSupport.envelope(StageTestSupport.attributedIndicators(), false), diagnostic);
         assertPreservesContract(
                 new WriteArtifactsStage(new NoopRepository(), ignored -> ArtifactProjectionResult.clean(0),
                         new DiagnosticFactory(StageTestSupport.CLOCK)),

@@ -561,6 +561,11 @@ class IocPropertiesBindingIT {
     @Test
     void bindsTypedProcessingPredicateArgumentsAndFieldViews() {
         contextRunner(
+                "ioc.processing.document-plan=network",
+                "ioc.processing.plans[0].omitted-artifacts[0]=ip_list",
+                "ioc.processing.plans[0].omitted-artifacts[1]=address_blacklist",
+                "ioc.processing.plans[0].omitted-artifacts[2]=hashes",
+                "ioc.processing.plans[0].omitted-artifacts[3]=ioc_aggregate",
                 "ioc.processing.plans[0].name=network",
                 "ioc.processing.plans[0].views[0].name=host",
                 "ioc.processing.plans[0].views[0].operation=network.host",
@@ -897,8 +902,11 @@ class IocPropertiesBindingIT {
     @Test
     void acceptsIdentityForDisabledButExistingArtifact() {
         contextRunner(concat(
-                sinkArtifact(0, "legacy_list", false, "value"),
-                identity(0, "legacy_list", "value")))
+                sinkArtifact(0, "masks", true, "value"),
+                sinkArtifact(1, "legacy_list", false, "value"),
+                originalDocumentPlan("masks"),
+                identity(0, "masks", "value"),
+                identity(1, "legacy_list", "value")))
                 .run(context -> assertThat(context).hasSingleBean(IocProperties.class));
     }
 
@@ -1220,9 +1228,27 @@ class IocPropertiesBindingIT {
         };
     }
 
+    private static String[] originalDocumentPlan(String artifact) {
+        String[] base = {
+                "ioc.processing.document-plan=fixture",
+                "ioc.processing.plans[0].name=fixture",
+                "ioc.processing.plans[0].views=",
+                "ioc.processing.plans[0].classifications[0].view=original",
+                "ioc.processing.plans[0].classifications[0].policy=configured",
+                "ioc.processing.plans[0].routing.mode=all",
+                "ioc.processing.plans[0].routing.on-unmatched.action=skip"
+        };
+        return concat(base, new String[] {
+                "ioc.processing.plans[0].routing.branches[0].id=fixture-output",
+                "ioc.processing.plans[0].routing.branches[0].artifact=" + artifact,
+                "ioc.processing.plans[0].routing.branches[0].default-view=original"
+        });
+    }
+
     private static String[] artifactWithIdStart(String start) {
         return concat(
                 sinkArtifact(0, "custom_list", true, "id", "value"),
+                originalDocumentPlan("custom_list"),
                 new String[] {
                         "ioc.sink.artifacts[0].id.strategy=ascending",
                         "ioc.sink.artifacts[0].id.start=" + start

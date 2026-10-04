@@ -26,28 +26,26 @@ class JdbcDocumentProcessingPolicyGateIT {
             String old = "a".repeat(64);
             String changed = "b".repeat(64);
 
-            assertThatThrownBy(() -> gate.ensure(null, true, () -> true))
+            assertThatThrownBy(() -> gate.ensure(null, () -> true))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("SHA-256");
-            assertThatThrownBy(() -> gate.ensure("not-a-fingerprint", true, () -> true))
+            assertThatThrownBy(() -> gate.ensure("not-a-fingerprint", () -> true))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("SHA-256");
             assertThat(policy(dataSource)).isNull();
 
-            gate.ensure(old, false, () -> false);
-            assertThat(policy(dataSource)).isNull();
-            assertThatThrownBy(() -> gate.ensure(old, true, () -> false))
+            assertThatThrownBy(() -> gate.ensure(old, () -> false))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("unfinished intake");
-            gate.ensure(old, true, () -> true);
-            gate.ensure(old, true, () -> false);
+            gate.ensure(old, () -> true);
+            gate.ensure(old, () -> false);
             assertThat(policy(dataSource)).isEqualTo(old);
 
-            assertThatThrownBy(() -> gate.ensure(changed, true, () -> false))
+            assertThatThrownBy(() -> gate.ensure(changed, () -> false))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("unfinished intake");
             reserveDocument(dataSource);
-            assertThatThrownBy(() -> gate.ensure(changed, true, () -> true))
+            assertThatThrownBy(() -> gate.ensure(changed, () -> true))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("unfinished intake");
             assertThat(policy(dataSource)).isEqualTo(old);
@@ -59,7 +57,7 @@ class JdbcDocumentProcessingPolicyGateIT {
                         WHERE occurrence_id = 'pending'
                         """);
             }
-            assertThatThrownBy(() -> gate.ensure(changed, true, () -> true))
+            assertThatThrownBy(() -> gate.ensure(changed, () -> true))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("unfinished intake");
             try (Connection connection = dataSource.getConnection()) {
@@ -68,7 +66,7 @@ class JdbcDocumentProcessingPolicyGateIT {
                         WHERE occurrence_id = 'pending'
                         """);
             }
-            gate.ensure(changed, true, () -> true);
+            gate.ensure(changed, () -> true);
             assertThat(policy(dataSource)).isEqualTo(changed);
         }
     }

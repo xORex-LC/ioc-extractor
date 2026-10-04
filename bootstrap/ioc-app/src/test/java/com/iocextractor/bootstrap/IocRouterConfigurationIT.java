@@ -45,10 +45,7 @@ class IocRouterConfigurationIT {
     void changedDocumentPolicyRequiresDrainedLedgerAndProcessingFiles() throws Exception {
         String old = "a".repeat(64);
         String changed = "b".repeat(64);
-        DocumentProcessingPolicyAdmission.ensure(null, old, false,
-                () -> { throw new AssertionError("no storage requires no drain check"); },
-                () -> { throw new AssertionError("no storage requires no drain check"); });
-        assertThatThrownBy(() -> DocumentProcessingPolicyAdmission.ensure(null, old, true,
+        assertThatThrownBy(() -> DocumentProcessingPolicyAdmission.ensure(null, old,
                 () -> true, () -> true))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("requires durable service storage");
@@ -58,20 +55,20 @@ class IocRouterConfigurationIT {
                 new IocProperties.Storage.Sqlite("low-memory"),
                 new IocProperties.Storage.Pool(1, 1));
         try (var storage = new LazyServiceStorage(settings, NoopDiagnosticSink.INSTANCE, Clock.systemUTC())) {
-            DocumentProcessingPolicyAdmission.ensure(storage, old, true, () -> true, () -> true);
-            DocumentProcessingPolicyAdmission.ensure(storage, old, true,
+            DocumentProcessingPolicyAdmission.ensure(storage, old, () -> true, () -> true);
+            DocumentProcessingPolicyAdmission.ensure(storage, old,
                     () -> { throw new AssertionError("unchanged policy requires no drain check"); },
                     () -> { throw new AssertionError("unchanged policy requires no drain check"); });
-            assertThatThrownBy(() -> DocumentProcessingPolicyAdmission.ensure(storage, changed, true,
+            assertThatThrownBy(() -> DocumentProcessingPolicyAdmission.ensure(storage, changed,
                     () -> false,
                     () -> { throw new AssertionError("processing check follows ledger check"); }))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("unfinished intake");
-            assertThatThrownBy(() -> DocumentProcessingPolicyAdmission.ensure(storage, changed, true,
+            assertThatThrownBy(() -> DocumentProcessingPolicyAdmission.ensure(storage, changed,
                     () -> true, () -> false))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("unfinished intake");
-            DocumentProcessingPolicyAdmission.ensure(storage, changed, true, () -> true, () -> true);
+            DocumentProcessingPolicyAdmission.ensure(storage, changed, () -> true, () -> true);
             try (var connection = storage.dataSource().getConnection();
                  var rows = connection.createStatement().executeQuery(
                          "SELECT policy_fingerprint FROM document_processing_policy WHERE id = 1")) {
@@ -82,7 +79,7 @@ class IocRouterConfigurationIT {
     }
 
     @Test
-    void selected_plan_is_executable_and_unselected_catalog_stays_inert() {
+    void required_plan_is_executable_and_missing_registration_fails() {
         var descriptor = new PlanDescriptor("selected", List.of(), new PlanDescriptor.Routing(
                 PlanDescriptor.Mode.FIRST,
                 List.of(new PlanDescriptor.Branch("mask", "masks", null, List.of("original"))),
@@ -99,12 +96,11 @@ class IocRouterConfigurationIT {
                         false, HostKind.REGISTRABLE), 0, List.of(), new MaskMatch("u:hAS", "h:dAS"));
         var registration = new IocRouterConfiguration().iocRouterPlanRegistration(
                 bindings, assembly, properties, baseline,
-                new CanonicalArtifactIdentityResolver(assembly.artifactIdentityDefinitions(properties)),
                 NoopPipelineDecisionTracer.INSTANCE, matchPolicy, Clock.systemUTC(),
                 new ProcessingPolicyIdentity("a".repeat(64)));
         new ApplicationContextRunner()
                 .withUserConfiguration(IocRouterConfiguration.class, RouterRuntimeConfiguration.class)
-                .run(context -> assertThat(context).doesNotHaveBean(CamelRouteRuntime.class));
+                .run(context -> assertThat(context).hasFailed());
         new ApplicationContextRunner()
                 .withUserConfiguration(RouterRuntimeConfiguration.class)
                 .withBean(RouterPlanRegistration.class, () -> registration)

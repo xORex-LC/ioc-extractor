@@ -14,8 +14,8 @@ import com.iocextractor.application.observability.NoopPipelineDecisionTracer;
 import com.iocextractor.application.pipeline.CompletionStatus;
 import com.iocextractor.application.pipeline.payload.ArtifactWriteSummary;
 import com.iocextractor.processing.model.ClassifiedIndicator;
-import com.iocextractor.application.pipeline.payload.RetainedIndicators;
-import com.iocextractor.application.pipeline.stage.PrepareArtifactsStage;
+import com.iocextractor.application.pipeline.payload.AttributedIndicators;
+import com.iocextractor.application.pipeline.stage.PrepareRoutedArtifactsStage;
 import com.iocextractor.application.pipeline.stage.WriteArtifactsStage;
 import com.iocextractor.application.port.out.artifact.ArtifactPreparer;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
@@ -146,12 +146,19 @@ class TypedMappingFailurePolicyTest {
                 NoopPipelineDecisionTracer.INSTANCE);
     }
 
-    private Pipeline<RetainedIndicators, ArtifactWriteSummary> pipeline(
+    private Pipeline<AttributedIndicators, ArtifactWriteSummary> pipeline(
             ArtifactPreparer preparer,
             CanonicalArtifactRepository repository,
             AtomicInteger projections) {
-        return Pipeline.<RetainedIndicators>start()
-                .then(new PrepareArtifactsStage(List.of(preparer)))
+        return Pipeline.<AttributedIndicators>start()
+                 .then(new PrepareRoutedArtifactsStage(occurrence -> {
+                    var result = preparer.prepare(List.of(classified(occurrence.indicator().value())));
+                    return com.iocextractor.diagnostics.result.Result.of(result.value().rows().stream().map(row ->
+                            new com.iocextractor.application.artifact.RoutedArtifactCandidate(preparer.name(), row)).toList(),
+                            result.diagnostics());
+                }, List.of(preparer), (artifact, row) -> java.util.Optional.of(
+                        new com.iocextractor.application.artifact.ArtifactRowKey(row.value("mask"))),
+                        Map.of("masks", com.iocextractor.application.artifact.policy.ArtifactWritePolicy.keepFirst()), false))
                 .then(new WriteArtifactsStage(repository, ignored -> {
                     projections.incrementAndGet();
                     return ArtifactProjectionResult.clean(0);
@@ -164,10 +171,13 @@ class TypedMappingFailurePolicyTest {
                 new CollectingDiagnosticSink(), new DiagnosticFactory(CLOCK));
     }
 
-    private Envelope<RetainedIndicators> input() {
+    private Envelope<AttributedIndicators> input() {
         var indicators = List.of(classified("bad.example"), classified("good.example"));
         return Envelope.of(
-                new RetainedIndicators(indicators.size(), indicators),
+                new AttributedIndicators(new com.iocextractor.domain.attribute.AttributionOutcome(List.of(),
+                        indicators.stream().map(value -> new com.iocextractor.domain.attribute.AttributionDecision(
+                                new com.iocextractor.domain.extract.RawIndicator(value.indicator().value(),
+                                        value.indicator().type(), 0), java.util.Optional.empty())).toList())),
                 EnvelopeMeta.initial("run-17", "source", CLOCK));
     }
 

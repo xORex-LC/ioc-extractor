@@ -1,12 +1,10 @@
 package com.iocextractor.application.pipeline;
 
 import com.iocextractor.application.pipeline.stage.AttributeSourceStage;
-import com.iocextractor.application.pipeline.stage.ClassifyIndicatorsStage;
-import com.iocextractor.application.pipeline.stage.DeduplicateIndicatorsStage;
 import com.iocextractor.application.pipeline.stage.ExtractIndicatorsStage;
 import com.iocextractor.application.pipeline.stage.ReadSourceStage;
 import com.iocextractor.application.pipeline.stage.RefangStage;
-import com.iocextractor.application.pipeline.stage.PrepareArtifactsStage;
+import com.iocextractor.application.pipeline.stage.PrepareRoutedArtifactsStage;
 import com.iocextractor.application.pipeline.stage.WriteArtifactsStage;
 import com.iocextractor.platform.etl.Stage;
 import com.iocextractor.platform.etl.StageId;
@@ -26,9 +24,7 @@ class PipelineModelArchitectureTest {
             RefangStage.class,
             ExtractIndicatorsStage.class,
             AttributeSourceStage.class,
-            DeduplicateIndicatorsStage.class,
-            ClassifyIndicatorsStage.class,
-            PrepareArtifactsStage.class,
+            PrepareRoutedArtifactsStage.class,
             WriteArtifactsStage.class);
 
     @Test
@@ -71,6 +67,9 @@ class PipelineModelArchitectureTest {
     private Object stub(Class<?> type) {
         if (type == boolean.class) {
             return false;
+        }
+        if (java.util.Map.class.equals(type)) {
+            return java.util.Map.of();
         }
         if (List.class.equals(type)) {
             return List.of();

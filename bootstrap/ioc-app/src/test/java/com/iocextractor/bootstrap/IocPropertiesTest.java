@@ -47,7 +47,7 @@ class IocPropertiesTest {
 
         assertThat(ArtifactPolicyCatalog.hasEnabledOrderedFields(defaults)).isTrue();
         assertThat(ArtifactPolicyCatalog.compile(defaults).get("masks"))
-                .isEqualTo(ArtifactWritePolicy.legacy());
+                .isEqualTo(ArtifactWritePolicy.keepFirst());
         assertThat(ArtifactPolicyCatalog.compile(defaults).get("ioc_aggregate"))
                 .satisfies(policy -> {
                     assertThat(policy.duplicateSelection())

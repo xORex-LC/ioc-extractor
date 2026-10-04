@@ -7,6 +7,7 @@ import com.iocextractor.domain.extract.PatternEngine;
 import com.iocextractor.domain.feature.NetworkAddressParser;
 import com.iocextractor.domain.model.IndicatorType;
 import java.util.List;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -15,6 +16,7 @@ import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.FileSystemResource;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ExactNetworkCellParsingTest {
@@ -30,6 +32,15 @@ class ExactNetworkCellParsingTest {
         IocProperties properties = new Binder(ConfigurationPropertySources.from(sources), null, conversion)
                 .bind("ioc", Bindable.of(IocProperties.class))
                 .orElseThrow(() -> new IllegalStateException("Default IOC configuration did not bind"));
+        checkPatterns(properties);
+        Path root = Path.of(System.getProperty("maven.multiModuleProjectDirectory", "../..")).toAbsolutePath();
+        sources.addFirst(new YamlPropertySourceLoader().load("production-template",
+                new FileSystemResource(root.resolve("packaging/templates/application.yml"))).getFirst());
+        checkPatterns(new Binder(ConfigurationPropertySources.from(sources), null, conversion)
+                .bind("ioc", Bindable.of(IocProperties.class)).get());
+    }
+
+    private void checkPatterns(IocProperties properties) {
         for (PatternEngine engine : List.of(new Re2jPatternEngine(), new JdkRegexPatternEngine())) {
             var extractor = new AppConfig().indicatorExtractor(engine, properties);
             var exact = new ExactIndicatorParser(extractor, new NetworkAddressParser());
@@ -44,6 +55,10 @@ class ExactNetworkCellParsingTest {
                     .as(engine.id()).isEqualTo(IndicatorType.DOMAIN);
             assertThat(exact.parse("10.93.12.187:9090/path").indicator().type())
                     .as(engine.id()).isEqualTo(IndicatorType.IPV4);
+            assertThat(exact.parse("10.93.12.187#fragment").indicator().value())
+                    .as(engine.id()).isEqualTo("10.93.12.187#fragment");
+            assertThat(exact.parse("domain.test?query=1").indicator().value())
+                    .as(engine.id()).isEqualTo("domain.test?query=1");
             assertThat(exact.parse("domain.test:abc/path").isAvailable()).as(engine.id()).isFalse();
             assertThat(exact.parse("10.93.12.187:9090/path trailing").isAvailable())
                     .as(engine.id()).isFalse();
