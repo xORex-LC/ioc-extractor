@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "adopted_on": "2026-10-04",
+  "authorization": "Owner accepted budgets and authorized CAP-0 through CAP-1B",
+  "local_100k_median_seconds": 30,
+  "local_100k_max_seconds": 45,
+  "local_1m_median_seconds": 180,
+  "local_1m_max_seconds": 270,
+  "writer_hold_max_seconds": 5,
+  "control_wait_max_seconds": 10,
+  "eligible_profile_dispatch_max_seconds": 2,
+  "rss_max_bytes": 536870912,
+  "post_gc_live_heap_max_bytes": 268435456,
+  "preparation_working_state_bytes": 67108864,
+  "cgroup_anon_plus_kernel_max_bytes": 603979776,
+  "memory_psi_full_window_ratio_max": 0.01,
+  "jvm_flags": [
+    "-Xms128m",
+    "-Xmx512m"
+  ],
+  "cpu_equivalents": 2,
+  "memory_high_bytes": 805306368,
+  "memory_max_bytes": 1073741824,
+  "matcher_vm_quantum": 1000,
+  "matcher_single_lookup_vm_max": 10000,
+  "matcher_growth_rule": "W100k <= 2*W1k + 5000",
+  "promotion_growth_rule": "timeGrowth <= 1.5 * finalRowGrowth",
+  "smb_ceiling": "Freeze from CAP-1A observed transport/cadence costs; raw full cycle mandatory",
+  "scope": "Stage-specific gates apply; CAP-1 does not qualify CAP-4/5/6 or million-row capacity"
+}

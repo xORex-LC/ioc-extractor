@@ -1,0 +1,157 @@
+{
+  "observed_at": "2026-10-04T09:43:34.998209+00:00",
+  "ingest": [
+    {
+      "run_id": "0d649de6-1c3f-412f-aee2-7cd65435d236",
+      "status": "COMPLETED",
+      "started_at": "2026-10-04T08:59:56.153432238Z",
+      "updated_at": "2026-10-04T09:36:52.064414637Z",
+      "reason": null
+    }
+  ],
+  "revisions": [
+    {
+      "artifact": "masks",
+      "revision": 11,
+      "changed_at": "2026-10-04T09:00:02.841077432Z"
+    },
+    {
+      "artifact": "ip_list",
+      "revision": 15,
+      "changed_at": "2026-10-04T09:00:41.666690553Z"
+    },
+    {
+      "artifact": "address_blacklist",
+      "revision": 11,
+      "changed_at": "2026-10-04T09:01:22.159046322Z"
+    },
+    {
+      "artifact": "hashes",
+      "revision": 11,
+      "changed_at": "2026-10-04T09:03:59.075937516Z"
+    },
+    {
+      "artifact": "ioc_aggregate",
+      "revision": 10,
+      "changed_at": "2026-10-04T09:10:15.396073756Z"
+    }
+  ],
+  "publish": [
+    {
+      "profile": "ioc-aggregate",
+      "status": "SUCCEEDED",
+      "remote_path": "/get/20261004T093650Z__68ba1f4c-074a-46ea-b5fe-1760086d5ec6",
+      "updated_at": "2026-10-04T09:36:51.472528463Z",
+      "last_error": null
+    },
+    {
+      "profile": "reputation-lists",
+      "status": "SUCCEEDED",
+      "remote_path": "/get/20261004T091016Z__f7eaca81-f2b3-4a57-9226-35cb662d5cd1",
+      "updated_at": "2026-10-04T09:36:50.585619563Z",
+      "last_error": null
+    },
+    {
+      "profile": "address-blacklist",
+      "status": "SUCCEEDED",
+      "remote_path": "/get/20261004T090359Z__f1b9363f-3e98-44ac-b527-0ab58597baa4",
+      "updated_at": "2026-10-04T09:10:15.743766872Z",
+      "last_error": null
+    },
+    {
+      "profile": "reputation-lists",
+      "status": "SUCCEEDED",
+      "remote_path": "/get/20261004T090041Z__a0305650-e44c-4e0e-9583-b654c23dee6b",
+      "updated_at": "2026-10-04T09:00:42.224876370Z",
+      "last_error": null
+    },
+    {
+      "profile": "reputation-lists",
+      "status": "SUCCEEDED",
+      "remote_path": "/get/20261004T083709Z__02cdde33-72f3-4375-aae8-362d4f3cb21c",
+      "updated_at": "2026-10-04T08:37:10.015261732Z",
+      "last_error": null
+    },
+    {
+      "profile": "reputation-lists",
+      "status": "SUCCEEDED",
+      "remote_path": "/get/20261004T083653Z__b8f29252-566e-4088-82af-b87980fd6f17",
+      "updated_at": "2026-10-04T08:36:54.021778265Z",
+      "last_error": null
+    }
+  ],
+  "fetch": [
+    {
+      "remote_path": "send/ioc-100000-seed-43.html",
+      "remote_size": 6277616,
+      "remote_mtime": "2026-10-04T08:58:58.446Z",
+      "status": "FETCHED",
+      "fetched_at": "2026-10-04T08:59:53.137066850Z",
+      "updated_at": "2026-10-04T08:59:53.137066850Z",
+      "last_error": null
+    }
+  ],
+  "verifiedPublication": {
+    "remotePath": "/get/20261004T093650Z__68ba1f4c-074a-46ea-b5fe-1760086d5ec6/",
+    "csvName": "GDI_IOC.csv",
+    "csvBytes": 6757652,
+    "csvSha256": "e0638e5f3db23d6115e73b7730c8fa5928ea3f2b3238ca492c73fc2a2adf3a04",
+    "csvDataRows": 90203,
+    "csvHeader": [
+      "name",
+      "ip_address",
+      "url_match",
+      "host_match",
+      "hash"
+    ],
+    "manifest": {
+      "manifest_version": 1,
+      "slice_id": "68ba1f4c-074a-46ea-b5fe-1760086d5ec6",
+      "run_id": "68ba1f4c-074a-46ea-b5fe-1760086d5ec6",
+      "profile": "ioc-aggregate",
+      "created_at": "2026-10-04T09:36:50.340381827Z",
+      "output_mode": "complete",
+      "plan_hash": "0aa5cba1793aa7becea79fa2eb798d4e09213821a58099015aea2e37aaba8148",
+      "format": {
+        "type": "csv",
+        "charset": "UTF-8",
+        "delimiter": ";",
+        "quote": "\"",
+        "null_literal": "NULL"
+      },
+      "artifacts": [
+        {
+          "artifact": "ioc_aggregate",
+          "file": "GDI_IOC.csv",
+          "rows": 90203,
+          "coverage": {
+            "revision": 10,
+            "changed_at": "2026-10-04T09:10:15.396073756Z",
+            "upper_id": 90207
+          },
+          "identity_epoch": 1,
+          "identity_hash": "c8f906e86ebffb8058507bfe3b66fc97d261f6fa8e9ad80e0f67540d27c7da90",
+          "schema_hash": "a5eddf8860e834ba7664c947505e4642dbbd2db91fcff53fec57f6a350f822ab",
+          "sha256": "e0638e5f3db23d6115e73b7730c8fa5928ea3f2b3238ca492c73fc2a2adf3a04"
+        }
+      ]
+    },
+    "successText": "b7990b60e6f0a8a33b38c96b93b097f1ebd8f1051605dd8d80cf3f64f049b58b",
+    "manifestSha256": "b7990b60e6f0a8a33b38c96b93b097f1ebd8f1051605dd8d80cf3f64f049b58b",
+    "observedAtUtc": "2026-10-04T09:53:11.867429+00:00",
+    "scope": "physical artifact existence, CSV row count and manifest/marker; not full independent IOC oracle",
+    "integrityChecks": {
+      "csvSha256MatchesManifest": true,
+      "csvRowsMatchManifest": true,
+      "successMatchesManifestSha256": true,
+      "coversAggregateRevision10": true
+    }
+  },
+  "elapsed": {
+    "ingestStartToPublicationSeconds": 2215.319096225,
+    "ingestStartToTerminalSeconds": 2215.910982399,
+    "remoteFetchedToPublicationSeconds": 2218.335461613,
+    "remoteMtimeToPublicationSeconds": 2273.026528463,
+    "remoteMtimeCaveat": "remote last-write timestamp is not a verified upload-completion measurement"
+  }
+}

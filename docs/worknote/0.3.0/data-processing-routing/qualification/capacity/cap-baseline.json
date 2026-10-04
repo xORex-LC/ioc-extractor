@@ -1,0 +1,32 @@
+{
+  "reviewed_head": "ffccda9da84a86f40cfea5e1054fff2933a0ec6d",
+  "fixture": {
+    "formatVersion": 1,
+    "fixture": "/opt/ioc-extractor/.dev/fixtures/ioc-100000-seed-43.html",
+    "format": "html",
+    "seed": 43,
+    "inputRows": 100000,
+    "uniqueInputValues": 89917,
+    "duplicateRows": 10083,
+    "defangedRows": 17516,
+    "rowsByType": {
+      "IPV4": 16648,
+      "DOMAIN": 16716,
+      "URL": 16673,
+      "MD5": 16664,
+      "SHA1": 16622,
+      "SHA256": 16677
+    },
+    "sha256": "8e27297b0aed5bc6e4a9dad1e1c81e55caa09aeb8696328fdbaa42d6e4a2ec9b"
+  },
+  "fixture_sha256_verified": "8e27297b0aed5bc6e4a9dad1e1c81e55caa09aeb8696328fdbaa42d6e4a2ec9b",
+  "stand_release": "/srv/ioc-extractor/releases/860a3b2bdf3c-20261004T082925Z",
+  "stand_config_sha256": "8a74787e08c69fde0c0a73e0a712fb419e79d38717e078380a475b4505c11127",
+  "jar": "/srv/ioc-extractor/current/ioc-app.jar",
+  "jar_sha256": "8a1ddccb7ff669a56271719824e474ea1d44b30ab914cb027eb3ee28a1c12e43",
+  "java": "openjdk version \"21.0.12.1\" 2026-08-18",
+  "schema_versions": {},
+  "initial_states": "Empty isolated states and populated states generated through public application paths during qualification; never shared growing repeat state",
+  "historical_cycle_seconds": 2215.319,
+  "historical_comparison": "Non-paired incident; do not report a controlled speedup ratio"
+}

@@ -1,0 +1,541 @@
+{
+  "recordedAtUtc": "2026-10-04T09:43:34.990706+00:00",
+  "sourceHead": "ffccda9da84a86f40cfea5e1054fff2933a0ec6d",
+  "sqliteJdbcVersion": "3.53.2.0",
+  "javaVersion": "21.0.12.1",
+  "driverOrigin": "installed Spring Boot JAR (live EXPLAIN) and matching local Maven dependency (private probe)",
+  "timingScope": "single JVM per cardinality, private in-memory synthetic DB, concurrent live stand work; diagnostic illustration, not production latency qualification",
+  "vmCounterQuantum": 1000,
+  "vmZeroMeaning": "fewer than 1000 counted VM steps, not zero work",
+  "summaries": [
+    {
+      "aliases": 1000,
+      "variant": "current",
+      "medianElapsedMs32Requests": 18.926339,
+      "vmStepLowerBoundSingleHit": 18000
+    },
+    {
+      "aliases": 1000,
+      "variant": "request_first",
+      "medianElapsedMs32Requests": 7.861855,
+      "vmStepLowerBoundSingleHit": 0
+    },
+    {
+      "aliases": 1000,
+      "variant": "direct",
+      "medianElapsedMs32Requests": 1.524059,
+      "vmStepLowerBoundSingleHit": 0
+    },
+    {
+      "aliases": 10000,
+      "variant": "current",
+      "medianElapsedMs32Requests": 110.623278,
+      "vmStepLowerBoundSingleHit": 180000
+    },
+    {
+      "aliases": 10000,
+      "variant": "request_first",
+      "medianElapsedMs32Requests": 6.423844,
+      "vmStepLowerBoundSingleHit": 0
+    },
+    {
+      "aliases": 10000,
+      "variant": "direct",
+      "medianElapsedMs32Requests": 2.010429,
+      "vmStepLowerBoundSingleHit": 0
+    },
+    {
+      "aliases": 100000,
+      "variant": "current",
+      "medianElapsedMs32Requests": 753.919058,
+      "vmStepLowerBoundSingleHit": 1800000
+    },
+    {
+      "aliases": 100000,
+      "variant": "request_first",
+      "medianElapsedMs32Requests": 4.377676,
+      "vmStepLowerBoundSingleHit": 0
+    },
+    {
+      "aliases": 100000,
+      "variant": "direct",
+      "medianElapsedMs32Requests": 0.855013,
+      "vmStepLowerBoundSingleHit": 0
+    }
+  ],
+  "samples": [
+    {
+      "sqliteVersion": "3.53.2",
+      "javaVersion": "21.0.12.1",
+      "liveReadOnly": false
+    },
+    {
+      "aliases": 1000,
+      "variant": "current",
+      "repeat": 0,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 20982200,
+      "vmStepLowerBoundSingleHit": 18000,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lifecycle (artifact=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "SCAN r",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 1000,
+      "variant": "current",
+      "repeat": 1,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 18926339,
+      "vmStepLowerBoundSingleHit": 18000,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lifecycle (artifact=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "SCAN r",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 1000,
+      "variant": "current",
+      "repeat": 2,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 15521455,
+      "vmStepLowerBoundSingleHit": 18000,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lifecycle (artifact=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "SCAN r",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 1000,
+      "variant": "request_first",
+      "repeat": 0,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 8177257,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SCAN r",
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 1000,
+      "variant": "request_first",
+      "repeat": 1,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 6010591,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SCAN r",
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 1000,
+      "variant": "request_first",
+      "repeat": 2,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 7861855,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SCAN r",
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 1000,
+      "variant": "direct",
+      "repeat": 0,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 1753308,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 1000,
+      "variant": "direct",
+      "repeat": 1,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 1320818,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 1000,
+      "variant": "direct",
+      "repeat": 2,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 1524059,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "semanticCases": "active multiple, exact expiry boundary, stale lifecycle, same hash different canonical, different definition: PASS"
+    },
+    {
+      "sqliteVersion": "3.53.2",
+      "javaVersion": "21.0.12.1",
+      "liveReadOnly": false
+    },
+    {
+      "aliases": 10000,
+      "variant": "current",
+      "repeat": 0,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 147609232,
+      "vmStepLowerBoundSingleHit": 180000,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lifecycle (artifact=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "SCAN r",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 10000,
+      "variant": "current",
+      "repeat": 1,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 110623278,
+      "vmStepLowerBoundSingleHit": 180000,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lifecycle (artifact=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "SCAN r",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 10000,
+      "variant": "current",
+      "repeat": 2,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 98493051,
+      "vmStepLowerBoundSingleHit": 180000,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lifecycle (artifact=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "SCAN r",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 10000,
+      "variant": "request_first",
+      "repeat": 0,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 7771266,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SCAN r",
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 10000,
+      "variant": "request_first",
+      "repeat": 1,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 6423844,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SCAN r",
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 10000,
+      "variant": "request_first",
+      "repeat": 2,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 4710929,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SCAN r",
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 10000,
+      "variant": "direct",
+      "repeat": 0,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 2010429,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 10000,
+      "variant": "direct",
+      "repeat": 1,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 2222693,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 10000,
+      "variant": "direct",
+      "repeat": 2,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 1463603,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "semanticCases": "active multiple, exact expiry boundary, stale lifecycle, same hash different canonical, different definition: PASS"
+    },
+    {
+      "sqliteVersion": "3.53.2",
+      "javaVersion": "21.0.12.1",
+      "liveReadOnly": false
+    },
+    {
+      "aliases": 100000,
+      "variant": "current",
+      "repeat": 0,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 753919058,
+      "vmStepLowerBoundSingleHit": 1800000,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lifecycle (artifact=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "SCAN r",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 100000,
+      "variant": "current",
+      "repeat": 1,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 739150262,
+      "vmStepLowerBoundSingleHit": 1800000,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lifecycle (artifact=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "SCAN r",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 100000,
+      "variant": "current",
+      "repeat": 2,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 760929456,
+      "vmStepLowerBoundSingleHit": 1800000,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lifecycle (artifact=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "SCAN r",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 100000,
+      "variant": "request_first",
+      "repeat": 0,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 5412762,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SCAN r",
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 100000,
+      "variant": "request_first",
+      "repeat": 1,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 4377676,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SCAN r",
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 100000,
+      "variant": "request_first",
+      "repeat": 2,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 3631618,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SCAN r",
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 100000,
+      "variant": "direct",
+      "repeat": 0,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 855013,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 100000,
+      "variant": "direct",
+      "repeat": 1,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 851925,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "aliases": 100000,
+      "variant": "direct",
+      "repeat": 2,
+      "requests": 32,
+      "hits": 16,
+      "elapsedNanos": 2329566,
+      "vmStepLowerBoundSingleHit": 0,
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "semanticCases": "active multiple, exact expiry boundary, stale lifecycle, same hash different canonical, different definition: PASS"
+    }
+  ],
+  "liveReadOnlyPlans": [
+    {
+      "sqliteVersion": "3.53.2",
+      "javaVersion": "21.0.12.1",
+      "liveReadOnly": true
+    },
+    {
+      "variant": "current",
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lifecycle (artifact=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "SCAN r",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "variant": "request_first",
+      "plan": [
+        "SCAN r",
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR DISTINCT",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    {
+      "variant": "direct",
+      "plan": [
+        "SEARCH a USING INDEX ix_canonical_match_alias_lookup (artifact=? AND definition_id=? AND key_hash=? AND key_canonical=?)",
+        "SEARCH c USING INTEGER PRIMARY KEY (rowid=?)",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    }
+  ]
+}

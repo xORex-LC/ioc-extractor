@@ -136,3 +136,15 @@ Related context: [processing](../../../dev/processing.md),
 
 [Router cutover](router-cutover.md) records the 2026-10-04 accepted removal of
 optional dispatch and the required original-value production defaults.
+
+## Stand capacity investigation
+
+[Data processing capacity and scheduling review](data-processing-capacity-review.md)
+records the 2026-10-04 100k-occurrence publication delay, exact SQLite JDBC
+scaling evidence, memory/scheduling audit and proposed bounded processing model.
+Its [evidence bundle](qualification/capacity/README.md) separates live observations,
+private SQL experiments and qualification still required after implementation.
+
+[Capacity implementation plan](data-processing-capacity-plan.md) prioritizes
+the corrective and architectural stages, decomposes their tasks and defines
+functional, scaling, resource, recovery and deployment gates.

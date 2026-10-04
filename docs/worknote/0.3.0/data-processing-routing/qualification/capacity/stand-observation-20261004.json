@@ -1,0 +1,146 @@
+{
+  "observed_at": "2026-10-04T09:27:26.445140+00:00",
+  "ingest": [
+    {
+      "run_id": "0d649de6-1c3f-412f-aee2-7cd65435d236",
+      "status": "STARTED",
+      "artifacts": "masks\nip_list\naddress_blacklist\nhashes\nioc_aggregate",
+      "started_at": "2026-10-04T08:59:56.153432238Z",
+      "updated_at": "2026-10-04T08:59:56.153432238Z",
+      "reason": null
+    }
+  ],
+  "revisions": [
+    {
+      "artifact": "masks",
+      "revision": 11,
+      "changed_at": "2026-10-04T09:00:02.841077432Z"
+    },
+    {
+      "artifact": "ip_list",
+      "revision": 15,
+      "changed_at": "2026-10-04T09:00:41.666690553Z"
+    },
+    {
+      "artifact": "address_blacklist",
+      "revision": 11,
+      "changed_at": "2026-10-04T09:01:22.159046322Z"
+    },
+    {
+      "artifact": "hashes",
+      "revision": 11,
+      "changed_at": "2026-10-04T09:03:59.075937516Z"
+    },
+    {
+      "artifact": "ioc_aggregate",
+      "revision": 9,
+      "changed_at": "2026-10-04T08:36:47.893125092Z"
+    }
+  ],
+  "publish": [
+    {
+      "profile": "address-blacklist",
+      "status": "SUCCEEDED",
+      "remote_path": "/get/20261004T090359Z__f1b9363f-3e98-44ac-b527-0ab58597baa4",
+      "updated_at": "2026-10-04T09:10:15.743766872Z",
+      "last_error": null
+    },
+    {
+      "profile": "reputation-lists",
+      "status": "SUCCEEDED",
+      "remote_path": "/get/20261004T090041Z__a0305650-e44c-4e0e-9583-b654c23dee6b",
+      "updated_at": "2026-10-04T09:00:42.224876370Z",
+      "last_error": null
+    },
+    {
+      "profile": "reputation-lists",
+      "status": "SUCCEEDED",
+      "remote_path": "/get/20261004T083709Z__02cdde33-72f3-4375-aae8-362d4f3cb21c",
+      "updated_at": "2026-10-04T08:37:10.015261732Z",
+      "last_error": null
+    },
+    {
+      "profile": "reputation-lists",
+      "status": "SUCCEEDED",
+      "remote_path": "/get/20261004T083653Z__b8f29252-566e-4088-82af-b87980fd6f17",
+      "updated_at": "2026-10-04T08:36:54.021778265Z",
+      "last_error": null
+    },
+    {
+      "profile": "reputation-lists",
+      "status": "SUCCEEDED",
+      "remote_path": "/get/20261004T083649Z__64e787fe-9831-48b6-b45c-3938506179f3",
+      "updated_at": "2026-10-04T08:36:49.668848149Z",
+      "last_error": null
+    },
+    {
+      "profile": "ioc-aggregate",
+      "status": "SUCCEEDED",
+      "remote_path": "/get/20261004T083648Z__f49eff2f-f0a2-4a05-bdd4-e3329c681415",
+      "updated_at": "2026-10-04T08:36:49.100534857Z",
+      "last_error": null
+    },
+    {
+      "profile": "address-blacklist",
+      "status": "SUCCEEDED",
+      "remote_path": "/get/20261004T083648Z__18f4ae56-c0eb-45a1-9995-fd37bccd518a",
+      "updated_at": "2026-10-04T08:36:48.995655908Z",
+      "last_error": null
+    },
+    {
+      "profile": "ioc-aggregate",
+      "status": "SUCCEEDED",
+      "remote_path": "/get/20261004T083556Z__376f5dab-f95c-410a-b122-0abb287dbbdc",
+      "updated_at": "2026-10-04T08:35:56.375722605Z",
+      "last_error": null
+    }
+  ],
+  "memoryObservation": {
+    "sampleUtc": "2026-10-04T09:26:59Z",
+    "processVmRssKiB": 639832,
+    "processVmHwmKiB": 643800,
+    "processRssAnonKiB": 613396,
+    "processRssFileKiB": 26436,
+    "processVmSwapKiB": 0,
+    "cgroupMemoryCurrentBytes": 804519936,
+    "cgroupMemoryPeakBytes": 805818368,
+    "cgroupMemoryHighBytes": 805306368,
+    "cgroupMemoryMaxBytes": 1073741824,
+    "cgroupCpuQuotaEquivalentCpus": 2,
+    "cgroupAnonBytes": 634159104,
+    "cgroupFileBytes": 161918976,
+    "cgroupKernelBytes": 8339456,
+    "cgroupHighEvents": 356,
+    "cgroupOomEvents": 0,
+    "cgroupOomKillEvents": 0,
+    "jmxHeapUsedBytes": 249425272,
+    "jmxHeapCommittedBytes": 430485504,
+    "jmxNonHeapUsedBytes": 123119720,
+    "jmxNonHeapCommittedBytes": 137101312,
+    "jmxYoungGcTotalMillis": 1957,
+    "jmxOldGcTotalMillis": 812,
+    "caveat": "nearby samples, different accounting scopes; JMX GC counters cover process lifetime"
+  },
+  "threadObservation": {
+    "worker": "scheduling-1",
+    "workerCpuTimeMillis": 1727378.89,
+    "workerFrames": [
+      "org.sqlite.core.NativeDB.step",
+      "JdbcCanonicalMatchPlanner.plan:87",
+      "JdbcCanonicalMutationEngine.confirm:86",
+      "JdbcCanonicalLifecycleWriter.confirm:219",
+      "JdbcWriterAdmission.execute:29",
+      "WriteArtifactsStage"
+    ],
+    "exportWaitFrames": [
+      "ReentrantLock$FairSync",
+      "JdbcWriterAdmission.execute",
+      "JdbcLifecycleClock.now:78",
+      "JdbcSnapshotSliceReader.stream:123",
+      "CsvArtifactSliceWriter.stage:105",
+      "DaemonExportScheduler.runProfiles:205"
+    ],
+    "sameLockOwner": "scheduling-1",
+    "caveat": "sampled stack and cumulative CPU, not exhaustive elapsed-time attribution"
+  }
+}
