@@ -139,6 +139,21 @@ class GenerationOwnedArtifactProjectionTest {
     }
 
     @Test
+    void acknowledgement_failure_is_correlated_with_the_actual_newer_snapshot() {
+        var work = new Work(2);
+        work.acceptAcknowledgement = false;
+        var owner = new GenerationOwnedArtifactProjection(List.of("masks"), request -> {
+            work.required = 5;
+            return ArtifactProjectionResult.clean(10, new ProjectionGeneration(5));
+        }, work);
+
+        assertThatThrownBy(() -> owner.project(command("failed-newer")))
+                .hasMessage("Installed projection coverage was not acknowledged");
+        assertThat(work.failureGeneration).isEqualTo(new ProjectionGeneration(5));
+        assertThat(work.projected).isZero();
+    }
+
+    @Test
     void rejects_ambiguous_catalog_unknown_artifact_and_uncovered_request() {
         var work = new Work(2);
         var installer = (com.iocextractor.application.port.out.artifact.ArtifactProjection)
@@ -172,6 +187,7 @@ class GenerationOwnedArtifactProjectionTest {
         private int acknowledgements;
         private boolean acceptAcknowledgement = true;
         private String failureCode;
+        private ProjectionGeneration failureGeneration;
 
         private Work(long required) { this.required = required; }
 
@@ -188,6 +204,7 @@ class GenerationOwnedArtifactProjectionTest {
         }
         @Override public boolean recordFailure(String artifact, ProjectionGeneration generation, String code) {
             failureCode = code;
+            failureGeneration = generation;
             return true;
         }
     }

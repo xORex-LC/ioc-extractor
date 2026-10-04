@@ -17,7 +17,7 @@ tables, SQL transactions, scheduler APIs or filesystem paths.
 | `ActiveArtifactReader.java` | Active-only artifact snapshot at one explicit `asOf` |
 | `ExpiredArtifactStore.java` | Nearest deadline and bounded archive/delete transaction |
 | `LifecycleControlStore.java` | Persisted one-way activation CAS |
-| `ArtifactProjectionWorkStore.java` | Mutable projection generation and acknowledgement CAS |
+| `ArtifactProjectionWorkStore.java` | Required generation and monotonic acknowledgement of installed coverage; newer work stays pending |
 
 ## Dependencies
 

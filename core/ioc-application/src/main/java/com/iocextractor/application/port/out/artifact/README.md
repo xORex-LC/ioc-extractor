@@ -17,7 +17,8 @@ Driven-порты для canonical artifact storage, artifact identity, CSV proj
 | `CanonicalMatchPlanner.java` | Set-based active-only zero/one/multiple alias matching |
 | `ArtifactProjection.java` | Projection-порт для производных артефактов |
 | `ArtifactProjectionCommand.java` | Обязательные run/artifact identity одной projection operation |
-| `ArtifactProjectionResult.java` | Immutable row count + advisory diagnostics успешно установленной проекции |
+| `ArtifactProjectionResult.java` | Immutable row count + advisory diagnostics + покрытое поколение установленной проекции |
+| `CanonicalArtifactStreamReader.java` / `CanonicalArtifactStreamResult.java` | Поток строк и поколение из одного snapshot; без полной материализации |
 | `RunLedger.java` | Durable checkpoint store для write→project recovery |
 | `lifecycle/` | Lifecycle-aware canonical write/read, expiry, activation and projection-work ports |
 

@@ -194,6 +194,8 @@ class JdbcLifecycleStorageFoundationIT {
 
         assertThat(store.load("masks").pending()).isTrue();
         assertThat(store.acknowledge(acknowledgement("masks", 2))).isTrue();
+        assertThat(store.acknowledge(acknowledgement("masks", 4))).isFalse();
+        assertThat(store.acknowledge(acknowledgement("masks", 1))).isFalse();
         assertThat(store.load("masks").pending()).isFalse();
         assertThat(queryLong("SELECT projected_at_ms FROM artifact_projection_state WHERE artifact = 'masks'"))
                 .isEqualTo(NOW.toEpochMilli());
@@ -206,6 +208,13 @@ class JdbcLifecycleStorageFoundationIT {
         assertThat(store.acknowledge(acknowledgement("masks", 2))).isTrue();
         assertThat(store.load("masks").requiredGeneration()).isEqualTo(new ProjectionGeneration(3));
         assertThat(store.load("masks").projectedGeneration()).isEqualTo(new ProjectionGeneration(2));
+        assertThat(store.load("masks").pending()).isTrue();
+        execute("""
+                UPDATE artifact_projection_state SET required_generation = 4 WHERE artifact = 'masks'
+                """);
+        assertThat(store.acknowledge(acknowledgement("masks", 3))).isTrue();
+        assertThat(store.load("masks").projectedGeneration()).isEqualTo(new ProjectionGeneration(3));
+        assertThat(store.load("masks").pending()).isTrue();
         assertThat(store.load("hashes").pending()).isFalse();
     }
 

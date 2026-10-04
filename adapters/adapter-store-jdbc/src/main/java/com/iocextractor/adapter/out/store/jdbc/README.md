@@ -19,7 +19,7 @@ types to bootstrap; domain/application do not import this package.
 | `JdbcCanonicalArtifactRepository`, `JdbcArtifactIdBaseline`, `JdbcArtifactRevisionReader` | Canonical truth, public id baseline и cheap revision read side |
 | `JdbcLifecycleControlStore`, `JdbcLifecycleMetadataInspector` | One-way activation CAS и set-based barrier против legacy/partial lifecycle metadata |
 | `JdbcLifecycleIdAllocator`, `JdbcArtifactIdAllocator` | Durable atomic range reservation; public allocator сохраняет direction/identity epoch и не зависит только от active `MAX(id)` |
-| `JdbcArtifactProjectionWorkStore` | Required/projected generation read и acknowledgement CAS для mutable projection convergence |
+| `JdbcArtifactProjectionWorkStore` | Required/projected generation read и монотонное подтверждение установленного snapshot; новое поколение остаётся pending |
 | `LifecycleArtifactSchemaPlanner` | Additive lifecycle columns, typed history/source-summary/receipt mirrors и deadline/retention indexes per artifact |
 | `JdbcExportRunLedger`, `JdbcExportProgressStore` | Formation-saga CAS/single-flight, terminal progress и latest-run health read model |
 | `JdbcRemoteFetchLedger`, `JdbcPublishLedger` | Durable sync fetch idempotency и per-target publish saga state |

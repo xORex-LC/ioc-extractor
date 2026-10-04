@@ -937,9 +937,9 @@ public class AppConfig {
 
     @Bean
     public ArtifactProjection artifactProjection(JdbcCanonicalArtifactRepository jdbcCanonicalArtifactRepository,
-                                                       ArtifactProjectionWorkStore artifactProjectionWorkStore,
-                                                       IocProperties props,
-                                                       Clock clock) {
+                                                 ArtifactProjectionWorkStore artifactProjectionWorkStore,
+                                                 IocProperties props,
+                                                 Clock clock) {
         var installer = new CsvArtifactProjection(
                 jdbcCanonicalArtifactRepository,
                 artifactHeaders(props),

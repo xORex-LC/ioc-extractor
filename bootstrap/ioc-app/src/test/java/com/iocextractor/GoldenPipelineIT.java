@@ -83,6 +83,9 @@ class GoldenPipelineIT {
     com.iocextractor.bootstrap.IocProperties properties;
 
     @Autowired
+    org.springframework.context.ApplicationContext context;
+
+    @Autowired
     @Qualifier("dataframeStorageDataSource")
     HikariDataSource dataframeStorageDataSource;
 
@@ -108,6 +111,12 @@ class GoldenPipelineIT {
     @Test
     void pipeline_output_matches_golden_and_repeated_extract_updates_only_provenance() throws Exception {
         assertThat(router).isNotNull();
+        assertThat(context.getBeansOfType(com.iocextractor.application.port.out.artifact.ArtifactProjection.class))
+                .hasSize(1).containsKey("artifactProjection")
+                .allSatisfy((name, projection) -> assertThat(projection).isInstanceOf(
+                        com.iocextractor.application.artifact.lifecycle.GenerationOwnedArtifactProjection.class));
+        assertThat(context.getBeansOfType(com.iocextractor.adapter.out.sink.csv.CsvArtifactProjection.class))
+                .isEmpty();
         assertThat(properties.processing().documentPlan()).isEqualTo("original-document");
         useCase.extract(new ExtractionCommand(
                 "golden-first", Path.of("src/test/resources/golden/source.html"), false));

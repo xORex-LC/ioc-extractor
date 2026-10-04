@@ -96,11 +96,11 @@ public final class JdbcCanonicalArtifactRepository
     }
 
     private CanonicalArtifactStreamResult stream(Connection connection,
-                       String artifactName,
-                       List<String> header,
-                       LifecycleActivationState expectedState,
-                       EffectiveTime asOf,
-                       CanonicalArtifactRowConsumer consumer) throws SQLException {
+                                                String artifactName,
+                                                List<String> header,
+                                                LifecycleActivationState expectedState,
+                                                EffectiveTime asOf,
+                                                CanonicalArtifactRowConsumer consumer) throws SQLException {
         boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
         Exception failure = null;

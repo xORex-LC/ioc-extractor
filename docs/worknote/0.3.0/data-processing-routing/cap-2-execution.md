@@ -38,6 +38,27 @@ sufficient; acknowledgement accepts partial covered progress while keeping newer
 work pending. A separate connection lease for safe-clock sampling also avoids a
 nested pool lease in a one-connection configuration.
 
-Implementation and qualification are in progress. Test data uses JUnit temporary
-directories and is removed; no retained capacity databases are needed for this
-correctness change. Installed stand service/executable are outside this change.
+Implementation commit: `f7783dce` (shared owner, snapshot coverage,
+acknowledgement contract, baseline race regression and ADR 0035).
+
+Focused qualification passed:
+
+- Corrected stale-install regression in `DataframeRecoveryIntegrationIT`.
+- Core application tests, including coalesced results, advisory correlation,
+  untracked generation zero, acknowledgement failure and cancelled waiters.
+- Nine real SQLite/CSV cases in `MutableProjectionOwnershipIT` (2.571 s):
+  failure before rename, atomic rename failure, after-rename interruption,
+  failing acknowledgement transaction, committed acknowledgement with lost
+  reply, cancelled CSV construction, expiry-only empty output, one-connection
+  safe-clock operation, and simultaneous ingest/import/expiry during a held
+  projection cursor. Each owned worker terminates within an asserted bound.
+
+The concurrent case commits all three writer families while the old projection
+read is held open. That installed g1 acknowledges only g1, required g4 remains
+pending, and the next convergence installs g4 excluding the expired lifecycle.
+Recovery cases require no later canonical mutation.
+
+Whole-reactor verification and analyzer review are pending. Test data uses JUnit
+temporary directories and is removed; no retained capacity databases are needed
+for this correctness change. Installed stand service/executable are outside this
+change. No CAP-2 speed or memory acceptance result is claimed.

@@ -71,13 +71,15 @@ public final class GenerationOwnedArtifactProjection implements ArtifactProjecti
             return correlate(owner.completed, request.runId());
         }
         owner.completed = null;
+        ProjectionGeneration attemptedGeneration = state.requiredGeneration();
         try {
             checkCancellation();
             ArtifactProjectionResult result = installer.project(request);
-            checkCancellation();
             if (result.installedGeneration().compareTo(state.requiredGeneration()) < 0) {
                 throw new IocExtractorException("Installed projection does not cover requested generation");
             }
+            attemptedGeneration = result.installedGeneration();
+            checkCancellation();
             if (result.installedGeneration().value() > 0
                     && !work.acknowledge(new ProjectionAcknowledgement(
                             request.artifactName(), result.installedGeneration()))) {
@@ -87,7 +89,7 @@ public final class GenerationOwnedArtifactProjection implements ArtifactProjecti
             return result;
         } catch (RuntimeException failure) {
             try {
-                work.recordFailure(request.artifactName(), state.requiredGeneration(),
+                work.recordFailure(request.artifactName(), attemptedGeneration,
                         ArtifactProjectionConvergenceService.PROJECTION_FAILURE);
             } catch (RuntimeException journalFailure) {
                 failure.addSuppressed(journalFailure);
@@ -115,7 +117,7 @@ public final class GenerationOwnedArtifactProjection implements ArtifactProjecti
 
     private static final class Owner {
         private final ReentrantLock lock = new ReentrantLock(true);
-        // Both fields are accessed only under this artifact's lock.
+        // Accessed only under this artifact's lock.
         private ArtifactProjectionResult completed;
     }
 }
