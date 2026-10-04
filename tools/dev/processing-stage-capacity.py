@@ -85,7 +85,7 @@ def compile_overlay(root, side, baseline, classpath):
                           if side == "before" else (REPO / relative).read_text())
         sources.append(str(source))
     classes.mkdir(parents=True)
-    command(["java", "com.sun.tools.javac.Main", "--release", "21",
+    command(["java", "com.sun.tools.javac.Main", "-source", "21", "-target", "21",
              "-cp", classpath, "-d", str(classes), *sources])
     return str(classes) + os.pathsep + classpath
 
@@ -173,7 +173,7 @@ def main():
         classpaths = {side: compile_overlay(root, side, baseline, common) for side in ("before", "after")}
         probe = root / "probe"
         probe.mkdir()
-        command(["java", "com.sun.tools.javac.Main", "--release", "21",
+        command(["java", "com.sun.tools.javac.Main", "-source", "21", "-target", "21",
                  "-cp", classpaths["after"], "-d", str(probe),
                  str(REPO / "bootstrap/ioc-app/src/test/java/com/iocextractor/bootstrap/ProcessingStageCapacity.java")])
         identities = {name: digest_files(root / name) for name in ("before", "after", "common", "probe")}
