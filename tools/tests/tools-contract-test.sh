@@ -365,5 +365,6 @@ UNPINNED_ACTIONS="$(
 
 python3 "${TEST_DIR}/processing-route-comparison-test.py"
 python3 "${TEST_DIR}/processing-stage-capacity-test.py"
+python3 "${TEST_DIR}/document-workspace-capacity-test.py"
 
 printf '[tools-contract] PASS\n'

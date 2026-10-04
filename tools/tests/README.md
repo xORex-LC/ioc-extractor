@@ -44,3 +44,7 @@ CAP-3 JVM pairs, отказ при потере samples или semantic mismatch
 ошибочного fork, сохранность входов/логов/frozen fixtures, явный opt-in для
 баз и отказ от очистки чужих каталогов и symlink targets. При нехватке места
 новая JVM не запускается.
+
+`python3 tools/tests/document-workspace-capacity-test.py` проверяет отказ
+неполного evidence и удаление приватного runtime/SQLite state при oracle failure
+и timeout JVM.

@@ -25,6 +25,7 @@
 | `router-qualification.sh --size 1000|100000` | Измерить синтетический Camel Router по матрице ветвей, потоков и исходов; отчёты в `.dev/router-qualification` |
 | `processing-route-comparison.py …` | Попарно сравнить совместимый и выбранный путь на одинаковом документе с повторами и processed import; проверить равенство результата и измерить время, throughput, allocations, heap/RSS |
 | `processing-stage-capacity.py …` | Измерить CAP-3 attribution/diagnostics в попарных JVM со снимками классов; автоматически удалить временные файлы |
+| `document-workspace-capacity.py …` | Диагностика CAP-4: инкрементальный дисковый reducer, canonical writer и receipts; удалить все временные базы даже при отказе |
 | `logs.sh …` | Читать и фильтровать ECS JSON по level/event/run/diagnostic |
 | `release-notes-context.sh …` | Собрать read-only Git/PR inventory для ручной подготовки release notes |
 
@@ -254,3 +255,16 @@ JSON. `samples.json` сохраняет завершённые forks по мер
 обеих версий; этот режим запускают отдельно. `partial.json` и `failure.json`
 сохраняют незавершённые серии. `--profile` и `--workload` ограничивают отдельный
 эксперимент; эти замеры не устанавливают клиентский ресурсный бюджет.
+
+`make document-workspace-capacity WORKSPACE_CAPACITY_ARGS='--output PATH.json'`
+проверяет 10k → 100k → 1m строк на артефакт при двух артефактах,
+2 MiB общем workspace-бюджете, 64 KiB SQLite cache и JVM heap 64 MiB.
+Проба генерирует кандидатов инкрементально, проверяет полные KEEP_FIRST /
+LAST_NONEMPTY строки, positions, canonical commits и повторяемые receipts.
+Это диагностика live-memory с явным GC, а не полный SMB/Router benchmark.
+Заморозка compiled runtime и базы каждого fork удаляются в `finally`, включая
+отказ oracle и timeout; сохраняется только компактный JSON. Перед запуском
+нужны committed tree и скомпилированные main/test classes.
+Отдельные `upstream_samples` измеряют настоящие Spring/Tika/read/refang/extract/
+attribute стадии на 10k/100k/1m occurrences с heap 512 MiB. Их память учитывается
+отдельно от workspace; `--upstream-sizes` без значений отключает эту серию.

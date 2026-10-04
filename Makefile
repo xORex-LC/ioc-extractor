@@ -270,6 +270,10 @@ data-processing-capacity: ## CAP-0/1 exact-driver SQL or private production-poli
 processing-stage-capacity: ## CAP-3 paired stage probes; STAGE_CAPACITY_ARGS selects baseline, output and sizes
 	@python3 tools/dev/processing-stage-capacity.py $(STAGE_CAPACITY_ARGS)
 
+.PHONY: document-workspace-capacity
+document-workspace-capacity: ## CAP-4 incremental disk-reducer/writer/receipt diagnostic; WORKSPACE_CAPACITY_ARGS selects output and sizes
+	@python3 tools/dev/document-workspace-capacity.py $(WORKSPACE_CAPACITY_ARGS)
+
 db: ## Inspect SQLite read-only; DB=service|dataframe DB_COMMAND=shell|schema|tables
 	@tools/dev/database.sh --workspace "$(WORKSPACE)" --db "$(DB)" "$(DB_COMMAND)"
 
