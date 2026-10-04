@@ -188,3 +188,15 @@ JSON. `samples.json` сохраняет завершённые forks по мер
 Не существующие compatible ratios остаются null; ресурсная приёмка не оценивается.
 Число URL должно быть кратно числу host; document rows — 4×числу URL, import rows
 — 2×числу URL или кратное им. Прогрев использует отдельные конечные host/IP.
+
+`make processing-optimization-comparison` сравнивает две зафиксированные сборки
+из workspaces `processing-route-comparison`, чередуя before/after внутри каждой
+пары. Например: `COMPARISON_ARGS='--reference .dev/before --candidate .dev/after
+--workspace .dev/optimization --pairs 5'`. Профили `repeat`, `unique`, `collapse`
+используют одинаковую selected-policy, отдельный прогрев и полный signature,
+включая diagnostics. Новых сборок во время измерений нет. JSON сохраняет SHA-256
+каждого runtime-файла, порядок запусков, samples и отношения внутри пар.
+`--diagnostics --agent .dev/comparison-diagnostics.jar` задаёт один observer для
+обеих версий; этот режим запускают отдельно. `partial.json` и `failure.json`
+сохраняют незавершённые серии. `--profile` и `--workload` ограничивают отдельный
+эксперимент; эти замеры не устанавливают клиентский ресурсный бюджет.

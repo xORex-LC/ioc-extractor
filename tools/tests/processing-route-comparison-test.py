@@ -16,9 +16,31 @@ SPEC = importlib.util.spec_from_file_location(
     "route_comparison", Path(__file__).resolve().parents[1] / "dev/processing-route-comparison.py")
 COMPARISON = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(COMPARISON)
+OPTIMIZATION_SPEC = importlib.util.spec_from_file_location(
+    "optimization_comparison", Path(__file__).resolve().parents[1] / "dev/processing-optimization-comparison.py")
+OPTIMIZATION = importlib.util.module_from_spec(OPTIMIZATION_SPEC)
+OPTIMIZATION_SPEC.loader.exec_module(OPTIMIZATION)
 
 
 class ComparisonTest(unittest.TestCase):
+    def test_selected_optimization_comparison_rejects_diagnostic_changes(self):
+        baseline = {"fields": ["same"], "outcome": "DEBUG overlap"}
+        OPTIMIZATION.compare(baseline, dict(baseline))
+        with self.assertRaisesRegex(RuntimeError, "signatures or outcomes differ"):
+            OPTIMIZATION.compare(baseline, baseline | {"outcome": "WARN unexpected"})
+
+    def test_optimization_statistics_preserve_alternating_pairs(self):
+        rows = []
+        for iteration in range(2):
+            for side in (["before", "after"] if iteration == 0 else ["after", "before"]):
+                value = (iteration + 1) * (2 if side == "before" else 1)
+                rows.append({"kind": "document", "revision": side,
+                             **{metric: value for metric in OPTIMIZATION.METRICS}})
+        metric = OPTIMIZATION.summarize(rows)["document"]["elapsed_ms"]
+        self.assertEqual(metric["paired_ratios"], [0.5, 0.5])
+        self.assertEqual(metric["before_median"], 3)
+        self.assertEqual(metric["after_median"], 1.5)
+
     def test_host_collapse_has_distinct_urls_shared_hosts_repeats_and_sources(self):
         values = COMPARISON.fixture_values(8, "host-collapse", collapse_hosts=4)
         self.assertEqual(len(set(values)), 8)

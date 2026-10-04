@@ -205,6 +205,16 @@ public final class ComparisonDiagnostics {
 
     static byte[] instrument(String type, byte[] bytes) {
         var reader = new ClassReader(bytes);
+        // Both historical row-local and attempt-scoped preparers use this observer.
+        var methods = new java.util.HashSet<String>();
+        reader.accept(new ClassVisitor(Opcodes.ASM9) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String descriptor,
+                                             String signature, String[] exceptions) {
+                methods.add(name);
+                return null;
+            }
+        }, ClassReader.SKIP_CODE);
         var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
         reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {
             @Override
@@ -223,7 +233,8 @@ public final class ComparisonDiagnostics {
                 boolean importPreparation = type.endsWith("/ProcessedImportRowPreparer")
                         || type.endsWith("/RouterProcessedImportRowPreparer")
                         || type.endsWith("/CsvProcessedImportRowPreparer");
-                importPreparation &= method.equals("prepare") && descriptor.startsWith(
+                importPreparation &= method.equals(methods.contains("prepareInSession") ? "prepareInSession" : "prepare")
+                        && descriptor.startsWith(
                         "(Lcom/iocextractor/application/dataframeimport/contract/CompiledDataframeImportContract;");
                 String timer = documentPreparation || importPreparation ? "preparation_nanos" : null;
                 boolean importReturn = importPreparation;

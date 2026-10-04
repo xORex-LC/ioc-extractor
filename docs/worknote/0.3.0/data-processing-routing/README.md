@@ -128,3 +128,6 @@ Related context: [processing](../../../dev/processing.md),
 [managed import](../../../dev/dataframe-import.md),
 [registered observation order](../../../ADR/0030-registered-observation-order-for-artifact-fields.md),
 [ETL library assessment](../libs/lib-4-etl-analysis.md).
+
+- [O8 local processing optimization](o8-local-optimization.md): bounded LRU reuse,
+  staging-attempt sessions and canonical-key lexical validation.

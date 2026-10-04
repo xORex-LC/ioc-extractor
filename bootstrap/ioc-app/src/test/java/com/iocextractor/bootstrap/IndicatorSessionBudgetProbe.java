@@ -97,14 +97,27 @@ public final class IndicatorSessionBudgetProbe {
 
     /** Diagnostic-only observer; failure to inspect a revised layout must abort calibration. */
     private static Retention retention(IndicatorProcessingSession session) throws ReflectiveOperationException {
-        var bytes = IndicatorProcessingSession.class.getDeclaredField("retainedBytes");
         var classifications = IndicatorProcessingSession.class.getDeclaredField("classifications");
         var hosts = IndicatorProcessingSession.class.getDeclaredField("hosts");
-        bytes.setAccessible(true);
         classifications.setAccessible(true);
         hosts.setAccessible(true);
-        return new Retention(bytes.getLong(session), ((Map<?, ?>) classifications.get(session)).size()
-                + ((Map<?, ?>) hosts.get(session)).size());
+        Retention classification = cacheRetention(classifications.get(session));
+        Retention host = cacheRetention(hosts.get(session));
+        return new Retention(classification.bytes() + host.bytes(), classification.entries() + host.entries());
+    }
+
+    private static Retention cacheRetention(Object cache) throws ReflectiveOperationException {
+        var bytes = cache.getClass().getDeclaredField("retainedBytes");
+        var entries = cache.getClass().getDeclaredField("entries");
+        bytes.setAccessible(true);
+        entries.setAccessible(true);
+        long retained = bytes.getLong(cache);
+        int count = ((Map<?, ?>) entries.get(cache)).size();
+        if (retained > IndicatorProcessingSession.DEFAULT_MAX_RETAINED_BYTES / 2
+                || count > IndicatorProcessingSession.DEFAULT_MAX_ENTRIES / 2) {
+            throw new IllegalStateException("Semantic cache exceeded its partition budget");
+        }
+        return new Retention(retained, count);
     }
 
     private record Retention(long bytes, int entries) { }

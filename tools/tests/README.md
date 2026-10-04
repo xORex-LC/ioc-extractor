@@ -26,3 +26,6 @@ boundary, а не запускает долгий daemon scenario.
 задание cardinality для документа/CSV, попарную статистику и отсутствие
 искусственного отношения для нулевых GC counters. Сам opt-in benchmark
 запускается отдельно через `make processing-route-comparison`.
+
+Тот же набор проверяет полную диагностическую эквивалентность selected-версий
+и сохранение пар при чередовании before/after в optimization comparison.

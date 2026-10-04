@@ -258,6 +258,10 @@ router-qualification: ## Run opt-in synthetic Camel Router profile; SIZE=1000|10
 processing-route-comparison: ## Paired production routing probe; COMPARISON_ARGS passes explicit profile options
 	@python3 tools/dev/processing-route-comparison.py $(COMPARISON_ARGS)
 
+.PHONY: processing-optimization-comparison
+processing-optimization-comparison: ## Alternate frozen before/after selected JVMs; COMPARISON_ARGS selects snapshots
+	@python3 tools/dev/processing-optimization-comparison.py $(COMPARISON_ARGS)
+
 db: ## Inspect SQLite read-only; DB=service|dataframe DB_COMMAND=shell|schema|tables
 	@tools/dev/database.sh --workspace "$(WORKSPACE)" --db "$(DB)" "$(DB_COMMAND)"
 
