@@ -27,6 +27,24 @@ CAPACITY_SPEC.loader.exec_module(CAPACITY)
 
 
 class ComparisonTest(unittest.TestCase):
+    def test_equal_oracle_signatures_share_disk_storage_and_changed_outcomes_remain_distinct(self):
+        import gzip
+        with tempfile.TemporaryDirectory() as folder:
+            workspace = Path(folder)
+            roots = [workspace / str(number) for number in range(3)]
+            for root in roots:
+                root.mkdir()
+            checksums = [COMPARISON.write_signature(root, workspace, value)
+                         for root, value in zip(roots, ({'outcome': 'OK'}, {'outcome': 'OK'}, {'outcome': 'WARN'}))]
+            self.assertEqual(checksums[0], checksums[1])
+            self.assertNotEqual(checksums[0], checksums[2])
+            self.assertEqual((roots[0] / 'signature.json.gz').stat().st_ino,
+                             (roots[1] / 'signature.json.gz').stat().st_ino)
+            self.assertEqual(len(list((workspace / 'signatures').iterdir())), 2)
+            for root, expected in zip(roots, ('OK', 'OK', 'WARN')):
+                with gzip.open(root / 'signature.json.gz', 'rt') as evidence:
+                    self.assertEqual(__import__('json').load(evidence), {'outcome': expected})
+
     def test_default_retention_removes_owned_state_and_preserves_evidence_inputs_and_symlink_targets(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(COMPARISON, 'REPO', Path(folder)):
             root = Path(folder) / '.dev/fork'

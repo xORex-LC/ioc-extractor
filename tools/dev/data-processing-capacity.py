@@ -100,20 +100,21 @@ def phases(args, root, report):
     os.environ.update(DEBUG='false', TRACE='false', LOGGING_LEVEL_ROOT='WARN')
     fixtures = route.fixtures(root, args.rows, args.rows, args.rows, args.rows, 'mixed')
     shutil.copyfile(args.agent, root / 'comparison-diagnostics.jar')
-    signatures = []
+    signature_checksum = None
     for iteration in range(args.pairs):
         metrics, signature = route.run_one(root, fixtures['document'], 'document', True, iteration,
             classpath, args.rows, args.rows, 0, args.runtime.resolve() / 'test-resources', True, 'mixed',
             capacity=True, retain_state=args.retain_state)
-        signatures.append(signature)
+        if signature_checksum is not None and signature_checksum != metrics['signature_sha256']:
+            raise RuntimeError('Diagnostic fork semantics differ')
+        signature_checksum = metrics['signature_sha256']
+        report['final_rows'] = {artifact: len(keys) for artifact, keys in signature['canonical_keys'].items()}
+        del signature
         report['samples'].append(metrics)
         write_report(root, 'partial.json', report)
         print(f'Diagnostic document {args.rows}: {iteration + 1}/{args.pairs}', flush=True)
-    if any(value != signatures[0] for value in signatures):
-        raise RuntimeError('Diagnostic fork semantics differ')
     report['canonical_promotion_median_nanos'] = statistics.median(
         value['diagnostic_counters']['canonical_writer_hold_nanos'] for value in report['samples'])
-    report['final_rows'] = {artifact: len(keys) for artifact, keys in signatures[0]['canonical_keys'].items()}
     report['scope'] = 'Instrumentation/JFR phase evidence; not a primary wall-time or resource-budget sample.'
     if identity != COMPARISON.frozen_runtime(args.runtime.resolve())[1]:
         raise RuntimeError('Frozen runtime changed during qualification')
@@ -131,8 +132,11 @@ def sql_screen(args, root, report):
                    capture_output=True, text=True, timeout=60)
     measurements = []
     for size in (1000, 10000, 100000):
-        result = subprocess.run(['java', '-Xms128m', '-Xmx512m', '-cp', str(classes) + ':' + classpath,
-                                 'com.iocextractor.adapter.out.store.jdbc.JdbcMatcherCapacityProbe', str(size)],
+        command = ['java', '-Xms128m', '-Xmx512m', '-cp', str(classes) + ':' + classpath,
+                   'com.iocextractor.adapter.out.store.jdbc.JdbcMatcherCapacityProbe', str(size)]
+        if args.database:
+            command.append(str(args.database.resolve()))
+        result = subprocess.run(command,
                                 capture_output=True, text=True, timeout=120)
         (root / f'sql-{size}.log').write_text(result.stdout + result.stderr)
         result.check_returncode()
@@ -143,6 +147,11 @@ def sql_screen(args, root, report):
             raise RuntimeError(f'Artifact-size work multiplier: {shape}: {work}')
     report.update(measurements=measurements, counter_scope='Quantum 1 callbacks; actual packaged planner call including setup/cleanup. Diagnostic work, not primary latency.',
                   fixture_scope='Private minimal SQL mechanism fixture; business states use public application paths.')
+    if args.database:
+        report['public_application_state'] = {'sha256': digest(args.database),
+            'schema_version': rows(args.database, 'PRAGMA user_version')[0]['user_version'],
+            'alias_rows': rows(args.database, 'SELECT COUNT(*) AS total FROM canonical_match_alias')[0]['total'],
+            'scope': 'Plan-only cross-check on a read-only public-path state; VM counters belong to the mechanism fixture.'}
 
 
 class FixtureOracle(HTMLParser):
@@ -626,6 +635,7 @@ def main():
     parser.add_argument('--rows', type=int, choices=(10000, 100000), default=10000)
     parser.add_argument('--pairs', type=int, default=5)
     parser.add_argument('--source-state', type=Path, help='Completed private stand workspace; required for state mode')
+    parser.add_argument('--database', type=Path, help='Optional private public-path SQLite state for read-only SQL plan checks')
     parser.add_argument('--retain-state', action='store_true',
                         help='Keep generated databases/CSVs; stand snapshots are compressed. Default removes state after checks, including failures.')
     args = parser.parse_args()
@@ -638,6 +648,11 @@ def main():
         parser.error('Phases mode needs --agent and positive --pairs')
     if args.mode == 'state' and (args.source_state is None or not args.source_state.resolve().is_relative_to(REPO / '.dev')):
         parser.error('State mode needs a private repo-local --source-state')
+    if args.database and (args.mode != 'sql' or not args.database.is_file()
+                         or not args.database.resolve().is_relative_to(REPO / '.dev')):
+        parser.error('--database requires SQL mode and an existing private .dev state')
+    if args.mode in ('stand', 'phases') and shutil.disk_usage(REPO / '.dev').free < 1024 ** 3:
+        parser.error('Less than 1 GiB free for capacity state; no JVM started')
     root.mkdir(parents=True, exist_ok=True)
     COMPARISON.COMPARISON.mark_owned_workspace(root)
     report = {'mode': args.mode, 'status': 'RUNNING', 'driver_sha256': digest(__file__)}

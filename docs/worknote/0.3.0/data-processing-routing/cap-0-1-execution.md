@@ -1,118 +1,194 @@
 # CAP-0–CAP-1 execution evidence
 
-Status: in progress, 2026-10-04. Scope is CAP-0, CAP-1A and CAP-1B from
-the [capacity plan](data-processing-capacity-plan.md). The adopted budgets
-remain acceptance targets. Later bounded-memory preparation and scheduling
-stages are not implemented by this change.
+Status: implementation and scoped qualification complete, 2026-10-04.
+Repository gate freshness is owned by `make context` and must match the
+delivery HEAD. Scope is CAP-0, CAP-1A and CAP-1B from the
+[capacity plan](data-processing-capacity-plan.md). Adopted resource targets
+remain independent acceptance criteria. CAP-2–CAP-6 are outside this change.
+The installed service has not been replaced by the qualification executable.
 
-## CAP-1A implementation checkpoint
+## Changes and ownership
 
 `c7314427` changes ordinary request matching and staged import alias planning
-to request-driven complete-key probes using SQLite `CROSS JOIN`. It preserves
-the transaction visibility and import planning boundaries. No index migration,
-bulk prematching or alias mutation policy change is included.
+to request-driven complete-key probes using SQLite `CROSS JOIN`. Artifact,
+definition, hash and canonical material all participate in indexed lookup.
+No index migration or snapshot-wide bulk prematching is introduced.
 
-Nine real JDBC matcher/mutation regressions pass, including union of several
-keys, stable ordering, equal digests with unequal material, strict expiry,
-artifact/definition isolation, inserted and changed aliases visible within a
-transaction, isolation from another connection and rollback.
+`46eea3af` scopes matcher/mutation resources to the caller-owned connection and
+transaction. One session serves an ordinary artifact transaction; import
+promotion opens one session per affected artifact. Sessions retain at most 32
+prepared statements, clear bindings and batches between leases, close before
+commit and never commit or close the caller's connection. Singleton requests
+use complete-key direct lookup; general requests use one lazily created TEMP
+request table, with 256-request chunks and 256-key batches. Newly
+inserted/restarted rows reuse their immutable row-local key material.
 
-A preliminary empty-store active-lifecycle run, one fork per workload:
+Alias delete/reinsert remains unchanged. Staged import planning finishes before
+promotion, and ordinary confirmation continues to see its own writes. Import
+planning/final-cell decoding and lifecycle archival remain separate owners.
+No global statement or IOC-content cache is added.
 
-| Input | Local processing | Caller allocations | Sampled current RSS peak |
+## Contracts and functional checks
+
+Real JDBC regressions cover zero/one/multiple candidates, multiple keys and
+requests, stable ordering, equal hashes with unequal material, exact expiry,
+artifact/definition isolation, changed aliases visible within the transaction,
+independent connections, chunk boundaries, rollback and fresh retry. Resource
+scope tests exercise bounded eviction, thread/reentrant ownership, clearing
+failure and preservation of close failures. Interrupted admission never runs
+the cancelled work and permits a later fresh attempt.
+
+The JDBC integration module passed 251 executed test cases and one explicit load
+skip. The new resource test increases the fast suite universe from 220 to 221
+and the deterministic universe from 287 to 288; no test/coverage/analyzer
+threshold is lowered. Exact-HEAD verify/PMD results belong to the repository's
+gate evidence rather than to an earlier frozen runtime manifest.
+
+## Measurement protocol
+
+[Raw measurements and identities](qualification/capacity/cap-0-1-20261004.json)
+pin frozen CAP-1A/CAP-1B production classes/libraries, byte-equal common probes
+and policies, physical input hashes, driver/JDK versions, JVM limits, schema
+versions, samples and oracle digests. Both primary profiles use five alternating
+before/after pairs for documents and processed imports: 40 fresh JVM forks in
+all. Each fork starts with equivalent empty stores and fixed lifecycle active.
+No primary sample attaches an agent or JFR. Preparation/publication comparisons
+check complete fields, keys, IDs, origins, diagnostics, revisions and receipts.
+
+These paired inputs use original-view routing, one section and four IOC types.
+The mostly unique 100k import actually contains 100k physical CSV rows.
+They differ from the stand's cleanup policy and six-type/400-section document.
+The initial 10k comparison overlapped PMD for its first 16 seconds and is
+excluded. Earlier single-fork sanity samples are not primary improvement or
+budget evidence. Diagnostic runs interrupted by WSL relocation left truncated
+files and are excluded; ten complete diagnostic forks replace them.
+
+## Primary comparison
+
+Medians of five paired forks. Caller allocations exclude background threads;
+RSS is sampled process memory, including startup, rather than live heap or
+cgroup charge. Allocations use decimal units; RSS uses KiB.
+
+| Workload | Local processing CAP-1A → CAP-1B | Caller allocations before → after | RSS before → after |
 |---|---:|---:|---:|
-| Physical mixed document, 10k unique occurrences | 11.080 s | 2,592,641,872 B | 412,956 KiB |
-| Physical processed import, 10k unique rows | 4.509 s | 1,273,593,872 B | 387,252 KiB |
+| Document, 10k occurrences | 8.892 → 3.327 s | 2.590 → 0.713 GB | 393,288 → 381,780 KiB |
+| Processed import, 10k rows | 4.020 → 3.315 s | 1.273 → 0.598 GB | 397,224 → 395,300 KiB |
+| Document, 100k occurrences | 84.899 → 27.602 s | 25.390 → 6.538 GB | 794,884 → 806,008 KiB |
+| Processed import, 100k rows | 32.027 → 26.253 s | 12.386 → 5.656 GB | 390,168 → 378,952 KiB |
 
-This is a sanity sample, not paired improvement or budget acceptance. The
-document profile uses original-view routing and one section; it does not
-represent the stand's cleanup policy or 400-section incident fixture.
+Every pair has equal semantic signatures and byte-equal configuration. Resource
+reuse gives a measured time/allocation benefit without a paired end-to-end
+regression. Document peak heap/RSS does not improve; materialized preparation
+and downstream projection/export state remain later-stage concerns.
 
-## Harness progress and remaining gates
+## Exact-driver access paths and phase scaling
 
-The existing Make comparison facade now supports active-lifecycle capacity
-profiles. The ordinary golden document profile previously left lifecycle
-disabled and therefore did not exercise the stalled alias-matching kernel.
-Capacity runs reject missing active metadata and use an independent oracle
-for every public field and complete configured record key in all five
-document artifacts. Actual results are read through a cursor after timing.
-Production pipeline observer events supply stage durations; sampler failure,
-process failure and missing phase anchors invalidate a run.
+The packaged matcher uses SQLite 3.53.2 / sqlite-jdbc 3.53.2.0. A private
+mechanism fixture holds 1k, 10k or 100k unrelated aliases. Quantum-1 progress
+callbacks cover the actual planner call, including setup/disposal. They are a
+fine-grained diagnostic work screen, not a primary latency sample.
 
-A 40-occurrence physical document and 40-row processed import passed in the
-private CAP-1A snapshot. The document has six measured pipeline stages and
-dataframe schema version 12. The independent oracle is also run against the
-preliminary 10k document database; all five artifacts pass.
+| Request shape | CAP-1A callbacks at each size | CAP-1B callbacks at each size |
+|---|---:|---:|
+| Singleton hit | 216 | 81 |
+| Singleton miss | 228 | 66 |
+| Two-key request | 287 | 301 |
+| Several requests including empty/missing | 351 | 363 |
 
-G0 remains open for full stand-policy AS_IS imports, explicit writer wait/hold
-anchors and complete state manifests. G1A remains open for the full 100k
-daemon/SMB cycle, version-pinned work screen and repeated scaling evidence.
-CAP-1B will be compared to a frozen CAP-1A executable with identical probes,
-configuration and physical inputs. Primary runs carry no Java agent or JFR;
-diagnostic instrumentation remains a separate measurement mode.
+All sizes remain below 10,000 callbacks and satisfy
+`W100k <= 2 * W1k + 5,000`. General-call work is slightly higher because resource
+ownership includes deterministic disposal; reuse inside mutation transactions
+is qualified by the primary allocation results. Actual plans constrain all four
+alias-key terms and canonical primary-key lookup, with requests driving the
+staged join. Read-only plan cross-checks also pass on coherent public-path 10k
+import and 100k stand states; their VM counters are not presented as business
+workload costs. The 10k state contains imported masks; the 100k state contains
+all five artifacts. Both have schema version 12.
 
-## CAP-1B implementation checkpoint
+Five separate instrumented/JFR document forks per size measure actual
+canonical ownership acquisition through commit. Sum of hold durations has a
+median of 1.970 s at 10k and 22.660 s at 100k. Final rows grow from 27,500 to
+275,000; time growth is 11.50x for 10x rows, passing the 15x G1A scaling screen.
+This instrumented phase measure is separate from primary elapsed time.
+Maximum single transaction hold reaches 9.629 s at 100k, above the adopted 5 s
+ownership budget. Contended control-operation latency is not qualified here.
 
-Mutation resources now belong to a caller-owned connection/transaction. The
-immutable engine opens one session per ordinary artifact write and one per
-affected artifact during import promotion. Sessions retain at most 32 prepared
-statements, clear bindings and batches between leases, close all resources
-before commit and never commit or close the caller's connection. Matching uses
-a complete-key singleton query or a lazily created TEMP request table, with
-256-request chunks and 256-key driver batches. Row-local match key material is
-reused for a newly inserted/restarted row; there is no content-keyed global
-cache. Catalog/schema/effective time are immutable session inputs.
+## Provisioned stand-policy SMB check
 
-Alias delete/reinsert remains unchanged. Import prematching still finishes
-before promotion; sequential ordinary confirmations still see their own writes.
-Import planning/final-cell decoding and lifecycle archival remain separate
-resource owners and are not claimed as optimized by this step.
+An isolated production Boot daemon runs the actual stand policy with private
+SQLite/cwd, its own SMB namespace and two-CPU affinity. A bootable JAR is pinned
+against all frozen production class/library bytes and root Spring factories.
+The service's operator-provided configuration, encryption and cadence are
+preserved. SMB credentials are read privately and are excluded from evidence.
+There is no private cgroup CPU/memory quota: affinity is not cgroup admission.
 
-The new `JdbcStatementScopeTest` adds five fast scenarios for resource reuse,
-bounded eviction, reentrant/thread ownership, clearing failure and preservation
-of close failures. The source universe deliberately increases from 220 to 221
-fast suites and from 287 to 288 deterministic suites; integration/external
-counts and every coverage/analyzer threshold remain unchanged. Three additions
-to the existing matcher integration suite cover repeated calls, independent
-connections, chunk boundaries and rollback/retry. Final gates are pending.
+The small physical URL/IP fixture passes all five final-field/key oracles,
+including scheme, port, path, query, fragment, defang, domain/subdomain and hash
+cases. Five physical AS_IS imports preserve case, URL paths and original
+source values, deduplicate correctly and finish with SUCCEEDED deliveries and
+COMMITTED canonical receipts. The IP case distinguishes score 20 from 21,
+keeps the first duplicate source/description and preserves sparse requested
+slots 900001 and 900003; removed duplicate slot 900002 is not reassigned.
 
-## Measurement disposition and remaining memory boundary
+The original physical 100k seed-43 fixture contains 89,917 unique occurrences,
+10,083 duplicates, 17,516 defanged values and 400 BIB sections. Complete database
+and published-CSV oracles pass for masks 14,986; IP 14,987; hashes 44,958;
+blacklist 29,973; aggregate 89,917. All three publication profiles finish
+SUCCEEDED with matching covered revisions, manifest/CSV hashes and markers.
 
-The first five-pair 10k comparison is retained locally as preliminary evidence:
-its first document pair overlapped the final 16 seconds of PMD analysis. It is
-excluded from the primary comparison. A separate quiet five-pair 10k repeat
-and five-pair 100k comparison use frozen CAP-1A and CAP-1B runtimes, byte-equal
-probes/resources, alternating order and fresh empty stores. The 100k import
-workload now also contains 100k rows; it is not a repeated 10k import labelled
-as a 100k profile.
+The complete SMB handoff-to-all-publications/readback cycle takes **31.867 s**.
+Pipeline stages sum to about **23.632 s**, including **17.714 s** in write,
+which includes mutable projection after commit. Peak RSS is **717,572 KiB**
+(about 701 MiB), above the adopted 512 MiB target. One cold stand cycle does not
+establish a service median, maximum or million-row acceptance.
 
-Initial 100k document samples reduce local processing from roughly 84 seconds
-to 28 seconds, but process RSS remains near 800 MiB. These are provisional
-samples until the complete report is checked. The reused statement/matcher
-resources reduce work and allocation; the still-materialized document,
-prepared rows and downstream projection/export state remain CAP-3–CAP-5
-concerns. Neither the 512 MiB service RSS target nor capacity acceptance is
-closed by CAP-1B.
+Concurrent use of the old service and qualification daemon exhausted the
+local SMB server connection allowance during early attempts. Passing runs
+pause the idle installed service for qualification and restart it in `finally`.
+The successful runs have all health components UP, bounded worker termination
+and removal of only the harness-created remote namespace. Earlier boot,
+source-key oracle and connection-capacity failures remain recorded locally.
+There is no controlled speedup ratio to the historical 36m55s stalled run.
 
-## Local evidence retention correction
+## Local evidence retention
 
-The first capacity harness retained every per-fork SQLite store and repeated
-CSV, accumulating about 11 GiB in CAP workspaces. This was an execution defect.
-Completed-run state is now disposable after the semantic checks: all three
-comparison/capacity tools clean owned databases, WAL/SHM, staged snapshots and
-generated projections on success and failure. Inputs, configuration, logs,
-measurements and compressed complete oracle signatures remain. Full state
-retention requires explicit `--retain-state`; stand snapshots use gzip. Cleanup
-does not follow symlinks or traverse source/Git/frozen-runtime directories.
-Each new comparison fork refuses to start with less than 1 GiB free.
+The initial harness retained every per-fork SQLite store and repeated CSV,
+accumulating about 11 GiB in CAP workspaces. This was an execution defect.
+All three tools now discard owned databases, WAL/SHM, stage snapshots and
+projections after semantic checks on success and failure. Inputs, configuration,
+logs and measurements remain. Complete oracle signatures are gzip-compressed;
+equal signatures share one archived file through hard links. Diagnostic/JFR
+files remain only in explicitly requested diagnostic runs. The phase harness
+retains digests/counts instead of every decoded large signature in memory.
 
-Obsolete generated states across 75 private benchmark workspaces were removed,
-and existing full signatures were compressed, releasing about 15 GiB. One
-coherent compressed canonical/service pair from the successful 100k stand run
-and one from a 10k processed import remain for investigation. The frozen
-CAP-1A/CAP-1B runtime identities match the primary report after cleanup.
-Twenty-seven offline harness contracts and real 40-document/40-import JVM
-forks pass; their retained evidence occupies roughly 60/80 KiB and no SQLite
-state remains in either completed fork. The WSL relocation interrupted a
-diagnostic run and left incomplete files; those samples are excluded until
-reproduced. Completed primary reports are intact.
+Full generated-state retention requires `--retain-state`. Stand state manifests
+normally record facts without copying databases; selected coherent backups are
+compressed. Cleanup refuses unowned directories, skips symlinks and protects
+source/Git/frozen-runtime directories. A new processing fork or stand run needs
+at least 1 GiB free. Forced OS termination cannot execute `finally`; incomplete
+workspaces retain failure evidence and require explicit cleanup.
+
+Obsolete generated state in 75 private benchmark workspaces was removed and
+full signatures compressed, releasing about 15 GiB. One compressed 100k stand
+canonical/service pair and one 10k processed-import pair remain for follow-up;
+production/stand databases and Git worktrees are preserved. Frozen production
+runtime identities match primary evidence. Twenty-eight offline harness
+contracts and real 40-document/40-import JVM forks pass; completed small forks
+retain roughly 60/80 KiB of evidence with no SQLite state.
+
+## Gate disposition and remaining capacity work
+
+| Gate | Result |
+|---|---|
+| G0 | Independent all-five document/AS_IS import oracles, pinned empty/public-path states, driver/executable identities, phase/ownership anchors and bounded cleanup qualified |
+| G1A functional/complexity | JDBC semantic/rollback tests and exact-driver full-key work/plan screens pass |
+| G1A service/scaling | All five live publications and full-output checks pass; canonical median growth 11.50x at 10x rows passes |
+| G1B | Resource reuse qualified by five-pair time/allocation benefit; general matching semantics preserved |
+| Whole-service resource acceptance | Open: 100k document RSS exceeds 512 MiB and maximum writer hold exceeds 5 s; no 1m, cgroup/live-heap or contention acceptance claimed |
+
+CAP-2 owns the mutable-projection install/ack race. CAP-3 owns section attribution
+and diagnostic construction. CAP-4 owns bounded preparation; CAP-5 owns writer
+admission, fair scheduling and transaction occupancy. CAP-6 owns repeated
+whole-service/SMB/million-row acceptance. This change addresses the demonstrated
+lookup multiplier and repeated resource setup without claiming those remaining
+gates are closed.

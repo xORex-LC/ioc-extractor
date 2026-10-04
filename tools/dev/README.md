@@ -158,9 +158,15 @@ JVM fork, включая ошибочный запуск. Сохраняются
 измерения и сжатый полный oracle (`signature.json.gz`); явные diagnostic/JFR
 запуски сохраняют JFR. `--retain-state` оставляет базы и CSV только по явному
 запросу. Stand по умолчанию записывает manifests состояния без копирования
-баз; выбранные SQLite snapshots сохраняются сжатыми. Новый fork требует
+баз; выбранные SQLite snapshots сохраняются сжатыми. Одинаковые oracle
+signatures сохраняются один раз и доступны каждому fork через hard link;
+phase harness держит digest/counts вместо всех декодированных signatures.
+Новый fork требует
 минимум 1 GiB свободного места. Очистка ограничена помеченным private
 workspace, не проходит по symlinks и не затрагивает frozen runtime/resources.
+`--mode sql --database .dev/STATE.db` дополнительно проверяет планы на
+read-only public-path состоянии; VM counters при этом относятся только к
+отдельной mechanism fixture. Планы и business workload timings не смешиваются.
 
 `processing-route-comparison.py` собирает test probe вместе с reactor и запускает
 Router в отдельных JVM/SQLite/workspace. После полного перехода на Router

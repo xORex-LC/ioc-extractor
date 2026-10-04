@@ -3,8 +3,9 @@
 Status: CAP-0–CAP-1B implementation authorized; acceptance budgets adopted by
 the owner on 2026-10-04. Prepared from the
 [capacity review](data-processing-capacity-review.md). CAP-1A selective SQL and
-its JDBC regressions are implemented; stage acceptance and measurement remain
-in progress. The user supplied desired local-processing times, excluding external
+its JDBC regressions and CAP-1B resource sessions are implemented. Stage G0/G1A/G1B
+qualification is recorded in the [execution report](cap-0-1-execution.md);
+whole-service resource acceptance remains open. The user supplied desired local-processing times, excluding external
 network/cadence waits, and asked for an engineering recommendation. The absolute
 budgets and technical stage gates below are frozen in
 [the target manifest](qualification/capacity/cap-targets.json) before primary
@@ -587,11 +588,12 @@ Document completion promotes durable decisions into an ADR, capability docs,
 operator guide/root map or known-issue disposition; this worknote remains an
 execution plan, not runtime truth.
 
-Current status: investigation recorded; CAP-0 harness/target work and CAP-1–CAP-7
-implementation **not started**. No stage's performance/resource gate is claimed
-passed by this planning change.
+Current status (2026-10-04): CAP-0, CAP-1A and CAP-1B implementation and scoped
+qualification are recorded in the [execution report](cap-0-1-execution.md).
+CAP-2–CAP-7 remain unimplemented. The 100k document RSS and maximum writer-hold
+budgets remain open; scoped stage qualification is not whole-service acceptance.
 
-Planning validation: `make docs`, an explicit offline link check of this plan,
+Historical planning validation: `make docs`, an explicit offline link check of this plan,
 the review and their index/evidence README files, and `git diff --check` passed.
 Only documentation changed in this planning step. Current repository verify/PMD
 evidence belongs to an earlier HEAD and is not fresh candidate-runtime evidence.

@@ -354,6 +354,26 @@ def mark_owned_workspace(root):
     (root / OWNED_WORKSPACE).write_text('Generated processing comparison state\n')
 
 
+def write_signature(root, workspace, signature):
+    """Store equal oracle evidence once; every fork retains its own readable hard link."""
+    checksum = hashlib.sha256(json.dumps(signature, sort_keys=True).encode()).hexdigest()
+    catalog = workspace / 'signatures'
+    if catalog.is_symlink():
+        raise ValueError('Invalid private signature catalog')
+    catalog.mkdir(exist_ok=True)
+    archive = catalog / (checksum + '.json.gz')
+    if archive.is_symlink() or archive.exists() and not archive.is_file():
+        raise ValueError('Invalid private signature archive')
+    if not archive.exists():
+        temporary = archive.with_suffix('.tmp')
+        with gzip.open(temporary, 'wt', encoding='utf-8', compresslevel=1) as evidence:
+            json.dump(signature, evidence, sort_keys=True, indent=2)
+            evidence.write('\n')
+        temporary.replace(archive)
+    os.link(archive, root / 'signature.json.gz')
+    return checksum
+
+
 def discard_generated_state(root, retain=False, stand=False):
     """Remove replayable state after checks; preserve input/config/log/oracle evidence."""
     if root.is_symlink() or not root.resolve().is_relative_to(REPO / '.dev') \
@@ -361,7 +381,9 @@ def discard_generated_state(root, retain=False, stand=False):
         raise ValueError('Refusing cleanup of an unowned workspace')
     removed = []
     if not retain:
-        for directory, subdirectories, filenames in os.walk(root, followlinks=False):
+        def fail_walk(failure):
+            raise failure
+        for directory, subdirectories, filenames in os.walk(root, followlinks=False, onerror=fail_walk):
             subdirectories[:] = [name for name in subdirectories
                 if name not in ('.git', 'src', 'target', 'app-classes', 'test-resources', 'probe-classes', 'lib')
                 and not (Path(directory) / name).is_symlink()]
@@ -485,10 +507,7 @@ def measure_one(root, workspace, fixture, kind, selected, iteration, classpath, 
                 item["ioc"]["stage"]: item["event"]["duration"] for item in phases[-6:]}
     metrics["outcome"] = outcomes[-1]
     signature["outcome"] = outcomes[-1]
-    with gzip.open(root / "signature.json.gz", 'wt', encoding='utf-8', compresslevel=1) as evidence:
-        json.dump(signature, evidence, sort_keys=True, indent=2)
-        evidence.write('\n')
-    metrics["signature_sha256"] = hashlib.sha256(json.dumps(signature, sort_keys=True).encode()).hexdigest()
+    metrics["signature_sha256"] = write_signature(root, workspace, signature)
     return metrics, signature
 
 

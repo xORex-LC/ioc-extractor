@@ -77,36 +77,46 @@ public final class JdbcMatcherCapacityProbe {
                     throw new AssertionError("Selective matcher exceeded work screen: " + names.get(index));
                 }
             }
-            // Explain the captured production SQL. TEMP state is only recreated after work counting.
-            try (Statement sql = connection.createStatement()) {
-                sql.execute("DROP TABLE IF EXISTS temp.ioc_match_request");
-                sql.execute("CREATE TEMP TABLE ioc_match_request(request_order INTEGER NOT NULL,request_id TEXT NOT NULL,"
-                        + "definition_id TEXT NOT NULL,key_hash TEXT NOT NULL,key_canonical TEXT NOT NULL,"
-                        + "PRIMARY KEY(request_id,definition_id,key_hash,key_canonical))");
-            }
-            for (String query : captured) {
-                var descriptions = new ArrayList<String>();
-                boolean staged = query.contains("r.request_id");
-                try (PreparedStatement sql = connection.prepareStatement("EXPLAIN QUERY PLAN " + query)) {
-                    sql.setString(1, "ioc_aggregate");
-                    if (staged) {
-                        sql.setLong(2, 100);
-                    } else {
-                        sql.setString(2, "capacity-v1"); sql.setString(3, key(1).keyHash());
-                        sql.setString(4, key(1).keyCanonical()); sql.setLong(5, 100);
-                    }
-                    try (ResultSet rows = sql.executeQuery()) {
-                        while (rows.next()) { descriptions.add(rows.getString(4)); }
-                    }
+            explain(connection, captured, aliases, "mechanism-fixture");
+            if (args.length > 1) {
+                try (Connection populated = DriverManager.getConnection("jdbc:sqlite:file:" + args[1] + "?mode=ro")) {
+                    explain(populated, captured, aliases, "public-application-state");
                 }
-                if (descriptions.stream().noneMatch(value -> value.contains("artifact=? AND definition_id=?"
-                        + " AND key_hash=? AND key_canonical=?"))) {
-                    throw new AssertionError("Full-key index terms absent: " + descriptions);
-                }
-                System.out.println("{\"aliases\":" + aliases + ",\"plan\":["
-                        + descriptions.stream().map(JdbcMatcherCapacityProbe::quote)
-                                .collect(java.util.stream.Collectors.joining(",")) + "]}");
             }
+        }
+    }
+
+    private static void explain(Connection connection, java.util.Set<String> captured, int aliases,
+                                String scope) throws Exception {
+        // Explain captured production SQL; no business rows are modified.
+        try (Statement sql = connection.createStatement()) {
+            sql.execute("DROP TABLE IF EXISTS temp.ioc_match_request");
+            sql.execute("CREATE TEMP TABLE ioc_match_request(request_order INTEGER NOT NULL,request_id TEXT NOT NULL,"
+                    + "definition_id TEXT NOT NULL,key_hash TEXT NOT NULL,key_canonical TEXT NOT NULL,"
+                    + "PRIMARY KEY(request_id,definition_id,key_hash,key_canonical))");
+        }
+        for (String query : captured) {
+            var descriptions = new ArrayList<String>();
+            boolean staged = query.contains("r.request_id");
+            try (PreparedStatement sql = connection.prepareStatement("EXPLAIN QUERY PLAN " + query)) {
+                sql.setString(1, "ioc_aggregate");
+                if (staged) {
+                    sql.setLong(2, 100);
+                } else {
+                    sql.setString(2, "capacity-v1"); sql.setString(3, key(1).keyHash());
+                    sql.setString(4, key(1).keyCanonical()); sql.setLong(5, 100);
+                }
+                try (ResultSet rows = sql.executeQuery()) {
+                    while (rows.next()) { descriptions.add(rows.getString(4)); }
+                }
+            }
+            if (descriptions.stream().noneMatch(value -> value.contains("artifact=? AND definition_id=?"
+                    + " AND key_hash=? AND key_canonical=?"))) {
+                throw new AssertionError("Full-key index terms absent: " + descriptions);
+            }
+            System.out.println("{\"aliases\":" + aliases + ",\"planScope\":" + quote(scope) + ",\"plan\":["
+                    + descriptions.stream().map(JdbcMatcherCapacityProbe::quote)
+                            .collect(java.util.stream.Collectors.joining(",")) + "]}");
         }
     }
 

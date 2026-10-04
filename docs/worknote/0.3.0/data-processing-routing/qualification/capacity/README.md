@@ -2,7 +2,8 @@
 
 Diagnostic evidence for the
 [capacity and scheduling review](../../data-processing-capacity-review.md).
-Recorded 2026-10-04; this bundle does not qualify a deployed optimization.
+Recorded 2026-10-04. The incident files describe the old deployed runtime;
+CAP-0/1 evidence additionally qualifies isolated corrected executables.
 
 ## Evidence files
 
@@ -12,6 +13,7 @@ Recorded 2026-10-04; this bundle does not qualify a deployed optimization.
 | [stand-final-state-20261004.json](stand-final-state-20261004.json) | Completed ingest, aggregate revision and successful publication ledger |
 | [sqlite-matcher-scaling.json](sqlite-matcher-scaling.json) | All retained JDBC samples, median summaries, VM-work counts and exact-driver live EXPLAIN |
 | [SqliteMatcherProbe.java](SqliteMatcherProbe.java) | Reproducible private SQL mechanism experiment |
+| [cap-0-1-20261004.json](cap-0-1-20261004.json) | CAP-0/1 frozen identities, 40 paired primary forks, ten diagnostic phase forks, exact-driver work/plans and all-five live SMB/oracle checks |
 
 `artifact_revision.changed_at` is transaction effective time sampled before
 the mutation loop. It must not be used as commit completion wall time. The
@@ -88,3 +90,10 @@ JFR/NMT startup flags and rollout belong to a separate controlled qualification.
 The owner adopted [cap-targets.json](cap-targets.json) on 2026-10-04.
 [cap-baseline.json](cap-baseline.json) pins the historical stand identity and
 fixture; it does not yet establish G0 or corrected-runtime acceptance.
+
+The [execution report](../../cap-0-1-execution.md) records scoped G0/G1A/G1B
+qualification and remaining RSS/writer-hold limits. Equal complete oracle
+signatures are compressed and share disk storage locally; replayable per-fork
+SQLite/CSV state is removed after checks by default. Only explicitly selected
+coherent state samples remain compressed. No SQLite database, JAR, credential
+or remote authentication file is versioned in this bundle.
