@@ -26,7 +26,9 @@ errors/diagnostics/observability, Commons CSV, SLF4J API.
 
 ## Контракты
 
-- mutable projection path формирует CSV из canonical repository;
+- mutable projection path формирует CSV из canonical repository только через
+  общий application owner; результат содержит поколение прочитанного снимка.
+  Поток проверяет отмену по строкам и перед atomic rename;
   parentless relative leaf поддерживается через current directory, filesystem
   root отклоняется как path без имени файла и в bootstrap preflight, и на
   adapter boundary;

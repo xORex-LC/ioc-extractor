@@ -11,6 +11,7 @@ import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleControl
 import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleHistoryStore;
 import com.iocextractor.application.port.out.artifact.lifecycle.LifecycleReconciliationStore;
 import com.iocextractor.platform.events.ControlEvent;
+import com.iocextractor.diagnostics.sink.NoopDiagnosticSink;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -75,19 +76,18 @@ class LifecycleRuntimeServicesTest {
     }
 
     @Test
-    void projection_acknowledgement_never_claims_a_newer_generation() {
+    void convergence_counts_new_work_left_pending_after_a_covered_request() {
         AtomicInteger projections = new AtomicInteger();
+        AtomicInteger loads = new AtomicInteger();
         ArtifactProjectionWorkStore work = new ArtifactProjectionWorkStore() {
             @Override
             public ArtifactProjectionState load(String artifactName) {
-                return state(artifactName, 2, 1);
+                return loads.getAndIncrement() == 0 ? state(artifactName, 2, 1) : state(artifactName, 3, 2);
             }
 
             @Override
             public boolean acknowledge(ProjectionAcknowledgement acknowledgement) {
-                assertThat(acknowledgement.expectedRequiredGeneration())
-                        .isEqualTo(new ProjectionGeneration(2));
-                return false;
+                throw new AssertionError("only the shared owner may acknowledge");
             }
 
             @Override
@@ -102,29 +102,31 @@ class LifecycleRuntimeServicesTest {
             return ArtifactProjectionResult.clean(5);
         };
         var service = new ArtifactProjectionConvergenceService(
-                List.of("masks"), work, projection);
+                List.of("masks"), work, projection, NoopDiagnosticSink.INSTANCE);
 
         ArtifactProjectionConvergenceResult result = service.convergePending();
 
         assertThat(projections).hasValue(1);
-        assertThat(result.projected()).isZero();
+        assertThat(result.projected()).isOne();
         assertThat(result.stillPending()).isOne();
     }
 
     @Test
     void projectionConvergenceSkipsCleanStateAndAcknowledgesTheObservedGeneration() {
         List<ProjectionAcknowledgement> acknowledgements = new ArrayList<>();
+        AtomicBoolean acknowledged = new AtomicBoolean();
         ArtifactProjectionWorkStore work = new ArtifactProjectionWorkStore() {
             @Override
             public ArtifactProjectionState load(String artifactName) {
                 return artifactName.equals("clean")
                         ? state(artifactName, 1, 1)
-                        : state(artifactName, 2, 1);
+                        : state(artifactName, 2, acknowledged.get() ? 2 : 1);
             }
 
             @Override
             public boolean acknowledge(ProjectionAcknowledgement acknowledgement) {
                 acknowledgements.add(acknowledgement);
+                acknowledged.set(true);
                 return true;
             }
 
@@ -137,11 +139,12 @@ class LifecycleRuntimeServicesTest {
             }
         };
         List<ArtifactProjectionCommand> commands = new ArrayList<>();
-        var service = new ArtifactProjectionConvergenceService(
-                List.of("clean", "masks"), work, command -> {
+        var owner = new GenerationOwnedArtifactProjection(List.of("clean", "masks"), command -> {
                     commands.add(command);
-                    return ArtifactProjectionResult.clean(2);
-                });
+                    return ArtifactProjectionResult.clean(2, new ProjectionGeneration(2));
+                }, work);
+        var service = new ArtifactProjectionConvergenceService(
+                List.of("clean", "masks"), work, owner, NoopDiagnosticSink.INSTANCE);
 
         ArtifactProjectionConvergenceResult result = service.convergePending();
 
@@ -186,13 +189,14 @@ class LifecycleRuntimeServicesTest {
                 return true;
             }
         };
-        var service = new ArtifactProjectionConvergenceService(
-                List.of("first", "second"), work, command -> {
+        var owner = new GenerationOwnedArtifactProjection(List.of("first", "second"), command -> {
                     if (command.artifactName().equals("first")) {
                         throw firstFailure;
                     }
                     throw secondFailure;
-                });
+                }, work);
+        var service = new ArtifactProjectionConvergenceService(
+                List.of("first", "second"), work, owner, NoopDiagnosticSink.INSTANCE);
 
         assertThatThrownBy(service::convergePending)
                 .isSameAs(firstFailure)
@@ -231,15 +235,15 @@ class LifecycleRuntimeServicesTest {
         };
 
         assertThatThrownBy(() -> new ArtifactProjectionConvergenceService(
-                List.of("masks", "masks"), work, projection))
+                List.of("masks", "masks"), work, projection, NoopDiagnosticSink.INSTANCE))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("unique non-blank");
         assertThatThrownBy(() -> new ArtifactProjectionConvergenceService(
-                java.util.Arrays.asList("masks", null), work, projection))
+                java.util.Arrays.asList("masks", null), work, projection, NoopDiagnosticSink.INSTANCE))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("unique non-blank");
         assertThatThrownBy(() -> new ArtifactProjectionConvergenceService(
-                List.of(" "), work, projection))
+                List.of(" "), work, projection, NoopDiagnosticSink.INSTANCE))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("unique non-blank");
     }

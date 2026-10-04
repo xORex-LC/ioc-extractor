@@ -174,3 +174,7 @@ Logback `StructuredLogEncoder`; `IocEcsStructuredLogEncoder` сохраняет 
 `event.dataset` внутри nested ECS context-pair object Boot 4.
 
 **Не импортируется:** no inner module depends on `ioc-app`.
+
+Mutable CSV устанавливается только через общий `GenerationOwnedArtifactProjection`:
+composition root не публикует raw `CsvArtifactProjection` как bean. Oneshot, ingest,
+run recovery и lifecycle convergence получают один `ArtifactProjection`.

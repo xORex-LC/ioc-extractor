@@ -31,6 +31,12 @@ runtime JDBC drivers.
 
 ## Runtime Notes
 
+- Mutable streaming returns row count and generation from the same read
+  transaction. Safe-clock sampling finishes before opening that read lease, so
+  one-connection pools do not require a nested connection. Projection work
+  acknowledgement advances only installed coverage; newer required work stays
+  pending. The application owner serializes installation and acknowledgement.
+
 - The initial service datasource factory opens one Hikari pool. `writeMax` and
   `readMax` are retained as a capacity budget; dedicated read/write pools and
   the strict write-pool=1 topology belong to bootstrap wiring in the ledger

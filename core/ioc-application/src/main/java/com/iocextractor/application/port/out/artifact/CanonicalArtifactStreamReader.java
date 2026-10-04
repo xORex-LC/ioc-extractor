@@ -12,7 +12,7 @@ public interface CanonicalArtifactStreamReader {
      *
      * @param artifactName configured artifact name
      * @param consumer synchronous row callback
-     * @return exact number of delivered rows
+     * @return exact row count and covered generation from the same read snapshot
      */
-    int stream(String artifactName, CanonicalArtifactRowConsumer consumer);
+    CanonicalArtifactStreamResult stream(String artifactName, CanonicalArtifactRowConsumer consumer);
 }

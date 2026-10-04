@@ -4,6 +4,7 @@ import com.iocextractor.application.port.in.artifact.lifecycle.ConvergeArtifactP
 import com.iocextractor.application.port.out.artifact.ArtifactProjection;
 import com.iocextractor.application.port.out.artifact.ArtifactProjectionCommand;
 import com.iocextractor.application.port.out.artifact.lifecycle.ArtifactProjectionWorkStore;
+import com.iocextractor.diagnostics.sink.DiagnosticSink;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -11,7 +12,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-/** Converges durable mutable-projection generations through the existing sink port. */
+/** Discovers pending work; the shared projection owner installs and acknowledges coverage. */
 public final class ArtifactProjectionConvergenceService implements ConvergeArtifactProjectionsUseCase {
 
     public static final String PROJECTION_FAILURE = "LIFECYCLE.PROJECTION_FAILED";
@@ -19,13 +20,16 @@ public final class ArtifactProjectionConvergenceService implements ConvergeArtif
     private final List<String> artifacts;
     private final ArtifactProjectionWorkStore work;
     private final ArtifactProjection projection;
+    private final DiagnosticSink diagnostics;
 
     public ArtifactProjectionConvergenceService(List<String> artifacts,
                                                 ArtifactProjectionWorkStore work,
-                                                ArtifactProjection projection) {
+                                                ArtifactProjection projection,
+                                                DiagnosticSink diagnostics) {
         this.artifacts = requireArtifacts(artifacts);
         this.work = Objects.requireNonNull(work, "work");
         this.projection = Objects.requireNonNull(projection, "projection");
+        this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
     }
 
     @Override
@@ -39,16 +43,16 @@ public final class ArtifactProjectionConvergenceService implements ConvergeArtif
                 continue;
             }
             try {
-                projection.project(new ArtifactProjectionCommand(operationId(state), artifact));
-                boolean acknowledged = work.acknowledge(new ProjectionAcknowledgement(
-                        artifact, state.requiredGeneration(), state.requiredGeneration()));
-                if (acknowledged) {
+                projection.project(new ArtifactProjectionCommand(operationId(state), artifact))
+                        .diagnostics().forEach(diagnostics::emit);
+                ArtifactProjectionState after = work.load(artifact);
+                if (after.projectedGeneration().compareTo(state.requiredGeneration()) >= 0) {
                     projected.add(artifact);
-                } else {
+                }
+                if (after.pending()) {
                     stillPending++;
                 }
             } catch (RuntimeException failure) {
-                recordFailure(artifact, state.requiredGeneration(), failure);
                 stillPending++;
                 if (firstFailure == null) {
                     firstFailure = failure;
@@ -61,16 +65,6 @@ public final class ArtifactProjectionConvergenceService implements ConvergeArtif
             throw firstFailure;
         }
         return new ArtifactProjectionConvergenceResult(projected.size(), stillPending, projected);
-    }
-
-    private void recordFailure(String artifact,
-                               ProjectionGeneration generation,
-                               RuntimeException primaryFailure) {
-        try {
-            work.recordFailure(artifact, generation, PROJECTION_FAILURE);
-        } catch (RuntimeException journalFailure) {
-            primaryFailure.addSuppressed(journalFailure);
-        }
     }
 
     private String operationId(ArtifactProjectionState state) {

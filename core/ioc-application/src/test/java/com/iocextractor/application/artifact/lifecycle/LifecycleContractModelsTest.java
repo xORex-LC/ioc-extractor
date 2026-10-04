@@ -69,7 +69,7 @@ class LifecycleContractModelsTest {
                 "masks", new ProjectionGeneration(2), new ProjectionGeneration(3)))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new ProjectionAcknowledgement(
-                "masks", new ProjectionGeneration(2), new ProjectionGeneration(3)))
+                "masks", new ProjectionGeneration(0)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

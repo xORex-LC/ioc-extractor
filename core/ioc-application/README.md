@@ -55,8 +55,11 @@ revision сохраняет delivery significance даже для byte-identical
 
 Canonical lifecycle следует той же границе. `LifecycleReconciliationService`
 держит один cycle `asOf` и coalesce-ит lossy projection hints по artifact;
-`ArtifactProjectionConvergenceService` подтверждает только наблюдённое durable
-generation; `LifecycleAdmissionService` сериализует idempotent pre-stateful-work
+`ArtifactProjectionConvergenceService` обнаруживает pending work, а общий
+`GenerationOwnedArtifactProjection` сериализует snapshot/build/install/ack по
+артефакту и подтверждает фактически установленное поколение. Повторные запросы
+могут использовать уже подтверждённый результат с сохранением предупреждений;
+`LifecycleAdmissionService` сериализует idempotent pre-stateful-work
 barrier. Events ускоряют работу, но deadline/projection state и periodic
 reconcile остаются authority.
 `LifecycleActivationService` возобновляет bounded `existing-records: expire`

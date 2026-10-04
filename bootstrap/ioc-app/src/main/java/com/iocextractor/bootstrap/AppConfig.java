@@ -68,6 +68,7 @@ import com.iocextractor.application.artifact.NoopArtifactProjection;
 import com.iocextractor.application.artifact.NoopRunLedger;
 import com.iocextractor.application.artifact.StoredArtifactIdentity;
 import com.iocextractor.application.artifact.lifecycle.ArtifactProjectionConvergenceService;
+import com.iocextractor.application.artifact.lifecycle.GenerationOwnedArtifactProjection;
 import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptContext;
 import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptId;
 import com.iocextractor.application.artifact.lifecycle.ConfirmationReceiptReplayService;
@@ -394,7 +395,7 @@ public class AppConfig {
             matchIfMissing = true)
     public ExtractIocsUseCase extractIocsUseCase(IocExtractionServiceFactory factory,
                                                  ArtifactIdBaseline artifactIdBaseline,
-                                                 CsvArtifactProjection csvArtifactProjection,
+                                                 ArtifactProjection artifactProjection,
                                                  PipelineDecisionTracer decisionTracer,
                                                  PrepareLifecycleAdmissionUseCase lifecycleAdmission,
                                                  CanonicalObservationStore canonicalObservationStore,
@@ -406,7 +407,7 @@ public class AppConfig {
                                                  IocProperties props) {
         List<ArtifactPreparer> preparers = artifactPreparers(
                 artifactDefinitions(props, artifactIdBaseline), null, clock, decisionTracer);
-        ExtractIocsUseCase delegate = factory.create(preparers, csvArtifactProjection);
+        ExtractIocsUseCase delegate = factory.create(preparers, artifactProjection);
         ExtractIocsUseCase lifecycleAware = command -> {
             lifecycleAdmission.prepare();
             if (props.lifecycle().validity().mode() != LifecycleValidityMode.FIXED || command.dryRun()) {
@@ -829,10 +830,11 @@ public class AppConfig {
     @Bean
     public ConvergeArtifactProjectionsUseCase convergeArtifactProjectionsUseCase(
             ArtifactProjectionWorkStore artifactProjectionWorkStore,
-            CsvArtifactProjection csvArtifactProjection,
+            ArtifactProjection artifactProjection,
+            DiagnosticSink diagnosticSink,
             IocProperties props) {
         return new ArtifactProjectionConvergenceService(
-                dataframeArtifactNames(props), artifactProjectionWorkStore, csvArtifactProjection);
+                dataframeArtifactNames(props), artifactProjectionWorkStore, artifactProjection, diagnosticSink);
     }
 
     @Bean
@@ -934,15 +936,18 @@ public class AppConfig {
     }
 
     @Bean
-    public CsvArtifactProjection csvArtifactProjection(JdbcCanonicalArtifactRepository jdbcCanonicalArtifactRepository,
+    public ArtifactProjection artifactProjection(JdbcCanonicalArtifactRepository jdbcCanonicalArtifactRepository,
+                                                       ArtifactProjectionWorkStore artifactProjectionWorkStore,
                                                        IocProperties props,
                                                        Clock clock) {
-        return new CsvArtifactProjection(
+        var installer = new CsvArtifactProjection(
                 jdbcCanonicalArtifactRepository,
                 artifactHeaders(props),
                 canonicalArtifactPaths(props),
                 projectionFormat(props),
                 new DiagnosticFactory(clock));
+        return new GenerationOwnedArtifactProjection(dataframeArtifactNames(props), installer,
+                artifactProjectionWorkStore);
     }
 
     // ---- immutable artifact export (resolved only by export command/scheduler) ----

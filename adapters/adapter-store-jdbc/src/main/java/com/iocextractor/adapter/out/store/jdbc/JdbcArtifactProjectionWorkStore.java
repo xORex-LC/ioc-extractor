@@ -11,7 +11,7 @@ import javax.sql.DataSource;
 import java.time.Clock;
 import java.util.Objects;
 
-/** SQLite-backed compare-and-set state for mutable artifact projection convergence. */
+/** SQLite-backed monotonic coverage state for mutable artifact projection convergence. */
 public final class JdbcArtifactProjectionWorkStore implements ArtifactProjectionWorkStore {
 
     private final JdbcClient jdbc;
@@ -59,12 +59,11 @@ public final class JdbcArtifactProjectionWorkStore implements ArtifactProjection
         Objects.requireNonNull(acknowledgement, "acknowledgement");
         String artifact = DataframeColumn.requireSqlIdentifier(
                 acknowledgement.artifactName(), "artifact name");
-        long expected = acknowledgement.expectedRequiredGeneration().value();
         long installed = acknowledgement.installedGeneration().value();
-        return writerAdmission.execute(() -> acknowledgeAdmitted(artifact, expected, installed));
+        return writerAdmission.execute(() -> acknowledgeAdmitted(artifact, installed));
     }
 
-    private boolean acknowledgeAdmitted(String artifact, long expected, long installed) {
+    private boolean acknowledgeAdmitted(String artifact, long installed) {
         try {
             return jdbc.sql("""
                             UPDATE artifact_projection_state
@@ -72,13 +71,12 @@ public final class JdbcArtifactProjectionWorkStore implements ArtifactProjection
                                 projected_at_ms = :projectedAt,
                                 last_error_code = NULL
                             WHERE artifact = :artifact
-                              AND required_generation = :expected
+                              AND required_generation >= :installed
                               AND projected_generation <= :installed
                             """)
                     .param("installed", installed)
                     .param("projectedAt", clock.millis())
                     .param("artifact", artifact)
-                    .param("expected", expected)
                     .update() == 1;
         } catch (RuntimeException e) {
             throw new IocExtractorException(

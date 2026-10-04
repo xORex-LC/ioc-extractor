@@ -178,11 +178,12 @@ class CsvArtifactProjectionIT {
     private record SnapshotRepository(CanonicalArtifact artifact) implements CanonicalArtifactStreamReader {
 
         @Override
-        public int stream(String artifactName,
+        public com.iocextractor.application.port.out.artifact.CanonicalArtifactStreamResult stream(String artifactName,
                           com.iocextractor.application.port.out.artifact.CanonicalArtifactRowConsumer consumer) {
             assertThat(artifactName).isEqualTo(artifact.name());
             artifact.rows().forEach(consumer::accept);
-            return artifact.rows().size();
+            return new com.iocextractor.application.port.out.artifact.CanonicalArtifactStreamResult(
+                    artifact.rows().size(), new com.iocextractor.application.artifact.lifecycle.ProjectionGeneration(0));
         }
     }
 }

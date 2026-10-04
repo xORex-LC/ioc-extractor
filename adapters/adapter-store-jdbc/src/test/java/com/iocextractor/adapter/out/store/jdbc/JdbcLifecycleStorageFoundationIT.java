@@ -183,7 +183,7 @@ class JdbcLifecycleStorageFoundationIT {
     }
 
     @Test
-    void projection_acknowledgement_is_generation_cas() throws Exception {
+    void projection_acknowledgement_advances_only_installed_coverage() throws Exception {
         initializeStatic("projection.db");
         execute("""
                 INSERT INTO artifact_projection_state(
@@ -203,7 +203,7 @@ class JdbcLifecycleStorageFoundationIT {
                 SET required_generation = 3, requested_at_ms = 200
                 WHERE artifact = 'masks'
                 """);
-        assertThat(store.acknowledge(acknowledgement("masks", 2))).isFalse();
+        assertThat(store.acknowledge(acknowledgement("masks", 2))).isTrue();
         assertThat(store.load("masks").requiredGeneration()).isEqualTo(new ProjectionGeneration(3));
         assertThat(store.load("masks").projectedGeneration()).isEqualTo(new ProjectionGeneration(2));
         assertThat(store.load("hashes").pending()).isFalse();
@@ -678,7 +678,7 @@ class JdbcLifecycleStorageFoundationIT {
 
     private ProjectionAcknowledgement acknowledgement(String artifact, long generation) {
         var value = new ProjectionGeneration(generation);
-        return new ProjectionAcknowledgement(artifact, value, value);
+        return new ProjectionAcknowledgement(artifact, value);
     }
 
     private void initializeStatic(String fileName) {

@@ -11,6 +11,8 @@ import com.iocextractor.application.port.out.artifact.ArtifactIdentityResolver;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRepository;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactRowConsumer;
 import com.iocextractor.application.port.out.artifact.CanonicalArtifactStreamReader;
+import com.iocextractor.application.port.out.artifact.CanonicalArtifactStreamResult;
+import com.iocextractor.application.artifact.lifecycle.ProjectionGeneration;
 import com.iocextractor.common.IocExtractorException;
 
 import javax.sql.DataSource;
@@ -74,22 +76,26 @@ public final class JdbcCanonicalArtifactRepository
     }
 
     @Override
-    public int stream(String artifactName, CanonicalArtifactRowConsumer consumer) {
+    public CanonicalArtifactStreamResult stream(String artifactName, CanonicalArtifactRowConsumer consumer) {
         Objects.requireNonNull(consumer, "consumer");
         DataframeArtifactSchema schema = schema(artifactName);
         List<String> header = header(schema);
-        try (Connection connection = dataSource.getConnection()) {
-            LifecycleActivationState state = JdbcLifecycleTransactions.readActivationState(connection);
+        try {
+            LifecycleActivationState state = activationState();
             EffectiveTime asOf = state != LifecycleActivationState.DISABLED_COMPATIBLE
                     ? Objects.requireNonNull(activeTimeSource.now(), "lifecycle effective time")
                     : null;
-            return stream(connection, artifactName, header, state, asOf, consumer);
+            // Safe time can lease a connection and acquire writer admission. Finish it before
+            // opening the read lease, including when the configured pool contains one connection.
+            try (Connection connection = dataSource.getConnection()) {
+                return stream(connection, artifactName, header, state, asOf, consumer);
+            }
         } catch (SQLException e) {
             throw new IocExtractorException("Failed to stream JDBC artifact: " + artifactName, e);
         }
     }
 
-    private int stream(Connection connection,
+    private CanonicalArtifactStreamResult stream(Connection connection,
                        String artifactName,
                        List<String> header,
                        LifecycleActivationState expectedState,
@@ -103,6 +109,7 @@ public final class JdbcCanonicalArtifactRepository
             if (state != expectedState) {
                 throw new IocExtractorException("Canonical lifecycle state changed while opening a read");
             }
+            ProjectionGeneration generation = projectionGeneration(connection, artifactName);
             String activePredicate = state != LifecycleActivationState.DISABLED_COMPATIBLE
                     ? " WHERE " + quote("_valid_until_epoch_ms") + " > ?"
                     : "";
@@ -125,13 +132,29 @@ public final class JdbcCanonicalArtifactRepository
                 }
             }
             connection.commit();
-            return rows;
+            return new CanonicalArtifactStreamResult(rows, generation);
         } catch (SQLException | RuntimeException e) {
             failure = e;
             JdbcLifecycleTransactions.rollback(connection, e);
             throw e;
         } finally {
             JdbcLifecycleTransactions.restoreAutoCommit(connection, previousAutoCommit, failure);
+        }
+    }
+
+    private LifecycleActivationState activationState() throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            return JdbcLifecycleTransactions.readActivationState(connection);
+        }
+    }
+
+    private ProjectionGeneration projectionGeneration(Connection connection, String artifact) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT required_generation FROM artifact_projection_state WHERE artifact = ?")) {
+            statement.setString(1, artifact);
+            try (ResultSet result = statement.executeQuery()) {
+                return new ProjectionGeneration(result.next() ? result.getLong(1) : 0);
+            }
         }
     }
 

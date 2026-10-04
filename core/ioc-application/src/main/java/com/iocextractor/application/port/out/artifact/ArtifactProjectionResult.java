@@ -1,6 +1,7 @@
 package com.iocextractor.application.port.out.artifact;
 
 import com.iocextractor.diagnostics.Diagnostic;
+import com.iocextractor.application.artifact.lifecycle.ProjectionGeneration;
 
 import java.util.List;
 import java.util.Objects;
@@ -14,8 +15,10 @@ import java.util.Objects;
  *
  * @param projectedRows rows materialized into the derived artifact
  * @param diagnostics advisory diagnostics observed while projecting
+ * @param installedGeneration generation actually represented by the installed file; zero for untracked output
  */
-public record ArtifactProjectionResult(int projectedRows, List<Diagnostic> diagnostics) {
+public record ArtifactProjectionResult(int projectedRows, List<Diagnostic> diagnostics,
+                                       ProjectionGeneration installedGeneration) {
 
     /** Validates row counts and the post-commit advisory-only invariant. */
     public ArtifactProjectionResult {
@@ -23,6 +26,7 @@ public record ArtifactProjectionResult(int projectedRows, List<Diagnostic> diagn
             throw new IllegalArgumentException("projectedRows must not be negative");
         }
         diagnostics = List.copyOf(Objects.requireNonNull(diagnostics, "diagnostics"));
+        Objects.requireNonNull(installedGeneration, "installedGeneration");
         if (diagnostics.stream().anyMatch(diagnostic -> diagnostic.severity().isErrorOrWorse())) {
             throw new IllegalArgumentException("Projection outcome diagnostics must be advisory");
         }
@@ -30,6 +34,11 @@ public record ArtifactProjectionResult(int projectedRows, List<Diagnostic> diagn
 
     /** Returns a successful projection outcome without diagnostics. */
     public static ArtifactProjectionResult clean(int projectedRows) {
-        return new ArtifactProjectionResult(projectedRows, List.of());
+        return clean(projectedRows, new ProjectionGeneration(0));
+    }
+
+    /** Returns a successful installation with explicit snapshot coverage and no warnings. */
+    public static ArtifactProjectionResult clean(int projectedRows, ProjectionGeneration generation) {
+        return new ArtifactProjectionResult(projectedRows, List.of(), generation);
     }
 }

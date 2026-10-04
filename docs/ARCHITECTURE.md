@@ -196,6 +196,11 @@ five-second read-only backstop обновляют один timer из deadline i
 due timer запускает bounded SQLite batches. Последний реальный reconcile
 хранится в constant-cardinality checkpoint; typed history удаляется independent
 hourly scheduler-ом, а mutable CSV сходится через durable projection generation.
+Единый владелец в application сериализует чтение/сборку/установку/подтверждение
+по артефакту для oneshot, ingest, recovery и lifecycle. Поколение и строки
+читаются из одной SQLite snapshot; подтверждается только установленное покрытие,
+а появившееся новое поколение остаётся pending. Решение закреплено в
+[ADR 0035](ADR/0035-generation-owned-mutable-projections.md).
 Timer/job на каждую IOC отсутствует. Expiry не меняет insert-driven `artifact_revision`, поэтому сам
 по себе не формирует immutable export slice; следующий обычный new-row trigger
 читает уже актуальный active snapshot. Lifecycle SQL/history остаются в

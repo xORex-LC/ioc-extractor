@@ -30,6 +30,36 @@ and the latest reconciliation checkpoint are the correctness authority after
 lost events or process restarts. An idle deadline refresh is read-only and does
 not create a reconciliation cycle.
 
+## Mutable projection ownership
+
+`GenerationOwnedArtifactProjection` is the shared per-artifact owner for
+oneshot, ingest, run recovery, activation and import/expiry convergence.
+Bootstrap exposes that owner as `ArtifactProjection`; the raw CSV installer is
+not a bean. A fair interruptible artifact lock spans snapshot/build/install/ack.
+Building holds no canonical writer admission; lock order is artifact owner then
+short database admission. Different artifacts can progress independently.
+
+The ordered stream returns both row count and generation from one SQLite read
+transaction. Atomic replacement installs that coverage, and a monotonic guarded
+update acknowledges it. A mutation from g1 to g2 during a g1 build leaves g2
+pending; it never lets g1 acknowledge g2. Runs return only after their installed
+coverage is acknowledged. Convergence may report both covered progress and newer
+pending work in the same pass.
+
+Waiting callers reuse one successful outcome per artifact only if it matches
+current durable coverage. Warning counts survive reuse with caller-specific
+correlation; convergence also emits projection warnings. Generation zero is
+untracked and always rebuilds serially. The owner creates no executor; waiting
+is interruptible and streaming checks cancellation per row and before rename.
+
+Before-rename failure preserves old output and deletes temporary output.
+After-rename or acknowledgement failure leaves work pending, which startup or
+the existing periodic backstop repairs without a new canonical mutation. CSV
+and SQLite do not form one transaction. One service process must own its mutable
+paths; external corruption/deletion of already acknowledged files requires
+operational reprojection. Immutable slice ownership is unchanged. Decision:
+[ADR 0035](../ADR/0035-generation-owned-mutable-projections.md).
+
 ## Boundaries
 
 - `core/ioc-application` owns storage-neutral lifecycle values, the fixed

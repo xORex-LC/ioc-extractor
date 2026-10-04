@@ -146,7 +146,7 @@ class IngestionServiceTest {
                 .with("source", "run-1")
                 .with("reason", "lossy projection")
                 .build();
-        var projection = new CollectingProjection(new ArtifactProjectionResult(1, List.of(diagnostic)));
+        var projection = new CollectingProjection(new ArtifactProjectionResult(1, List.of(diagnostic), new com.iocextractor.application.artifact.lifecycle.ProjectionGeneration(0)));
         var diagnosticSink = new CollectingDiagnosticSink();
         var service = new IngestionService(
                 ledger,

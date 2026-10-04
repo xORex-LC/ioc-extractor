@@ -217,11 +217,16 @@ Dataframe v6 мигрирует последний v4 journal row в singleton
 `lifecycle_reconcile_state`. Старый `lifecycle_reconcile_cycle` сохраняется
 read-only для upgrade/rollback evidence, но больше не растёт.
 
-Mutable CSV projection reads active canonical rows through one ordered JDBC
-cursor and writes a sibling temporary file before `ATOMIC_MOVE`. It therefore
-keeps constant row-memory, preserves the previously installed projection on a
-cursor/encoding/write failure, and uses the same active snapshot boundary as
-other lifecycle-aware reads.
+Mutable CSV-проекция читает строки и их generation через один ordered JDBC
+cursor в одной read transaction и пишет соседний временный файл перед
+`ATOMIC_MOVE`. Общий application owner сериализует чтение, сборку, установку и
+подтверждение по артефакту. Сборка не удерживает canonical writer admission;
+короткое подтверждение повышает projected coverage только до установленного
+поколения, оставляя новое required work pending. Safe clock завершается до
+открытия read lease, в том числе при pool size 1. Ошибка до rename сохраняет
+старый файл; ошибка после rename/до acknowledgement оставляет durable работу
+для startup/periodic recovery без нового canonical изменения. Подробности:
+[canonical-record-lifecycle.md](canonical-record-lifecycle.md).
 
 ### Versioned identity and active matching (dataframe v7)
 

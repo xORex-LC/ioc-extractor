@@ -111,7 +111,7 @@ class WriteArtifactsStageTest {
         var requests = new ArrayList<String>();
         var stage = new WriteArtifactsStage(new RecordingRepository(), request -> {
             requests.add(request.runId() + ":" + request.artifactName());
-            return new ArtifactProjectionResult(1, List.of(warning));
+            return new ArtifactProjectionResult(1, List.of(warning), new com.iocextractor.application.artifact.lifecycle.ProjectionGeneration(0));
         }, StageTestSupport.DIAGNOSTICS);
 
         var output = stage.process(StageTestSupport.envelope(
