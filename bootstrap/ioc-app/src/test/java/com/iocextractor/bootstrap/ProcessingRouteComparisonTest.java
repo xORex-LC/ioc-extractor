@@ -25,7 +25,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Verifies that the opt-in measurement probe cannot publish partial memory samples. */
-class ProcessingRouteComparisonTest {    @Test
+class ProcessingRouteComparisonTest {
+
+    @Test
     void ordered_lookup_is_linear_and_unordered_lookup_is_logarithmic() throws Exception {
         var attributor = instrumentedAttributor();
         int sections = 400;

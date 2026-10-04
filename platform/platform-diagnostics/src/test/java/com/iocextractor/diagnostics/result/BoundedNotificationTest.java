@@ -152,4 +152,46 @@ class BoundedNotificationTest {
                 new BoundedNotification(1, FACTORY).addAll(collector.batch(), diagnostic -> { throw failure; }))
                 .isSameAs(failure);
     }
+
+    @Test
+    void batch_snapshots_are_immutable_and_exclude_the_synthetic_summary() {
+        var warning = FACTORY.create(PipelineDiagnosticCodes.ITEM_SKIPPED)
+                .with("item", "one").with("stage", "test").with("reason", "bad").build();
+        var collector = new BoundedDiagnosticCollector(1);
+        collector.addAll(java.util.List.of(warning, warning));
+        var snapshot = collector.batch();
+        collector.add(warning);
+        assertThat(snapshot.summary().total()).isEqualTo(2);
+        assertThat(collector.batch().summary().total()).isEqualTo(3);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> snapshot.retained().clear())
+                .isInstanceOf(UnsupportedOperationException.class);
+
+        var run = new BoundedNotification(1, FACTORY);
+        run.addAll(java.util.List.of(warning));
+        assertThat(run.diagnostics()).containsExactly(warning);
+        run.addAll(snapshot);
+        assertThat(run.batch().retained()).containsExactly(warning);
+        assertThat(run.batch().summary().total()).isEqualTo(3);
+        assertThat(run.batch().summary().suppressed()).isEqualTo(2);
+        assertThat(run.diagnostics()).hasSize(2);
+    }
+
+    @Test
+    void invalid_local_budget_severity_and_synthetic_batches_are_rejected() {
+        var warning = FACTORY.create(PipelineDiagnosticCodes.ITEM_SKIPPED)
+                .with("item", "one").with("stage", "test").with("reason", "bad").build();
+        org.assertj.core.api.Assertions.assertThatIllegalArgumentException().isThrownBy(() ->
+                new BoundedDiagnosticCollector(0));
+        org.assertj.core.api.Assertions.assertThatIllegalArgumentException().isThrownBy(() ->
+                new DiagnosticBatch(java.util.List.of(warning),
+                        new DiagnosticSummary(1, 0, java.util.Map.of(DiagnosticSeverity.INFO, 1L))));
+        org.assertj.core.api.Assertions.assertThatIllegalArgumentException().isThrownBy(() ->
+                new DiagnosticBatch(java.util.List.of(warning), new DiagnosticSummary(2, 1,
+                        java.util.Map.of(DiagnosticSeverity.WARN, 1L, DiagnosticSeverity.FATAL, 1L))));
+        var run = new BoundedNotification(1, FACTORY);
+        run.addAll(java.util.List.of(warning, warning));
+        org.assertj.core.api.Assertions.assertThatIllegalArgumentException().isThrownBy(() ->
+                new DiagnosticBatch(run.diagnostics(),
+                        DiagnosticSummary.empty().plusDiagnostics(run.diagnostics())));
+    }
 }

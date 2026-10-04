@@ -140,8 +140,7 @@ class PrepareRoutedArtifactsStageTest {
                 .containsExactly("mapping", StageNames.DEDUPLICATE.value(), "mapping");
     }
 
-    private static Envelope<
-            AttributedIndicators> manyOccurrences(int count) {
+    private static Envelope<AttributedIndicators> manyOccurrences(int count) {
         var raw = new RawIndicator("same.example",
                 IndicatorType.DOMAIN, 0);
         var decision = new AttributionDecision(raw, Optional.empty());
