@@ -380,7 +380,7 @@ longest producer-side non-atomic copy interval.
 | `ioc.dataframe-import.contracts[].artifacts[].columns[].source` | recognized header | required | Required or optional canonical input header. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns[].transforms` | ordered transform list | empty | Registered transform specifications only. |
 | `ioc.dataframe-import.contracts[].artifacts[].columns[].merge-policy` | merge policy | optional | Column override below the source ceiling. |
-| `ioc.dataframe-import.contracts[].artifacts[].columns[].validation` | registered validator | optional | Applies a named structural validator after transforms and before staging; arbitrary expressions are not accepted. |
+| `ioc.dataframe-import.contracts[].artifacts[].columns[].validation` | registered validator | optional | After transforms: `bare-ip`, `url-address`, `clean-domain`, `network-address`, `hash`, `md5`, `sha1`, `sha256`, or `canonical-integer`. Checks values without rewriting cells; NULL/ABSENT bypass value validation. |
 | `ioc.dataframe-import.contracts[].requested-slot` | optional mapping | omitted | Only artifacts with an external ID and a containing stable-slot export profile may use it. |
 | `ioc.dataframe-import.contracts[].requested-slot.source-column` | recognized header | required when present | Positive requested external slot, never canonical identity. |
 | `ioc.dataframe-import.contracts[].requested-slot.profile` | export profile | required when present | Scopes the external slot. |

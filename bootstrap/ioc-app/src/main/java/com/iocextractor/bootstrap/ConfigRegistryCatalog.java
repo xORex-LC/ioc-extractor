@@ -1,5 +1,6 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.adapter.in.csv.CsvImportValueValidatorRegistry;
 import com.iocextractor.processing.mapping.AddressIpValueProvider;
 import com.iocextractor.processing.mapping.AddressUrlValueProvider;
 import com.iocextractor.adapter.out.sink.csv.IdValueProvider;
@@ -49,9 +50,6 @@ final class ConfigRegistryCatalog {
     private static final String TRANSFORM_UPPER = "upper";
     private static final String TRANSFORM_STRIP_PREFIX = "strip-prefix";
 
-    private static final Set<String> IMPORT_VALUE_VALIDATORS = Set.of(
-            "bare-ip", "url-address", "clean-domain", "hash");
-
     private ConfigRegistryCatalog() {
     }
 
@@ -91,7 +89,7 @@ final class ConfigRegistryCatalog {
     }
 
     static Set<String> importValueValidatorKeys() {
-        return IMPORT_VALUE_VALIDATORS;
+        return CsvImportValueValidatorRegistry.ruleKeys();
     }
 
     static Map<String, ValueProvider> valueProviders() {

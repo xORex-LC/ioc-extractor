@@ -36,7 +36,7 @@ final class DataframeImportPropertyMapper {
         return new DataframeImportCatalogEnvironment(
                 immutableSchemas(schemas), ConfigRegistryCatalog.transformKeys(),
                 ConfigRegistryCatalog.importValueValidatorKeys(), endpointNames(properties.sync()),
-                ProcessingPolicyFingerprint.from(properties));
+                ProcessingPolicyFingerprint.forImport(properties));
     }
 
     private static void collectSinkSchemas(IocProperties.Sink sink,

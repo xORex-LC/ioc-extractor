@@ -50,6 +50,36 @@ Every CSV row is atomic across its configured branches. Compound fields such as
 URL plus IP in `address_blacklist`, or several hashes for one file, remain one
 row. A different identity-bearing value is a new record.
 
+Declare `columns[].validation` when the source must supply valid IOC values.
+AS_IS and an empty transform list do not enable this check automatically:
+
+| Validator | Accepted non-null cell |
+|---|---|
+| `bare-ip` | One bare IPv4 address |
+| `clean-domain` | One clean domain or subdomain |
+| `url-address` | One supported network address with URL/address detail |
+| `network-address` | One supported IPv4, domain or URL, including detailed forms |
+| `hash` | One MD5, SHA1 or SHA256 hash |
+| `md5`, `sha1`, `sha256` | One hash of the named algorithm |
+| `canonical-integer` | Signed 64-bit decimal integer with no leading zeros, plus sign, whitespace, fraction or exponent |
+
+Validation does not rewrite the cell. For example, `canonical-integer` accepts
+`10` and rejects `010` or `10.0`; NULL remains NULL. Use the same admitted numeric
+representation whenever an INTEGER field participates in a record or match key.
+
+Within-file duplicates use the primary artifact's record key. KEEP_FIRST retains
+the first admitted whole row and its requested slot; it does not compact the
+slots of subsequent accepted rows. Across deliveries, the selected match keys
+also control whether a row matches an existing record. Changing only duplicate
+selection cannot introduce a new canonical identity.
+
+Imported IDs request export slots in `requested-slot.profile`, which must be the
+profile used to publish the artifact when those IDs must appear in that output.
+`preserve-existing` keeps a matched survivor's slot even when its imported ID
+differs. A new record requesting an occupied slot receives the lowest available
+slot; the receipt and terminal report record the reassignment. These are separate
+cases: `existing-record-policy` controls the survivor mismatch only.
+
 ## Validate without importing
 
 Run preview against the same installed configuration and source allowlist:
@@ -63,6 +93,9 @@ Run preview against the same installed configuration and source allowlist:
 Preview reads and plans the file but does not claim it, reserve an export slot or
 write canonical/service state. A successful preview is advisory: real intake
 revalidates the live catalog, source evidence and active database state.
+Preview maps rows individually. It does not run within-delivery duplicate
+reduction or detect COALESCE group conflicts, and its accepted-row count is not
+the final staging or canonical-commit count.
 
 ## Submit a local delivery
 

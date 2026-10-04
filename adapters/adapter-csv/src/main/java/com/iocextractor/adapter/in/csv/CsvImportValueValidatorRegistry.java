@@ -5,6 +5,7 @@ import com.iocextractor.processing.model.ClassifiedIndicator;
 import com.iocextractor.application.port.out.dataframeimport.ImportValueValidatorRegistry;
 import com.iocextractor.domain.extract.IndicatorExtractor;
 import com.iocextractor.domain.extract.RawIndicator;
+import com.iocextractor.domain.feature.NetworkAddressParser;
 import com.iocextractor.domain.model.Indicator;
 import com.iocextractor.domain.model.IndicatorType;
 import com.iocextractor.domain.model.SourceContext;
@@ -20,11 +21,17 @@ public final class CsvImportValueValidatorRegistry implements ImportValueValidat
 
     private static final Set<IndicatorType> HASH_TYPES = Set.of(
             IndicatorType.MD5, IndicatorType.SHA1, IndicatorType.SHA256);
+    private static final Set<IndicatorType> NETWORK_TYPES = Set.of(
+            IndicatorType.IPV4, IndicatorType.DOMAIN, IndicatorType.URL);
+    private static final Set<String> RULE_KEYS = Set.of(
+            "bare-ip", "url-address", "clean-domain", "hash", "network-address",
+            "md5", "sha1", "sha256", "canonical-integer");
 
     private final Refanger refanger;
     private final IndicatorExtractor extractor;
     private final IndicatorClassifier classifier;
     private final Map<String, Predicate<ClassifiedIndicator>> conditions;
+    private final NetworkAddressParser networkParser = new NetworkAddressParser();
 
     /** Creates validators from the same extraction and classification policy as ordinary ingest. */
     public CsvImportValueValidatorRegistry(
@@ -40,6 +47,9 @@ public final class CsvImportValueValidatorRegistry implements ImportValueValidat
 
     @Override
     public boolean isValid(String rule, String value) {
+        if ("canonical-integer".equals(rule)) {
+            return isCanonicalInteger(value);
+        }
         ClassifiedIndicator indicator = wholeIndicator(value);
         if (indicator == null) {
             return false;
@@ -50,8 +60,30 @@ public final class CsvImportValueValidatorRegistry implements ImportValueValidat
             case "url-address" -> condition("is-address-with-detail", indicator);
             case "clean-domain" -> condition("is-clean-host", indicator);
             case "hash" -> HASH_TYPES.contains(indicator.indicator().type());
+            case "network-address" -> NETWORK_TYPES.contains(indicator.indicator().type());
+            case "md5" -> indicator.indicator().type() == IndicatorType.MD5;
+            case "sha1" -> indicator.indicator().type() == IndicatorType.SHA1;
+            case "sha256" -> indicator.indicator().type() == IndicatorType.SHA256;
             default -> throw new IllegalArgumentException("Unknown import value validation rule: " + rule);
         };
+    }
+
+    /** Returns the supported keys for eager configuration reference validation. */
+    public static Set<String> ruleKeys() {
+        return RULE_KEYS;
+    }
+
+    /** Pins syntax and value-validation behavior independently of ordinary document routing. */
+    public static String semanticRevision() {
+        return "ioc-import-value-validation:v2";
+    }
+
+    private boolean isCanonicalInteger(String value) {
+        try {
+            return Long.toString(Long.parseLong(value)).equals(value);
+        } catch (NumberFormatException invalid) {
+            return false;
+        }
     }
 
     private ClassifiedIndicator wholeIndicator(String value) {
@@ -63,6 +95,9 @@ public final class CsvImportValueValidatorRegistry implements ImportValueValidat
         RawIndicator raw = extracted.getFirst();
         if (!processed.substring(0, raw.position()).isBlank()
                 || !processed.substring(raw.position() + raw.value().length()).isBlank()) {
+            return null;
+        }
+        if (NETWORK_TYPES.contains(raw.type()) && !networkParser.parse(raw.value()).isAvailable()) {
             return null;
         }
         Indicator indicator = new Indicator(raw.value(), raw.type(), new SourceContext(null, null));

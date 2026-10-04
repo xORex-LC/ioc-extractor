@@ -1,5 +1,6 @@
 package com.iocextractor.bootstrap;
 
+import com.iocextractor.adapter.in.csv.CsvImportValueValidatorRegistry;
 import com.iocextractor.application.artifact.FingerprintFraming;
 
 import java.lang.reflect.InvocationTargetException;
@@ -42,6 +43,13 @@ final class ProcessingPolicyFingerprint {
         addValue(digest, properties.pipeline());
         addValue(digest, properties.artifactIdentity());
         addValue(digest, properties.processing());
+        return HexFormat.of().formatHex(digest.digest());
+    }
+
+    static String forImport(IocProperties properties) {
+        MessageDigest digest = sha256();
+        add(digest, from(properties));
+        add(digest, CsvImportValueValidatorRegistry.semanticRevision());
         return HexFormat.of().formatHex(digest.digest());
     }
 

@@ -53,6 +53,20 @@ artifact mapping policies. Pipeline-owned identity, routing and match fields
 replace imported copies, while operator-owned metadata retains tri-state merge
 semantics. Every populated IOC carrier must contain one whole-cell IOC; compound
 URL/IP or multi-hash fields remain one atomic artifact row.
+Column `validation` is explicit for both modes; AS_IS alone does not validate
+IOC syntax. IOC validators use whole-cell extraction, supported network syntax
+parsing and classification without
+changing the admitted value. `network-address` accepts supported IPv4, domain
+and URL forms; `md5`, `sha1` and `sha256` additionally enforce the hash algorithm
+of the target column. `canonical-integer` accepts only the canonical decimal
+representation of a signed 64-bit integer. This prevents string identities such
+as `10` and `010` from becoming equal public values through INTEGER storage
+affinity. Nullable cells bypass value validation and retain their presence state.
+The import behavior pin includes the validator semantic revision independently
+of the document policy. A validation-semantics upgrade can therefore block
+unsealed restaging under an older contract pin; sealed-stage and committed-receipt
+recovery retain their ordinary boundaries. Drain nonterminal imports before an
+upgrade that changes this revision.
 For a declared `source-label-target`, finalization verifies that the source
 still comes from the admitted cell. Missing and explicit-null source cells
 retain their distinct presence states. A route cannot replace that source target.
