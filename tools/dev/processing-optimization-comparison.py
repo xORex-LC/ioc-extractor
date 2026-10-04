@@ -20,6 +20,8 @@ PROFILES = {
     "repeat": ("domains", 8000, 20, 2000, 20),
     "unique": ("domains", 8000, 8000, 2000, 2000),
     "collapse": ("host-collapse", 100000, 25000, 10000, 2500),
+    "capacity-10k": ("mixed", 10000, 10000, 10000, 10000),
+    "capacity-100k": ("mixed", 100000, 100000, 10000, 10000),
 }
 METRICS = ("elapsed_ms", "allocated_main_bytes", "sampled_peak_heap_bytes",
            "sampled_peak_current_rss_kib", "sampled_peak_rss_kib", "startup_ms",
@@ -139,8 +141,10 @@ def main():
                         metrics, signature = COMPARISON.run_one(
                             profile / side, fixture, kind, True, iteration, frozen[side][0],
                             document_rows if kind == "document" else import_rows,
-                            document_unique if kind == "document" else import_unique, 1,
-                            runtimes[side] / "test-resources", args.diagnostics, shape)
+                            document_unique if kind == "document" else import_unique,
+                            0 if name.startswith("capacity-") else 1,
+                            runtimes[side] / "test-resources", args.diagnostics, shape,
+                            capacity=name.startswith("capacity-"))
                         metrics["revision"] = side
                         samples.append(metrics)
                         signatures[side] = signature

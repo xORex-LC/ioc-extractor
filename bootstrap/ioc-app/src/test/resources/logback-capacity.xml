@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender name="CAPACITY" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="com.iocextractor.bootstrap.IocEcsStructuredLogEncoder">
+            <format>ecs</format>
+            <charset>UTF-8</charset>
+            <eventDataset>capacity-qualification</eventDataset>
+        </encoder>
+    </appender>
+    <logger name="com.iocextractor.observability.logging.LoggingPipelineObserver" level="DEBUG"/>
+    <root level="WARN"><appender-ref ref="CAPACITY"/></root>
+</configuration>

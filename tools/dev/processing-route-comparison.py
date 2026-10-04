@@ -136,7 +136,7 @@ def expected_document_counts(rows, unique, shape):
     return dict(masks=count, ip_list=0, address_blacklist=count, hashes=0, ioc_aggregate=count)
 
 
-def config(kind, selected, target, resources=RESOURCES, shape="domains"):
+def config(kind, selected, target, resources=RESOURCES, shape="domains", capacity=False):
     if not selected:
         raise ValueError("The compatible processing engine is retired; use Router-only qualification")
     if kind == "document":
@@ -152,6 +152,10 @@ def config(kind, selected, target, resources=RESOURCES, shape="domains"):
     elif selected and shape != "domains":
         # Matched output semantics for mixed/long profiles; cleanup is qualified separately.
         contents = contents.replace("default-view: host", "default-view: original")
+    if capacity and kind == "document":
+        # The ordinary golden profile leaves lifecycle disabled. Capacity must
+        # exercise canonical aliases and confirmation, as the daemon does.
+        contents += "  lifecycle:\n    validity:\n      mode: fixed\n"
     path = target / "configs/application.yml"
     path.parent.mkdir(parents=True)
     path.write_text(contents)
@@ -166,6 +170,53 @@ def canonical_import_accounting(connection):
 
 def canonical_digest(values):
     return hashlib.sha256(json.dumps(values, separators=(",", ":")).encode()).hexdigest()
+
+
+def capacity_document_fields(connection, input_rows, unique, warmups, shape):
+    """Check every public field/key independently; stream actual rows."""
+    if shape not in ("domains", "mixed"):
+        raise ValueError("Capacity oracle requires domains or mixed fixtures")
+    names = ("masks", "ip_list", "address_blacklist", "hashes", "ioc_aggregate")
+    expected = {name: {} for name in names}
+    for offset in range(warmups + 1):
+        for index, value in enumerate(fixture_values(unique, shape, offset=offset)[:input_rows]):
+            variant = index % 4 if shape == "mixed" else 0
+            domain, ip, url, md5 = (variant == n for n in range(4))
+            if domain or url:
+                expected["masks"][canonical_digest([value])] = (
+                    value, "u:hEX" if domain else "u:hEX,dEX", "h:dEX" if domain else None,
+                    None, None, None, None, "БИБ-0001", None)
+            if ip:
+                expected["ip_list"][canonical_digest([value])] = (
+                    value, None, None, None, None, "БИБ-0001", None)
+            if not md5:
+                carriers = [None, value] if ip else [value, None]
+                expected["address_blacklist"][canonical_digest(carriers)] = tuple(carriers)
+            else:
+                expected["hashes"][canonical_digest([value.upper(), None, None])] = (
+                    value.upper(), None, None, None, None, None, None, "БИБ-0001", None)
+            carriers = [value if ip else None, value if url else None,
+                        value if domain else None, value.upper() if md5 else None]
+            expected["ioc_aggregate"][canonical_digest(carriers)] = ("БИБ-0001", *carriers)
+    columns = {"masks": "mask,url_match,host_match,score,time_last_seen,time_first_seen,threat_type,source,description",
+               "ip_list": "ip,score,time_last_seen,time_first_seen,threat_type,source,description",
+               "address_blacklist": "forbidden_url,forbidden_ip",
+               "hashes": "hash_md5,hash_sha256,hash_sha1,score,time_last_seen,time_first_seen,threat_type,source,description",
+               "ioc_aggregate": "name,ip_address,url_match,host_match,hash"}
+    digests = {}
+    for artifact in names:
+        digest = hashlib.sha256()
+        for actual in connection.execute(f"SELECT row_key,{columns[artifact]} FROM {artifact} ORDER BY row_key"):
+            key, *values = actual
+            values = tuple(None if value == "NULL" else value for value in values)
+            if values != expected[artifact].pop(key, None):
+                raise RuntimeError(f"Capacity oracle: wrong fields or key in {artifact}")
+            digest.update(json.dumps([key, *values], ensure_ascii=False, separators=(",", ":")).encode())
+            digest.update(b"\n")
+        if expected[artifact]:
+            raise RuntimeError(f"Capacity oracle: missing rows in {artifact}")
+        digests[artifact] = digest.hexdigest()
+    return digests
 
 
 def host_collapse_fields(connection, kind, hosts, warmups):
@@ -292,11 +343,11 @@ def expected_document_diagnostics(input_rows, unique, shape, selected):
 
 
 def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows, unique, warmups,
-            resources=RESOURCES, diagnostics=False, shape="domains", collapse_hosts=20):
+            resources=RESOURCES, diagnostics=False, shape="domains", collapse_hosts=20, capacity=False):
     name = "selected" if selected else "compatible"
     root = workspace / f"{kind}-{name}-{iteration}"
     root.mkdir()
-    config(kind, selected, root, resources, shape)
+    config(kind, selected, root, resources, shape, capacity)
     warmup_paths = []
     for number in range(warmups):
         warmup_root = root / f"warmup-{number}"
@@ -310,6 +361,8 @@ def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows
             f"-Dspring.config.additional-location=file:{root}/configs/application.yml",
             "-cp", classpath, "com.iocextractor.bootstrap.ProcessingRouteComparison",
             kind, str(root), str(fixture), *map(str, warmup_paths)]
+    if capacity:
+        args[1:1] = ["-Dlogging.config=classpath:logback-capacity.xml"]
     if diagnostics:
         args[1:1] = [f"-javaagent:{workspace}/comparison-diagnostics.jar",
                      "-Dcomparison.diagnostics=true",
@@ -349,6 +402,24 @@ def run_one(workspace, fixture, kind, selected, iteration, classpath, input_rows
                 or "EXTRACTION.INDICATOR_SKIPPED:DEBUG=" not in outcomes[-1]):
             raise RuntimeError("Unexpected host-collapse diagnostic severity or code")
     signature = result_signature(kind, root, input_rows, unique, warmups, shape, collapse_hosts)
+    if capacity:
+        with sqlite3.connect(root / "ioc-dataframe.db") as connection:
+            if kind == "document":
+                signature["independent_public_field_digests"] = capacity_document_fields(
+                    connection, input_rows, unique, warmups, shape)
+                for artifact, keys in signature["canonical_keys"].items():
+                    active = connection.execute(f"SELECT COUNT(*) FROM {artifact} "
+                        "WHERE _lifecycle_id IS NOT NULL AND _valid_until_epoch_ms IS NOT NULL").fetchone()[0]
+                    if active != len(keys):
+                        raise RuntimeError(f"Capacity profile bypassed lifecycle for {artifact}")
+            metrics["dataframe_schema_version"] = connection.execute("PRAGMA user_version").fetchone()[0]
+        if kind == "document":
+            completed = [json.loads(line) for line in output.splitlines() if line.startswith('{"@timestamp"')]
+            phases = [item for item in completed if item.get("event", {}).get("action") == "stage_complete"]
+            if len(phases) != 6 * (warmups + 1):
+                raise RuntimeError("Missing capacity pipeline phase anchors")
+            metrics["pipeline_phases_nanos"] = {
+                item["ioc"]["stage"]: item["event"]["duration"] for item in phases[-6:]}
     metrics["outcome"] = outcomes[-1]
     signature["outcome"] = outcomes[-1]
     (root / "signature.json").write_text(json.dumps(signature, sort_keys=True, indent=2) + "\n")
@@ -400,6 +471,8 @@ def main():
                         help="Disjoint warm-up files per JVM before the measured insertion workload")
     parser.add_argument("--diagnostics", action="store_true",
                         help="Separate instrumented preparation/counter/JFR forks; not primary cost evidence")
+    parser.add_argument("--capacity", action="store_true",
+                        help="Exercise active lifecycle/alias mutations for canonical capacity qualification")
     parser.add_argument("--max-wall-ratio", type=float, default=2.0)
     parser.add_argument("--max-allocation-ratio", type=float, default=3.0)
     parser.add_argument("--max-rss-kib", type=int, default=1048576)
@@ -480,7 +553,7 @@ def main():
                                              else args.import_rows,
                                              args.document_unique if kind == "document" else args.import_unique,
                                              args.warmups, resources, args.diagnostics, args.shape,
-                                             args.collapse_hosts)
+                                             args.collapse_hosts, args.capacity)
                 rows.append(metrics)
                 (workspace / "samples.json").write_text(json.dumps(rows, indent=2) + "\n")
                 if signature != previous.get(kind, signature):
@@ -509,6 +582,7 @@ def main():
               "logging_controls": {key: os.environ.get(key, "unset")
                                    for key in ("DEBUG", "TRACE", "LOGGING_LEVEL_ROOT")},
               "shape": args.shape,
+              "capacity": args.capacity,
               "routing_semantics": "host cleanup" if args.shape in ("domains", "host-collapse") else "original view",
               "selected_only": args.selected_only,
               "collapse_hosts": args.collapse_hosts if args.shape == "host-collapse" else None,

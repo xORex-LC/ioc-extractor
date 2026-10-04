@@ -129,6 +129,14 @@ Router qualification запускает синтетические операц�
 `.dev/router-qualification`. Его throughput и allocation нельзя сравнивать с
 нынешним IOC preparer до появления документной и импортной интеграции.
 
+Режим `--capacity --shape mixed|domains` включает fixed lifecycle и проверяет
+активные canonical rows, все public fields и complete row keys независимым
+oracle. Реальные результаты читаются cursor-ом после окончания измерения;
+документные времена стадий берутся из production pipeline observer. Для
+сравнения CAP-1A/CAP-1B доступны profiles `capacity-10k` и `capacity-100k`:
+fresh JVM, empty private stores, без прогрева входными файлами. Эти профили
+не заменяют отдельную проверку all-five AS_IS import и полного SMB-цикла.
+
 `processing-route-comparison.py` собирает test probe вместе с reactor и запускает
 Router в отдельных JVM/SQLite/workspace. После полного перехода на Router
 прогоны всегда `--selected-only`: совместимый движок удалён, новые отношения

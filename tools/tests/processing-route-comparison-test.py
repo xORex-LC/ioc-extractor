@@ -23,6 +23,42 @@ OPTIMIZATION_SPEC.loader.exec_module(OPTIMIZATION)
 
 
 class ComparisonTest(unittest.TestCase):
+    def test_capacity_document_profile_enables_canonical_lifecycle(self):
+        with tempfile.TemporaryDirectory() as root:
+            COMPARISON.config("document", True, Path(root), shape="mixed", capacity=True)
+            contents = (Path(root) / "configs/application.yml").read_text()
+            self.assertIn("lifecycle:\n    validity:\n      mode: fixed", contents)
+            self.assertIn("document-plan: customer-hosts", contents)
+
+    def test_capacity_oracle_checks_all_public_fields_and_missing_rows(self):
+        with sqlite3.connect(":memory:") as connection:
+            columns = {
+                "masks": "mask,url_match,host_match,score,time_last_seen,time_first_seen,threat_type,source,description",
+                "ip_list": "ip,score,time_last_seen,time_first_seen,threat_type,source,description",
+                "address_blacklist": "forbidden_url,forbidden_ip",
+                "hashes": "hash_md5,hash_sha256,hash_sha1,score,time_last_seen,time_first_seen,threat_type,source,description",
+                "ioc_aggregate": "name,ip_address,url_match,host_match,hash"}
+            domain = "benchmark-0.example.com"
+            records = {
+                "masks": ([domain], (domain, "u:hEX", "h:dEX", None, None, None, None, "БИБ-0001", None)),
+                "address_blacklist": ([domain, None], (domain, None)),
+                "ioc_aggregate": ([None, None, domain, None], ("БИБ-0001", None, None, domain, None))}
+            for artifact, header in columns.items():
+                connection.execute(f"CREATE TABLE {artifact} (row_key TEXT, {header.replace(',', ' TEXT,')} TEXT)")
+                if artifact in records:
+                    key, values = records[artifact]
+                    connection.execute(f"INSERT INTO {artifact} VALUES ({','.join('?' for _ in range(len(values)+1))})",
+                                       (COMPARISON.canonical_digest(key), *values))
+            result = COMPARISON.capacity_document_fields(connection, 1, 1, 0, "domains")
+            self.assertEqual(set(result), set(columns))
+            connection.execute("UPDATE masks SET score='20'")
+            with self.assertRaisesRegex(RuntimeError, "wrong fields or key in masks"):
+                COMPARISON.capacity_document_fields(connection, 1, 1, 0, "domains")
+            connection.execute("UPDATE masks SET score=NULL")
+            connection.execute("DELETE FROM address_blacklist")
+            with self.assertRaisesRegex(RuntimeError, "missing rows in address_blacklist"):
+                COMPARISON.capacity_document_fields(connection, 1, 1, 0, "domains")
+
     def test_retired_engine_cannot_be_configured(self):
         with tempfile.TemporaryDirectory() as root:
             for kind in ("document", "import"):
