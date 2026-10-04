@@ -98,6 +98,14 @@ public record IocProcessingProperties(String documentPlan, List<Plan> plans) {
     /** Exactly one of leaf, all, any or not is allowed by semantic admission. */
     public record Condition(String on, String predicate, PredicateArguments arguments,
                             List<Condition> all, List<Condition> any, Condition not) {
+        /** Bind the singular recursive child through a map; keep the admitted model typed. */
+        @org.springframework.boot.context.properties.bind.ConstructorBinding
+        public Condition(@org.springframework.boot.context.properties.bind.Name("not")
+                         Map<String, Object> negation, String on, String predicate,
+                         PredicateArguments arguments, List<Condition> all, List<Condition> any) {
+            this(on, predicate, arguments, all, any, ProcessingConditionBinding.bind(negation));
+        }
+
         public Condition {
             all = snapshot(all);
             any = snapshot(any);

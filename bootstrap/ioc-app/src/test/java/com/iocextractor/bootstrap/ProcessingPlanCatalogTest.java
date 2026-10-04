@@ -20,6 +20,51 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ProcessingPlanCatalogTest {
 
     @Test
+    void binds_nested_negation_and_groups_with_typed_arguments() {
+        var properties = new org.springframework.boot.context.properties.source.MapConfigurationPropertySource(
+                Map.of("condition.not.any[0].not.on", "original",
+                        "condition.not.any[0].not.predicate", "has-path",
+                        "condition.not.any[1].on", "original",
+                        "condition.not.any[1].predicate", "type-in",
+                        "condition.not.any[1].arguments.types[0]", "domain",
+                        "condition.not.any[1].arguments.types[1]", "url"));
+        var bound = new Binder(properties).bind("condition",
+                Bindable.of(IocProcessingProperties.Condition.class)).get();
+
+        assertThat(bound.not().any()).hasSize(2);
+        assertThat(bound.not().any().getFirst().not().predicate()).isEqualTo("has-path");
+        assertThat(bound.not().any().get(1).arguments().types())
+                .containsExactly(IndicatorType.DOMAIN, IndicatorType.URL);
+    }
+
+    @Test
+    void binds_negation_from_a_property_source_with_structured_lists() {
+        var source = new org.springframework.boot.context.properties.source.MapConfigurationPropertySource(
+                Map.of("condition.not.all", List.of(
+                        Map.of("on", "original", "predicate", "type-in", "arguments",
+                                Map.of("types", List.of("domain", "url"))),
+                        Map.of("not", Map.of("on", "original", "predicate", "has-query")))));
+
+        var condition = new Binder(source).bind("condition",
+                Bindable.of(IocProcessingProperties.Condition.class)).get();
+
+        assertThat(condition.not().all()).hasSize(2);
+        assertThat(condition.not().all().getFirst().arguments().types())
+                .containsExactly(IndicatorType.DOMAIN, IndicatorType.URL);
+        assertThat(condition.not().all().get(1).not().predicate()).isEqualTo("has-query");
+    }
+
+    @Test
+    void rejects_unknown_property_inside_negation_instead_of_silently_dropping_it() {
+        var properties = new org.springframework.boot.context.properties.source.MapConfigurationPropertySource(
+                Map.of("condition.not.on", "original", "condition.not.predicate", "has-path",
+                        "condition.not.typo", "value"));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new Binder(properties)
+                .bind("condition", Bindable.of(IocProcessingProperties.Condition.class)))
+                .hasRootCauseInstanceOf(org.springframework.boot.context.properties.bind.UnboundConfigurationPropertiesException.class);
+    }
+
+    @Test
     void compiles_typed_conditions_and_field_views_for_all_enabled_artifacts() throws Exception {
         IocProperties defaults = defaults();
         IocProcessingProperties.Plan plan = completePlan(defaults);
@@ -214,13 +259,13 @@ class ProcessingPlanCatalogTest {
                 null, null, null);
         var hasPath = new IocProcessingProperties.Condition("original", "has-path",
                 null, null, null, null);
-        var notIp = new IocProcessingProperties.Condition(null, null, null, null, null,
+        var notIp = new IocProcessingProperties.Condition((String) null, null, null, null, null,
                 new IocProcessingProperties.Condition("original", "type-in",
                         new IocProcessingProperties.PredicateArguments(List.of(IndicatorType.IPV4)),
                         null, null, null));
-        var any = new IocProcessingProperties.Condition(null, null, null, null,
+        var any = new IocProcessingProperties.Condition((String) null, null, null, null,
                 List.of(hasPath, notIp), null);
-        var all = new IocProcessingProperties.Condition(null, null, null,
+        var all = new IocProcessingProperties.Condition((String) null, null, null,
                 List.of(typeIn, any), null, null);
         IocProcessingProperties.Plan plan = withFirstEligibility(completePlan(defaults), all);
         List<String> errors = new ArrayList<>();
@@ -242,8 +287,8 @@ class ProcessingPlanCatalogTest {
     void rejects_malformed_groups_unknown_predicates_and_missing_typed_arguments() throws Exception {
         IocProperties defaults = defaults();
         List<IocProcessingProperties.Condition> invalid = List.of(
-                new IocProcessingProperties.Condition(null, null, null, List.of(), null, null),
-                new IocProcessingProperties.Condition(null, null, null, null, List.of(), null),
+                new IocProcessingProperties.Condition((String) null, null, null, List.of(), null, null),
+                new IocProcessingProperties.Condition((String) null, null, null, null, List.of(), null),
                 new IocProcessingProperties.Condition("original", "not-registered", null,
                         null, null, null),
                 new IocProcessingProperties.Condition("original", "type-in", null,
@@ -451,15 +496,15 @@ class ProcessingPlanCatalogTest {
         IocProperties defaults = defaults();
         IocProcessingProperties.Plan valid = completePlan(defaults);
         List<IocProcessingProperties.Condition> invalid = List.of(
-                new IocProcessingProperties.Condition(null, null, null, null, null, null),
+                new IocProcessingProperties.Condition((String) null, null, null, null, null, null),
                 new IocProcessingProperties.Condition("original", null, null, null, null, null),
-                new IocProcessingProperties.Condition(null, "has-path", null, null, null, null),
+                new IocProcessingProperties.Condition((String) null, "has-path", null, null, null, null),
                 new IocProcessingProperties.Condition("original", "has-path",
                         new IocProcessingProperties.PredicateArguments(List.of(IndicatorType.DOMAIN)),
                         null, null, null),
                 new IocProcessingProperties.Condition("original", "type-in",
                         new IocProcessingProperties.PredicateArguments(List.of()), null, null, null),
-                new IocProcessingProperties.Condition(null, null, null,
+                new IocProcessingProperties.Condition((String) null, null, null,
                         Arrays.asList((IocProcessingProperties.Condition) null), null, null));
         List<String> expected = List.of("exactly one leaf", "declared on view", "declared on view",
                 "unexpected arguments", "arguments.types requires distinct", "cannot be null");
@@ -674,18 +719,18 @@ class ProcessingPlanCatalogTest {
         IocProcessingProperties.Condition deepest = new IocProcessingProperties.Condition(
                 "original", "has-path", null, null, null, null);
         for (int index = 0; index < 17; index++) {
-            deepest = new IocProcessingProperties.Condition(null, null, null, null, null, deepest);
+            deepest = new IocProcessingProperties.Condition((String) null, null, null, null, null, deepest);
         }
         assertRejected(defaults, withFirstEligibility(valid, deepest), "condition depth limit");
-        var invalidChild = new IocProcessingProperties.Condition(null, null, null, null, null, null);
+        var invalidChild = new IocProcessingProperties.Condition((String) null, null, null, null, null, null);
         assertRejected(defaults, withFirstEligibility(valid,
-                new IocProcessingProperties.Condition(null, null, null, null, null, invalidChild)),
+                new IocProcessingProperties.Condition((String) null, null, null, null, null, invalidChild)),
                 "exactly one leaf");
         assertRejected(defaults, withFirstEligibility(valid,
-                new IocProcessingProperties.Condition(null, null, null,
+                new IocProcessingProperties.Condition((String) null, null, null,
                         List.of(invalidChild), null, null)), "exactly one leaf");
         assertRejected(defaults, withFirstEligibility(valid,
-                new IocProcessingProperties.Condition(null, null,
+                new IocProcessingProperties.Condition((String) null, null,
                         new IocProcessingProperties.PredicateArguments(null), null, null, null)),
                 "declared on view");
         assertRejected(defaults, withFirstEligibility(valid,
